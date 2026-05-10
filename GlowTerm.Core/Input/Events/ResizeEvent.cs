@@ -17,4 +17,13 @@ public sealed record class ResizeEvent : InputEvent
 
     /// <summary>New height in pixels, when the terminal reports it.</summary>
     public int? PixelHeight { get; init; }
+
+    /// <summary>
+    /// Width of a single character cell in pixels, when the terminal reports it. Useful to
+    /// consumers driving Sixel/Kitty graphics, image overlays, or pixel-precise mouse hit tests.
+    /// </summary>
+    public int? CellPixelWidth { get; init; }
+
+    /// <summary>Height of a single character cell in pixels, when the terminal reports it.</summary>
+    public int? CellPixelHeight { get; init; }
 }

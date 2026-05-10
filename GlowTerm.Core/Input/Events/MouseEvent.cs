@@ -15,7 +15,7 @@ public sealed record class MouseEvent : InputEvent
     public required MouseButton Button { get; init; }
 
     /// <summary>Bitmask of all buttons currently held at the time of the event.</summary>
-    public required MouseButtonState ButtonsHeld { get; init; }
+    public required MouseButtons ButtonsHeld { get; init; }
 
     /// <summary>Modifier keys held when the event occurred.</summary>
     public required KeyModifiers Modifiers { get; init; }

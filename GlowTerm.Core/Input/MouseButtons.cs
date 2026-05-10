@@ -2,10 +2,11 @@ namespace GlowTerm.Core.Input;
 
 /// <summary>
 /// Bitmask of mouse buttons currently held. Each <see cref="MouseButton"/> value (other than
-/// <see cref="MouseButton.None"/>) corresponds to one bit here.
+/// <see cref="MouseButton.None"/>) corresponds to one bit here. Parallels
+/// <see cref="KeyModifiers"/> in shape and naming.
 /// </summary>
 [Flags]
-public enum MouseButtonState : uint
+public enum MouseButtons : uint
 {
     None = 0,
     Left = 1u << 0,

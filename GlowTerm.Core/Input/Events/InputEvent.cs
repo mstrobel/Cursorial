@@ -5,6 +5,20 @@ namespace GlowTerm.Core.Input;
 /// type identifies the kind of input; consumers typically pattern-match on type with
 /// <c>switch</c>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Buffer-lifetime contract.</b> Events own their data. Any <see cref="ReadOnlyMemory{T}"/>
+/// field exposed by an event (for example <see cref="KeyEvent.Text"/>,
+/// <see cref="PasteEvent.Text"/>, <see cref="DeviceResponseEvent.Payload"/>,
+/// <see cref="UnknownEvent.RawBytes"/>) is backed by memory whose lifetime extends for as long
+/// as the consumer chooses to retain the event. Implementations MUST NOT alias buffers owned
+/// by their underlying source — for example, a parser reading from <see cref="IInputByteSource"/>
+/// must copy out of the <see cref="System.IO.Pipelines.PipeReader"/>'s segment before
+/// constructing the event, since calling
+/// <see cref="System.IO.Pipelines.PipeReader.AdvanceTo(System.SequencePosition)"/> invalidates
+/// any retained view of that segment.
+/// </para>
+/// </remarks>
 public abstract record class InputEvent
 {
     /// <summary>

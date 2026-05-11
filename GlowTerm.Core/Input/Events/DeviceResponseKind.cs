@@ -42,4 +42,20 @@ public enum DeviceResponseKind
     /// that emit Sixel/Kitty graphics or otherwise need to translate between cell and pixel units.
     /// </summary>
     CellSizeInPixels,
+
+    /// <summary>
+    /// Response to a DECRQSS (Request Status String) query — <c>DCS &lt;valid&gt; $ r &lt;data&gt; ST</c>.
+    /// The interpreter does not surface the leading <c>valid</c> parameter; instead, an empty
+    /// <see cref="DeviceResponseEvent.Payload"/> indicates the terminal rejected the request
+    /// (wire form <c>DCS 0 $ r ST</c>) and a non-empty payload carries the answer bytes.
+    /// </summary>
+    DecRqssResponse,
+
+    /// <summary>
+    /// Response to an XTGETTCAP (Get Termcap) query — <c>DCS &lt;valid&gt; + r &lt;hexname&gt;=&lt;hexvalue&gt; ST</c>.
+    /// As with <see cref="DecRqssResponse"/>, an empty <see cref="DeviceResponseEvent.Payload"/>
+    /// indicates the requested termcap entry was not recognized; otherwise the payload carries
+    /// the (still hex-encoded) name=value pairs.
+    /// </summary>
+    XtGetTcapResponse,
 }

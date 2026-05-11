@@ -30,6 +30,15 @@ namespace GlowTerm.Core.Input.Parsing;
 /// 16 intermediates, 4096 byte OSC bodies); large DCS bodies are streamed via
 /// <see cref="IVtSequenceTokenSink.OnDcsPut"/> rather than buffered.
 /// </para>
+/// <para>
+/// <b>X10 mouse framing.</b> The X10 mouse protocol (<c>ESC [ M cb cx cy</c>) breaks the rule
+/// that the classifier is purely byte-pattern driven: the three bytes after <c>M</c> are not
+/// otherwise distinguishable from printable text, so the classifier must know whether to expect
+/// them. <see cref="X10MouseFramingEnabled"/> is the narrow exception — when set, an unadorned
+/// <c>CSI M</c> (no private prefix, no parameters, no intermediates) consumes three additional
+/// bytes and dispatches them via <see cref="IVtSequenceTokenSink.OnX10MouseDispatch"/>; when
+/// unset the classifier remains fully stateless w.r.t. protocol mode.
+/// </para>
 /// </remarks>
 public sealed class VtSequenceClassifier
 {
@@ -46,6 +55,17 @@ public sealed class VtSequenceClassifier
     private int _intermediateLength;
     private int _oscLength;
     private byte _privatePrefix;
+    private byte _x10MouseCb;
+    private byte _x10MouseCx;
+
+    /// <summary>
+    /// When true, an unadorned <c>CSI M</c> (no private prefix, no parameters, no intermediates)
+    /// is treated as the introducer for an X10 mouse report and the next three bytes are
+    /// consumed and delivered via <see cref="IVtSequenceTokenSink.OnX10MouseDispatch"/>. The
+    /// negotiator (or transport setup) is expected to keep this flag in sync with
+    /// <see cref="VtInputMode.MouseEncoding"/>; the classifier does not read mode state itself.
+    /// </summary>
+    public bool X10MouseFramingEnabled { get; set; }
 
     /// <summary>
     /// Feed a chunk of bytes through the classifier. Tokens are dispatched to
@@ -96,6 +116,15 @@ public sealed class VtSequenceClassifier
                 break;
             case State.Ss3:
                 FlushSs3AsRecovery(sink);
+                ResetToGround();
+                break;
+            case State.X10MouseCb:
+            case State.X10MouseCx:
+            case State.X10MouseCy:
+                // A partial X10 report stuck on the idle window. The few bytes we've collected
+                // are not useful on their own, but leaving the state in place would cause the
+                // next legitimate bytes to be misinterpreted as the rest of this report. Drop
+                // the partial and return to Ground.
                 ResetToGround();
                 break;
         }
@@ -177,6 +206,18 @@ public sealed class VtSequenceClassifier
                 break;
             case State.DcsIgnoreEsc:
                 StepDcsIgnoreEsc(b);
+                break;
+            case State.X10MouseCb:
+                _x10MouseCb = b;
+                _state = State.X10MouseCx;
+                break;
+            case State.X10MouseCx:
+                _x10MouseCx = b;
+                _state = State.X10MouseCy;
+                break;
+            case State.X10MouseCy:
+                sink.OnX10MouseDispatch(_x10MouseCb, _x10MouseCx, b);
+                ResetToGround();
                 break;
         }
     }
@@ -369,6 +410,18 @@ public sealed class VtSequenceClassifier
 
     private void DispatchCsi(byte final, IVtSequenceTokenSink sink)
     {
+        // X10 mouse exception — an unadorned `CSI M` introduces three raw bytes when framing
+        // is enabled. See class remarks for why this lives in the classifier.
+        if (final == (byte)'M'
+            && X10MouseFramingEnabled
+            && _privatePrefix == 0
+            && _parameterLength == 0
+            && _intermediateLength == 0)
+        {
+            _state = State.X10MouseCb;
+            return;
+        }
+
         sink.OnCsiDispatch(_privatePrefix, ParameterSpan, IntermediateSpan, final);
         ResetToGround();
     }
@@ -588,6 +641,9 @@ public sealed class VtSequenceClassifier
         DcsPassthroughEsc,
         DcsIgnore,
         DcsIgnoreEsc,
+        X10MouseCb,
+        X10MouseCx,
+        X10MouseCy,
     }
 
     /// <summary>Visible to tests so they can assert state-machine progression.</summary>

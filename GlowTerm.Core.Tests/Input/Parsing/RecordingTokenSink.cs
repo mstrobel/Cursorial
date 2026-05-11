@@ -34,6 +34,9 @@ internal sealed class RecordingTokenSink : IVtSequenceTokenSink
 
     public void OnDcsUnhook()
         => Tokens.Add(new RecordedToken.DcsUnhook());
+
+    public void OnX10MouseDispatch(byte cb, byte cx, byte cy)
+        => Tokens.Add(new RecordedToken.X10MouseDispatch(cb, cx, cy));
 }
 
 internal abstract record RecordedToken
@@ -46,4 +49,5 @@ internal abstract record RecordedToken
     public sealed record DcsHook(byte PrivatePrefix, byte[] Parameters, byte[] Intermediates, byte Final) : RecordedToken;
     public sealed record DcsPut(byte[] Bytes) : RecordedToken;
     public sealed record DcsUnhook : RecordedToken;
+    public sealed record X10MouseDispatch(byte Cb, byte Cx, byte Cy) : RecordedToken;
 }

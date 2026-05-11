@@ -80,4 +80,14 @@ public interface IVtSequenceTokenSink
 
     /// <summary>End of a DCS body — the string terminator (ST) was observed.</summary>
     void OnDcsUnhook();
+
+    /// <summary>
+    /// A complete X10 mouse report: <c>ESC [ M cb cx cy</c>. The three follow bytes are dispatched
+    /// raw — they are each <c>value + 0x20</c> per the X10 encoding, and the interpreter is
+    /// responsible for unmasking. The classifier only emits this token when its
+    /// <see cref="VtSequenceClassifier.X10MouseFramingEnabled"/> flag is set; otherwise the
+    /// <c>M</c> is dispatched as an ordinary CSI final and the follow bytes flow into
+    /// <see cref="OnPrint"/>.
+    /// </summary>
+    void OnX10MouseDispatch(byte cb, byte cx, byte cy);
 }

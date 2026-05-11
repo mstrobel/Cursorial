@@ -93,16 +93,21 @@ are expected to manage their own signal-handling strategy.
   focus events, bracketed-paste accumulation, CSI cursor keys + Home/End + special keys (Insert/Delete/PageUp/Down),
   function keys F1–F20 (xterm + vt220 codes), F1–F4 + cursor + Home/End via SS3, BackTab (`CSI Z`), xterm
   modifier-bearing variants (Shift / Alt / Ctrl / Super / Hyper / Meta / CapsLock / NumLock — full xterm + Kitty
-  modifier-bit range), SGR mouse (DECSET 1006) — press / release / drag / motion / wheel and X1–X4 extended buttons,
-  with the interpreter accumulating `MouseButtons` state across events so drag and motion carry an accurate
-  held-button mask, device responses: DA1 (`CSI ? … c`), DA2 (`CSI > … c`), DSR-CPR (`CSI row;col R`), OSC 4 / 10 /
-  11 / 12 color responses, and DCS XTVERSION (`DCS > | … ST`), and the Kitty keyboard protocol
-  (`CSI key[:shifted:base][;mods[:event]][;text] u`) — full functional key mapping (Esc, Enter, Tab, arrows, Home,
-  End, F1–F24, numpad, media, per-side modifier keys), up / down / repeat distinction via the event-type
-  sub-parameter, text payload reporting, and codepoints in the Unicode private-use area mapped to the matching
-  `Key` enum values. Alternate-key sub-parameters are parsed but not surfaced (`KeyEvent` doesn't carry shifted /
-  base-layout keys yet). Not yet decoded (silently dropped): X10 mouse (legacy), SGR-Pixels mouse, modifyOtherKeys
-  character keys, ESC charset designators, DA3 / DECRQSS / XTGETTCAP DCS responses, Win32 input mode.
+  modifier-bit range), modifyOtherKeys level 2 (`CSI 27 ; mod ; codepoint ~`) for modifier-bearing character keys,
+  SGR mouse (DECSET 1006) — press / release / drag / motion / wheel and X1–X4 extended buttons, SGR-Pixels mouse
+  (DECSET 1016, same wire shape as 1006 but coordinates routed into `CellPosition.PixelX` / `PixelY` when
+  `VtInputMode.MouseEncoding == MouseEncoding.SgrPixels`), and X10 mouse (`CSI M cb cx cy`, gated by the classifier's
+  `X10MouseFramingEnabled` flag — see "Classifier framing" below). The interpreter accumulates `MouseButtons` state
+  across events so drag and motion carry an accurate held-button mask. Device responses: DA1 (`CSI ? … c`),
+  DA2 (`CSI > … c`), DSR-CPR (`CSI row;col R`), OSC 4 / 10 / 11 / 12 color responses, DCS XTVERSION
+  (`DCS > | … ST`), DA3 (`DCS ! | hex-id ST`), DECRQSS (`DCS valid $ r data ST`), and XTGETTCAP (`DCS valid + r
+  hex-name=hex-value ST`). The Kitty keyboard protocol (`CSI key[:shifted:base][;mods[:event]][;text] u`) — full
+  functional key mapping (Esc, Enter, Tab, arrows, Home, End, F1–F24, numpad, media, per-side modifier keys),
+  up / down / repeat distinction via the event-type sub-parameter, text payload reporting, and codepoints in the
+  Unicode private-use area mapped to the matching `Key` enum values. Alternate-key sub-parameters are parsed but
+  not surfaced (`KeyEvent` doesn't carry shifted / base-layout keys yet). Not yet decoded (silently dropped):
+  the `CSI codepoint ; mod u` modifyOtherKeys variant (overlaps with Kitty's `u` final), ESC charset designators,
+  and Win32 input mode.
 
 Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTerminalNegotiator` are not yet started.
 Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built
@@ -181,6 +186,11 @@ dotnet test --filter "DisplayName~OscTerminatedByBel"                 # filter b
 
 - **Classifier is purely a framing layer.** It frames bytes into classified tokens; it does not interpret meaning.
   Decoders (mouse, keyboard, focus, paste, device responses) live in the interpreter that consumes the sink callbacks.
+  Narrow exception: the X10 mouse protocol (`CSI M cb cx cy`) is fundamentally framing-mode-dependent because the
+  three follow bytes aren't otherwise distinguishable from printable text. The classifier exposes a single
+  `X10MouseFramingEnabled` boolean — when set, an unadorned `CSI M` triggers a 3-byte slurp into the new
+  `OnX10MouseDispatch` sink callback. The negotiator (or future mouse-mode wiring) is responsible for keeping this
+  flag in sync with `VtInputMode.MouseEncoding`; the classifier does not read mode state itself.
 - **ESC ambiguity timing belongs to the device, not the parser.** The classifier holds a lone ESC pending in its
   `Escape` state. The device above it is responsible for calling `Flush()` after the bare-ESC quiet period
   (xterm convention: 50 ms with no further input). This keeps the classifier deterministic and synchronously testable.

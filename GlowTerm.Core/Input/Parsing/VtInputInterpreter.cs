@@ -19,14 +19,20 @@ namespace GlowTerm.Core.Input.Parsing;
 /// keys (Insert, Delete, Page Up/Down, Home, End), function keys F1–F20 via the
 /// <c>CSI n ~</c> form, F1–F4 + cursor + Home / End via SS3 (<c>ESC O …</c>), BackTab
 /// (<c>CSI Z</c> → Shift+Tab), xterm modifier-bearing variants (<c>CSI 1 ; mod letter</c>
-/// and <c>CSI n ; mod ~</c>) decoding Shift / Alt / Ctrl / Super, and SGR mouse
+/// and <c>CSI n ; mod ~</c>) decoding Shift / Alt / Ctrl / Super, modifyOtherKeys level 2
+/// (<c>CSI 27 ; mod ; codepoint ~</c>) for modifier-bearing character keys, SGR mouse
 /// (<c>CSI &lt; cb ; cx ; cy M/m</c>, DECSET 1006) including press / release / drag / motion /
-/// wheel and X1–X4 extended buttons. The interpreter accumulates <see cref="MouseButtons"/>
+/// wheel and X1–X4 extended buttons, and SGR-Pixels mouse (DECSET 1016, identical wire shape)
+/// whose coordinates the interpreter routes into <see cref="CellPosition.PixelX"/> /
+/// <see cref="CellPosition.PixelY"/> when <see cref="VtInputMode.MouseEncoding"/> is
+/// <see cref="MouseEncoding.SgrPixels"/>. The interpreter accumulates <see cref="MouseButtons"/>
 /// state across press / release events so drag and motion events carry an accurate held-button
 /// mask. Device-response decoding: DA1 (<c>CSI ? … c</c>), DA2 (<c>CSI &gt; … c</c>), DSR-CPR
-/// (<c>CSI row ; col R</c>), OSC 4 / 10 / 11 / 12 color responses, and DCS XTVERSION
-/// (<c>DCS &gt; | name ST</c>) — emitted as <see cref="DeviceResponseEvent"/>s with the
-/// appropriate <see cref="DeviceResponseKind"/> and a copied payload. Kitty keyboard protocol
+/// (<c>CSI row ; col R</c>), OSC 4 / 10 / 11 / 12 color responses, DCS XTVERSION
+/// (<c>DCS &gt; | name ST</c>), DA3 (<c>DCS ! | hex-id ST</c>), DECRQSS
+/// (<c>DCS valid $ r data ST</c>), and XTGETTCAP (<c>DCS valid + r hex-name=hex-value ST</c>)
+/// — each emitted as a <see cref="DeviceResponseEvent"/> with the appropriate
+/// <see cref="DeviceResponseKind"/> and a copied payload. Kitty keyboard protocol
 /// (<c>CSI key[:shifted:base][;mods[:event]][;text] u</c>) — full functional key code mapping
 /// (Esc / Enter / Tab / arrows / Home / End / F1–F24 / numpad / media / per-side modifiers),
 /// up / down / repeat distinction via the event-type sub-parameter, modifier handling for the
@@ -35,9 +41,15 @@ namespace GlowTerm.Core.Input.Parsing;
 /// surfaced in v1 (<see cref="KeyEvent"/> doesn't yet carry shifted / base-layout keys).
 /// </para>
 /// <para>
-/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): X10 mouse
-/// (legacy non-SGR), SGR-Pixels mouse, modifyOtherKeys character-key reporting, ESC charset
-/// designators, DA3 / DECRQSS / XTGETTCAP DCS responses, and Win32 input mode.
+/// X10 mouse (<c>CSI M cb cx cy</c>): when the host classifier has
+/// <see cref="VtSequenceClassifier.X10MouseFramingEnabled"/> set, the three follow bytes are
+/// dispatched here as a <see cref="MouseEvent"/>. X10 doesn't distinguish which button was
+/// released, so per-button release fidelity requires SGR mouse instead.
+/// </para>
+/// <para>
+/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): the
+/// <c>CSI codepoint ; mod u</c> modifyOtherKeys variant (overlaps with the Kitty keyboard
+/// <c>u</c> final), ESC charset designators, and Win32 input mode.
 /// </para>
 /// <para>
 /// <b>Threading.</b> The interpreter is single-threaded with respect to its sink and mode —
@@ -222,7 +234,35 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
-        // Other CSI sequences (mouse, modifyOtherKeys, Kitty keyboard) — not yet decoded.
+        // modifyOtherKeys level 2: CSI 27 ; <mod> ; <codepoint> ~.
+        if (p.Length == 3 && final == (byte)'~' && p[0] == 27)
+        {
+            EmitModifyOtherKeysCharacter(p[2], ParseModifiersParam(p[1]));
+            return;
+        }
+
+        // Other CSI sequences — not yet decoded.
+    }
+
+    private void EmitModifyOtherKeysCharacter(int codepoint, KeyModifiers modifiers)
+    {
+        if (codepoint <= 0 || !Rune.IsValid(codepoint)) return;
+
+        var rune = new Rune(codepoint);
+        Span<char> chars = stackalloc char[2];
+        int written = rune.EncodeToUtf16(chars);
+        var text = new char[written];
+        chars[..written].CopyTo(text);
+
+        _eventSink.OnInputEvent(new KeyEvent
+        {
+            Timestamp = Now,
+            Key = Key.Character,
+            Modifiers = modifiers,
+            Kind = KeyEventKind.Down,
+            Text = text,
+            RawCode = (uint)codepoint,
+        });
     }
 
     private void DecodeCsiNoParams(byte final)
@@ -272,11 +312,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (n < 3) return;
 
         int cb = p[0];
-        // SGR coordinates are 1-based; we expose them as 0-based per CellPosition's contract.
-        // Don't clamp to 0 — terminals may report negative values when the pointer leaves the
-        // viewport, and the contract permits that.
-        int column = p[1] - 1;
-        int row = p[2] - 1;
+        // SGR coordinates are 1-based on the wire; we expose 0-based values. Don't clamp to 0 —
+        // terminals may report negative values when the pointer leaves the viewport, and the
+        // contract permits that. In SGR-Pixels mode (DECSET 1016) the two coordinates are pixel
+        // offsets rather than cell offsets; route them into CellPosition.PixelX/Y and leave the
+        // cell fields at 0 (consumers know the active encoding from the negotiator capabilities).
+        int x = p[1] - 1;
+        int y = p[2] - 1;
 
         KeyModifiers modifiers = KeyModifiers.None;
         if ((cb & VtInputSequences.SgrMouse.ShiftBit) != 0) modifiers |= KeyModifiers.Shift;
@@ -287,7 +329,9 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         bool isWheel = (cb & VtInputSequences.SgrMouse.WheelBit) != 0;
         bool isExtended = (cb & VtInputSequences.SgrMouse.ExtendedBit) != 0;
 
-        var position = new CellPosition(column, row);
+        var position = _mode.MouseEncoding == MouseEncoding.SgrPixels
+            ? new CellPosition(Column: 0, Row: 0, PixelX: x, PixelY: y)
+            : new CellPosition(x, y);
         var ts = Now;
 
         if (isWheel)
@@ -367,6 +411,128 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         {
             Timestamp = ts,
             Kind = isPress ? MouseEventKind.ButtonDown : MouseEventKind.ButtonUp,
+            Position = position,
+            Button = button,
+            ButtonsHeld = _heldButtons,
+            Modifiers = modifiers,
+        });
+    }
+
+    // ---- X10 mouse ----
+
+    public void OnX10MouseDispatch(byte cbByte, byte cxByte, byte cyByte)
+    {
+        // X10 encoding: each byte carries `value + 0x20`. For coordinates the value is 1-based,
+        // so the zero-based column/row is byte - 0x21. Coords are clamped via wrap-around in
+        // legacy clients (high-bit set for values > 95); we just unmask and let the consumer
+        // see whatever the terminal sent.
+        const int Bias = 0x20;
+        int cb = cbByte - Bias;
+        int column = cxByte - Bias - 1;
+        int row = cyByte - Bias - 1;
+
+        KeyModifiers modifiers = KeyModifiers.None;
+        if ((cb & VtInputSequences.SgrMouse.ShiftBit) != 0) modifiers |= KeyModifiers.Shift;
+        if ((cb & VtInputSequences.SgrMouse.AltBit) != 0) modifiers |= KeyModifiers.Alt;
+        if ((cb & VtInputSequences.SgrMouse.ControlBit) != 0) modifiers |= KeyModifiers.Control;
+
+        bool isMotion = (cb & VtInputSequences.SgrMouse.MotionBit) != 0;
+        bool isWheel = (cb & VtInputSequences.SgrMouse.WheelBit) != 0;
+        bool isExtended = (cb & VtInputSequences.SgrMouse.ExtendedBit) != 0;
+        int buttonBits = cb & VtInputSequences.SgrMouse.ButtonBitsMask;
+
+        var position = new CellPosition(column, row);
+        var ts = Now;
+
+        if (isWheel)
+        {
+            const int notch = VtInputSequences.SgrMouse.WheelDeltaPerNotch;
+            int wheelDeltaY = buttonBits switch
+            {
+                VtInputSequences.SgrMouse.WheelUp => notch,
+                VtInputSequences.SgrMouse.WheelDown => -notch,
+                _ => 0,
+            };
+            int wheelDeltaX = buttonBits switch
+            {
+                VtInputSequences.SgrMouse.WheelLeft => -notch,
+                VtInputSequences.SgrMouse.WheelRight => notch,
+                _ => 0,
+            };
+
+            _eventSink.OnInputEvent(new MouseEvent
+            {
+                Timestamp = ts,
+                Kind = MouseEventKind.Wheel,
+                Position = position,
+                Button = MouseButton.None,
+                ButtonsHeld = _heldButtons,
+                Modifiers = modifiers,
+                WheelDeltaY = wheelDeltaY,
+                WheelDeltaX = wheelDeltaX,
+            });
+            return;
+        }
+
+        // X10 release sentinel: button bits == 3 with no motion and no extended bit means a
+        // button was released, but the protocol doesn't tell us which one. Clear the held mask
+        // and emit a ButtonUp with Button=None — consumers that need per-button release fidelity
+        // must use SGR mouse (DECSET 1006).
+        if (!isMotion && !isExtended && buttonBits == VtInputSequences.SgrMouse.NoButton)
+        {
+            _heldButtons = MouseButtons.None;
+            _eventSink.OnInputEvent(new MouseEvent
+            {
+                Timestamp = ts,
+                Kind = MouseEventKind.ButtonUp,
+                Position = position,
+                Button = MouseButton.None,
+                ButtonsHeld = _heldButtons,
+                Modifiers = modifiers,
+            });
+            return;
+        }
+
+        MouseButton button = isExtended
+            ? buttonBits switch
+            {
+                0 => MouseButton.X1,
+                1 => MouseButton.X2,
+                2 => MouseButton.X3,
+                3 => MouseButton.X4,
+                _ => MouseButton.None,
+            }
+            : buttonBits switch
+            {
+                VtInputSequences.SgrMouse.LeftButton => MouseButton.Left,
+                VtInputSequences.SgrMouse.MiddleButton => MouseButton.Middle,
+                VtInputSequences.SgrMouse.RightButton => MouseButton.Right,
+                _ => MouseButton.None,
+            };
+
+        if (isMotion)
+        {
+            _eventSink.OnInputEvent(new MouseEvent
+            {
+                Timestamp = ts,
+                Kind = button == MouseButton.None ? MouseEventKind.Move : MouseEventKind.Drag,
+                Position = position,
+                Button = button,
+                ButtonsHeld = _heldButtons,
+                Modifiers = modifiers,
+            });
+            return;
+        }
+
+        // Press. X10 does not distinguish per-button release in its cb byte, so we treat every
+        // non-release event with an identifiable button as a press.
+        MouseButtons mask = ButtonToMask(button);
+        _heldButtons |= mask;
+
+        _eventSink.OnInputEvent(new MouseEvent
+        {
+            Timestamp = ts,
+            Kind = MouseEventKind.ButtonDown,
             Position = position,
             Button = button,
             ButtonsHeld = _heldButtons,
@@ -840,6 +1006,28 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         ReadOnlySpan<byte> intermediates,
         byte final)
     {
+        if (privatePrefix == 0 && intermediates.Length == 1)
+        {
+            // DA3 (Tertiary Device Attributes) response: DCS ! | <hex-id> ST.
+            if (intermediates[0] == (byte)'!' && final == (byte)'|' && parameters.IsEmpty)
+            {
+                return DeviceResponseKind.TertiaryDeviceAttributes;
+            }
+
+            // DECRQSS (Request Status String) response: DCS <valid> $ r <data> ST.
+            // <valid> is 1 when the request was honored, 0 when the terminal couldn't answer.
+            if (intermediates[0] == (byte)'$' && final == (byte)'r')
+            {
+                return DeviceResponseKind.DecRqssResponse;
+            }
+
+            // XTGETTCAP (Get Termcap) response: DCS <valid> + r <hex-name>=<hex-value> ST.
+            if (intermediates[0] == (byte)'+' && final == (byte)'r')
+            {
+                return DeviceResponseKind.XtGetTcapResponse;
+            }
+        }
+
         // XTVERSION response: DCS > | <name> ST.
         if (privatePrefix == VtInputSequences.SecondaryPrefix
             && parameters.IsEmpty
@@ -849,8 +1037,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return DeviceResponseKind.XtVersionResponse;
         }
 
-        // Other DCS responses (DA3 via DCS ! |, DECRQSS via DCS $ q, XTGETTCAP via DCS + r)
-        // are not yet recognized; the body is still accumulated and discarded at unhook.
+        // Unknown DCS shape — the body is still accumulated and discarded at unhook.
         return DeviceResponseKind.Unknown;
     }
 

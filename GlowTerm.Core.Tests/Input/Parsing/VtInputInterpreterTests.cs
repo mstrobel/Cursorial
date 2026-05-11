@@ -417,6 +417,55 @@ public class VtInputInterpreterTests
         Assert.Equal(KeyModifiers.Control, k.Modifiers);
     }
 
+    // ---- modifyOtherKeys level 2 (CSI 27 ; mod ; codepoint ~) ----
+
+    [Fact]
+    public void ModifyOtherKeys_CtrlSemicolon_EmitsCharacterWithCtrl()
+    {
+        // xterm reports Ctrl+; as CSI 27 ; 5 ; 59 ~ when modifyOtherKeys level 2 is enabled.
+        Feed("\x1b[27;5;59~");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Control, k.Modifiers);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal(";", TextOf(k));
+        Assert.Equal((uint)';', k.RawCode);
+    }
+
+    [Fact]
+    public void ModifyOtherKeys_AltShiftA_CarriesBothModifiers()
+    {
+        // Alt+Shift+A → CSI 27 ; 4 ; 65 ~  (mod 4 = 1 + Shift|Alt bits = 1 + 1 + 2)
+        Feed("\x1b[27;4;65~");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Shift | KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("A", TextOf(k));
+    }
+
+    [Fact]
+    public void ModifyOtherKeys_NonAsciiCodepoint_EncodesAsUtf16()
+    {
+        // Ctrl+é → CSI 27 ; 5 ; 233 ~  (U+00E9)
+        Feed("\x1b[27;5;233~");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Control, k.Modifiers);
+        Assert.Equal("é", TextOf(k));
+    }
+
+    [Fact]
+    public void ModifyOtherKeys_InvalidCodepoint_IsDropped()
+    {
+        // Codepoint 0xD800 (surrogate) is not a valid scalar.
+        Feed("\x1b[27;5;55296~");
+
+        Assert.Empty(_sink.Events);
+    }
+
     // ---- SGR mouse ----
 
     [Fact]
@@ -609,6 +658,121 @@ public class VtInputInterpreterTests
         Assert.Empty(_sink.Events);
     }
 
+    // ---- SGR-Pixels mouse (DECSET 1016) ----
+
+    [Fact]
+    public void SgrPixelsMouse_RoutesCoordinatesIntoPixelFields()
+    {
+        _mode.MouseEncoding = MouseEncoding.SgrPixels;
+        // CSI < 0 ; 240 ; 80 M — left press at pixel (239, 79) zero-based.
+        Feed("\x1b[<0;240;80M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.ButtonDown, m.Kind);
+        Assert.Equal(0, m.Position.Column);
+        Assert.Equal(0, m.Position.Row);
+        Assert.Equal(239, m.Position.PixelX);
+        Assert.Equal(79, m.Position.PixelY);
+    }
+
+    [Fact]
+    public void SgrPixelsMouse_WheelCarriesPixelCoordinates()
+    {
+        _mode.MouseEncoding = MouseEncoding.SgrPixels;
+        Feed("\x1b[<64;500;300M"); // wheel up at pixel (499, 299)
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.Wheel, m.Kind);
+        Assert.Equal(120, m.WheelDeltaY);
+        Assert.Equal(499, m.Position.PixelX);
+        Assert.Equal(299, m.Position.PixelY);
+    }
+
+    [Fact]
+    public void SgrMouse_DefaultEncoding_LeavesPixelFieldsNull()
+    {
+        // Mode defaults to MouseEncoding.None — cell coords still decode, pixel fields stay null.
+        Feed("\x1b[<0;5;10M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(4, m.Position.Column);
+        Assert.Equal(9, m.Position.Row);
+        Assert.Null(m.Position.PixelX);
+        Assert.Null(m.Position.PixelY);
+    }
+
+    // ---- X10 mouse (CSI M cb cx cy) ----
+
+    [Fact]
+    public void X10Mouse_LeftPress_EmitsButtonDownAtZeroBasedPosition()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // cb=0 (left press). cx byte = 0x20 + 1-based-col, so byte 0x26 = col 6 (1-based) → 5 (0-based).
+        // cy byte 0x2B = row 11 (1-based) → 10 (0-based).
+        Feed(0x1B, (byte)'[', (byte)'M', 0x20, 0x26, 0x2B);
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.ButtonDown, m.Kind);
+        Assert.Equal(MouseButton.Left, m.Button);
+        Assert.Equal(MouseButtons.Left, m.ButtonsHeld);
+        Assert.Equal(new CellPosition(5, 10), m.Position);
+    }
+
+    [Fact]
+    public void X10Mouse_ReleaseSentinel_EmitsButtonUpAndClearsHeldMask()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // Press left button first.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x20, 0x21, 0x21);
+        // Then release: cb bits == 3 (NoButton sentinel), no motion, no extended.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x23, 0x21, 0x21);
+
+        Assert.Equal(2, _sink.Events.Count);
+        var release = _sink.At<MouseEvent>(1);
+        Assert.Equal(MouseEventKind.ButtonUp, release.Kind);
+        Assert.Equal(MouseButton.None, release.Button);
+        Assert.Equal(MouseButtons.None, release.ButtonsHeld);
+    }
+
+    [Fact]
+    public void X10Mouse_DragWithLeftHeld_EmitsDragWithHeldMask()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // Press left button.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x20, 0x21, 0x21);
+        // Drag (motion bit + left button bits): cb = 0x20 (motion) | 0 (left) = 0x20 → +0x20 = 0x40.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x40, 0x22, 0x23);
+
+        var drag = _sink.At<MouseEvent>(1);
+        Assert.Equal(MouseEventKind.Drag, drag.Kind);
+        Assert.Equal(MouseButton.Left, drag.Button);
+        Assert.Equal(MouseButtons.Left, drag.ButtonsHeld);
+    }
+
+    [Fact]
+    public void X10Mouse_WheelUp_EmitsWheelEventWithPositiveDeltaY()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // cb = WheelBit (0x40) | WheelUp (0) = 0x40 → +0x20 = 0x60.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x60, 0x21, 0x21);
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.Wheel, m.Kind);
+        Assert.Equal(120, m.WheelDeltaY);
+    }
+
+    [Fact]
+    public void X10Mouse_ModifierBits_AreDecoded()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // Ctrl+left press: cb = LeftButton (0) | ControlBit (0x10) = 0x10 → +0x20 = 0x30.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x30, 0x21, 0x21);
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseButton.Left, m.Button);
+        Assert.Equal(KeyModifiers.Control, m.Modifiers);
+    }
+
     // ---- Device responses: DA1 / DA2 / DSR-CPR ----
 
     [Fact]
@@ -734,11 +898,55 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
+    public void DcsDa3Response_EmitsTertiaryDeviceAttributes()
+    {
+        // DA3 response: DCS ! | <hex-id> ST. The payload is the unit-id hex string.
+        Feed("\x1bP!|7E565430\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.TertiaryDeviceAttributes, r.Kind);
+        Assert.Equal("7E565430", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void DcsDecRqssValidResponse_EmitsDecRqssResponse()
+    {
+        // DECRQSS valid response to "SGR": DCS 1 $ r 0;1;31 m ST.
+        Feed("\x1bP1$r0;1;31m\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.DecRqssResponse, r.Kind);
+        Assert.Equal("0;1;31m", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void DcsDecRqssInvalidResponse_EmitsDecRqssResponseWithEmptyPayload()
+    {
+        // DECRQSS invalid response: DCS 0 $ r ST.
+        Feed("\x1bP0$r\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.DecRqssResponse, r.Kind);
+        Assert.Equal(0, r.Payload.Length);
+    }
+
+    [Fact]
+    public void DcsXtGetTcapResponse_EmitsXtGetTcapResponse()
+    {
+        // XTGETTCAP valid response for "TN" → "xterm": DCS 1 + r 544E=787465726D ST.
+        Feed("\x1bP1+r544E=787465726D\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.XtGetTcapResponse, r.Kind);
+        Assert.Equal("544E=787465726D", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
     public void DcsUnrecognizedHook_DiscardsBodyAndEmitsNothing()
     {
-        // DCS ! | … ST is the DA3 response shape — recognized by the classifier as DCS but
-        // not yet decoded by the interpreter. No event should be emitted.
-        Feed("\x1bP!|7E565430\x1b\\");
+        // DCS with an unrecognized shape (private prefix '?' with no intermediates) — the
+        // classifier still frames it but the interpreter has no DeviceResponseKind for it.
+        Feed("\x1bP?|payload\x1b\\");
         Assert.Empty(_sink.Events);
     }
 

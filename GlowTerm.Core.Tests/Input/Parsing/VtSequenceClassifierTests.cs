@@ -317,6 +317,100 @@ public class VtSequenceClassifierTests
             t => Assert.IsType<RecordedToken.DcsUnhook>(t));
     }
 
+    // ---- X10 mouse framing ----
+
+    [Fact]
+    public void X10MouseDisabledByDefault_CsiMDispatchesAsOrdinaryCsiAndFollowBytesPrint()
+    {
+        // Without X10 framing enabled, CSI M is a regular CSI dispatch and the three follow
+        // bytes flow into Ground as printable text.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x20, 0x21, 0x22);
+
+        Assert.Collection(
+            _sink.Tokens,
+            t =>
+            {
+                var csi = Assert.IsType<RecordedToken.CsiDispatch>(t);
+                Assert.Equal((byte)'M', csi.Final);
+            },
+            t =>
+            {
+                var print = Assert.IsType<RecordedToken.Print>(t);
+                Assert.Equal(new byte[] { 0x20, 0x21, 0x22 }, print.Bytes);
+            });
+    }
+
+    [Fact]
+    public void X10MouseEnabled_CsiMFollowedByThreeBytes_DispatchesX10Mouse()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // Left press at column 5, row 10 → cb=0x20, cx=0x20+5+1=0x26, cy=0x20+10+1=0x2B.
+        Feed(0x1B, (byte)'[', (byte)'M', 0x20, 0x26, 0x2B);
+
+        var x10 = Assert.IsType<RecordedToken.X10MouseDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal(0x20, x10.Cb);
+        Assert.Equal(0x26, x10.Cx);
+        Assert.Equal(0x2B, x10.Cy);
+    }
+
+    [Fact]
+    public void X10MouseEnabled_FollowBytesArriveAcrossFeeds_StillFrames()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        Feed(0x1B, (byte)'[', (byte)'M');
+        Assert.Empty(_sink.Tokens);
+
+        Feed(0x20, 0x21);
+        Assert.Empty(_sink.Tokens);
+
+        Feed(0x22);
+        var x10 = Assert.IsType<RecordedToken.X10MouseDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal((0x20, 0x21, 0x22), (x10.Cb, x10.Cx, x10.Cy));
+    }
+
+    [Fact]
+    public void X10MouseEnabled_CsiMWithParameters_RemainsOrdinaryCsi()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        // CSI 5 M — Delete Lines, an actual CSI command with a parameter; must not trigger
+        // X10 framing.
+        Feed("\x1b[5M");
+
+        var csi = Assert.IsType<RecordedToken.CsiDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal("5"u8.ToArray(), csi.Parameters);
+        Assert.Equal((byte)'M', csi.Final);
+    }
+
+    [Fact]
+    public void X10MouseEnabled_PartialReportFlushed_DiscardsAndReturnsToGround()
+    {
+        _classifier.X10MouseFramingEnabled = true;
+        Feed(0x1B, (byte)'[', (byte)'M', 0x20); // Only cb arrived.
+        Assert.Empty(_sink.Tokens);
+        Assert.NotEqual(VtSequenceClassifier.State.Ground, _classifier.CurrentState);
+
+        Flush();
+        Assert.Empty(_sink.Tokens);
+        Assert.Equal(VtSequenceClassifier.State.Ground, _classifier.CurrentState);
+
+        // Subsequent input is parsed cleanly.
+        Feed("\x1b[A");
+        var csi = Assert.IsType<RecordedToken.CsiDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal((byte)'A', csi.Final);
+    }
+
+    [Fact]
+    public void X10MouseEnabled_HighBitFollowBytes_ArePassedThroughRaw()
+    {
+        // Values > 95 produce bytes > 0x7F. Make sure the classifier doesn't accidentally
+        // interpret them as anything else.
+        _classifier.X10MouseFramingEnabled = true;
+        Feed(0x1B, (byte)'[', (byte)'M', 0x40, 0xC1, 0xE2);
+
+        var x10 = Assert.IsType<RecordedToken.X10MouseDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal((0x40, 0xC1, 0xE2), (x10.Cb, x10.Cx, x10.Cy));
+    }
+
     // ---- Reset / state observability ----
 
     [Fact]

@@ -29,11 +29,12 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
   cross-feed UTF-8 buffering), C0 controls (Tab, Enter, Backspace, NUL→Ctrl+Space, Ctrl+letter), bare ESC,
   focus events, bracketed-paste accumulation, CSI cursor keys + Home/End + special keys (Insert/Delete/PageUp/Down),
   function keys F1–F20 (xterm + vt220 codes), F1–F4 + cursor + Home/End via SS3, BackTab (`CSI Z`), xterm
-  modifier-bearing variants (Shift / Alt / Ctrl / Super), and SGR mouse (DECSET 1006) — press / release / drag /
+  modifier-bearing variants (Shift / Alt / Ctrl / Super), SGR mouse (DECSET 1006) — press / release / drag /
   motion / wheel and X1–X4 extended buttons, with the interpreter accumulating `MouseButtons` state across events
-  so drag and motion carry an accurate held-button mask. Not yet decoded (silently dropped): X10 mouse (legacy),
-  SGR-Pixels mouse, modifyOtherKeys character keys, Kitty keyboard protocol, ESC charset designators, OSC color
-  responses, DCS XTVERSION responses, Win32 input mode.
+  so drag and motion carry an accurate held-button mask, and device responses: DA1 (`CSI ? … c`), DA2 (`CSI > … c`),
+  DSR-CPR (`CSI row;col R`), OSC 4 / 10 / 11 / 12 color responses, and DCS XTVERSION (`DCS > | … ST`). Not yet
+  decoded (silently dropped): X10 mouse (legacy), SGR-Pixels mouse, modifyOtherKeys character keys, Kitty keyboard
+  protocol, ESC charset designators, DA3 / DECRQSS / XTGETTCAP DCS responses, Win32 input mode.
 
 Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTerminalNegotiator` are not yet started.
 Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built

@@ -609,6 +609,139 @@ public class VtInputInterpreterTests
         Assert.Empty(_sink.Events);
     }
 
+    // ---- Device responses: DA1 / DA2 / DSR-CPR ----
+
+    [Fact]
+    public void Da1Response_EmitsPrimaryDeviceAttributesEvent()
+    {
+        // Typical xterm DA1 response: VT500 with extensions.
+        Feed("\x1b[?65;1;9c");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.PrimaryDeviceAttributes, r.Kind);
+        Assert.Equal("65;1;9", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void Da2Response_EmitsSecondaryDeviceAttributesEvent()
+    {
+        // CSI > 1 ; 95 ; 0 c — VT100 with version 95.
+        Feed("\x1b[>1;95;0c");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.SecondaryDeviceAttributes, r.Kind);
+        Assert.Equal("1;95;0", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void DsrCursorPositionReport_EmitsCursorPositionEvent()
+    {
+        // CSI 12 ; 34 R — cursor at row 12, col 34.
+        Feed("\x1b[12;34R");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.CursorPositionReport, r.Kind);
+        Assert.Equal("12;34", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void Da1ResponseOwnsPayloadAcrossLifetime()
+    {
+        Feed("\x1b[?65;1;9c");
+        var r = _sink.Single<DeviceResponseEvent>();
+
+        // Subsequent input must not corrupt the payload of the prior event.
+        Feed("\x1b[?64c");
+
+        Assert.Equal("65;1;9", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    // ---- Device responses: OSC color queries ----
+
+    [Theory]
+    [InlineData("\x1b]10;rgb:0000/0000/0000\x07", DeviceResponseKind.ForegroundColorQuery, "rgb:0000/0000/0000")]
+    [InlineData("\x1b]11;rgb:ffff/ffff/ffff\x07", DeviceResponseKind.BackgroundColorQuery, "rgb:ffff/ffff/ffff")]
+    [InlineData("\x1b]12;rgb:8080/8080/8080\x07", DeviceResponseKind.CursorColorQuery, "rgb:8080/8080/8080")]
+    public void OscColorResponse_EmitsExpectedDeviceResponse(string sequence, DeviceResponseKind kind, string expectedPayload)
+    {
+        Feed(sequence);
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(kind, r.Kind);
+        Assert.Equal(expectedPayload, System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void OscPaletteResponse_PreservesIndexAndValueInPayload()
+    {
+        // OSC 4 ; 12 ; rgb:1234/5678/9abc — palette index 12 query response.
+        Feed("\x1b]4;12;rgb:1234/5678/9abc\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.PaletteColorQuery, r.Kind);
+        Assert.Equal("12;rgb:1234/5678/9abc", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void OscWithEscBackslashTermination_DispatchesSameAsBel()
+    {
+        Feed("\x1b]10;rgb:0000/0000/0000\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.ForegroundColorQuery, r.Kind);
+    }
+
+    [Fact]
+    public void OscUnknownCode_EmitsNothing()
+    {
+        Feed("\x1b]7;file://localhost/tmp\x07"); // OSC 7 (working directory) — not yet recognized.
+        Assert.Empty(_sink.Events);
+    }
+
+    [Fact]
+    public void OscMalformedNoSeparator_EmitsNothing()
+    {
+        Feed("\x1b]nonsense\x07");
+        Assert.Empty(_sink.Events);
+    }
+
+    // ---- Device responses: DCS XTVERSION ----
+
+    [Fact]
+    public void DcsXtVersionResponse_EmitsXtVersionDeviceResponse()
+    {
+        // DCS > | iTerm2 3.4.5 ST.
+        Feed("\x1bP>|iTerm2 3.4.5\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.XtVersionResponse, r.Kind);
+        Assert.Equal("iTerm2 3.4.5", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void DcsXtVersionAcrossMultipleFeeds_AccumulatesBody()
+    {
+        Feed("\x1bP>|");
+        Feed("WezTerm ");
+        Feed("20240127");
+        Assert.Empty(_sink.Events);
+
+        Feed("\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.XtVersionResponse, r.Kind);
+        Assert.Equal("WezTerm 20240127", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void DcsUnrecognizedHook_DiscardsBodyAndEmitsNothing()
+    {
+        // DCS ! | … ST is the DA3 response shape — recognized by the classifier as DCS but
+        // not yet decoded by the interpreter. No event should be emitted.
+        Feed("\x1bP!|7E565430\x1b\\");
+        Assert.Empty(_sink.Events);
+    }
+
     // ---- Defensive: unrecognized sequences are dropped ----
 
     [Fact]

@@ -23,13 +23,16 @@ namespace GlowTerm.Core.Input.Parsing;
 /// (<c>CSI &lt; cb ; cx ; cy M/m</c>, DECSET 1006) including press / release / drag / motion /
 /// wheel and X1–X4 extended buttons. The interpreter accumulates <see cref="MouseButtons"/>
 /// state across press / release events so drag and motion events carry an accurate held-button
-/// mask.
+/// mask. Device-response decoding: DA1 (<c>CSI ? … c</c>), DA2 (<c>CSI &gt; … c</c>), DSR-CPR
+/// (<c>CSI row ; col R</c>), OSC 4 / 10 / 11 / 12 color responses, and DCS XTVERSION
+/// (<c>DCS &gt; | name ST</c>) — emitted as <see cref="DeviceResponseEvent"/>s with the
+/// appropriate <see cref="DeviceResponseKind"/> and a copied payload.
 /// </para>
 /// <para>
 /// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): X10 mouse
 /// (legacy non-SGR), SGR-Pixels mouse, modifyOtherKeys character-key reporting, Kitty
 /// keyboard protocol (with disambiguated up/down events and alternate keys), ESC charset
-/// designators, OSC color responses, DCS XTVERSION responses, Win32 input mode.
+/// designators, DA3 / DECRQSS / XTGETTCAP DCS responses, and Win32 input mode.
 /// </para>
 /// <para>
 /// <b>Threading.</b> The interpreter is single-threaded with respect to its sink and mode —
@@ -56,6 +59,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     // events can carry an accurate ButtonsHeld mask. SGR's per-event encoding doesn't tell
     // us this directly — we accumulate it ourselves.
     private MouseButtons _heldButtons;
+
+    // DCS body accumulator. Active between OnDcsHook and OnDcsUnhook; classified at hook,
+    // delivered as a DeviceResponseEvent at unhook. Default capacity sized for typical
+    // XTVERSION responses (terminal name + version string).
+    private readonly ArrayBufferWriter<byte> _dcsBody = new(initialCapacity: 128);
+    private DeviceResponseKind _dcsKind = DeviceResponseKind.Unknown;
+    private bool _dcsActive;
 
     public VtInputInterpreter(VtInputMode mode, IInputEventSink eventSink, TimeProvider? timeProvider = null)
     {
@@ -135,12 +145,33 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
+        // Device Attributes responses — DA1 (CSI ? … c) and DA2 (CSI > … c).
+        if (final == (byte)'c')
+        {
+            switch (privatePrefix)
+            {
+                case (byte)'?':
+                    EmitDeviceResponse(DeviceResponseKind.PrimaryDeviceAttributes, parameters);
+                    return;
+                case (byte)'>':
+                    EmitDeviceResponse(DeviceResponseKind.SecondaryDeviceAttributes, parameters);
+                    return;
+            }
+        }
+
         // No other private-prefix CSI sequences are decoded yet.
         if (privatePrefix != 0) return;
 
         Span<int> parameterBuffer = stackalloc int[8];
         int parameterCount = ParseParameters(parameters, parameterBuffer);
         ReadOnlySpan<int> p = parameterBuffer[..parameterCount];
+
+        // Cursor Position Report — CSI <row> ; <col> R, the response to DSR-CPR (CSI 6 n).
+        if (p.Length == 2 && final == (byte)'R')
+        {
+            EmitDeviceResponse(DeviceResponseKind.CursorPositionReport, parameters);
+            return;
+        }
 
         if (p.IsEmpty)
         {
@@ -317,6 +348,31 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         });
     }
 
+    // ---- Device-response helpers ----
+
+    private void EmitDeviceResponse(DeviceResponseKind kind, ReadOnlySpan<byte> payload)
+    {
+        _eventSink.OnInputEvent(new DeviceResponseEvent
+        {
+            Timestamp = Now,
+            Kind = kind,
+            Payload = payload.ToArray(),
+        });
+    }
+
+    private static bool TryParseAsciiInt(ReadOnlySpan<byte> bytes, out int value)
+    {
+        value = 0;
+        if (bytes.IsEmpty) return false;
+
+        foreach (byte b in bytes)
+        {
+            if (b is < (byte)'0' or > (byte)'9') return false;
+            value = checked(value * 10 + (b - (byte)'0'));
+        }
+        return true;
+    }
+
     private static MouseButtons ButtonToMask(MouseButton button) => button switch
     {
         MouseButton.Left => MouseButtons.Left,
@@ -418,22 +474,75 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
     public void OnOscDispatch(ReadOnlySpan<byte> body)
     {
-        // OSC bodies (color queries, hyperlink anchors, etc.) — not yet decoded.
+        // OSC body shape: <code>;<value>. Identify recognized response codes and emit a
+        // DeviceResponseEvent carrying the value portion (everything after the first ';').
+        int separator = body.IndexOf((byte)';');
+        if (separator < 0) return;
+
+        if (!TryParseAsciiInt(body[..separator], out int code)) return;
+
+        DeviceResponseKind? kind = code switch
+        {
+            4 => DeviceResponseKind.PaletteColorQuery,
+            10 => DeviceResponseKind.ForegroundColorQuery,
+            11 => DeviceResponseKind.BackgroundColorQuery,
+            12 => DeviceResponseKind.CursorColorQuery,
+            _ => null,
+        };
+
+        if (kind is null) return;
+
+        EmitDeviceResponse(kind.Value, body[(separator + 1)..]);
     }
 
     public void OnDcsHook(byte privatePrefix, ReadOnlySpan<byte> parameters, ReadOnlySpan<byte> intermediates, byte final)
     {
-        // DCS responses (XTVERSION, terminfo) — not yet decoded.
+        _dcsBody.Clear();
+        _dcsActive = true;
+        _dcsKind = ClassifyDcs(privatePrefix, parameters, intermediates, final);
     }
 
     public void OnDcsPut(ReadOnlySpan<byte> bytes)
     {
-        // No DCS decoder active.
+        if (!_dcsActive || bytes.IsEmpty) return;
+        bytes.CopyTo(_dcsBody.GetSpan(bytes.Length));
+        _dcsBody.Advance(bytes.Length);
     }
 
     public void OnDcsUnhook()
     {
-        // No DCS decoder active.
+        if (!_dcsActive) return;
+
+        if (_dcsKind != DeviceResponseKind.Unknown)
+        {
+            _eventSink.OnInputEvent(new DeviceResponseEvent
+            {
+                Timestamp = Now,
+                Kind = _dcsKind,
+                Payload = _dcsBody.WrittenSpan.ToArray(),
+            });
+        }
+
+        _dcsBody.Clear();
+        _dcsActive = false;
+        _dcsKind = DeviceResponseKind.Unknown;
+    }
+
+    private static DeviceResponseKind ClassifyDcs(
+        byte privatePrefix,
+        ReadOnlySpan<byte> parameters,
+        ReadOnlySpan<byte> intermediates,
+        byte final)
+    {
+        // XTVERSION response: DCS > | <name> ST.
+        if (privatePrefix == (byte)'>' && parameters.IsEmpty && intermediates.IsEmpty && final == (byte)'|')
+        {
+            return DeviceResponseKind.XtVersionResponse;
+        }
+
+        // Other DCS responses (DA3 via DCS ! |, DECRQSS via DCS $ q, XTGETTCAP via DCS + r)
+        // are not yet recognized; the body is still accumulated and discarded at unhook.
+        return DeviceResponseKind.Unknown;
     }
 
     // ---- Print / UTF-8 decode ----

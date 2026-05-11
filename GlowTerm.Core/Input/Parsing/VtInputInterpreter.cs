@@ -144,9 +144,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         // SGR mouse: CSI < cb ; cx ; cy M/m  (DECSET 1006).
         if (privatePrefix == VtInputSequences.SgrMousePrefix1006
-            && (final == (byte)'M' || final == (byte)'m'))
+            && (final == VtInputSequences.SgrMouse.PressFinal
+                || final == VtInputSequences.SgrMouse.ReleaseFinal))
         {
-            DecodeSgrMouse(parameters, isPress: final == (byte)'M');
+            DecodeSgrMouse(parameters, isPress: final == VtInputSequences.SgrMouse.PressFinal);
             return;
         }
 
@@ -155,10 +156,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         {
             switch (privatePrefix)
             {
-                case (byte)'?':
+                case VtInputSequences.DecPrivatePrefix:
                     EmitDeviceResponse(DeviceResponseKind.PrimaryDeviceAttributes, parameters);
                     return;
-                case (byte)'>':
+                case VtInputSequences.SecondaryPrefix:
                     EmitDeviceResponse(DeviceResponseKind.SecondaryDeviceAttributes, parameters);
                     return;
             }
@@ -278,24 +279,34 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         int row = p[2] - 1;
 
         KeyModifiers modifiers = KeyModifiers.None;
-        if ((cb & 0b0000_0100) != 0) modifiers |= KeyModifiers.Shift;
-        if ((cb & 0b0000_1000) != 0) modifiers |= KeyModifiers.Alt;
-        if ((cb & 0b0001_0000) != 0) modifiers |= KeyModifiers.Control;
+        if ((cb & VtInputSequences.SgrMouse.ShiftBit) != 0) modifiers |= KeyModifiers.Shift;
+        if ((cb & VtInputSequences.SgrMouse.AltBit) != 0) modifiers |= KeyModifiers.Alt;
+        if ((cb & VtInputSequences.SgrMouse.ControlBit) != 0) modifiers |= KeyModifiers.Control;
 
-        bool isMotion = (cb & 0b0010_0000) != 0;
-        bool isWheel = (cb & 0b0100_0000) != 0;
-        bool isExtended = (cb & 0b1000_0000) != 0;
+        bool isMotion = (cb & VtInputSequences.SgrMouse.MotionBit) != 0;
+        bool isWheel = (cb & VtInputSequences.SgrMouse.WheelBit) != 0;
+        bool isExtended = (cb & VtInputSequences.SgrMouse.ExtendedBit) != 0;
 
         var position = new CellPosition(column, row);
         var ts = Now;
 
         if (isWheel)
         {
-            // Bits 0–1 select wheel direction: 0=up, 1=down, 2=left, 3=right. We report
-            // wheel deltas in the 1/120-notch units described in MouseEvent's xmldoc.
-            int direction = cb & 0b0000_0011;
-            int wheelDeltaY = direction switch { 0 => 120, 1 => -120, _ => 0 };
-            int wheelDeltaX = direction switch { 2 => -120, 3 => 120, _ => 0 };
+            // Direction bits select wheel axis / sign; deltas reported in 1/120-notch units.
+            int direction = cb & VtInputSequences.SgrMouse.ButtonBitsMask;
+            const int notch = VtInputSequences.SgrMouse.WheelDeltaPerNotch;
+            int wheelDeltaY = direction switch
+            {
+                VtInputSequences.SgrMouse.WheelUp => notch,
+                VtInputSequences.SgrMouse.WheelDown => -notch,
+                _ => 0,
+            };
+            int wheelDeltaX = direction switch
+            {
+                VtInputSequences.SgrMouse.WheelLeft => -notch,
+                VtInputSequences.SgrMouse.WheelRight => notch,
+                _ => 0,
+            };
 
             _eventSink.OnInputEvent(new MouseEvent
             {
@@ -311,7 +322,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
-        int buttonBits = cb & 0b0000_0011;
+        int buttonBits = cb & VtInputSequences.SgrMouse.ButtonBitsMask;
         MouseButton button = isExtended
             ? buttonBits switch
             {
@@ -323,17 +334,17 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             }
             : buttonBits switch
             {
-                0 => MouseButton.Left,
-                1 => MouseButton.Middle,
-                2 => MouseButton.Right,
+                VtInputSequences.SgrMouse.LeftButton => MouseButton.Left,
+                VtInputSequences.SgrMouse.MiddleButton => MouseButton.Middle,
+                VtInputSequences.SgrMouse.RightButton => MouseButton.Right,
                 _ => MouseButton.None,
             };
 
         if (isMotion)
         {
-            // X10/SGR convention: button bits == 3 in the non-extended encoding means
-            // "no button held" — pure motion (any-event tracking).
-            bool noButton = !isExtended && buttonBits == 3;
+            // SGR convention: button bits == NoButton in the non-extended encoding means pure
+            // motion (any-event tracking with no button held).
+            bool noButton = !isExtended && buttonBits == VtInputSequences.SgrMouse.NoButton;
 
             _eventSink.OnInputEvent(new MouseEvent
             {
@@ -371,7 +382,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         //   primary 0:  key-info       sub 0=key  sub 1=shifted-key  sub 2=base-layout-key
         //   primary 1:  modifier-info  sub 0=mods (1+bitfield)  sub 1=event-type (1=press,2=repeat,3=release)
         //   primary 2:  text           sub i=codepoint of the i-th text char
-        var data = new KittyKeyData { Modifiers = 1, EventType = 1 };
+        var data = new KittyKeyData
+        {
+            Modifiers = 1, // 1 = no modifiers (1 + bitfield)
+            EventType = VtInputSequences.Kitty.PressEvent,
+        };
         Span<int> textCodepoints = stackalloc int[16];
 
         ParseKittyParameters(rawParameters, ref data, textCodepoints);
@@ -380,8 +395,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         KeyModifiers modifiers = ParseModifiersParam(data.Modifiers);
 
-        KeyEventKind kind = data.EventType == 3 ? KeyEventKind.Up : KeyEventKind.Down;
-        bool isRepeat = data.EventType == 2;
+        KeyEventKind kind = data.EventType == VtInputSequences.Kitty.ReleaseEvent
+            ? KeyEventKind.Up
+            : KeyEventKind.Down;
+        bool isRepeat = data.EventType == VtInputSequences.Kitty.RepeatEvent;
 
         Key key = TryMapKittyFunctionalKey(data.KeyCode, out Key mapped)
             ? mapped
@@ -510,87 +527,88 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         key = code switch
         {
             // Navigation / control
-            57344 => Key.Escape,
-            57345 => Key.Enter,
-            57346 => Key.Tab,
-            57347 => Key.Backspace,
-            57348 => Key.Insert,
-            57349 => Key.Delete,
-            57350 => Key.LeftArrow,
-            57351 => Key.RightArrow,
-            57352 => Key.UpArrow,
-            57353 => Key.DownArrow,
-            57354 => Key.PageUp,
-            57355 => Key.PageDown,
-            57356 => Key.Home,
-            57357 => Key.End,
-            57358 => Key.CapsLock,
-            57359 => Key.ScrollLock,
-            57360 => Key.NumLock,
-            57361 => Key.PrintScreen,
-            57362 => Key.Pause,
-            57363 => Key.Menu,
+            VtInputSequences.Kitty.EscapeKey => Key.Escape,
+            VtInputSequences.Kitty.EnterKey => Key.Enter,
+            VtInputSequences.Kitty.TabKey => Key.Tab,
+            VtInputSequences.Kitty.BackspaceKey => Key.Backspace,
+            VtInputSequences.Kitty.InsertKey => Key.Insert,
+            VtInputSequences.Kitty.DeleteKey => Key.Delete,
+            VtInputSequences.Kitty.LeftArrowKey => Key.LeftArrow,
+            VtInputSequences.Kitty.RightArrowKey => Key.RightArrow,
+            VtInputSequences.Kitty.UpArrowKey => Key.UpArrow,
+            VtInputSequences.Kitty.DownArrowKey => Key.DownArrow,
+            VtInputSequences.Kitty.PageUpKey => Key.PageUp,
+            VtInputSequences.Kitty.PageDownKey => Key.PageDown,
+            VtInputSequences.Kitty.HomeKey => Key.Home,
+            VtInputSequences.Kitty.EndKey => Key.End,
+            VtInputSequences.Kitty.CapsLockKey => Key.CapsLock,
+            VtInputSequences.Kitty.ScrollLockKey => Key.ScrollLock,
+            VtInputSequences.Kitty.NumLockKey => Key.NumLock,
+            VtInputSequences.Kitty.PrintScreenKey => Key.PrintScreen,
+            VtInputSequences.Kitty.PauseKey => Key.Pause,
+            VtInputSequences.Kitty.MenuKey => Key.Menu,
 
-            // Function keys F1–F24 (Kitty defines through F35 — those map to None for now
-            // since our Key enum stops at F24; can be extended later if needed).
-            >= 57364 and <= 57387 => (Key)((int)Key.F1 + (code - 57364)),
+            // Function keys F1–F24 are contiguous in Kitty's encoding; F25–F35 fall through
+            // to Character treatment since our Key enum stops at F24.
+            >= VtInputSequences.Kitty.F1Key and <= VtInputSequences.Kitty.F24Key
+                => (Key)((int)Key.F1 + (code - VtInputSequences.Kitty.F1Key)),
 
             // Numpad digits / operators / Enter / equals.
-            57399 => Key.Numpad0,
-            57400 => Key.Numpad1,
-            57401 => Key.Numpad2,
-            57402 => Key.Numpad3,
-            57403 => Key.Numpad4,
-            57404 => Key.Numpad5,
-            57405 => Key.Numpad6,
-            57406 => Key.Numpad7,
-            57407 => Key.Numpad8,
-            57408 => Key.Numpad9,
-            57409 => Key.NumpadDecimal,
-            57410 => Key.NumpadDivide,
-            57411 => Key.NumpadMultiply,
-            57412 => Key.NumpadSubtract,
-            57413 => Key.NumpadAdd,
-            57414 => Key.NumpadEnter,
-            57415 => Key.NumpadEquals,
+            VtInputSequences.Kitty.Numpad0Key => Key.Numpad0,
+            VtInputSequences.Kitty.Numpad1Key => Key.Numpad1,
+            VtInputSequences.Kitty.Numpad2Key => Key.Numpad2,
+            VtInputSequences.Kitty.Numpad3Key => Key.Numpad3,
+            VtInputSequences.Kitty.Numpad4Key => Key.Numpad4,
+            VtInputSequences.Kitty.Numpad5Key => Key.Numpad5,
+            VtInputSequences.Kitty.Numpad6Key => Key.Numpad6,
+            VtInputSequences.Kitty.Numpad7Key => Key.Numpad7,
+            VtInputSequences.Kitty.Numpad8Key => Key.Numpad8,
+            VtInputSequences.Kitty.Numpad9Key => Key.Numpad9,
+            VtInputSequences.Kitty.NumpadDecimalKey => Key.NumpadDecimal,
+            VtInputSequences.Kitty.NumpadDivideKey => Key.NumpadDivide,
+            VtInputSequences.Kitty.NumpadMultiplyKey => Key.NumpadMultiply,
+            VtInputSequences.Kitty.NumpadSubtractKey => Key.NumpadSubtract,
+            VtInputSequences.Kitty.NumpadAddKey => Key.NumpadAdd,
+            VtInputSequences.Kitty.NumpadEnterKey => Key.NumpadEnter,
+            VtInputSequences.Kitty.NumpadEqualsKey => Key.NumpadEquals,
 
             // Numpad navigation keys — collapse to the main-keyboard equivalent for v1.
             // Distinguishing numpad-arrow from main-arrow would need new Key enum entries.
-            57417 => Key.LeftArrow,
-            57418 => Key.RightArrow,
-            57419 => Key.UpArrow,
-            57420 => Key.DownArrow,
-            57421 => Key.PageUp,
-            57422 => Key.PageDown,
-            57423 => Key.Home,
-            57424 => Key.End,
-            57425 => Key.Insert,
-            57426 => Key.Delete,
+            VtInputSequences.Kitty.NumpadLeftArrowKey => Key.LeftArrow,
+            VtInputSequences.Kitty.NumpadRightArrowKey => Key.RightArrow,
+            VtInputSequences.Kitty.NumpadUpArrowKey => Key.UpArrow,
+            VtInputSequences.Kitty.NumpadDownArrowKey => Key.DownArrow,
+            VtInputSequences.Kitty.NumpadPageUpKey => Key.PageUp,
+            VtInputSequences.Kitty.NumpadPageDownKey => Key.PageDown,
+            VtInputSequences.Kitty.NumpadHomeKey => Key.Home,
+            VtInputSequences.Kitty.NumpadEndKey => Key.End,
+            VtInputSequences.Kitty.NumpadInsertKey => Key.Insert,
+            VtInputSequences.Kitty.NumpadDeleteKey => Key.Delete,
 
             // Media keys.
-            57428 => Key.MediaPlay,
-            57429 => Key.MediaPause,
-            57430 => Key.MediaPlayPause,
-            57432 => Key.MediaStop,
-            57435 => Key.MediaNext,
-            57436 => Key.MediaPrevious,
-            57438 => Key.VolumeDown,
-            57439 => Key.VolumeUp,
-            57440 => Key.VolumeMute,
+            VtInputSequences.Kitty.MediaPlayKey => Key.MediaPlay,
+            VtInputSequences.Kitty.MediaPauseKey => Key.MediaPause,
+            VtInputSequences.Kitty.MediaPlayPauseKey => Key.MediaPlayPause,
+            VtInputSequences.Kitty.MediaStopKey => Key.MediaStop,
+            VtInputSequences.Kitty.MediaTrackNextKey => Key.MediaNext,
+            VtInputSequences.Kitty.MediaTrackPreviousKey => Key.MediaPrevious,
+            VtInputSequences.Kitty.VolumeDownKey => Key.VolumeDown,
+            VtInputSequences.Kitty.VolumeUpKey => Key.VolumeUp,
+            VtInputSequences.Kitty.VolumeMuteKey => Key.VolumeMute,
 
-            // Modifier keys reported as standalone events.
-            57441 => Key.LeftShift,
-            57442 => Key.LeftControl,
-            57443 => Key.LeftAlt,
-            57444 => Key.LeftSuper,
-            57445 => Key.LeftHyper,
-            57446 => Key.LeftMeta,
-            57447 => Key.RightShift,
-            57448 => Key.RightControl,
-            57449 => Key.RightAlt,
-            57450 => Key.RightSuper,
-            57451 => Key.RightHyper,
-            57452 => Key.RightMeta,
+            // Per-side modifier keys reported as standalone events.
+            VtInputSequences.Kitty.LeftShiftKey => Key.LeftShift,
+            VtInputSequences.Kitty.LeftControlKey => Key.LeftControl,
+            VtInputSequences.Kitty.LeftAltKey => Key.LeftAlt,
+            VtInputSequences.Kitty.LeftSuperKey => Key.LeftSuper,
+            VtInputSequences.Kitty.LeftHyperKey => Key.LeftHyper,
+            VtInputSequences.Kitty.LeftMetaKey => Key.LeftMeta,
+            VtInputSequences.Kitty.RightShiftKey => Key.RightShift,
+            VtInputSequences.Kitty.RightControlKey => Key.RightControl,
+            VtInputSequences.Kitty.RightAltKey => Key.RightAlt,
+            VtInputSequences.Kitty.RightSuperKey => Key.RightSuper,
+            VtInputSequences.Kitty.RightHyperKey => Key.RightHyper,
+            VtInputSequences.Kitty.RightMetaKey => Key.RightMeta,
 
             _ => Key.None,
         };
@@ -705,36 +723,36 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         key = parameter switch
         {
             // Special navigation keys (alternate codes per terminal).
-            1 or 7 => Key.Home,
-            4 or 8 => Key.End,
-            2 => Key.Insert,
-            3 => Key.Delete,
-            5 => Key.PageUp,
-            6 => Key.PageDown,
+            VtInputSequences.CsiTildeKey.Home or VtInputSequences.CsiTildeKey.HomeAlternate => Key.Home,
+            VtInputSequences.CsiTildeKey.End or VtInputSequences.CsiTildeKey.EndAlternate => Key.End,
+            VtInputSequences.CsiTildeKey.Insert => Key.Insert,
+            VtInputSequences.CsiTildeKey.Delete => Key.Delete,
+            VtInputSequences.CsiTildeKey.PageUp => Key.PageUp,
+            VtInputSequences.CsiTildeKey.PageDown => Key.PageDown,
 
             // Function keys F1–F12 (xterm).
-            11 => Key.F1,
-            12 => Key.F2,
-            13 => Key.F3,
-            14 => Key.F4,
-            15 => Key.F5,
-            17 => Key.F6,
-            18 => Key.F7,
-            19 => Key.F8,
-            20 => Key.F9,
-            21 => Key.F10,
-            23 => Key.F11,
-            24 => Key.F12,
+            VtInputSequences.CsiTildeKey.F1 => Key.F1,
+            VtInputSequences.CsiTildeKey.F2 => Key.F2,
+            VtInputSequences.CsiTildeKey.F3 => Key.F3,
+            VtInputSequences.CsiTildeKey.F4 => Key.F4,
+            VtInputSequences.CsiTildeKey.F5 => Key.F5,
+            VtInputSequences.CsiTildeKey.F6 => Key.F6,
+            VtInputSequences.CsiTildeKey.F7 => Key.F7,
+            VtInputSequences.CsiTildeKey.F8 => Key.F8,
+            VtInputSequences.CsiTildeKey.F9 => Key.F9,
+            VtInputSequences.CsiTildeKey.F10 => Key.F10,
+            VtInputSequences.CsiTildeKey.F11 => Key.F11,
+            VtInputSequences.CsiTildeKey.F12 => Key.F12,
 
             // Extended function keys F13–F20 (vt220 / vt320).
-            25 => Key.F13,
-            26 => Key.F14,
-            28 => Key.F15,
-            29 => Key.F16,
-            31 => Key.F17,
-            32 => Key.F18,
-            33 => Key.F19,
-            34 => Key.F20,
+            VtInputSequences.CsiTildeKey.F13 => Key.F13,
+            VtInputSequences.CsiTildeKey.F14 => Key.F14,
+            VtInputSequences.CsiTildeKey.F15 => Key.F15,
+            VtInputSequences.CsiTildeKey.F16 => Key.F16,
+            VtInputSequences.CsiTildeKey.F17 => Key.F17,
+            VtInputSequences.CsiTildeKey.F18 => Key.F18,
+            VtInputSequences.CsiTildeKey.F19 => Key.F19,
+            VtInputSequences.CsiTildeKey.F20 => Key.F20,
 
             _ => Key.None,
         };
@@ -749,14 +767,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         int bits = parameter - 1;
 
         KeyModifiers modifiers = KeyModifiers.None;
-        if ((bits & 0b0000_0001) != 0) modifiers |= KeyModifiers.Shift;
-        if ((bits & 0b0000_0010) != 0) modifiers |= KeyModifiers.Alt;
-        if ((bits & 0b0000_0100) != 0) modifiers |= KeyModifiers.Control;
-        if ((bits & 0b0000_1000) != 0) modifiers |= KeyModifiers.Super;
-        if ((bits & 0b0001_0000) != 0) modifiers |= KeyModifiers.Hyper;
-        if ((bits & 0b0010_0000) != 0) modifiers |= KeyModifiers.Meta;
-        if ((bits & 0b0100_0000) != 0) modifiers |= KeyModifiers.CapsLock;
-        if ((bits & 0b1000_0000) != 0) modifiers |= KeyModifiers.NumLock;
+        if ((bits & VtInputSequences.ModifierParam.ShiftBit) != 0) modifiers |= KeyModifiers.Shift;
+        if ((bits & VtInputSequences.ModifierParam.AltBit) != 0) modifiers |= KeyModifiers.Alt;
+        if ((bits & VtInputSequences.ModifierParam.ControlBit) != 0) modifiers |= KeyModifiers.Control;
+        if ((bits & VtInputSequences.ModifierParam.SuperBit) != 0) modifiers |= KeyModifiers.Super;
+        if ((bits & VtInputSequences.ModifierParam.HyperBit) != 0) modifiers |= KeyModifiers.Hyper;
+        if ((bits & VtInputSequences.ModifierParam.MetaBit) != 0) modifiers |= KeyModifiers.Meta;
+        if ((bits & VtInputSequences.ModifierParam.CapsLockBit) != 0) modifiers |= KeyModifiers.CapsLock;
+        if ((bits & VtInputSequences.ModifierParam.NumLockBit) != 0) modifiers |= KeyModifiers.NumLock;
         return modifiers;
     }
 
@@ -771,10 +789,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         DeviceResponseKind? kind = code switch
         {
-            4 => DeviceResponseKind.PaletteColorQuery,
-            10 => DeviceResponseKind.ForegroundColorQuery,
-            11 => DeviceResponseKind.BackgroundColorQuery,
-            12 => DeviceResponseKind.CursorColorQuery,
+            VtInputSequences.OscCode.PaletteColor => DeviceResponseKind.PaletteColorQuery,
+            VtInputSequences.OscCode.ForegroundColor => DeviceResponseKind.ForegroundColorQuery,
+            VtInputSequences.OscCode.BackgroundColor => DeviceResponseKind.BackgroundColorQuery,
+            VtInputSequences.OscCode.CursorColor => DeviceResponseKind.CursorColorQuery,
             _ => null,
         };
 
@@ -823,7 +841,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         byte final)
     {
         // XTVERSION response: DCS > | <name> ST.
-        if (privatePrefix == (byte)'>' && parameters.IsEmpty && intermediates.IsEmpty && final == (byte)'|')
+        if (privatePrefix == VtInputSequences.SecondaryPrefix
+            && parameters.IsEmpty
+            && intermediates.IsEmpty
+            && final == (byte)'|')
         {
             return DeviceResponseKind.XtVersionResponse;
         }

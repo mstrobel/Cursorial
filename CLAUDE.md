@@ -18,15 +18,20 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
   `PipeWriter`-shaped sink, mirror of `IInputByteSource`) plus the output-side capability records.
 - **Terminal** (`GlowTerm.Core/Terminal/`, namespace `GlowTerm.Core.Terminal`) — `ITerminalNegotiator` is the single
   public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
-- **Input parsing foundation** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
+- **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (as ESC + intermediate `O`). Does NOT cover
   APC, SOS, PM, or 8-bit C1 controls (deliberately out of scope for input). `VtInputMode` is the mutable mode bag
   (DECCKM, modifyOtherKeys level, mouse encoding, Kitty flags, etc.) the interpreter holds and the negotiator updates.
-  `VtInputSequences` centralizes UTF-8 byte-string constants.
+  `VtInputSequences` centralizes UTF-8 byte-string constants. `VtInputInterpreter` consumes classifier tokens and
+  emits `InputEvent`s to an `IInputEventSink`; v1 decoder coverage is printable runs (one event per Rune, with
+  cross-feed UTF-8 buffering), C0 control characters (Tab, Enter, Backspace, NUL→Ctrl+Space, Ctrl+letter), bare ESC
+  via classifier flush, focus events (`CSI I` / `CSI O`), and bracketed-paste accumulation. Mouse, modifier-bearing
+  CSI keys, Kitty keyboard, Win32 input mode, OSC/DCS responses are not yet decoded (silently dropped).
 
-The interpreter (token-sink → `InputEvent`) and concrete `IAsyncInputDevice`/`IEventInputDevice` implementations are
-not yet started. Rendering and layout are not started.
+Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTerminalNegotiator` are not yet started.
+Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built
+until those dependencies exist (see project memory).
 
 ## Input module conventions (`GlowTerm.Core.Input`)
 

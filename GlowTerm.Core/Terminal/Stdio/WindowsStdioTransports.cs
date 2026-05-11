@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using GlowTerm.Core.Input;
 using GlowTerm.Core.Output;
 
@@ -10,6 +11,15 @@ namespace GlowTerm.Core.Terminal.Stdio;
 /// restores the prior console mode flags on disposal. Targets the modern ConPTY model where
 /// stdin and stdout are byte streams that carry VT sequences in both directions.
 /// </summary>
+/// <remarks>
+/// We wrap stdin / stdout as <see cref="FileStream"/> over a non-owning
+/// <see cref="SafeFileHandle"/> rather than calling <see cref="Console.OpenStandardInput"/> /
+/// <see cref="Console.OpenStandardOutput"/>. The same .NET Console subsystem that manipulates
+/// termios on Unix similarly manages console-mode state on Windows — accessing those streams
+/// can re-enable line / echo modes behind our backs and revert the raw configuration we just
+/// applied via <c>SetConsoleMode</c>. The same fix applies on both platforms: bypass
+/// <see cref="Console"/> entirely.
+/// </remarks>
 internal sealed partial class WindowsStdioTransports : IStdioTransports
 {
     // Standard handle indices for GetStdHandle.
@@ -32,6 +42,7 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     private readonly uint _originalStdoutMode;
     private readonly StreamInputByteSource _source;
     private readonly StreamOutputByteSink _sink;
+    private int _terminalRestored;
     private int _disposed;
 
     private WindowsStdioTransports(
@@ -97,11 +108,41 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
                 $"SetConsoleMode failed for the console output handle (Win32 error {err}).");
         }
 
-        var source = new StreamInputByteSource(Console.OpenStandardInput());
-        var sink = new StreamOutputByteSink(Console.OpenStandardOutput());
+        // Wrap stdin / stdout via FileStream(SafeFileHandle) — see remarks on the class for
+        // why we deliberately do NOT use Console.OpenStandardInput / Console.OpenStandardOutput.
+        // ownsHandle: false because these are process-global handles owned by the OS.
+        FileStream? stdinStream = null;
+        FileStream? stdoutStream = null;
+        try
+        {
+            var stdinSafeHandle = new SafeFileHandle(stdinHandle, ownsHandle: false);
+            var stdoutSafeHandle = new SafeFileHandle(stdoutHandle, ownsHandle: false);
+            stdinStream = new FileStream(stdinSafeHandle, FileAccess.Read);
+            stdoutStream = new FileStream(stdoutSafeHandle, FileAccess.Write);
 
-        return new WindowsStdioTransports(
-            stdinHandle, stdoutHandle, originalStdinMode, originalStdoutMode, source, sink);
+            var source = new StreamInputByteSource(stdinStream);
+            var sink = new StreamOutputByteSink(stdoutStream);
+            return new WindowsStdioTransports(
+                stdinHandle, stdoutHandle, originalStdinMode, originalStdoutMode, source, sink);
+        }
+        catch
+        {
+            // Revert the console mode changes we made above, then surface the failure.
+            try { SetConsoleMode(stdinHandle, originalStdinMode); } catch { }
+            try { SetConsoleMode(stdoutHandle, originalStdoutMode); } catch { }
+            stdinStream?.Dispose();
+            stdoutStream?.Dispose();
+            throw;
+        }
+    }
+
+    public void RestoreTerminalState()
+    {
+        // Idempotent — guarded so signal-handler invocations don't run multiple times.
+        if (Interlocked.Exchange(ref _terminalRestored, 1) != 0) return;
+
+        try { SetConsoleMode(_stdinHandle, _originalStdinMode); } catch { }
+        try { SetConsoleMode(_stdoutHandle, _originalStdoutMode); } catch { }
     }
 
     public async ValueTask DisposeAsync()
@@ -109,8 +150,7 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         // Restore prior console modes BEFORE closing transports.
-        try { SetConsoleMode(_stdinHandle, _originalStdinMode); } catch { }
-        try { SetConsoleMode(_stdoutHandle, _originalStdoutMode); } catch { }
+        RestoreTerminalState();
 
         try { await _sink.DisposeAsync().ConfigureAwait(false); } catch { }
         try { await _source.DisposeAsync().ConfigureAwait(false); } catch { }

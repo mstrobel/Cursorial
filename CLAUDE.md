@@ -56,16 +56,31 @@ dispose owned transports (restore terminal mode + close streams). `TerminalSessi
 
 `Terminal/Stdio/` houses the platform-specific stdio code: `IStdioTransports` is the public abstraction,
 `StdioTransports.Open()` the platform-detecting factory. POSIX uses the `stty` subprocess (one `-g` save + one
-`raw -echo` apply at open, one `<saved-state>` restore at dispose) — pragmatic v1 choice that avoids the per-OS
-termios struct layout problem (Linux glibc and macOS Darwin layouts diverge) at the cost of two short subprocess
-spawns at startup; direct termios P/Invoke is a future optimization. Windows uses `GetConsoleMode`/`SetConsoleMode`
-P/Invoke (via `LibraryImport`) — clears `ENABLE_PROCESSED_INPUT` / `ENABLE_LINE_INPUT` / `ENABLE_ECHO_INPUT`, sets
+`raw -echo` apply at open, one `<saved-state>` restore at dispose). Windows uses `GetConsoleMode`/`SetConsoleMode`
+P/Invoke (via `LibraryImport`) — clears `ENABLE_PROCESSED_INPUT`/`ENABLE_LINE_INPUT`/`ENABLE_ECHO_INPUT`, sets
 `ENABLE_VIRTUAL_TERMINAL_INPUT` for stdin, sets `ENABLE_VIRTUAL_TERMINAL_PROCESSING` + `DISABLE_NEWLINE_AUTO_RETURN`
 for stdout. `LibraryImport` requires `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` in the csproj.
 
-**Signal handling for restoration on Ctrl-C / SIGTERM is not yet implemented.** Callers should ensure
-`await using` or `try`/`finally` patterns to guarantee `DisposeAsync` runs. A future pass will register a
-`PosixSignalRegistration` / `AppDomain.ProcessExit` safety net.
+**Two empirical gotchas baked into the implementation (documented in project memory):**
+
+1. **Do not call `Console.OpenStandardInput`/`OpenStandardOutput`.** Both POSIX and Windows transports wrap fd 0 /
+   fd 1 (or the equivalent `GetStdHandle` handles on Windows) as `FileStream` over a non-owning `SafeFileHandle`
+   instead. .NET's `System.Console` subsystem manipulates termios/console-mode state on stream access (to ensure
+   Ctrl+C generates SIGINT, etc.), silently reverting our raw mode.
+2. **When invoking `stty` to apply mode changes, redirect nothing.** Even just `RedirectStandardError = true`
+   prevents the change from taking effect even though stty exits 0. Capture calls (`stty -g`) can redirect stdout
+   alone to read its output; apply calls must inherit all three streams.
+
+`IStdioTransports.RestoreTerminalState()` is a synchronous, idempotent method (separate from `DisposeAsync`) that
+restores just the terminal state — used by `TerminalSession`'s signal-handler safety net to ensure termios/console
+mode is restored before the process exits, even if full async disposal is interrupted.
+
+**Signal-handler safety net.** `TerminalSession.OpenAsync()` (the parameterless overload) registers
+`PosixSignalRegistration` handlers for SIGINT / SIGTERM / SIGHUP / SIGQUIT plus an `AppDomain.ProcessExit` handler.
+On any of these signals the session synchronously calls `RestoreTerminalState()` first (guaranteed terminal restore)
+then attempts full `DisposeAsync` with a 2-second timeout, then `Environment.Exit(128 + signal)`. Handlers are
+unregistered on normal disposal. BYO sessions (the source/sink overload) do NOT register handlers — those callers
+are expected to manage their own signal-handling strategy.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a

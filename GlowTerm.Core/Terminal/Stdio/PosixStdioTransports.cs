@@ -32,6 +32,7 @@ internal sealed class PosixStdioTransports : IStdioTransports
     private readonly string _savedSttyState;
     private readonly StreamInputByteSource _source;
     private readonly StreamOutputByteSink _sink;
+    private int _terminalRestored;
     private int _disposed;
 
     private PosixStdioTransports(
@@ -85,15 +86,23 @@ internal sealed class PosixStdioTransports : IStdioTransports
         }
     }
 
+    public void RestoreTerminalState()
+    {
+        // Idempotent — guarded so signal-handler invocations don't run multiple times.
+        if (Interlocked.Exchange(ref _terminalRestored, 1) != 0) return;
+
+        try { ApplySttyMode(_savedSttyState); }
+        catch { /* best-effort — terminal may have detached */ }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        // Restore terminal state BEFORE closing transports. Order matters: completing the
-        // PipeReader after restoration means the next consumer of stdin sees the original
-        // mode, not raw mode.
-        try { ApplySttyMode(_savedSttyState); }
-        catch { /* best-effort — terminal may have detached */ }
+        // Restore terminal state BEFORE closing transports. The sync method covers the
+        // critical termios restore; safe to call here whether or not RestoreTerminalState
+        // was already triggered by a signal handler.
+        RestoreTerminalState();
 
         try { await _sink.DisposeAsync().ConfigureAwait(false); } catch { }
         try { await _source.DisposeAsync().ConfigureAwait(false); } catch { }

@@ -21,4 +21,18 @@ public interface IStdioTransports : IAsyncDisposable
 
     /// <summary>The output byte sink — writes to process standard output.</summary>
     IOutputByteSink Sink { get; }
+
+    /// <summary>
+    /// Synchronously restore terminal state (POSIX termios or Windows console mode) to what
+    /// it was before <see cref="StdioTransports.Open"/> was called. Idempotent — safe to call
+    /// multiple times or after <see cref="IAsyncDisposable.DisposeAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// Intended for signal handlers and other emergency-cleanup paths that need to undo our
+    /// terminal modifications immediately, without waiting for the full async disposal of the
+    /// underlying transports. The "critical" part of disposal (restoring termios / console
+    /// mode) runs here synchronously; the async tail (closing the byte streams) still runs
+    /// only via <see cref="IAsyncDisposable.DisposeAsync"/>.
+    /// </remarks>
+    void RestoreTerminalState();
 }

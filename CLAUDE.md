@@ -11,18 +11,22 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Early-stage. The only project is `GlowTerm.Core`. Three interface-only modules have landed:
+Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Modules landed:
 
-- **Input** under `GlowTerm.Core/Input/` (`GlowTerm.Core.Input` namespace) — see "Input module conventions" below.
-- **Output** under `GlowTerm.Core/Output/` (`GlowTerm.Core.Output` namespace) — minimal `IOutputByteSink` (a
+- **Input** (`GlowTerm.Core/Input/`, namespace `GlowTerm.Core.Input`) — see "Input module conventions" below.
+- **Output** (`GlowTerm.Core/Output/`, namespace `GlowTerm.Core.Output`) — minimal `IOutputByteSink` (a
   `PipeWriter`-shaped sink, mirror of `IInputByteSource`) plus the output-side capability records.
-- **Terminal** under `GlowTerm.Core/Terminal/` (`GlowTerm.Core.Terminal` namespace) — `ITerminalNegotiator` is the
-  single public entry point for capability detection and opt-in negotiation. It returns a `TerminalCapabilities`
-  aggregate (`TerminalIdentification` + `InputCapabilities` + `OutputCapabilities`).
+- **Terminal** (`GlowTerm.Core/Terminal/`, namespace `GlowTerm.Core.Terminal`) — `ITerminalNegotiator` is the single
+  public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
+- **Input parsing foundation** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
+  `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
+  `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (as ESC + intermediate `O`). Does NOT cover
+  APC, SOS, PM, or 8-bit C1 controls (deliberately out of scope for input). `VtInputMode` is the mutable mode bag
+  (DECCKM, modifyOtherKeys level, mouse encoding, Kitty flags, etc.) the interpreter holds and the negotiator updates.
+  `VtInputSequences` centralizes UTF-8 byte-string constants.
 
-Concrete implementations of any of these (parsers, sinks, the VT and Win32 negotiators, devices) are not started.
-Rendering and layout are not started. Before adding code in a new area, confirm the intended public surface with the
-user.
+The interpreter (token-sink → `InputEvent`) and concrete `IAsyncInputDevice`/`IEventInputDevice` implementations are
+not yet started. Rendering and layout are not started.
 
 ## Input module conventions (`GlowTerm.Core.Input`)
 
@@ -88,7 +92,22 @@ Run from the repository root:
 ```bash
 dotnet build              # build the whole solution
 dotnet build -c Release   # release build
-dotnet test               # no test projects exist yet — will report 0 tests
+dotnet test               # run all tests (xUnit, in GlowTerm.Core.Tests)
+dotnet test --filter "FullyQualifiedName~VtSequenceClassifierTests"   # filter by class
+dotnet test --filter "DisplayName~OscTerminatedByBel"                 # filter by single test
 ```
 
-To run a single test once a test project exists: `dotnet test --filter "FullyQualifiedName~SomeTestName"`.
+## Parser / interpreter conventions
+
+- **Classifier is purely a framing layer.** It frames bytes into classified tokens; it does not interpret meaning.
+  Decoders (mouse, keyboard, focus, paste, device responses) live in the interpreter that consumes the sink callbacks.
+- **ESC ambiguity timing belongs to the device, not the parser.** The classifier holds a lone ESC pending in its
+  `Escape` state. The device above it is responsible for calling `Flush()` after the bare-ESC quiet period
+  (xterm convention: 50 ms with no further input). This keeps the classifier deterministic and synchronously testable.
+- **Mode state is shared mutable config.** `VtInputMode` is a mutable class shared between the interpreter (reads)
+  and the negotiator (writes). When the negotiator pushes/pops an opt-in (Kitty keyboard, modifyOtherKeys, mouse
+  protocol, …), it updates the corresponding property and the interpreter reads on the next event.
+- **Use UTF-8 byte-string literals for sequence constants.** `"\x1b[<"u8` is a `ReadOnlySpan<byte>` matched against
+  input with zero allocation. Centralize these in `VtInputSequences.cs`.
+- **Buffer-lifetime contract still applies.** Sink callbacks receive `ReadOnlySpan<byte>` valid only for the call's
+  duration. Implementations that retain data must copy it into event-owned memory.

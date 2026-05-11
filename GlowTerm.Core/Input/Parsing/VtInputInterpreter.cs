@@ -626,7 +626,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
             if (!atEnd && b is >= (byte)'0' and <= (byte)'9')
             {
-                currentValue = checked(currentValue * 10 + (b - (byte)'0'));
+                currentValue = AccumulateDecimalSaturating(currentValue, b - (byte)'0');
                 started = true;
                 continue;
             }
@@ -835,9 +835,22 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         foreach (byte b in bytes)
         {
             if (b is < (byte)'0' or > (byte)'9') return false;
-            value = checked(value * 10 + (b - (byte)'0'));
+            value = AccumulateDecimalSaturating(value, b - (byte)'0');
         }
         return true;
+    }
+
+    /// <summary>
+    /// Decimal-shift a non-negative integer by one digit, saturating at <see cref="int.MaxValue"/>
+    /// instead of overflowing. All parameter parsers in this interpreter use this — pathological
+    /// input (terminals or fuzz tests producing absurdly long digit runs) clamps to a sentinel
+    /// rather than throwing through the byte-pump as an unhandled <see cref="OverflowException"/>.
+    /// Decoders are expected to validate the parameter range before acting.
+    /// </summary>
+    private static int AccumulateDecimalSaturating(int current, int digit)
+    {
+        if (current > (int.MaxValue - digit) / 10) return int.MaxValue;
+        return current * 10 + digit;
     }
 
     private static MouseButtons ButtonToMask(MouseButton button) => button switch
@@ -955,10 +968,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         DeviceResponseKind? kind = code switch
         {
-            VtInputSequences.OscCode.PaletteColor => DeviceResponseKind.PaletteColorQuery,
-            VtInputSequences.OscCode.ForegroundColor => DeviceResponseKind.ForegroundColorQuery,
-            VtInputSequences.OscCode.BackgroundColor => DeviceResponseKind.BackgroundColorQuery,
-            VtInputSequences.OscCode.CursorColor => DeviceResponseKind.CursorColorQuery,
+            VtInputSequences.OscCode.PaletteColor => DeviceResponseKind.PaletteColor,
+            VtInputSequences.OscCode.ForegroundColor => DeviceResponseKind.ForegroundColor,
+            VtInputSequences.OscCode.BackgroundColor => DeviceResponseKind.BackgroundColor,
+            VtInputSequences.OscCode.CursorColor => DeviceResponseKind.CursorColor,
             _ => null,
         };
 
@@ -1018,13 +1031,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             // <valid> is 1 when the request was honored, 0 when the terminal couldn't answer.
             if (intermediates[0] == (byte)'$' && final == (byte)'r')
             {
-                return DeviceResponseKind.DecRqssResponse;
+                return DeviceResponseKind.DecRqss;
             }
 
             // XTGETTCAP (Get Termcap) response: DCS <valid> + r <hex-name>=<hex-value> ST.
             if (intermediates[0] == (byte)'+' && final == (byte)'r')
             {
-                return DeviceResponseKind.XtGetTcapResponse;
+                return DeviceResponseKind.XtGetTcap;
             }
         }
 
@@ -1034,7 +1047,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             && intermediates.IsEmpty
             && final == (byte)'|')
         {
-            return DeviceResponseKind.XtVersionResponse;
+            return DeviceResponseKind.XtVersion;
         }
 
         // Unknown DCS shape — the body is still accumulated and discarded at unhook.
@@ -1201,7 +1214,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             byte b = raw[i];
             if (b is >= (byte)'0' and <= (byte)'9')
             {
-                current = current * 10 + (b - (byte)'0');
+                current = AccumulateDecimalSaturating(current, b - (byte)'0');
                 started = true;
             }
             else if (b is (byte)';' or (byte)':')

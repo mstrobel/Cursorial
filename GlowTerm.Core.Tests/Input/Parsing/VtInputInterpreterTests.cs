@@ -823,9 +823,9 @@ public class VtInputInterpreterTests
     // ---- Device responses: OSC color queries ----
 
     [Theory]
-    [InlineData("\x1b]10;rgb:0000/0000/0000\x07", DeviceResponseKind.ForegroundColorQuery, "rgb:0000/0000/0000")]
-    [InlineData("\x1b]11;rgb:ffff/ffff/ffff\x07", DeviceResponseKind.BackgroundColorQuery, "rgb:ffff/ffff/ffff")]
-    [InlineData("\x1b]12;rgb:8080/8080/8080\x07", DeviceResponseKind.CursorColorQuery, "rgb:8080/8080/8080")]
+    [InlineData("\x1b]10;rgb:0000/0000/0000\x07", DeviceResponseKind.ForegroundColor, "rgb:0000/0000/0000")]
+    [InlineData("\x1b]11;rgb:ffff/ffff/ffff\x07", DeviceResponseKind.BackgroundColor, "rgb:ffff/ffff/ffff")]
+    [InlineData("\x1b]12;rgb:8080/8080/8080\x07", DeviceResponseKind.CursorColor, "rgb:8080/8080/8080")]
     public void OscColorResponse_EmitsExpectedDeviceResponse(string sequence, DeviceResponseKind kind, string expectedPayload)
     {
         Feed(sequence);
@@ -842,7 +842,7 @@ public class VtInputInterpreterTests
         Feed("\x1b]4;12;rgb:1234/5678/9abc\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.PaletteColorQuery, r.Kind);
+        Assert.Equal(DeviceResponseKind.PaletteColor, r.Kind);
         Assert.Equal("12;rgb:1234/5678/9abc", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
     }
 
@@ -852,7 +852,7 @@ public class VtInputInterpreterTests
         Feed("\x1b]10;rgb:0000/0000/0000\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.ForegroundColorQuery, r.Kind);
+        Assert.Equal(DeviceResponseKind.ForegroundColor, r.Kind);
     }
 
     [Fact]
@@ -878,7 +878,7 @@ public class VtInputInterpreterTests
         Feed("\x1bP>|iTerm2 3.4.5\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.XtVersionResponse, r.Kind);
+        Assert.Equal(DeviceResponseKind.XtVersion, r.Kind);
         Assert.Equal("iTerm2 3.4.5", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
     }
 
@@ -893,7 +893,7 @@ public class VtInputInterpreterTests
         Feed("\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.XtVersionResponse, r.Kind);
+        Assert.Equal(DeviceResponseKind.XtVersion, r.Kind);
         Assert.Equal("WezTerm 20240127", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
     }
 
@@ -915,7 +915,7 @@ public class VtInputInterpreterTests
         Feed("\x1bP1$r0;1;31m\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.DecRqssResponse, r.Kind);
+        Assert.Equal(DeviceResponseKind.DecRqss, r.Kind);
         Assert.Equal("0;1;31m", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
     }
 
@@ -926,7 +926,7 @@ public class VtInputInterpreterTests
         Feed("\x1bP0$r\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.DecRqssResponse, r.Kind);
+        Assert.Equal(DeviceResponseKind.DecRqss, r.Kind);
         Assert.Equal(0, r.Payload.Length);
     }
 
@@ -937,7 +937,7 @@ public class VtInputInterpreterTests
         Feed("\x1bP1+r544E=787465726D\x1b\\");
 
         var r = _sink.Single<DeviceResponseEvent>();
-        Assert.Equal(DeviceResponseKind.XtGetTcapResponse, r.Kind);
+        Assert.Equal(DeviceResponseKind.XtGetTcap, r.Kind);
         Assert.Equal("544E=787465726D", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
     }
 

@@ -33,9 +33,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private readonly TimeProvider _time;
     private readonly IEnvironmentReader _environment;
 
-    private bool _negotiated;
-    private bool _disposed;
-    private bool _restored;
+    // Lifecycle gates use Interlocked to stay safe when callers drive the negotiator outside
+    // of a TerminalSession (which already serializes against itself). 0 = open, 1 = transitioned.
+    private int _negotiated;
+    private int _disposed;
+    private int _restored;
     private AppliedOptIns _applied;
 
     public VtTerminalNegotiator(
@@ -64,16 +66,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-        if (_negotiated)
+        if (Interlocked.Exchange(ref _negotiated, 1) != 0)
         {
             throw new InvalidOperationException(
                 "NegotiateAsync was already called on this instance. Negotiator instances are single-shot; " +
                 "create a new VtTerminalNegotiator for a fresh negotiation.");
         }
-
-        _negotiated = true;
 
         var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
         var identification = ResolveIdentification(responses);
@@ -84,6 +84,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             ApplyToInputMode(_applied);
         }
 
+        // _negotiated is now durably 1 even if anything above threw — restore still runs.
         var inputCapabilities = ResolveInputCapabilities(identification, _applied);
         var outputCapabilities = ResolveOutputCapabilities(identification, _applied);
 
@@ -97,10 +98,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         // Idempotent and best-effort: a second call after a successful restore is a no-op,
         // and transport failures are swallowed so disposal stays reliable.
-        if (_restored) return;
-        _restored = true;
+        if (Interlocked.Exchange(ref _restored, 1) != 0) return;
 
-        if (!_negotiated || _applied.IsEmpty) return;
+        if (Volatile.Read(ref _negotiated) == 0 || _applied.IsEmpty) return;
 
         try
         {
@@ -129,8 +129,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         try
         {
@@ -297,7 +296,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             .ConfigureAwait(false);
 
         return new ProbeResponses(
-            XtVersion: collector.FindFirst(DeviceResponseKind.XtVersionResponse),
+            XtVersion: collector.FindFirst(DeviceResponseKind.XtVersion),
             PrimaryDeviceAttributes: collector.FindFirst(DeviceResponseKind.PrimaryDeviceAttributes));
     }
 

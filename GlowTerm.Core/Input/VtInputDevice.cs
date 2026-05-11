@@ -160,6 +160,10 @@ public sealed class VtInputDevice : IAsyncInputDevice
     {
         lock (_startLock)
         {
+            // Re-check disposed inside the lock. Without this, a DisposeAsync running between
+            // the caller's outer check and this method's entry can leave us starting a pump
+            // whose cancellation source nobody will trigger.
+            if (Volatile.Read(ref _disposed) != 0) return;
             if (_pumpTask is not null) return;
 
             _pumpCts = new CancellationTokenSource();

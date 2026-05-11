@@ -89,5 +89,11 @@ public interface IVtSequenceTokenSink
     /// <c>M</c> is dispatched as an ordinary CSI final and the follow bytes flow into
     /// <see cref="OnPrint"/>.
     /// </summary>
-    void OnX10MouseDispatch(byte cb, byte cx, byte cy);
+    /// <remarks>
+    /// Default-implemented as a no-op so external sinks that pre-date X10 framing keep
+    /// compiling without an action being silently dropped at runtime — the classifier will
+    /// only call this when X10 framing is explicitly enabled, which a sink ignorant of the
+    /// callback never does.
+    /// </remarks>
+    void OnX10MouseDispatch(byte cb, byte cx, byte cy) { }
 }

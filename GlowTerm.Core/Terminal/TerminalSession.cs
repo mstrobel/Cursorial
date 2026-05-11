@@ -73,12 +73,41 @@ public sealed class TerminalSession : IAsyncDisposable
     public IOutputByteSink Output => _output;
 
     /// <summary>
-    /// Opens a session over caller-supplied transports. The library does NOT touch terminal
-    /// mode — the caller is responsible for placing stdin in raw mode (or whatever the source
-    /// represents) before the session starts and restoring it after disposal. Useful for
-    /// embedding inside a tool that already manages terminal state, or for driving the input
-    /// pipeline from a recorded trace.
+    /// Opens a session over caller-supplied transports. Useful for embedding inside a tool that
+    /// already manages terminal state, or for driving the input pipeline from a recorded trace.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Caller responsibilities</b> (not handled by this overload):
+    /// </para>
+    /// <list type="number">
+    /// <item><description>
+    /// <b>Terminal mode.</b> Place the underlying stdin into raw mode (or whatever the source
+    /// represents) before calling, and restore it after the session is disposed. This overload
+    /// never touches termios / Windows console-mode flags.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Signal handling.</b> Register your own SIGINT / SIGTERM / SIGHUP / SIGQUIT handlers
+    /// if you want graceful cleanup on Ctrl+C or a kill signal. The happy-path
+    /// <see cref="OpenAsync(TerminalSessionOptions?, CancellationToken)"/> overload registers a
+    /// safety net; this overload does NOT, because BYO callers commonly have their own
+    /// strategy (and double-registration is loud).
+    /// </description></item>
+    /// <item><description>
+    /// <b>Synchronous mode restore on signal.</b> If you register signal handlers, restore
+    /// terminal mode synchronously from the handler before the process exits — async disposal
+    /// may not complete in time. Do not rely on <see cref="DisposeAsync"/> alone to clean up
+    /// from a signal path.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Disposal scope.</b> <see cref="DisposeAsync"/> stops the input pump and reverses every
+    /// opt-in the negotiator applied (writes Kitty pop, mouse-disable, …). It does NOT close,
+    /// complete, or dispose the supplied <see cref="IInputByteSource"/> or
+    /// <see cref="IOutputByteSink"/>, and it does NOT restore terminal mode — that's still the
+    /// caller's job (item 1 above).
+    /// </description></item>
+    /// </list>
+    /// </remarks>
     public static Task<TerminalSession> OpenAsync(
         IInputByteSource source,
         IOutputByteSink sink,
@@ -264,15 +293,24 @@ public sealed class TerminalSession : IAsyncDisposable
 
     private void EmergencyRestoreAndDispose()
     {
-        // The critical operation is restoring termios / console mode — sync and fast.
-        // Do this first so even if the async disposal hangs, the terminal isn't stuck.
+        // Two-phase shutdown when the process is going down:
+        //   Phase 1 — guaranteed: synchronously restore termios / Windows console mode so the
+        //   user's shell isn't left in raw mode. This is always safe to attempt (it's
+        //   idempotent and doesn't write to the VT stream); it must run before any awaits.
         if (_ownedTransports is not null)
         {
             try { _ownedTransports.RestoreTerminalState(); } catch { /* best-effort */ }
         }
 
-        // Best-effort full disposal: cancel the input pump, write opt-in disables, close
-        // streams. Cap at 2 s so a stuck async path doesn't hold up process exit.
+        // Phase 2 — best-effort within a bounded budget: stop the input pump and write VT
+        // opt-in disable sequences (Kitty pop, mouse off, etc.) to the sink. These require
+        // async work that may block — on POSIX, `read(2)` in the pump doesn't honor token
+        // cancellation mid-syscall, so the pump may not unwind cleanly until the next byte
+        // arrives (or never, if the terminal is already closing). Cap the wait at 2 s so the
+        // process can still exit when the pump won't unblock. If we time out here, the
+        // worst-case visible artifact is a single residual opt-in (e.g. Kitty flags still
+        // pushed) — annoying but not data-destructive, since phase 1 already restored the
+        // mode that determines whether the user can see a prompt at all.
         try { DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)); } catch { }
     }
 }

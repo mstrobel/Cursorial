@@ -85,9 +85,40 @@ public enum MouseEncoding
 public enum KittyKeyboardFlags : uint
 {
     None = 0,
+
+    /// <summary>
+    /// Send unambiguous escape codes for keys that otherwise share encodings with control
+    /// characters (e.g. distinguishing Esc from <c>0x1b</c>, Tab from <c>0x09</c>). Does NOT
+    /// affect plain printable text keys.
+    /// </summary>
     DisambiguateEscapeCodes = 1u << 0,
+
+    /// <summary>Report key release and auto-repeat events in addition to presses.</summary>
     ReportEventTypes = 1u << 1,
+
+    /// <summary>
+    /// Include the shifted and base-layout codepoints as sub-parameters on each key event. The
+    /// interpreter parses these but does not surface them on <see cref="KeyEvent"/> yet.
+    /// </summary>
     ReportAlternateKeys = 1u << 2,
+
+    /// <summary>
+    /// Encode every key — including ones that would otherwise be sent as plain printable bytes
+    /// (e.g. typing <c>a</c>) — as a Kitty escape sequence. Important consumer-visible
+    /// consequence: without this flag, Kitty applies a "text shortcut" optimization where
+    /// printable-key presses that could be expressed as raw text are sent as raw text and
+    /// therefore arrive with no modifier annotation. Releases of those same keys (and presses
+    /// with non-text modifiers like Ctrl) still escape and DO carry modifier state. The most
+    /// visible effect is that <see cref="KeyModifiers.CapsLock"/> appears only on release
+    /// events for ordinary character keys. Enabling this flag restores symmetry at the cost
+    /// of inflating typed-text input from one byte per character to a multi-byte escape per
+    /// character; appropriate for diagnostic / forensic tooling, but loud as a default.
+    /// </summary>
     ReportAllKeysAsEscapeCodes = 1u << 3,
+
+    /// <summary>
+    /// Include the resolved text payload on each key event (the composed printable character,
+    /// post IME, post dead-key composition). Surfaced via <see cref="KeyEvent.Text"/>.
+    /// </summary>
     ReportAssociatedText = 1u << 4,
 }

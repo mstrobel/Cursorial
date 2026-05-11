@@ -38,6 +38,9 @@ while (true)
             case "raw":
                 await DumpRawAsync();
                 break;
+            case "trace":
+                await TraceAsync();
+                break;
             case "probe":
                 await ProbeAsync();
                 break;
@@ -71,6 +74,10 @@ static void PrintHelp()
     Console.WriteLine("                   (Press Ctrl+C inside read mode to return to the prompt)");
     Console.WriteLine("  raw              Dump raw bytes from stdin verbatim — no parsing.");
     Console.WriteLine("                   Useful for seeing exactly what the terminal sends.");
+    Console.WriteLine("                   (Press Ctrl+C to stop)");
+    Console.WriteLine("  trace            Like 'read', but each input chunk is logged as raw bytes");
+    Console.WriteLine("                   followed by the decoded events. Lets you cross-reference");
+    Console.WriteLine("                   wire format against parser output for protocol debugging.");
     Console.WriteLine("                   (Press Ctrl+C to stop)");
     Console.WriteLine("  probe            Send XTVERSION + DA1 and dump the raw response bytes for 1 second.");
     Console.WriteLine("                   Confirms whether the terminal responds to standard probes.");
@@ -163,6 +170,110 @@ static async Task DumpRawAsync()
     Console.WriteLine("Raw dump stopped.");
 }
 
+static async Task TraceAsync()
+{
+    Console.WriteLine("Tracing raw bytes + decoded events. Press Ctrl+C to stop.");
+    Console.WriteLine();
+
+    await using var transports = GlowTerm.Core.Terminal.Stdio.StdioTransports.Open();
+    var mode = new VtInputMode();
+    var negotiator = new VtTerminalNegotiator(transports.Source, transports.Sink, mode);
+
+    try
+    {
+        // For tracing we want every key event to arrive as an escape sequence carrying full
+        // modifier state — including for plain text keys. Otherwise Kitty's text-shortcut
+        // optimization elides the modifier annotation on presses of printable keys, leaving
+        // an asymmetric press-vs-release picture in the trace.
+        var traceOptions = new NegotiationOptions
+        {
+            KittyKeyboardFlags = KittyKeyboardFlags.DisambiguateEscapeCodes
+                                 | KittyKeyboardFlags.ReportEventTypes
+                                 | KittyKeyboardFlags.ReportAlternateKeys
+                                 | KittyKeyboardFlags.ReportAssociatedText
+                                 | KittyKeyboardFlags.ReportAllKeysAsEscapeCodes,
+        };
+        await negotiator.NegotiateAsync(traceOptions);
+
+        var classifier = new VtSequenceClassifier();
+        var events = new List<InputEvent>();
+        var interpreter = new VtInputInterpreter(mode, new TraceEventSink(events));
+
+        using var stopCts = new CancellationTokenSource();
+        var reader = transports.Source.Reader;
+        var writer = transports.Sink.Writer;
+        var ambiguityTimeout = TimeSpan.FromMilliseconds(50);
+
+        Task<System.IO.Pipelines.ReadResult>? pendingRead = null;
+        try
+        {
+            while (!stopCts.IsCancellationRequested)
+            {
+                pendingRead ??= reader.ReadAsync(stopCts.Token).AsTask();
+                var completed = await Task.WhenAny(pendingRead, Task.Delay(ambiguityTimeout, stopCts.Token));
+
+                if (completed != pendingRead)
+                {
+                    // Idle window — flush any pending bare-ESC so an Escape keypress doesn't
+                    // sit invisibly inside the classifier.
+                    classifier.Flush(interpreter);
+                    await DrainEventsAsync(events, writer, stopCts);
+                    await writer.FlushAsync();
+                    continue;
+                }
+
+                var result = await pendingRead;
+                pendingRead = null;
+
+                var buffer = result.Buffer;
+                if (buffer.Length > 0)
+                {
+                    var bytes = BuffersExtensions.ToArray(buffer);
+                    await writer.WriteAsync(Encoding.UTF8.GetBytes(
+                        $"RX  {BytesToHex(bytes)}  |{BytesToPrintable(bytes)}|\r\n"));
+
+                    foreach (var segment in buffer)
+                        classifier.Process(segment.Span, interpreter);
+                }
+                reader.AdvanceTo(buffer.End);
+
+                await DrainEventsAsync(events, writer, stopCts);
+                await writer.FlushAsync();
+
+                if (result.IsCompleted) break;
+            }
+        }
+        catch (OperationCanceledException) { /* expected on stop */ }
+    }
+    finally
+    {
+        await negotiator.DisposeAsync();
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("Trace stopped.");
+}
+
+static async Task DrainEventsAsync(
+    List<InputEvent> events,
+    System.IO.Pipelines.PipeWriter writer,
+    CancellationTokenSource stopCts)
+{
+    foreach (var evt in events)
+    {
+        await writer.WriteAsync(Encoding.UTF8.GetBytes($"    ↳ {FormatEvent(evt)}\r\n"));
+        if (IsStopSignal(evt)) stopCts.Cancel();
+    }
+    events.Clear();
+}
+
+static string BytesToPrintable(ReadOnlySpan<byte> bytes)
+{
+    var sb = new StringBuilder(bytes.Length);
+    foreach (byte b in bytes) sb.Append(b is >= 0x20 and < 0x7F ? (char)b : '·');
+    return sb.ToString();
+}
+
 static async Task ProbeAsync()
 {
     Console.WriteLine("Probing: writing XTVERSION (CSI > q) + DA1 (CSI c).");
@@ -230,18 +341,17 @@ static string FormatEvent(InputEvent inputEvent) => inputEvent switch
 
 static string FormatKeyEvent(KeyEvent k)
 {
-    var sb = new StringBuilder("Key         ");
-    sb.Append(k.Key);
-    if (k.Modifiers != KeyModifiers.None) sb.Append(' ').Append(k.Modifiers);
-    sb.Append(' ').Append(k.Kind);
+    var sb = new StringBuilder($"Keyboard    { (k.Kind == KeyEventKind.Up ? "Up" : "Dn")} {k.Key}");
     if (k.IsRepeat)
     {
         sb.Append(" (repeat");
         if (k.RepeatCount > 1) sb.Append('×').Append(k.RepeatCount);
         sb.Append(')');
     }
-    if (k.Text.Length > 0) sb.Append(" text=\"").Append(Escape(new string(k.Text.Span))).Append('"');
-    if (k.RawCode is { } code) sb.Append(" raw=0x").Append(code.ToString("X4"));
+    if (k.Text.Length > 0) sb.Append(" Text=\"").Append(Escape(new string(k.Text.Span))).Append('"');
+    // if (k.Modifiers != KeyModifiers.None)
+        sb.Append($" Mod={k.Modifiers}");
+    if (k.RawCode is { } code) sb.Append(" Raw=0x").Append(code.ToString("X4"));
     return sb.ToString();
 }
 
@@ -372,4 +482,9 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Row("Synchronized output",   caps.Output.Protocol.SynchronizedOutput);
 
     return sb.ToString();
+}
+
+file sealed class TraceEventSink(List<InputEvent> events) : IInputEventSink
+{
+    public void OnInputEvent(InputEvent inputEvent) => events.Add(inputEvent);
 }

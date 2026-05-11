@@ -308,38 +308,61 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         TimeSpan probeTimeout,
         CancellationToken cancellationToken)
     {
-        // Read until the sentinel arrives or the per-batch timeout elapses with no further
-        // input. The timeout is per individual read attempt, so a slow but responsive
-        // terminal that drips bytes still completes; a silent one bails after one window.
-        while (!collector.SeenSentinel)
+        // Total-elapsed timeout for the probe phase. We use Task.WhenAny rather than the
+        // CancellationToken passed to ReadAsync because Stream.ReadAsync over POSIX stdin
+        // (`__ConsoleStream` on a thread-pool worker performing a synchronous `read(2)`)
+        // doesn't honor cancellation mid-syscall — the token fires but the read doesn't
+        // wake up. Task.WhenAny lets us return regardless. Any bytes the abandoned read
+        // eventually produces land in the StreamPipeReader's buffer for the input device
+        // pump to consume.
+        var timeoutTask = Task.Delay(probeTimeout, _time, cancellationToken);
+        Task<ReadResult>? pendingRead = null;
+
+        try
         {
-            using var timeoutCts = new CancellationTokenSource(probeTimeout, _time);
-            using var perReadCts = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, timeoutCts.Token);
-
-            ReadResult result;
-            try
+            while (!collector.SeenSentinel
+                   && !cancellationToken.IsCancellationRequested
+                   && !timeoutTask.IsCompleted)
             {
-                result = await _source.Reader.ReadAsync(perReadCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                // Per-read timeout. Whatever we already collected is what we have.
-                break;
-            }
+                pendingRead ??= _source.Reader.ReadAsync(cancellationToken).AsTask();
 
-            var buffer = result.Buffer;
-            foreach (var segment in buffer)
-            {
-                classifier.Process(segment.Span, interpreter);
-            }
-            _source.Reader.AdvanceTo(buffer.End);
+                var completed = await Task.WhenAny(pendingRead, timeoutTask).ConfigureAwait(false);
 
-            if (result.IsCompleted) break;
+                if (completed != pendingRead)
+                {
+                    // Timeout (or outer cancel) fired before bytes arrived.
+                    break;
+                }
+
+                ReadResult result;
+                try
+                {
+                    result = await pendingRead.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                finally
+                {
+                    pendingRead = null;
+                }
+
+                var buffer = result.Buffer;
+                foreach (var segment in buffer)
+                {
+                    classifier.Process(segment.Span, interpreter);
+                }
+                _source.Reader.AdvanceTo(buffer.End);
+
+                if (result.IsCompleted) break;
+            }
         }
-
-        // Ensure any pending lone-ESC is flushed (otherwise it'd corrupt the next consumer).
-        classifier.Flush(interpreter);
+        finally
+        {
+            // Ensure any pending lone-ESC is flushed (otherwise it'd corrupt the next consumer).
+            classifier.Flush(interpreter);
+        }
     }
 
     private async ValueTask WriteAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)

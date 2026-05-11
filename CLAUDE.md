@@ -11,7 +11,10 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Modules landed:
+Early-stage. Three projects: `GlowTerm.Core` (the library), `GlowTerm.Core.Tests` (xUnit), and `GlowTerm.Demo`
+(an interactive REPL for hands-on verification — `dotnet run --project GlowTerm.Demo` opens a prompt with
+`negotiate` / `read` / `raw` / `help` / `quit` commands; each command opens its own raw-mode `TerminalSession` and
+restores cooked mode before the next prompt). Modules landed:
 
 - **Input** (`GlowTerm.Core/Input/`, namespace `GlowTerm.Core.Input`) — see "Input module conventions" below.
 - **Output** (`GlowTerm.Core/Output/`, namespace `GlowTerm.Core.Output`) — minimal `IOutputByteSink` (a

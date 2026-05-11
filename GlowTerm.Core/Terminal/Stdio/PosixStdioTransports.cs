@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Win32.SafeHandles;
 using GlowTerm.Core.Input;
 using GlowTerm.Core.Output;
 
@@ -6,11 +7,26 @@ namespace GlowTerm.Core.Terminal.Stdio;
 
 /// <summary>
 /// POSIX implementation of <see cref="IStdioTransports"/>. Uses the <c>stty</c> subprocess to
-/// save and apply terminal-mode state — this avoids the per-OS termios struct layout problem
-/// (Linux glibc and macOS Darwin layouts differ enough that a single P/Invoke struct cannot
-/// serve both) at the cost of two short-lived subprocess spawns at session start and one at
-/// dispose. A direct termios P/Invoke implementation is a future optimization.
+/// save and apply terminal-mode state.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Critical: do not call <see cref="Console.OpenStandardInput"/> /
+/// <see cref="Console.OpenStandardOutput"/>.</b> The .NET Console subsystem on Unix manages
+/// its own termios state — it ensures Ctrl+C generates SIGINT, that the cursor is visible
+/// at exit, etc. — and accessing those streams silently mutates termios. Our <c>stty raw -echo</c>
+/// gets reverted. We wrap fd 0 / fd 1 as <see cref="FileStream"/> over a non-owning
+/// <see cref="SafeFileHandle"/> instead, which goes through generic file I/O and doesn't
+/// touch Console internals.
+/// </para>
+/// <para>
+/// <b>Also critical: do not redirect any stream when applying stty mode changes.</b> Even
+/// just redirecting stderr (which one might do defensively) prevents the change from taking
+/// effect — stty exits 0 but the termios bits read back as the prior state. For the apply
+/// path, redirect nothing; for the capture path (<c>stty -g</c>), only redirect what you
+/// need to read.
+/// </para>
+/// </remarks>
 internal sealed class PosixStdioTransports : IStdioTransports
 {
     private readonly string _savedSttyState;
@@ -33,39 +49,40 @@ internal sealed class PosixStdioTransports : IStdioTransports
 
     public static PosixStdioTransports Open()
     {
-        // 1. Capture the current terminal state. Output of `stty -g` is an opaque
-        //    platform-specific string that the same `stty` binary understands as input.
-        string savedState;
-        try
-        {
-            savedState = ExecuteStty("-g", captureOutput: true)!.Trim();
-        }
-        catch (Exception ex)
+        // 1. Capture the current terminal state.
+        string? savedState = CaptureSttyState();
+        if (savedState is null)
         {
             throw new InvalidOperationException(
                 "Failed to read terminal state via `stty -g`. Standard input is likely not a terminal " +
                 "(running under a pipe or in CI). Use the BYO TerminalSession.OpenAsync(source, sink) overload " +
-                "for non-TTY scenarios.",
-                ex);
+                "for non-TTY scenarios.");
         }
 
-        // 2. Apply raw mode — disables canonical mode, echo, signal characters, and output
-        //    post-processing so the application sees and writes raw bytes verbatim.
+        // 2. Apply raw mode — NO redirection here (see remarks on the class).
+        ApplySttyMode("-icanon -echo -isig -iexten -ixon -opost min 1 time 0");
+
         try
         {
-            ExecuteStty("raw -echo", captureOutput: false);
+            // Wrap fd 0 / fd 1 via FileStream(SafeFileHandle) — see remarks on the class for
+            // why we do NOT use Console.OpenStandardInput / Console.OpenStandardOutput.
+            // ownsHandle: false because these descriptors are process-global; we mustn't close them.
+            var stdinHandle = new SafeFileHandle((nint)0, ownsHandle: false);
+            var stdoutHandle = new SafeFileHandle((nint)1, ownsHandle: false);
+
+            var stdinStream = new FileStream(stdinHandle, FileAccess.Read);
+            var stdoutStream = new FileStream(stdoutHandle, FileAccess.Write);
+
+            var source = new StreamInputByteSource(stdinStream);
+            var sink = new StreamOutputByteSink(stdoutStream);
+            return new PosixStdioTransports(savedState, source, sink);
         }
         catch
         {
-            // Best-effort revert if raw mode failed mid-application.
-            try { ExecuteStty(savedState, captureOutput: false); } catch { }
+            // Best-effort revert if anything went wrong after raw mode was applied.
+            try { ApplySttyMode(savedState); } catch { }
             throw;
         }
-
-        var source = new StreamInputByteSource(Console.OpenStandardInput());
-        var sink = new StreamOutputByteSink(Console.OpenStandardOutput());
-
-        return new PosixStdioTransports(savedState, source, sink);
     }
 
     public async ValueTask DisposeAsync()
@@ -75,51 +92,62 @@ internal sealed class PosixStdioTransports : IStdioTransports
         // Restore terminal state BEFORE closing transports. Order matters: completing the
         // PipeReader after restoration means the next consumer of stdin sees the original
         // mode, not raw mode.
-        try { ExecuteStty(_savedSttyState, captureOutput: false); }
+        try { ApplySttyMode(_savedSttyState); }
         catch { /* best-effort — terminal may have detached */ }
 
-        try { await _sink.DisposeAsync().ConfigureAwait(false); }
-        catch { /* best-effort */ }
-
-        try { await _source.DisposeAsync().ConfigureAwait(false); }
-        catch { /* best-effort */ }
+        try { await _sink.DisposeAsync().ConfigureAwait(false); } catch { }
+        try { await _source.DisposeAsync().ConfigureAwait(false); } catch { }
     }
 
     /// <summary>
-    /// Runs <c>stty</c> with the given arguments. The subprocess inherits this process's
-    /// stdin so stty operates on the same controlling terminal we use.
+    /// Capture stty state via <c>stty -g</c>. Stdout must be redirected (we need to read it);
+    /// stderr can be inherited.
     /// </summary>
-    private static string? ExecuteStty(string arguments, bool captureOutput)
+    private static string? CaptureSttyState()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "stty",
+                Arguments = "-g",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = false,
+                RedirectStandardInput = false,
+            };
+
+            using var process = Process.Start(psi);
+            if (process is null) return null;
+
+            string output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(3000);
+            return process.ExitCode == 0 ? output.Trim() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Apply an stty mode change. NO redirection — see remarks on the class. We swallow errors
+    /// here (the alternative on apply failure is to leave the user with a half-modified
+    /// terminal, which is worse than carrying on with whatever state stty managed to set).
+    /// </summary>
+    private static void ApplySttyMode(string arguments)
     {
         var psi = new ProcessStartInfo
         {
             FileName = "stty",
             Arguments = arguments,
-            RedirectStandardOutput = captureOutput,
-            RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
+            RedirectStandardInput = false,
         };
 
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start `stty`.");
-
-        string? output = null;
-        if (captureOutput)
-        {
-            output = process.StandardOutput.ReadToEnd();
-        }
-        // Drain stderr so the subprocess doesn't block on a full pipe.
-        _ = process.StandardError.ReadToEnd();
-
-        process.WaitForExit();
-
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"`stty {arguments}` exited with code {process.ExitCode}.");
-        }
-
-        return output;
+        using var process = Process.Start(psi);
+        process?.WaitForExit(3000);
     }
 }

@@ -31,6 +31,17 @@ public sealed record class NegotiationOptions
     /// <summary>Push the application's preferred Kitty keyboard protocol flags.</summary>
     public bool EnableKittyKeyboard { get; init; } = true;
 
+    /// <summary>
+    /// The Kitty keyboard protocol flags to push when <see cref="EnableKittyKeyboard"/> is true.
+    /// Default omits <see cref="GlowTerm.Core.Input.Parsing.KittyKeyboardFlags.ReportAllKeysAsEscapeCodes"/>
+    /// because that flag changes the encoding of plain text input — opt in deliberately when needed.
+    /// </summary>
+    public GlowTerm.Core.Input.Parsing.KittyKeyboardFlags KittyKeyboardFlags { get; init; } =
+        GlowTerm.Core.Input.Parsing.KittyKeyboardFlags.DisambiguateEscapeCodes
+        | GlowTerm.Core.Input.Parsing.KittyKeyboardFlags.ReportEventTypes
+        | GlowTerm.Core.Input.Parsing.KittyKeyboardFlags.ReportAlternateKeys
+        | GlowTerm.Core.Input.Parsing.KittyKeyboardFlags.ReportAssociatedText;
+
     /// <summary>Enable Win32 Input Mode (DECSET 9001) when running under a ConPTY-backed terminal.</summary>
     public bool EnableWin32InputMode { get; init; } = true;
 

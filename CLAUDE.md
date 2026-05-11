@@ -19,9 +19,13 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
 - **Terminal** (`GlowTerm.Core/Terminal/`, namespace `GlowTerm.Core.Terminal`) — `ITerminalNegotiator` is the single
   public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
   `VtTerminalNegotiator` is the VT/ANSI implementation; it owns the probe-and-respond handshake (XTVERSION + DA1
-  sentinel pattern) using its own ephemeral classifier + interpreter, then feeds inferred capabilities back into the
-  shared `VtInputMode`. Identification is the only phase landed so far; opt-in negotiation (mouse / focus / paste /
-  Kitty / Win32 / synchronized output) is the next pass. `IEnvironmentReader` abstracts environment access so tests
+  sentinel pattern) using its own ephemeral classifier + interpreter, then applies opt-in enable sequences for the
+  protocols the application requested (SGR mouse + button-event tracking + optional any-event motion, focus events,
+  bracketed paste, Kitty keyboard with configurable flag set, Win32 input mode on Windows-family terminals,
+  synchronized output on supporting families). The shared `VtInputMode` is updated to reflect what was actually
+  enabled. `RestoreAsync` reverses every enable in LIFO order, is idempotent, and is invoked automatically on
+  disposal. Kitty / Win32 / synchronized output opt-ins are gated on family identification so capability claims
+  don't lie about features the terminal silently ignores. `IEnvironmentReader` abstracts environment access so tests
   can be deterministic.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to

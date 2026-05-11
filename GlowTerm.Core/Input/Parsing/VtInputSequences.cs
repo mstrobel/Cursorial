@@ -225,6 +225,53 @@ public static class VtInputSequences
     }
 
     /// <summary>
+    /// Opt-in enable / disable byte sequences used by the negotiator. Each enable is paired
+    /// with a matching disable so a clean restore is always possible.
+    /// </summary>
+    public static class OptInSequences
+    {
+        // ---- SGR mouse (DECSET 1006) ----
+        public static ReadOnlySpan<byte> EnableSgrMouse => "\x1b[?1006h"u8;
+        public static ReadOnlySpan<byte> DisableSgrMouse => "\x1b[?1006l"u8;
+
+        // ---- Button-event mouse tracking (DECSET 1002) — press / release / drag ----
+        public static ReadOnlySpan<byte> EnableButtonEventMouse => "\x1b[?1002h"u8;
+        public static ReadOnlySpan<byte> DisableButtonEventMouse => "\x1b[?1002l"u8;
+
+        // ---- Any-event mouse tracking (DECSET 1003) — motion without button ----
+        public static ReadOnlySpan<byte> EnableAnyEventMouse => "\x1b[?1003h"u8;
+        public static ReadOnlySpan<byte> DisableAnyEventMouse => "\x1b[?1003l"u8;
+
+        // ---- Focus events (DECSET 1004) ----
+        public static ReadOnlySpan<byte> EnableFocusEvents => "\x1b[?1004h"u8;
+        public static ReadOnlySpan<byte> DisableFocusEvents => "\x1b[?1004l"u8;
+
+        // ---- Bracketed paste (DECSET 2004) ----
+        public static ReadOnlySpan<byte> EnableBracketedPaste => "\x1b[?2004h"u8;
+        public static ReadOnlySpan<byte> DisableBracketedPaste => "\x1b[?2004l"u8;
+
+        // ---- Win32 Input Mode (DECSET 9001) ----
+        public static ReadOnlySpan<byte> EnableWin32InputMode => "\x1b[?9001h"u8;
+        public static ReadOnlySpan<byte> DisableWin32InputMode => "\x1b[?9001l"u8;
+
+        // ---- Synchronized output (DECSET 2026) ----
+        public static ReadOnlySpan<byte> EnableSynchronizedOutput => "\x1b[?2026h"u8;
+        public static ReadOnlySpan<byte> DisableSynchronizedOutput => "\x1b[?2026l"u8;
+
+        // ---- Kitty keyboard protocol ----
+        // Push is dynamic: CSI > <flags> u. Pop is fixed.
+
+        /// <summary><c>CSI &lt; u</c> — pop the most recent Kitty keyboard flag set.</summary>
+        public static ReadOnlySpan<byte> PopKittyKeyboard => "\x1b[<u"u8;
+
+        /// <summary>Prefix for a Kitty keyboard push (caller appends ASCII flags + <c>u</c>).</summary>
+        public static ReadOnlySpan<byte> KittyPushPrefix => "\x1b[>"u8;
+
+        /// <summary>Suffix for a Kitty keyboard push.</summary>
+        public const byte KittyPushSuffix = (byte)'u';
+    }
+
+    /// <summary>
     /// Kitty keyboard protocol constants — event-type sub-parameter values and the functional
     /// key codes that occupy the Unicode private-use area. See
     /// https://sw.kovidgoyal.net/kitty/keyboard-protocol/.

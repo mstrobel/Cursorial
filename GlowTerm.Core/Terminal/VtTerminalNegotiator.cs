@@ -35,6 +35,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private bool _negotiated;
     private bool _disposed;
+    private bool _restored;
+    private AppliedOptIns _applied;
 
     public VtTerminalNegotiator(
         IInputByteSource source,
@@ -76,8 +78,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
         var identification = ResolveIdentification(responses);
 
-        var inputCapabilities = InputCapabilities.None;
-        var outputCapabilities = ResolveOutputCapabilities(identification);
+        if (options.EnableAllOptIns)
+        {
+            await ApplyOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
+            ApplyToInputMode(_applied);
+        }
+
+        var inputCapabilities = ResolveInputCapabilities(identification, _applied);
+        var outputCapabilities = ResolveOutputCapabilities(identification, _applied);
 
         return new TerminalCapabilities(
             Terminal: identification,
@@ -85,11 +93,38 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             Output: outputCapabilities);
     }
 
-    public Task RestoreAsync(CancellationToken cancellationToken = default)
+    public async Task RestoreAsync(CancellationToken cancellationToken = default)
     {
-        // No opt-ins are applied yet, so restore is a no-op. When opt-in support lands this
-        // will reverse every enable sequence emitted during NegotiateAsync.
-        return Task.CompletedTask;
+        // Idempotent and best-effort: a second call after a successful restore is a no-op,
+        // and transport failures are swallowed so disposal stays reliable.
+        if (_restored) return;
+        _restored = true;
+
+        if (!_negotiated || _applied.IsEmpty) return;
+
+        try
+        {
+            // LIFO order — opt-ins came on as Mouse, Focus, Paste, Kitty, Win32, Sync;
+            // turn them off in the reverse order.
+            if (_applied.SynchronizedOutput) QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
+            if (_applied.Win32InputMode)     QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
+            if (_applied.KittyKeyboard)      QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
+            if (_applied.BracketedPaste)     QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
+            if (_applied.FocusEvents)        QueueWrite(VtInputSequences.OptInSequences.DisableFocusEvents);
+            if (_applied.AnyEventMouse)      QueueWrite(VtInputSequences.OptInSequences.DisableAnyEventMouse);
+            if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableButtonEventMouse);
+            if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
+
+            await _sink.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested == false)
+        {
+            // Best-effort — terminal may have already gone away.
+        }
+        finally
+        {
+            ResetAppliedToReflectRestore();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -107,6 +142,140 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // even when the underlying transport has already gone away.
         }
     }
+
+    // ---- Opt-in application ----
+
+    private async ValueTask ApplyOptInsAsync(
+        NegotiationOptions options,
+        TerminalIdentification identification,
+        CancellationToken cancellationToken)
+    {
+        var applied = default(AppliedOptIns);
+
+        // Mouse: SGR encoding (1006) + button-event tracking (1002) is the standard combo
+        // for press / release / drag on every modern terminal. Any-event tracking (1003) is
+        // additive on top.
+        if (options.EnableMouseTracking)
+        {
+            QueueWrite(VtInputSequences.OptInSequences.EnableSgrMouse);
+            QueueWrite(VtInputSequences.OptInSequences.EnableButtonEventMouse);
+            applied.MouseTracking = true;
+
+            if (options.EnableAnyEventMouse)
+            {
+                QueueWrite(VtInputSequences.OptInSequences.EnableAnyEventMouse);
+                applied.AnyEventMouse = true;
+            }
+        }
+
+        if (options.EnableFocusEvents)
+        {
+            QueueWrite(VtInputSequences.OptInSequences.EnableFocusEvents);
+            applied.FocusEvents = true;
+        }
+
+        if (options.EnableBracketedPaste)
+        {
+            QueueWrite(VtInputSequences.OptInSequences.EnableBracketedPaste);
+            applied.BracketedPaste = true;
+        }
+
+        // Kitty keyboard: gate on family because pushing on a non-Kitty terminal is silently
+        // ignored, which would cause us to wrongly report the protocol as enabled.
+        if (options.EnableKittyKeyboard
+            && TerminalSupportsKittyKeyboard(identification.Family)
+            && options.KittyKeyboardFlags != KittyKeyboardFlags.None)
+        {
+            QueueKittyPush(options.KittyKeyboardFlags);
+            applied.KittyKeyboard = true;
+            applied.KittyFlags = options.KittyKeyboardFlags;
+        }
+
+        // Win32 input mode: only meaningful on the Windows console host or Windows Terminal.
+        if (options.EnableWin32InputMode && TerminalSupportsWin32InputMode(identification.Family))
+        {
+            QueueWrite(VtInputSequences.OptInSequences.EnableWin32InputMode);
+            applied.Win32InputMode = true;
+        }
+
+        // Synchronized output: gate on family — older terminals interpret unknown DECSET
+        // numbers as set-private-mode no-ops, but the resulting SynchronizedOutput=true
+        // capability claim would be a lie.
+        if (options.EnableSynchronizedOutput && TerminalSupportsSynchronizedOutput(identification.Family))
+        {
+            QueueWrite(VtInputSequences.OptInSequences.EnableSynchronizedOutput);
+            applied.SynchronizedOutput = true;
+        }
+
+        if (!applied.IsEmpty)
+        {
+            await _sink.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        _applied = applied;
+    }
+
+    private void QueueKittyPush(KittyKeyboardFlags flags)
+    {
+        // CSI > <flags> u — flags as decimal ASCII. Bounded small string; allocate once.
+        var ascii = ((uint)flags).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var prefix = VtInputSequences.OptInSequences.KittyPushPrefix;
+
+        int total = prefix.Length + ascii.Length + 1;
+        var span = _sink.Writer.GetSpan(total);
+        prefix.CopyTo(span);
+        System.Text.Encoding.ASCII.GetBytes(ascii, span[prefix.Length..]);
+        span[prefix.Length + ascii.Length] = VtInputSequences.OptInSequences.KittyPushSuffix;
+        _sink.Writer.Advance(total);
+    }
+
+    private void QueueWrite(ReadOnlySpan<byte> bytes)
+    {
+        var span = _sink.Writer.GetSpan(bytes.Length);
+        bytes.CopyTo(span);
+        _sink.Writer.Advance(bytes.Length);
+    }
+
+    private void ApplyToInputMode(in AppliedOptIns applied)
+    {
+        if (applied.MouseTracking) _mode.MouseEncoding = MouseEncoding.Sgr;
+        if (applied.FocusEvents) _mode.FocusReportingEnabled = true;
+        if (applied.BracketedPaste) _mode.BracketedPasteEnabled = true;
+        if (applied.KittyKeyboard) _mode.KittyKeyboard = applied.KittyFlags;
+        if (applied.Win32InputMode) _mode.Win32InputModeEnabled = true;
+    }
+
+    private void ResetAppliedToReflectRestore()
+    {
+        // Reflect the restored state on the shared mode bag. The interpreter reads these,
+        // so leaving them set after restore would mis-report capabilities.
+        if (_applied.MouseTracking) _mode.MouseEncoding = MouseEncoding.None;
+        if (_applied.FocusEvents) _mode.FocusReportingEnabled = false;
+        if (_applied.BracketedPaste) _mode.BracketedPasteEnabled = false;
+        if (_applied.KittyKeyboard) _mode.KittyKeyboard = KittyKeyboardFlags.None;
+        if (_applied.Win32InputMode) _mode.Win32InputModeEnabled = false;
+        _applied = default;
+    }
+
+    private static bool TerminalSupportsKittyKeyboard(TerminalFamily family) =>
+        family is TerminalFamily.Kitty
+            or TerminalFamily.WezTerm
+            or TerminalFamily.Konsole
+            or TerminalFamily.Foot
+            or TerminalFamily.Iterm2; // Partial support since iTerm2 3.5.
+
+    private static bool TerminalSupportsWin32InputMode(TerminalFamily family) =>
+        family is TerminalFamily.WindowsTerminal
+            or TerminalFamily.WindowsConsoleHost;
+
+    private static bool TerminalSupportsSynchronizedOutput(TerminalFamily family) =>
+        family is TerminalFamily.Kitty
+            or TerminalFamily.Iterm2
+            or TerminalFamily.WezTerm
+            or TerminalFamily.Alacritty
+            or TerminalFamily.WindowsTerminal
+            or TerminalFamily.Konsole
+            or TerminalFamily.Foot;
 
     // ---- Probe orchestration ----
 
@@ -278,14 +447,64 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     // ---- Output capability inference ----
 
-    private OutputCapabilities ResolveOutputCapabilities(TerminalIdentification identification)
+    private static InputCapabilities ResolveInputCapabilities(
+        TerminalIdentification identification,
+        in AppliedOptIns applied)
+    {
+        var mouse = applied.MouseTracking
+            ? new MouseCapabilities(
+                ButtonPress: true,
+                ButtonRelease: true,
+                Drag: true,
+                Motion: applied.AnyEventMouse,
+                Wheel: true,
+                PixelCoordinates: false,
+                ExtendedButtonCount: 4)
+            : MouseCapabilities.None;
+
+        bool kittyEnabled = applied.KittyKeyboard;
+        var keyboard = new KeyboardCapabilities(
+            DistinguishesKeyUpDown: kittyEnabled
+                && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
+            ReportsRepeats: kittyEnabled
+                && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
+            DetailedModifiers: kittyEnabled,
+            TextInput: kittyEnabled
+                && (applied.KittyFlags & KittyKeyboardFlags.ReportAssociatedText) != 0);
+
+        var protocol = new ProtocolCapabilities(
+            BracketedPaste: applied.BracketedPaste,
+            FocusEvents: applied.FocusEvents,
+            KittyKeyboardProtocol: kittyEnabled,
+            Win32InputMode: applied.Win32InputMode);
+
+        return new InputCapabilities(
+            Mouse: mouse,
+            Keyboard: keyboard,
+            Pointer: PointerCapabilities.None,
+            Protocol: protocol);
+    }
+
+    private OutputCapabilities ResolveOutputCapabilities(
+        TerminalIdentification identification,
+        in AppliedOptIns applied)
     {
         var color = ResolveColor(identification);
         var styling = ResolveStyling(identification);
         var graphics = ResolveGraphics(identification);
         var cursor = ResolveCursor(identification);
         var window = ResolveWindow(identification);
-        var protocol = OutputProtocolCapabilities.None; // Populated when opt-ins land.
+        var protocol = new OutputProtocolCapabilities(
+            BracketedPasteEnable: applied.BracketedPaste,
+            FocusReportingEnable: applied.FocusEvents,
+            SgrMouseEnable: applied.MouseTracking,
+            AnyEventMouseEnable: applied.AnyEventMouse,
+            KittyKeyboardPush: applied.KittyKeyboard,
+            Win32InputModeEnable: applied.Win32InputMode,
+            // Clipboard support is not negotiated yet — leaving false until a probe lands.
+            ClipboardWrite: false,
+            ClipboardRead: false,
+            SynchronizedOutput: applied.SynchronizedOutput);
 
         return new OutputCapabilities(
             Color: color,
@@ -427,6 +646,31 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private readonly record struct ProbeResponses(
         DeviceResponseEvent? XtVersion,
         DeviceResponseEvent? PrimaryDeviceAttributes);
+
+    /// <summary>
+    /// Tracks which opt-ins were actually emitted to the terminal during negotiation. Used
+    /// at restore time to send the matching disable sequences in LIFO order.
+    /// </summary>
+    private struct AppliedOptIns
+    {
+        public bool MouseTracking;
+        public bool AnyEventMouse;
+        public bool FocusEvents;
+        public bool BracketedPaste;
+        public bool KittyKeyboard;
+        public bool Win32InputMode;
+        public bool SynchronizedOutput;
+        public KittyKeyboardFlags KittyFlags;
+
+        public bool IsEmpty =>
+            !MouseTracking
+            && !AnyEventMouse
+            && !FocusEvents
+            && !BracketedPaste
+            && !KittyKeyboard
+            && !Win32InputMode
+            && !SynchronizedOutput;
+    }
 
     private sealed class ResponseCollector : IInputEventSink
     {

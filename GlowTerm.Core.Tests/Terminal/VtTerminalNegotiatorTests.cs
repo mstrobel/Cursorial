@@ -1,4 +1,5 @@
 using GlowTerm.Core.Input;
+using GlowTerm.Core.Input.Parsing;
 using GlowTerm.Core.Output;
 using GlowTerm.Core.Terminal;
 
@@ -10,8 +11,20 @@ public class VtTerminalNegotiatorTests
     private readonly InMemoryOutputByteSink _sink = new();
     private readonly StubEnvironmentReader _env = new();
 
-    private VtTerminalNegotiator BuildNegotiator() =>
-        new(_source, _sink, mode: null, timeProvider: null, environmentReader: _env);
+    private VtTerminalNegotiator BuildNegotiator(VtInputMode? mode = null) =>
+        new(_source, _sink, mode, timeProvider: null, environmentReader: _env);
+
+    private static NegotiationOptions DisableAllOptIns() => new()
+    {
+        ProbeTimeout = TimeSpan.FromMilliseconds(100),
+        EnableAllOptIns = false,
+    };
+
+    private async Task<string> AllWrittenAsync()
+    {
+        var bytes = await _sink.ReadAllWrittenAsync();
+        return System.Text.Encoding.ASCII.GetString(bytes);
+    }
 
     private static NegotiationOptions FastTimeout() => new()
     {
@@ -306,5 +319,372 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
         await Assert.ThrowsAsync<ArgumentNullException>(
             async () => await negotiator.NegotiateAsync(options: null!));
+    }
+
+    // ---- Opt-in application ----
+
+    [Fact]
+    public async Task EnableAllOptInsFalse_WritesProbesOnlyNoOptIns()
+    {
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(DisableAllOptIns());
+
+        var written = await AllWrittenAsync();
+        Assert.DoesNotContain("?1006h", written);
+        Assert.DoesNotContain("?1004h", written);
+        Assert.DoesNotContain("?2004h", written);
+    }
+
+    [Fact]
+    public async Task EnableMouseTracking_WritesSgrAndButtonEventEnables()
+    {
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = true,
+            EnableAnyEventMouse = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.Contains("\x1b[?1006h", written); // SGR mouse
+        Assert.Contains("\x1b[?1002h", written); // button-event tracking
+        Assert.DoesNotContain("\x1b[?1003h", written); // any-event NOT enabled
+    }
+
+    [Fact]
+    public async Task EnableAnyEventMouse_AddsMotionEnableOnTopOfBaseline()
+    {
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = true,
+            EnableAnyEventMouse = true,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.Contains("\x1b[?1006h", written);
+        Assert.Contains("\x1b[?1002h", written);
+        Assert.Contains("\x1b[?1003h", written);
+    }
+
+    [Fact]
+    public async Task EnableFocusAndPaste_WritesBothEnables()
+    {
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = true,
+            EnableBracketedPaste = true,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.Contains("\x1b[?1004h", written);
+        Assert.Contains("\x1b[?2004h", written);
+    }
+
+    [Fact]
+    public async Task EnableKittyKeyboardOnKittyFamily_WritesPushWithFlags()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = true,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+            // Default flags = 1+2+4+16 = 23.
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.Contains("\x1b[>23u", written);
+    }
+
+    [Fact]
+    public async Task EnableKittyKeyboardOnXtermFamily_DoesNotPush()
+    {
+        _env.Set("TERM", "xterm-256color");
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = true,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+
+        var written = await AllWrittenAsync();
+        // Kitty push has the form CSI > <digits> u. The only legitimate `>` write is the
+        // XTVERSION probe (`CSI > q`), so finding any `>` followed by digits indicates push.
+        Assert.DoesNotMatch(@"\[>\d+u", written);
+    }
+
+    [Fact]
+    public async Task EnableWin32InputModeOnNonWindowsFamily_DoesNotEnable()
+    {
+        _env.Set("TERM", "xterm-256color");
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = true,
+            EnableSynchronizedOutput = false,
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.DoesNotContain("9001", written);
+    }
+
+    [Fact]
+    public async Task EnableWin32InputModeOnWindowsTerminal_WritesEnable()
+    {
+        _env.Set("WT_SESSION", "guid");
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = true,
+            EnableSynchronizedOutput = false,
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.Contains("\x1b[?9001h", written);
+    }
+
+    [Fact]
+    public async Task EnableSynchronizedOutputOnSupportedFamily_WritesEnable()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = true,
+        });
+
+        var written = await AllWrittenAsync();
+        Assert.Contains("\x1b[?2026h", written);
+    }
+
+    // ---- Capability reflection ----
+
+    [Fact]
+    public async Task FullDefaultOptIns_PopulateInputAndOutputCapabilities()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        await using var negotiator = BuildNegotiator();
+
+        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+        });
+
+        Assert.True(caps.Input.Mouse.ButtonPress);
+        Assert.True(caps.Input.Mouse.Motion); // EnableAnyEventMouse default true
+        Assert.True(caps.Input.Mouse.Wheel);
+        Assert.True(caps.Input.Keyboard.DistinguishesKeyUpDown); // Kitty + ReportEventTypes
+        Assert.True(caps.Input.Keyboard.TextInput);              // Kitty + ReportAssociatedText
+        Assert.True(caps.Input.Protocol.BracketedPaste);
+        Assert.True(caps.Input.Protocol.FocusEvents);
+        Assert.True(caps.Input.Protocol.KittyKeyboardProtocol);
+
+        Assert.True(caps.Output.Protocol.SgrMouseEnable);
+        Assert.True(caps.Output.Protocol.AnyEventMouseEnable);
+        Assert.True(caps.Output.Protocol.FocusReportingEnable);
+        Assert.True(caps.Output.Protocol.BracketedPasteEnable);
+        Assert.True(caps.Output.Protocol.KittyKeyboardPush);
+        Assert.True(caps.Output.Protocol.SynchronizedOutput);
+    }
+
+    [Fact]
+    public async Task NegotiationUpdatesSharedVtInputMode()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        var mode = new VtInputMode();
+        await using var negotiator = BuildNegotiator(mode);
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+        });
+
+        Assert.Equal(MouseEncoding.Sgr, mode.MouseEncoding);
+        Assert.True(mode.BracketedPasteEnabled);
+        Assert.True(mode.FocusReportingEnabled);
+        Assert.NotEqual(KittyKeyboardFlags.None, mode.KittyKeyboard);
+    }
+
+    // ---- Restore ----
+
+    [Fact]
+    public async Task RestoreAsync_EmitsDisablesInLifoOrder()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+        });
+
+        // Drain the writes from negotiation so we only inspect what restore emits.
+        await _sink.ReadAllWrittenAsync();
+
+        await negotiator.RestoreAsync();
+        var restored = await AllWrittenAsync();
+
+        // LIFO: synchronized output → kitty pop → bracketed paste → focus → any-event mouse → button-event → SGR.
+        int idxSync = restored.IndexOf("\x1b[?2026l");
+        int idxKittyPop = restored.IndexOf("\x1b[<u");
+        int idxPaste = restored.IndexOf("\x1b[?2004l");
+        int idxFocus = restored.IndexOf("\x1b[?1004l");
+        int idxAnyEvent = restored.IndexOf("\x1b[?1003l");
+        int idxButtonEvent = restored.IndexOf("\x1b[?1002l");
+        int idxSgr = restored.IndexOf("\x1b[?1006l");
+
+        Assert.True(idxSync >= 0);
+        Assert.True(idxKittyPop > idxSync);
+        Assert.True(idxPaste > idxKittyPop);
+        Assert.True(idxFocus > idxPaste);
+        Assert.True(idxAnyEvent > idxFocus);
+        Assert.True(idxButtonEvent > idxAnyEvent);
+        Assert.True(idxSgr > idxButtonEvent);
+
+        await negotiator.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_TriggersRestore()
+    {
+        _source.Enqueue("\x1b[?64c");
+        var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = true,
+            EnableBracketedPaste = true,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+        await _sink.ReadAllWrittenAsync(); // drain the enables
+
+        await negotiator.DisposeAsync();
+        var restored = await AllWrittenAsync();
+
+        Assert.Contains("\x1b[?1004l", restored);
+        Assert.Contains("\x1b[?2004l", restored);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_TwiceIsIdempotent()
+    {
+        _source.Enqueue("\x1b[?64c");
+        var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = true,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+        await _sink.ReadAllWrittenAsync();
+
+        await negotiator.RestoreAsync();
+        var firstRestore = await AllWrittenAsync();
+        Assert.Contains("\x1b[?1004l", firstRestore);
+
+        await negotiator.RestoreAsync();
+        var secondRestore = await AllWrittenAsync();
+        Assert.Empty(secondRestore);
+
+        await negotiator.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task RestoreAsync_ResetsSharedModeBag()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        var mode = new VtInputMode();
+        var negotiator = BuildNegotiator(mode);
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+        });
+        Assert.Equal(MouseEncoding.Sgr, mode.MouseEncoding);
+
+        await negotiator.RestoreAsync();
+
+        Assert.Equal(MouseEncoding.None, mode.MouseEncoding);
+        Assert.False(mode.BracketedPasteEnabled);
+        Assert.False(mode.FocusReportingEnabled);
+        Assert.Equal(KittyKeyboardFlags.None, mode.KittyKeyboard);
+
+        await negotiator.DisposeAsync();
     }
 }

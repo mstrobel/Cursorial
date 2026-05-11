@@ -18,6 +18,11 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
   `PipeWriter`-shaped sink, mirror of `IInputByteSource`) plus the output-side capability records.
 - **Terminal** (`GlowTerm.Core/Terminal/`, namespace `GlowTerm.Core.Terminal`) — `ITerminalNegotiator` is the single
   public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
+  `VtTerminalNegotiator` is the VT/ANSI implementation; it owns the probe-and-respond handshake (XTVERSION + DA1
+  sentinel pattern) using its own ephemeral classifier + interpreter, then feeds inferred capabilities back into the
+  shared `VtInputMode`. Identification is the only phase landed so far; opt-in negotiation (mouse / focus / paste /
+  Kitty / Win32 / synchronized output) is the next pass. `IEnvironmentReader` abstracts environment access so tests
+  can be deterministic.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a

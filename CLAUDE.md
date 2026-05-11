@@ -27,6 +27,14 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
   disposal. Kitty / Win32 / synchronized output opt-ins are gated on family identification so capability claims
   don't lie about features the terminal silently ignores. `IEnvironmentReader` abstracts environment access so tests
   can be deterministic.
+
+`VtInputDevice` (`GlowTerm.Core.Input.VtInputDevice`) is the concrete `IAsyncInputDevice` over an `IInputByteSource`.
+It owns its own `VtSequenceClassifier` + `VtInputInterpreter`, runs a background pump that reads from the source's
+`PipeReader`, and bridges the synchronous interpreter sink to the consumer via an unbounded `Channel<InputEvent>`.
+The device owns the bare-ESC ambiguity timer (default 50 ms — the xterm convention, configurable via constructor)
+and calls `classifier.Flush()` when the idle window elapses with a pending lone ESC. Single-shot per instance:
+calling `ReadAllAsync` twice throws. Does NOT take ownership of the byte source — caller (typically `TerminalSession`)
+is responsible for transport lifecycle.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a

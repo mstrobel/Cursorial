@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project intent
 
-GlowTerm will be a **cross-platform .NET library for building high-quality, visually rich terminal applications with
+Cursorial will be a **cross-platform .NET library for building high-quality, visually rich terminal applications with
 robust mouse support**. It is library-first (consumed by app authors), not an end-user app. Cross-platform means
 Windows, macOS, and Linux terminals are all first-class — design choices that bake in assumptions about one platform
 (VT sequences only, Win32 console only, etc.) need an explicit story for the others.
 
 ## Status
 
-Early-stage. Three projects: `GlowTerm.Core` (the library), `GlowTerm.Core.Tests` (xUnit), and `GlowTerm.Demo`
-(an interactive REPL for hands-on verification — `dotnet run --project GlowTerm.Demo` opens a prompt with
+Early-stage. Three projects: `Cursorial.Core` (the library), `Cursorial.Core.Tests` (xUnit), and `Cursorial.Demo`
+(an interactive REPL for hands-on verification — `dotnet run --project Cursorial.Demo` opens a prompt with
 `negotiate` / `read` / `raw` / `help` / `quit` commands; each command opens its own raw-mode `TerminalSession` and
 restores cooked mode before the next prompt). Modules landed:
 
-- **Input** (`GlowTerm.Core/Input/`, namespace `GlowTerm.Core.Input`) — see "Input module conventions" below.
-- **Output** (`GlowTerm.Core/Output/`, namespace `GlowTerm.Core.Output`) — minimal `IOutputByteSink` (a
+- **Input** (`Cursorial.Core/Input/`, namespace `Cursorial.Core.Input`) — see "Input module conventions" below.
+- **Output** (`Cursorial.Core/Output/`, namespace `Cursorial.Core.Output`) — minimal `IOutputByteSink` (a
   `PipeWriter`-shaped sink, mirror of `IInputByteSource`) plus the output-side capability records.
-- **Terminal** (`GlowTerm.Core/Terminal/`, namespace `GlowTerm.Core.Terminal`) — `ITerminalNegotiator` is the single
+- **Terminal** (`Cursorial.Core/Terminal/`, namespace `Cursorial.Core.Terminal`) — `ITerminalNegotiator` is the single
   public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
   `VtTerminalNegotiator` is the VT/ANSI implementation; it owns the probe-and-respond handshake (XTVERSION + DA1
   sentinel pattern) using its own ephemeral classifier + interpreter, then applies opt-in enable sequences for the
@@ -31,7 +31,7 @@ restores cooked mode before the next prompt). Modules landed:
   don't lie about features the terminal silently ignores. `IEnvironmentReader` abstracts environment access so tests
   can be deterministic.
 
-`VtInputDevice` (`GlowTerm.Core.Input.VtInputDevice`) is the concrete `IAsyncInputDevice` over an `IInputByteSource`.
+`VtInputDevice` (`Cursorial.Core.Input.VtInputDevice`) is the concrete `IAsyncInputDevice` over an `IInputByteSource`.
 It owns its own `VtSequenceClassifier` + `VtInputInterpreter`, runs a background pump that reads from the source's
 `PipeReader`, and bridges the synchronous interpreter sink to the consumer via an unbounded `Channel<InputEvent>`.
 The device owns the bare-ESC ambiguity timer (default 50 ms — the xterm convention, configurable via constructor)
@@ -39,7 +39,7 @@ and calls `classifier.Flush()` when the idle window elapses with a pending lone 
 calling `ReadAllAsync` twice throws. Does NOT take ownership of the byte source — caller (typically `TerminalSession`)
 is responsible for transport lifecycle.
 
-`TerminalSession` (`GlowTerm.Core.Terminal.TerminalSession`) is the orchestrated entry point with two factories:
+`TerminalSession` (`Cursorial.Core.Terminal.TerminalSession`) is the orchestrated entry point with two factories:
 
 - **BYO**: `TerminalSession.OpenAsync(source, sink, options?, ct)` — runs the negotiator over caller-supplied
   transports; disposal stops the input pump and runs negotiator restore but leaves the transports open.
@@ -81,7 +81,7 @@ On any of these signals the session synchronously calls `RestoreTerminalState()`
 then attempts full `DisposeAsync` with a 2-second timeout, then `Environment.Exit(128 + signal)`. Handlers are
 unregistered on normal disposal. BYO sessions (the source/sink overload) do NOT register handlers — those callers
 are expected to manage their own signal-handling strategy.
-- **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
+- **Input parsing** (`Cursorial.Core/Input/Parsing/`, same `Cursorial.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a
   3-byte sequence and dispatches it through `OnEscDispatch` with intermediate `O`). Does NOT cover APC, SOS, PM, or
@@ -113,12 +113,12 @@ Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTermin
 Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built
 until those dependencies exist (see project memory).
 
-## Input module conventions (`GlowTerm.Core.Input`)
+## Input module conventions (`Cursorial.Core.Input`)
 
-The input API is designed to be usable both inside the future GlowTerm framework and by existing apps that just want
+The input API is designed to be usable both inside the future Cursorial framework and by existing apps that just want
 better terminal input. Key shape:
 
-- All public types live in the single namespace `GlowTerm.Core.Input` regardless of folder location.
+- All public types live in the single namespace `Cursorial.Core.Input` regardless of folder location.
 - A consumer picks a delivery surface per device instance: `IAsyncInputDevice` (pull, `IAsyncEnumerable<InputEvent>`)
   or `IEventInputDevice` (push, classic `EventHandler<>` events). A device may implement either or both. Both extend
   `IInputDevice`, which carries the `InputCapabilities` and `IAsyncDisposable` contract.
@@ -134,7 +134,7 @@ better terminal input. Key shape:
   `ProtocolCapabilities`) aggregated under `InputCapabilities`. Each has a `None` static for defaults.
 - The interface layer must stay free of framework-specific concepts so it remains usable standalone.
 
-## Capability negotiation conventions (`GlowTerm.Core.Terminal`)
+## Capability negotiation conventions (`Cursorial.Core.Terminal`)
 
 `ITerminalNegotiator` is the orchestrator that turns a raw terminal connection (an
 `IInputByteSource` + `IOutputByteSink` pair, or a Win32 console handle) into a known set of capabilities. It is
@@ -151,7 +151,7 @@ dispose. `NegotiationOptions.EnableAllOptIns = false` reduces it to a passive pr
 - The Win32 implementation produces the same `TerminalCapabilities` shape via structured APIs (`GetConsoleMode`,
   parent-process inspection, etc.) — consumers see capabilities, not how they were detected.
 
-## Output conventions (`GlowTerm.Core.Output`)
+## Output conventions (`Cursorial.Core.Output`)
 
 Currently scoped to the bytes layer needed for capability negotiation:
 
@@ -177,7 +177,7 @@ Run from the repository root:
 ```bash
 dotnet build              # build the whole solution
 dotnet build -c Release   # release build
-dotnet test               # run all tests (xUnit, in GlowTerm.Core.Tests)
+dotnet test               # run all tests (xUnit, in Cursorial.Core.Tests)
 dotnet test --filter "FullyQualifiedName~VtSequenceClassifierTests"   # filter by class
 dotnet test --filter "DisplayName~OscTerminatedByBel"                 # filter by single test
 ```

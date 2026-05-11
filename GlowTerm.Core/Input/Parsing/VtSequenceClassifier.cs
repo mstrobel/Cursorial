@@ -88,10 +88,16 @@ public sealed class VtSequenceClassifier
     {
         ArgumentNullException.ThrowIfNull(sink);
 
-        if (_state == State.Escape)
+        switch (_state)
         {
-            sink.OnEscDispatch(intermediates: ReadOnlySpan<byte>.Empty, final: 0);
-            ResetToGround();
+            case State.Escape:
+                sink.OnEscDispatch(intermediates: ReadOnlySpan<byte>.Empty, final: 0);
+                ResetToGround();
+                break;
+            case State.Ss3:
+                FlushSs3AsRecovery(sink);
+                ResetToGround();
+                break;
         }
     }
 
@@ -129,6 +135,9 @@ public sealed class VtSequenceClassifier
                 break;
             case State.EscapeIntermediate:
                 StepEscapeIntermediate(b, sink);
+                break;
+            case State.Ss3:
+                StepSs3(b, sink);
                 break;
             case State.CsiEntry:
                 StepCsiEntry(b, sink);
@@ -204,6 +213,10 @@ public sealed class VtSequenceClassifier
             case (byte)'P':
                 _state = State.DcsEntry;
                 return;
+            case (byte)'O':
+                // Single Shift 3: one more byte will follow as the SS3 final.
+                _state = State.Ss3;
+                return;
             case VtInputSequences.Escape:
                 // Two ESCs in a row — commit the first as a bare ESC and start a new sequence.
                 sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
@@ -248,6 +261,44 @@ public sealed class VtSequenceClassifier
         }
 
         sink.OnExecute(b);
+    }
+
+    // ---- SS3 (single shift 3) ----
+
+    private void StepSs3(byte b, IVtSequenceTokenSink sink)
+    {
+        if (b is >= 0x20 and <= 0x7E)
+        {
+            // Dispatch as ESC dispatch with intermediate 'O' so the interpreter recognizes SS3.
+            Span<byte> intermediates = stackalloc byte[1];
+            intermediates[0] = (byte)'O';
+            sink.OnEscDispatch(intermediates, b);
+            ResetToGround();
+            return;
+        }
+
+        if (b == VtInputSequences.Escape)
+        {
+            // A new ESC interrupts the SS3 — recover the partial as bare-ESC + 'O' printable
+            // and re-enter Escape state for the new sequence.
+            FlushSs3AsRecovery(sink);
+            ResetSequenceBuffers();
+            _state = State.Escape;
+            return;
+        }
+
+        // C0 control inside SS3 — execute and stay (rare).
+        if (b < 0x20) sink.OnExecute(b);
+    }
+
+    private static void FlushSs3AsRecovery(IVtSequenceTokenSink sink)
+    {
+        // Emit the held ESC as a bare-ESC dispatch and the trigger 'O' as a print so the
+        // user's two keystrokes are preserved when an SS3 sequence never completes.
+        sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
+        Span<byte> oByte = stackalloc byte[1];
+        oByte[0] = (byte)'O';
+        sink.OnPrint(oByte);
     }
 
     // ---- CSI ----
@@ -523,6 +574,7 @@ public sealed class VtSequenceClassifier
         Ground,
         Escape,
         EscapeIntermediate,
+        Ss3,
         CsiEntry,
         CsiParam,
         CsiIntermediate,

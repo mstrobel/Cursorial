@@ -20,14 +20,18 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
   public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
-  `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (as ESC + intermediate `O`). Does NOT cover
-  APC, SOS, PM, or 8-bit C1 controls (deliberately out of scope for input). `VtInputMode` is the mutable mode bag
-  (DECCKM, modifyOtherKeys level, mouse encoding, Kitty flags, etc.) the interpreter holds and the negotiator updates.
+  `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a
+  3-byte sequence and dispatches it through `OnEscDispatch` with intermediate `O`). Does NOT cover APC, SOS, PM, or
+  8-bit C1 controls (deliberately out of scope for input). `VtInputMode` is the mutable mode bag (DECCKM,
+  modifyOtherKeys level, mouse encoding, Kitty flags, etc.) the interpreter holds and the negotiator updates.
   `VtInputSequences` centralizes UTF-8 byte-string constants. `VtInputInterpreter` consumes classifier tokens and
-  emits `InputEvent`s to an `IInputEventSink`; v1 decoder coverage is printable runs (one event per Rune, with
-  cross-feed UTF-8 buffering), C0 control characters (Tab, Enter, Backspace, NUL→Ctrl+Space, Ctrl+letter), bare ESC
-  via classifier flush, focus events (`CSI I` / `CSI O`), and bracketed-paste accumulation. Mouse, modifier-bearing
-  CSI keys, Kitty keyboard, Win32 input mode, OSC/DCS responses are not yet decoded (silently dropped).
+  emits `InputEvent`s to an `IInputEventSink`. Decoder coverage so far: printable runs (one event per Rune, with
+  cross-feed UTF-8 buffering), C0 controls (Tab, Enter, Backspace, NUL→Ctrl+Space, Ctrl+letter), bare ESC,
+  focus events, bracketed-paste accumulation, CSI cursor keys + Home/End + special keys (Insert/Delete/PageUp/Down),
+  function keys F1–F20 (xterm + vt220 codes), F1–F4 + cursor + Home/End via SS3, BackTab (`CSI Z`), and xterm
+  modifier-bearing variants (Shift / Alt / Ctrl / Super). Not yet decoded (silently dropped): SGR / X10 mouse,
+  modifyOtherKeys character keys, Kitty keyboard protocol, ESC charset designators, OSC color responses, DCS
+  XTVERSION responses, Win32 input mode.
 
 Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTerminalNegotiator` are not yet started.
 Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built

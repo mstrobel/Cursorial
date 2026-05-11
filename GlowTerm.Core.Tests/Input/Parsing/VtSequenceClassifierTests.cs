@@ -241,6 +241,51 @@ public class VtSequenceClassifierTests
         Assert.Equal("11;rgb:ffff/ffff/ffff"u8.ToArray(), osc.Body);
     }
 
+    // ---- SS3 ----
+
+    [Fact]
+    public void Ss3Sequence_DispatchesEscWithOIntermediateAndFinal()
+    {
+        Feed("\x1bOA"); // SS3 Up arrow
+
+        var esc = Assert.IsType<RecordedToken.EscDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal(new byte[] { (byte)'O' }, esc.Intermediates);
+        Assert.Equal((byte)'A', esc.Final);
+    }
+
+    [Fact]
+    public void Ss3PartialAcrossFeeds_CompletesOnFinal()
+    {
+        Feed("\x1bO");
+        Assert.Empty(_sink.Tokens);
+
+        Feed("P");
+        var esc = Assert.IsType<RecordedToken.EscDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal((byte)'P', esc.Final);
+    }
+
+    [Fact]
+    public void Ss3Incomplete_FlushedAfterTimeout_RecoversAsBareEscPlusO()
+    {
+        // User typed ESC then O within ambiguity window, then paused.
+        Feed(0x1B, (byte)'O');
+        Assert.Empty(_sink.Tokens);
+
+        Flush();
+        Assert.Collection(
+            _sink.Tokens,
+            t =>
+            {
+                var esc = Assert.IsType<RecordedToken.EscDispatch>(t);
+                Assert.Equal(0, esc.Final);
+            },
+            t =>
+            {
+                var print = Assert.IsType<RecordedToken.Print>(t);
+                Assert.Equal(new byte[] { (byte)'O' }, print.Bytes);
+            });
+    }
+
     // ---- DCS ----
 
     [Fact]

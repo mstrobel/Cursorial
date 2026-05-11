@@ -11,17 +11,21 @@ namespace GlowTerm.Core.Input.Parsing;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>v1 decoder coverage:</b> printable UTF-8 runs (one <see cref="KeyEvent"/> per
+/// <b>Decoder coverage:</b> printable UTF-8 runs (one <see cref="KeyEvent"/> per
 /// <see cref="System.Text.Rune"/>), C0 control characters (Tab, Enter, Backspace, NUL→Ctrl+Space,
 /// Ctrl+letter for 0x01–0x1A), DEL→Backspace, bare-ESC committed by classifier flush,
-/// focus events (<c>CSI I</c> / <c>CSI O</c>), and bracketed-paste accumulation
-/// (<c>CSI 200~</c> … <c>CSI 201~</c>).
+/// focus events (<c>CSI I</c> / <c>CSI O</c>), bracketed-paste accumulation
+/// (<c>CSI 200~</c> … <c>CSI 201~</c>), CSI cursor keys (<c>A B C D H F</c>) and special
+/// keys (Insert, Delete, Page Up/Down, Home, End), function keys F1–F20 via the
+/// <c>CSI n ~</c> form, F1–F4 + cursor + Home / End via SS3 (<c>ESC O …</c>), BackTab
+/// (<c>CSI Z</c> → Shift+Tab), and xterm modifier-bearing variants (<c>CSI 1 ; mod letter</c>
+/// and <c>CSI n ; mod ~</c>) decoding Shift / Alt / Ctrl / Super.
 /// </para>
 /// <para>
-/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes):
-/// CSI cursor / function keys, modifier-bearing key encodings (modifyOtherKeys, Kitty
-/// keyboard), SGR / X10 mouse, ESC charset designators, OSC color responses, DCS
-/// XTVERSION responses, Win32 input mode.
+/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): SGR / X10
+/// mouse, modifyOtherKeys character-key reporting, Kitty keyboard protocol (with
+/// disambiguated up/down events and alternate keys), ESC charset designators, OSC color
+/// responses, DCS XTVERSION responses, Win32 input mode.
 /// </para>
 /// <para>
 /// <b>Threading.</b> The interpreter is single-threaded with respect to its sink and mode —
@@ -96,7 +100,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
-        // Other ESC sequences (charset designators, single-shifts, etc.) — not yet decoded.
+        // SS3 — application-mode arrow / F1-F4 / Home / End: ESC O <final>.
+        if (intermediates.Length == 1 && intermediates[0] == (byte)'O')
+        {
+            DecodeSs3(final);
+            return;
+        }
+
+        // Other ESC sequences (charset designators, etc.) — not yet decoded.
     }
 
     public void OnCsiDispatch(
@@ -111,35 +122,169 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
-        // Focus events: empty params, final 'I' / 'O'.
-        if (parameters.IsEmpty)
+        Span<int> parameterBuffer = stackalloc int[8];
+        int parameterCount = ParseParameters(parameters, parameterBuffer);
+        ReadOnlySpan<int> p = parameterBuffer[..parameterCount];
+
+        if (p.IsEmpty)
         {
-            switch (final)
+            DecodeCsiNoParams(final);
+            return;
+        }
+
+        if (p.Length == 1 && final == (byte)'~')
+        {
+            DecodeCsiTildeOneParam(p[0]);
+            return;
+        }
+
+        // Modifier-bearing arrows / Home / End: CSI 1 ; <mod> <A|B|C|D|H|F>.
+        if (p.Length == 2 && p[0] == 1)
+        {
+            Key arrowKey = ArrowOrHomeEndKey(final);
+            if (arrowKey != Key.None)
             {
-                case VtInputSequences.FocusInFinal:
-                    _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = true });
-                    return;
-                case VtInputSequences.FocusOutFinal:
-                    _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = false });
-                    return;
+                EmitNamedKey(arrowKey, ParseModifiersParam(p[1]));
+                return;
             }
         }
 
-        // Bracketed paste start / end: CSI 200 ~ / CSI 201 ~.
-        if (final == (byte)'~' && TryParseFirstParam(parameters, out int param))
+        // Modifier-bearing function / special keys: CSI <n> ; <mod> ~.
+        if (p.Length == 2 && final == (byte)'~')
         {
-            switch (param)
+            if (TryFunctionOrSpecialKey(p[0], out Key funcKey))
             {
-                case VtInputSequences.BracketedPasteStartParam:
-                    EnterPaste();
-                    return;
-                case VtInputSequences.BracketedPasteEndParam:
-                    ExitPaste();
-                    return;
+                EmitNamedKey(funcKey, ParseModifiersParam(p[1]));
             }
+            return;
         }
 
-        // Other CSI sequences (cursor keys, F-keys, mouse, etc.) — not yet decoded.
+        // Other CSI sequences (mouse, modifyOtherKeys, Kitty keyboard) — not yet decoded.
+    }
+
+    private void DecodeCsiNoParams(byte final)
+    {
+        switch (final)
+        {
+            case VtInputSequences.FocusInFinal:
+                _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = true });
+                return;
+            case VtInputSequences.FocusOutFinal:
+                _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = false });
+                return;
+            case (byte)'Z':
+                // BackTab — Shift+Tab.
+                EmitNamedKey(Key.Tab, KeyModifiers.Shift);
+                return;
+        }
+
+        Key key = ArrowOrHomeEndKey(final);
+        if (key != Key.None) EmitNamedKey(key);
+    }
+
+    private void DecodeCsiTildeOneParam(int parameter)
+    {
+        switch (parameter)
+        {
+            case VtInputSequences.BracketedPasteStartParam:
+                EnterPaste();
+                return;
+            case VtInputSequences.BracketedPasteEndParam:
+                ExitPaste();
+                return;
+        }
+
+        if (TryFunctionOrSpecialKey(parameter, out Key key))
+        {
+            EmitNamedKey(key);
+        }
+    }
+
+    private void DecodeSs3(byte final)
+    {
+        Key key = final switch
+        {
+            (byte)'A' => Key.UpArrow,
+            (byte)'B' => Key.DownArrow,
+            (byte)'C' => Key.RightArrow,
+            (byte)'D' => Key.LeftArrow,
+            (byte)'H' => Key.Home,
+            (byte)'F' => Key.End,
+            (byte)'P' => Key.F1,
+            (byte)'Q' => Key.F2,
+            (byte)'R' => Key.F3,
+            (byte)'S' => Key.F4,
+            _ => Key.None,
+        };
+
+        if (key != Key.None) EmitNamedKey(key);
+    }
+
+    private static Key ArrowOrHomeEndKey(byte final) => final switch
+    {
+        (byte)'A' => Key.UpArrow,
+        (byte)'B' => Key.DownArrow,
+        (byte)'C' => Key.RightArrow,
+        (byte)'D' => Key.LeftArrow,
+        (byte)'H' => Key.Home,
+        (byte)'F' => Key.End,
+        _ => Key.None,
+    };
+
+    private static bool TryFunctionOrSpecialKey(int parameter, out Key key)
+    {
+        // CSI n ~ encoding for special and function keys (xterm + vt220 / vt320 conventions).
+        key = parameter switch
+        {
+            // Special navigation keys (alternate codes per terminal).
+            1 or 7 => Key.Home,
+            4 or 8 => Key.End,
+            2 => Key.Insert,
+            3 => Key.Delete,
+            5 => Key.PageUp,
+            6 => Key.PageDown,
+
+            // Function keys F1–F12 (xterm).
+            11 => Key.F1,
+            12 => Key.F2,
+            13 => Key.F3,
+            14 => Key.F4,
+            15 => Key.F5,
+            17 => Key.F6,
+            18 => Key.F7,
+            19 => Key.F8,
+            20 => Key.F9,
+            21 => Key.F10,
+            23 => Key.F11,
+            24 => Key.F12,
+
+            // Extended function keys F13–F20 (vt220 / vt320).
+            25 => Key.F13,
+            26 => Key.F14,
+            28 => Key.F15,
+            29 => Key.F16,
+            31 => Key.F17,
+            32 => Key.F18,
+            33 => Key.F19,
+            34 => Key.F20,
+
+            _ => Key.None,
+        };
+        return key != Key.None;
+    }
+
+    private static KeyModifiers ParseModifiersParam(int parameter)
+    {
+        // xterm encoding: parameter = 1 + bitfield (Shift=1, Alt=2, Ctrl=4, Meta=8).
+        if (parameter < 1) return KeyModifiers.None;
+        int bits = parameter - 1;
+
+        KeyModifiers modifiers = KeyModifiers.None;
+        if ((bits & 0b0001) != 0) modifiers |= KeyModifiers.Shift;
+        if ((bits & 0b0010) != 0) modifiers |= KeyModifiers.Alt;
+        if ((bits & 0b0100) != 0) modifiers |= KeyModifiers.Control;
+        if ((bits & 0b1000) != 0) modifiers |= KeyModifiers.Super;
+        return modifiers;
     }
 
     public void OnOscDispatch(ReadOnlySpan<byte> body)
@@ -258,13 +403,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
     }
 
-    private void EmitNamedKey(Key key)
+    private void EmitNamedKey(Key key, KeyModifiers modifiers = KeyModifiers.None)
     {
         _eventSink.OnInputEvent(new KeyEvent
         {
             Timestamp = Now,
             Key = key,
-            Modifiers = KeyModifiers.None,
+            Modifiers = modifiers,
             Kind = KeyEventKind.Down,
         });
     }
@@ -303,24 +448,46 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     // ---- Parameter parsing helpers ----
 
     /// <summary>
-    /// Parse the first parameter (digits up to the first <c>;</c> or <c>:</c>) from a CSI
-    /// parameter byte run. Returns false on empty or non-digit input.
+    /// Parse a CSI parameter byte run into integer values, splitting on <c>;</c>. For v1, the
+    /// sub-parameter separator <c>:</c> is treated identically to <c>;</c> — protocols that
+    /// use sub-parameters meaningfully (Kitty keyboard, SGR colon-form colors) will get a
+    /// dedicated parser when those decoders land.
     /// </summary>
-    private static bool TryParseFirstParam(ReadOnlySpan<byte> parameters, out int value)
+    /// <returns>The number of parameters written to <paramref name="output"/>.</returns>
+    private static int ParseParameters(ReadOnlySpan<byte> raw, Span<int> output)
     {
-        value = 0;
-        if (parameters.IsEmpty) return false;
+        if (raw.IsEmpty || output.IsEmpty) return 0;
 
-        bool any = false;
-        foreach (byte b in parameters)
+        int count = 0;
+        int current = 0;
+        bool started = false;
+
+        for (int i = 0; i < raw.Length; i++)
         {
-            if (b is (byte)';' or (byte)':') break;
-            if (b is < (byte)'0' or > (byte)'9') return false;
-
-            value = checked(value * 10 + (b - (byte)'0'));
-            any = true;
+            byte b = raw[i];
+            if (b is >= (byte)'0' and <= (byte)'9')
+            {
+                current = current * 10 + (b - (byte)'0');
+                started = true;
+            }
+            else if (b is (byte)';' or (byte)':')
+            {
+                if (count < output.Length)
+                {
+                    output[count++] = started ? current : 0;
+                }
+                current = 0;
+                started = false;
+            }
+            // Other bytes are ignored — the classifier already filtered to valid CSI.
         }
 
-        return any;
+        // Final parameter (CSI sequences end the param run before the final byte).
+        if (count < output.Length)
+        {
+            output[count++] = started ? current : 0;
+        }
+
+        return count;
     }
 }

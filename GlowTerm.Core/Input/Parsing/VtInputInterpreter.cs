@@ -26,12 +26,17 @@ namespace GlowTerm.Core.Input.Parsing;
 /// mask. Device-response decoding: DA1 (<c>CSI ? … c</c>), DA2 (<c>CSI &gt; … c</c>), DSR-CPR
 /// (<c>CSI row ; col R</c>), OSC 4 / 10 / 11 / 12 color responses, and DCS XTVERSION
 /// (<c>DCS &gt; | name ST</c>) — emitted as <see cref="DeviceResponseEvent"/>s with the
-/// appropriate <see cref="DeviceResponseKind"/> and a copied payload.
+/// appropriate <see cref="DeviceResponseKind"/> and a copied payload. Kitty keyboard protocol
+/// (<c>CSI key[:shifted:base][;mods[:event]][;text] u</c>) — full functional key code mapping
+/// (Esc / Enter / Tab / arrows / Home / End / F1–F24 / numpad / media / per-side modifiers),
+/// up / down / repeat distinction via the event-type sub-parameter, modifier handling for the
+/// xterm baseline plus Hyper / Meta / CapsLock / NumLock toggles, and text payloads for
+/// IME-composed and Shift-modified output. Alternate-key sub-parameters are parsed but not
+/// surfaced in v1 (<see cref="KeyEvent"/> doesn't yet carry shifted / base-layout keys).
 /// </para>
 /// <para>
 /// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): X10 mouse
-/// (legacy non-SGR), SGR-Pixels mouse, modifyOtherKeys character-key reporting, Kitty
-/// keyboard protocol (with disambiguated up/down events and alternate keys), ESC charset
+/// (legacy non-SGR), SGR-Pixels mouse, modifyOtherKeys character-key reporting, ESC charset
 /// designators, DA3 / DECRQSS / XTGETTCAP DCS responses, and Win32 input mode.
 /// </para>
 /// <para>
@@ -161,6 +166,16 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         // No other private-prefix CSI sequences are decoded yet.
         if (privatePrefix != 0) return;
+
+        // Kitty keyboard protocol — CSI <key>[:<alt>:<base>][;<mods>[:<event>]][;<text>] u.
+        // Distinguished by the 'u' final byte. Use a sub-parameter-aware parser since the
+        // encoding makes structural use of the colon separator the simpler ParseParameters
+        // collapses into a primary separator.
+        if (final == (byte)'u')
+        {
+            DecodeKittyKey(parameters);
+            return;
+        }
 
         Span<int> parameterBuffer = stackalloc int[8];
         int parameterCount = ParseParameters(parameters, parameterBuffer);
@@ -348,6 +363,274 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         });
     }
 
+    // ---- Kitty keyboard protocol ----
+
+    private void DecodeKittyKey(ReadOnlySpan<byte> rawParameters)
+    {
+        // Section / sub-section roles in the Kitty encoding:
+        //   primary 0:  key-info       sub 0=key  sub 1=shifted-key  sub 2=base-layout-key
+        //   primary 1:  modifier-info  sub 0=mods (1+bitfield)  sub 1=event-type (1=press,2=repeat,3=release)
+        //   primary 2:  text           sub i=codepoint of the i-th text char
+        var data = new KittyKeyData { Modifiers = 1, EventType = 1 };
+        Span<int> textCodepoints = stackalloc int[16];
+
+        ParseKittyParameters(rawParameters, ref data, textCodepoints);
+
+        if (data.KeyCode <= 0) return; // Malformed — no key code.
+
+        KeyModifiers modifiers = ParseModifiersParam(data.Modifiers);
+
+        KeyEventKind kind = data.EventType == 3 ? KeyEventKind.Up : KeyEventKind.Down;
+        bool isRepeat = data.EventType == 2;
+
+        Key key = TryMapKittyFunctionalKey(data.KeyCode, out Key mapped)
+            ? mapped
+            : Key.Character;
+
+        ReadOnlyMemory<char> text;
+        if (key == Key.Character)
+        {
+            text = data.TextCount > 0
+                ? CodepointsToUtf16(textCodepoints[..data.TextCount])
+                : CodepointToUtf16(data.KeyCode);
+        }
+        else
+        {
+            // Functional key — the text payload, when present, is what the key would have
+            // produced as a character (rare: e.g. Kitty Enter with shifted form). Carry it
+            // through if we got one; otherwise leave Text empty.
+            text = data.TextCount > 0
+                ? CodepointsToUtf16(textCodepoints[..data.TextCount])
+                : ReadOnlyMemory<char>.Empty;
+        }
+
+        _eventSink.OnInputEvent(new KeyEvent
+        {
+            Timestamp = Now,
+            Key = key,
+            Modifiers = modifiers,
+            Kind = kind,
+            IsRepeat = isRepeat,
+            Text = text,
+            RawCode = (uint)data.KeyCode,
+        });
+    }
+
+    private struct KittyKeyData
+    {
+        public int KeyCode;
+        public int ShiftedKey;
+        public int BaseKey;
+        public int Modifiers;
+        public int EventType;
+        public int TextCount;
+    }
+
+    private static void ParseKittyParameters(
+        ReadOnlySpan<byte> raw,
+        ref KittyKeyData data,
+        Span<int> textCodepoints)
+    {
+        int primaryIndex = 0;
+        int subIndex = 0;
+        int currentValue = 0;
+        bool started = false;
+
+        for (int i = 0; i <= raw.Length; i++)
+        {
+            bool atEnd = i == raw.Length;
+            byte b = atEnd ? (byte)0 : raw[i];
+
+            if (!atEnd && b is >= (byte)'0' and <= (byte)'9')
+            {
+                currentValue = checked(currentValue * 10 + (b - (byte)'0'));
+                started = true;
+                continue;
+            }
+
+            if (atEnd || b == (byte)':' || b == (byte)';')
+            {
+                int value = started ? currentValue : 0;
+
+                switch (primaryIndex)
+                {
+                    case 0:
+                        switch (subIndex)
+                        {
+                            case 0: data.KeyCode = value; break;
+                            case 1: data.ShiftedKey = value; break;
+                            case 2: data.BaseKey = value; break;
+                        }
+                        break;
+                    case 1:
+                        // Empty mods/event_type leave the defaults (1) in place.
+                        if (started)
+                        {
+                            switch (subIndex)
+                            {
+                                case 0: data.Modifiers = value; break;
+                                case 1: data.EventType = value; break;
+                            }
+                        }
+                        break;
+                    case 2:
+                        if (started && data.TextCount < textCodepoints.Length)
+                        {
+                            textCodepoints[data.TextCount++] = value;
+                        }
+                        break;
+                }
+
+                currentValue = 0;
+                started = false;
+
+                if (atEnd) return;
+                if (b == (byte)':')
+                {
+                    subIndex++;
+                }
+                else // ';'
+                {
+                    primaryIndex++;
+                    subIndex = 0;
+                }
+                continue;
+            }
+
+            // Unexpected byte — abort parse.
+            return;
+        }
+    }
+
+    private static bool TryMapKittyFunctionalKey(int code, out Key key)
+    {
+        // Kitty assigns functional key codes in the Unicode private-use area starting at
+        // 57344. Codes outside this range (and outside the small set of recognized
+        // functional key codes) are treated as printable Unicode codepoints.
+        key = code switch
+        {
+            // Navigation / control
+            57344 => Key.Escape,
+            57345 => Key.Enter,
+            57346 => Key.Tab,
+            57347 => Key.Backspace,
+            57348 => Key.Insert,
+            57349 => Key.Delete,
+            57350 => Key.LeftArrow,
+            57351 => Key.RightArrow,
+            57352 => Key.UpArrow,
+            57353 => Key.DownArrow,
+            57354 => Key.PageUp,
+            57355 => Key.PageDown,
+            57356 => Key.Home,
+            57357 => Key.End,
+            57358 => Key.CapsLock,
+            57359 => Key.ScrollLock,
+            57360 => Key.NumLock,
+            57361 => Key.PrintScreen,
+            57362 => Key.Pause,
+            57363 => Key.Menu,
+
+            // Function keys F1–F24 (Kitty defines through F35 — those map to None for now
+            // since our Key enum stops at F24; can be extended later if needed).
+            >= 57364 and <= 57387 => (Key)((int)Key.F1 + (code - 57364)),
+
+            // Numpad digits / operators / Enter / equals.
+            57399 => Key.Numpad0,
+            57400 => Key.Numpad1,
+            57401 => Key.Numpad2,
+            57402 => Key.Numpad3,
+            57403 => Key.Numpad4,
+            57404 => Key.Numpad5,
+            57405 => Key.Numpad6,
+            57406 => Key.Numpad7,
+            57407 => Key.Numpad8,
+            57408 => Key.Numpad9,
+            57409 => Key.NumpadDecimal,
+            57410 => Key.NumpadDivide,
+            57411 => Key.NumpadMultiply,
+            57412 => Key.NumpadSubtract,
+            57413 => Key.NumpadAdd,
+            57414 => Key.NumpadEnter,
+            57415 => Key.NumpadEquals,
+
+            // Numpad navigation keys — collapse to the main-keyboard equivalent for v1.
+            // Distinguishing numpad-arrow from main-arrow would need new Key enum entries.
+            57417 => Key.LeftArrow,
+            57418 => Key.RightArrow,
+            57419 => Key.UpArrow,
+            57420 => Key.DownArrow,
+            57421 => Key.PageUp,
+            57422 => Key.PageDown,
+            57423 => Key.Home,
+            57424 => Key.End,
+            57425 => Key.Insert,
+            57426 => Key.Delete,
+
+            // Media keys.
+            57428 => Key.MediaPlay,
+            57429 => Key.MediaPause,
+            57430 => Key.MediaPlayPause,
+            57432 => Key.MediaStop,
+            57435 => Key.MediaNext,
+            57436 => Key.MediaPrevious,
+            57438 => Key.VolumeDown,
+            57439 => Key.VolumeUp,
+            57440 => Key.VolumeMute,
+
+            // Modifier keys reported as standalone events.
+            57441 => Key.LeftShift,
+            57442 => Key.LeftControl,
+            57443 => Key.LeftAlt,
+            57444 => Key.LeftSuper,
+            57445 => Key.LeftHyper,
+            57446 => Key.LeftMeta,
+            57447 => Key.RightShift,
+            57448 => Key.RightControl,
+            57449 => Key.RightAlt,
+            57450 => Key.RightSuper,
+            57451 => Key.RightHyper,
+            57452 => Key.RightMeta,
+
+            _ => Key.None,
+        };
+        return key != Key.None;
+    }
+
+    private static ReadOnlyMemory<char> CodepointToUtf16(int codepoint)
+    {
+        if (codepoint <= 0 || !Rune.IsValid(codepoint)) return ReadOnlyMemory<char>.Empty;
+
+        var rune = new Rune(codepoint);
+        Span<char> buffer = stackalloc char[2];
+        int written = rune.EncodeToUtf16(buffer);
+
+        var heap = new char[written];
+        buffer[..written].CopyTo(heap);
+        return heap;
+    }
+
+    private static ReadOnlyMemory<char> CodepointsToUtf16(ReadOnlySpan<int> codepoints)
+    {
+        if (codepoints.IsEmpty) return ReadOnlyMemory<char>.Empty;
+
+        // Worst case: every codepoint encodes as a UTF-16 surrogate pair.
+        Span<char> buffer = stackalloc char[codepoints.Length * 2];
+        int written = 0;
+
+        foreach (int cp in codepoints)
+        {
+            if (cp <= 0 || !Rune.IsValid(cp)) continue;
+            written += new Rune(cp).EncodeToUtf16(buffer[written..]);
+        }
+
+        if (written == 0) return ReadOnlyMemory<char>.Empty;
+
+        var heap = new char[written];
+        buffer[..written].CopyTo(heap);
+        return heap;
+    }
+
     // ---- Device-response helpers ----
 
     private void EmitDeviceResponse(DeviceResponseKind kind, ReadOnlySpan<byte> payload)
@@ -460,15 +743,20 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
     private static KeyModifiers ParseModifiersParam(int parameter)
     {
-        // xterm encoding: parameter = 1 + bitfield (Shift=1, Alt=2, Ctrl=4, Meta=8).
+        // Modifier param encoding (xterm baseline + Kitty extensions): parameter = 1 + bitfield.
+        // Bits 0-3 are the xterm-conformant modifiers; bits 4-7 are Kitty-specific extensions.
         if (parameter < 1) return KeyModifiers.None;
         int bits = parameter - 1;
 
         KeyModifiers modifiers = KeyModifiers.None;
-        if ((bits & 0b0001) != 0) modifiers |= KeyModifiers.Shift;
-        if ((bits & 0b0010) != 0) modifiers |= KeyModifiers.Alt;
-        if ((bits & 0b0100) != 0) modifiers |= KeyModifiers.Control;
-        if ((bits & 0b1000) != 0) modifiers |= KeyModifiers.Super;
+        if ((bits & 0b0000_0001) != 0) modifiers |= KeyModifiers.Shift;
+        if ((bits & 0b0000_0010) != 0) modifiers |= KeyModifiers.Alt;
+        if ((bits & 0b0000_0100) != 0) modifiers |= KeyModifiers.Control;
+        if ((bits & 0b0000_1000) != 0) modifiers |= KeyModifiers.Super;
+        if ((bits & 0b0001_0000) != 0) modifiers |= KeyModifiers.Hyper;
+        if ((bits & 0b0010_0000) != 0) modifiers |= KeyModifiers.Meta;
+        if ((bits & 0b0100_0000) != 0) modifiers |= KeyModifiers.CapsLock;
+        if ((bits & 0b1000_0000) != 0) modifiers |= KeyModifiers.NumLock;
         return modifiers;
     }
 

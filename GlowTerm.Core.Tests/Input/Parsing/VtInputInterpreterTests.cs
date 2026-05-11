@@ -742,6 +742,268 @@ public class VtInputInterpreterTests
         Assert.Empty(_sink.Events);
     }
 
+    // ---- Kitty keyboard protocol ----
+
+    [Fact]
+    public void KittyBareKey_LowercaseLetterEmitsCharacterDownWithText()
+    {
+        Feed("\x1b[97u"); // 'a'
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.False(k.IsRepeat);
+        Assert.Equal("a", TextOf(k));
+        Assert.Equal((uint)97, k.RawCode);
+    }
+
+    [Fact]
+    public void KittyKeyWithModifier_DecodesXtermModifierBits()
+    {
+        Feed("\x1b[97;5u"); // Ctrl+a (5 = 1 + Ctrl-bit-4)
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Control, k.Modifiers);
+        Assert.Equal("a", TextOf(k));
+    }
+
+    [Theory]
+    [InlineData(2, KeyModifiers.Shift)]
+    [InlineData(9, KeyModifiers.Super)]
+    [InlineData(17, KeyModifiers.Hyper)]
+    [InlineData(33, KeyModifiers.Meta)]
+    [InlineData(65, KeyModifiers.CapsLock)]
+    [InlineData(129, KeyModifiers.NumLock)]
+    public void KittyExtendedModifiers_DecodeCorrectly(int modifierParam, KeyModifiers expected)
+    {
+        Feed($"\x1b[97;{modifierParam}u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Modifiers);
+    }
+
+    [Fact]
+    public void KittyEventTypePress_ProducesDownNoRepeat()
+    {
+        Feed("\x1b[97;1:1u"); // explicit press
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.False(k.IsRepeat);
+    }
+
+    [Fact]
+    public void KittyEventTypeRepeat_ProducesDownWithIsRepeatTrue()
+    {
+        Feed("\x1b[97;1:2u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.True(k.IsRepeat);
+    }
+
+    [Fact]
+    public void KittyEventTypeRelease_ProducesUpEvent()
+    {
+        Feed("\x1b[97;1:3u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.False(k.IsRepeat);
+    }
+
+    [Fact]
+    public void KittyAlternateKeysSubParameters_AreParsedAndIgnoredCleanly()
+    {
+        // CSI 97 : 65 : 97 ; 2 u — 'a' with shifted='A' base='a', Shift modifier.
+        // We don't surface alternate keys in v1 but the parser must not reject the sequence
+        // or misattribute fields.
+        Feed("\x1b[97:65:97;2u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Shift, k.Modifiers);
+        Assert.Equal((uint)97, k.RawCode); // primary key code preserved
+    }
+
+    [Fact]
+    public void KittyTextPayload_OverridesKeyCodeForTextField()
+    {
+        // CSI 97 : 65 ; 2 ; 65 u — Shift+a producing text 'A'.
+        Feed("\x1b[97:65;2;65u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal("A", TextOf(k));
+        Assert.Equal((uint)97, k.RawCode); // RawCode still the original key
+    }
+
+    [Fact]
+    public void KittyEmptyModifierSection_DefaultsToNone()
+    {
+        // CSI 97 ; ; 65 u — text payload provided but mods omitted (empty between ;;).
+        Feed("\x1b[97;;65u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+        Assert.Equal("A", TextOf(k));
+    }
+
+    [Fact]
+    public void KittySupplementaryPlaneCodepoint_ProducesSurrogatePair()
+    {
+        Feed("\x1b[128512u"); // U+1F600 😀
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal("😀", TextOf(k));
+        Assert.Equal(2, k.Text.Length); // surrogate pair
+    }
+
+    // Functional keys
+
+    [Theory]
+    [InlineData(57344, Key.Escape)]
+    [InlineData(57345, Key.Enter)]
+    [InlineData(57346, Key.Tab)]
+    [InlineData(57347, Key.Backspace)]
+    [InlineData(57350, Key.LeftArrow)]
+    [InlineData(57352, Key.UpArrow)]
+    [InlineData(57356, Key.Home)]
+    [InlineData(57357, Key.End)]
+    [InlineData(57360, Key.NumLock)]
+    [InlineData(57363, Key.Menu)]
+    public void KittyFunctionalKeys_NavigationAndControl_MapCorrectly(int code, Key expected)
+    {
+        Feed($"\x1b[{code}u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(ReadOnlyMemory<char>.Empty, k.Text);
+    }
+
+    [Theory]
+    [InlineData(57364, Key.F1)]
+    [InlineData(57375, Key.F12)]
+    [InlineData(57387, Key.F24)]
+    public void KittyFunctionKeysF1ThroughF24_MapCorrectly(int code, Key expected)
+    {
+        Feed($"\x1b[{code}u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+    }
+
+    [Theory]
+    [InlineData(57399, Key.Numpad0)]
+    [InlineData(57408, Key.Numpad9)]
+    [InlineData(57413, Key.NumpadAdd)]
+    [InlineData(57414, Key.NumpadEnter)]
+    public void KittyNumpadKeys_MapCorrectly(int code, Key expected)
+    {
+        Feed($"\x1b[{code}u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+    }
+
+    [Theory]
+    [InlineData(57441, Key.LeftShift)]
+    [InlineData(57442, Key.LeftControl)]
+    [InlineData(57445, Key.LeftHyper)]
+    [InlineData(57452, Key.RightMeta)]
+    public void KittyStandaloneModifierKeys_MapCorrectly(int code, Key expected)
+    {
+        Feed($"\x1b[{code}u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+    }
+
+    [Theory]
+    [InlineData(57428, Key.MediaPlay)]
+    [InlineData(57430, Key.MediaPlayPause)]
+    [InlineData(57440, Key.VolumeMute)]
+    public void KittyMediaKeys_MapCorrectly(int code, Key expected)
+    {
+        Feed($"\x1b[{code}u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+    }
+
+    [Fact]
+    public void KittyFunctionalKeyOutsideOurEnumRange_IsTreatedAsCharacter()
+    {
+        // Kitty F25 (57388) — not represented in our Key enum (we stop at F24). Falls through
+        // to Character treatment with the codepoint as-is. Documented limitation.
+        Feed("\x1b[57388u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal((uint)57388, k.RawCode);
+    }
+
+    [Fact]
+    public void KittyFunctionalKeyUpEvent_ProducesUpKindWithEmptyText()
+    {
+        Feed("\x1b[57352;1:3u"); // UpArrow release
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.UpArrow, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.Equal(ReadOnlyMemory<char>.Empty, k.Text);
+    }
+
+    [Fact]
+    public void KittyKeyAcrossMultipleFeeds_AssemblesCorrectly()
+    {
+        Feed("\x1b[");
+        Feed("97;");
+        Assert.Empty(_sink.Events);
+
+        Feed("5u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Control, k.Modifiers);
+    }
+
+    [Fact]
+    public void KittyMalformedZeroKeyCode_EmitsNothing()
+    {
+        Feed("\x1b[u");
+        Assert.Empty(_sink.Events);
+
+        Feed("\x1b[0u");
+        Assert.Empty(_sink.Events);
+    }
+
+    [Fact]
+    public void KittyMultiCharacterTextPayload_ConcatenatesIntoSingleText()
+    {
+        // Two text codepoints separated by colon in the text section.
+        // Hypothetical: a key that produces "ab" as combined text.
+        Feed("\x1b[97;1;97:98u");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal("ab", TextOf(k));
+    }
+
+    // ---- Extended modifiers on legacy CSI sequences ----
+
+    [Fact]
+    public void XtermLegacyArrowWithHyperModifier_DecodesViaExtendedBits()
+    {
+        // Modifier param 17 = bits 16 = Hyper.
+        Feed("\x1b[1;17A");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.UpArrow, k.Key);
+        Assert.Equal(KeyModifiers.Hyper, k.Modifiers);
+    }
+
     // ---- Defensive: unrecognized sequences are dropped ----
 
     [Fact]

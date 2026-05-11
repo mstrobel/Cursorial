@@ -35,6 +35,15 @@ The device owns the bare-ESC ambiguity timer (default 50 ms — the xterm conven
 and calls `classifier.Flush()` when the idle window elapses with a pending lone ESC. Single-shot per instance:
 calling `ReadAllAsync` twice throws. Does NOT take ownership of the byte source — caller (typically `TerminalSession`)
 is responsible for transport lifecycle.
+
+`TerminalSession` (`GlowTerm.Core.Terminal.TerminalSession`) is the orchestrated entry point. The BYO factory
+`TerminalSession.OpenAsync(source, sink, options?, ct)` runs the negotiator, constructs a `VtInputDevice` from the
+returned input capabilities + shared `VtInputMode`, and returns a session exposing `Capabilities`, `Input`
+(`IAsyncInputDevice`), and `Output` (`IOutputByteSink`). The BYO variant does NOT take ownership of the supplied
+transports — disposal stops the input pump and runs negotiator restore (which writes opt-in disable sequences to
+the sink) but leaves the caller-supplied source and sink open. The parameterless `OpenAsync()` happy-path overload
+that owns its own stdin/stdout transports is the next pass. `TerminalSessionOptions` carries the
+`NegotiationOptions` plus the `EscapeAmbiguityTimeout` for the input device.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a

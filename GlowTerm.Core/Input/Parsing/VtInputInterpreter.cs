@@ -18,14 +18,18 @@ namespace GlowTerm.Core.Input.Parsing;
 /// (<c>CSI 200~</c> … <c>CSI 201~</c>), CSI cursor keys (<c>A B C D H F</c>) and special
 /// keys (Insert, Delete, Page Up/Down, Home, End), function keys F1–F20 via the
 /// <c>CSI n ~</c> form, F1–F4 + cursor + Home / End via SS3 (<c>ESC O …</c>), BackTab
-/// (<c>CSI Z</c> → Shift+Tab), and xterm modifier-bearing variants (<c>CSI 1 ; mod letter</c>
-/// and <c>CSI n ; mod ~</c>) decoding Shift / Alt / Ctrl / Super.
+/// (<c>CSI Z</c> → Shift+Tab), xterm modifier-bearing variants (<c>CSI 1 ; mod letter</c>
+/// and <c>CSI n ; mod ~</c>) decoding Shift / Alt / Ctrl / Super, and SGR mouse
+/// (<c>CSI &lt; cb ; cx ; cy M/m</c>, DECSET 1006) including press / release / drag / motion /
+/// wheel and X1–X4 extended buttons. The interpreter accumulates <see cref="MouseButtons"/>
+/// state across press / release events so drag and motion events carry an accurate held-button
+/// mask.
 /// </para>
 /// <para>
-/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): SGR / X10
-/// mouse, modifyOtherKeys character-key reporting, Kitty keyboard protocol (with
-/// disambiguated up/down events and alternate keys), ESC charset designators, OSC color
-/// responses, DCS XTVERSION responses, Win32 input mode.
+/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): X10 mouse
+/// (legacy non-SGR), SGR-Pixels mouse, modifyOtherKeys character-key reporting, Kitty
+/// keyboard protocol (with disambiguated up/down events and alternate keys), ESC charset
+/// designators, OSC color responses, DCS XTVERSION responses, Win32 input mode.
 /// </para>
 /// <para>
 /// <b>Threading.</b> The interpreter is single-threaded with respect to its sink and mode —
@@ -47,6 +51,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     // Sized to the maximum UTF-8 sequence length (4 bytes); never holds a complete rune.
     private readonly byte[] _utf8Continuation = new byte[4];
     private int _utf8ContinuationLength;
+
+    // Currently-held mouse buttons. Updated on every press / release so drag and motion
+    // events can carry an accurate ButtonsHeld mask. SGR's per-event encoding doesn't tell
+    // us this directly — we accumulate it ourselves.
+    private MouseButtons _heldButtons;
 
     public VtInputInterpreter(VtInputMode mode, IInputEventSink eventSink, TimeProvider? timeProvider = null)
     {
@@ -116,11 +125,18 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         ReadOnlySpan<byte> intermediates,
         byte final)
     {
-        // Only decode the no-prefix / no-intermediate subset in v1.
-        if (privatePrefix != 0 || !intermediates.IsEmpty)
+        if (!intermediates.IsEmpty) return;
+
+        // SGR mouse: CSI < cb ; cx ; cy M/m  (DECSET 1006).
+        if (privatePrefix == VtInputSequences.SgrMousePrefix1006
+            && (final == (byte)'M' || final == (byte)'m'))
         {
+            DecodeSgrMouse(parameters, isPress: final == (byte)'M');
             return;
         }
+
+        // No other private-prefix CSI sequences are decoded yet.
+        if (privatePrefix != 0) return;
 
         Span<int> parameterBuffer = stackalloc int[8];
         int parameterCount = ParseParameters(parameters, parameterBuffer);
@@ -199,6 +215,119 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             EmitNamedKey(key);
         }
     }
+
+    // ---- SGR mouse ----
+
+    private void DecodeSgrMouse(ReadOnlySpan<byte> parameters, bool isPress)
+    {
+        Span<int> p = stackalloc int[3];
+        int n = ParseParameters(parameters, p);
+        if (n < 3) return;
+
+        int cb = p[0];
+        // SGR coordinates are 1-based; we expose them as 0-based per CellPosition's contract.
+        // Don't clamp to 0 — terminals may report negative values when the pointer leaves the
+        // viewport, and the contract permits that.
+        int column = p[1] - 1;
+        int row = p[2] - 1;
+
+        KeyModifiers modifiers = KeyModifiers.None;
+        if ((cb & 0b0000_0100) != 0) modifiers |= KeyModifiers.Shift;
+        if ((cb & 0b0000_1000) != 0) modifiers |= KeyModifiers.Alt;
+        if ((cb & 0b0001_0000) != 0) modifiers |= KeyModifiers.Control;
+
+        bool isMotion = (cb & 0b0010_0000) != 0;
+        bool isWheel = (cb & 0b0100_0000) != 0;
+        bool isExtended = (cb & 0b1000_0000) != 0;
+
+        var position = new CellPosition(column, row);
+        var ts = Now;
+
+        if (isWheel)
+        {
+            // Bits 0–1 select wheel direction: 0=up, 1=down, 2=left, 3=right. We report
+            // wheel deltas in the 1/120-notch units described in MouseEvent's xmldoc.
+            int direction = cb & 0b0000_0011;
+            int wheelDeltaY = direction switch { 0 => 120, 1 => -120, _ => 0 };
+            int wheelDeltaX = direction switch { 2 => -120, 3 => 120, _ => 0 };
+
+            _eventSink.OnInputEvent(new MouseEvent
+            {
+                Timestamp = ts,
+                Kind = MouseEventKind.Wheel,
+                Position = position,
+                Button = MouseButton.None,
+                ButtonsHeld = _heldButtons,
+                Modifiers = modifiers,
+                WheelDeltaY = wheelDeltaY,
+                WheelDeltaX = wheelDeltaX,
+            });
+            return;
+        }
+
+        int buttonBits = cb & 0b0000_0011;
+        MouseButton button = isExtended
+            ? buttonBits switch
+            {
+                0 => MouseButton.X1,
+                1 => MouseButton.X2,
+                2 => MouseButton.X3,
+                3 => MouseButton.X4,
+                _ => MouseButton.None,
+            }
+            : buttonBits switch
+            {
+                0 => MouseButton.Left,
+                1 => MouseButton.Middle,
+                2 => MouseButton.Right,
+                _ => MouseButton.None,
+            };
+
+        if (isMotion)
+        {
+            // X10/SGR convention: button bits == 3 in the non-extended encoding means
+            // "no button held" — pure motion (any-event tracking).
+            bool noButton = !isExtended && buttonBits == 3;
+
+            _eventSink.OnInputEvent(new MouseEvent
+            {
+                Timestamp = ts,
+                Kind = noButton ? MouseEventKind.Move : MouseEventKind.Drag,
+                Position = position,
+                Button = noButton ? MouseButton.None : button,
+                ButtonsHeld = _heldButtons,
+                Modifiers = modifiers,
+            });
+            return;
+        }
+
+        // Press / release.
+        MouseButtons mask = ButtonToMask(button);
+        if (isPress) _heldButtons |= mask;
+        else _heldButtons &= ~mask;
+
+        _eventSink.OnInputEvent(new MouseEvent
+        {
+            Timestamp = ts,
+            Kind = isPress ? MouseEventKind.ButtonDown : MouseEventKind.ButtonUp,
+            Position = position,
+            Button = button,
+            ButtonsHeld = _heldButtons,
+            Modifiers = modifiers,
+        });
+    }
+
+    private static MouseButtons ButtonToMask(MouseButton button) => button switch
+    {
+        MouseButton.Left => MouseButtons.Left,
+        MouseButton.Middle => MouseButtons.Middle,
+        MouseButton.Right => MouseButtons.Right,
+        MouseButton.X1 => MouseButtons.X1,
+        MouseButton.X2 => MouseButtons.X2,
+        MouseButton.X3 => MouseButtons.X3,
+        MouseButton.X4 => MouseButtons.X4,
+        _ => MouseButtons.None,
+    };
 
     private void DecodeSs3(byte final)
     {

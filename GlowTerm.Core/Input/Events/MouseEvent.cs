@@ -9,7 +9,7 @@ public sealed record class MouseEvent : InputEvent
     public required MouseEventKind Kind { get; init; }
 
     /// <summary>The mouse position in cell rows/columns and (when available) pixels.</summary>
-    public required MousePosition Position { get; init; }
+    public required CellPosition Position { get; init; }
 
     /// <summary>The button associated with this event, or <see cref="MouseButton.None"/> for motion-only.</summary>
     public required MouseButton Button { get; init; }

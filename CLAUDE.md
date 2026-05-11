@@ -28,10 +28,12 @@ Early-stage. Two projects: `GlowTerm.Core` and `GlowTerm.Core.Tests` (xUnit). Mo
   emits `InputEvent`s to an `IInputEventSink`. Decoder coverage so far: printable runs (one event per Rune, with
   cross-feed UTF-8 buffering), C0 controls (Tab, Enter, Backspace, NUL→Ctrl+Space, Ctrl+letter), bare ESC,
   focus events, bracketed-paste accumulation, CSI cursor keys + Home/End + special keys (Insert/Delete/PageUp/Down),
-  function keys F1–F20 (xterm + vt220 codes), F1–F4 + cursor + Home/End via SS3, BackTab (`CSI Z`), and xterm
-  modifier-bearing variants (Shift / Alt / Ctrl / Super). Not yet decoded (silently dropped): SGR / X10 mouse,
-  modifyOtherKeys character keys, Kitty keyboard protocol, ESC charset designators, OSC color responses, DCS
-  XTVERSION responses, Win32 input mode.
+  function keys F1–F20 (xterm + vt220 codes), F1–F4 + cursor + Home/End via SS3, BackTab (`CSI Z`), xterm
+  modifier-bearing variants (Shift / Alt / Ctrl / Super), and SGR mouse (DECSET 1006) — press / release / drag /
+  motion / wheel and X1–X4 extended buttons, with the interpreter accumulating `MouseButtons` state across events
+  so drag and motion carry an accurate held-button mask. Not yet decoded (silently dropped): X10 mouse (legacy),
+  SGR-Pixels mouse, modifyOtherKeys character keys, Kitty keyboard protocol, ESC charset designators, OSC color
+  responses, DCS XTVERSION responses, Win32 input mode.
 
 Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTerminalNegotiator` are not yet started.
 Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built

@@ -13,7 +13,7 @@ public sealed record class PointerEvent : InputEvent
     public required PointerEventKind EventKind { get; init; }
 
     /// <summary>Position in cell rows/columns and (when available) pixels.</summary>
-    public required MousePosition Position { get; init; }
+    public required CellPosition Position { get; init; }
 
     /// <summary>Stable identifier for the pointer instance, allowing multi-touch tracking across events.</summary>
     public required ulong PointerId { get; init; }

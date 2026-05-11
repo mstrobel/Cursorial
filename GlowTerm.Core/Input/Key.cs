@@ -10,7 +10,13 @@ public enum Key
 {
     None = 0,
 
-    /// <summary>A printable character key. The actual character is carried in <see cref="KeyEvent.Text"/>.</summary>
+    /// <summary>
+    /// A printable character key — letters, digits, punctuation, IME-composed characters.
+    /// When <see cref="KeyEvent.Key"/> equals this value, the produced text is in
+    /// <see cref="KeyEvent.Text"/>. All other <see cref="Key"/> values represent named keys
+    /// whose <see cref="KeyEvent.Text"/> is normally empty (though some devices may populate
+    /// it with the equivalent printable form for synthesized text input).
+    /// </summary>
     Character,
 
     // Common control keys

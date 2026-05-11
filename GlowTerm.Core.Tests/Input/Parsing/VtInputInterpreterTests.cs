@@ -417,6 +417,198 @@ public class VtInputInterpreterTests
         Assert.Equal(KeyModifiers.Control, k.Modifiers);
     }
 
+    // ---- SGR mouse ----
+
+    [Fact]
+    public void SgrMouse_LeftButtonPress_EmitsButtonDownAtZeroBasedPosition()
+    {
+        // CSI < 0 ; 10 ; 20 M  — left button press at column 10, row 20 (1-based in SGR).
+        Feed("\x1b[<0;10;20M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.ButtonDown, m.Kind);
+        Assert.Equal(MouseButton.Left, m.Button);
+        Assert.Equal(MouseButtons.Left, m.ButtonsHeld);
+        Assert.Equal(KeyModifiers.None, m.Modifiers);
+        Assert.Equal(new CellPosition(9, 19), m.Position);
+    }
+
+    [Fact]
+    public void SgrMouse_LeftButtonRelease_EmitsButtonUpAndClearsHeld()
+    {
+        Feed("\x1b[<0;10;20M"); // press
+        Feed("\x1b[<0;10;20m"); // release
+
+        Assert.Equal(2, _sink.Events.Count);
+        var release = _sink.At<MouseEvent>(1);
+        Assert.Equal(MouseEventKind.ButtonUp, release.Kind);
+        Assert.Equal(MouseButton.Left, release.Button);
+        Assert.Equal(MouseButtons.None, release.ButtonsHeld);
+    }
+
+    [Theory]
+    [InlineData(0, MouseButton.Left, MouseButtons.Left)]
+    [InlineData(1, MouseButton.Middle, MouseButtons.Middle)]
+    [InlineData(2, MouseButton.Right, MouseButtons.Right)]
+    public void SgrMouse_BasicButtons_MapCorrectly(int cb, MouseButton expectedButton, MouseButtons expectedMask)
+    {
+        Feed($"\x1b[<{cb};5;5M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.ButtonDown, m.Kind);
+        Assert.Equal(expectedButton, m.Button);
+        Assert.Equal(expectedMask, m.ButtonsHeld);
+    }
+
+    [Theory]
+    [InlineData(4, KeyModifiers.Shift)]
+    [InlineData(8, KeyModifiers.Alt)]
+    [InlineData(16, KeyModifiers.Control)]
+    [InlineData(20, KeyModifiers.Shift | KeyModifiers.Control)]
+    [InlineData(28, KeyModifiers.Shift | KeyModifiers.Alt | KeyModifiers.Control)]
+    public void SgrMouse_ModifierBits_DecodeCorrectly(int modifierBits, KeyModifiers expected)
+    {
+        // cb = button(0=Left) + modifier bits.
+        int cb = 0 | modifierBits;
+        Feed($"\x1b[<{cb};5;5M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(expected, m.Modifiers);
+        Assert.Equal(MouseButton.Left, m.Button); // Modifiers don't change button identity.
+    }
+
+    [Theory]
+    [InlineData(64, MouseEventKind.Wheel, 120, 0)]   // wheel up
+    [InlineData(65, MouseEventKind.Wheel, -120, 0)]  // wheel down
+    [InlineData(66, MouseEventKind.Wheel, 0, -120)]  // wheel left
+    [InlineData(67, MouseEventKind.Wheel, 0, 120)]   // wheel right
+    public void SgrMouse_Wheel_EmitsWheelEventWithCorrectDeltas(int cb, MouseEventKind kind, int deltaY, int deltaX)
+    {
+        Feed($"\x1b[<{cb};5;5M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(kind, m.Kind);
+        Assert.Equal(MouseButton.None, m.Button);
+        Assert.Equal(deltaY, m.WheelDeltaY);
+        Assert.Equal(deltaX, m.WheelDeltaX);
+    }
+
+    [Fact]
+    public void SgrMouse_WheelWithModifier_PreservesModifier()
+    {
+        // Ctrl+Wheel-up: 64 (wheel up) | 16 (Ctrl) = 80.
+        Feed("\x1b[<80;5;5M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.Wheel, m.Kind);
+        Assert.Equal(KeyModifiers.Control, m.Modifiers);
+        Assert.Equal(120, m.WheelDeltaY);
+    }
+
+    [Fact]
+    public void SgrMouse_DragWithLeftButton_EmitsDragWithButtonHeld()
+    {
+        Feed("\x1b[<0;5;5M");    // press left
+        Feed("\x1b[<32;6;5M");   // drag (motion + left bits) at new position
+
+        Assert.Equal(2, _sink.Events.Count);
+        var drag = _sink.At<MouseEvent>(1);
+        Assert.Equal(MouseEventKind.Drag, drag.Kind);
+        Assert.Equal(MouseButton.Left, drag.Button);
+        Assert.Equal(MouseButtons.Left, drag.ButtonsHeld);
+        Assert.Equal(new CellPosition(5, 4), drag.Position);
+    }
+
+    [Fact]
+    public void SgrMouse_PureMotion_EmitsMoveWithNoButton()
+    {
+        // cb = 32 (motion) + 3 (no-button bits) = 35.
+        Feed("\x1b[<35;7;3M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseEventKind.Move, m.Kind);
+        Assert.Equal(MouseButton.None, m.Button);
+        Assert.Equal(MouseButtons.None, m.ButtonsHeld);
+        Assert.Equal(new CellPosition(6, 2), m.Position);
+    }
+
+    [Fact]
+    public void SgrMouse_MultiplePressesAccumulateButtonsHeld()
+    {
+        Feed("\x1b[<0;5;5M");  // press left
+        Feed("\x1b[<2;6;6M");  // press right (without releasing left)
+
+        Assert.Equal(2, _sink.Events.Count);
+        var second = _sink.At<MouseEvent>(1);
+        Assert.Equal(MouseButton.Right, second.Button);
+        Assert.Equal(MouseButtons.Left | MouseButtons.Right, second.ButtonsHeld);
+    }
+
+    [Fact]
+    public void SgrMouse_ReleaseAfterMultiplePresses_RemovesOnlyReleasedButton()
+    {
+        Feed("\x1b[<0;5;5M");  // press left
+        Feed("\x1b[<2;5;5M");  // press right
+        Feed("\x1b[<0;5;5m");  // release left
+
+        Assert.Equal(3, _sink.Events.Count);
+        var release = _sink.At<MouseEvent>(2);
+        Assert.Equal(MouseButton.Left, release.Button);
+        Assert.Equal(MouseButtons.Right, release.ButtonsHeld);
+    }
+
+    [Fact]
+    public void SgrMouse_DragRetainsHeldFromPreviousButtons()
+    {
+        Feed("\x1b[<0;5;5M");   // press left
+        Feed("\x1b[<2;5;5M");   // press right (without releasing)
+        Feed("\x1b[<32;6;5M");  // drag (left bit + motion) at new position
+
+        var drag = _sink.At<MouseEvent>(2);
+        Assert.Equal(MouseEventKind.Drag, drag.Kind);
+        Assert.Equal(MouseButton.Left, drag.Button); // Per the cb byte
+        Assert.Equal(MouseButtons.Left | MouseButtons.Right, drag.ButtonsHeld); // Both still held
+    }
+
+    [Fact]
+    public void SgrMouse_ExtendedButtonX1_DecodesAsX1()
+    {
+        // cb = 128 (extended) + 0 = 128 → X1.
+        Feed("\x1b[<128;5;5M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseButton.X1, m.Button);
+        Assert.Equal(MouseButtons.X1, m.ButtonsHeld);
+    }
+
+    [Fact]
+    public void SgrMouse_ExtendedButtonX2_DecodesAsX2()
+    {
+        Feed("\x1b[<129;5;5M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(MouseButton.X2, m.Button);
+    }
+
+    [Fact]
+    public void SgrMouse_NegativeViewportPosition_PassesThrough()
+    {
+        // Coordinate 0 in SGR (not strictly legal, but some terminals send it on
+        // out-of-viewport drag) maps to -1 zero-based.
+        Feed("\x1b[<0;0;0M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(new CellPosition(-1, -1), m.Position);
+    }
+
+    [Fact]
+    public void SgrMouse_MalformedTwoParams_IsDropped()
+    {
+        Feed("\x1b[<0;5M"); // Missing the row parameter.
+
+        Assert.Empty(_sink.Events);
+    }
+
     // ---- Defensive: unrecognized sequences are dropped ----
 
     [Fact]

@@ -11,10 +11,18 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Early-stage. The only project is `GlowTerm.Core`. The first module landed is the **input API** under
-`GlowTerm.Core/Input/` — interface-only, no concrete devices or parsers yet. Other subsystems (rendering, layout,
-output, capability negotiation) are not started; before adding code in a new area, confirm the intended public surface
-with the user.
+Early-stage. The only project is `GlowTerm.Core`. Three interface-only modules have landed:
+
+- **Input** under `GlowTerm.Core/Input/` (`GlowTerm.Core.Input` namespace) — see "Input module conventions" below.
+- **Output** under `GlowTerm.Core/Output/` (`GlowTerm.Core.Output` namespace) — minimal `IOutputByteSink` (a
+  `PipeWriter`-shaped sink, mirror of `IInputByteSource`) plus the output-side capability records.
+- **Terminal** under `GlowTerm.Core/Terminal/` (`GlowTerm.Core.Terminal` namespace) — `ITerminalNegotiator` is the
+  single public entry point for capability detection and opt-in negotiation. It returns a `TerminalCapabilities`
+  aggregate (`TerminalIdentification` + `InputCapabilities` + `OutputCapabilities`).
+
+Concrete implementations of any of these (parsers, sinks, the VT and Win32 negotiators, devices) are not started.
+Rendering and layout are not started. Before adding code in a new area, confirm the intended public surface with the
+user.
 
 ## Input module conventions (`GlowTerm.Core.Input`)
 
@@ -36,6 +44,34 @@ better terminal input. Key shape:
 - Capabilities are categorized records (`MouseCapabilities`, `KeyboardCapabilities`, `PointerCapabilities`,
   `ProtocolCapabilities`) aggregated under `InputCapabilities`. Each has a `None` static for defaults.
 - The interface layer must stay free of framework-specific concepts so it remains usable standalone.
+
+## Capability negotiation conventions (`GlowTerm.Core.Terminal`)
+
+`ITerminalNegotiator` is the orchestrator that turns a raw terminal connection (an
+`IInputByteSource` + `IOutputByteSink` pair, or a Win32 console handle) into a known set of capabilities. It is
+**both detector and negotiator** — by default it actively enables opt-in protocols (Kitty keyboard, bracketed paste,
+SGR mouse, focus events, Win32 input mode, synchronized output) and records what it enabled so it can restore on
+dispose. `NegotiationOptions.EnableAllOptIns = false` reduces it to a passive probe.
+
+- Returned `TerminalCapabilities` reflects **realized** capabilities, not advertised ones — features the terminal
+  claimed but did not honor are reported as unavailable. Consumers can branch on flags directly.
+- Negotiation is **single-shot per instance**: re-negotiating requires a new instance. This keeps "what to restore to"
+  unambiguous.
+- Restore is best-effort and idempotent; failures (broken pipe, terminal closed) are swallowed. Disposal must run
+  before process exit or the terminal will be left in a non-default state — register a signal handler.
+- The Win32 implementation produces the same `TerminalCapabilities` shape via structured APIs (`GetConsoleMode`,
+  parent-process inspection, etc.) — consumers see capabilities, not how they were detected.
+
+## Output conventions (`GlowTerm.Core.Output`)
+
+Currently scoped to the bytes layer needed for capability negotiation:
+
+- `IOutputByteSink` is a `PipeWriter` wrapper, parallel in shape to `IInputByteSource`. Consumers MUST NOT call
+  `PipeWriter.Complete` directly; sink ownership of completion is enforced via `IAsyncDisposable.DisposeAsync`.
+- Output capabilities are categorized records: `ColorCapabilities` (with the `ColorDepth` enum), `TextStylingCapabilities`,
+  `GraphicsCapabilities`, `CursorCapabilities`, `WindowCapabilities`, `OutputProtocolCapabilities`, aggregated under
+  `OutputCapabilities`. Each has a `None` static for defaults.
+- Higher-level output (string/text writers, SGR builders, renderers) is not yet designed.
 
 ## Toolchain
 

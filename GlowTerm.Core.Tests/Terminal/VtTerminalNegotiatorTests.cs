@@ -17,7 +17,7 @@ public class VtTerminalNegotiatorTests
     private static NegotiationOptions DisableAllOptIns() => new()
     {
         ProbeTimeout = TimeSpan.FromMilliseconds(100),
-        EnableAllOptIns = false,
+        OptIns = OptInPolicy.Ignored,
     };
 
     private async Task<string> AllWrittenAsync()
@@ -324,7 +324,7 @@ public class VtTerminalNegotiatorTests
     // ---- Opt-in application ----
 
     [Fact]
-    public async Task EnableAllOptInsFalse_WritesProbesOnlyNoOptIns()
+    public async Task OptInsIgnore_WritesProbesOnlyNoOptIns()
     {
         _source.Enqueue("\x1b[?64c");
         await using var negotiator = BuildNegotiator();

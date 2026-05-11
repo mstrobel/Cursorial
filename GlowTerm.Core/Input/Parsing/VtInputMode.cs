@@ -67,7 +67,13 @@ public enum MouseEncoding
     /// <summary>No mouse tracking enabled.</summary>
     None = 0,
 
-    /// <summary>X10-style encoding: <c>ESC [ M Cb Cx Cy</c> with byte-encoded coordinates.</summary>
+    /// <summary>
+    /// X10-style encoding: <c>ESC [ M Cb Cx Cy</c> with byte-encoded coordinates. TODO:
+    /// setting this value alone does not enable X10 decoding — the classifier flag
+    /// <c>VtSequenceClassifier.X10MouseFramingEnabled</c> must also be set, and
+    /// <c>VtInputDevice</c> currently does not bridge the two. Will be wired when a real X10
+    /// consumer or fallback path lands.
+    /// </summary>
     X10 = 1,
 
     /// <summary>SGR encoding (DECSET 1006): <c>ESC [ &lt; Cb ; Cx ; Cy M/m</c>.</summary>

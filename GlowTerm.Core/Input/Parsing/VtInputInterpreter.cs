@@ -329,6 +329,12 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         bool isWheel = (cb & VtInputSequences.SgrMouse.WheelBit) != 0;
         bool isExtended = (cb & VtInputSequences.SgrMouse.ExtendedBit) != 0;
 
+        // SGR-Pixels reports pixel-domain coords on the wire; cell coords would require dividing
+        // by the per-cell pixel size (queryable via CSI 16 t → CellSizeInPixels response). The
+        // negotiator does not currently probe that, so we surface pixel coords only and leave
+        // Column/Row at 0 — the consumer reads them out of CellPosition.PixelX/Y. TODO: once the
+        // negotiator captures cell size, plumb it through here and populate Column/Row by integer
+        // division so SGR-Pixels consumers don't have to recompute the cell mapping themselves.
         var position = _mode.MouseEncoding == MouseEncoding.SgrPixels
             ? new CellPosition(Column: 0, Row: 0, PixelX: x, PixelY: y)
             : new CellPosition(x, y);

@@ -41,6 +41,10 @@ public sealed class VtInputDevice : IAsyncInputDevice
     private readonly TimeProvider _time;
     private readonly TimeSpan _escapeAmbiguityTimeout;
 
+    // The classifier is constructed privately and not exposed. X10 mouse framing on the
+    // classifier is therefore unreachable through this device — if a future negotiator path
+    // grows an X10 opt-in, mirror VtInputMode.MouseEncoding == X10 onto
+    // _classifier.X10MouseFramingEnabled here.
     private readonly VtSequenceClassifier _classifier = new();
     private readonly VtInputInterpreter _interpreter;
 

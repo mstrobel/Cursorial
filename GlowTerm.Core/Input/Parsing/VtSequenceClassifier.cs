@@ -31,6 +31,14 @@ namespace GlowTerm.Core.Input.Parsing;
 /// <see cref="IVtSequenceTokenSink.OnDcsPut"/> rather than buffered.
 /// </para>
 /// <para>
+/// <b>API stability.</b> Types in the <c>GlowTerm.Core.Input.Parsing</c> namespace are public
+/// so advanced consumers can compose alternative pipelines (recording / replay, fuzz harnesses,
+/// custom input devices). They are NOT covered by GlowTerm's outer-API stability guarantees —
+/// expect the classifier, interpreter, and sink interfaces to evolve as new protocols land.
+/// Consumers wanting a stable surface should build against <c>VtInputDevice</c> /
+/// <c>TerminalSession</c> instead.
+/// </para>
+/// <para>
 /// <b>X10 mouse framing.</b> The X10 mouse protocol (<c>ESC [ M cb cx cy</c>) breaks the rule
 /// that the classifier is purely byte-pattern driven: the three bytes after <c>M</c> are not
 /// otherwise distinguishable from printable text, so the classifier must know whether to expect
@@ -65,6 +73,14 @@ public sealed class VtSequenceClassifier
     /// negotiator (or transport setup) is expected to keep this flag in sync with
     /// <see cref="VtInputMode.MouseEncoding"/>; the classifier does not read mode state itself.
     /// </summary>
+    /// <remarks>
+    /// TODO: No production path currently sets this. <c>VtTerminalNegotiator</c> only ever
+    /// pushes DECSET 1006 (SGR mouse), and <c>VtInputDevice</c> constructs its classifier
+    /// privately, so a caller assigning <c>VtInputMode.MouseEncoding = MouseEncoding.X10</c>
+    /// today has no way to reach the classifier flag. The decoder is exercised end-to-end by
+    /// tests that set this flag directly. Wire when a real X10 use case appears (legacy
+    /// terminal support or an explicit fallback opt-in on <c>NegotiationOptions</c>).
+    /// </remarks>
     public bool X10MouseFramingEnabled { get; set; }
 
     /// <summary>

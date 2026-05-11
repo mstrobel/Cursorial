@@ -12,7 +12,7 @@ public class TerminalSessionTests
         Negotiation = negotiation ?? new NegotiationOptions
         {
             ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableAllOptIns = false,
+            OptIns = OptInPolicy.Ignored,
         },
         EscapeAmbiguityTimeout = TimeSpan.FromMilliseconds(20),
     };

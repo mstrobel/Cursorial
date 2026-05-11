@@ -78,7 +78,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
         var identification = ResolveIdentification(responses);
 
-        if (options.EnableAllOptIns)
+        if (options.OptIns == OptInPolicy.Allowed)
         {
             await ApplyOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
             ApplyToInputMode(_applied);

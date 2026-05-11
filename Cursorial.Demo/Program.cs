@@ -341,7 +341,7 @@ static string FormatEvent(InputEvent inputEvent) => inputEvent switch
 
 static string FormatKeyEvent(KeyEvent k)
 {
-    var sb = new StringBuilder($"Keyboard    { (k.Kind == KeyEventKind.Up ? "Up" : "Dn")} {k.Key}");
+    var sb = new StringBuilder($"Keyboard    { (k.Kind == KeyEventKind.Up ? "Up" : "Dn")} {k.Key,-14}");
     if (k.IsRepeat)
     {
         sb.Append(" (repeat");

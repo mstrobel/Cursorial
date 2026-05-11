@@ -36,14 +36,33 @@ and calls `classifier.Flush()` when the idle window elapses with a pending lone 
 calling `ReadAllAsync` twice throws. Does NOT take ownership of the byte source — caller (typically `TerminalSession`)
 is responsible for transport lifecycle.
 
-`TerminalSession` (`GlowTerm.Core.Terminal.TerminalSession`) is the orchestrated entry point. The BYO factory
-`TerminalSession.OpenAsync(source, sink, options?, ct)` runs the negotiator, constructs a `VtInputDevice` from the
-returned input capabilities + shared `VtInputMode`, and returns a session exposing `Capabilities`, `Input`
-(`IAsyncInputDevice`), and `Output` (`IOutputByteSink`). The BYO variant does NOT take ownership of the supplied
-transports — disposal stops the input pump and runs negotiator restore (which writes opt-in disable sequences to
-the sink) but leaves the caller-supplied source and sink open. The parameterless `OpenAsync()` happy-path overload
-that owns its own stdin/stdout transports is the next pass. `TerminalSessionOptions` carries the
-`NegotiationOptions` plus the `EscapeAmbiguityTimeout` for the input device.
+`TerminalSession` (`GlowTerm.Core.Terminal.TerminalSession`) is the orchestrated entry point with two factories:
+
+- **BYO**: `TerminalSession.OpenAsync(source, sink, options?, ct)` — runs the negotiator over caller-supplied
+  transports; disposal stops the input pump and runs negotiator restore but leaves the transports open.
+- **Happy path**: `TerminalSession.OpenAsync(options?, ct)` — opens platform stdio transports via
+  `StdioTransports.Open()` (POSIX `stty raw -echo` / Windows `SetConsoleMode` with VT input + output flags),
+  applies negotiation, and returns a fully-wired session. Disposal restores prior terminal-mode state and closes
+  the owned transports. Throws `InvalidOperationException` when standard I/O isn't a real terminal — typical in CI
+  or under pipes; use the BYO overload there.
+
+Both factories return a session exposing `Capabilities`, `Input` (`IAsyncInputDevice`), and `Output`
+(`IOutputByteSink`). Disposal order: stop input pump → run negotiator restore (writes opt-in disable sequences) →
+dispose owned transports (restore terminal mode + close streams). `TerminalSessionOptions` carries the
+`NegotiationOptions` and the `EscapeAmbiguityTimeout` for the input device.
+
+`Terminal/Stdio/` houses the platform-specific stdio code: `IStdioTransports` is the public abstraction,
+`StdioTransports.Open()` the platform-detecting factory. POSIX uses the `stty` subprocess (one `-g` save + one
+`raw -echo` apply at open, one `<saved-state>` restore at dispose) — pragmatic v1 choice that avoids the per-OS
+termios struct layout problem (Linux glibc and macOS Darwin layouts diverge) at the cost of two short subprocess
+spawns at startup; direct termios P/Invoke is a future optimization. Windows uses `GetConsoleMode`/`SetConsoleMode`
+P/Invoke (via `LibraryImport`) — clears `ENABLE_PROCESSED_INPUT` / `ENABLE_LINE_INPUT` / `ENABLE_ECHO_INPUT`, sets
+`ENABLE_VIRTUAL_TERMINAL_INPUT` for stdin, sets `ENABLE_VIRTUAL_TERMINAL_PROCESSING` + `DISABLE_NEWLINE_AUTO_RETURN`
+for stdout. `LibraryImport` requires `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` in the csproj.
+
+**Signal handling for restoration on Ctrl-C / SIGTERM is not yet implemented.** Callers should ensure
+`await using` or `try`/`finally` patterns to guarantee `DisposeAsync` runs. A future pass will register a
+`PosixSignalRegistration` / `AppDomain.ProcessExit` safety net.
 - **Input parsing** (`GlowTerm.Core/Input/Parsing/`, same `GlowTerm.Core.Input.Parsing` namespace) —
   `VtSequenceClassifier` is a Williams-derived state machine that frames bytes into classified tokens dispatched to
   `IVtSequenceTokenSink`. Covers ground / ESC / CSI / OSC / DCS / SS3 (the SS3 state recognizes `ESC O <byte>` as a

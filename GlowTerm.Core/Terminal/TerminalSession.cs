@@ -1,6 +1,7 @@
 using GlowTerm.Core.Input;
 using GlowTerm.Core.Input.Parsing;
 using GlowTerm.Core.Output;
+using GlowTerm.Core.Terminal.Stdio;
 
 namespace GlowTerm.Core.Terminal;
 
@@ -31,8 +32,7 @@ public sealed class TerminalSession : IAsyncDisposable
     private readonly ITerminalNegotiator _negotiator;
     private readonly IAsyncInputDevice _input;
     private readonly IOutputByteSink _output;
-    private readonly IInputByteSource? _ownedSource;
-    private readonly IOutputByteSink? _ownedSink;
+    private readonly IAsyncDisposable? _ownedTransports;
     private int _disposed;
 
     private TerminalSession(
@@ -40,15 +40,13 @@ public sealed class TerminalSession : IAsyncDisposable
         IAsyncInputDevice input,
         IOutputByteSink output,
         ITerminalNegotiator negotiator,
-        IInputByteSource? ownedSource,
-        IOutputByteSink? ownedSink)
+        IAsyncDisposable? ownedTransports)
     {
         Capabilities = capabilities;
         _input = input;
         _output = output;
         _negotiator = negotiator;
-        _ownedSource = ownedSource;
-        _ownedSink = ownedSink;
+        _ownedTransports = ownedTransports;
     }
 
     /// <summary>The realized capabilities returned by the negotiator at session start.</summary>
@@ -67,7 +65,7 @@ public sealed class TerminalSession : IAsyncDisposable
     /// embedding inside a tool that already manages terminal state, or for driving the input
     /// pipeline from a recorded trace.
     /// </summary>
-    public static async Task<TerminalSession> OpenAsync(
+    public static Task<TerminalSession> OpenAsync(
         IInputByteSource source,
         IOutputByteSink sink,
         TerminalSessionOptions? options = null,
@@ -75,6 +73,47 @@ public sealed class TerminalSession : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(sink);
+        return OpenInternalAsync(source, sink, ownedTransports: null, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Happy-path overload — opens a session over the process's standard input and output,
+    /// taking ownership of terminal-mode state (POSIX raw mode via <c>stty</c>, Windows
+    /// console-mode flags). Disposal restores the prior terminal state. Throws when standard
+    /// I/O is not connected to a real terminal (running under a pipe, in CI without a
+    /// pseudo-tty, etc.) — use the BYO overload in those cases.
+    /// </summary>
+    public static async Task<TerminalSession> OpenAsync(
+        TerminalSessionOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var transports = StdioTransports.Open();
+        try
+        {
+            return await OpenInternalAsync(
+                    transports.Source,
+                    transports.Sink,
+                    ownedTransports: transports,
+                    options,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // OpenInternalAsync handles the negotiator + device cleanup. We're responsible
+            // for the transports we just opened.
+            try { await transports.DisposeAsync().ConfigureAwait(false); } catch { }
+            throw;
+        }
+    }
+
+    private static async Task<TerminalSession> OpenInternalAsync(
+        IInputByteSource source,
+        IOutputByteSink sink,
+        IAsyncDisposable? ownedTransports,
+        TerminalSessionOptions? options,
+        CancellationToken cancellationToken)
+    {
         options ??= new TerminalSessionOptions();
 
         var mode = new VtInputMode();
@@ -93,18 +132,13 @@ public sealed class TerminalSession : IAsyncDisposable
                 mode,
                 escapeAmbiguityTimeout: options.EscapeAmbiguityTimeout);
 
-            return new TerminalSession(
-                capabilities,
-                device,
-                sink,
-                negotiator,
-                ownedSource: null,
-                ownedSink: null);
+            return new TerminalSession(capabilities, device, sink, negotiator, ownedTransports);
         }
         catch
         {
-            // Failed somewhere between negotiation and device construction — clean up what we
-            // built. The caller still owns the transports they passed in.
+            // Failed somewhere between negotiation and device construction — clean up the
+            // negotiator + device. The caller is responsible for the transports they own
+            // (BYO) or for transport cleanup happening one level up (parameterless overload).
             if (device is not null)
             {
                 try { await device.DisposeAsync().ConfigureAwait(false); }
@@ -130,15 +164,11 @@ public sealed class TerminalSession : IAsyncDisposable
         try { await _negotiator.DisposeAsync().ConfigureAwait(false); }
         catch { /* best-effort */ }
 
-        // Only dispose transports the session itself created. BYO transports are caller-owned.
-        if (_ownedSource is not null)
+        // Only dispose transports the session itself created (parameterless overload). BYO
+        // transports are caller-owned and stay open.
+        if (_ownedTransports is not null)
         {
-            try { await _ownedSource.DisposeAsync().ConfigureAwait(false); }
-            catch { /* best-effort */ }
-        }
-        if (_ownedSink is not null)
-        {
-            try { await _ownedSink.DisposeAsync().ConfigureAwait(false); }
+            try { await _ownedTransports.DisposeAsync().ConfigureAwait(false); }
             catch { /* best-effort */ }
         }
     }

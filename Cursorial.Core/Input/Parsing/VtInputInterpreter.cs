@@ -20,7 +20,9 @@ namespace Cursorial.Core.Input.Parsing;
 /// <c>CSI n ~</c> form, F1–F4 + cursor + Home / End via SS3 (<c>ESC O …</c>), BackTab
 /// (<c>CSI Z</c> → Shift+Tab), xterm modifier-bearing variants (<c>CSI 1 ; mod letter</c>
 /// and <c>CSI n ; mod ~</c>) decoding Shift / Alt / Ctrl / Super, modifyOtherKeys level 2
-/// (<c>CSI 27 ; mod ; codepoint ~</c>) for modifier-bearing character keys, SGR mouse
+/// (<c>CSI 27 ; mod ; codepoint ~</c>) and the CSI u shorthand (<c>CSI codepoint ; mod u</c>,
+/// which the Kitty <c>u</c>-final decoder handles as a strict subset of its own grammar) for
+/// modifier-bearing character keys, SGR mouse
 /// (<c>CSI &lt; cb ; cx ; cy M/m</c>, DECSET 1006) including press / release / drag / motion /
 /// wheel and X1–X4 extended buttons, and SGR-Pixels mouse (DECSET 1016, identical wire shape)
 /// whose coordinates the interpreter routes into <see cref="CellPosition.PixelX"/> /
@@ -47,9 +49,12 @@ namespace Cursorial.Core.Input.Parsing;
 /// released, so per-button release fidelity requires SGR mouse instead.
 /// </para>
 /// <para>
-/// <b>Not yet decoded</b> (silently dropped, will be added in subsequent passes): the
-/// <c>CSI codepoint ; mod u</c> modifyOtherKeys variant (overlaps with the Kitty keyboard
-/// <c>u</c> final), ESC charset designators, and Win32 input mode.
+/// Win32 Input Mode (DECSET 9001, <c>CSI Vk;Sc;Uc;Kd;Cs;Rc_</c>) wraps Windows console input
+/// records as escape sequences; the interpreter decodes these into <see cref="KeyEvent"/>s,
+/// mapping virtual-key codes onto the <see cref="Key"/> enum and routing the Unicode codepoint
+/// into <see cref="KeyEvent.Text"/> for character keys. Unrecognized CSI/OSC/DCS/ESC sequences
+/// (including ESC charset designators) are reassembled and surfaced as
+/// <see cref="UnknownEvent"/> rather than silently dropped.
 /// </para>
 /// <para>
 /// <b>Threading.</b> The interpreter is single-threaded with respect to its sink and mode —
@@ -83,6 +88,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     private readonly ArrayBufferWriter<byte> _dcsBody = new(initialCapacity: 128);
     private DeviceResponseKind _dcsKind = DeviceResponseKind.Unknown;
     private bool _dcsActive;
+
+    // DCS hook arguments retained so we can reassemble the full sequence into an UnknownEvent
+    // when the kind is unrecognized. The parameter/intermediate spans are valid only for the
+    // duration of OnDcsHook, so we copy them out.
+    private byte _dcsPrivatePrefix;
+    private byte[] _dcsParameters = [];
+    private byte[] _dcsIntermediates = [];
+    private byte _dcsFinal;
 
     public VtInputInterpreter(VtInputMode mode, IInputEventSink eventSink, TimeProvider? timeProvider = null)
     {
@@ -143,7 +156,9 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
-        // Other ESC sequences (charset designators, etc.) — not yet decoded.
+        // Charset designators (ESC ( B, ESC ) 0, ESC * <c>, ESC + <c>) and other ESC sequences
+        // we don't decode go out as UnknownEvent — the consumer can log/forward/parse.
+        EmitUnknownEsc(intermediates, final);
     }
 
     public void OnCsiDispatch(
@@ -152,14 +167,23 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         ReadOnlySpan<byte> intermediates,
         byte final)
     {
-        if (!intermediates.IsEmpty) return;
+        if (!intermediates.IsEmpty)
+        {
+            // CSI sequences with intermediate bytes are mostly mode-control commands that don't
+            // turn into input events. Surface as UnknownEvent rather than dropping silently.
+            EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            return;
+        }
 
         // SGR mouse: CSI < cb ; cx ; cy M/m  (DECSET 1006).
         if (privatePrefix == VtInputSequences.SgrMousePrefix1006
             && (final == VtInputSequences.SgrMouse.PressFinal
                 || final == VtInputSequences.SgrMouse.ReleaseFinal))
         {
-            DecodeSgrMouse(parameters, isPress: final == VtInputSequences.SgrMouse.PressFinal);
+            if (!TryDecodeSgrMouse(parameters, isPress: final == VtInputSequences.SgrMouse.PressFinal))
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
             return;
         }
 
@@ -177,16 +201,35 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             }
         }
 
-        // No other private-prefix CSI sequences are decoded yet.
-        if (privatePrefix != 0) return;
+        // Other private-prefix CSI sequences — surface as UnknownEvent.
+        if (privatePrefix != 0)
+        {
+            EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            return;
+        }
 
-        // Kitty keyboard protocol — CSI <key>[:<alt>:<base>][;<mods>[:<event>]][;<text>] u.
-        // Distinguished by the 'u' final byte. Use a sub-parameter-aware parser since the
-        // encoding makes structural use of the colon separator the simpler ParseParameters
-        // collapses into a primary separator.
+        // 'u' final — Kitty keyboard (CSI key[:alt:base][;mods[:event]][;text] u) is the
+        // canonical decoder. The simpler modifyOtherKeys / CSI u form (CSI codepoint;mod u) is
+        // a strict subset, so the Kitty parser handles both: a sequence with no Kitty-specific
+        // sub-parameters decodes to a plain Character KeyEvent with modifier bits applied. No
+        // separate mode-gated path is needed.
         if (final == (byte)'u')
         {
-            DecodeKittyKey(parameters);
+            if (!DecodeKittyKey(parameters))
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
+            return;
+        }
+
+        // Win32 Input Mode (DECSET 9001) — CSI Vk;Sc;Uc;Kd;Cs;Rc_ wraps console input records
+        // as escape sequences. Unique '_' final means no ambiguity with other protocols.
+        if (final == VtInputSequences.Win32InputMode.Final)
+        {
+            if (!TryDecodeWin32Key(parameters))
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
             return;
         }
 
@@ -201,15 +244,38 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
+        // Window manipulation responses — CSI <code> ; <height> ; <width> t. Code 4 is the
+        // reply to `CSI 14 t` (window size in pixels); code 6 is the reply to `CSI 16 t`
+        // (single-cell size in pixels). Other codes in this family aren't yet decoded.
+        if (p.Length == 3 && final == (byte)'t')
+        {
+            if (p[0] == 4)
+            {
+                EmitDeviceResponse(DeviceResponseKind.WindowSizeInPixels, parameters);
+                return;
+            }
+            if (p[0] == 6)
+            {
+                EmitDeviceResponse(DeviceResponseKind.CellSizeInPixels, parameters);
+                return;
+            }
+        }
+
         if (p.IsEmpty)
         {
-            DecodeCsiNoParams(final);
+            if (!TryDecodeCsiNoParams(final))
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
             return;
         }
 
         if (p.Length == 1 && final == (byte)'~')
         {
-            DecodeCsiTildeOneParam(p[0]);
+            if (!TryDecodeCsiTildeOneParam(p[0]))
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
             return;
         }
 
@@ -231,22 +297,30 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             {
                 EmitNamedKey(funcKey, ParseModifiersParam(p[1]));
             }
+            else
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
             return;
         }
 
         // modifyOtherKeys level 2: CSI 27 ; <mod> ; <codepoint> ~.
         if (p.Length == 3 && final == (byte)'~' && p[0] == 27)
         {
-            EmitModifyOtherKeysCharacter(p[2], ParseModifiersParam(p[1]));
+            if (!TryEmitModifyOtherKeysCharacter(p[2], ParseModifiersParam(p[1])))
+            {
+                EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
+            }
             return;
         }
 
-        // Other CSI sequences — not yet decoded.
+        // Any other CSI shape we don't recognize.
+        EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
     }
 
-    private void EmitModifyOtherKeysCharacter(int codepoint, KeyModifiers modifiers)
+    private bool TryEmitModifyOtherKeysCharacter(int codepoint, KeyModifiers modifiers)
     {
-        if (codepoint <= 0 || !Rune.IsValid(codepoint)) return;
+        if (codepoint <= 0 || !Rune.IsValid(codepoint)) return false;
 
         var rune = new Rune(codepoint);
         Span<char> chars = stackalloc char[2];
@@ -263,53 +337,61 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             Text = text,
             RawCode = (uint)codepoint,
         });
+        return true;
     }
 
-    private void DecodeCsiNoParams(byte final)
+    private bool TryDecodeCsiNoParams(byte final)
     {
         switch (final)
         {
             case VtInputSequences.FocusInFinal:
                 _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = true });
-                return;
+                return true;
             case VtInputSequences.FocusOutFinal:
                 _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = false });
-                return;
+                return true;
             case (byte)'Z':
                 // BackTab — Shift+Tab.
                 EmitNamedKey(Key.Tab, KeyModifiers.Shift);
-                return;
+                return true;
         }
 
         Key key = ArrowOrHomeEndKey(final);
-        if (key != Key.None) EmitNamedKey(key);
+        if (key != Key.None)
+        {
+            EmitNamedKey(key);
+            return true;
+        }
+        return false;
     }
 
-    private void DecodeCsiTildeOneParam(int parameter)
+    private bool TryDecodeCsiTildeOneParam(int parameter)
     {
         switch (parameter)
         {
             case VtInputSequences.BracketedPasteStartParam:
                 EnterPaste();
-                return;
+                return true;
             case VtInputSequences.BracketedPasteEndParam:
                 ExitPaste();
-                return;
+                return true;
         }
 
         if (TryFunctionOrSpecialKey(parameter, out Key key))
         {
             EmitNamedKey(key);
+            return true;
         }
+        return false;
     }
 
     // ---- SGR mouse ----
 
-    private void DecodeSgrMouse(ReadOnlySpan<byte> parameters, bool isPress)
+    private bool TryDecodeSgrMouse(ReadOnlySpan<byte> parameters, bool isPress)
     {
         Span<int> p = stackalloc int[3];
         int n = ParseParameters(parameters, p);
-        if (n < 3) return;
+        if (n < 3) return false;
 
         int cb = p[0];
         // SGR coordinates are 1-based on the wire; we expose 0-based values. Don't clamp to 0 —
@@ -329,15 +411,22 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         bool isWheel = (cb & VtInputSequences.SgrMouse.WheelBit) != 0;
         bool isExtended = (cb & VtInputSequences.SgrMouse.ExtendedBit) != 0;
 
-        // SGR-Pixels reports pixel-domain coords on the wire; cell coords would require dividing
-        // by the per-cell pixel size (queryable via CSI 16 t → CellSizeInPixels response). The
-        // negotiator does not currently probe that, so we surface pixel coords only and leave
-        // Column/Row at 0 — the consumer reads them out of CellPosition.PixelX/Y. TODO: once the
-        // negotiator captures cell size, plumb it through here and populate Column/Row by integer
-        // division so SGR-Pixels consumers don't have to recompute the cell mapping themselves.
-        var position = _mode.MouseEncoding == MouseEncoding.SgrPixels
-            ? new CellPosition(Column: 0, Row: 0, PixelX: x, PixelY: y)
-            : new CellPosition(x, y);
+        // SGR-Pixels reports pixel-domain coords on the wire. When the negotiator has probed the
+        // terminal for cell size (CSI 16 t → CellSizeInPixels) and recorded it on the mode bag,
+        // we compute Column/Row by integer division so callers in pixel mode still get a sane
+        // cell mapping without re-implementing it. When cell size is unknown, Column/Row stay
+        // at 0 and the consumer reads PixelX/Y directly.
+        CellPosition position;
+        if (_mode.MouseEncoding == MouseEncoding.SgrPixels)
+        {
+            int column = _mode.CellPixelWidth is int cw && cw > 0 ? x / cw : 0;
+            int row = _mode.CellPixelHeight is int ch && ch > 0 ? y / ch : 0;
+            position = new CellPosition(column, row, PixelX: x, PixelY: y);
+        }
+        else
+        {
+            position = new CellPosition(x, y);
+        }
         var ts = Now;
 
         if (isWheel)
@@ -369,7 +458,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 WheelDeltaY = wheelDeltaY,
                 WheelDeltaX = wheelDeltaX,
             });
-            return;
+            return true;
         }
 
         int buttonBits = cb & VtInputSequences.SgrMouse.ButtonBitsMask;
@@ -405,7 +494,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 ButtonsHeld = _heldButtons,
                 Modifiers = modifiers,
             });
-            return;
+            return true;
         }
 
         // Press / release.
@@ -422,6 +511,132 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             ButtonsHeld = _heldButtons,
             Modifiers = modifiers,
         });
+        return true;
+    }
+
+    // ---- Win32 Input Mode (DECSET 9001) ----
+
+    /// <summary>
+    /// Decode a Win32 Input Mode key event: <c>CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _</c>. Returns
+    /// false when the parameter shape is unusable so the caller can surface as UnknownEvent.
+    /// </summary>
+    private bool TryDecodeWin32Key(ReadOnlySpan<byte> parameters)
+    {
+        Span<int> p = stackalloc int[6];
+        int n = ParseParameters(parameters, p);
+        if (n < 5) return false; // Repeat count (Rc) is optional in some emitters; require at least Cs.
+
+        int vk = p[0];
+        int unicode = p[2];
+        int keyDown = p[3];
+        int controlState = p[4];
+        int repeatCount = n >= 6 ? Math.Max(1, p[5]) : 1;
+
+        KeyModifiers modifiers = MapWin32ControlState(controlState);
+        Key key = MapWin32VirtualKey(vk, unicode, out bool isCharacterKey);
+
+        ReadOnlyMemory<char> text = ReadOnlyMemory<char>.Empty;
+        if (isCharacterKey && unicode > 0 && Rune.IsValid(unicode))
+        {
+            var rune = new Rune(unicode);
+            Span<char> buf = stackalloc char[2];
+            int written = rune.EncodeToUtf16(buf);
+            var heap = new char[written];
+            buf[..written].CopyTo(heap);
+            text = heap;
+        }
+
+        _eventSink.OnInputEvent(new KeyEvent
+        {
+            Timestamp = Now,
+            Key = key,
+            Modifiers = modifiers,
+            Kind = keyDown != 0 ? KeyEventKind.Down : KeyEventKind.Up,
+            IsRepeat = keyDown != 0 && repeatCount > 1,
+            RepeatCount = repeatCount,
+            Text = text,
+            RawCode = (uint)vk,
+        });
+        return true;
+    }
+
+    private static KeyModifiers MapWin32ControlState(int state)
+    {
+        KeyModifiers modifiers = KeyModifiers.None;
+        const int AltMask =
+            VtInputSequences.Win32InputMode.ControlKeyState.RightAltPressed
+            | VtInputSequences.Win32InputMode.ControlKeyState.LeftAltPressed;
+        const int CtrlMask =
+            VtInputSequences.Win32InputMode.ControlKeyState.RightCtrlPressed
+            | VtInputSequences.Win32InputMode.ControlKeyState.LeftCtrlPressed;
+
+        if ((state & AltMask) != 0) modifiers |= KeyModifiers.Alt;
+        if ((state & CtrlMask) != 0) modifiers |= KeyModifiers.Control;
+        if ((state & VtInputSequences.Win32InputMode.ControlKeyState.ShiftPressed) != 0) modifiers |= KeyModifiers.Shift;
+        if ((state & VtInputSequences.Win32InputMode.ControlKeyState.NumLockOn) != 0) modifiers |= KeyModifiers.NumLock;
+        if ((state & VtInputSequences.Win32InputMode.ControlKeyState.CapsLockOn) != 0) modifiers |= KeyModifiers.CapsLock;
+        return modifiers;
+    }
+
+    private static Key MapWin32VirtualKey(int vk, int unicode, out bool isCharacterKey)
+    {
+        // Functional keys map directly. Anything else with a non-zero Unicode codepoint is a
+        // character key (Key.Character + Text from the codepoint).
+        isCharacterKey = false;
+        Key key = vk switch
+        {
+            VtInputSequences.Win32InputMode.VirtualKey.Back => Key.Backspace,
+            VtInputSequences.Win32InputMode.VirtualKey.Tab => Key.Tab,
+            VtInputSequences.Win32InputMode.VirtualKey.Return => Key.Enter,
+            VtInputSequences.Win32InputMode.VirtualKey.Pause => Key.Pause,
+            VtInputSequences.Win32InputMode.VirtualKey.Capital => Key.CapsLock,
+            VtInputSequences.Win32InputMode.VirtualKey.Escape => Key.Escape,
+            VtInputSequences.Win32InputMode.VirtualKey.Prior => Key.PageUp,
+            VtInputSequences.Win32InputMode.VirtualKey.Next => Key.PageDown,
+            VtInputSequences.Win32InputMode.VirtualKey.End => Key.End,
+            VtInputSequences.Win32InputMode.VirtualKey.Home => Key.Home,
+            VtInputSequences.Win32InputMode.VirtualKey.Left => Key.LeftArrow,
+            VtInputSequences.Win32InputMode.VirtualKey.Up => Key.UpArrow,
+            VtInputSequences.Win32InputMode.VirtualKey.Right => Key.RightArrow,
+            VtInputSequences.Win32InputMode.VirtualKey.Down => Key.DownArrow,
+            VtInputSequences.Win32InputMode.VirtualKey.Print => Key.PrintScreen,
+            VtInputSequences.Win32InputMode.VirtualKey.PrintScreen => Key.PrintScreen,
+            VtInputSequences.Win32InputMode.VirtualKey.Insert => Key.Insert,
+            VtInputSequences.Win32InputMode.VirtualKey.Delete => Key.Delete,
+            VtInputSequences.Win32InputMode.VirtualKey.LWin => Key.LeftSuper,
+            VtInputSequences.Win32InputMode.VirtualKey.RWin => Key.RightSuper,
+            VtInputSequences.Win32InputMode.VirtualKey.Apps => Key.Menu,
+            VtInputSequences.Win32InputMode.VirtualKey.NumLock => Key.NumLock,
+            VtInputSequences.Win32InputMode.VirtualKey.Scroll => Key.ScrollLock,
+            VtInputSequences.Win32InputMode.VirtualKey.LShift => Key.LeftShift,
+            VtInputSequences.Win32InputMode.VirtualKey.RShift => Key.RightShift,
+            VtInputSequences.Win32InputMode.VirtualKey.LControl => Key.LeftControl,
+            VtInputSequences.Win32InputMode.VirtualKey.RControl => Key.RightControl,
+            VtInputSequences.Win32InputMode.VirtualKey.LMenu => Key.LeftAlt,
+            VtInputSequences.Win32InputMode.VirtualKey.RMenu => Key.RightAlt,
+            VtInputSequences.Win32InputMode.VirtualKey.Shift => Key.LeftShift,
+            VtInputSequences.Win32InputMode.VirtualKey.Control => Key.LeftControl,
+            VtInputSequences.Win32InputMode.VirtualKey.Menu => Key.LeftAlt,
+            _ => Key.None,
+        };
+
+        if (key != Key.None) return key;
+
+        // Function keys F1–F24 are contiguous in the Win32 VK range.
+        if (vk >= VtInputSequences.Win32InputMode.VirtualKey.F1
+            && vk <= VtInputSequences.Win32InputMode.VirtualKey.F24)
+        {
+            return (Key)((int)Key.F1 + (vk - VtInputSequences.Win32InputMode.VirtualKey.F1));
+        }
+
+        // Anything else: treat as a character key if we have a Unicode codepoint.
+        if (unicode > 0)
+        {
+            isCharacterKey = true;
+            return Key.Character;
+        }
+
+        return Key.None;
     }
 
     // ---- X10 mouse ----
@@ -548,7 +763,12 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
     // ---- Kitty keyboard protocol ----
 
-    private void DecodeKittyKey(ReadOnlySpan<byte> rawParameters)
+    /// <summary>
+    /// Decode the Kitty keyboard u-final form. Returns false when the parameter shape is
+    /// unrecognized (no key code parsed) so the caller can surface the original sequence as
+    /// an UnknownEvent.
+    /// </summary>
+    private bool DecodeKittyKey(ReadOnlySpan<byte> rawParameters)
     {
         // Section / sub-section roles in the Kitty encoding:
         //   primary 0:  key-info       sub 0=key  sub 1=shifted-key  sub 2=base-layout-key
@@ -563,7 +783,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         ParseKittyParameters(rawParameters, ref data, textCodepoints);
 
-        if (data.KeyCode <= 0) return; // Malformed — no key code.
+        if (data.KeyCode <= 0) return false; // Malformed — no key code.
 
         KeyModifiers modifiers = ParseModifiersParam(data.Modifiers);
 
@@ -603,6 +823,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             Text = text,
             RawCode = (uint)data.KeyCode,
         });
+        return true;
     }
 
     private struct KittyKeyData
@@ -833,6 +1054,121 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         });
     }
 
+    // ---- UnknownEvent reassembly helpers ----
+    //
+    // Each helper rebuilds the canonical wire form of an unrecognized sequence (CSI / OSC / DCS
+    // / ESC + intermediates) and surfaces it as an UnknownEvent. The reconstructed bytes use ST
+    // (`ESC \`) for OSC and DCS terminators regardless of which terminator the classifier
+    // actually framed against, since the original-byte distinction is not preserved by the
+    // classifier. Consumers that need to forward the sequence to another terminal can rely on
+    // ST being universally accepted.
+
+    private void EmitUnknownEsc(ReadOnlySpan<byte> intermediates, byte final)
+    {
+        // ESC + intermediates + final.
+        int length = 1 + intermediates.Length + (final != 0 ? 1 : 0);
+        var bytes = new byte[length];
+        int i = 0;
+        bytes[i++] = VtInputSequences.Escape;
+        if (!intermediates.IsEmpty)
+        {
+            intermediates.CopyTo(bytes.AsSpan(i));
+            i += intermediates.Length;
+        }
+        if (final != 0) bytes[i++] = final;
+
+        _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
+    }
+
+    private void EmitUnknownCsi(
+        byte privatePrefix,
+        ReadOnlySpan<byte> parameters,
+        ReadOnlySpan<byte> intermediates,
+        byte final)
+    {
+        // ESC [ [private] [params] [intermediates] final.
+        int length = 2 + (privatePrefix != 0 ? 1 : 0) + parameters.Length + intermediates.Length + 1;
+        var bytes = new byte[length];
+        int i = 0;
+        bytes[i++] = VtInputSequences.Escape;
+        bytes[i++] = (byte)'[';
+        if (privatePrefix != 0) bytes[i++] = privatePrefix;
+        if (!parameters.IsEmpty)
+        {
+            parameters.CopyTo(bytes.AsSpan(i));
+            i += parameters.Length;
+        }
+        if (!intermediates.IsEmpty)
+        {
+            intermediates.CopyTo(bytes.AsSpan(i));
+            i += intermediates.Length;
+        }
+        bytes[i++] = final;
+
+        _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
+    }
+
+    private void EmitUnknownOsc(ReadOnlySpan<byte> body)
+    {
+        // ESC ] body ESC \  (ST).
+        int length = 2 + body.Length + 2;
+        var bytes = new byte[length];
+        int i = 0;
+        bytes[i++] = VtInputSequences.Escape;
+        bytes[i++] = (byte)']';
+        if (!body.IsEmpty)
+        {
+            body.CopyTo(bytes.AsSpan(i));
+            i += body.Length;
+        }
+        bytes[i++] = VtInputSequences.Escape;
+        bytes[i++] = (byte)'\\';
+
+        _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
+    }
+
+    private void EmitUnknownDcs(
+        byte privatePrefix,
+        ReadOnlySpan<byte> parameters,
+        ReadOnlySpan<byte> intermediates,
+        byte final,
+        ReadOnlySpan<byte> body)
+    {
+        // ESC P [private] [params] [intermediates] final body ESC \.
+        int length = 2
+            + (privatePrefix != 0 ? 1 : 0)
+            + parameters.Length
+            + intermediates.Length
+            + 1
+            + body.Length
+            + 2;
+        var bytes = new byte[length];
+        int i = 0;
+        bytes[i++] = VtInputSequences.Escape;
+        bytes[i++] = (byte)'P';
+        if (privatePrefix != 0) bytes[i++] = privatePrefix;
+        if (!parameters.IsEmpty)
+        {
+            parameters.CopyTo(bytes.AsSpan(i));
+            i += parameters.Length;
+        }
+        if (!intermediates.IsEmpty)
+        {
+            intermediates.CopyTo(bytes.AsSpan(i));
+            i += intermediates.Length;
+        }
+        bytes[i++] = final;
+        if (!body.IsEmpty)
+        {
+            body.CopyTo(bytes.AsSpan(i));
+            i += body.Length;
+        }
+        bytes[i++] = VtInputSequences.Escape;
+        bytes[i++] = (byte)'\\';
+
+        _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
+    }
+
     private static bool TryParseAsciiInt(ReadOnlySpan<byte> bytes, out int value)
     {
         value = 0;
@@ -967,10 +1303,20 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     {
         // OSC body shape: <code>;<value>. Identify recognized response codes and emit a
         // DeviceResponseEvent carrying the value portion (everything after the first ';').
+        // Anything else — malformed, unrecognized code, parse failure — goes out as UnknownEvent
+        // so consumers can log/forward without us silently swallowing protocol surface.
         int separator = body.IndexOf((byte)';');
-        if (separator < 0) return;
+        if (separator < 0)
+        {
+            EmitUnknownOsc(body);
+            return;
+        }
 
-        if (!TryParseAsciiInt(body[..separator], out int code)) return;
+        if (!TryParseAsciiInt(body[..separator], out int code))
+        {
+            EmitUnknownOsc(body);
+            return;
+        }
 
         DeviceResponseKind? kind = code switch
         {
@@ -981,7 +1327,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             _ => null,
         };
 
-        if (kind is null) return;
+        if (kind is null)
+        {
+            EmitUnknownOsc(body);
+            return;
+        }
 
         EmitDeviceResponse(kind.Value, body[(separator + 1)..]);
     }
@@ -991,6 +1341,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         _dcsBody.Clear();
         _dcsActive = true;
         _dcsKind = ClassifyDcs(privatePrefix, parameters, intermediates, final);
+
+        // Retain hook arguments so OnDcsUnhook can reassemble the full sequence when emitting
+        // an UnknownEvent for an unrecognized DCS shape.
+        _dcsPrivatePrefix = privatePrefix;
+        _dcsParameters = parameters.IsEmpty ? [] : parameters.ToArray();
+        _dcsIntermediates = intermediates.IsEmpty ? [] : intermediates.ToArray();
+        _dcsFinal = final;
     }
 
     public void OnDcsPut(ReadOnlySpan<byte> bytes)
@@ -1012,6 +1369,15 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 Kind = _dcsKind,
                 Payload = _dcsBody.WrittenSpan.ToArray(),
             });
+        }
+        else
+        {
+            EmitUnknownDcs(
+                _dcsPrivatePrefix,
+                _dcsParameters,
+                _dcsIntermediates,
+                _dcsFinal,
+                _dcsBody.WrittenSpan);
         }
 
         _dcsBody.Clear();

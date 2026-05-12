@@ -271,4 +271,64 @@ public class VtInputDeviceTests
 
         Assert.Same(mode, device.Mode);
     }
+
+    [Fact]
+    public async Task EnqueueExternalEvent_DeliversAlongsideByteStreamEvents()
+    {
+        // Resize monitors and similar out-of-band sources push events directly into the
+        // device's stream via EnqueueExternalEvent. Verify the event appears in the consumer's
+        // enumeration and is ordered relative to byte-stream events as enqueued.
+        await using var device = new VtInputDevice(_source, InputCapabilities.None);
+
+        device.EnqueueExternalEvent(new ResizeEvent
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            Rows = 24,
+            Columns = 80,
+        });
+        _source.Enqueue("a");
+        _source.CompleteWriter();
+
+        var events = await CollectAsync(device, 2, TimeSpan.FromSeconds(2));
+        var resize = Assert.IsType<ResizeEvent>(events[0]);
+        Assert.Equal(24, resize.Rows);
+        Assert.Equal(80, resize.Columns);
+
+        var key = Assert.IsType<KeyEvent>(events[1]);
+        Assert.Equal(Key.Character, key.Key);
+    }
+
+    [Fact]
+    public async Task EnqueueExternalEvent_AfterDisposalIsNoOp()
+    {
+        var device = new VtInputDevice(_source, InputCapabilities.None);
+        await device.DisposeAsync();
+
+        // Must not throw even though the channel is completed.
+        device.EnqueueExternalEvent(new ResizeEvent
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            Rows = 24,
+            Columns = 80,
+        });
+    }
+
+    [Fact]
+    public async Task X10MouseEncodingOnMode_EnablesClassifierFraming()
+    {
+        // With MouseEncoding = X10, the pump must mirror the flag onto the classifier so the
+        // X10 wire form (CSI M followed by three raw bytes) is framed correctly and decoded
+        // into a MouseEvent rather than misinterpreted as printable text.
+        var mode = new VtInputMode { MouseEncoding = MouseEncoding.X10 };
+        await using var device = new VtInputDevice(_source, InputCapabilities.None, mode);
+
+        // X10 left-button press at column 5, row 10: bytes 0x20, 0x26, 0x2B.
+        _source.Enqueue([0x1B, (byte)'[', (byte)'M', 0x20, 0x26, 0x2B]);
+        _source.CompleteWriter();
+
+        var events = await CollectAsync(device, 1, TimeSpan.FromSeconds(2));
+        var m = Assert.IsType<MouseEvent>(Assert.Single(events));
+        Assert.Equal(MouseEventKind.ButtonDown, m.Kind);
+        Assert.Equal(MouseButton.Left, m.Button);
+    }
 }

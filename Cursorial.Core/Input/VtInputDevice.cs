@@ -42,14 +42,14 @@ public sealed class VtInputDevice : IAsyncInputDevice
     private readonly TimeSpan _escapeAmbiguityTimeout;
 
     // The classifier is constructed privately and not exposed. X10 mouse framing on the
-    // classifier is therefore unreachable through this device — if a future negotiator path
-    // grows an X10 opt-in, mirror VtInputMode.MouseEncoding == X10 onto
-    // _classifier.X10MouseFramingEnabled here.
+    // classifier is synced from VtInputMode.MouseEncoding inside PumpAsync each batch.
     private readonly VtSequenceClassifier _classifier = new();
     private readonly VtInputInterpreter _interpreter;
 
+    // SingleWriter is false because EnqueueExternalEvent allows other components (e.g. a SIGWINCH
+    // resize monitor wired up by TerminalSession) to push events alongside the byte pump.
     private readonly Channel<InputEvent> _channel = Channel.CreateUnbounded<InputEvent>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
     private readonly object _startLock = new();
     private Task? _pumpTask;
@@ -90,6 +90,24 @@ public sealed class VtInputDevice : IAsyncInputDevice
     /// observed by the negotiator are visible to ongoing decoding.
     /// </summary>
     public VtInputMode Mode => _mode;
+
+    /// <summary>
+    /// Push an externally-observed <see cref="InputEvent"/> into the device's event stream.
+    /// Intended for sources that aren't part of the byte pump — terminal resize via SIGWINCH,
+    /// out-of-band IME composition, application-fabricated events for testing. After disposal
+    /// the call is a no-op.
+    /// </summary>
+    /// <remarks>
+    /// Safe to call concurrently with the byte pump. The device's channel is configured for
+    /// multiple writers; <see cref="ChannelWriter{T}.TryWrite"/> on the unbounded channel
+    /// never blocks and never fails for live channels.
+    /// </remarks>
+    public void EnqueueExternalEvent(InputEvent inputEvent)
+    {
+        ArgumentNullException.ThrowIfNull(inputEvent);
+        if (Volatile.Read(ref _disposed) != 0) return;
+        _channel.Writer.TryWrite(inputEvent);
+    }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<InputEvent> ReadAllAsync(
@@ -210,6 +228,11 @@ public sealed class VtInputDevice : IAsyncInputDevice
                 {
                     pendingRead = null;
                 }
+
+                // Mirror VtInputMode.MouseEncoding onto the classifier's X10 framing flag.
+                // The mode is mutable from outside (negotiator, app code) so we re-sync each
+                // batch rather than only at startup; the comparison is a single field read.
+                _classifier.X10MouseFramingEnabled = _mode.MouseEncoding == MouseEncoding.X10;
 
                 var buffer = result.Buffer;
                 foreach (var segment in buffer)

@@ -458,12 +458,26 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
-    public void ModifyOtherKeys_InvalidCodepoint_IsDropped()
+    public void CsiU_ModifyOtherKeysShape_DecodesAsCharacterKey()
+    {
+        // Plain modifyOtherKeys u-form: CSI codepoint;mod u with no Kitty-specific sub-params.
+        // Handled by the same `u`-final decoder as Kitty since it's a strict subset.
+        Feed("\x1b[97;5u"); // Ctrl+a
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Control, k.Modifiers);
+        Assert.Equal("a", TextOf(k));
+    }
+
+    [Fact]
+    public void ModifyOtherKeys_InvalidCodepoint_EmitsUnknownEvent()
     {
         // Codepoint 0xD800 (surrogate) is not a valid scalar.
         Feed("\x1b[27;5;55296~");
 
-        Assert.Empty(_sink.Events);
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[27;5;55296~"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     // ---- SGR mouse ----
@@ -651,11 +665,12 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
-    public void SgrMouse_MalformedTwoParams_IsDropped()
+    public void SgrMouse_MalformedTwoParams_EmitsUnknownEvent()
     {
         Feed("\x1b[<0;5M"); // Missing the row parameter.
 
-        Assert.Empty(_sink.Events);
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[<0;5M"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     // ---- SGR-Pixels mouse (DECSET 1016) ----
@@ -699,6 +714,124 @@ public class VtInputInterpreterTests
         Assert.Equal(9, m.Position.Row);
         Assert.Null(m.Position.PixelX);
         Assert.Null(m.Position.PixelY);
+    }
+
+    [Fact]
+    public void SgrPixelsMouse_WithKnownCellSize_ComputesCellCoords()
+    {
+        // When the negotiator has captured cell pixel size, SGR-Pixels coords should be
+        // divided through to produce sensible Column/Row values too.
+        _mode.MouseEncoding = MouseEncoding.SgrPixels;
+        _mode.CellPixelWidth = 10;
+        _mode.CellPixelHeight = 20;
+
+        // Pixel (239, 79) zero-based → column 23, row 3.
+        Feed("\x1b[<0;240;80M");
+
+        var m = _sink.Single<MouseEvent>();
+        Assert.Equal(239, m.Position.PixelX);
+        Assert.Equal(79, m.Position.PixelY);
+        Assert.Equal(23, m.Position.Column);
+        Assert.Equal(3, m.Position.Row);
+    }
+
+    [Fact]
+    public void CsiWindowManipResponse_CellSize_EmitsDeviceResponse()
+    {
+        // CSI 6;20;10 t — terminal reports cell size 20 px high × 10 px wide.
+        Feed("\x1b[6;20;10t");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.CellSizeInPixels, r.Kind);
+        Assert.Equal("6;20;10", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void CsiWindowManipResponse_WindowSize_EmitsDeviceResponse()
+    {
+        // CSI 4;1024;1280 t — terminal reports window size 1024 px high × 1280 px wide.
+        Feed("\x1b[4;1024;1280t");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.WindowSizeInPixels, r.Kind);
+    }
+
+    // ---- Win32 Input Mode (DECSET 9001) ----
+
+    [Fact]
+    public void Win32InputMode_LetterAPress_EmitsCharacterKeyDownWithText()
+    {
+        // VK_A=0x41, scancode=30, unicode=97 ('a'), keyDown=1, controlState=0, repeat=1.
+        Feed("\x1b[65;30;97;1;0;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal("a", TextOf(k));
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+        Assert.Equal((uint)0x41, k.RawCode);
+    }
+
+    [Fact]
+    public void Win32InputMode_ReleaseEvent_EmitsKeyUp()
+    {
+        Feed("\x1b[65;30;97;0;0;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+    }
+
+    [Fact]
+    public void Win32InputMode_FunctionalKey_MapsToKeyEnum()
+    {
+        // VK_RETURN=0x0D, unicode=0x0D (CR), down, no modifiers.
+        Feed("\x1b[13;28;13;1;0;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Enter, k.Key);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+    }
+
+    [Fact]
+    public void Win32InputMode_FunctionKeys_MapToF1ThroughF24()
+    {
+        // VK_F5 = 0x74. F1=0x70 + 4.
+        Feed("\x1b[116;0;0;1;0;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.F5, k.Key);
+    }
+
+    [Fact]
+    public void Win32InputMode_ControlState_ModifierBits()
+    {
+        // VK_A pressed with Shift+Left-Ctrl. ControlState = SHIFT_PRESSED|LEFT_CTRL_PRESSED = 0x18.
+        Feed("\x1b[65;30;65;1;24;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.Shift | KeyModifiers.Control, k.Modifiers);
+        Assert.Equal("A", TextOf(k));
+    }
+
+    [Fact]
+    public void Win32InputMode_RepeatCount_SurfacesAsIsRepeatAndCount()
+    {
+        // VK_A held, repeat count 3.
+        Feed("\x1b[65;30;97;1;0;3_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.True(k.IsRepeat);
+        Assert.Equal(3, k.RepeatCount);
+    }
+
+    [Fact]
+    public void Win32InputMode_MalformedShortParam_EmitsUnknownEvent()
+    {
+        // Only 2 params — well short of the 5+ required.
+        Feed("\x1b[65;30_");
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[65;30_"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     // ---- X10 mouse (CSI M cb cx cy) ----
@@ -856,17 +989,21 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
-    public void OscUnknownCode_EmitsNothing()
+    public void OscUnknownCode_EmitsUnknownEventWithReassembledBytes()
     {
         Feed("\x1b]7;file://localhost/tmp\x07"); // OSC 7 (working directory) — not yet recognized.
-        Assert.Empty(_sink.Events);
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b]7;file://localhost/tmp\x1b\\"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     [Fact]
-    public void OscMalformedNoSeparator_EmitsNothing()
+    public void OscMalformedNoSeparator_EmitsUnknownEvent()
     {
         Feed("\x1b]nonsense\x07");
-        Assert.Empty(_sink.Events);
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b]nonsense\x1b\\"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     // ---- Device responses: DCS XTVERSION ----
@@ -942,12 +1079,14 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
-    public void DcsUnrecognizedHook_DiscardsBodyAndEmitsNothing()
+    public void DcsUnrecognizedHook_EmitsUnknownEventWithReassembledBytes()
     {
         // DCS with an unrecognized shape (private prefix '?' with no intermediates) — the
         // classifier still frames it but the interpreter has no DeviceResponseKind for it.
         Feed("\x1bP?|payload\x1b\\");
-        Assert.Empty(_sink.Events);
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1bP?|payload\x1b\\"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     // ---- Kitty keyboard protocol ----
@@ -1179,13 +1318,16 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
-    public void KittyMalformedZeroKeyCode_EmitsNothing()
+    public void KittyMalformedZeroKeyCode_EmitsUnknownEvent()
     {
         Feed("\x1b[u");
-        Assert.Empty(_sink.Events);
+        var first = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[u"u8.ToArray(), first.RawBytes.ToArray());
 
+        _sink.Events.Clear();
         Feed("\x1b[0u");
-        Assert.Empty(_sink.Events);
+        var second = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[0u"u8.ToArray(), second.RawBytes.ToArray());
     }
 
     [Fact]
@@ -1212,27 +1354,70 @@ public class VtInputInterpreterTests
         Assert.Equal(KeyModifiers.Hyper, k.Modifiers);
     }
 
-    // ---- Defensive: unrecognized sequences are dropped ----
+    // ---- Defensive: unrecognized sequences surface as UnknownEvent ----
 
     [Fact]
-    public void CsiUnrecognizedFinal_EmitsNothing()
+    public void CsiUnrecognizedFinal_EmitsUnknownEvent()
     {
         Feed("\x1b[42q"); // Random CSI we don't decode.
-        Assert.Empty(_sink.Events);
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[42q"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     [Fact]
-    public void CsiUnrecognizedTildeParam_EmitsNothing()
+    public void CsiUnrecognizedTildeParam_EmitsUnknownEvent()
     {
         Feed("\x1b[99~"); // Not a known function/special-key code.
-        Assert.Empty(_sink.Events);
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[99~"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     [Fact]
-    public void CsiPrivatePrefix_IsDropped()
+    public void CsiPrivatePrefix_EmitsUnknownEvent()
     {
-        Feed("\x1b[?25h"); // DECSET 25 — output side, shouldn't appear in input but if it does we drop it.
+        Feed("\x1b[?25h"); // DECSET 25 — output side, shouldn't appear in input but reassemble if seen.
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[?25h"u8.ToArray(), unknown.RawBytes.ToArray());
+    }
+
+    [Fact]
+    public void CsiWithIntermediates_EmitsUnknownEvent()
+    {
+        // Soft-reset DECSTR sequence — has intermediate '!' which we don't decode.
+        Feed("\x1b[!p");
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b[!p"u8.ToArray(), unknown.RawBytes.ToArray());
+    }
+
+    [Fact]
+    public void EscCharsetDesignator_EmitsUnknownEvent()
+    {
+        // ESC ( B — designate G0 as USASCII. We don't decode charset switching; surface raw.
+        Feed("\x1b(B");
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1b(B"u8.ToArray(), unknown.RawBytes.ToArray());
+    }
+
+    [Fact]
+    public void DcsUnrecognizedAcrossMultipleFeeds_EmitsUnknownAtUnhook()
+    {
+        // DCS with private prefix '?' and final 'p' — valid DCS framing but no kind for it.
+        // Body chunks split across feeds; nothing emits until the terminator arrives.
+        Feed("\x1bP?phello ");
         Assert.Empty(_sink.Events);
+
+        Feed("world");
+        Assert.Empty(_sink.Events);
+
+        Feed("\x1b\\");
+
+        var unknown = _sink.Single<UnknownEvent>();
+        Assert.Equal("\x1bP?phello world\x1b\\"u8.ToArray(), unknown.RawBytes.ToArray());
     }
 
     // ---- Constructor validation ----

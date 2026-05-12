@@ -42,6 +42,17 @@ public sealed class VtInputMode
 
     /// <summary>True when Win32 Input Mode (DECSET 9001) is enabled.</summary>
     public bool Win32InputModeEnabled { get; set; }
+
+    /// <summary>
+    /// Single-cell width in pixels reported by the terminal via <c>CSI 16 t</c>, when known.
+    /// The negotiator probes for this during identification and stores the result here so the
+    /// SGR-Pixels mouse decoder can map pixel coordinates back to cell coordinates without
+    /// each consumer re-implementing the conversion.
+    /// </summary>
+    public int? CellPixelWidth { get; set; }
+
+    /// <summary>Single-cell height in pixels reported by the terminal via <c>CSI 16 t</c>, when known.</summary>
+    public int? CellPixelHeight { get; set; }
 }
 
 /// <summary>The xterm <c>modifyOtherKeys</c> levels.</summary>
@@ -68,11 +79,10 @@ public enum MouseEncoding
     None = 0,
 
     /// <summary>
-    /// X10-style encoding: <c>ESC [ M Cb Cx Cy</c> with byte-encoded coordinates. TODO:
-    /// setting this value alone does not enable X10 decoding — the classifier flag
-    /// <c>VtSequenceClassifier.X10MouseFramingEnabled</c> must also be set, and
-    /// <c>VtInputDevice</c> currently does not bridge the two. Will be wired when a real X10
-    /// consumer or fallback path lands.
+    /// X10-style encoding: <c>ESC [ M Cb Cx Cy</c> with byte-encoded coordinates. When set,
+    /// <see cref="VtInputDevice"/> mirrors this onto its classifier's X10 framing flag on the
+    /// next pump iteration. The negotiator does not currently push DECSET 9 / 1000, so this
+    /// value is reachable only by direct application opt-in.
     /// </summary>
     X10 = 1,
 

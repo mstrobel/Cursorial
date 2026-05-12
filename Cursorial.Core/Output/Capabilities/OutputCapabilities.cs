@@ -8,6 +8,7 @@ namespace Cursorial.Core.Output;
 public sealed record class OutputCapabilities(
     ColorCapabilities Color,
     TextStylingCapabilities Styling,
+    TextSizingCapabilities TextSizing,
     GraphicsCapabilities Graphics,
     CursorCapabilities Cursor,
     WindowCapabilities Window,
@@ -17,6 +18,7 @@ public sealed record class OutputCapabilities(
     public static OutputCapabilities None { get; } = new(
         Color: ColorCapabilities.None,
         Styling: TextStylingCapabilities.None,
+        TextSizing: TextSizingCapabilities.None,
         Graphics: GraphicsCapabilities.None,
         Cursor: CursorCapabilities.None,
         Window: WindowCapabilities.None,

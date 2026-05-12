@@ -74,12 +74,11 @@ public sealed class VtSequenceClassifier
     /// <see cref="VtInputMode.MouseEncoding"/>; the classifier does not read mode state itself.
     /// </summary>
     /// <remarks>
-    /// TODO: No production path currently sets this. <c>VtTerminalNegotiator</c> only ever
-    /// pushes DECSET 1006 (SGR mouse), and <c>VtInputDevice</c> constructs its classifier
-    /// privately, so a caller assigning <c>VtInputMode.MouseEncoding = MouseEncoding.X10</c>
-    /// today has no way to reach the classifier flag. The decoder is exercised end-to-end by
-    /// tests that set this flag directly. Wire when a real X10 use case appears (legacy
-    /// terminal support or an explicit fallback opt-in on <c>NegotiationOptions</c>).
+    /// <see cref="VtInputDevice"/> mirrors <see cref="VtInputMode.MouseEncoding"/> ==
+    /// <see cref="MouseEncoding.X10"/> onto this flag on each pump iteration, so callers who
+    /// only manipulate the mode bag get correct framing automatically. Tests and standalone
+    /// consumers may also set this directly. The negotiator does not push X10 today
+    /// (<see cref="MouseEncoding.X10"/> is reachable only by direct application opt-in).
     /// </remarks>
     public bool X10MouseFramingEnabled { get; set; }
 

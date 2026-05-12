@@ -254,6 +254,32 @@ public class VtTerminalNegotiatorTests
         Assert.False(caps.Output.Graphics.KittyGraphics);
     }
 
+    [Fact]
+    public async Task KittyFamily_ReportsTextSizingWidthAndScale()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.True(caps.Output.TextSizing.Width);
+        Assert.True(caps.Output.TextSizing.Scale);
+    }
+
+    [Fact]
+    public async Task NonKittyFamily_ReportsNoTextSizing()
+    {
+        _source.Enqueue("\x1bP>|iTerm2 3.4.5\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.False(caps.Output.TextSizing.Width);
+        Assert.False(caps.Output.TextSizing.Scale);
+    }
+
     // ---- Lifecycle ----
 
     [Fact]

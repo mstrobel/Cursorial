@@ -282,9 +282,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         NegotiationOptions options,
         CancellationToken cancellationToken)
     {
-        // Send XTVERSION then DA1 (the sentinel). We wait for DA1's response; whatever
-        // arrived before it is taken as the response set.
+        // Send XTVERSION, CSI 16 t (cell size in pixels), then DA1 (the sentinel). We wait
+        // for DA1's response; whatever arrived before it is taken as the response set.
         await WriteAsync(XtVersionRequest, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(CellSizeRequest, cancellationToken).ConfigureAwait(false);
         await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
 
         var collector = new ResponseCollector();
@@ -295,9 +296,41 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 classifier, interpreter, collector, options.ProbeTimeout, cancellationToken)
             .ConfigureAwait(false);
 
+        var cellSize = collector.FindFirst(DeviceResponseKind.CellSizeInPixels);
+        if (cellSize is not null && TryParseCellSize(cellSize.Payload.Span, out int h, out int w))
+        {
+            _mode.CellPixelHeight = h;
+            _mode.CellPixelWidth = w;
+        }
+
         return new ProbeResponses(
             XtVersion: collector.FindFirst(DeviceResponseKind.XtVersion),
             PrimaryDeviceAttributes: collector.FindFirst(DeviceResponseKind.PrimaryDeviceAttributes));
+    }
+
+    /// <summary>
+    /// Parse a <c>CSI 16 t</c> response payload of the form "6;height;width". The leading "6;"
+    /// (the reply code) is consumed by the classifier into the parameters span; what arrives
+    /// here is the raw parameter run, so we re-parse rather than treat as just height;width.
+    /// </summary>
+    private static bool TryParseCellSize(ReadOnlySpan<byte> payload, out int height, out int width)
+    {
+        height = 0;
+        width = 0;
+
+        int firstSep = payload.IndexOf((byte)';');
+        if (firstSep < 0) return false;
+        var afterFirst = payload[(firstSep + 1)..];
+
+        int secondSep = afterFirst.IndexOf((byte)';');
+        if (secondSep < 0) return false;
+
+        var heightSpan = afterFirst[..secondSep];
+        var widthSpan = afterFirst[(secondSep + 1)..];
+
+        if (!int.TryParse(System.Text.Encoding.ASCII.GetString(heightSpan), out height)) return false;
+        if (!int.TryParse(System.Text.Encoding.ASCII.GetString(widthSpan), out width)) return false;
+        return height > 0 && width > 0;
     }
 
     private async Task DrainResponsesUntilSentinelAsync(
@@ -513,6 +546,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         var color = ResolveColor(identification);
         var styling = ResolveStyling(identification);
+        var textSizing = ResolveTextSizing(identification);
         var graphics = ResolveGraphics(identification);
         var cursor = ResolveCursor(identification);
         var window = ResolveWindow(identification);
@@ -531,16 +565,32 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         return new OutputCapabilities(
             Color: color,
             Styling: styling,
+            TextSizing: textSizing,
             Graphics: graphics,
             Cursor: cursor,
             Window: window,
             Protocol: protocol);
     }
 
+    /// <summary>
+    /// Determine which Kitty text-sizing features the identified terminal honors. We deliberately
+    /// do NOT use the spec's CPR-based runtime probe: it is destructive (advances the cursor,
+    /// leaves visible glyphs on screen, requires save/restore-cursor + erase-line cleanup to be
+    /// non-jarring) and only meaningful before the application has rendered anything. Family
+    /// gating keeps detection silent and matches the pattern used for Kitty keyboard, Win32 input
+    /// mode, and synchronized output.
+    /// </summary>
+    private static TextSizingCapabilities ResolveTextSizing(TerminalIdentification identification) =>
+        identification.Family switch
+        {
+            TerminalFamily.Kitty => new TextSizingCapabilities(Width: true, Scale: true),
+            _ => TextSizingCapabilities.None,
+        };
+
     private ColorCapabilities ResolveColor(TerminalIdentification identification)
     {
         var depth = ResolveColorDepth(identification);
-        bool truecolorClaimed = depth == ColorDepth.Truecolor;
+        bool trueColorClaimed = depth == ColorDepth.Truecolor;
 
         return new ColorCapabilities(
             Depth: depth,
@@ -659,6 +709,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     /// <summary><c>CSI &gt; q</c> — XTVERSION request.</summary>
     private static ReadOnlyMemory<byte> XtVersionRequest { get; } = new byte[] { 0x1B, (byte)'[', (byte)'>', (byte)'q' };
+
+    /// <summary><c>CSI 16 t</c> — request single character-cell size in pixels.</summary>
+    private static ReadOnlyMemory<byte> CellSizeRequest { get; } = new byte[] { 0x1B, (byte)'[', (byte)'1', (byte)'6', (byte)'t' };
 
     /// <summary><c>CSI c</c> — Primary Device Attributes (DA1) request, used as the sentinel.</summary>
     private static ReadOnlyMemory<byte> Da1Request { get; } = new byte[] { 0x1B, (byte)'[', (byte)'c' };

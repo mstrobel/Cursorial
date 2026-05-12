@@ -39,6 +39,7 @@ public sealed class TerminalSession : IAsyncDisposable
     private readonly IStdioTransports? _ownedTransports;
     private readonly List<PosixSignalRegistration> _signalRegistrations = [];
     private EventHandler? _processExitHandler;
+    private PosixResizeMonitor? _resizeMonitor;
     private int _disposed;
 
     private TerminalSession(
@@ -54,12 +55,13 @@ public sealed class TerminalSession : IAsyncDisposable
         _negotiator = negotiator;
         _ownedTransports = ownedTransports;
 
-        // Only attach safety-net handlers when we own the transports — i.e. only for the
-        // happy-path (parameterless) overload. BYO callers have their own signal-handling
-        // strategy and shouldn't be surprised by ours.
+        // Only attach safety-net handlers and the resize monitor when we own the transports —
+        // i.e. only for the happy-path (parameterless) overload. BYO callers have their own
+        // signal-handling strategy and shouldn't be surprised by ours.
         if (_ownedTransports is not null)
         {
             RegisterSafetyHandlers();
+            StartResizeMonitor();
         }
     }
 
@@ -208,6 +210,12 @@ public sealed class TerminalSession : IAsyncDisposable
         // re-entry during the rest of disposal from running through the dispose path again.
         UnregisterSafetyHandlers();
 
+        // Stop the resize monitor before the input pump so we don't inject a final stray
+        // ResizeEvent into a channel that's about to complete.
+        try { _resizeMonitor?.Dispose(); }
+        catch { /* best-effort */ }
+        _resizeMonitor = null;
+
         // Stop the input pump first so we're not racing with the negotiator's restore writes.
         try { await _input.DisposeAsync().ConfigureAwait(false); }
         catch { /* best-effort */ }
@@ -238,6 +246,32 @@ public sealed class TerminalSession : IAsyncDisposable
 
         _processExitHandler = HandleProcessExit;
         AppDomain.CurrentDomain.ProcessExit += _processExitHandler;
+    }
+
+    private void StartResizeMonitor()
+    {
+        // POSIX delivers terminal resizes via SIGWINCH; we register a watcher and feed each
+        // resize back into the input device's event stream so consumers see them interleaved
+        // with keyboard/mouse input. Windows console resize delivery (WINDOW_BUFFER_SIZE_EVENT
+        // via ReadConsoleInput) is not yet plumbed — TODO.
+        if (_input is not VtInputDevice device) return;
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsFreeBSD())
+        {
+            return;
+        }
+
+        try
+        {
+            _resizeMonitor = new PosixResizeMonitor(device.EnqueueExternalEvent);
+            _resizeMonitor.Start();
+        }
+        catch
+        {
+            // Resize delivery is best-effort — session opening must not fail because we
+            // couldn't subscribe to SIGWINCH (some sandboxes block signal registration).
+            _resizeMonitor?.Dispose();
+            _resizeMonitor = null;
+        }
     }
 
     private void TryRegisterSignal(PosixSignal signal)

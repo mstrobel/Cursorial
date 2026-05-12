@@ -4,6 +4,13 @@ namespace Cursorial.Core.Input;
 /// A non-mouse pointing-device event: pen, stylus, or finger touch. Reported only by devices
 /// whose <see cref="PointerCapabilities"/> indicate support.
 /// </summary>
+/// <remarks>
+/// No current Cursorial input source emits <see cref="PointerEvent"/>: no terminal protocol
+/// in widespread use carries pen / stylus / touch input. The type is retained as
+/// forward-compat surface for a future Windows console-host integration (and any analogous
+/// POSIX path that might surface these), so consumer pattern-matches against
+/// <see cref="InputEvent"/> can include a branch that becomes live without an API change.
+/// </remarks>
 public sealed record class PointerEvent : InputEvent
 {
     /// <summary>Whether the pointer is a pen/stylus or a finger touch.</summary>

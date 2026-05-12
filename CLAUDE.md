@@ -93,25 +93,36 @@ are expected to manage their own signal-handling strategy.
   focus events, bracketed-paste accumulation, CSI cursor keys + Home/End + special keys (Insert/Delete/PageUp/Down),
   function keys F1–F20 (xterm + vt220 codes), F1–F4 + cursor + Home/End via SS3, BackTab (`CSI Z`), xterm
   modifier-bearing variants (Shift / Alt / Ctrl / Super / Hyper / Meta / CapsLock / NumLock — full xterm + Kitty
-  modifier-bit range), modifyOtherKeys level 2 (`CSI 27 ; mod ; codepoint ~`) for modifier-bearing character keys,
-  SGR mouse (DECSET 1006) — press / release / drag / motion / wheel and X1–X4 extended buttons, SGR-Pixels mouse
-  (DECSET 1016, same wire shape as 1006 but coordinates routed into `CellPosition.PixelX` / `PixelY` when
-  `VtInputMode.MouseEncoding == MouseEncoding.SgrPixels`), and X10 mouse (`CSI M cb cx cy`, gated by the classifier's
-  `X10MouseFramingEnabled` flag — see "Classifier framing" below). The interpreter accumulates `MouseButtons` state
-  across events so drag and motion carry an accurate held-button mask. Device responses: DA1 (`CSI ? … c`),
-  DA2 (`CSI > … c`), DSR-CPR (`CSI row;col R`), OSC 4 / 10 / 11 / 12 color responses, DCS XTVERSION
-  (`DCS > | … ST`), DA3 (`DCS ! | hex-id ST`), DECRQSS (`DCS valid $ r data ST`), and XTGETTCAP (`DCS valid + r
-  hex-name=hex-value ST`). The Kitty keyboard protocol (`CSI key[:shifted:base][;mods[:event]][;text] u`) — full
-  functional key mapping (Esc, Enter, Tab, arrows, Home, End, F1–F24, numpad, media, per-side modifier keys),
-  up / down / repeat distinction via the event-type sub-parameter, text payload reporting, and codepoints in the
-  Unicode private-use area mapped to the matching `Key` enum values. Alternate-key sub-parameters are parsed but
-  not surfaced (`KeyEvent` doesn't carry shifted / base-layout keys yet). Not yet decoded (silently dropped):
-  the `CSI codepoint ; mod u` modifyOtherKeys variant (overlaps with Kitty's `u` final), ESC charset designators,
-  and Win32 input mode.
+  modifier-bit range), modifyOtherKeys level 2 (`CSI 27 ; mod ; codepoint ~`) and the CSI u shorthand
+  (`CSI codepoint ; mod u`, handled as a strict subset of Kitty's `u`-final grammar), SGR mouse (DECSET 1006) —
+  press / release / drag / motion / wheel and X1–X4 extended buttons, SGR-Pixels mouse (DECSET 1016, coords routed
+  into `CellPosition.PixelX` / `PixelY` and divided by the cell size from `CSI 16 t` to populate Column/Row when
+  available), and X10 mouse (`CSI M cb cx cy`, end-to-end via `VtInputDevice` mirroring `VtInputMode.MouseEncoding ==
+  X10` onto the classifier's `X10MouseFramingEnabled` flag). The interpreter accumulates `MouseButtons` state across
+  events so drag and motion carry an accurate held-button mask. Device responses: DA1 (`CSI ? … c`), DA2 (`CSI > …
+  c`), DSR-CPR (`CSI row;col R`), CSI window-manipulation responses for window-size and cell-size in pixels (`CSI 4
+  ; h ; w t` and `CSI 6 ; h ; w t`), OSC 4 / 10 / 11 / 12 color responses, DCS XTVERSION (`DCS > | … ST`), DA3
+  (`DCS ! | hex-id ST`), DECRQSS (`DCS valid $ r data ST`), and XTGETTCAP (`DCS valid + r hex-name=hex-value ST`).
+  Win32 Input Mode (DECSET 9001) — `CSI Vk;Sc;Uc;Kd;Cs;Rc_` wraps Windows console input records as escape sequences;
+  decoded into `KeyEvent`s with VK→Key mapping, Unicode text payload, and CONTROL_KEY_STATE bits surfaced as
+  modifiers. The Kitty keyboard protocol (`CSI key[:shifted:base][;mods[:event]][;text] u`) — full functional key
+  mapping, up / down / repeat distinction via the event-type sub-parameter, text payload reporting, and codepoints
+  in the Unicode private-use area mapped to the matching `Key` enum values. Alternate-key sub-parameters are parsed
+  but not surfaced (`KeyEvent` doesn't carry shifted / base-layout keys yet). Unrecognized CSI/OSC/DCS sequences and
+  ESC charset designators are reassembled and surfaced as `UnknownEvent` with the original wire bytes so consumers
+  can log / forward / parse without us silently swallowing protocol surface.
 
-Concrete `IAsyncInputDevice`/`IEventInputDevice` implementations and a `VtTerminalNegotiator` are not yet started.
-Rendering and layout are not started. `TerminalSession.OpenAsync()` is the agreed-upon entry point but is not built
-until those dependencies exist (see project memory).
+`EventInputDevice` (`Cursorial.Core.Input.EventInputDevice`) is the push-style `IEventInputDevice` facade — wraps an
+inner `IAsyncInputDevice`, runs a background pump that iterates it, and raises `Input` / `Error` / `Completed` events.
+Single-shot per instance because the inner `IAsyncInputDevice` is single-shot. Takes ownership of the inner device on
+disposal.
+
+Resize events: `PosixResizeMonitor` (in `Cursorial.Core.Terminal.Stdio`) registers a SIGWINCH handler and pushes a
+`ResizeEvent` into the input device's stream on each signal (plus one at startup with the initial size, via
+`stty size`). Wired into the happy-path `TerminalSession.OpenAsync()`. Windows-side console buffer-size events are
+not yet plumbed — TODO when needed.
+
+Rendering and layout are not started — `Cursorial.Rendering` is the next library.
 
 ## Input module conventions (`Cursorial.Core.Input`)
 

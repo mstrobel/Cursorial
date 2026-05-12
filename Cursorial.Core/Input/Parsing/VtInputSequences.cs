@@ -385,4 +385,71 @@ public static class VtInputSequences
         public const int IsoLevel3ShiftKey = 57453;
         public const int IsoLevel5ShiftKey = 57454;
     }
+
+    /// <summary>
+    /// Win32 Input Mode (DECSET 9001) constants. Windows Terminal and ConPTY wrap console input
+    /// records as CSI sequences with the form
+    /// <c>CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _</c> where Vk is the Win32 virtual-key code, Sc the
+    /// scan code, Uc the Unicode codepoint, Kd the key-down flag (1 = down, 0 = up), Cs the
+    /// CONTROL_KEY_STATE bitmask, and Rc the repeat count.
+    /// </summary>
+    public static class Win32InputMode
+    {
+        /// <summary>The CSI final byte distinguishing Win32 input-mode events: <c>_</c>.</summary>
+        public const byte Final = (byte)'_';
+
+        /// <summary>CONTROL_KEY_STATE bit flags surfaced in the Cs parameter.</summary>
+        public static class ControlKeyState
+        {
+            public const int RightAltPressed = 0x0001;
+            public const int LeftAltPressed = 0x0002;
+            public const int RightCtrlPressed = 0x0004;
+            public const int LeftCtrlPressed = 0x0008;
+            public const int ShiftPressed = 0x0010;
+            public const int NumLockOn = 0x0020;
+            public const int ScrollLockOn = 0x0040;
+            public const int CapsLockOn = 0x0080;
+            public const int EnhancedKey = 0x0100;
+        }
+
+        /// <summary>Selected Win32 virtual-key codes that map cleanly onto <see cref="Key"/>.</summary>
+        public static class VirtualKey
+        {
+            public const int Back = 0x08;
+            public const int Tab = 0x09;
+            public const int Return = 0x0D;
+            public const int Shift = 0x10;
+            public const int Control = 0x11;
+            public const int Menu = 0x12;        // Alt
+            public const int Pause = 0x13;
+            public const int Capital = 0x14;     // CapsLock
+            public const int Escape = 0x1B;
+            public const int Space = 0x20;
+            public const int Prior = 0x21;       // PageUp
+            public const int Next = 0x22;        // PageDown
+            public const int End = 0x23;
+            public const int Home = 0x24;
+            public const int Left = 0x25;
+            public const int Up = 0x26;
+            public const int Right = 0x27;
+            public const int Down = 0x28;
+            public const int Print = 0x2A;
+            public const int PrintScreen = 0x2C;
+            public const int Insert = 0x2D;
+            public const int Delete = 0x2E;
+            public const int LWin = 0x5B;
+            public const int RWin = 0x5C;
+            public const int Apps = 0x5D;
+            public const int F1 = 0x70;
+            public const int F24 = 0x87;
+            public const int NumLock = 0x90;
+            public const int Scroll = 0x91;
+            public const int LShift = 0xA0;
+            public const int RShift = 0xA1;
+            public const int LControl = 0xA2;
+            public const int RControl = 0xA3;
+            public const int LMenu = 0xA4;       // Left Alt
+            public const int RMenu = 0xA5;       // Right Alt
+        }
+    }
 }

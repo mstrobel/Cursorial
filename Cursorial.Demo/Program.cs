@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 using Cursorial.Core.Input;
 using Cursorial.Core.Input.Parsing;
+using Cursorial.Core.Output;
 using Cursorial.Core.Terminal;
 
 // REPL for exercising Cursorial against a real terminal.
@@ -41,6 +42,9 @@ while (true)
             case "trace":
                 await TraceAsync();
                 break;
+            case "sizing" or "text-sizing":
+                await DemoTextSizingAsync();
+                break;
             case "probe":
                 await ProbeAsync();
                 break;
@@ -79,6 +83,10 @@ static void PrintHelp()
     Console.WriteLine("                   followed by the decoded events. Lets you cross-reference");
     Console.WriteLine("                   wire format against parser output for protocol debugging.");
     Console.WriteLine("                   (Press Ctrl+C to stop)");
+    Console.WriteLine("  sizing           Print samples of Kitty's text-sizing protocol (OSC 66).");
+    Console.WriteLine("                   On supporting terminals you'll see scaled/wider glyphs;");
+    Console.WriteLine("                   non-supporting terminals render the sample at normal size.");
+    Console.WriteLine("                   (Press Enter to return)");
     Console.WriteLine("  probe            Send XTVERSION + DA1 and dump the raw response bytes for 1 second.");
     Console.WriteLine("                   Confirms whether the terminal responds to standard probes.");
     Console.WriteLine("  quit, exit       Exit the demo");
@@ -274,6 +282,106 @@ static string BytesToPrintable(ReadOnlySpan<byte> bytes)
     return sb.ToString();
 }
 
+static async Task DemoTextSizingAsync()
+{
+    Console.WriteLine("Text-sizing demo. Press Enter to return; Ctrl+C also works.");
+    Console.WriteLine();
+
+    await using var session = await TerminalSession.OpenAsync();
+    var caps = session.Capabilities.Output.TextSizing;
+    var writer = session.Output.Writer;
+
+    if (!caps.Width && !caps.Scale)
+    {
+        await WriteLineAsync(writer,
+            "  Terminal does not advertise text-sizing support. Sending the sequences anyway —");
+        await WriteLineAsync(writer,
+            "  non-supporting terminals render OSC 66 payloads at normal size (the metadata is ignored).");
+        await WriteLineAsync(writer, "");
+    }
+    else
+    {
+        var support = (caps.Width, caps.Scale) switch
+        {
+            (true, true) => "Width + Scale",
+            (true, false) => "Width only",
+            (false, true) => "Scale only",
+            _ => "none",
+        };
+        await WriteLineAsync(writer, $"  Negotiated text-sizing support: {support}.");
+        await WriteLineAsync(writer, "");
+    }
+
+    await WriteLineAsync(writer, "  Reference (no OSC 66): Hello, world!");
+    await WriteLineAsync(writer, "");
+
+    await WriteLineAsync(writer, "  s=2 (double-sized):");
+    await WriteSizedAsync(writer, "s=2", "Hello, world!");
+    await WriteLineAsync(writer, "");
+    await WriteLineAsync(writer, "");
+
+    await WriteLineAsync(writer, "  n=1:d=2 (half-sized):");
+    await WriteSizedAsync(writer, "n=1:d=2", "Hello, world!");
+    await WriteLineAsync(writer, "");
+    await WriteLineAsync(writer, "");
+
+    await WriteLineAsync(writer, "  w=2 (forced two-cell width on emoji):");
+    await WriteSizedAsync(writer, "w=2", "🐈");
+    await WriteSizedAsync(writer, "w=2", "🌶");
+    await WriteSizedAsync(writer, "w=2", "🚀");
+    await WriteLineAsync(writer, "");
+    await WriteLineAsync(writer, "");
+
+    await WriteLineAsync(writer, "  s=2:h=2 (double-sized, horizontally centered in the 2-cell block):");
+    await WriteSizedAsync(writer, "s=2:h=2", "Cursorial");
+    await WriteLineAsync(writer, "");
+    await WriteLineAsync(writer, "");
+
+    await WriteLineAsync(writer, "  (press Enter to return)");
+    await writer.FlushAsync();
+
+    using var stopCts = new CancellationTokenSource();
+    try
+    {
+        await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+        {
+            if (evt is KeyEvent { Key: Key.Enter }) break;
+            if (IsStopSignal(evt)) break;
+        }
+    }
+    catch (OperationCanceledException) { }
+}
+
+static async Task WriteSizedAsync(
+    System.IO.Pipelines.PipeWriter writer,
+    string metadata,
+    string text)
+{
+    // ESC ] 66 ; <metadata> ; <text> ST.  Uses the centralized prefix/terminator constants so
+    // the demo doubles as exercise for the Cursorial.Core.Output byte-string surface.
+    var metadataBytes = Encoding.UTF8.GetBytes(metadata);
+    var textBytes = Encoding.UTF8.GetBytes(text);
+    var prefix = VtOutputSequences.KittyTextSizing.Prefix;
+    var terminator = VtOutputSequences.KittyTextSizing.StringTerminator;
+
+    int total = prefix.Length + metadataBytes.Length + 1 + textBytes.Length + terminator.Length;
+    var dest = writer.GetSpan(total);
+    int i = 0;
+    prefix.CopyTo(dest[i..]); i += prefix.Length;
+    metadataBytes.CopyTo(dest[i..]); i += metadataBytes.Length;
+    dest[i++] = (byte)';';
+    textBytes.CopyTo(dest[i..]); i += textBytes.Length;
+    terminator.CopyTo(dest[i..]); i += terminator.Length;
+    writer.Advance(total);
+    await writer.FlushAsync();
+}
+
+static async Task WriteLineAsync(System.IO.Pipelines.PipeWriter writer, string text)
+{
+    // Raw mode (OPOST off) — write \r\n explicitly.
+    await writer.WriteAsync(Encoding.UTF8.GetBytes(text + "\r\n"));
+}
+
 static async Task ProbeAsync()
 {
     Console.WriteLine("Probing: writing XTVERSION (CSI > q) + DA1 (CSI c).");
@@ -457,6 +565,10 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Row("Colored underline",     caps.Output.Styling.ColoredUnderline);
     Row("Strikethrough",         caps.Output.Styling.Strikethrough);
     Row("Hyperlinks (OSC 8)",    caps.Output.Styling.Hyperlinks);
+
+    Header("Output — Text Sizing (Kitty OSC 66)");
+    Row("Width (w=)",            caps.Output.TextSizing.Width);
+    Row("Scale (s=, n=/d=)",     caps.Output.TextSizing.Scale);
 
     Header("Output — Graphics");
     Row("Sixel",                 caps.Output.Graphics.Sixel);

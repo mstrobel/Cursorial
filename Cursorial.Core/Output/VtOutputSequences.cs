@@ -15,6 +15,23 @@ namespace Cursorial.Core.Output;
 public static class VtOutputSequences
 {
     /// <summary>
+    /// OSC 8 hyperlink anchors. Format: <c>ESC ] 8 ; params ; uri ST</c> to open, and
+    /// <c>ESC ] 8 ; ; ST</c> to close. Params is a colon-separated list of <c>key=value</c>
+    /// pairs (typically just <c>id=&lt;id&gt;</c>); empty params is valid.
+    /// </summary>
+    public static class Hyperlink
+    {
+        /// <summary><c>ESC ] 8 ;</c> — opening of the OSC 8 envelope. Params (or an empty param block) follow.</summary>
+        public static ReadOnlySpan<byte> Prefix => "\x1b]8;"u8;
+
+        /// <summary>
+        /// Complete close sequence: <c>ESC ] 8 ; ; ESC \</c>. Emit immediately after the
+        /// anchor text; nesting hyperlinks within hyperlinks is undefined per the spec.
+        /// </summary>
+        public static ReadOnlySpan<byte> Close => "\x1b]8;;\x1b\\"u8;
+    }
+
+    /// <summary>
     /// Kitty text-sizing protocol — application-emitted OSC 66 sequences that render text in a
     /// non-default cell footprint. Format: <c>ESC ] 66 ; metadata ; text ST</c>, where the
     /// metadata is a colon-separated list of <c>key=value</c> pairs (<c>s</c>/<c>w</c>/<c>n</c>/

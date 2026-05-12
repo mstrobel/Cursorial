@@ -11,14 +11,24 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Early-stage. Three projects: `Cursorial.Core` (the library), `Cursorial.Core.Tests` (xUnit), and `Cursorial.Demo`
-(an interactive REPL for hands-on verification — `dotnet run --project Cursorial.Demo` opens a prompt with
-`negotiate` / `read` / `raw` / `help` / `quit` commands; each command opens its own raw-mode `TerminalSession` and
-restores cooked mode before the next prompt). Modules landed:
+Early-stage. Five projects:
+
+- `Cursorial.Core` — input parsing, capability negotiation, terminal session orchestration, byte-level output writers.
+- `Cursorial.Rendering` — cell buffer + diff frame renderer that sits on top of `Cursorial.Core`'s output writers.
+- `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests` — xUnit.
+- `Cursorial.Demo` — interactive REPL for hands-on verification. `dotnet run --project Cursorial.Demo` opens a prompt
+  with commands: `negotiate` (dump realized capabilities), `read` (stream input events to stdout), `raw` (dump
+  stdin bytes verbatim with no parsing), `trace` (live raw bytes + decoded events side-by-side for protocol
+  debugging), `sizing` (Kitty OSC 66 text-sizing demonstration), `probe` (XTVERSION + DA1 raw-response capture),
+  `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked mode before the next
+  prompt.
+
+Modules landed:
 
 - **Input** (`Cursorial.Core/Input/`, namespace `Cursorial.Core.Input`) — see "Input module conventions" below.
-- **Output** (`Cursorial.Core/Output/`, namespace `Cursorial.Core.Output`) — minimal `IOutputByteSink` (a
-  `PipeWriter`-shaped sink, mirror of `IInputByteSource`) plus the output-side capability records.
+- **Output** (`Cursorial.Core/Output/`, namespace `Cursorial.Core.Output`) — see "Output module conventions" below.
+- **Text** (`Cursorial.Core/Text/`, namespace `Cursorial.Core.Text`) — grapheme-aware width computation and ANSI-aware
+  text wrapping; see "Text utilities" below.
 - **Terminal** (`Cursorial.Core/Terminal/`, namespace `Cursorial.Core.Terminal`) — `ITerminalNegotiator` is the single
   public entry point for capability detection and opt-in negotiation, returning a `TerminalCapabilities` aggregate.
   `VtTerminalNegotiator` is the VT/ANSI implementation; it owns the probe-and-respond handshake (XTVERSION + DA1
@@ -122,7 +132,10 @@ Resize events: `PosixResizeMonitor` (in `Cursorial.Core.Terminal.Stdio`) registe
 `stty size`). Wired into the happy-path `TerminalSession.OpenAsync()`. Windows-side console buffer-size events are
 not yet plumbed — TODO when needed.
 
-Rendering and layout are not started — `Cursorial.Rendering` is the next library.
+`Cursorial.Rendering` (the cell-buffer + diff frame renderer) is described in "Rendering conventions" below.
+Higher-level concerns (widget tree, layout, focus, input routing) are not started; if/when they land they live in
+a separate `Cursorial.Widgets` library on top of `Cursorial.Rendering` rather than in `Cursorial.Rendering` itself,
+which is meant to be the lowest layer with a TUI abstraction (everything above byte writing).
 
 ## Input module conventions (`Cursorial.Core.Input`)
 
@@ -162,16 +175,55 @@ dispose. `NegotiationOptions.EnableAllOptIns = false` reduces it to a passive pr
 - The Win32 implementation produces the same `TerminalCapabilities` shape via structured APIs (`GetConsoleMode`,
   parent-process inspection, etc.) — consumers see capabilities, not how they were detected.
 
-## Output conventions (`Cursorial.Core.Output`)
+## Output module conventions (`Cursorial.Core.Output`)
 
-Currently scoped to the bytes layer needed for capability negotiation:
+The output layer is split into three things: a byte sink, capability records that describe what the terminal can do,
+and a family of pure byte-emitting writers that produce escape sequences for an `IBufferWriter<byte>`. Higher-level
+composition (the cell buffer, diff frame renderer) lives in `Cursorial.Rendering` — see "Rendering conventions"
+below. The intent is that a consumer who wants "print red text and move the cursor" should be able to use the
+writers directly without pulling in the rendering layer.
 
 - `IOutputByteSink` is a `PipeWriter` wrapper, parallel in shape to `IInputByteSource`. Consumers MUST NOT call
   `PipeWriter.Complete` directly; sink ownership of completion is enforced via `IAsyncDisposable.DisposeAsync`.
-- Output capabilities are categorized records: `ColorCapabilities` (with the `ColorDepth` enum), `TextStylingCapabilities`,
-  `GraphicsCapabilities`, `CursorCapabilities`, `WindowCapabilities`, `OutputProtocolCapabilities`, aggregated under
-  `OutputCapabilities`. Each has a `None` static for defaults.
-- Higher-level output (string/text writers, SGR builders, renderers) is not yet designed.
+- Output capabilities are categorized records: `ColorCapabilities` (with the `ColorDepth` enum),
+  `TextStylingCapabilities`, `TextSizingCapabilities` (the Kitty OSC 66 protocol's `Width` and `Scale` sub-features,
+  family-gated to Kitty for now), `GraphicsCapabilities`, `CursorCapabilities`, `WindowCapabilities`,
+  `OutputProtocolCapabilities`, aggregated under `OutputCapabilities`. Each has a `None` static for defaults.
+- **Style primitives.** `Color` (readonly record struct discriminated as `Default` / `Palette(byte)` / `Rgb(r,g,b)`
+  via `ColorKind`), `TextAttributes` (`[Flags]` — Bold, Faint, Italic, Underline, Blink, Inverse, Hidden,
+  Strikethrough, Overline), `UnderlineStyle` (the *shape* — Single/Double/Curly/Dotted/Dashed; the *presence* is
+  the `Underline` flag on `TextAttributes`). `Style` is a readonly record struct combining foreground, background,
+  attributes, underline style, and underline color with fluent `With…` helpers; `default(Style)` is "no styling".
+- **`SgrEncoder`** — pure `Style → SGR bytes`. Three operations: `WriteReset` (emit `CSI 0 m`), `WriteAbsolute`
+  (emit `SGR 0` plus the parameters needed to express the style; used for full-redraw entry), `WriteDelta` (emit
+  only the parameters that differ between two styles, including reset codes for attributes that turn off; the diff
+  renderer uses this). Knows about the shared SGR 22 reset for both Bold and Faint, the SGR 4:n colon sub-parameter
+  form for extended underline shapes, and the SGR 58/59 underline-color extension.
+- **`StyleQuantizer`** — capability-aware `Style → Style` adapter. Holds an `OutputCapabilities` and adjusts a style
+  to what the terminal can actually render: RGB → 256-color via xterm's 6×6×6 cube + grayscale ramp; palette > 15
+  → 16 via approximate channel-on thresholds; drops attributes the terminal doesn't honor; collapses extended
+  underline shapes to `Single`; drops colored underline when unsupported. Pure given its capabilities — no state
+  beyond the constructor argument.
+- **`CursorWriter`** — `WriteMoveTo` (CUP, 0-based row/col translated to 1-based on wire), `WriteColumnAbsolute`,
+  `WriteRowAbsolute`, relative moves (`WriteMoveUp/Down/Left/Right`, zero/negative is a no-op),
+  `WriteSavePosition` / `WriteRestorePosition` (DECSC / DECRC), `WriteHide` / `WriteShow` (DECRST/DECSET 25),
+  `WriteShape(CursorShape)` (DECSCUSR with the seven xterm shapes including Default = "restore terminal default").
+- **`ScreenWriter`** — ED variants (`WriteClearScreen`, `WriteClearScreenAfter/Before`,
+  `WriteClearScreenAndScrollback`), EL variants (`WriteClearLine`, `WriteClearLineAfter/Before`),
+  alternate-screen-buffer toggle via DECSET/DECRST 1049, scroll region via DECSTBM (0-based row coordinates on the
+  API, 1-based on the wire), `WriteResetScrollRegion`.
+- **`HyperlinkWriter`** — OSC 8: `WriteOpen(uri, optional id)`, `WriteClose`, `WriteHyperlink(uri, text, optional id)`
+  one-shot convenience. URIs and ids are UTF-8 encoded.
+- **`TextSizingWriter`** + **`TextSizing`** record struct — Kitty OSC 66. `TextSizing` carries the spec parameters
+  (`s`/`w`/`n`/`d`/`v`/`h`) as a value type; default value is "normal text" and produces an empty metadata block on
+  the wire. `Write` emits a single sequence (caller respects the 4096-byte payload cap); `WriteSplit` chunks on
+  grapheme cluster boundaries when the payload exceeds the cap.
+- **All writers take `IBufferWriter<byte>`** rather than `IOutputByteSink` directly. Both `PipeWriter` and
+  `ArrayBufferWriter<T>` implement it, so the same encoder feeds both live terminal output (via the session's sink)
+  and the diff renderer's scratch buffer (which it flushes as a single coordinated frame).
+- **`VtWriterUtilities`** — internal helper for decimal-ASCII formatting, shared by the writers.
+- **`VtOutputSequences`** — centralized byte-string constants for output-side protocols (OSC 8 prefix/close, OSC 66
+  prefix/ST terminator, OSC 66 payload-length cap). Add new sequence constants here when introducing new writers.
 
 ## Toolchain
 

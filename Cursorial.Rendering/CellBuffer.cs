@@ -36,6 +36,7 @@ public sealed class CellBuffer
     private Cell[] _cells;
     private int _columns;
     private int _rows;
+    private readonly Stack<IBlendingMode> _blendStack = new();
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
     public CellBuffer(int columns, int rows)
@@ -69,8 +70,38 @@ public sealed class CellBuffer
     public int CellCount => _cells.Length;
 
     /// <summary>
-    /// Direct access to a cell. Setting via the indexer bypasses wide-cell consistency handling —
-    /// use <see cref="Set(int, int, string, in Style)"/> for normal text content.
+    /// The blending mode applied to each <see cref="Set"/> and <see cref="Fill"/> call. The top
+    /// of the buffer's blend stack, or <see cref="BlendingModes.Default"/> when the stack is
+    /// empty. <see cref="Clear"/> and the raw indexer setter do NOT consult this — they assign
+    /// cells verbatim.
+    /// </summary>
+    public IBlendingMode CurrentBlendingMode =>
+        _blendStack.Count > 0 ? _blendStack.Peek() : BlendingModes.Default;
+
+    /// <summary>Push a blending mode onto the stack; subsequent <see cref="Set"/> / <see cref="Fill"/> calls use it.</summary>
+    public void PushBlendingMode(IBlendingMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+        _blendStack.Push(mode);
+    }
+
+    /// <summary>
+    /// Pop the most recently pushed blending mode. Throws <see cref="InvalidOperationException"/>
+    /// if the stack is empty — pop/push pairing is the caller's responsibility.
+    /// </summary>
+    public IBlendingMode PopBlendingMode()
+    {
+        if (_blendStack.Count == 0)
+        {
+            throw new InvalidOperationException("Blending-mode stack is empty; nothing to pop.");
+        }
+        return _blendStack.Pop();
+    }
+
+    /// <summary>
+    /// Direct access to a cell. Setting via the indexer bypasses wide-cell consistency handling
+    /// AND the active blending mode — use <see cref="Set(int, int, string, in Style)"/> for
+    /// normal text content.
     /// </summary>
     public Cell this[int row, int column]
     {
@@ -107,6 +138,11 @@ public sealed class CellBuffer
         int index = row * _columns + column;
         var previous = _cells[index];
 
+        // Apply the active blending mode against the cell being overwritten. SourceOver / empty
+        // stack is a no-op (the mode just returns source) but every other mode tints / darkens /
+        // lightens based on the existing color at this position.
+        var blended = BlendStyle(style, previous.Style);
+
         // Cleanup: were we overwriting a wide-left's right half?
         if (previous.Kind == CellKind.WideContinuation && column > 0)
         {
@@ -120,22 +156,89 @@ public sealed class CellBuffer
 
         if (width == 2)
         {
-            _cells[index] = new Cell(grapheme, CellKind.WideLeft, style);
+            _cells[index] = new Cell(grapheme, CellKind.WideLeft, blended);
             // The right-half continuation carries the style too so background paints continuously
             // across the wide glyph.
-            _cells[index + 1] = Cell.WideContinuation with { Style = style };
+            _cells[index + 1] = Cell.WideContinuation with { Style = blended };
             return 2;
         }
 
-        _cells[index] = new Cell(grapheme, CellKind.Single, style);
+        _cells[index] = new Cell(grapheme, CellKind.Single, blended);
         return 1;
     }
 
-    /// <summary>Reset every cell to <see cref="Cell.Blank"/>.</summary>
+    /// <summary>
+    /// Reset every cell to <see cref="Cell.Blank"/>. Does NOT apply the active blending mode —
+    /// clear is an explicit reset.
+    /// </summary>
     public void Clear() => Array.Clear(_cells);
 
-    /// <summary>Fill the entire buffer with <paramref name="cell"/>.</summary>
-    public void Fill(in Cell cell) => Array.Fill(_cells, cell);
+    /// <summary>
+    /// Replace every cell with <paramref name="cell"/>, blending its <see cref="Style"/> against
+    /// each position's existing cell through <see cref="CurrentBlendingMode"/>. When the active
+    /// mode is <see cref="BlendingModes.Default"/>, the fast path is a single <c>Array.Fill</c>
+    /// — every cell becomes <paramref name="cell"/> verbatim.
+    /// </summary>
+    public void Fill(in Cell cell)
+    {
+        var mode = CurrentBlendingMode;
+        if (ReferenceEquals(mode, BlendingModes.Default))
+        {
+            Array.Fill(_cells, cell);
+            return;
+        }
+
+        for (int i = 0; i < _cells.Length; i++)
+        {
+            var existing = _cells[i];
+            _cells[i] = cell with { Style = BlendStyle(cell.Style, existing.Style, mode) };
+        }
+    }
+
+    private Style BlendStyle(in Style source, in Style backdrop)
+        => BlendStyle(source, backdrop, CurrentBlendingMode);
+
+    private static Style BlendStyle(in Style source, in Style backdrop, IBlendingMode mode)
+    {
+        return source with
+        {
+            Foreground = Composite(source.Foreground, backdrop.Foreground, mode),
+            Background = Composite(source.Background, backdrop.Background, mode),
+            UnderlineColor = Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
+        };
+    }
+
+    /// <summary>
+    /// Compose <paramref name="source"/> over <paramref name="backdrop"/>: first apply the
+    /// blending mode's color math, then composite the result against the backdrop linearly
+    /// using the source's alpha. Returns an opaque color — the cell buffer always stores
+    /// fully-resolved colors because terminal output is fundamentally opaque.
+    /// </summary>
+    /// <remarks>
+    /// Compositing is skipped (the mode's blended color is returned verbatim, normalized to
+    /// alpha 255) when either operand isn't <see cref="ColorKind.Rgb"/>. The terminal default
+    /// has no known RGB equivalent to mix against, and quantizing palette colors into RGB just
+    /// to composite and back would be lossy and surprising. This matches how the built-in
+    /// blending modes handle non-RGB inputs.
+    /// </remarks>
+    private static Color Composite(Color source, Color backdrop, IBlendingMode mode)
+    {
+        var blended = mode.Blend(source, backdrop);
+
+        // Alpha compositing only engages for RGB-on-RGB. Otherwise the source's alpha is
+        // ignored and the blended color (which is whatever the mode produced) wins outright.
+        if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb || source.Alpha == 255)
+        {
+            return blended.Kind == ColorKind.Rgb ? blended.WithAlpha(255) : blended;
+        }
+
+        int a = source.Alpha;
+        int inv = 255 - a;
+        return Color.FromRgb(
+            (byte)((blended.Red * a + backdrop.Red * inv) / 255),
+            (byte)((blended.Green * a + backdrop.Green * inv) / 255),
+            (byte)((blended.Blue * a + backdrop.Blue * inv) / 255));
+    }
 
     /// <summary>
     /// Resize the buffer to <paramref name="columns"/> × <paramref name="rows"/>. Contents are

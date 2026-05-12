@@ -164,7 +164,7 @@ better terminal input. Key shape:
 `IInputByteSource` + `IOutputByteSink` pair, or a Win32 console handle) into a known set of capabilities. It is
 **both detector and negotiator** — by default it actively enables opt-in protocols (Kitty keyboard, bracketed paste,
 SGR mouse, focus events, Win32 input mode, synchronized output) and records what it enabled so it can restore on
-dispose. `NegotiationOptions.EnableAllOptIns = false` reduces it to a passive probe.
+dispose. `NegotiationOptions.OptIns = OptInPolicy.Ignored` reduces it to a passive probe.
 
 - Returned `TerminalCapabilities` reflects **realized** capabilities, not advertised ones — features the terminal
   claimed but did not honor are reported as unavailable. Consumers can branch on flags directly.
@@ -189,11 +189,13 @@ writers directly without pulling in the rendering layer.
   `TextStylingCapabilities`, `TextSizingCapabilities` (the Kitty OSC 66 protocol's `Width` and `Scale` sub-features,
   family-gated to Kitty for now), `GraphicsCapabilities`, `CursorCapabilities`, `WindowCapabilities`,
   `OutputProtocolCapabilities`, aggregated under `OutputCapabilities`. Each has a `None` static for defaults.
-- **Style primitives.** `Color` (readonly record struct discriminated as `Default` / `Palette(byte)` / `Rgb(r,g,b)`
-  via `ColorKind`), `TextAttributes` (`[Flags]` — Bold, Faint, Italic, Underline, Blink, Inverse, Hidden,
-  Strikethrough, Overline), `UnderlineStyle` (the *shape* — Single/Double/Curly/Dotted/Dashed; the *presence* is
-  the `Underline` flag on `TextAttributes`). `Style` is a readonly record struct combining foreground, background,
-  attributes, underline style, and underline color with fluent `With…` helpers; `default(Style)` is "no styling".
+- **Style primitives.** `Color` (readonly record struct discriminated as `Default` / `Palette(byte)` /
+  `Rgb(r,g,b,alpha)` via `ColorKind`; alpha defaults to 255 from `FromRgb` and is settable via `FromRgba` or
+  `WithAlpha`; meaningful only for the `Rgb` kind and only at composite time — terminal output is always opaque),
+  `TextAttributes` (`[Flags]` — Bold, Faint, Italic, Underline, Blink, Inverse, Hidden, Strikethrough, Overline),
+  `UnderlineStyle` (the *shape* — Single/Double/Curly/Dotted/Dashed; the *presence* is the `Underline` flag on
+  `TextAttributes`). `Style` is a readonly record struct combining foreground, background, attributes, underline
+  style, and underline color with fluent `With…` helpers; `default(Style)` is "no styling".
 - **`SgrEncoder`** — pure `Style → SGR bytes`. Three operations: `WriteReset` (emit `CSI 0 m`), `WriteAbsolute`
   (emit `SGR 0` plus the parameters needed to express the style; used for full-redraw entry), `WriteDelta` (emit
   only the parameters that differ between two styles, including reset codes for attributes that turn off; the diff
@@ -225,6 +227,85 @@ writers directly without pulling in the rendering layer.
 - **`VtOutputSequences`** — centralized byte-string constants for output-side protocols (OSC 8 prefix/close, OSC 66
   prefix/ST terminator, OSC 66 payload-length cap). Add new sequence constants here when introducing new writers.
 
+## Text utilities (`Cursorial.Core.Text`)
+
+Grapheme-aware text operations used by both the input and output sides. The contents are minimal but load-bearing:
+without correct width accounting, any rendering layer above misaligns the moment a user types an emoji.
+
+- **`GraphemeWidth`** — `CodepointWidth(int)`, `ClusterWidth(ReadOnlySpan<char>)`, `StringWidth(string)`.
+  `CodepointWidth` returns 0 for combining marks / format controls / variation selectors, 2 for East Asian wide /
+  fullwidth and the major emoji blocks, 1 for everything else. Wide-range detection is a hand-coded table covering
+  Hangul, CJK Unified Ideographs (Plane 0–3), Compatibility Ideographs, Fullwidth Forms, and the common emoji
+  blocks (Misc Symbols, Transport, Supplemental Symbols, etc.). Less-frequently-used codepoints fall through to
+  width 1 — adequate for ~95% of real-world text; a full `EastAsianWidth.txt`-backed table can drop in later
+  without breaking the API. `ClusterWidth` handles VS16 (U+FE0F, forces emoji presentation → bumps to 2),
+  VS15 (U+FE0E, forces text presentation → pins to 1), and ZWJ (U+200D, zero-width continuation).
+  `StringWidth` enumerates grapheme clusters via `System.Globalization.StringInfo`.
+- **`AnsiTextWrap`** + **`WrapOptions`** — word-wrap that measures width via grapheme clusters and passes ANSI
+  escape sequences through with zero column accounting. Recognizes CSI / OSC / DCS / SS3 / ESC + intermediates as
+  zero-width pass-through tokens; word-break boundaries are ASCII whitespace; supports a `BreakLongWords` policy
+  for words exceeding the column limit, configurable line separator, and trailing-whitespace trim. SGR state
+  crosses wrap boundaries naturally (no SGR reset is injected) so multi-line styled output preserves color across
+  the split.
+
+## Rendering conventions (`Cursorial.Rendering`)
+
+The cell-buffer + diff frame renderer layer. Sits on top of the byte-emitting writers in
+`Cursorial.Core.Output`; assumes nothing about widgets, layout, or focus — those are an explicit
+follow-up library if/when they land. The intent is for `Cursorial.Rendering` to be the lowest layer above the
+byte writers with a TUI abstraction, and for higher-level frameworks to build on it.
+
+- **`Cell`** — readonly record struct carrying `Grapheme` (string? — null/empty means a blank cell rendered as a
+  space), `CellKind` (`Single` / `WideLeft` / `WideContinuation`), and `Style`. `default(Cell)` is the canonical
+  blank single-width cell. `Cell.WideContinuation` is the placeholder for the right half of a wide-left glyph;
+  the renderer skips it during emission because the wide-glyph bytes emitted at the WideLeft position paint
+  *both* cell columns (foreground and background) as a single terminal operation. The continuation's `Style` is
+  mirrored from the WideLeft for diff-comparison hygiene but isn't separately emitted — terminals don't render
+  different backgrounds on the two halves of a wide glyph.
+- **`CellBuffer`** — 1D `Cell[]` indexed `row * Columns + column`. Operations: dimensions, `Resize` (reallocates,
+  cursor state preserved), indexer (`buffer[r, c]` — raw read/write, bypasses both wide-cell handling and
+  blending), `Set(row, col, grapheme, style)` (high-level: computes grapheme width, writes WideLeft +
+  WideContinuation if needed, cleans up adjacent cells to maintain wide-cell consistency, applies the active
+  blending mode), `Get`, `Clear` (resets all to blank — does NOT apply blending), `Fill` (applies blending).
+  Cursor state (`CursorRow`, `CursorColumn`, `CursorVisible`, `CursorShape`) lives alongside the cell grid; the
+  renderer emits cursor updates as a separate concern from cell content.
+- **Blending mode stack on `CellBuffer`.** Each `Set` / `Fill` call composes the new style's colors against the
+  existing cell's colors through `CurrentBlendingMode` — the top of an internal stack, or
+  `BlendingModes.Default` (source-over) when the stack is empty. `PushBlendingMode` / `PopBlendingMode`
+  manipulate the stack; pop on empty throws. Only the color fields (foreground, background, underline color)
+  blend; non-color style (attributes, underline shape) takes the source's value. Blending and alpha-compositing
+  engage only for RGB-on-RGB pairs — palette/default colors short-circuit to "return source" because
+  round-tripping through RGB would be lossy and surprising. Built-in modes in `BlendingModes`: `SourceOver` /
+  `Default`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`, `Plus`. Custom modes implementing
+  `IBlendingMode` plug in cleanly.
+- **Alpha compositing.** Each color carries an `Alpha` byte (0 = transparent, 255 = opaque). The cell buffer's
+  composite pipeline runs in two steps: the active `IBlendingMode` produces a *blended color* from the source and
+  backdrop (treating both as opaque — modes don't see alpha), then the buffer linearly mixes that blend with the
+  backdrop using the source's alpha: `result = blended·α + backdrop·(1-α)`. Stored cells always end up at
+  alpha 255 — the terminal can't render translucent SGR colors, so alpha is consumed at composite time. With
+  empty blend stack (`SourceOver`), this collapses to the classic linear alpha blend.
+- **`FrameRenderer`** — the stateful diff renderer. One instance per output target. Holds the previous frame
+  (front buffer), the SGR style currently active on the terminal, the cursor position the renderer believes the
+  terminal is at, and the cursor visibility / shape last emitted. `Render(CellBuffer back, IBufferWriter<byte>)`
+  emits one of two byte sequences: a full redraw (clear screen + SGR reset + every non-blank cell) when there's
+  no prior frame, the dimensions changed, or `FrameRendererOptions.ForceFullRedraw` is on; otherwise a per-cell
+  delta. The renderer is the single owner of SGR + cursor state across frames — interleaving raw output that
+  mutates those will desync the next frame. `Reset()` forgets the front buffer and forces a full redraw on the
+  next render.
+- **Wide-cell emission.** A `CellKind.WideContinuation` cell is skipped in the diff loop. The wide-glyph
+  emission at the WideLeft position is a single terminal operation that draws both columns; trying to write
+  anything at the right-half column is undefined in most terminals (the cursor is past it, and moving back into
+  the glyph corrupts it).
+- **What was punted from v1.** (1) Scroll detection (recognizing that a frame is "previous frame scrolled up by
+  K rows" and emitting scroll commands rather than redrawing each row) — defer to later as a pure optimization;
+  the API doesn't preclude it. (2) Multi-row spans for OSC 66 sized text — kept as a separate `TextSizingWriter`
+  primitive in `Cursorial.Core.Output` that bypasses the cell grid; rendering sized text alongside the cell
+  buffer means drawing it at a fixed position with `TextSizingWriter.Write` rather than encoding it as cell
+  contents. (3) Dirty-region tracking — a TUI framework above us is the right place for it. (4) Consumer-set
+  scroll regions for partial-screen rendering — the cell buffer assumes ownership of its full drawing area.
+- **`FrameRendererOptions.ForceFullRedraw`** — debug / profiling knob that disables the renderer's diff
+  optimization without changing the API. Treat every `Render` call as a full redraw.
+
 ## Toolchain
 
 - .NET SDK **10.0.0** is pinned in `global.json` with `rollForward: latestMinor` and `allowPrerelease: false`. Any newer
@@ -240,9 +321,10 @@ Run from the repository root:
 ```bash
 dotnet build              # build the whole solution
 dotnet build -c Release   # release build
-dotnet test               # run all tests (xUnit, in Cursorial.Core.Tests)
+dotnet test               # run all tests (xUnit, across Cursorial.Core.Tests and Cursorial.Rendering.Tests)
 dotnet test --filter "FullyQualifiedName~VtSequenceClassifierTests"   # filter by class
 dotnet test --filter "DisplayName~OscTerminatedByBel"                 # filter by single test
+dotnet test Cursorial.Rendering.Tests                                 # run a single test project
 ```
 
 ## Parser / interpreter conventions

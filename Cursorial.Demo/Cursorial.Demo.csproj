@@ -10,6 +10,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
+        <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
     </ItemGroup>
 
 </Project>

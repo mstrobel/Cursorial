@@ -36,7 +36,7 @@ public readonly record struct WrapOptions
 
     /// <summary>
     /// When a single word exceeds the column limit, break it at the column boundary rather
-    /// than overflowing. Default true.
+    /// than overflowing. Default to true.
     /// </summary>
     public bool BreakLongWords
     {
@@ -221,7 +221,7 @@ public static class AnsiTextWrap
         switch (introducer)
         {
             case '[':
-                // CSI: parameter / intermediate bytes (0x20–0x3F) then final (0x40–0x7E).
+                // CSI: parameter / intermediate bytes (0x20-0x3F), then final (0x40-0x7E).
                 while (i < text.Length && text[i] is >= (char)0x20 and < (char)0x40) i++;
                 if (i < text.Length && text[i] is >= (char)0x40 and <= (char)0x7E) i++;
                 return i - index;
@@ -290,7 +290,7 @@ public static class AnsiTextWrap
     {
         if (options.TrimTrailingSpaces)
         {
-            while (line.Length > 0 && (line[line.Length - 1] == ' ' || line[line.Length - 1] == '\t'))
+            while (line.Length > 0 && (line[^1] == ' ' || line[^1] == '\t'))
             {
                 line.Length--;
             }

@@ -9,10 +9,10 @@ namespace Cursorial.Rendering;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A <see cref="default"/>-constructed cell is a single-width blank with default styling —
-/// the natural "empty" of a freshly-allocated buffer. To explicitly represent the right half of
-/// a wide glyph, use <see cref="WideContinuation"/>; a single grapheme that occupies two cells
-/// is stored as a <see cref="CellKind.WideLeft"/> cell at the left position and a
+/// A <see cref="Style.Default">default</see>-constructed cell is a single-width blank with default
+/// styling — the natural "empty" of a freshly-allocated buffer. To explicitly represent the right
+/// half of a wide glyph, use <see cref="WideContinuation"/>; a single grapheme that occupies two
+/// cells is stored as a <see cref="CellKind.WideLeft"/> cell at the left position and a
 /// <see cref="CellKind.WideContinuation"/> at the position immediately right.
 /// </para>
 /// <para>
@@ -56,17 +56,16 @@ public readonly record struct Cell(string? Grapheme, CellKind Kind, Style Style)
 
     /// <summary>Number of terminal cells this entry occupies: 1 for single, 2 for wide-left, 0 for continuation.</summary>
     public int Width => Kind switch
-    {
-        CellKind.WideLeft => 2,
-        CellKind.WideContinuation => 0,
-        _ => 1,
-    };
+                        {
+                            CellKind.WideLeft         => 2,
+                            CellKind.WideContinuation => 0,
+                            _                         => 1
+                        };
 
     /// <summary>True when the cell is a blank single-width cell with default styling.</summary>
-    public bool IsBlank =>
-        Kind == CellKind.Single
-        && Style.IsDefault
-        && (Grapheme is null || Grapheme.Length == 0);
+    public bool IsBlank => Kind == CellKind.Single &&
+                           Style.IsDefault &&
+                           string.IsNullOrEmpty(Grapheme);
 }
 
 /// <summary>Classification of a <see cref="Cell"/>'s role in the grid.</summary>
@@ -79,5 +78,5 @@ public enum CellKind : byte
     WideLeft = 1,
 
     /// <summary>The right-half placeholder of a wide-left grapheme. Renderer skips this cell.</summary>
-    WideContinuation = 2,
+    WideContinuation = 2
 }

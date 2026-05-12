@@ -94,7 +94,7 @@ public static class TextSizingWriter
 
         while (enumerator.MoveNext())
         {
-            string cluster = (string)enumerator.Current!;
+            string cluster = (string)enumerator.Current;
             int clusterBytes = Encoding.UTF8.GetByteCount(cluster);
 
             if (batchBytes + clusterBytes > VtOutputSequences.KittyTextSizing.MaxTextBytes && batchBytes > 0)

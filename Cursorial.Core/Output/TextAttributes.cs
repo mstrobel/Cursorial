@@ -63,5 +63,5 @@ public enum UnderlineStyle : byte
     Dotted = 3,
 
     /// <summary>SGR 4:5 — dashed underline.</summary>
-    Dashed = 4,
+    Dashed = 4
 }

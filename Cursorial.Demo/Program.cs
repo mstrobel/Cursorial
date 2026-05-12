@@ -4,6 +4,7 @@ using Cursorial.Core.Input;
 using Cursorial.Core.Input.Parsing;
 using Cursorial.Core.Output;
 using Cursorial.Core.Terminal;
+using Cursorial.Rendering;
 
 // REPL for exercising Cursorial against a real terminal.
 //
@@ -15,7 +16,7 @@ PrintBanner();
 
 while (true)
 {
-    Console.Write("glowterm> ");
+    Console.Write("cursorial> ");
     string? line = Console.ReadLine();
     if (line is null) break;
 
@@ -44,6 +45,9 @@ while (true)
                 break;
             case "sizing" or "text-sizing":
                 await DemoTextSizingAsync();
+                break;
+            case "render" or "showcase":
+                await DemoRenderAsync();
                 break;
             case "probe":
                 await ProbeAsync();
@@ -87,6 +91,10 @@ static void PrintHelp()
     Console.WriteLine("                   On supporting terminals you'll see scaled/wider glyphs;");
     Console.WriteLine("                   non-supporting terminals render the sample at normal size.");
     Console.WriteLine("                   (Press Enter to return)");
+    Console.WriteLine("  render           Cursorial.Rendering showcase — opens the alternate screen,");
+    Console.WriteLine("                   draws a panel of colors, wide glyphs, attributes, and an");
+    Console.WriteLine("                   alpha-blended overlay, with a clock ticking in the corner.");
+    Console.WriteLine("                   (Press q or Ctrl+C to exit)");
     Console.WriteLine("  probe            Send XTVERSION + DA1 and dump the raw response bytes for 1 second.");
     Console.WriteLine("                   Confirms whether the terminal responds to standard probes.");
     Console.WriteLine("  quit, exit       Exit the demo");
@@ -364,6 +372,8 @@ static async Task WriteSizedAsync(
     var prefix = VtOutputSequences.KittyTextSizing.Prefix;
     var terminator = VtOutputSequences.KittyTextSizing.StringTerminator;
 
+    // ReSharper disable RedundantAssignment
+    
     int total = prefix.Length + metadataBytes.Length + 1 + textBytes.Length + terminator.Length;
     var dest = writer.GetSpan(total);
     int i = 0;
@@ -374,12 +384,336 @@ static async Task WriteSizedAsync(
     terminator.CopyTo(dest[i..]); i += terminator.Length;
     writer.Advance(total);
     await writer.FlushAsync();
+    
+    // ReSharper restore RedundantAssignment
 }
 
 static async Task WriteLineAsync(System.IO.Pipelines.PipeWriter writer, string text)
 {
     // Raw mode (OPOST off) — write \r\n explicitly.
     await writer.WriteAsync(Encoding.UTF8.GetBytes(text + "\r\n"));
+}
+
+static async Task DemoRenderAsync()
+{
+    Console.WriteLine("Render demo. Opening alt screen — press q or Ctrl+C to exit.");
+
+    await using var session = await TerminalSession.OpenAsync();
+    var writer = session.Output.Writer;
+
+    // Enter alt screen and reset SGR. We leave the cursor decision to the cell buffer
+    // (CursorVisible = false renders DECRST 25 on first frame).
+    ScreenWriter.WriteEnterAlternateScreen(writer);
+    SgrEncoder.WriteReset(writer);
+    await writer.FlushAsync();
+
+    // Initial size from Console (TIOCGWINSZ-equivalent; safe for read-only queries even though
+    // we don't open the Console streams). The SIGWINCH-driven ResizeEvent will correct us once
+    // it fires, but starting with the right dimensions avoids a redraw on the first resize.
+    int cols = Math.Max(20, Console.WindowWidth);
+    int rows = Math.Max(8, Console.WindowHeight);
+
+    var buffer = new CellBuffer(cols, rows);
+    var renderer = new FrameRenderer();
+
+    // Background pump for input events — main loop polls the queue between renders.
+    var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
+    using var stopCts = new CancellationTokenSource();
+    var inputPump = Task.Run(async () =>
+    {
+        try
+        {
+            // ReSharper disable AccessToDisposedClosure
+            await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+            {
+                events.Enqueue(evt);
+            }
+            // ReSharper restore AccessToDisposedClosure
+        }
+        catch (OperationCanceledException) { }
+    });
+
+    try
+    {
+        while (!stopCts.IsCancellationRequested)
+        {
+            // Drain pending events.
+            while (events.TryDequeue(out var evt))
+            {
+                switch (evt)
+                {
+                    case ResizeEvent { Columns: > 0, Rows: > 0 } r:
+                        buffer.Resize(r.Columns, r.Rows);
+                        // Resize discards content; the renderer will detect dimension change
+                        // and full-redraw on the next render.
+                        break;
+
+                    case KeyEvent k when IsExit(k):
+                        stopCts.Cancel();
+                        break;
+                }
+            }
+
+            if (stopCts.IsCancellationRequested) break;
+
+            PaintRenderShowcase(buffer, session);
+
+            var scratch = new ArrayBufferWriter<byte>();
+            renderer.Render(buffer, scratch);
+            await writer.WriteAsync(scratch.WrittenMemory);
+            await writer.FlushAsync();
+
+            try { await Task.Delay(33, stopCts.Token); } // ~30fps
+            catch (OperationCanceledException) { break; }
+        }
+    }
+    finally
+    {
+        stopCts.Cancel();
+
+        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* ignored */}
+
+        CursorWriter.WriteShow(writer);
+        SgrEncoder.WriteReset(writer);
+        ScreenWriter.WriteLeaveAlternateScreen(writer);
+
+        try { await writer.FlushAsync(); } catch { /* ignored */}
+    }
+
+    Console.WriteLine("Render demo exited.");
+
+    static bool IsExit(KeyEvent k)
+    {
+        if (k.Kind != KeyEventKind.Down) return false;
+        if (k.Key == Key.Escape) return true;
+
+        if (k is { Key: Key.Character, Text.Length: > 0 } && (k.Text.Span[0] == 'q' || k.Text.Span[0] == 'Q'))
+            return true;
+
+        // Ctrl+C as a Kitty/Win32 character key.
+        if (k.Key == Key.Character &&
+            k.Modifiers.HasFlag(KeyModifiers.Control) &&
+            k.Text.Length > 0 &&
+            (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C'))
+        {
+            return true;
+        }
+
+        return false;
+    }
+}
+
+/// <summary>
+/// Paint the render-demo content into <paramref name="buf"/>. Uses every piece of the rendering
+/// surface we've built: SGR styles via <c>buffer.Set</c>, wide glyphs that auto-pair into
+/// wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
+/// that changes once per second — the clock is how you tell the diff renderer is doing per-cell
+/// deltas instead of repainting the whole screen each frame.
+/// </summary>
+static void PaintRenderShowcase(CellBuffer buf, TerminalSession session)
+{
+    var writer = session.Output.Writer;
+
+    buf.CursorVisible = false;
+    buf.Clear();
+
+    int cols = buf.Columns;
+    int rows = buf.Rows;
+
+    // ---- Title bar ----
+    var titleStyle = new Style(
+        Foreground: Color.FromRgb(20, 20, 30),
+        Background: Color.FromRgb(180, 220, 255),
+        Attributes: TextAttributes.Bold,
+        UnderlineStyle: default,
+        UnderlineColor: default);
+
+    PaintLine(buf, 0, 0, "  Cursorial render demo — press q or Ctrl+C to exit  ".PadRight(cols), titleStyle);
+
+    // ---- 16-color ANSI palette ----
+    int row = 5;
+    if (row < rows) PaintLine(buf, row, 1, "ANSI 16-color palette:", default);
+    if (row + 1 < rows)
+    {
+        for (int i = 0; i < 16 && (1 + i * 3 + 2) < cols; i++)
+        {
+            var bg = Color.FromPalette((byte)i);
+            var swatch = new Style(
+                Foreground: Color.Default,
+                Background: bg,
+                Attributes: default,
+                UnderlineStyle: default,
+                UnderlineColor: default);
+            int x = 1 + i * 3;
+            buf.Set(row + 1, x,     " ", swatch);
+            buf.Set(row + 1, x + 1, " ", swatch);
+        }
+    }
+
+    // ---- Truecolor gradient ----
+    row += 2;
+    if (row < rows) PaintLine(buf, row, 1, "24-bit truecolor gradient:", default);
+    if (row + 1 < rows)
+    {
+        int width = Math.Min(cols - 2, 60);
+        for (int i = 0; i < width; i++)
+        {
+            // Hue-like sweep across red/green/blue.
+            byte r = (byte)(255 - (i * 255 / width));
+            byte g = (byte)(i * 255 / width);
+            byte b = (byte)(128 + (i * 64 / width) % 128);
+            var swatch = new Style(
+                Foreground: Color.Default,
+                Background: Color.FromRgb(r, g, b),
+                Attributes: default,
+                UnderlineStyle: default,
+                UnderlineColor: default);
+            buf.Set(row + 1, 1 + i, " ", swatch);
+        }
+    }
+
+    // ---- Wide glyphs ----
+    row += 3;
+    if (row < rows) PaintLine(buf, row, 1, "Wide glyphs (emoji + CJK, each occupies 2 cells):", default);
+    if (row + 1 < rows)
+    {
+        int x = 1;
+        foreach (var g in new[] { "🚀", "🌍", "🎨", "🐈", "中", "日", "本", "文" })
+        {
+            if (x + 2 >= cols) break;
+            buf.Set(row + 1, x, g, Style.Default);
+            x += 3; // 2 cells for the glyph + 1 space
+        }
+    }
+
+    // ---- Attribute showcase ----
+    row += 2;
+    if (row < rows) PaintLine(buf, row, 1, "Text attributes:", default);
+    if (row + 1 < rows)
+    {
+        int x = 1;
+        x += PaintWord(buf, row + 1, x, "Bold ",
+            Style.Default.WithAttributes(TextAttributes.Bold));
+        x += PaintWord(buf, row + 1, x, "Italic ",
+            Style.Default.WithAttributes(TextAttributes.Italic));
+        x += PaintWord(buf, row + 1, x, "Underline ",
+            Style.Default.WithAttributes(TextAttributes.Underline));
+        x += PaintWord(buf, row + 1, x, "Curly ",
+            Style.Default
+                .WithAttributes(TextAttributes.Underline)
+                .WithUnderlineStyle(UnderlineStyle.Curly)
+                .WithUnderlineColor(Color.FromRgb(255, 80, 80)));
+        x += PaintWord(buf, row + 1, x, "Strike ",
+            Style.Default.WithAttributes(TextAttributes.Strikethrough));
+        PaintWord(buf, row + 1, x, "Inverse",
+            Style.Default.WithAttributes(TextAttributes.Inverse));
+    }
+
+    // ---- Alpha-blended overlay ----
+    row += 2;
+    if (row < rows) PaintLine(buf, row, 1, "Alpha-blended overlay (Multiply mode, α=128):", default);
+    if (row + 1 < rows && row + 4 < rows)
+    {
+        // Backdrop: solid color stripes.
+        var stripes = new[]
+        {
+            Color.FromRgb(220, 60, 60),
+            Color.FromRgb(60, 220, 60),
+            Color.FromRgb(60, 60, 220),
+            Color.FromRgb(220, 220, 60),
+        };
+        int barWidth = Math.Min(cols - 2, 60);
+        for (int dy = 0; dy < 3; dy++)
+        {
+            if (row + 1 + dy >= rows) break;
+            for (int x = 0; x < barWidth; x++)
+            {
+                var bg = stripes[(x * stripes.Length) / barWidth];
+                buf.Set(row + 1 + dy, 1 + x, " ",
+                    new Style(
+                        Color.Default, bg, default, default, default));
+            }
+        }
+
+        // Translucent overlay in Multiply mode. The mid-gray + Multiply darkens each stripe
+        // toward its own color * gray, and the α=128 means we mix 50/50 with the original.
+        buf.PushBlendingMode(BlendingModes.Multiply);
+        try
+        {
+            int overlayStart = Math.Min(barWidth - 20, 10);
+            int overlayWidth = Math.Min(20, barWidth - overlayStart - 1);
+            for (int dy = 0; dy < 3; dy++)
+            {
+                if (row + 1 + dy >= rows) break;
+                for (int dx = 0; dx < overlayWidth; dx++)
+                {
+                    buf.Set(row + 1 + dy, 1 + overlayStart + dx, " ",
+                        new Style(
+                            Color.Default,
+                            Color.FromRgba(128, 128, 128, 128),
+                            default, default, default));
+                }
+            }
+        }
+        finally
+        {
+            buf.PopBlendingMode();
+        }
+    }
+
+    // ---- Sized Text below Title Bar ----
+    CursorWriter.WriteSavePosition(writer);
+    CursorWriter.WriteMoveTo(writer, 2, 1);
+
+    SgrEncoder.WriteAbsolute(
+        writer,
+        Style.Default.WithForeground(Color.FromPalette(4))
+             .WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
+             .WithUnderlineStyle(UnderlineStyle.Curly)
+             .WithUnderlineColor(Color.FromPalette(5)));
+    TextSizingWriter.Write(writer, new(Scale: 2), "Cursorial Rendering Demo");
+    CursorWriter.WriteRestorePosition(writer);
+
+    // ---- Clock in top-right corner ----
+    string clock = DateTime.Now.ToString("HH:mm:ss");
+    if (clock.Length + 1 < cols)
+    {
+        var clockStyle = Style.Default
+            .WithForeground(Color.FromRgb(255, 255, 255))
+            .WithBackground(Color.FromRgb(40, 40, 70))
+            .WithAttributes(TextAttributes.Bold);
+        int x = cols - clock.Length - 1;
+        PaintLine(buf, 0, x, " " + clock, clockStyle);
+    }
+}
+
+static void PaintLine(CellBuffer buf, int row, int col, string text, Style style)
+{
+    if (row < 0 || row >= buf.Rows) return;
+    int x = col;
+    var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
+    while (enumerator.MoveNext())
+    {
+        if (x >= buf.Columns) break;
+        var cluster = (string)enumerator.Current;
+        int width = buf.Set(row, x, cluster, style);
+        x += width;
+    }
+}
+
+static int PaintWord(CellBuffer buf, int row, int col, string text, Style style)
+{
+    int startCol = col;
+    int x = col;
+    var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
+    while (enumerator.MoveNext())
+    {
+        if (row >= buf.Rows || x >= buf.Columns) break;
+        var cluster = (string)enumerator.Current;
+        int width = buf.Set(row, x, cluster, style);
+        x += width;
+    }
+    return x - startCol;
 }
 
 static async Task ProbeAsync()

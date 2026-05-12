@@ -599,6 +599,35 @@ public class VtTerminalNegotiatorTests
     // ---- Restore ----
 
     [Fact]
+    public async Task RestoreAsync_EmitsKittyMultiCursorClear_Unconditionally()
+    {
+        // Even when no opt-ins were applied, restore must emit the Kitty multi-cursor clear
+        // as a defensive cleanup — the protocol is fire-and-forget (no enable tracked) and
+        // the clear is a no-op on terminals that don't implement it.
+        _source.Enqueue("\x1b[?64c"); // DA1 only — no XTVERSION → no family-gated opt-ins
+        var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+        {
+            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+            EnableMouseTracking = false,
+            EnableFocusEvents = false,
+            EnableBracketedPaste = false,
+            EnableKittyKeyboard = false,
+            EnableWin32InputMode = false,
+            EnableSynchronizedOutput = false,
+        });
+        await _sink.ReadAllWrittenAsync();
+
+        await negotiator.RestoreAsync();
+        var restored = await AllWrittenAsync();
+
+        Assert.Contains("\x1b[>0;4 q", restored);
+
+        await negotiator.DisposeAsync();
+    }
+
+    [Fact]
     public async Task RestoreAsync_EmitsDisablesInLifoOrder()
     {
         _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");

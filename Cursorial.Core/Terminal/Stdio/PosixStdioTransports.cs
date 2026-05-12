@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Cursorial.Core.Input;
 using Cursorial.Core.Output;
@@ -27,17 +28,23 @@ namespace Cursorial.Core.Terminal.Stdio;
 /// need to read.
 /// </para>
 /// </remarks>
-internal sealed class PosixStdioTransports : IStdioTransports
+internal sealed partial class PosixStdioTransports : IStdioTransports
 {
+    // tcflush(fd, queue_selector). The queue_selector value for "discard input queue" (TCIFLUSH)
+    // is defined differently per platform: Linux uses 0, macOS uses 1. We need both because the
+    // .NET runtime supports both at runtime.
+    private const int LinuxTciFlush = 0;
+    private const int MacosTciFlush = 1;
+
     private readonly string _savedSttyState;
-    private readonly StreamInputByteSource _source;
+    private readonly IInputByteSource _source;
     private readonly StreamOutputByteSink _sink;
     private int _terminalRestored;
     private int _disposed;
 
     private PosixStdioTransports(
         string savedSttyState,
-        StreamInputByteSource source,
+        IInputByteSource source,
         StreamOutputByteSink sink)
     {
         _savedSttyState = savedSttyState;
@@ -65,17 +72,20 @@ internal sealed class PosixStdioTransports : IStdioTransports
 
         try
         {
-            // Wrap fd 0 / fd 1 via FileStream(SafeFileHandle) — see remarks on the class for
-            // why we do NOT use Console.OpenStandardInput / Console.OpenStandardOutput.
-            // ownsHandle: false because these descriptors are process-global; we mustn't close them.
-            var stdinHandle = new SafeFileHandle((nint)0, ownsHandle: false);
+            // Output: wrap fd 1 via FileStream(SafeFileHandle) — see remarks on the class for
+            // why we do NOT use Console.OpenStandardOutput. ownsHandle: false because fd 1 is
+            // process-global; we mustn't close it.
             var stdoutHandle = new SafeFileHandle((nint)1, ownsHandle: false);
-
-            var stdinStream = new FileStream(stdinHandle, FileAccess.Read);
             var stdoutStream = new FileStream(stdoutHandle, FileAccess.Write);
-
-            var source = new StreamInputByteSource(stdinStream);
             var sink = new StreamOutputByteSink(stdoutStream);
+
+            // Input: poll(2)-based source with self-pipe wakeup. We deliberately do NOT wrap
+            // fd 0 in a FileStream/PipeReader.Create chain for input — on POSIX that combo
+            // leaves a zombie read(2) blocked in the kernel after disposal, which silently
+            // eats the next byte the user types at any shell prompt that follows. See the
+            // class remarks on PosixPollInputByteSource.
+            var source = new PosixPollInputByteSource(fd: 0);
+
             return new PosixStdioTransports(savedState, source, sink);
         }
         catch
@@ -91,9 +101,29 @@ internal sealed class PosixStdioTransports : IStdioTransports
         // Idempotent — guarded so signal-handler invocations don't run multiple times.
         if (Interlocked.Exchange(ref _terminalRestored, 1) != 0) return;
 
+        // Discard any bytes still sitting in the TTY's input queue BEFORE restoring cooked
+        // mode. Without this, trailing protocol reports the terminal emitted in response to
+        // our opt-in-disable sequences (most visibly a Kitty key-release for whatever key
+        // exited the application) can survive across the raw→cooked transition and get
+        // delivered to the next cooked-mode `Console.ReadLine` as part of the user's next
+        // typed line. tcflush is a no-op when the queue is already empty.
+        FlushInputQueue();
+
         try { ApplySttyMode(_savedSttyState); }
         catch { /* best-effort — terminal may have detached */ }
     }
+
+    private static void FlushInputQueue()
+    {
+        int selector = OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD()
+            ? MacosTciFlush
+            : LinuxTciFlush;
+        try { tcflush(0, selector); } catch { /* best-effort */ }
+    }
+
+    /// <summary><c>tcflush(int fd, int queue_selector)</c> — discard pending TTY data.</summary>
+    [LibraryImport("libc", EntryPoint = "tcflush", SetLastError = true)]
+    private static partial int tcflush(int fd, int queueSelector);
 
     public async ValueTask DisposeAsync()
     {

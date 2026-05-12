@@ -100,7 +100,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // and transport failures are swallowed so disposal stays reliable.
         if (Interlocked.Exchange(ref _restored, 1) != 0) return;
 
-        if (Volatile.Read(ref _negotiated) == 0 || _applied.IsEmpty) return;
+        if (Volatile.Read(ref _negotiated) == 0) return;
 
         try
         {
@@ -114,6 +114,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (_applied.AnyEventMouse)      QueueWrite(VtInputSequences.OptInSequences.DisableAnyEventMouse);
             if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableButtonEventMouse);
             if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
+
+            // Unconditional belt-and-braces: clear any Kitty multi-cursor extras the terminal
+            // is holding onto. The spec says alt-screen-toggle clears these implicitly, but a
+            // timing-dependent Kitty bug leaves ghost cursors after quit-during-resize; this
+            // sequence is silently ignored by non-supporting terminals. Emit independent of
+            // _applied because the protocol isn't gated on an enable we'd have tracked.
+            QueueWrite(VtInputSequences.OptInSequences.ClearKittyExtraCursors);
 
             await _sink.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
         }

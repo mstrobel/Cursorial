@@ -292,6 +292,13 @@ byte writers with a TUI abstraction, and for higher-level frameworks to build on
   delta. The renderer is the single owner of SGR + cursor state across frames — interleaving raw output that
   mutates those will desync the next frame. `Reset()` forgets the front buffer and forces a full redraw on the
   next render.
+- **Capability-aware quantization.** When constructed with an `OutputCapabilities` (the
+  `FrameRenderer(OutputCapabilities)` overload), the renderer holds a `StyleQuantizer` and runs each cell's
+  `Style` through it before diffing or emission. RGB cells are quantized to palette / 16-color indices when
+  truecolor isn't available; extended underline shapes fall back to Single; unsupported attributes are dropped.
+  The front-buffer snapshot stores the quantized form so subsequent frames compare apples-to-apples and a stable
+  rendered frame produces an empty delta. The no-capability constructor preserves the original raw-style
+  behavior — useful for tests and for consumers that quantize upstream of the cell buffer themselves.
 - **Wide-cell emission.** A `CellKind.WideContinuation` cell is skipped in the diff loop. The wide-glyph
   emission at the WideLeft position is a single terminal operation that draws both columns; trying to write
   anything at the right-half column is undefined in most terminals (the cursor is past it, and moving back into

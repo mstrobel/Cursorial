@@ -239,4 +239,18 @@ public class FrameRendererTests
 
         Assert.Contains("\x1b[3;4H", output); // 1-based (3, 4) for 0-based (2, 3)
     }
+
+    [Fact]
+    public void EndOfFrame_EmitsSgrReset()
+    {
+        // After the cell emission and cursor positioning, the renderer emits CSI 0 m so the
+        // terminal's SGR state at frame boundary is "default" — protects against post-frame
+        // bg-bleed when the terminal has to fill new rows (resize, scroll, etc.).
+        var r = new FrameRenderer();
+        var buf = new CellBuffer(3, 1);
+        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(255, 0, 0)));
+
+        var output = Render(r, buf);
+        Assert.EndsWith("\x1b[0m", output);
+    }
 }

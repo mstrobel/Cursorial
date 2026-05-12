@@ -216,12 +216,24 @@ public sealed class TerminalSession : IAsyncDisposable
         catch { /* best-effort */ }
         _resizeMonitor = null;
 
-        // Stop the input pump first so we're not racing with the negotiator's restore writes.
-        try { await _input.DisposeAsync().ConfigureAwait(false); }
+        // Restore opt-ins FIRST, while the input pump is still running. The terminal may emit
+        // trailing reports in response to the disable sequences — most notably a Kitty key-release
+        // report for whatever key the user pressed to exit, plus any final mouse/focus reports.
+        // With the pump still draining fd 0, those bytes are consumed into the device's internal
+        // pipe (and dropped on pipe completion) rather than piling up in the TTY input queue for
+        // the next cooked-mode `Console.ReadLine` to splice into the user's next command.
+        try { await _negotiator.DisposeAsync().ConfigureAwait(false); }
         catch { /* best-effort */ }
 
-        // Then restore opt-ins (this writes disable sequences to the sink).
-        try { await _negotiator.DisposeAsync().ConfigureAwait(false); }
+        // Give the local round-trip (we write disable → terminal processes → terminal emits
+        // any final reports → poll/read picks them up) a moment to complete. 50 ms is the
+        // xterm bare-ESC ambiguity convention and is generous for this round-trip on any
+        // terminal in the support matrix.
+        try { await Task.Delay(50).ConfigureAwait(false); }
+        catch { /* best-effort */ }
+
+        // Now stop the input pump.
+        try { await _input.DisposeAsync().ConfigureAwait(false); }
         catch { /* best-effort */ }
 
         // Only dispose transports the session itself created (parameterless overload). BYO

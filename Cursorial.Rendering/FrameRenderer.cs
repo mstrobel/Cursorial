@@ -46,6 +46,7 @@ namespace Cursorial.Rendering;
 public sealed class FrameRenderer
 {
     private readonly FrameRendererOptions _options;
+    private readonly StyleQuantizer? _quantizer;
 
     private Cell[]? _frontCells;
     private int _frontCols;
@@ -59,13 +60,30 @@ public sealed class FrameRenderer
     private CursorShape _cursorShape = CursorShape.Default;
 
     public FrameRenderer()
-        : this(default)
+        : this(capabilities: null, options: default)
     {
     }
 
     public FrameRenderer(FrameRendererOptions options)
+        : this(capabilities: null, options: options)
+    {
+    }
+
+    /// <summary>
+    /// Construct a renderer that adapts each cell's <see cref="Style"/> to the target terminal's
+    /// <paramref name="capabilities"/> before diffing or emitting. RGB colors are quantized to
+    /// palette indices when truecolor isn't available; extended-underline shapes fall back to
+    /// <see cref="UnderlineStyle.Single"/>; unsupported attributes are dropped.
+    /// </summary>
+    public FrameRenderer(OutputCapabilities capabilities)
+        : this(capabilities, options: default)
+    {
+    }
+
+    public FrameRenderer(OutputCapabilities? capabilities, FrameRendererOptions options)
     {
         _options = options;
+        _quantizer = capabilities is null ? null : new StyleQuantizer(capabilities);
     }
 
     /// <summary>The options the renderer was constructed with.</summary>
@@ -110,14 +128,17 @@ public sealed class FrameRenderer
         }
 
         EmitDiff(back, output);
-
-        // Snapshot the back buffer's cell content for next frame's comparison.
-        for (int r = 0; r < back.Rows; r++)
-        {
-            back.GetRowSpan(r).CopyTo(_frontCells.AsSpan(r * _frontCols, _frontCols));
-        }
-
         EmitCursor(back, output);
+
+        // End-of-frame SGR reset. Without this, the terminal's SGR state at frame boundary is
+        // whatever the last-emitted cell's style was — so when the terminal has to fill new
+        // rows (because the user enlarged the window, or content scrolled), those rows inherit
+        // the colored background and the user sees a "bleed" effect. Resetting puts the
+        // terminal back into default style; the next frame's first non-default cell pays the
+        // SGR re-establishment cost (a handful of bytes).
+        SgrEncoder.WriteReset(output);
+        _currentStyle = Style.Default;
+
         _firstFrame = false;
     }
 
@@ -128,17 +149,26 @@ public sealed class FrameRenderer
             ReadOnlySpan<Cell> row = back.GetRowSpan(r);
             for (int c = 0; c < back.Columns; c++)
             {
-                var cell = row[c];
-
-                // Wide-continuation cells are skipped here. They aren't "left undrawn" — the
-                // wide glyph emitted at the corresponding WideLeft position paints both cell
-                // columns (foreground and background) as a single terminal operation. Trying
-                // to emit anything at the right-half column is undefined for most terminals
-                // (the cursor is already advanced past it after the wide-glyph emission, and
-                // moving back into the glyph corrupts it).
-                if (cell.Kind == CellKind.WideContinuation) continue;
-
+                // Quantize per cell when a StyleQuantizer is attached. The quantized form is
+                // what we emit, what we compare against the front buffer, and what we snapshot
+                // for next frame — all three must agree so a stable rendered frame produces an
+                // empty delta.
+                var cell = Adapt(row[c]);
                 int frontIdx = r * _frontCols + c;
+
+                // Wide-continuation cells are skipped from emission here. They aren't "left
+                // undrawn" — the wide glyph emitted at the corresponding WideLeft position
+                // paints both cell columns (foreground and background) as a single terminal
+                // operation. Trying to emit anything at the right-half column is undefined for
+                // most terminals (the cursor is already advanced past it after the wide-glyph
+                // emission, and moving back into the glyph corrupts it). We still snapshot the
+                // continuation into the front buffer so subsequent frames diff correctly.
+                if (cell.Kind == CellKind.WideContinuation)
+                {
+                    _frontCells![frontIdx] = cell;
+                    continue;
+                }
+
                 if (cell == _frontCells![frontIdx]) continue;
 
                 // Re-position cursor if our tracked position isn't (r, c). After writing a cell
@@ -158,6 +188,7 @@ public sealed class FrameRenderer
                 }
 
                 WriteGraphemeUtf8(output, cell);
+                _frontCells[frontIdx] = cell;
 
                 _cursorCol += cell.Width;
                 // If the next cursor position would be at or past the right edge, force a
@@ -168,6 +199,13 @@ public sealed class FrameRenderer
                 }
             }
         }
+    }
+
+    private Cell Adapt(in Cell cell)
+    {
+        if (_quantizer is null) return cell;
+        var quantized = _quantizer.Quantize(cell.Style);
+        return quantized == cell.Style ? cell : cell with { Style = quantized };
     }
 
     private static void WriteGraphemeUtf8(IBufferWriter<byte> output, in Cell cell)

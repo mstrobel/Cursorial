@@ -414,7 +414,12 @@ static async Task DemoRenderAsync()
     int rows = Math.Max(8, Console.WindowHeight);
 
     var buffer = new CellBuffer(cols, rows);
-    var renderer = new FrameRenderer();
+    // Hand the renderer the negotiated capabilities so it can quantize cells before emission
+    // (RGB → palette where truecolor isn't available, extended underline → Single where the
+    // extended forms aren't supported, drop unsupported attributes, …). Without this, terminals
+    // like Apple Terminal that report Ansi256 receive raw truecolor SGR and render
+    // unpredictably.
+    var renderer = new FrameRenderer(session.Capabilities.Output);
 
     // Background pump for input events — main loop polls the queue between renders.
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();

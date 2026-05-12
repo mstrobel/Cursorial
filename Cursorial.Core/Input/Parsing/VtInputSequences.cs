@@ -269,6 +269,21 @@ public static class VtInputSequences
 
         /// <summary>Suffix for a Kitty keyboard push.</summary>
         public const byte KittyPushSuffix = (byte)'u';
+
+        // ---- Kitty multiple-cursors protocol ----
+        //
+        // The protocol is fire-and-forget — no DECSET to enable. Its add-cursor form is
+        // CSI > SHAPE ; COORD_TYPE : COORDS SP q; the all-clear is shape 0 + whole-screen
+        // coord-type 4. Per spec, switching alt-screen state implicitly clears extra
+        // cursors, but a timing-dependent Kitty bug has been observed where that invariant
+        // doesn't hold and "ghost" cursors persist on the normal screen after a TUI exits.
+        // We emit this explicit clear on session disposal as belt-and-braces. Terminals
+        // that don't implement the protocol discard the sequence as an unknown CSI.
+        //
+        // https://sw.kovidgoyal.net/kitty/multiple-cursors-protocol/
+
+        /// <summary><c>CSI &gt; 0;4 SP q</c> — clear all Kitty extra cursors from the screen.</summary>
+        public static ReadOnlySpan<byte> ClearKittyExtraCursors => "\x1b[>0;4 q"u8;
     }
 
     /// <summary>

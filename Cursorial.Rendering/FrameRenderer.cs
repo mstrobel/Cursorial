@@ -130,8 +130,12 @@ public sealed class FrameRenderer
             {
                 var cell = row[c];
 
-                // Wide-continuation cells aren't directly rendered — they're the right half of
-                // the WideLeft we already emitted (or will, when we visit it).
+                // Wide-continuation cells are skipped here. They aren't "left undrawn" — the
+                // wide glyph emitted at the corresponding WideLeft position paints both cell
+                // columns (foreground and background) as a single terminal operation. Trying
+                // to emit anything at the right-half column is undefined for most terminals
+                // (the cursor is already advanced past it after the wide-glyph emission, and
+                // moving back into the glyph corrupts it).
                 if (cell.Kind == CellKind.WideContinuation) continue;
 
                 int frontIdx = r * _frontCols + c;

@@ -38,11 +38,20 @@ public readonly record struct Cell(string? Grapheme, CellKind Kind, Style Style)
 
     /// <summary>
     /// The right-half placeholder of a wide-left glyph. The renderer skips this cell during
-    /// emission; the terminal's cursor advance from the wide-left glyph covers its position.
-    /// Mutating the buffer cell at this position should be paired with mutating the
-    /// preceding wide-left so the buffer remains internally consistent — <see cref="CellBuffer.Set"/>
-    /// handles that automatically.
+    /// emission, but the cell's <see cref="Style"/> background is still painted: when the
+    /// terminal renders the wide glyph at the <see cref="CellKind.WideLeft"/> position, it
+    /// paints both cell columns with the wide-left's SGR background as a single operation.
+    /// The renderer doesn't (and can't usefully) emit anything separate for the right half
+    /// — moving the cursor to the right-half column and writing there is undefined behavior
+    /// for most terminals.
     /// </summary>
+    /// <remarks>
+    /// <see cref="CellBuffer.Set"/> mirrors the wide-left's <see cref="Style"/> onto the
+    /// continuation cell for diff-comparison hygiene; modifying the continuation's style
+    /// independently via the buffer's indexer is allowed but visually meaningless — the
+    /// rendered background follows the wide-left, since terminals don't render different
+    /// backgrounds on the two halves of a wide glyph.
+    /// </remarks>
     public static Cell WideContinuation { get; } = new(null, CellKind.WideContinuation, default);
 
     /// <summary>Number of terminal cells this entry occupies: 1 for single, 2 for wide-left, 0 for continuation.</summary>

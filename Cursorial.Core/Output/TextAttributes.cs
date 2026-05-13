@@ -3,7 +3,7 @@ using Cursorial.Output.Capabilities;
 namespace Cursorial.Output;
 
 /// <summary>
-/// Independently-toggleable text attributes a terminal applies via SGR commands. Combine with
+/// Independently toggleable text attributes a terminal applies via SGR commands. Combine with
 /// bitwise OR. The presence of <see cref="Underline"/> here is a boolean — the shape of the
 /// underline (single, double, curly, dotted, dashed) is the separate <see cref="UnderlineStyle"/>
 /// enum, because those forms don't combine and can't fit in a flags layout.
@@ -41,7 +41,7 @@ public enum TextAttributes : ushort
     Strikethrough = 1 << 7,
 
     /// <summary>SGR 53.</summary>
-    Overline = 1 << 8,
+    Overline = 1 << 8
 }
 
 /// <summary>

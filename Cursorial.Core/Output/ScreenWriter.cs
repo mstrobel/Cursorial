@@ -22,8 +22,8 @@ namespace Cursorial.Output;
 public static class ScreenWriter
 {
     private const byte Escape = 0x1B;
-    private const byte CsiOpen = (byte)'[';
-    private const byte CsiSeparator = (byte)';';
+    private const byte CsiOpen = (byte) '[';
+    private const byte CsiSeparator = (byte) ';';
 
     /// <summary>Clear the entire screen (ED 2, <c>CSI 2 J</c>). Does not move the cursor.</summary>
     public static void WriteClearScreen(IBufferWriter<byte> writer) => WriteEd(writer, 2);
@@ -63,7 +63,7 @@ public static class ScreenWriter
 
     /// <summary>
     /// Configure the scroll region to the inclusive range [<paramref name="topRow"/>,
-    /// <paramref name="bottomRow"/>] (0-based) via DECSTBM. After setting the region the cursor
+    /// <paramref name="bottomRow"/>] (0-based) via DECSTBM. After setting the region, the cursor
     /// is moved to row 0, column 0 of the new region per the standard's contract.
     /// </summary>
     public static void WriteScrollRegion(IBufferWriter<byte> writer, int topRow, int bottomRow)
@@ -76,7 +76,7 @@ public static class ScreenWriter
         VtWriterUtilities.WriteAsciiInt(Math.Max(0, topRow) + 1, buffer, ref written);
         buffer[written++] = CsiSeparator;
         VtWriterUtilities.WriteAsciiInt(Math.Max(0, bottomRow) + 1, buffer, ref written);
-        buffer[written++] = (byte)'r';
+        buffer[written++] = (byte) 'r';
         writer.Advance(written);
     }
 
@@ -87,12 +87,12 @@ public static class ScreenWriter
         var span = writer.GetSpan(3);
         span[0] = Escape;
         span[1] = CsiOpen;
-        span[2] = (byte)'r';
+        span[2] = (byte) 'r';
         writer.Advance(3);
     }
 
-    private static void WriteEd(IBufferWriter<byte> writer, byte digit) => WriteSingleDigitFinal(writer, digit, (byte)'J');
-    private static void WriteEl(IBufferWriter<byte> writer, byte digit) => WriteSingleDigitFinal(writer, digit, (byte)'K');
+    private static void WriteEd(IBufferWriter<byte> writer, byte digit) => WriteSingleDigitFinal(writer, digit, (byte) 'J');
+    private static void WriteEl(IBufferWriter<byte> writer, byte digit) => WriteSingleDigitFinal(writer, digit, (byte) 'K');
 
     private static void WriteSingleDigitFinal(IBufferWriter<byte> writer, byte digit, byte final)
     {
@@ -100,7 +100,7 @@ public static class ScreenWriter
         var span = writer.GetSpan(4);
         span[0] = Escape;
         span[1] = CsiOpen;
-        span[2] = (byte)('0' + digit);
+        span[2] = (byte) ('0' + digit);
         span[3] = final;
         writer.Advance(4);
     }
@@ -112,9 +112,9 @@ public static class ScreenWriter
         int written = 0;
         buffer[written++] = Escape;
         buffer[written++] = CsiOpen;
-        buffer[written++] = (byte)'?';
+        buffer[written++] = (byte) '?';
         VtWriterUtilities.WriteAsciiInt(mode, buffer, ref written);
-        buffer[written++] = enable ? (byte)'h' : (byte)'l';
+        buffer[written++] = enable ? (byte) 'h' : (byte) 'l';
         writer.Advance(written);
     }
 }

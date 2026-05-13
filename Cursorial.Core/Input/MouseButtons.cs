@@ -19,5 +19,5 @@ public enum MouseButtons : uint
     X5 = 1u << 7,
     X6 = 1u << 8,
     X7 = 1u << 9,
-    X8 = 1u << 10,
+    X8 = 1u << 10
 }

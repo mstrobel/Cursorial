@@ -313,12 +313,13 @@ static async Task DemoTextSizingAsync()
     else
     {
         var support = (caps.Width, caps.Scale) switch
-        {
-            (true, true) => "Width + Scale",
-            (true, false) => "Width only",
-            (false, true) => "Scale only",
-            _ => "none",
-        };
+                      {
+                          (true, true)  => "Width + Scale",
+                          (true, false) => "Width only",
+                          (false, true) => "Scale only",
+                          _             => "none"
+                      };
+        
         await WriteLineAsync(writer, $"  Negotiated text-sizing support: {support}.");
         await WriteLineAsync(writer, "");
     }
@@ -479,13 +480,13 @@ static async Task DemoRenderAsync()
     {
         stopCts.Cancel();
 
-        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* ignored */}
+        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
 
         CursorWriter.WriteShow(writer);
         SgrEncoder.WriteReset(writer);
         ScreenWriter.WriteLeaveAlternateScreen(writer);
 
-        try { await writer.FlushAsync(); } catch { /* ignored */}
+        try { await writer.FlushAsync(); } catch { /* best-effort */ }
     }
 
     Console.WriteLine("Render demo exited.");

@@ -9,15 +9,13 @@ namespace Cursorial.Input.Capabilities;
 /// <param name="Pressure">True when normalized pressure is reported.</param>
 /// <param name="Tilt">True when X/Y tilt is reported.</param>
 /// <param name="Touch">True when finger-touch events (with multi-touch IDs) are reported.</param>
-public sealed record class PointerCapabilities(
-    bool Pen,
-    bool Pressure,
-    bool Tilt,
-    bool Touch)
+public sealed record PointerCapabilities(bool Pen,
+                                         bool Pressure,
+                                         bool Tilt,
+                                         bool Touch)
 {
-    public static PointerCapabilities None { get; } = new(
-        Pen: false,
-        Pressure: false,
-        Tilt: false,
-        Touch: false);
+    public static PointerCapabilities None { get; } = new(Pen: false,
+                                                          Pressure: false,
+                                                          Tilt: false,
+                                                          Touch: false);
 }

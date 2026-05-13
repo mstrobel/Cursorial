@@ -111,15 +111,14 @@ public readonly record struct Color
         return new(Kind, _byte0, _byte1, _byte2, alpha);
     }
 
-    public override string ToString() => Kind switch
-    {
-        ColorKind.Default => "default",
-        ColorKind.Palette => _alpha == 255 ? $"palette({_byte0})" : $"palette({_byte0},a={_alpha})",
-        ColorKind.Rgb => _alpha == 255
-            ? $"rgb({_byte0},{_byte1},{_byte2})"
-            : $"rgba({_byte0},{_byte1},{_byte2},{_alpha})",
-        _ => "<invalid>",
-    };
+    public override string ToString() =>
+        Kind switch
+        {
+            ColorKind.Default => "default",
+            ColorKind.Palette => _alpha == 255 ? $"palette({_byte0})" : $"palette({_byte0},a={_alpha})",
+            ColorKind.Rgb     => _alpha == 255 ? $"rgb({_byte0},{_byte1},{_byte2})" : $"rgba({_byte0},{_byte1},{_byte2},{_alpha})",
+            _                 => "<invalid>"
+        };
 }
 
 /// <summary>The representation a <see cref="Color"/> carries.</summary>
@@ -132,5 +131,5 @@ public enum ColorKind : byte
     Palette = 1,
 
     /// <summary>24-bit truecolor.</summary>
-    Rgb = 2,
+    Rgb = 2
 }

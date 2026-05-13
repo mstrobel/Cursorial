@@ -97,5 +97,5 @@ public interface IVtSequenceTokenSink
     /// only call this when X10 framing is explicitly enabled, which a sink ignorant of the
     /// callback never does.
     /// </remarks>
-    void OnX10MouseDispatch(byte cb, byte cx, byte cy) { }
+    void OnX10MouseDispatch(byte cb, byte cx, byte cy) {}
 }

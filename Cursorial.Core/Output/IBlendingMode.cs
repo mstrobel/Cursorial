@@ -14,7 +14,7 @@ namespace Cursorial.Output;
 /// </para>
 /// <para>
 /// <b>Non-RGB inputs.</b> Without an alpha channel, blending modes only have meaningful results
-/// when both <paramref name="source"/> and <paramref name="backdrop"/> are <see cref="ColorKind.Rgb"/>.
+/// when both <c>source</c> and <c>backdrop</c> are <see cref="ColorKind.Rgb"/>.
 /// Implementations SHOULD short-circuit to "return source" when either side is
 /// <see cref="ColorKind.Default"/> (no known RGB equivalent) or <see cref="ColorKind.Palette"/>
 /// (round-tripping through RGB would be lossy and surprising). The built-in modes follow that

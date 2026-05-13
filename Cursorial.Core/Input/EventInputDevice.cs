@@ -1,6 +1,8 @@
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 
+// ReSharper disable ChangeFieldTypeToSystemThreadingLock
+
 namespace Cursorial.Input;
 
 /// <summary>
@@ -76,10 +78,11 @@ public sealed class EventInputDevice : IEventInputDevice
         {
             _pumpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var token = _pumpCts.Token;
-            // Do NOT pass the token to Task.Run — a cancellation that races the scheduler can
-            // abort the task before PumpAsync runs, skipping the Completed event entirely. We
-            // want PumpAsync to always execute so its finally block raises Completed; the
-            // token's role is to drive the inner await foreach out of its wait.
+            // ReSharper disable once MethodSupportsCancellation
+            //     Do NOT pass the token to Task.Run — a cancellation that races the scheduler can
+            //     abort the task before PumpAsync runs, skipping the Completed event entirely. We
+            //     want PumpAsync to always execute so its finally block raises Completed; the
+            //     token's role is to drive the inner await foreach out of its wait.
             _pumpTask = Task.Run(() => PumpAsync(token));
         }
 
@@ -91,6 +94,7 @@ public sealed class EventInputDevice : IEventInputDevice
     {
         Task? pump;
         CancellationTokenSource? cts;
+
         lock (_stateLock)
         {
             pump = _pumpTask;
@@ -99,12 +103,15 @@ public sealed class EventInputDevice : IEventInputDevice
 
         if (pump is null) return; // never started — nothing to stop.
 
+        // @formatter:off
+        // ReSharper disable once MethodHasAsyncOverload
         try { cts?.Cancel(); }
         catch (ObjectDisposedException) { /* raced with disposal */ }
 
         try { await pump.WaitAsync(cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) { /* expected */ }
         catch { /* pump errors are surfaced via the Error event */ }
+        // @formatter:on
     }
 
     /// <inheritdoc/>
@@ -112,12 +119,14 @@ public sealed class EventInputDevice : IEventInputDevice
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        // Stop the pump if it ran. Use a private CT so a caller-cancelled token doesn't abort
+        // Stop the pump if it ran. Use a private CT so a caller-canceled token doesn't abort
         // the shutdown sequence partway through.
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
+        // @formatter:off
         try { await _inner.DisposeAsync().ConfigureAwait(false); }
         catch { /* best-effort */ }
+        // @formatter:on
 
         lock (_stateLock)
         {
@@ -155,7 +164,10 @@ public sealed class EventInputDevice : IEventInputDevice
         var handler = Input;
         if (handler is null) return;
 
-        try { handler(this, inputEvent); }
+        try
+        {
+            handler(this, inputEvent);
+        }
         catch
         {
             // A faulty handler must not break the pump. Errors from handlers are swallowed;
@@ -166,14 +178,26 @@ public sealed class EventInputDevice : IEventInputDevice
     private void RaiseError(Exception ex)
     {
         var handler = Error;
-        if (handler is null) return;
-        try { handler(this, ex); } catch { /* swallow */ }
+
+        if (handler is null)
+            return;
+        
+        // @formatter:off
+        try { handler(this, ex); }
+        catch { /* swallow */ }
+        // @formatter:on
     }
 
     private void RaiseCompleted()
     {
         var handler = Completed;
-        if (handler is null) return;
-        try { handler(this, EventArgs.Empty); } catch { /* swallow */ }
+
+        if (handler is null)
+            return;
+
+        // @formatter:off
+        try { handler(this, EventArgs.Empty); }
+        catch { /* swallow */ }
+        // @formatter:on
     }
 }

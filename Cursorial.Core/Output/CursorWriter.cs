@@ -21,8 +21,8 @@ namespace Cursorial.Output;
 public static class CursorWriter
 {
     private const byte Escape = 0x1B;
-    private const byte CsiOpen = (byte)'[';
-    private const byte CsiSeparator = (byte)';';
+    private const byte CsiOpen = (byte) '[';
+    private const byte CsiSeparator = (byte) ';';
 
     /// <summary>Move the cursor to the absolute 0-based <paramref name="row"/> / <paramref name="column"/> (CUP).</summary>
     public static void WriteMoveTo(IBufferWriter<byte> writer, int row, int column)
@@ -35,29 +35,29 @@ public static class CursorWriter
         VtWriterUtilities.WriteAsciiInt(Math.Max(0, row) + 1, buffer, ref written);
         buffer[written++] = CsiSeparator;
         VtWriterUtilities.WriteAsciiInt(Math.Max(0, column) + 1, buffer, ref written);
-        buffer[written++] = (byte)'H';
+        buffer[written++] = (byte) 'H';
         writer.Advance(written);
     }
 
     /// <summary>Move the cursor to absolute 0-based column <paramref name="column"/> on the current row (CHA).</summary>
     public static void WriteColumnAbsolute(IBufferWriter<byte> writer, int column)
-        => WriteSingleParamFinal(writer, Math.Max(0, column) + 1, (byte)'G');
+        => WriteSingleParamFinal(writer, Math.Max(0, column) + 1, (byte) 'G');
 
     /// <summary>Move the cursor to absolute 0-based row <paramref name="row"/> in the current column (VPA).</summary>
     public static void WriteRowAbsolute(IBufferWriter<byte> writer, int row)
-        => WriteSingleParamFinal(writer, Math.Max(0, row) + 1, (byte)'d');
+        => WriteSingleParamFinal(writer, Math.Max(0, row) + 1, (byte) 'd');
 
     /// <summary>Move the cursor up <paramref name="cells"/> rows (CUU). Zero or negative is a no-op.</summary>
-    public static void WriteMoveUp(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte)'A');
+    public static void WriteMoveUp(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte) 'A');
 
     /// <summary>Move the cursor down <paramref name="cells"/> rows (CUD). Zero or negative is a no-op.</summary>
-    public static void WriteMoveDown(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte)'B');
+    public static void WriteMoveDown(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte) 'B');
 
     /// <summary>Move the cursor right <paramref name="cells"/> columns (CUF). Zero or negative is a no-op.</summary>
-    public static void WriteMoveRight(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte)'C');
+    public static void WriteMoveRight(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte) 'C');
 
     /// <summary>Move the cursor left <paramref name="cells"/> columns (CUB). Zero or negative is a no-op.</summary>
-    public static void WriteMoveLeft(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte)'D');
+    public static void WriteMoveLeft(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte) 'D');
 
     /// <summary>Save the cursor position and SGR state (DECSC, <c>ESC 7</c>).</summary>
     public static void WriteSavePosition(IBufferWriter<byte> writer)
@@ -65,7 +65,7 @@ public static class CursorWriter
         ArgumentNullException.ThrowIfNull(writer);
         var span = writer.GetSpan(2);
         span[0] = Escape;
-        span[1] = (byte)'7';
+        span[1] = (byte) '7';
         writer.Advance(2);
     }
 
@@ -75,7 +75,7 @@ public static class CursorWriter
         ArgumentNullException.ThrowIfNull(writer);
         var span = writer.GetSpan(2);
         span[0] = Escape;
-        span[1] = (byte)'8';
+        span[1] = (byte) '8';
         writer.Advance(2);
     }
 
@@ -93,9 +93,9 @@ public static class CursorWriter
         int written = 0;
         buffer[written++] = Escape;
         buffer[written++] = CsiOpen;
-        VtWriterUtilities.WriteAsciiInt((uint)shape, buffer, ref written);
-        buffer[written++] = (byte)' ';
-        buffer[written++] = (byte)'q';
+        VtWriterUtilities.WriteAsciiInt((uint) shape, buffer, ref written);
+        buffer[written++] = (byte) ' ';
+        buffer[written++] = (byte) 'q';
         writer.Advance(written);
     }
 
@@ -125,9 +125,9 @@ public static class CursorWriter
         int written = 0;
         buffer[written++] = Escape;
         buffer[written++] = CsiOpen;
-        buffer[written++] = (byte)'?';
+        buffer[written++] = (byte) '?';
         VtWriterUtilities.WriteAsciiInt(mode, buffer, ref written);
-        buffer[written++] = enable ? (byte)'h' : (byte)'l';
+        buffer[written++] = enable ? (byte) 'h' : (byte) 'l';
         writer.Advance(written);
     }
 }

@@ -92,9 +92,8 @@ public sealed class CellBuffer
     public IBlendingMode PopBlendingMode()
     {
         if (_blendStack.Count == 0)
-        {
             throw new InvalidOperationException("Blending-mode stack is empty; nothing to pop.");
-        }
+
         return _blendStack.Pop();
     }
 
@@ -128,6 +127,7 @@ public sealed class CellBuffer
 
         int width = string.IsNullOrEmpty(grapheme) ? 1 : GraphemeWidth.ClusterWidth(grapheme.AsSpan());
         if (width < 1) width = 1; // Defensive — a "wide" zero-width is meaningless here.
+
         if (width == 2 && column + 1 >= _columns)
         {
             // No room for the right half. Degrade to single-cell blank.
@@ -145,14 +145,11 @@ public sealed class CellBuffer
 
         // Cleanup: were we overwriting a wide-left's right half?
         if (previous.Kind == CellKind.WideContinuation && column > 0)
-        {
             _cells[index - 1] = Cell.Blank;
-        }
+
         // Cleanup: was the previous occupant of (row, col) a wide-left whose continuation we now orphan?
         if (previous.Kind == CellKind.WideLeft && column + 1 < _columns)
-        {
             _cells[index + 1] = Cell.Blank;
-        }
 
         if (width == 2)
         {
@@ -182,6 +179,7 @@ public sealed class CellBuffer
     public void Fill(in Cell cell)
     {
         var mode = CurrentBlendingMode;
+
         if (ReferenceEquals(mode, BlendingModes.Default))
         {
             Array.Fill(_cells, cell);
@@ -201,11 +199,11 @@ public sealed class CellBuffer
     private static Style BlendStyle(in Style source, in Style backdrop, IBlendingMode mode)
     {
         return source with
-        {
-            Foreground = Composite(source.Foreground, backdrop.Foreground, mode),
-            Background = Composite(source.Background, backdrop.Background, mode),
-            UnderlineColor = Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
-        };
+               {
+                   Foreground = Composite(source.Foreground, backdrop.Foreground, mode),
+                   Background = Composite(source.Background, backdrop.Background, mode),
+                   UnderlineColor = Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
+               };
     }
 
     /// <summary>
@@ -234,10 +232,11 @@ public sealed class CellBuffer
 
         int a = source.Alpha;
         int inv = 255 - a;
+
         return Color.FromRgb(
-            (byte)((blended.Red * a + backdrop.Red * inv) / 255),
-            (byte)((blended.Green * a + backdrop.Green * inv) / 255),
-            (byte)((blended.Blue * a + backdrop.Blue * inv) / 255));
+            (byte) ((blended.Red * a + backdrop.Red * inv) / 255),
+            (byte) ((blended.Green * a + backdrop.Green * inv) / 255),
+            (byte) ((blended.Blue * a + backdrop.Blue * inv) / 255));
     }
 
     /// <summary>
@@ -248,11 +247,13 @@ public sealed class CellBuffer
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
+
         if (columns == _columns && rows == _rows)
         {
             Clear();
             return;
         }
+
         _columns = columns;
         _rows = rows;
         _cells = new Cell[checked(columns * rows)];

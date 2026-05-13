@@ -50,7 +50,7 @@ public static class TextSizingWriter
         prefix.CopyTo(buffer[written..]);
         written += prefix.Length;
         WriteMetadata(sizing, buffer, ref written);
-        buffer[written++] = (byte)';';
+        buffer[written++] = (byte) ';';
         written += Encoding.UTF8.GetBytes(text, buffer[written..]);
         st.CopyTo(buffer[written..]);
         written += st.Length;
@@ -61,6 +61,7 @@ public static class TextSizingWriter
             var dest = writer.GetSpan(written);
             buffer[..written].CopyTo(dest);
         }
+
         writer.Advance(written);
     }
 
@@ -82,6 +83,7 @@ public static class TextSizingWriter
 
         // Quick path: whole string fits in one emission.
         int totalUtf8 = Encoding.UTF8.GetByteCount(text);
+
         if (totalUtf8 <= VtOutputSequences.KittyTextSizing.MaxTextBytes)
         {
             Write(writer, sizing, text.AsSpan());
@@ -96,7 +98,7 @@ public static class TextSizingWriter
 
         while (enumerator.MoveNext())
         {
-            string cluster = (string)enumerator.Current;
+            string cluster = (string) enumerator.Current;
             int clusterBytes = Encoding.UTF8.GetByteCount(cluster);
 
             if (batchBytes + clusterBytes > VtOutputSequences.KittyTextSizing.MaxTextBytes && batchBytes > 0)
@@ -121,36 +123,29 @@ public static class TextSizingWriter
         bool first = true;
 
         if (sizing.Scale != 0 && sizing.Scale != 1)
-        {
-            EmitKv((byte)'s', sizing.Scale, buffer, ref written, ref first);
-        }
+            EmitKv((byte) 's', sizing.Scale, buffer, ref written, ref first);
+
         if (sizing.Width != 0)
-        {
-            EmitKv((byte)'w', sizing.Width, buffer, ref written, ref first);
-        }
+            EmitKv((byte) 'w', sizing.Width, buffer, ref written, ref first);
+
         if (sizing.Numerator != 0)
-        {
-            EmitKv((byte)'n', sizing.Numerator, buffer, ref written, ref first);
-        }
+            EmitKv((byte) 'n', sizing.Numerator, buffer, ref written, ref first);
+
         if (sizing.Denominator != 0)
-        {
-            EmitKv((byte)'d', sizing.Denominator, buffer, ref written, ref first);
-        }
+            EmitKv((byte) 'd', sizing.Denominator, buffer, ref written, ref first);
+
         if (sizing.Vertical != TextSizingVerticalAlignment.Top)
-        {
-            EmitKv((byte)'v', (byte)sizing.Vertical, buffer, ref written, ref first);
-        }
+            EmitKv((byte) 'v', (byte) sizing.Vertical, buffer, ref written, ref first);
+
         if (sizing.Horizontal != TextSizingHorizontalAlignment.Left)
-        {
-            EmitKv((byte)'h', (byte)sizing.Horizontal, buffer, ref written, ref first);
-        }
+            EmitKv((byte) 'h', (byte) sizing.Horizontal, buffer, ref written, ref first);
     }
 
     private static void EmitKv(byte key, byte value, Span<byte> buffer, ref int written, ref bool first)
     {
-        if (!first) buffer[written++] = (byte)':';
+        if (!first) buffer[written++] = (byte) ':';
         buffer[written++] = key;
-        buffer[written++] = (byte)'=';
+        buffer[written++] = (byte) '=';
         VtWriterUtilities.WriteAsciiInt(value, buffer, ref written);
         first = false;
     }

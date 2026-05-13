@@ -3,6 +3,11 @@ using System.Text;
 
 using Cursorial.Input.Events;
 
+using Win32InputMode = Cursorial.Input.Parsing.VtInputSequences.Win32InputMode;
+
+// ReSharper disable NotAccessedField.Local
+// ReSharper disable RedundantAssignment
+
 namespace Cursorial.Input.Parsing;
 
 /// <summary>
@@ -132,10 +137,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             // else is dropped. Keeping CR + LF distinct lets consumers detect line endings.
             switch (controlChar)
             {
-                case VtInputSequences.Tab: _pasteBuffer.Append('\t'); break;
-                case VtInputSequences.LineFeed: _pasteBuffer.Append('\n'); break;
+                case VtInputSequences.Tab:            _pasteBuffer.Append('\t'); break;
+                case VtInputSequences.LineFeed:       _pasteBuffer.Append('\n'); break;
                 case VtInputSequences.CarriageReturn: _pasteBuffer.Append('\r'); break;
             }
+
             return;
         }
 
@@ -152,7 +158,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
 
         // SS3 — application-mode arrow / F1-F4 / Home / End: ESC O <final>.
-        if (intermediates.Length == 1 && intermediates[0] == (byte)'O')
+        if (intermediates.Length == 1 && intermediates[0] == (byte) 'O')
         {
             DecodeSs3(final);
             return;
@@ -178,25 +184,24 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
 
         // SGR mouse: CSI < cb ; cx ; cy M/m  (DECSET 1006).
-        if (privatePrefix == VtInputSequences.SgrMousePrefix1006
-            && (final == VtInputSequences.SgrMouse.PressFinal
-                || final == VtInputSequences.SgrMouse.ReleaseFinal))
+        if (privatePrefix == VtInputSequences.SgrMousePrefix1006 &&
+            final is VtInputSequences.SgrMouse.PressFinal or VtInputSequences.SgrMouse.ReleaseFinal)
         {
             if (!TryDecodeSgrMouse(parameters, isPress: final == VtInputSequences.SgrMouse.PressFinal))
-            {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
-            }
+
             return;
         }
 
         // Device Attributes responses — DA1 (CSI ? … c) and DA2 (CSI > … c).
-        if (final == (byte)'c')
+        if (final == (byte) 'c')
         {
             switch (privatePrefix)
             {
                 case VtInputSequences.DecPrivatePrefix:
                     EmitDeviceResponse(DeviceResponseKind.PrimaryDeviceAttributes, parameters);
                     return;
+
                 case VtInputSequences.SecondaryPrefix:
                     EmitDeviceResponse(DeviceResponseKind.SecondaryDeviceAttributes, parameters);
                     return;
@@ -215,23 +220,25 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // a strict subset, so the Kitty parser handles both: a sequence with no Kitty-specific
         // sub-parameters decodes to a plain Character KeyEvent with modifier bits applied. No
         // separate mode-gated path is needed.
-        if (final == (byte)'u')
+        if (final == (byte) 'u')
         {
             if (!DecodeKittyKey(parameters))
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
+
             return;
         }
 
         // Win32 Input Mode (DECSET 9001) — CSI Vk;Sc;Uc;Kd;Cs;Rc_ wraps console input records
         // as escape sequences. Unique '_' final means no ambiguity with other protocols.
-        if (final == VtInputSequences.Win32InputMode.Final)
+        if (final == Win32InputMode.Final)
         {
             if (!TryDecodeWin32Key(parameters))
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
+
             return;
         }
 
@@ -240,7 +247,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         ReadOnlySpan<int> p = parameterBuffer[..parameterCount];
 
         // Cursor Position Report — CSI <row> ; <col> R, the response to DSR-CPR (CSI 6 n).
-        if (p.Length == 2 && final == (byte)'R')
+        if (p.Length == 2 && final == (byte) 'R')
         {
             EmitDeviceResponse(DeviceResponseKind.CursorPositionReport, parameters);
             return;
@@ -249,13 +256,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // Window manipulation responses — CSI <code> ; <height> ; <width> t. Code 4 is the
         // reply to `CSI 14 t` (window size in pixels); code 6 is the reply to `CSI 16 t`
         // (single-cell size in pixels). Other codes in this family aren't yet decoded.
-        if (p.Length == 3 && final == (byte)'t')
+        if (p.Length == 3 && final == (byte) 't')
         {
             if (p[0] == 4)
             {
                 EmitDeviceResponse(DeviceResponseKind.WindowSizeInPixels, parameters);
                 return;
             }
+
             if (p[0] == 6)
             {
                 EmitDeviceResponse(DeviceResponseKind.CellSizeInPixels, parameters);
@@ -269,15 +277,17 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
+
             return;
         }
 
-        if (p.Length == 1 && final == (byte)'~')
+        if (p.Length == 1 && final == (byte) '~')
         {
             if (!TryDecodeCsiTildeOneParam(p[0]))
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
+
             return;
         }
 
@@ -285,6 +295,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (p.Length == 2 && p[0] == 1)
         {
             Key arrowKey = ArrowOrHomeEndKey(final);
+
             if (arrowKey != Key.None)
             {
                 EmitNamedKey(arrowKey, ParseModifiersParam(p[1]));
@@ -293,7 +304,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
 
         // Modifier-bearing function / special keys: CSI <n> ; <mod> ~.
-        if (p.Length == 2 && final == (byte)'~')
+        if (p.Length == 2 && final == (byte) '~')
         {
             if (TryFunctionOrSpecialKey(p[0], out Key funcKey))
             {
@@ -303,16 +314,18 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
+
             return;
         }
 
         // modifyOtherKeys level 2: CSI 27 ; <mod> ; <codepoint> ~.
-        if (p.Length == 3 && final == (byte)'~' && p[0] == 27)
+        if (p.Length == 3 && final == (byte) '~' && p[0] == 27)
         {
             if (!TryEmitModifyOtherKeysCharacter(p[2], ParseModifiersParam(p[1])))
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
+
             return;
         }
 
@@ -331,14 +344,15 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         chars[..written].CopyTo(text);
 
         _eventSink.OnInputEvent(new KeyEvent
-        {
-            Timestamp = Now,
-            Key = Key.Character,
-            Modifiers = modifiers,
-            Kind = KeyEventKind.Down,
-            Text = text,
-            RawCode = (uint)codepoint,
-        });
+                                {
+                                    Timestamp = Now,
+                                    Key = Key.Character,
+                                    Modifiers = modifiers,
+                                    Kind = KeyEventKind.Down,
+                                    Text = text,
+                                    RawCode = (uint) codepoint,
+                                });
+
         return true;
     }
 
@@ -349,21 +363,25 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             case VtInputSequences.FocusInFinal:
                 _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = true });
                 return true;
+
             case VtInputSequences.FocusOutFinal:
                 _eventSink.OnInputEvent(new FocusEvent { Timestamp = Now, HasFocus = false });
                 return true;
-            case (byte)'Z':
+
+            case (byte) 'Z':
                 // BackTab — Shift+Tab.
                 EmitNamedKey(Key.Tab, KeyModifiers.Shift);
                 return true;
         }
 
         Key key = ArrowOrHomeEndKey(final);
+
         if (key != Key.None)
         {
             EmitNamedKey(key);
             return true;
         }
+
         return false;
     }
 
@@ -374,6 +392,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             case VtInputSequences.BracketedPasteStartParam:
                 EnterPaste();
                 return true;
+
             case VtInputSequences.BracketedPasteEndParam:
                 ExitPaste();
                 return true;
@@ -384,6 +403,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             EmitNamedKey(key);
             return true;
         }
+
         return false;
     }
 
@@ -419,6 +439,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // cell mapping without re-implementing it. When cell size is unknown, Column/Row stay
         // at 0 and the consumer reads PixelX/Y directly.
         CellPosition position;
+
         if (_mode.MouseEncoding == MouseEncoding.SgrPixels)
         {
             int column = _mode.CellPixelWidth is int cw && cw > 0 ? x / cw : 0;
@@ -429,6 +450,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         {
             position = new CellPosition(x, y);
         }
+
         var ts = Now;
 
         if (isWheel)
@@ -436,50 +458,54 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             // Direction bits select wheel axis / sign; deltas reported in 1/120-notch units.
             int direction = cb & VtInputSequences.SgrMouse.ButtonBitsMask;
             const int notch = VtInputSequences.SgrMouse.WheelDeltaPerNotch;
+
             int wheelDeltaY = direction switch
-            {
-                VtInputSequences.SgrMouse.WheelUp => notch,
-                VtInputSequences.SgrMouse.WheelDown => -notch,
-                _ => 0,
-            };
+                              {
+                                  VtInputSequences.SgrMouse.WheelUp   => notch,
+                                  VtInputSequences.SgrMouse.WheelDown => -notch,
+                                  _                                   => 0,
+                              };
+
             int wheelDeltaX = direction switch
-            {
-                VtInputSequences.SgrMouse.WheelLeft => -notch,
-                VtInputSequences.SgrMouse.WheelRight => notch,
-                _ => 0,
-            };
+                              {
+                                  VtInputSequences.SgrMouse.WheelLeft  => -notch,
+                                  VtInputSequences.SgrMouse.WheelRight => notch,
+                                  _                                    => 0,
+                              };
 
             _eventSink.OnInputEvent(new MouseEvent
-            {
-                Timestamp = ts,
-                Kind = MouseEventKind.Wheel,
-                Position = position,
-                Button = MouseButton.None,
-                ButtonsHeld = _heldButtons,
-                Modifiers = modifiers,
-                WheelDeltaY = wheelDeltaY,
-                WheelDeltaX = wheelDeltaX,
-            });
+                                    {
+                                        Timestamp = ts,
+                                        Kind = MouseEventKind.Wheel,
+                                        Position = position,
+                                        Button = MouseButton.None,
+                                        ButtonsHeld = _heldButtons,
+                                        Modifiers = modifiers,
+                                        WheelDeltaY = wheelDeltaY,
+                                        WheelDeltaX = wheelDeltaX,
+                                    });
+
             return true;
         }
 
         int buttonBits = cb & VtInputSequences.SgrMouse.ButtonBitsMask;
+
         MouseButton button = isExtended
-            ? buttonBits switch
-            {
-                0 => MouseButton.X1,
-                1 => MouseButton.X2,
-                2 => MouseButton.X3,
-                3 => MouseButton.X4,
-                _ => MouseButton.None,
-            }
-            : buttonBits switch
-            {
-                VtInputSequences.SgrMouse.LeftButton => MouseButton.Left,
-                VtInputSequences.SgrMouse.MiddleButton => MouseButton.Middle,
-                VtInputSequences.SgrMouse.RightButton => MouseButton.Right,
-                _ => MouseButton.None,
-            };
+                                 ? buttonBits switch
+                                   {
+                                       0 => MouseButton.X1,
+                                       1 => MouseButton.X2,
+                                       2 => MouseButton.X3,
+                                       3 => MouseButton.X4,
+                                       _ => MouseButton.None,
+                                   }
+                                 : buttonBits switch
+                                   {
+                                       VtInputSequences.SgrMouse.LeftButton   => MouseButton.Left,
+                                       VtInputSequences.SgrMouse.MiddleButton => MouseButton.Middle,
+                                       VtInputSequences.SgrMouse.RightButton  => MouseButton.Right,
+                                       _                                      => MouseButton.None,
+                                   };
 
         if (isMotion)
         {
@@ -488,31 +514,34 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             bool noButton = !isExtended && buttonBits == VtInputSequences.SgrMouse.NoButton;
 
             _eventSink.OnInputEvent(new MouseEvent
-            {
-                Timestamp = ts,
-                Kind = noButton ? MouseEventKind.Move : MouseEventKind.Drag,
-                Position = position,
-                Button = noButton ? MouseButton.None : button,
-                ButtonsHeld = _heldButtons,
-                Modifiers = modifiers,
-            });
+                                    {
+                                        Timestamp = ts,
+                                        Kind = noButton ? MouseEventKind.Move : MouseEventKind.Drag,
+                                        Position = position,
+                                        Button = noButton ? MouseButton.None : button,
+                                        ButtonsHeld = _heldButtons,
+                                        Modifiers = modifiers,
+                                    });
+
             return true;
         }
 
         // Press / release.
         MouseButtons mask = ButtonToMask(button);
+
         if (isPress) _heldButtons |= mask;
         else _heldButtons &= ~mask;
 
         _eventSink.OnInputEvent(new MouseEvent
-        {
-            Timestamp = ts,
-            Kind = isPress ? MouseEventKind.ButtonDown : MouseEventKind.ButtonUp,
-            Position = position,
-            Button = button,
-            ButtonsHeld = _heldButtons,
-            Modifiers = modifiers,
-        });
+                                {
+                                    Timestamp = ts,
+                                    Kind = isPress ? MouseEventKind.ButtonDown : MouseEventKind.ButtonUp,
+                                    Position = position,
+                                    Button = button,
+                                    ButtonsHeld = _heldButtons,
+                                    Modifiers = modifiers,
+                                });
+
         return true;
     }
 
@@ -538,6 +567,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         Key key = MapWin32VirtualKey(vk, unicode, out bool isCharacterKey);
 
         ReadOnlyMemory<char> text = ReadOnlyMemory<char>.Empty;
+
         if (isCharacterKey && unicode > 0 && Rune.IsValid(unicode))
         {
             var rune = new Rune(unicode);
@@ -549,34 +579,36 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
 
         _eventSink.OnInputEvent(new KeyEvent
-        {
-            Timestamp = Now,
-            Key = key,
-            Modifiers = modifiers,
-            Kind = keyDown != 0 ? KeyEventKind.Down : KeyEventKind.Up,
-            IsRepeat = keyDown != 0 && repeatCount > 1,
-            RepeatCount = repeatCount,
-            Text = text,
-            RawCode = (uint)vk,
-        });
+                                {
+                                    Timestamp = Now,
+                                    Key = key,
+                                    Modifiers = modifiers,
+                                    Kind = keyDown != 0 ? KeyEventKind.Down : KeyEventKind.Up,
+                                    IsRepeat = keyDown != 0 && repeatCount > 1,
+                                    RepeatCount = repeatCount,
+                                    Text = text,
+                                    RawCode = (uint) vk,
+                                });
+
         return true;
     }
 
     private static KeyModifiers MapWin32ControlState(int state)
     {
         KeyModifiers modifiers = KeyModifiers.None;
-        const int AltMask =
-            VtInputSequences.Win32InputMode.ControlKeyState.RightAltPressed
-            | VtInputSequences.Win32InputMode.ControlKeyState.LeftAltPressed;
-        const int CtrlMask =
-            VtInputSequences.Win32InputMode.ControlKeyState.RightCtrlPressed
-            | VtInputSequences.Win32InputMode.ControlKeyState.LeftCtrlPressed;
 
-        if ((state & AltMask) != 0) modifiers |= KeyModifiers.Alt;
-        if ((state & CtrlMask) != 0) modifiers |= KeyModifiers.Control;
-        if ((state & VtInputSequences.Win32InputMode.ControlKeyState.ShiftPressed) != 0) modifiers |= KeyModifiers.Shift;
-        if ((state & VtInputSequences.Win32InputMode.ControlKeyState.NumLockOn) != 0) modifiers |= KeyModifiers.NumLock;
-        if ((state & VtInputSequences.Win32InputMode.ControlKeyState.CapsLockOn) != 0) modifiers |= KeyModifiers.CapsLock;
+        const int altMask = Win32InputMode.ControlKeyState.RightAltPressed |
+                            Win32InputMode.ControlKeyState.LeftAltPressed;
+
+        const int ctrlMask = Win32InputMode.ControlKeyState.RightCtrlPressed |
+                             Win32InputMode.ControlKeyState.LeftCtrlPressed;
+
+        if ((state & altMask) != 0) modifiers |= KeyModifiers.Alt;
+        if ((state & ctrlMask) != 0) modifiers |= KeyModifiers.Control;
+        if ((state & Win32InputMode.ControlKeyState.ShiftPressed) != 0) modifiers |= KeyModifiers.Shift;
+        if ((state & Win32InputMode.ControlKeyState.NumLockOn) != 0) modifiers |= KeyModifiers.NumLock;
+        if ((state & Win32InputMode.ControlKeyState.CapsLockOn) != 0) modifiers |= KeyModifiers.CapsLock;
+
         return modifiers;
     }
 
@@ -585,51 +617,49 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // Functional keys map directly. Anything else with a non-zero Unicode codepoint is a
         // character key (Key.Character + Text from the codepoint).
         isCharacterKey = false;
+
         Key key = vk switch
-        {
-            VtInputSequences.Win32InputMode.VirtualKey.Back => Key.Backspace,
-            VtInputSequences.Win32InputMode.VirtualKey.Tab => Key.Tab,
-            VtInputSequences.Win32InputMode.VirtualKey.Return => Key.Enter,
-            VtInputSequences.Win32InputMode.VirtualKey.Pause => Key.Pause,
-            VtInputSequences.Win32InputMode.VirtualKey.Capital => Key.CapsLock,
-            VtInputSequences.Win32InputMode.VirtualKey.Escape => Key.Escape,
-            VtInputSequences.Win32InputMode.VirtualKey.Prior => Key.PageUp,
-            VtInputSequences.Win32InputMode.VirtualKey.Next => Key.PageDown,
-            VtInputSequences.Win32InputMode.VirtualKey.End => Key.End,
-            VtInputSequences.Win32InputMode.VirtualKey.Home => Key.Home,
-            VtInputSequences.Win32InputMode.VirtualKey.Left => Key.LeftArrow,
-            VtInputSequences.Win32InputMode.VirtualKey.Up => Key.UpArrow,
-            VtInputSequences.Win32InputMode.VirtualKey.Right => Key.RightArrow,
-            VtInputSequences.Win32InputMode.VirtualKey.Down => Key.DownArrow,
-            VtInputSequences.Win32InputMode.VirtualKey.Print => Key.PrintScreen,
-            VtInputSequences.Win32InputMode.VirtualKey.PrintScreen => Key.PrintScreen,
-            VtInputSequences.Win32InputMode.VirtualKey.Insert => Key.Insert,
-            VtInputSequences.Win32InputMode.VirtualKey.Delete => Key.Delete,
-            VtInputSequences.Win32InputMode.VirtualKey.LWin => Key.LeftSuper,
-            VtInputSequences.Win32InputMode.VirtualKey.RWin => Key.RightSuper,
-            VtInputSequences.Win32InputMode.VirtualKey.Apps => Key.Menu,
-            VtInputSequences.Win32InputMode.VirtualKey.NumLock => Key.NumLock,
-            VtInputSequences.Win32InputMode.VirtualKey.Scroll => Key.ScrollLock,
-            VtInputSequences.Win32InputMode.VirtualKey.LShift => Key.LeftShift,
-            VtInputSequences.Win32InputMode.VirtualKey.RShift => Key.RightShift,
-            VtInputSequences.Win32InputMode.VirtualKey.LControl => Key.LeftControl,
-            VtInputSequences.Win32InputMode.VirtualKey.RControl => Key.RightControl,
-            VtInputSequences.Win32InputMode.VirtualKey.LMenu => Key.LeftAlt,
-            VtInputSequences.Win32InputMode.VirtualKey.RMenu => Key.RightAlt,
-            VtInputSequences.Win32InputMode.VirtualKey.Shift => Key.LeftShift,
-            VtInputSequences.Win32InputMode.VirtualKey.Control => Key.LeftControl,
-            VtInputSequences.Win32InputMode.VirtualKey.Menu => Key.LeftAlt,
-            _ => Key.None,
-        };
+                  {
+                      Win32InputMode.VirtualKey.Back        => Key.Backspace,
+                      Win32InputMode.VirtualKey.Tab         => Key.Tab,
+                      Win32InputMode.VirtualKey.Return      => Key.Enter,
+                      Win32InputMode.VirtualKey.Pause       => Key.Pause,
+                      Win32InputMode.VirtualKey.Capital     => Key.CapsLock,
+                      Win32InputMode.VirtualKey.Escape      => Key.Escape,
+                      Win32InputMode.VirtualKey.Prior       => Key.PageUp,
+                      Win32InputMode.VirtualKey.Next        => Key.PageDown,
+                      Win32InputMode.VirtualKey.End         => Key.End,
+                      Win32InputMode.VirtualKey.Home        => Key.Home,
+                      Win32InputMode.VirtualKey.Left        => Key.LeftArrow,
+                      Win32InputMode.VirtualKey.Up          => Key.UpArrow,
+                      Win32InputMode.VirtualKey.Right       => Key.RightArrow,
+                      Win32InputMode.VirtualKey.Down        => Key.DownArrow,
+                      Win32InputMode.VirtualKey.Print       => Key.PrintScreen,
+                      Win32InputMode.VirtualKey.PrintScreen => Key.PrintScreen,
+                      Win32InputMode.VirtualKey.Insert      => Key.Insert,
+                      Win32InputMode.VirtualKey.Delete      => Key.Delete,
+                      Win32InputMode.VirtualKey.LWin        => Key.LeftSuper,
+                      Win32InputMode.VirtualKey.RWin        => Key.RightSuper,
+                      Win32InputMode.VirtualKey.Apps        => Key.Menu,
+                      Win32InputMode.VirtualKey.NumLock     => Key.NumLock,
+                      Win32InputMode.VirtualKey.Scroll      => Key.ScrollLock,
+                      Win32InputMode.VirtualKey.LShift      => Key.LeftShift,
+                      Win32InputMode.VirtualKey.RShift      => Key.RightShift,
+                      Win32InputMode.VirtualKey.LControl    => Key.LeftControl,
+                      Win32InputMode.VirtualKey.RControl    => Key.RightControl,
+                      Win32InputMode.VirtualKey.LMenu       => Key.LeftAlt,
+                      Win32InputMode.VirtualKey.RMenu       => Key.RightAlt,
+                      Win32InputMode.VirtualKey.Shift       => Key.LeftShift,
+                      Win32InputMode.VirtualKey.Control     => Key.LeftControl,
+                      Win32InputMode.VirtualKey.Menu        => Key.LeftAlt,
+                      _                                     => Key.None,
+                  };
 
         if (key != Key.None) return key;
 
         // Function keys F1–F24 are contiguous in the Win32 VK range.
-        if (vk >= VtInputSequences.Win32InputMode.VirtualKey.F1
-            && vk <= VtInputSequences.Win32InputMode.VirtualKey.F24)
-        {
-            return (Key)((int)Key.F1 + (vk - VtInputSequences.Win32InputMode.VirtualKey.F1));
-        }
+        if (vk is >= Win32InputMode.VirtualKey.F1 and <= Win32InputMode.VirtualKey.F24)
+            return (Key) ((int) Key.F1 + (vk - Win32InputMode.VirtualKey.F1));
 
         // Anything else: treat as a character key if we have a Unicode codepoint.
         if (unicode > 0)
@@ -649,10 +679,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // so the zero-based column/row is byte - 0x21. Coords are clamped via wrap-around in
         // legacy clients (high-bit set for values > 95); we just unmask and let the consumer
         // see whatever the terminal sent.
-        const int Bias = 0x20;
-        int cb = cbByte - Bias;
-        int column = cxByte - Bias - 1;
-        int row = cyByte - Bias - 1;
+        const int bias = 0x20;
+
+        int cb = cbByte - bias;
+        int column = cxByte - bias - 1;
+        int row = cyByte - bias - 1;
 
         KeyModifiers modifiers = KeyModifiers.None;
         if ((cb & VtInputSequences.SgrMouse.ShiftBit) != 0) modifiers |= KeyModifiers.Shift;
@@ -670,30 +701,33 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (isWheel)
         {
             const int notch = VtInputSequences.SgrMouse.WheelDeltaPerNotch;
+
             int wheelDeltaY = buttonBits switch
-            {
-                VtInputSequences.SgrMouse.WheelUp => notch,
-                VtInputSequences.SgrMouse.WheelDown => -notch,
-                _ => 0,
-            };
+                              {
+                                  VtInputSequences.SgrMouse.WheelUp   => notch,
+                                  VtInputSequences.SgrMouse.WheelDown => -notch,
+                                  _                                   => 0,
+                              };
+
             int wheelDeltaX = buttonBits switch
-            {
-                VtInputSequences.SgrMouse.WheelLeft => -notch,
-                VtInputSequences.SgrMouse.WheelRight => notch,
-                _ => 0,
-            };
+                              {
+                                  VtInputSequences.SgrMouse.WheelLeft  => -notch,
+                                  VtInputSequences.SgrMouse.WheelRight => notch,
+                                  _                                    => 0,
+                              };
 
             _eventSink.OnInputEvent(new MouseEvent
-            {
-                Timestamp = ts,
-                Kind = MouseEventKind.Wheel,
-                Position = position,
-                Button = MouseButton.None,
-                ButtonsHeld = _heldButtons,
-                Modifiers = modifiers,
-                WheelDeltaY = wheelDeltaY,
-                WheelDeltaX = wheelDeltaX,
-            });
+                                    {
+                                        Timestamp = ts,
+                                        Kind = MouseEventKind.Wheel,
+                                        Position = position,
+                                        Button = MouseButton.None,
+                                        ButtonsHeld = _heldButtons,
+                                        Modifiers = modifiers,
+                                        WheelDeltaY = wheelDeltaY,
+                                        WheelDeltaX = wheelDeltaX,
+                                    });
+
             return;
         }
 
@@ -704,46 +738,49 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (!isMotion && !isExtended && buttonBits == VtInputSequences.SgrMouse.NoButton)
         {
             _heldButtons = MouseButtons.None;
+
             _eventSink.OnInputEvent(new MouseEvent
-            {
-                Timestamp = ts,
-                Kind = MouseEventKind.ButtonUp,
-                Position = position,
-                Button = MouseButton.None,
-                ButtonsHeld = _heldButtons,
-                Modifiers = modifiers,
-            });
+                                    {
+                                        Timestamp = ts,
+                                        Kind = MouseEventKind.ButtonUp,
+                                        Position = position,
+                                        Button = MouseButton.None,
+                                        ButtonsHeld = _heldButtons,
+                                        Modifiers = modifiers,
+                                    });
+
             return;
         }
 
         MouseButton button = isExtended
-            ? buttonBits switch
-            {
-                0 => MouseButton.X1,
-                1 => MouseButton.X2,
-                2 => MouseButton.X3,
-                3 => MouseButton.X4,
-                _ => MouseButton.None,
-            }
-            : buttonBits switch
-            {
-                VtInputSequences.SgrMouse.LeftButton => MouseButton.Left,
-                VtInputSequences.SgrMouse.MiddleButton => MouseButton.Middle,
-                VtInputSequences.SgrMouse.RightButton => MouseButton.Right,
-                _ => MouseButton.None,
-            };
+                                 ? buttonBits switch
+                                   {
+                                       0 => MouseButton.X1,
+                                       1 => MouseButton.X2,
+                                       2 => MouseButton.X3,
+                                       3 => MouseButton.X4,
+                                       _ => MouseButton.None,
+                                   }
+                                 : buttonBits switch
+                                   {
+                                       VtInputSequences.SgrMouse.LeftButton   => MouseButton.Left,
+                                       VtInputSequences.SgrMouse.MiddleButton => MouseButton.Middle,
+                                       VtInputSequences.SgrMouse.RightButton  => MouseButton.Right,
+                                       _                                      => MouseButton.None,
+                                   };
 
         if (isMotion)
         {
             _eventSink.OnInputEvent(new MouseEvent
-            {
-                Timestamp = ts,
-                Kind = button == MouseButton.None ? MouseEventKind.Move : MouseEventKind.Drag,
-                Position = position,
-                Button = button,
-                ButtonsHeld = _heldButtons,
-                Modifiers = modifiers,
-            });
+                                    {
+                                        Timestamp = ts,
+                                        Kind = button == MouseButton.None ? MouseEventKind.Move : MouseEventKind.Drag,
+                                        Position = position,
+                                        Button = button,
+                                        ButtonsHeld = _heldButtons,
+                                        Modifiers = modifiers,
+                                    });
+
             return;
         }
 
@@ -753,14 +790,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         _heldButtons |= mask;
 
         _eventSink.OnInputEvent(new MouseEvent
-        {
-            Timestamp = ts,
-            Kind = MouseEventKind.ButtonDown,
-            Position = position,
-            Button = button,
-            ButtonsHeld = _heldButtons,
-            Modifiers = modifiers,
-        });
+                                {
+                                    Timestamp = ts,
+                                    Kind = MouseEventKind.ButtonDown,
+                                    Position = position,
+                                    Button = button,
+                                    ButtonsHeld = _heldButtons,
+                                    Modifiers = modifiers,
+                                });
     }
 
     // ---- Kitty keyboard protocol ----
@@ -777,10 +814,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         //   primary 1:  modifier-info  sub 0=mods (1+bitfield)  sub 1=event-type (1=press,2=repeat,3=release)
         //   primary 2:  text           sub i=codepoint of the i-th text char
         var data = new KittyKeyData
-        {
-            Modifiers = 1, // 1 = no modifiers (1 + bitfield)
-            EventType = VtInputSequences.Kitty.PressEvent,
-        };
+                   {
+                       Modifiers = 1, // 1 = no modifiers (1 + bitfield)
+                       EventType = VtInputSequences.Kitty.PressEvent,
+                   };
+
         Span<int> textCodepoints = stackalloc int[16];
 
         ParseKittyParameters(rawParameters, ref data, textCodepoints);
@@ -790,20 +828,22 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         KeyModifiers modifiers = ParseModifiersParam(data.Modifiers);
 
         KeyEventKind kind = data.EventType == VtInputSequences.Kitty.ReleaseEvent
-            ? KeyEventKind.Up
-            : KeyEventKind.Down;
+                                ? KeyEventKind.Up
+                                : KeyEventKind.Down;
+
         bool isRepeat = data.EventType == VtInputSequences.Kitty.RepeatEvent;
 
         Key key = TryMapKittyFunctionalKey(data.KeyCode, out Key mapped)
-            ? mapped
-            : Key.Character;
+                      ? mapped
+                      : Key.Character;
 
         ReadOnlyMemory<char> text;
+
         if (key == Key.Character)
         {
             text = data.TextCount > 0
-                ? CodepointsToUtf16(textCodepoints[..data.TextCount])
-                : CodepointToUtf16(data.KeyCode);
+                       ? CodepointsToUtf16(textCodepoints[..data.TextCount])
+                       : CodepointToUtf16(data.KeyCode);
         }
         else
         {
@@ -811,20 +851,21 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             // produced as a character (rare: e.g. Kitty Enter with shifted form). Carry it
             // through if we got one; otherwise leave Text empty.
             text = data.TextCount > 0
-                ? CodepointsToUtf16(textCodepoints[..data.TextCount])
-                : ReadOnlyMemory<char>.Empty;
+                       ? CodepointsToUtf16(textCodepoints[..data.TextCount])
+                       : ReadOnlyMemory<char>.Empty;
         }
 
         _eventSink.OnInputEvent(new KeyEvent
-        {
-            Timestamp = Now,
-            Key = key,
-            Modifiers = modifiers,
-            Kind = kind,
-            IsRepeat = isRepeat,
-            Text = text,
-            RawCode = (uint)data.KeyCode,
-        });
+                                {
+                                    Timestamp = Now,
+                                    Key = key,
+                                    Modifiers = modifiers,
+                                    Kind = kind,
+                                    IsRepeat = isRepeat,
+                                    Text = text,
+                                    RawCode = (uint) data.KeyCode,
+                                });
+
         return true;
     }
 
@@ -851,16 +892,16 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         for (int i = 0; i <= raw.Length; i++)
         {
             bool atEnd = i == raw.Length;
-            byte b = atEnd ? (byte)0 : raw[i];
+            byte b = atEnd ? (byte) 0 : raw[i];
 
-            if (!atEnd && b is >= (byte)'0' and <= (byte)'9')
+            if (!atEnd && b is >= (byte) '0' and <= (byte) '9')
             {
-                currentValue = AccumulateDecimalSaturating(currentValue, b - (byte)'0');
+                currentValue = AccumulateDecimalSaturating(currentValue, b - (byte) '0');
                 started = true;
                 continue;
             }
 
-            if (atEnd || b == (byte)':' || b == (byte)';')
+            if (atEnd || b == (byte) ':' || b == (byte) ';')
             {
                 int value = started ? currentValue : 0;
 
@@ -873,7 +914,9 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                             case 1: data.ShiftedKey = value; break;
                             case 2: data.BaseKey = value; break;
                         }
+
                         break;
+
                     case 1:
                         // Empty mods/event_type leave the defaults (1) in place.
                         if (started)
@@ -884,12 +927,15 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                 case 1: data.EventType = value; break;
                             }
                         }
+
                         break;
+
                     case 2:
                         if (started && data.TextCount < textCodepoints.Length)
                         {
                             textCodepoints[data.TextCount++] = value;
                         }
+
                         break;
                 }
 
@@ -897,7 +943,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 started = false;
 
                 if (atEnd) return;
-                if (b == (byte)':')
+
+                if (b == (byte) ':')
                 {
                     subIndex++;
                 }
@@ -906,6 +953,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                     primaryIndex++;
                     subIndex = 0;
                 }
+
                 continue;
             }
 
@@ -920,93 +968,94 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // 57344. Codes outside this range (and outside the small set of recognized
         // functional key codes) are treated as printable Unicode codepoints.
         key = code switch
-        {
-            // Navigation / control
-            VtInputSequences.Kitty.EscapeKey => Key.Escape,
-            VtInputSequences.Kitty.EnterKey => Key.Enter,
-            VtInputSequences.Kitty.TabKey => Key.Tab,
-            VtInputSequences.Kitty.BackspaceKey => Key.Backspace,
-            VtInputSequences.Kitty.InsertKey => Key.Insert,
-            VtInputSequences.Kitty.DeleteKey => Key.Delete,
-            VtInputSequences.Kitty.LeftArrowKey => Key.LeftArrow,
-            VtInputSequences.Kitty.RightArrowKey => Key.RightArrow,
-            VtInputSequences.Kitty.UpArrowKey => Key.UpArrow,
-            VtInputSequences.Kitty.DownArrowKey => Key.DownArrow,
-            VtInputSequences.Kitty.PageUpKey => Key.PageUp,
-            VtInputSequences.Kitty.PageDownKey => Key.PageDown,
-            VtInputSequences.Kitty.HomeKey => Key.Home,
-            VtInputSequences.Kitty.EndKey => Key.End,
-            VtInputSequences.Kitty.CapsLockKey => Key.CapsLock,
-            VtInputSequences.Kitty.ScrollLockKey => Key.ScrollLock,
-            VtInputSequences.Kitty.NumLockKey => Key.NumLock,
-            VtInputSequences.Kitty.PrintScreenKey => Key.PrintScreen,
-            VtInputSequences.Kitty.PauseKey => Key.Pause,
-            VtInputSequences.Kitty.MenuKey => Key.Menu,
+              {
+                  // Navigation / control
+                  VtInputSequences.Kitty.EscapeKey      => Key.Escape,
+                  VtInputSequences.Kitty.EnterKey       => Key.Enter,
+                  VtInputSequences.Kitty.TabKey         => Key.Tab,
+                  VtInputSequences.Kitty.BackspaceKey   => Key.Backspace,
+                  VtInputSequences.Kitty.InsertKey      => Key.Insert,
+                  VtInputSequences.Kitty.DeleteKey      => Key.Delete,
+                  VtInputSequences.Kitty.LeftArrowKey   => Key.LeftArrow,
+                  VtInputSequences.Kitty.RightArrowKey  => Key.RightArrow,
+                  VtInputSequences.Kitty.UpArrowKey     => Key.UpArrow,
+                  VtInputSequences.Kitty.DownArrowKey   => Key.DownArrow,
+                  VtInputSequences.Kitty.PageUpKey      => Key.PageUp,
+                  VtInputSequences.Kitty.PageDownKey    => Key.PageDown,
+                  VtInputSequences.Kitty.HomeKey        => Key.Home,
+                  VtInputSequences.Kitty.EndKey         => Key.End,
+                  VtInputSequences.Kitty.CapsLockKey    => Key.CapsLock,
+                  VtInputSequences.Kitty.ScrollLockKey  => Key.ScrollLock,
+                  VtInputSequences.Kitty.NumLockKey     => Key.NumLock,
+                  VtInputSequences.Kitty.PrintScreenKey => Key.PrintScreen,
+                  VtInputSequences.Kitty.PauseKey       => Key.Pause,
+                  VtInputSequences.Kitty.MenuKey        => Key.Menu,
 
-            // Function keys F1–F24 are contiguous in Kitty's encoding; F25–F35 fall through
-            // to Character treatment since our Key enum stops at F24.
-            >= VtInputSequences.Kitty.F1Key and <= VtInputSequences.Kitty.F24Key
-                => (Key)((int)Key.F1 + (code - VtInputSequences.Kitty.F1Key)),
+                  // Function keys F1–F24 are contiguous in Kitty's encoding; F25–F35 fall through
+                  // to Character treatment since our Key enum stops at F24.
+                  >= VtInputSequences.Kitty.F1Key and <= VtInputSequences.Kitty.F24Key
+                      => (Key) ((int) Key.F1 + (code - VtInputSequences.Kitty.F1Key)),
 
-            // Numpad digits / operators / Enter / equals.
-            VtInputSequences.Kitty.Numpad0Key => Key.Numpad0,
-            VtInputSequences.Kitty.Numpad1Key => Key.Numpad1,
-            VtInputSequences.Kitty.Numpad2Key => Key.Numpad2,
-            VtInputSequences.Kitty.Numpad3Key => Key.Numpad3,
-            VtInputSequences.Kitty.Numpad4Key => Key.Numpad4,
-            VtInputSequences.Kitty.Numpad5Key => Key.Numpad5,
-            VtInputSequences.Kitty.Numpad6Key => Key.Numpad6,
-            VtInputSequences.Kitty.Numpad7Key => Key.Numpad7,
-            VtInputSequences.Kitty.Numpad8Key => Key.Numpad8,
-            VtInputSequences.Kitty.Numpad9Key => Key.Numpad9,
-            VtInputSequences.Kitty.NumpadDecimalKey => Key.NumpadDecimal,
-            VtInputSequences.Kitty.NumpadDivideKey => Key.NumpadDivide,
-            VtInputSequences.Kitty.NumpadMultiplyKey => Key.NumpadMultiply,
-            VtInputSequences.Kitty.NumpadSubtractKey => Key.NumpadSubtract,
-            VtInputSequences.Kitty.NumpadAddKey => Key.NumpadAdd,
-            VtInputSequences.Kitty.NumpadEnterKey => Key.NumpadEnter,
-            VtInputSequences.Kitty.NumpadEqualsKey => Key.NumpadEquals,
+                  // Numpad digits / operators / Enter / equals.
+                  VtInputSequences.Kitty.Numpad0Key        => Key.Numpad0,
+                  VtInputSequences.Kitty.Numpad1Key        => Key.Numpad1,
+                  VtInputSequences.Kitty.Numpad2Key        => Key.Numpad2,
+                  VtInputSequences.Kitty.Numpad3Key        => Key.Numpad3,
+                  VtInputSequences.Kitty.Numpad4Key        => Key.Numpad4,
+                  VtInputSequences.Kitty.Numpad5Key        => Key.Numpad5,
+                  VtInputSequences.Kitty.Numpad6Key        => Key.Numpad6,
+                  VtInputSequences.Kitty.Numpad7Key        => Key.Numpad7,
+                  VtInputSequences.Kitty.Numpad8Key        => Key.Numpad8,
+                  VtInputSequences.Kitty.Numpad9Key        => Key.Numpad9,
+                  VtInputSequences.Kitty.NumpadDecimalKey  => Key.NumpadDecimal,
+                  VtInputSequences.Kitty.NumpadDivideKey   => Key.NumpadDivide,
+                  VtInputSequences.Kitty.NumpadMultiplyKey => Key.NumpadMultiply,
+                  VtInputSequences.Kitty.NumpadSubtractKey => Key.NumpadSubtract,
+                  VtInputSequences.Kitty.NumpadAddKey      => Key.NumpadAdd,
+                  VtInputSequences.Kitty.NumpadEnterKey    => Key.NumpadEnter,
+                  VtInputSequences.Kitty.NumpadEqualsKey   => Key.NumpadEquals,
 
-            // Numpad navigation keys — collapse to the main-keyboard equivalent for v1.
-            // Distinguishing numpad-arrow from main-arrow would need new Key enum entries.
-            VtInputSequences.Kitty.NumpadLeftArrowKey => Key.LeftArrow,
-            VtInputSequences.Kitty.NumpadRightArrowKey => Key.RightArrow,
-            VtInputSequences.Kitty.NumpadUpArrowKey => Key.UpArrow,
-            VtInputSequences.Kitty.NumpadDownArrowKey => Key.DownArrow,
-            VtInputSequences.Kitty.NumpadPageUpKey => Key.PageUp,
-            VtInputSequences.Kitty.NumpadPageDownKey => Key.PageDown,
-            VtInputSequences.Kitty.NumpadHomeKey => Key.Home,
-            VtInputSequences.Kitty.NumpadEndKey => Key.End,
-            VtInputSequences.Kitty.NumpadInsertKey => Key.Insert,
-            VtInputSequences.Kitty.NumpadDeleteKey => Key.Delete,
+                  // Numpad navigation keys — collapse to the main-keyboard equivalent for v1.
+                  // Distinguishing numpad-arrow from main-arrow would need new Key enum entries.
+                  VtInputSequences.Kitty.NumpadLeftArrowKey  => Key.LeftArrow,
+                  VtInputSequences.Kitty.NumpadRightArrowKey => Key.RightArrow,
+                  VtInputSequences.Kitty.NumpadUpArrowKey    => Key.UpArrow,
+                  VtInputSequences.Kitty.NumpadDownArrowKey  => Key.DownArrow,
+                  VtInputSequences.Kitty.NumpadPageUpKey     => Key.PageUp,
+                  VtInputSequences.Kitty.NumpadPageDownKey   => Key.PageDown,
+                  VtInputSequences.Kitty.NumpadHomeKey       => Key.Home,
+                  VtInputSequences.Kitty.NumpadEndKey        => Key.End,
+                  VtInputSequences.Kitty.NumpadInsertKey     => Key.Insert,
+                  VtInputSequences.Kitty.NumpadDeleteKey     => Key.Delete,
 
-            // Media keys.
-            VtInputSequences.Kitty.MediaPlayKey => Key.MediaPlay,
-            VtInputSequences.Kitty.MediaPauseKey => Key.MediaPause,
-            VtInputSequences.Kitty.MediaPlayPauseKey => Key.MediaPlayPause,
-            VtInputSequences.Kitty.MediaStopKey => Key.MediaStop,
-            VtInputSequences.Kitty.MediaTrackNextKey => Key.MediaNext,
-            VtInputSequences.Kitty.MediaTrackPreviousKey => Key.MediaPrevious,
-            VtInputSequences.Kitty.VolumeDownKey => Key.VolumeDown,
-            VtInputSequences.Kitty.VolumeUpKey => Key.VolumeUp,
-            VtInputSequences.Kitty.VolumeMuteKey => Key.VolumeMute,
+                  // Media keys.
+                  VtInputSequences.Kitty.MediaPlayKey          => Key.MediaPlay,
+                  VtInputSequences.Kitty.MediaPauseKey         => Key.MediaPause,
+                  VtInputSequences.Kitty.MediaPlayPauseKey     => Key.MediaPlayPause,
+                  VtInputSequences.Kitty.MediaStopKey          => Key.MediaStop,
+                  VtInputSequences.Kitty.MediaTrackNextKey     => Key.MediaNext,
+                  VtInputSequences.Kitty.MediaTrackPreviousKey => Key.MediaPrevious,
+                  VtInputSequences.Kitty.VolumeDownKey         => Key.VolumeDown,
+                  VtInputSequences.Kitty.VolumeUpKey           => Key.VolumeUp,
+                  VtInputSequences.Kitty.VolumeMuteKey         => Key.VolumeMute,
 
-            // Per-side modifier keys reported as standalone events.
-            VtInputSequences.Kitty.LeftShiftKey => Key.LeftShift,
-            VtInputSequences.Kitty.LeftControlKey => Key.LeftControl,
-            VtInputSequences.Kitty.LeftAltKey => Key.LeftAlt,
-            VtInputSequences.Kitty.LeftSuperKey => Key.LeftSuper,
-            VtInputSequences.Kitty.LeftHyperKey => Key.LeftHyper,
-            VtInputSequences.Kitty.LeftMetaKey => Key.LeftMeta,
-            VtInputSequences.Kitty.RightShiftKey => Key.RightShift,
-            VtInputSequences.Kitty.RightControlKey => Key.RightControl,
-            VtInputSequences.Kitty.RightAltKey => Key.RightAlt,
-            VtInputSequences.Kitty.RightSuperKey => Key.RightSuper,
-            VtInputSequences.Kitty.RightHyperKey => Key.RightHyper,
-            VtInputSequences.Kitty.RightMetaKey => Key.RightMeta,
+                  // Per-side modifier keys reported as standalone events.
+                  VtInputSequences.Kitty.LeftShiftKey    => Key.LeftShift,
+                  VtInputSequences.Kitty.LeftControlKey  => Key.LeftControl,
+                  VtInputSequences.Kitty.LeftAltKey      => Key.LeftAlt,
+                  VtInputSequences.Kitty.LeftSuperKey    => Key.LeftSuper,
+                  VtInputSequences.Kitty.LeftHyperKey    => Key.LeftHyper,
+                  VtInputSequences.Kitty.LeftMetaKey     => Key.LeftMeta,
+                  VtInputSequences.Kitty.RightShiftKey   => Key.RightShift,
+                  VtInputSequences.Kitty.RightControlKey => Key.RightControl,
+                  VtInputSequences.Kitty.RightAltKey     => Key.RightAlt,
+                  VtInputSequences.Kitty.RightSuperKey   => Key.RightSuper,
+                  VtInputSequences.Kitty.RightHyperKey   => Key.RightHyper,
+                  VtInputSequences.Kitty.RightMetaKey    => Key.RightMeta,
 
-            _ => Key.None,
-        };
+                  _ => Key.None,
+              };
+
         return key != Key.None;
     }
 
@@ -1049,11 +1098,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     private void EmitDeviceResponse(DeviceResponseKind kind, ReadOnlySpan<byte> payload)
     {
         _eventSink.OnInputEvent(new DeviceResponseEvent
-        {
-            Timestamp = Now,
-            Kind = kind,
-            Payload = payload.ToArray(),
-        });
+                                {
+                                    Timestamp = Now,
+                                    Kind = kind,
+                                    Payload = payload.ToArray(),
+                                });
     }
 
     // ---- UnknownEvent reassembly helpers ----
@@ -1072,11 +1121,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         var bytes = new byte[length];
         int i = 0;
         bytes[i++] = VtInputSequences.Escape;
+
         if (!intermediates.IsEmpty)
         {
             intermediates.CopyTo(bytes.AsSpan(i));
             i += intermediates.Length;
         }
+
         if (final != 0) bytes[i++] = final;
 
         _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
@@ -1093,18 +1144,21 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         var bytes = new byte[length];
         int i = 0;
         bytes[i++] = VtInputSequences.Escape;
-        bytes[i++] = (byte)'[';
+        bytes[i++] = (byte) '[';
         if (privatePrefix != 0) bytes[i++] = privatePrefix;
+
         if (!parameters.IsEmpty)
         {
             parameters.CopyTo(bytes.AsSpan(i));
             i += parameters.Length;
         }
+
         if (!intermediates.IsEmpty)
         {
             intermediates.CopyTo(bytes.AsSpan(i));
             i += intermediates.Length;
         }
+
         bytes[i++] = final;
 
         _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
@@ -1117,14 +1171,16 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         var bytes = new byte[length];
         int i = 0;
         bytes[i++] = VtInputSequences.Escape;
-        bytes[i++] = (byte)']';
+        bytes[i++] = (byte) ']';
+
         if (!body.IsEmpty)
         {
             body.CopyTo(bytes.AsSpan(i));
             i += body.Length;
         }
+
         bytes[i++] = VtInputSequences.Escape;
-        bytes[i++] = (byte)'\\';
+        bytes[i++] = (byte) '\\';
 
         _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
     }
@@ -1138,35 +1194,41 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     {
         // ESC P [private] [params] [intermediates] final body ESC \.
         int length = 2
-            + (privatePrefix != 0 ? 1 : 0)
-            + parameters.Length
-            + intermediates.Length
-            + 1
-            + body.Length
-            + 2;
+                     + (privatePrefix != 0 ? 1 : 0)
+                     + parameters.Length
+                     + intermediates.Length
+                     + 1
+                     + body.Length
+                     + 2;
+
         var bytes = new byte[length];
         int i = 0;
         bytes[i++] = VtInputSequences.Escape;
-        bytes[i++] = (byte)'P';
+        bytes[i++] = (byte) 'P';
         if (privatePrefix != 0) bytes[i++] = privatePrefix;
+
         if (!parameters.IsEmpty)
         {
             parameters.CopyTo(bytes.AsSpan(i));
             i += parameters.Length;
         }
+
         if (!intermediates.IsEmpty)
         {
             intermediates.CopyTo(bytes.AsSpan(i));
             i += intermediates.Length;
         }
+
         bytes[i++] = final;
+
         if (!body.IsEmpty)
         {
             body.CopyTo(bytes.AsSpan(i));
             i += body.Length;
         }
+
         bytes[i++] = VtInputSequences.Escape;
-        bytes[i++] = (byte)'\\';
+        bytes[i++] = (byte) '\\';
 
         _eventSink.OnInputEvent(new UnknownEvent { Timestamp = Now, RawBytes = bytes });
     }
@@ -1178,9 +1240,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         foreach (byte b in bytes)
         {
-            if (b is < (byte)'0' or > (byte)'9') return false;
-            value = AccumulateDecimalSaturating(value, b - (byte)'0');
+            if (b is < (byte) '0' or > (byte) '9') return false;
+            value = AccumulateDecimalSaturating(value, b - (byte) '0');
         }
+
         return true;
     }
 
@@ -1198,87 +1261,88 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     }
 
     private static MouseButtons ButtonToMask(MouseButton button) => button switch
-    {
-        MouseButton.Left => MouseButtons.Left,
-        MouseButton.Middle => MouseButtons.Middle,
-        MouseButton.Right => MouseButtons.Right,
-        MouseButton.X1 => MouseButtons.X1,
-        MouseButton.X2 => MouseButtons.X2,
-        MouseButton.X3 => MouseButtons.X3,
-        MouseButton.X4 => MouseButtons.X4,
-        _ => MouseButtons.None,
-    };
+                                                                    {
+                                                                        MouseButton.Left   => MouseButtons.Left,
+                                                                        MouseButton.Middle => MouseButtons.Middle,
+                                                                        MouseButton.Right  => MouseButtons.Right,
+                                                                        MouseButton.X1     => MouseButtons.X1,
+                                                                        MouseButton.X2     => MouseButtons.X2,
+                                                                        MouseButton.X3     => MouseButtons.X3,
+                                                                        MouseButton.X4     => MouseButtons.X4,
+                                                                        _                  => MouseButtons.None,
+                                                                    };
 
     private void DecodeSs3(byte final)
     {
         Key key = final switch
-        {
-            (byte)'A' => Key.UpArrow,
-            (byte)'B' => Key.DownArrow,
-            (byte)'C' => Key.RightArrow,
-            (byte)'D' => Key.LeftArrow,
-            (byte)'H' => Key.Home,
-            (byte)'F' => Key.End,
-            (byte)'P' => Key.F1,
-            (byte)'Q' => Key.F2,
-            (byte)'R' => Key.F3,
-            (byte)'S' => Key.F4,
-            _ => Key.None,
-        };
+                  {
+                      (byte) 'A' => Key.UpArrow,
+                      (byte) 'B' => Key.DownArrow,
+                      (byte) 'C' => Key.RightArrow,
+                      (byte) 'D' => Key.LeftArrow,
+                      (byte) 'H' => Key.Home,
+                      (byte) 'F' => Key.End,
+                      (byte) 'P' => Key.F1,
+                      (byte) 'Q' => Key.F2,
+                      (byte) 'R' => Key.F3,
+                      (byte) 'S' => Key.F4,
+                      _          => Key.None,
+                  };
 
         if (key != Key.None) EmitNamedKey(key);
     }
 
     private static Key ArrowOrHomeEndKey(byte final) => final switch
-    {
-        (byte)'A' => Key.UpArrow,
-        (byte)'B' => Key.DownArrow,
-        (byte)'C' => Key.RightArrow,
-        (byte)'D' => Key.LeftArrow,
-        (byte)'H' => Key.Home,
-        (byte)'F' => Key.End,
-        _ => Key.None,
-    };
+                                                        {
+                                                            (byte) 'A' => Key.UpArrow,
+                                                            (byte) 'B' => Key.DownArrow,
+                                                            (byte) 'C' => Key.RightArrow,
+                                                            (byte) 'D' => Key.LeftArrow,
+                                                            (byte) 'H' => Key.Home,
+                                                            (byte) 'F' => Key.End,
+                                                            _          => Key.None,
+                                                        };
 
     private static bool TryFunctionOrSpecialKey(int parameter, out Key key)
     {
         // CSI n ~ encoding for special and function keys (xterm + vt220 / vt320 conventions).
         key = parameter switch
-        {
-            // Special navigation keys (alternate codes per terminal).
-            VtInputSequences.CsiTildeKey.Home or VtInputSequences.CsiTildeKey.HomeAlternate => Key.Home,
-            VtInputSequences.CsiTildeKey.End or VtInputSequences.CsiTildeKey.EndAlternate => Key.End,
-            VtInputSequences.CsiTildeKey.Insert => Key.Insert,
-            VtInputSequences.CsiTildeKey.Delete => Key.Delete,
-            VtInputSequences.CsiTildeKey.PageUp => Key.PageUp,
-            VtInputSequences.CsiTildeKey.PageDown => Key.PageDown,
+              {
+                  // Special navigation keys (alternate codes per terminal).
+                  VtInputSequences.CsiTildeKey.Home or VtInputSequences.CsiTildeKey.HomeAlternate => Key.Home,
+                  VtInputSequences.CsiTildeKey.End or VtInputSequences.CsiTildeKey.EndAlternate   => Key.End,
+                  VtInputSequences.CsiTildeKey.Insert                                             => Key.Insert,
+                  VtInputSequences.CsiTildeKey.Delete                                             => Key.Delete,
+                  VtInputSequences.CsiTildeKey.PageUp                                             => Key.PageUp,
+                  VtInputSequences.CsiTildeKey.PageDown                                           => Key.PageDown,
 
-            // Function keys F1–F12 (xterm).
-            VtInputSequences.CsiTildeKey.F1 => Key.F1,
-            VtInputSequences.CsiTildeKey.F2 => Key.F2,
-            VtInputSequences.CsiTildeKey.F3 => Key.F3,
-            VtInputSequences.CsiTildeKey.F4 => Key.F4,
-            VtInputSequences.CsiTildeKey.F5 => Key.F5,
-            VtInputSequences.CsiTildeKey.F6 => Key.F6,
-            VtInputSequences.CsiTildeKey.F7 => Key.F7,
-            VtInputSequences.CsiTildeKey.F8 => Key.F8,
-            VtInputSequences.CsiTildeKey.F9 => Key.F9,
-            VtInputSequences.CsiTildeKey.F10 => Key.F10,
-            VtInputSequences.CsiTildeKey.F11 => Key.F11,
-            VtInputSequences.CsiTildeKey.F12 => Key.F12,
+                  // Function keys F1–F12 (xterm).
+                  VtInputSequences.CsiTildeKey.F1  => Key.F1,
+                  VtInputSequences.CsiTildeKey.F2  => Key.F2,
+                  VtInputSequences.CsiTildeKey.F3  => Key.F3,
+                  VtInputSequences.CsiTildeKey.F4  => Key.F4,
+                  VtInputSequences.CsiTildeKey.F5  => Key.F5,
+                  VtInputSequences.CsiTildeKey.F6  => Key.F6,
+                  VtInputSequences.CsiTildeKey.F7  => Key.F7,
+                  VtInputSequences.CsiTildeKey.F8  => Key.F8,
+                  VtInputSequences.CsiTildeKey.F9  => Key.F9,
+                  VtInputSequences.CsiTildeKey.F10 => Key.F10,
+                  VtInputSequences.CsiTildeKey.F11 => Key.F11,
+                  VtInputSequences.CsiTildeKey.F12 => Key.F12,
 
-            // Extended function keys F13–F20 (vt220 / vt320).
-            VtInputSequences.CsiTildeKey.F13 => Key.F13,
-            VtInputSequences.CsiTildeKey.F14 => Key.F14,
-            VtInputSequences.CsiTildeKey.F15 => Key.F15,
-            VtInputSequences.CsiTildeKey.F16 => Key.F16,
-            VtInputSequences.CsiTildeKey.F17 => Key.F17,
-            VtInputSequences.CsiTildeKey.F18 => Key.F18,
-            VtInputSequences.CsiTildeKey.F19 => Key.F19,
-            VtInputSequences.CsiTildeKey.F20 => Key.F20,
+                  // Extended function keys F13–F20 (vt220 / vt320).
+                  VtInputSequences.CsiTildeKey.F13 => Key.F13,
+                  VtInputSequences.CsiTildeKey.F14 => Key.F14,
+                  VtInputSequences.CsiTildeKey.F15 => Key.F15,
+                  VtInputSequences.CsiTildeKey.F16 => Key.F16,
+                  VtInputSequences.CsiTildeKey.F17 => Key.F17,
+                  VtInputSequences.CsiTildeKey.F18 => Key.F18,
+                  VtInputSequences.CsiTildeKey.F19 => Key.F19,
+                  VtInputSequences.CsiTildeKey.F20 => Key.F20,
 
-            _ => Key.None,
-        };
+                  _ => Key.None,
+              };
+
         return key != Key.None;
     }
 
@@ -1307,7 +1371,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // DeviceResponseEvent carrying the value portion (everything after the first ';').
         // Anything else — malformed, unrecognized code, parse failure — goes out as UnknownEvent
         // so consumers can log/forward without us silently swallowing protocol surface.
-        int separator = body.IndexOf((byte)';');
+        int separator = body.IndexOf((byte) ';');
+
         if (separator < 0)
         {
             EmitUnknownOsc(body);
@@ -1321,13 +1386,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
 
         DeviceResponseKind? kind = code switch
-        {
-            VtInputSequences.OscCode.PaletteColor => DeviceResponseKind.PaletteColor,
-            VtInputSequences.OscCode.ForegroundColor => DeviceResponseKind.ForegroundColor,
-            VtInputSequences.OscCode.BackgroundColor => DeviceResponseKind.BackgroundColor,
-            VtInputSequences.OscCode.CursorColor => DeviceResponseKind.CursorColor,
-            _ => null,
-        };
+                                   {
+                                       VtInputSequences.OscCode.PaletteColor    => DeviceResponseKind.PaletteColor,
+                                       VtInputSequences.OscCode.ForegroundColor => DeviceResponseKind.ForegroundColor,
+                                       VtInputSequences.OscCode.BackgroundColor => DeviceResponseKind.BackgroundColor,
+                                       VtInputSequences.OscCode.CursorColor     => DeviceResponseKind.CursorColor,
+                                       _                                        => null,
+                                   };
 
         if (kind is null)
         {
@@ -1366,11 +1431,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (_dcsKind != DeviceResponseKind.Unknown)
         {
             _eventSink.OnInputEvent(new DeviceResponseEvent
-            {
-                Timestamp = Now,
-                Kind = _dcsKind,
-                Payload = _dcsBody.WrittenSpan.ToArray(),
-            });
+                                    {
+                                        Timestamp = Now,
+                                        Kind = _dcsKind,
+                                        Payload = _dcsBody.WrittenSpan.ToArray(),
+                                    });
         }
         else
         {
@@ -1396,30 +1461,24 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (privatePrefix == 0 && intermediates.Length == 1)
         {
             // DA3 (Tertiary Device Attributes) response: DCS ! | <hex-id> ST.
-            if (intermediates[0] == (byte)'!' && final == (byte)'|' && parameters.IsEmpty)
-            {
+            if (intermediates[0] == (byte) '!' && final == (byte) '|' && parameters.IsEmpty)
                 return DeviceResponseKind.TertiaryDeviceAttributes;
-            }
 
             // DECRQSS (Request Status String) response: DCS <valid> $ r <data> ST.
             // <valid> is 1 when the request was honored, 0 when the terminal couldn't answer.
-            if (intermediates[0] == (byte)'$' && final == (byte)'r')
-            {
+            if (intermediates[0] == (byte) '$' && final == (byte) 'r')
                 return DeviceResponseKind.DecRqss;
-            }
 
             // XTGETTCAP (Get Termcap) response: DCS <valid> + r <hex-name>=<hex-value> ST.
-            if (intermediates[0] == (byte)'+' && final == (byte)'r')
-            {
+            if (intermediates[0] == (byte) '+' && final == (byte) 'r')
                 return DeviceResponseKind.XtGetTcap;
-            }
         }
 
         // XTVERSION response: DCS > | <name> ST.
-        if (privatePrefix == VtInputSequences.SecondaryPrefix
-            && parameters.IsEmpty
-            && intermediates.IsEmpty
-            && final == (byte)'|')
+        if (privatePrefix == VtInputSequences.SecondaryPrefix &&
+            parameters.IsEmpty &&
+            intermediates.IsEmpty &&
+            final == (byte) '|')
         {
             return DeviceResponseKind.XtVersion;
         }
@@ -1441,9 +1500,11 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         _utf8ContinuationLength = 0;
 
         ReadOnlySpan<byte> remaining = combined;
+
         while (!remaining.IsEmpty)
         {
             var status = Rune.DecodeFromUtf8(remaining, out Rune rune, out int consumed);
+
             if (status == OperationStatus.NeedMoreData)
             {
                 // Save trailing bytes for next call.
@@ -1467,13 +1528,13 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         charBuf[..written].CopyTo(text);
 
         _eventSink.OnInputEvent(new KeyEvent
-        {
-            Timestamp = timestamp,
-            Key = Key.Character,
-            Modifiers = KeyModifiers.None,
-            Kind = KeyEventKind.Down,
-            Text = text,
-        });
+                                {
+                                    Timestamp = timestamp,
+                                    Key = Key.Character,
+                                    Modifiers = KeyModifiers.None,
+                                    Kind = KeyEventKind.Down,
+                                    Text = text,
+                                });
     }
 
     // ---- Control character → KeyEvent ----
@@ -1481,58 +1542,64 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     private void EmitControlEvent(byte controlChar)
     {
         var ts = Now;
-        KeyEvent? evt = controlChar switch
-        {
-            VtInputSequences.Tab => Named(Key.Tab),
-            VtInputSequences.CarriageReturn or VtInputSequences.LineFeed => Named(Key.Enter),
-            VtInputSequences.Backspace or VtInputSequences.Delete => Named(Key.Backspace),
-            VtInputSequences.Nul => CtrlSpace(),
-            >= 0x01 and <= 0x1A => CtrlLetter(controlChar),
-            _ => null, // Other low-range controls (0x1C-0x1F, BEL, etc.) — ignored in v1.
-        };
 
-        if (evt is not null) _eventSink.OnInputEvent(evt);
+        // @formatter:off
+        KeyEvent? evt = controlChar switch
+                        {
+                            VtInputSequences.Tab                                         => Named(Key.Tab),
+                            VtInputSequences.CarriageReturn or VtInputSequences.LineFeed => Named(Key.Enter),
+                            VtInputSequences.Backspace or VtInputSequences.Delete        => Named(Key.Backspace),
+                            VtInputSequences.Nul                                         => CtrlSpace(),
+                            >= 0x01 and <= 0x1A                                          => CtrlLetter(controlChar),
+                            // Other low-range controls (0x1C-0x1F, BEL, etc.) — ignored in v1.
+                            _                                                            => null
+                        };
+        // @formatter:on
+
+        if (evt is not null)
+            _eventSink.OnInputEvent(evt);
 
         KeyEvent Named(Key key) => new()
-        {
-            Timestamp = ts,
-            Key = key,
-            Modifiers = KeyModifiers.None,
-            Kind = KeyEventKind.Down,
-        };
+                                   {
+                                       Timestamp = ts,
+                                       Key = key,
+                                       Modifiers = KeyModifiers.None,
+                                       Kind = KeyEventKind.Down,
+                                   };
 
         KeyEvent CtrlSpace() => new()
-        {
-            Timestamp = ts,
-            Key = Key.Space,
-            Modifiers = KeyModifiers.Control,
-            Kind = KeyEventKind.Down,
-        };
+                                {
+                                    Timestamp = ts,
+                                    Key = Key.Space,
+                                    Modifiers = KeyModifiers.Control,
+                                    Kind = KeyEventKind.Down,
+                                };
 
         KeyEvent CtrlLetter(byte b)
         {
             // 0x01-0x1A → 'a'-'z' (Ctrl strips bits 5-6).
-            char letter = (char)(b + 0x60);
+            char letter = (char) (b + 0x60);
+
             return new KeyEvent
-            {
-                Timestamp = ts,
-                Key = Key.Character,
-                Modifiers = KeyModifiers.Control,
-                Kind = KeyEventKind.Down,
-                Text = new[] { letter },
-            };
+                   {
+                       Timestamp = ts,
+                       Key = Key.Character,
+                       Modifiers = KeyModifiers.Control,
+                       Kind = KeyEventKind.Down,
+                       Text = new[] { letter },
+                   };
         }
     }
 
     private void EmitNamedKey(Key key, KeyModifiers modifiers = KeyModifiers.None)
     {
         _eventSink.OnInputEvent(new KeyEvent
-        {
-            Timestamp = Now,
-            Key = key,
-            Modifiers = modifiers,
-            Kind = KeyEventKind.Down,
-        });
+                                {
+                                    Timestamp = Now,
+                                    Key = key,
+                                    Modifiers = modifiers,
+                                    Kind = KeyEventKind.Down,
+                                });
     }
 
     // ---- Bracketed paste ----
@@ -1552,10 +1619,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         _inPaste = false;
 
         _eventSink.OnInputEvent(new PasteEvent
-        {
-            Timestamp = Now,
-            Text = text.AsMemory(),
-        });
+                                {
+                                    Timestamp = Now,
+                                    Text = text.AsMemory(),
+                                });
     }
 
     private void AppendPasteText(ReadOnlySpan<byte> bytes)
@@ -1586,17 +1653,17 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         for (int i = 0; i < raw.Length; i++)
         {
             byte b = raw[i];
-            if (b is >= (byte)'0' and <= (byte)'9')
+
+            if (b is >= (byte) '0' and <= (byte) '9')
             {
-                current = AccumulateDecimalSaturating(current, b - (byte)'0');
+                current = AccumulateDecimalSaturating(current, b - (byte) '0');
                 started = true;
             }
-            else if (b is (byte)';' or (byte)':')
+            else if (b is (byte) ';' or (byte) ':')
             {
                 if (count < output.Length)
-                {
                     output[count++] = started ? current : 0;
-                }
+
                 current = 0;
                 started = false;
             }
@@ -1605,9 +1672,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         // Final parameter (CSI sequences end the param run before the final byte).
         if (count < output.Length)
-        {
             output[count++] = started ? current : 0;
-        }
 
         return count;
     }

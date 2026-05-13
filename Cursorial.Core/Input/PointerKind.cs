@@ -8,5 +8,5 @@ namespace Cursorial.Input;
 public enum PointerKind
 {
     Pen,
-    Touch,
+    Touch
 }

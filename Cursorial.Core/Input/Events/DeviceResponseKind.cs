@@ -78,5 +78,5 @@ public enum DeviceResponseKind
     /// indicates the requested termcap entry was not recognized; otherwise the payload carries
     /// the (still hex-encoded) name=value pairs.
     /// </summary>
-    XtGetTcap,
+    XtGetTcap
 }

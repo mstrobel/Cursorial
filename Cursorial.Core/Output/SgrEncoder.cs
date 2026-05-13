@@ -25,10 +25,10 @@ namespace Cursorial.Output;
 public static class SgrEncoder
 {
     private const byte Escape = 0x1B;
-    private const byte CsiOpen = (byte)'[';
-    private const byte CsiSeparator = (byte)';';
-    private const byte SgrFinal = (byte)'m';
-    private const byte SubParamSeparator = (byte)':';
+    private const byte CsiOpen = (byte) '[';
+    private const byte CsiSeparator = (byte) ';';
+    private const byte SgrFinal = (byte) 'm';
+    private const byte SubParamSeparator = (byte) ':';
 
     /// <summary>
     /// Emit <c>CSI 0 m</c> — reset all SGR state to terminal defaults.
@@ -39,7 +39,7 @@ public static class SgrEncoder
         var span = writer.GetSpan(4);
         span[0] = Escape;
         span[1] = CsiOpen;
-        span[2] = (byte)'0';
+        span[2] = (byte) '0';
         span[3] = SgrFinal;
         writer.Advance(4);
     }
@@ -62,7 +62,7 @@ public static class SgrEncoder
         buffer[written++] = CsiOpen;
 
         // Always lead with "0" — guarantees a known starting state.
-        buffer[written++] = (byte)'0';
+        buffer[written++] = (byte) '0';
         bool needSeparator = true;
 
         WriteStyleParameters(style, buffer, ref written, ref needSeparator);
@@ -129,7 +129,7 @@ public static class SgrEncoder
         if (written == 2)
         {
             // We wrote `ESC [` but nothing else — the styles differ in a way we don't
-            // surface (e.g. only UnderlineStyle when Underline isn't set). Skip the empty
+            // surface (e.g., only UnderlineStyle when Underline isn't set). Skip the empty
             // sequence to avoid a malformed `ESC [ m`.
             return;
         }
@@ -149,10 +149,10 @@ public static class SgrEncoder
         if ((attrs & TextAttributes.Bold) != 0) WriteParam(1, buffer, ref written, ref needSeparator);
         if ((attrs & TextAttributes.Faint) != 0) WriteParam(2, buffer, ref written, ref needSeparator);
         if ((attrs & TextAttributes.Italic) != 0) WriteParam(3, buffer, ref written, ref needSeparator);
+
         if ((attrs & TextAttributes.Underline) != 0)
-        {
             WriteUnderline(style.UnderlineStyle, buffer, ref written, ref needSeparator);
-        }
+
         if ((attrs & TextAttributes.Blink) != 0) WriteParam(5, buffer, ref written, ref needSeparator);
         if ((attrs & TextAttributes.Inverse) != 0) WriteParam(7, buffer, ref written, ref needSeparator);
         if ((attrs & TextAttributes.Hidden) != 0) WriteParam(8, buffer, ref written, ref needSeparator);
@@ -176,6 +176,7 @@ public static class SgrEncoder
         // for reset (xterm convention); we emit 22 once if either was removed.
         if ((removed & TextAttributes.Bold) != 0 || (removed & TextAttributes.Faint) != 0)
             WriteParam(22, buffer, ref written, ref needSeparator);
+
         if ((removed & TextAttributes.Italic) != 0) WriteParam(23, buffer, ref written, ref needSeparator);
         if ((removed & TextAttributes.Underline) != 0) WriteParam(24, buffer, ref written, ref needSeparator);
         if ((removed & TextAttributes.Blink) != 0) WriteParam(25, buffer, ref written, ref needSeparator);
@@ -187,10 +188,10 @@ public static class SgrEncoder
         if ((added & TextAttributes.Bold) != 0) WriteParam(1, buffer, ref written, ref needSeparator);
         if ((added & TextAttributes.Faint) != 0) WriteParam(2, buffer, ref written, ref needSeparator);
         if ((added & TextAttributes.Italic) != 0) WriteParam(3, buffer, ref written, ref needSeparator);
+
         if ((added & TextAttributes.Underline) != 0)
-        {
             WriteUnderline(underlineStyle, buffer, ref written, ref needSeparator);
-        }
+
         if ((added & TextAttributes.Blink) != 0) WriteParam(5, buffer, ref written, ref needSeparator);
         if ((added & TextAttributes.Inverse) != 0) WriteParam(7, buffer, ref written, ref needSeparator);
         if ((added & TextAttributes.Hidden) != 0) WriteParam(8, buffer, ref written, ref needSeparator);
@@ -214,7 +215,7 @@ public static class SgrEncoder
         WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
         WriteAsciiInt(4, buffer, ref written);
         buffer[written++] = SubParamSeparator;
-        WriteAsciiInt((uint)style + 1, buffer, ref written); // Double=2, Curly=3, Dotted=4, Dashed=5.
+        WriteAsciiInt((uint) style + 1, buffer, ref written); // Double=2, Curly=3, Dotted=4, Dashed=5.
         needSeparator = true;
     }
 
@@ -229,25 +230,35 @@ public static class SgrEncoder
             case ColorKind.Default:
                 WriteParam(39, buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette when color.PaletteIndex < 8:
                 WriteParam(30u + color.PaletteIndex, buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette when color.PaletteIndex < 16:
                 WriteParam(90u + (color.PaletteIndex - 8u), buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
-                WriteAsciiInt(38, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(5, buffer, ref written); buffer[written++] = CsiSeparator;
+                WriteAsciiInt(38, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(5, buffer, ref written);
+                buffer[written++] = CsiSeparator;
                 WriteAsciiInt(color.PaletteIndex, buffer, ref written);
                 needSeparator = true;
                 return;
+
             case ColorKind.Rgb:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
-                WriteAsciiInt(38, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(2, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(color.Red, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(color.Green, buffer, ref written); buffer[written++] = CsiSeparator;
+                WriteAsciiInt(38, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(2, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(color.Red, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(color.Green, buffer, ref written);
+                buffer[written++] = CsiSeparator;
                 WriteAsciiInt(color.Blue, buffer, ref written);
                 needSeparator = true;
                 return;
@@ -265,25 +276,35 @@ public static class SgrEncoder
             case ColorKind.Default:
                 WriteParam(49, buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette when color.PaletteIndex < 8:
                 WriteParam(40u + color.PaletteIndex, buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette when color.PaletteIndex < 16:
                 WriteParam(100u + (color.PaletteIndex - 8u), buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
-                WriteAsciiInt(48, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(5, buffer, ref written); buffer[written++] = CsiSeparator;
+                WriteAsciiInt(48, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(5, buffer, ref written);
+                buffer[written++] = CsiSeparator;
                 WriteAsciiInt(color.PaletteIndex, buffer, ref written);
                 needSeparator = true;
                 return;
+
             case ColorKind.Rgb:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
-                WriteAsciiInt(48, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(2, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(color.Red, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(color.Green, buffer, ref written); buffer[written++] = CsiSeparator;
+                WriteAsciiInt(48, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(2, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(color.Red, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(color.Green, buffer, ref written);
+                buffer[written++] = CsiSeparator;
                 WriteAsciiInt(color.Blue, buffer, ref written);
                 needSeparator = true;
                 return;
@@ -302,19 +323,27 @@ public static class SgrEncoder
                 // SGR 59 — restore underline color to "follow foreground."
                 WriteParam(59, buffer, ref written, ref needSeparator);
                 return;
+
             case ColorKind.Palette:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
-                WriteAsciiInt(58, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(5, buffer, ref written); buffer[written++] = CsiSeparator;
+                WriteAsciiInt(58, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(5, buffer, ref written);
+                buffer[written++] = CsiSeparator;
                 WriteAsciiInt(color.PaletteIndex, buffer, ref written);
                 needSeparator = true;
                 return;
+
             case ColorKind.Rgb:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
-                WriteAsciiInt(58, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(2, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(color.Red, buffer, ref written); buffer[written++] = CsiSeparator;
-                WriteAsciiInt(color.Green, buffer, ref written); buffer[written++] = CsiSeparator;
+                WriteAsciiInt(58, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(2, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(color.Red, buffer, ref written);
+                buffer[written++] = CsiSeparator;
+                WriteAsciiInt(color.Green, buffer, ref written);
+                buffer[written++] = CsiSeparator;
                 WriteAsciiInt(color.Blue, buffer, ref written);
                 needSeparator = true;
                 return;
@@ -345,11 +374,13 @@ public static class SgrEncoder
         // Up to 10 decimal digits for a uint; SGR values realistically fit in 3.
         Span<byte> tmp = stackalloc byte[10];
         int idx = tmp.Length;
+
         do
         {
-            tmp[--idx] = (byte)('0' + value % 10);
+            tmp[--idx] = (byte) ('0' + value % 10);
             value /= 10;
-        } while (value > 0);
+        }
+        while (value > 0);
 
         int len = tmp.Length - idx;
         tmp.Slice(idx, len).CopyTo(buffer[written..]);

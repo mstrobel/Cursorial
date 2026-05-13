@@ -62,14 +62,10 @@ public sealed class FrameRenderer
     private CursorShape _cursorShape = CursorShape.Default;
 
     public FrameRenderer()
-        : this(capabilities: null, options: default)
-    {
-    }
+        : this(capabilities: null, options: default) {}
 
     public FrameRenderer(FrameRendererOptions options)
-        : this(capabilities: null, options: options)
-    {
-    }
+        : this(capabilities: null, options: options) {}
 
     public FrameRenderer(OutputCapabilities? capabilities, FrameRendererOptions options = default)
     {
@@ -100,10 +96,10 @@ public sealed class FrameRenderer
         ArgumentNullException.ThrowIfNull(back);
         ArgumentNullException.ThrowIfNull(output);
 
-        bool fullRedraw = _firstFrame
-            || _frontCols != back.Columns
-            || _frontRows != back.Rows
-            || _options.ForceFullRedraw;
+        bool fullRedraw = _firstFrame ||
+                          _frontCols != back.Columns ||
+                          _frontRows != back.Rows ||
+                          _options.ForceFullRedraw;
 
         if (fullRedraw)
         {
@@ -138,6 +134,7 @@ public sealed class FrameRenderer
         for (int r = 0; r < back.Rows; r++)
         {
             ReadOnlySpan<Cell> row = back.GetRowSpan(r);
+
             for (int c = 0; c < back.Columns; c++)
             {
                 // Quantize per cell when a StyleQuantizer is attached. The quantized form is
@@ -182,12 +179,11 @@ public sealed class FrameRenderer
                 _frontCells[frontIdx] = cell;
 
                 _cursorCol += cell.Width;
+
                 // If the next cursor position would be at or past the right edge, force a
                 // re-position before the next emit so terminal autowrap can't surprise us.
                 if (_cursorCol >= back.Columns)
-                {
                     _cursorCol = -1;
-                }
             }
         }
     }
@@ -205,12 +201,13 @@ public sealed class FrameRenderer
         // and advances the cursor. WideLeft with empty grapheme is degenerate — emit two spaces
         // so the terminal still advances by 2.
         string grapheme = string.IsNullOrEmpty(cell.Grapheme)
-            ? (cell.Kind == CellKind.WideLeft ? "  " : " ")
-            : cell.Grapheme;
+                              ? cell.Kind == CellKind.WideLeft ? "  " : " "
+                              : cell.Grapheme;
 
         int max = Encoding.UTF8.GetMaxByteCount(grapheme.Length);
         var dest = output.GetSpan(max);
         int written = Encoding.UTF8.GetBytes(grapheme, dest);
+
         output.Advance(written);
     }
 
@@ -228,6 +225,7 @@ public sealed class FrameRenderer
         {
             if (back.CursorVisible) CursorWriter.WriteShow(output);
             else CursorWriter.WriteHide(output);
+
             _cursorVisible = back.CursorVisible;
         }
 

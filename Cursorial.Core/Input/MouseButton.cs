@@ -10,8 +10,10 @@ public enum MouseButton
     Left,
     Middle,
     Right,
+
     /// <summary>The "back" button on multi-button mice (typically navigates back in browsers).</summary>
     X1,
+
     /// <summary>The "forward" button on multi-button mice.</summary>
     X2,
     X3,
@@ -19,5 +21,5 @@ public enum MouseButton
     X5,
     X6,
     X7,
-    X8,
+    X8
 }

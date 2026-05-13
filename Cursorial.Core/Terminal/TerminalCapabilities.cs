@@ -10,11 +10,11 @@ namespace Cursorial.Terminal;
 /// </summary>
 /// <remarks>
 /// Reflects ACTUAL realized capabilities after negotiation, not advertised ones. If the
-/// terminal claims a feature but did not honor the opt-in (some terminals advertise Sixel
+/// terminal claims a feature but does not honor the opt-in (some terminals advertise Sixel
 /// without implementing it, for example), the corresponding capability flag will be false.
 /// Consumers can therefore branch on capabilities directly without further validation.
 /// </remarks>
-public sealed record class TerminalCapabilities(
+public sealed record TerminalCapabilities(
     TerminalIdentification Terminal,
     InputCapabilities Input,
     OutputCapabilities Output)

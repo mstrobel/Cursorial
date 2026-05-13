@@ -18,5 +18,5 @@ public enum KeyEventKind
 
     /// <summary>The key transitioned from down to up. Reported only when the device's
     /// <see cref="KeyboardCapabilities.DistinguishesKeyUpDown"/> is true.</summary>
-    Up,
+    Up
 }

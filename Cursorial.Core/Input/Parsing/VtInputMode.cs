@@ -92,7 +92,7 @@ public enum MouseEncoding
     Sgr = 2,
 
     /// <summary>SGR-Pixels encoding (DECSET 1016) — same shape as SGR, but coordinates are pixels.</summary>
-    SgrPixels = 3,
+    SgrPixels = 3
 }
 
 /// <summary>
@@ -106,7 +106,7 @@ public enum KittyKeyboardFlags : uint
 
     /// <summary>
     /// Send unambiguous escape codes for keys that otherwise share encodings with control
-    /// characters (e.g. distinguishing Esc from <c>0x1b</c>, Tab from <c>0x09</c>). Does NOT
+    /// characters (e.g., distinguishing Esc from <c>0x1b</c>, Tab from <c>0x09</c>). Does NOT
     /// affect plain printable text keys.
     /// </summary>
     DisambiguateEscapeCodes = 1u << 0,
@@ -122,7 +122,7 @@ public enum KittyKeyboardFlags : uint
 
     /// <summary>
     /// Encode every key — including ones that would otherwise be sent as plain printable bytes
-    /// (e.g. typing <c>a</c>) — as a Kitty escape sequence. Important consumer-visible
+    /// (e.g., typing <c>a</c>) — as a Kitty escape sequence. Important consumer-visible
     /// consequence: without this flag, Kitty applies a "text shortcut" optimization where
     /// printable-key presses that could be expressed as raw text are sent as raw text and
     /// therefore arrive with no modifier annotation. Releases of those same keys (and presses
@@ -138,5 +138,5 @@ public enum KittyKeyboardFlags : uint
     /// Include the resolved text payload on each key event (the composed printable character,
     /// post IME, post dead-key composition). Surfaced via <see cref="KeyEvent.Text"/>.
     /// </summary>
-    ReportAssociatedText = 1u << 4,
+    ReportAssociatedText = 1u << 4
 }

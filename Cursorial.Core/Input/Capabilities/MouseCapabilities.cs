@@ -13,21 +13,19 @@ namespace Cursorial.Input.Capabilities;
 /// Number of distinct buttons reported beyond left/middle/right (0 if none). For example, a
 /// device that reports X1 and X2 has an <c>ExtendedButtonCount</c> of 2.
 /// </param>
-public sealed record class MouseCapabilities(
-    bool ButtonPress,
-    bool ButtonRelease,
-    bool Drag,
-    bool Motion,
-    bool Wheel,
-    bool PixelCoordinates,
-    int ExtendedButtonCount)
+public sealed record MouseCapabilities(bool ButtonPress,
+                                       bool ButtonRelease,
+                                       bool Drag,
+                                       bool Motion,
+                                       bool Wheel,
+                                       bool PixelCoordinates,
+                                       int ExtendedButtonCount)
 {
-    public static MouseCapabilities None { get; } = new(
-        ButtonPress: false,
-        ButtonRelease: false,
-        Drag: false,
-        Motion: false,
-        Wheel: false,
-        PixelCoordinates: false,
-        ExtendedButtonCount: 0);
+    public static MouseCapabilities None { get; } = new(ButtonPress: false,
+                                                        ButtonRelease: false,
+                                                        Drag: false,
+                                                        Motion: false,
+                                                        Wheel: false,
+                                                        PixelCoordinates: false,
+                                                        ExtendedButtonCount: 0);
 }

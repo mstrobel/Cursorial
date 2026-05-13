@@ -15,21 +15,19 @@ namespace Cursorial.Input.Capabilities;
 /// the source coalesces multiple repeats into one record).
 /// </param>
 /// <param name="DetailedModifiers">
-/// True when modifier state is reported per-key (left vs right shift, super, hyper, meta) rather
+/// True when modifier state is reported per-key (left vs. right shift, super, hyper, meta) rather
 /// than only as a coarse Shift/Control/Alt summary.
 /// </param>
 /// <param name="TextInput">
 /// True when the device delivers IME-composed or printable text alongside key events.
 /// </param>
-public sealed record class KeyboardCapabilities(
-    bool DistinguishesKeyUpDown,
-    bool ReportsRepeats,
-    bool DetailedModifiers,
-    bool TextInput)
+public sealed record KeyboardCapabilities(bool DistinguishesKeyUpDown,
+                                          bool ReportsRepeats,
+                                          bool DetailedModifiers,
+                                          bool TextInput)
 {
-    public static KeyboardCapabilities None { get; } = new(
-        DistinguishesKeyUpDown: false,
-        ReportsRepeats: false,
-        DetailedModifiers: false,
-        TextInput: false);
+    public static KeyboardCapabilities None { get; } = new(DistinguishesKeyUpDown: false,
+                                                           ReportsRepeats: false,
+                                                           DetailedModifiers: false,
+                                                           TextInput: false);
 }

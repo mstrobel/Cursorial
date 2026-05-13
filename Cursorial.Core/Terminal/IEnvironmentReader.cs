@@ -2,7 +2,7 @@ namespace Cursorial.Terminal;
 
 /// <summary>
 /// Reads process environment variables. Abstracted so the terminal negotiator can be exercised
-/// against a deterministic stub in tests, and so future implementations can layer (e.g. read
+/// against a deterministic stub in tests, and so future implementations can layer (e.g., read
 /// from a config file overlay before falling through to the real environment).
 /// </summary>
 public interface IEnvironmentReader

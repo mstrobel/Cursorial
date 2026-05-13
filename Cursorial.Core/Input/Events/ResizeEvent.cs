@@ -4,7 +4,7 @@ namespace Cursorial.Input.Events;
 /// Terminal window resize notification. Delivered through the input pipeline so consumers
 /// driving a single event loop see resizes in order with other input.
 /// </summary>
-public sealed record class ResizeEvent : InputEvent
+public sealed record ResizeEvent : InputEvent
 {
     /// <summary>New width in character cells.</summary>
     public required int Columns { get; init; }

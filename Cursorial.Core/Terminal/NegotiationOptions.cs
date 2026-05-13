@@ -10,12 +10,12 @@ namespace Cursorial.Terminal;
 /// <see cref="OptIns"/> = <see cref="OptInPolicy.Ignored"/> to suppress every opt-in regardless
 /// of the individual flags.
 /// </summary>
-public sealed record class NegotiationOptions
+public sealed record NegotiationOptions
 {
     /// <summary>
     /// Master policy. When <see cref="OptInPolicy.Allowed"/> (the default), individual
     /// <c>Enable…</c> flags are honored. When <see cref="OptInPolicy.Ignored"/>, the negotiator
-    /// probes for identification and passive capabilities only — no enable sequences are
+    /// probes for identification and passive capabilities only — no 'enable' sequences are
     /// emitted, no restore is required, and every <c>Enable…</c> flag is treated as off.
     /// </summary>
     public OptInPolicy OptIns { get; init; } = OptInPolicy.Allowed;
@@ -81,9 +81,9 @@ public enum OptInPolicy
 
     /// <summary>
     /// Skip every opt-in regardless of the individual flags. The negotiator only probes for
-    /// identification and passive capabilities; no enable sequences reach the terminal and
+    /// identification and passive capabilities; no 'enable' sequences reach the terminal and
     /// restore is a no-op. Useful when embedding inside a host that already controls protocol
     /// state, or for a read-only "what is this terminal?" introspection pass.
     /// </summary>
-    Ignored = 1,
+    Ignored = 1
 }

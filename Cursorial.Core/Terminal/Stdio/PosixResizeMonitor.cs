@@ -91,11 +91,11 @@ internal sealed class PosixResizeMonitor : IDisposable
         try
         {
             _onResize(new ResizeEvent
-            {
-                Timestamp = _time.GetUtcNow(),
-                Rows = rows,
-                Columns = cols,
-            });
+                      {
+                          Timestamp = _time.GetUtcNow(),
+                          Rows = rows,
+                          Columns = cols,
+                      });
         }
         catch
         {
@@ -112,17 +112,18 @@ internal sealed class PosixResizeMonitor : IDisposable
     {
         rows = 0;
         cols = 0;
+
         try
         {
             var psi = new ProcessStartInfo
-            {
-                FileName = "stty",
-                Arguments = "size",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,
-                RedirectStandardInput = false,
-            };
+                      {
+                          FileName = "stty",
+                          Arguments = "size",
+                          UseShellExecute = false,
+                          RedirectStandardOutput = true,
+                          RedirectStandardError = false,
+                          RedirectStandardInput = false,
+                      };
 
             using var process = Process.Start(psi);
             if (process is null) return false;

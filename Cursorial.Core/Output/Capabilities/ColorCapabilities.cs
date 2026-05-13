@@ -18,15 +18,13 @@ namespace Cursorial.Output.Capabilities;
 /// True when the terminal accepts OSC 4 to redefine indexed palette colors, OSC 10 to set the
 /// default foreground, and OSC 11 to set the default background.
 /// </param>
-public sealed record class ColorCapabilities(
-    ColorDepth Depth,
-    bool TruecolorVerified,
-    bool DefaultColorReset,
-    bool OscPaletteSet)
+public sealed record ColorCapabilities(ColorDepth Depth,
+                                       bool TruecolorVerified,
+                                       bool DefaultColorReset,
+                                       bool OscPaletteSet)
 {
-    public static ColorCapabilities None { get; } = new(
-        Depth: ColorDepth.NoColor,
-        TruecolorVerified: false,
-        DefaultColorReset: false,
-        OscPaletteSet: false);
+    public static ColorCapabilities None { get; } = new(Depth: ColorDepth.NoColor,
+                                                        TruecolorVerified: false,
+                                                        DefaultColorReset: false,
+                                                        OscPaletteSet: false);
 }

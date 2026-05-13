@@ -26,5 +26,5 @@ public enum CursorShape : byte
     BlinkingBar = 5,
 
     /// <summary>Steady vertical bar (DECSCUSR 6, xterm extension).</summary>
-    SteadyBar = 6,
+    SteadyBar = 6
 }

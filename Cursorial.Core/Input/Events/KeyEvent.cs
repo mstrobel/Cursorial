@@ -8,7 +8,7 @@ namespace Cursorial.Input.Events;
 /// with <see cref="IsRepeat"/> set (and <see cref="RepeatCount"/> populated when the source
 /// coalesces multiple physical repeats into a single record).
 /// </summary>
-public sealed record class KeyEvent : InputEvent
+public sealed record KeyEvent : InputEvent
 {
     /// <summary>The named key. <see cref="Key.Character"/> indicates a printable key; see <see cref="Text"/>.</summary>
     public required Key Key { get; init; }

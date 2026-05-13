@@ -60,6 +60,7 @@ public static class BlendingModes
         {
             if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb)
                 return source;
+
             return Color.FromRgb(
                 BlendChannel(source.Red, backdrop.Red),
                 BlendChannel(source.Green, backdrop.Green),
@@ -71,21 +72,21 @@ public static class BlendingModes
 
     private sealed class MultiplyMode : RgbOnlyMode
     {
-        protected override byte BlendChannel(byte s, byte b) => (byte)((s * b) / 255);
+        protected override byte BlendChannel(byte s, byte b) => (byte) ((s * b) / 255);
     }
 
     private sealed class ScreenMode : RgbOnlyMode
     {
         protected override byte BlendChannel(byte s, byte b) =>
-            (byte)(255 - ((255 - s) * (255 - b)) / 255);
+            (byte) (255 - ((255 - s) * (255 - b)) / 255);
     }
 
     private sealed class OverlayMode : RgbOnlyMode
     {
         protected override byte BlendChannel(byte s, byte b) =>
             b < 128
-                ? (byte)((2 * s * b) / 255)
-                : (byte)(255 - (2 * (255 - s) * (255 - b)) / 255);
+                ? (byte) ((2 * s * b) / 255)
+                : (byte) (255 - (2 * (255 - s) * (255 - b)) / 255);
     }
 
     private sealed class DarkenMode : RgbOnlyMode
@@ -103,7 +104,7 @@ public static class BlendingModes
         protected override byte BlendChannel(byte s, byte b)
         {
             int sum = s + b;
-            return sum > 255 ? (byte)255 : (byte)sum;
+            return sum > 255 ? (byte) 255 : (byte) sum;
         }
     }
 }

@@ -29,25 +29,23 @@ namespace Cursorial.Output.Capabilities;
 /// DECSET 2026 — defer screen updates until end-sync, eliminating mid-frame tearing during
 /// large redraws.
 /// </param>
-public sealed record class OutputProtocolCapabilities(
-    bool BracketedPasteEnable,
-    bool FocusReportingEnable,
-    bool SgrMouseEnable,
-    bool AnyEventMouseEnable,
-    bool KittyKeyboardPush,
-    bool Win32InputModeEnable,
-    bool ClipboardWrite,
-    bool ClipboardRead,
-    bool SynchronizedOutput)
+public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
+                                                bool FocusReportingEnable,
+                                                bool SgrMouseEnable,
+                                                bool AnyEventMouseEnable,
+                                                bool KittyKeyboardPush,
+                                                bool Win32InputModeEnable,
+                                                bool ClipboardWrite,
+                                                bool ClipboardRead,
+                                                bool SynchronizedOutput)
 {
-    public static OutputProtocolCapabilities None { get; } = new(
-        BracketedPasteEnable: false,
-        FocusReportingEnable: false,
-        SgrMouseEnable: false,
-        AnyEventMouseEnable: false,
-        KittyKeyboardPush: false,
-        Win32InputModeEnable: false,
-        ClipboardWrite: false,
-        ClipboardRead: false,
-        SynchronizedOutput: false);
+    public static OutputProtocolCapabilities None { get; } = new(BracketedPasteEnable: false,
+                                                                 FocusReportingEnable: false,
+                                                                 SgrMouseEnable: false,
+                                                                 AnyEventMouseEnable: false,
+                                                                 KittyKeyboardPush: false,
+                                                                 Win32InputModeEnable: false,
+                                                                 ClipboardWrite: false,
+                                                                 ClipboardRead: false,
+                                                                 SynchronizedOutput: false);
 }

@@ -14,8 +14,8 @@ namespace Cursorial.Terminal.Stdio;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Critical: do not call <see cref="Console.OpenStandardInput"/> /
-/// <see cref="Console.OpenStandardOutput"/>.</b> The .NET Console subsystem on Unix manages
+/// <b>Critical: do not call <see cref="Console.OpenStandardInput()"/> /
+/// <see cref="Console.OpenStandardOutput()"/>.</b> The .NET Console subsystem on Unix manages
 /// its own termios state — it ensures Ctrl+C generates SIGINT, that the cursor is visible
 /// at exit, etc. — and accessing those streams silently mutates termios. Our <c>stty raw -echo</c>
 /// gets reverted. We wrap fd 0 / fd 1 as <see cref="FileStream"/> over a non-owning
@@ -61,6 +61,7 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
     {
         // 1. Capture the current terminal state.
         string? savedState = CaptureSttyState();
+
         if (savedState is null)
         {
             throw new InvalidOperationException(
@@ -77,7 +78,7 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
             // Output: wrap fd 1 via FileStream(SafeFileHandle) — see remarks on the class for
             // why we do NOT use Console.OpenStandardOutput. ownsHandle: false because fd 1 is
             // process-global; we mustn't close it.
-            var stdoutHandle = new SafeFileHandle((nint)1, ownsHandle: false);
+            var stdoutHandle = new SafeFileHandle(1, ownsHandle: false);
             var stdoutStream = new FileStream(stdoutHandle, FileAccess.Write);
             var sink = new StreamOutputByteSink(stdoutStream);
 
@@ -92,9 +93,11 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
         }
         catch
         {
+            // @formatter:off
             // Best-effort revert if anything went wrong after raw mode was applied.
-            try { ApplySttyMode(savedState); } catch { }
+            try { ApplySttyMode(savedState); } catch { /* best-effort */ }
             throw;
+            // @formatter:on
         }
     }
 
@@ -111,33 +114,45 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
         // typed line. tcflush is a no-op when the queue is already empty.
         FlushInputQueue();
 
+        // @formatter:off
         try { ApplySttyMode(_savedSttyState); }
         catch { /* best-effort — terminal may have detached */ }
+        // @formatter:on
     }
 
     private static void FlushInputQueue()
     {
         int selector = OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD()
-            ? MacosTciFlush
-            : LinuxTciFlush;
-        try { tcflush(0, selector); } catch { /* best-effort */ }
+                           ? MacosTciFlush
+                           : LinuxTciFlush;
+
+        // @formatter:off
+        try { TcFlush(0, selector); } catch { /* best-effort */ }
+        // @formatter:on
     }
+
+    // ReSharper disable UnusedMethodReturnValue.Local
 
     /// <summary><c>tcflush(int fd, int queue_selector)</c> — discard pending TTY data.</summary>
     [LibraryImport("libc", EntryPoint = "tcflush", SetLastError = true)]
-    private static partial int tcflush(int fd, int queueSelector);
+    private static partial int TcFlush(int fd, int queueSelector);
+
+    // ReSharper restore UnusedMethodReturnValue.Local
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
 
         // Restore terminal state BEFORE closing transports. The sync method covers the
         // critical termios restore; safe to call here whether or not RestoreTerminalState
         // was already triggered by a signal handler.
         RestoreTerminalState();
 
-        try { await _sink.DisposeAsync().ConfigureAwait(false); } catch { }
-        try { await _source.DisposeAsync().ConfigureAwait(false); } catch { }
+        // @formatter:off
+        try { await _sink.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
+        try { await _source.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
+        // @formatter:on
     }
 
     /// <summary>
@@ -149,17 +164,19 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
         try
         {
             var psi = new ProcessStartInfo
-            {
-                FileName = "stty",
-                Arguments = "-g",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,
-                RedirectStandardInput = false,
-            };
+                      {
+                          FileName = "stty",
+                          Arguments = "-g",
+                          UseShellExecute = false,
+                          RedirectStandardOutput = true,
+                          RedirectStandardError = false,
+                          RedirectStandardInput = false,
+                      };
 
             using var process = Process.Start(psi);
-            if (process is null) return null;
+
+            if (process is null)
+                return null;
 
             string output = process.StandardOutput.ReadToEnd();
             process.WaitForExit(3000);
@@ -172,21 +189,21 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
     }
 
     /// <summary>
-    /// Apply an stty mode change. NO redirection — see remarks on the class. We swallow errors
+    /// Apply a stty mode change. NO redirection — see remarks on the class. We swallow errors
     /// here (the alternative on apply failure is to leave the user with a half-modified
     /// terminal, which is worse than carrying on with whatever state stty managed to set).
     /// </summary>
     private static void ApplySttyMode(string arguments)
     {
         var psi = new ProcessStartInfo
-        {
-            FileName = "stty",
-            Arguments = arguments,
-            UseShellExecute = false,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false,
-            RedirectStandardInput = false,
-        };
+                  {
+                      FileName = "stty",
+                      Arguments = arguments,
+                      UseShellExecute = false,
+                      RedirectStandardOutput = false,
+                      RedirectStandardError = false,
+                      RedirectStandardInput = false,
+                  };
 
         using var process = Process.Start(psi);
         process?.WaitForExit(3000);

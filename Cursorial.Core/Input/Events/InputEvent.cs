@@ -19,11 +19,11 @@ namespace Cursorial.Input.Events;
 /// any retained view of that segment.
 /// </para>
 /// </remarks>
-public abstract record class InputEvent
+public abstract record InputEvent
 {
     /// <summary>
     /// When the event was observed by the device. For decorators that synthesize events
-    /// (e.g. fabricated key-up), this is the synthesis time, not the time of the original
+    /// (e.g., fabricated key-up), this is the synthesis time, not the time of the original
     /// observation that triggered synthesis.
     /// </summary>
     public required DateTimeOffset Timestamp { get; init; }

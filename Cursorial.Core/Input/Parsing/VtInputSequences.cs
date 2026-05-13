@@ -1,3 +1,5 @@
+// ReSharper disable MemberHidesStaticFromOuterClass
+
 namespace Cursorial.Input.Parsing;
 
 /// <summary>
@@ -73,24 +75,24 @@ public static class VtInputSequences
     // ---- Focus events ----
 
     /// <summary>The CSI final byte for focus-in: <c>I</c>.</summary>
-    public const byte FocusInFinal = (byte)'I';
+    public const byte FocusInFinal = (byte) 'I';
 
     /// <summary>The CSI final byte for focus-out: <c>O</c>.</summary>
-    public const byte FocusOutFinal = (byte)'O';
+    public const byte FocusOutFinal = (byte) 'O';
 
     // ---- CSI private prefixes ----
 
     /// <summary>DEC private mode prefix (<c>?</c>) used by DECSET/DECRST and many terminal-specific extensions.</summary>
-    public const byte DecPrivatePrefix = (byte)'?';
+    public const byte DecPrivatePrefix = (byte) '?';
 
     /// <summary>Secondary parameter prefix (<c>&gt;</c>) used by DA2, XTVERSION, modifyOtherKeys, etc.</summary>
-    public const byte SecondaryPrefix = (byte)'>';
+    public const byte SecondaryPrefix = (byte) '>';
 
     /// <summary>Tertiary parameter prefix (<c>=</c>) used by DA3 and a few extensions.</summary>
-    public const byte TertiaryPrefix = (byte)'=';
+    public const byte TertiaryPrefix = (byte) '=';
 
     /// <summary>SGR-mouse parameter prefix (<c>&lt;</c>) — recognized as an SGR mouse report by the classifier.</summary>
-    public const byte SgrMousePrefix1006 = (byte)'<';
+    public const byte SgrMousePrefix1006 = (byte) '<';
 
     /// <summary>
     /// Modifier-parameter bit positions used by xterm and Kitty in CSI sequences. The wire
@@ -160,10 +162,10 @@ public static class VtInputSequences
         // ---- Terminator bytes ----
 
         /// <summary><c>M</c> — button-press / drag terminator.</summary>
-        public const byte PressFinal = (byte)'M';
+        public const byte PressFinal = (byte) 'M';
 
         /// <summary><c>m</c> — button-release terminator.</summary>
-        public const byte ReleaseFinal = (byte)'m';
+        public const byte ReleaseFinal = (byte) 'm';
     }
 
     /// <summary>OSC response codes recognized by the input interpreter.</summary>
@@ -268,7 +270,7 @@ public static class VtInputSequences
         public static ReadOnlySpan<byte> KittyPushPrefix => "\x1b[>"u8;
 
         /// <summary>Suffix for a Kitty keyboard push.</summary>
-        public const byte KittyPushSuffix = (byte)'u';
+        public const byte KittyPushSuffix = (byte) 'u';
 
         // ---- Kitty multiple-cursors protocol ----
         //
@@ -411,7 +413,7 @@ public static class VtInputSequences
     public static class Win32InputMode
     {
         /// <summary>The CSI final byte distinguishing Win32 input-mode events: <c>_</c>.</summary>
-        public const byte Final = (byte)'_';
+        public const byte Final = (byte) '_';
 
         /// <summary>CONTROL_KEY_STATE bit flags surfaced in the Cs parameter.</summary>
         public static class ControlKeyState
@@ -430,6 +432,7 @@ public static class VtInputSequences
         /// <summary>Selected Win32 virtual-key codes that map cleanly onto <see cref="Key"/>.</summary>
         public static class VirtualKey
         {
+            // @formatter:off
             public const int Back = 0x08;
             public const int Tab = 0x09;
             public const int Return = 0x0D;
@@ -465,6 +468,7 @@ public static class VtInputSequences
             public const int RControl = 0xA3;
             public const int LMenu = 0xA4;       // Left Alt
             public const int RMenu = 0xA5;       // Right Alt
+            // @formatter:on
         }
     }
 }

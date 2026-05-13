@@ -7,15 +7,13 @@ namespace Cursorial.Output.Capabilities;
 /// <param name="VisibilityControl">DECTCEM — cursor show / hide (DECSET 25).</param>
 /// <param name="BlinkControl">Distinct blink / non-blink variants of cursor shape via DECSCUSR.</param>
 /// <param name="ColorControl">OSC 12 — set cursor color.</param>
-public sealed record class CursorCapabilities(
-    bool ShapeControl,
-    bool VisibilityControl,
-    bool BlinkControl,
-    bool ColorControl)
+public sealed record CursorCapabilities(bool ShapeControl,
+                                        bool VisibilityControl,
+                                        bool BlinkControl,
+                                        bool ColorControl)
 {
-    public static CursorCapabilities None { get; } = new(
-        ShapeControl: false,
-        VisibilityControl: false,
-        BlinkControl: false,
-        ColorControl: false);
+    public static CursorCapabilities None { get; } = new(ShapeControl: false,
+                                                         VisibilityControl: false,
+                                                         BlinkControl: false,
+                                                         ColorControl: false);
 }

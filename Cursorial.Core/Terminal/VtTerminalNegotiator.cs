@@ -38,7 +38,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private readonly IEnvironmentReader _environment;
 
     // Lifecycle gates use Interlocked to stay safe when callers drive the negotiator outside
-    // of a TerminalSession (which already serializes against itself). 0 = open, 1 = transitioned.
+    // a TerminalSession (which already serializes against itself). 0 = open, 1 = transitioned.
     private int _negotiated;
     private int _disposed;
     private int _restored;
@@ -110,6 +110,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         {
             // LIFO order — opt-ins came on as Mouse, Focus, Paste, Kitty, Win32, Sync;
             // turn them off in the reverse order.
+            
+            // @formatter:off
             if (_applied.SynchronizedOutput) QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
             if (_applied.Win32InputMode)     QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
             if (_applied.KittyKeyboard)      QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
@@ -118,7 +120,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (_applied.AnyEventMouse)      QueueWrite(VtInputSequences.OptInSequences.DisableAnyEventMouse);
             if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableButtonEventMouse);
             if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
-
+            // @formatter:on
+            
             // Unconditional belt-and-braces: clear any Kitty multi-cursor extras the terminal
             // is holding onto. The spec says alt-screen-toggle clears these implicitly, but a
             // timing-dependent Kitty bug leaves ghost cursors after quit-during-resize; this
@@ -148,7 +151,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
         catch
         {
-            // Restore is best-effort. Failures here are swallowed so disposal is reliable
+            // Restore is best-effort. Failures here are swallowed, so disposal is reliable
             // even when the underlying transport has already gone away.
         }
     }
@@ -228,7 +231,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private void QueueKittyPush(KittyKeyboardFlags flags)
     {
         // CSI > <flags> u — flags as decimal ASCII. Bounded small string; allocate once.
-        var ascii = ((uint)flags).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var ascii = ((uint) flags).ToString(System.Globalization.CultureInfo.InvariantCulture);
         var prefix = VtInputSequences.OptInSequences.KittyPushPrefix;
 
         int total = prefix.Length + ascii.Length + 1;
@@ -268,24 +271,24 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     }
 
     private static bool TerminalSupportsKittyKeyboard(TerminalFamily family) =>
-        family is TerminalFamily.Kitty
-            or TerminalFamily.WezTerm
-            or TerminalFamily.Konsole
-            or TerminalFamily.Foot
-            or TerminalFamily.Iterm2; // Partial support since iTerm2 3.5.
+        family is TerminalFamily.Kitty or
+                  TerminalFamily.WezTerm or
+                  TerminalFamily.Konsole or
+                  TerminalFamily.Foot or
+                  TerminalFamily.Iterm2; // Partial support since iTerm2 3.5.
 
     private static bool TerminalSupportsWin32InputMode(TerminalFamily family) =>
-        family is TerminalFamily.WindowsTerminal
-            or TerminalFamily.WindowsConsoleHost;
+        family is TerminalFamily.WindowsTerminal or
+                  TerminalFamily.WindowsConsoleHost;
 
     private static bool TerminalSupportsSynchronizedOutput(TerminalFamily family) =>
-        family is TerminalFamily.Kitty
-            or TerminalFamily.Iterm2
-            or TerminalFamily.WezTerm
-            or TerminalFamily.Alacritty
-            or TerminalFamily.WindowsTerminal
-            or TerminalFamily.Konsole
-            or TerminalFamily.Foot;
+        family is TerminalFamily.Kitty or
+                  TerminalFamily.Iterm2 or
+                  TerminalFamily.WezTerm or
+                  TerminalFamily.Alacritty or
+                  TerminalFamily.WindowsTerminal or
+                  TerminalFamily.Konsole or
+                  TerminalFamily.Foot;
 
     // ---- Probe orchestration ----
 
@@ -303,11 +306,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var classifier = new VtSequenceClassifier();
         var interpreter = new VtInputInterpreter(_mode, collector, _time);
 
-        await DrainResponsesUntilSentinelAsync(
-                classifier, interpreter, collector, options.ProbeTimeout, cancellationToken)
-            .ConfigureAwait(false);
+        await DrainResponsesUntilSentinelAsync(classifier,
+                                               interpreter,
+                                               collector,
+                                               options.ProbeTimeout,
+                                               cancellationToken).ConfigureAwait(false);
 
         var cellSize = collector.FindFirst(DeviceResponseKind.CellSizeInPixels);
+
         if (cellSize is not null && TryParseCellSize(cellSize.Payload.Span, out int h, out int w))
         {
             _mode.CellPixelHeight = h;
@@ -321,19 +327,19 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     /// <summary>
     /// Parse a <c>CSI 16 t</c> response payload of the form "6;height;width". The leading "6;"
-    /// (the reply code) is consumed by the classifier into the parameters span; what arrives
-    /// here is the raw parameter run, so we re-parse rather than treat as just height;width.
+    /// (the reply code) is consumed by the classifier into the 'parameters' span; what arrives
+    /// here is the raw parameter run, so we reparse rather than treat it as just 'height;width'.
     /// </summary>
     private static bool TryParseCellSize(ReadOnlySpan<byte> payload, out int height, out int width)
     {
         height = 0;
         width = 0;
 
-        int firstSep = payload.IndexOf((byte)';');
+        int firstSep = payload.IndexOf((byte) ';');
         if (firstSep < 0) return false;
         var afterFirst = payload[(firstSep + 1)..];
 
-        int secondSep = afterFirst.IndexOf((byte)';');
+        int secondSep = afterFirst.IndexOf((byte) ';');
         if (secondSep < 0) return false;
 
         var heightSpan = afterFirst[..secondSep];
@@ -341,6 +347,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         if (!int.TryParse(System.Text.Encoding.ASCII.GetString(heightSpan), out height)) return false;
         if (!int.TryParse(System.Text.Encoding.ASCII.GetString(widthSpan), out width)) return false;
+
         return height > 0 && width > 0;
     }
 
@@ -378,6 +385,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 }
 
                 ReadResult result;
+
                 try
                 {
                     result = await pendingRead.ConfigureAwait(false);
@@ -392,10 +400,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 }
 
                 var buffer = result.Buffer;
+
                 foreach (var segment in buffer)
-                {
                     classifier.Process(segment.Span, interpreter);
-                }
+
                 _source.Reader.AdvanceTo(buffer.End);
 
                 if (result.IsCompleted) break;
@@ -423,14 +431,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         string? termVersion = _environment.GetVariable("TERM_PROGRAM_VERSION");
         bool insideMultiplexer = DetectMultiplexer(rawTerm);
 
-        string? xtVersionPayload = responses.XtVersion is { } x ? AsciiPayloadOrNull(x.Payload) : null;
+        string? xtVersionPayload = responses.XtVersion is {} x ? AsciiPayloadOrNull(x.Payload) : null;
         var (familyFromXt, nameFromXt, versionFromXt) = ParseXtVersionPayload(xtVersionPayload);
 
         var family = familyFromXt;
+
         if (family == TerminalFamily.Unknown)
-        {
             family = ClassifyFromEnvironment(rawTerm, rawTermProgram);
-        }
 
         return new TerminalIdentification(
             Family: family,
@@ -445,17 +452,20 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         if (_environment.GetVariable("TMUX") is { Length: > 0 }) return true;
         if (_environment.GetVariable("STY") is { Length: > 0 }) return true; // GNU Screen
+
         if (rawTerm is null) return false;
-        return rawTerm.StartsWith("screen", StringComparison.OrdinalIgnoreCase)
-            || rawTerm.StartsWith("tmux", StringComparison.OrdinalIgnoreCase);
+
+        return rawTerm.StartsWith("screen", StringComparison.OrdinalIgnoreCase) ||
+               rawTerm.StartsWith("tmux", StringComparison.OrdinalIgnoreCase);
     }
 
     private static (TerminalFamily family, string? name, string? version) ParseXtVersionPayload(string? payload)
     {
-        if (string.IsNullOrEmpty(payload)) return (TerminalFamily.Unknown, null, null);
+        if (string.IsNullOrEmpty(payload))
+            return (TerminalFamily.Unknown, null, null);
 
         // Common shapes: "iTerm2 3.4.5", "WezTerm 20240127", "kitty 0.34.1", "tmux 3.4".
-        // Split on the first run of whitespace; first chunk is the name, rest is version.
+        // Split on the first run of whitespace; the first chunk is the name, the rest is the version.
         int sepIndex = payload.IndexOfAny([' ', '\t']);
         string name = sepIndex < 0 ? payload : payload[..sepIndex];
         string? version = sepIndex < 0 ? null : payload[(sepIndex + 1)..].TrimStart();
@@ -473,9 +483,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (name.Contains("Alacritty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Alacritty;
         if (name.Contains("foot", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Foot;
         if (name.Contains("Konsole", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Konsole;
-        if (name.Contains("WindowsTerminal", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Windows Terminal", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.WindowsTerminal;
         if (name.Contains("xterm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Xterm;
+
+        if (name.Contains("WindowsTerminal", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Windows Terminal", StringComparison.OrdinalIgnoreCase))
+        {
+            return TerminalFamily.WindowsTerminal;
+        }
+
         return TerminalFamily.Unknown;
     }
 
@@ -489,8 +504,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         {
             var byName = ClassifyByName(rawTermProgram);
             if (byName != TerminalFamily.Unknown) return byName;
+
             if (rawTermProgram.Equals("Apple_Terminal", StringComparison.OrdinalIgnoreCase))
                 return TerminalFamily.AppleTerminal;
+
             if (rawTermProgram.Equals("ghostty", StringComparison.OrdinalIgnoreCase))
                 return TerminalFamily.Unknown; // No enum entry yet for Ghostty.
         }
@@ -513,30 +530,29 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     // ---- Output capability inference ----
 
+    // ReSharper disable once UnusedParameter.Local
     private static InputCapabilities ResolveInputCapabilities(
         TerminalIdentification identification,
         in AppliedOptIns applied)
     {
         var mouse = applied.MouseTracking
-            ? new MouseCapabilities(
-                ButtonPress: true,
-                ButtonRelease: true,
-                Drag: true,
-                Motion: applied.AnyEventMouse,
-                Wheel: true,
-                PixelCoordinates: false,
-                ExtendedButtonCount: 4)
-            : MouseCapabilities.None;
+                        ? new MouseCapabilities(
+                            ButtonPress: true,
+                            ButtonRelease: true,
+                            Drag: true,
+                            Motion: applied.AnyEventMouse,
+                            Wheel: true,
+                            PixelCoordinates: false,
+                            ExtendedButtonCount: 4)
+                        : MouseCapabilities.None;
 
         bool kittyEnabled = applied.KittyKeyboard;
+
         var keyboard = new KeyboardCapabilities(
-            DistinguishesKeyUpDown: kittyEnabled
-                && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
-            ReportsRepeats: kittyEnabled
-                && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
+            DistinguishesKeyUpDown: kittyEnabled && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
+            ReportsRepeats: kittyEnabled && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
             DetailedModifiers: kittyEnabled,
-            TextInput: kittyEnabled
-                && (applied.KittyFlags & KittyKeyboardFlags.ReportAssociatedText) != 0);
+            TextInput: kittyEnabled && (applied.KittyFlags & KittyKeyboardFlags.ReportAssociatedText) != 0);
 
         var protocol = new ProtocolCapabilities(
             BracketedPaste: applied.BracketedPaste,
@@ -561,6 +577,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var graphics = ResolveGraphics(identification);
         var cursor = ResolveCursor(identification);
         var window = ResolveWindow(identification);
+
         var protocol = new OutputProtocolCapabilities(
             BracketedPasteEnable: applied.BracketedPaste,
             FocusReportingEnable: applied.FocusEvents,
@@ -595,13 +612,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         identification.Family switch
         {
             TerminalFamily.Kitty => new TextSizingCapabilities(Width: true, Scale: true),
-            _ => TextSizingCapabilities.None,
+            _                    => TextSizingCapabilities.None,
         };
 
     private ColorCapabilities ResolveColor(TerminalIdentification identification)
     {
         var depth = ResolveColorDepth(identification);
-        bool trueColorClaimed = depth == ColorDepth.Truecolor;
 
         return new ColorCapabilities(
             Depth: depth,
@@ -609,28 +625,29 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // report the claimed depth without empirical confirmation.
             TruecolorVerified: false,
             DefaultColorReset: depth >= ColorDepth.Ansi16,
-            OscPaletteSet: depth >= ColorDepth.Ansi256
-                && identification.Family is not TerminalFamily.AppleTerminal);
+            OscPaletteSet: depth >= ColorDepth.Ansi256 &&
+                           identification.Family is not TerminalFamily.AppleTerminal);
     }
 
     private ColorDepth ResolveColorDepth(TerminalIdentification identification)
     {
         var colorTerm = _environment.GetVariable("COLORTERM");
-        if (colorTerm is not null
-            && (colorTerm.Equals("truecolor", StringComparison.OrdinalIgnoreCase)
-                || colorTerm.Equals("24bit", StringComparison.OrdinalIgnoreCase)))
+
+        if (colorTerm is not null &&
+            (colorTerm.Equals("truecolor", StringComparison.OrdinalIgnoreCase) ||
+             colorTerm.Equals("24bit", StringComparison.OrdinalIgnoreCase)))
         {
             return ColorDepth.Truecolor;
         }
 
         // Known truecolor families.
-        if (identification.Family is TerminalFamily.Kitty
-            or TerminalFamily.Iterm2
-            or TerminalFamily.WezTerm
-            or TerminalFamily.Alacritty
-            or TerminalFamily.WindowsTerminal
-            or TerminalFamily.Foot
-            or TerminalFamily.Konsole)
+        if (identification.Family is TerminalFamily.Kitty or
+                                     TerminalFamily.Iterm2 or
+                                     TerminalFamily.WezTerm or
+                                     TerminalFamily.Alacritty or
+                                     TerminalFamily.WindowsTerminal or
+                                     TerminalFamily.Foot or
+                                     TerminalFamily.Konsole)
         {
             return ColorDepth.Truecolor;
         }
@@ -642,8 +659,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (term.Contains("color", StringComparison.OrdinalIgnoreCase)) return ColorDepth.Ansi16;
 
         return identification.Family == TerminalFamily.AppleTerminal
-            ? ColorDepth.Ansi256
-            : ColorDepth.NoColor;
+                   ? ColorDepth.Ansi256
+                   : ColorDepth.NoColor;
     }
 
     private static TextStylingCapabilities ResolveStyling(TerminalIdentification identification)
@@ -651,13 +668,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // The xterm baseline (italic, single underline, strikethrough) is supported by every
         // family we recognize. Extended styling (curly underline, OSC 8 hyperlinks, colored
         // underline, overline) is more recent.
-        bool extended = identification.Family is TerminalFamily.Kitty
-            or TerminalFamily.Iterm2
-            or TerminalFamily.WezTerm
-            or TerminalFamily.Alacritty
-            or TerminalFamily.WindowsTerminal
-            or TerminalFamily.Foot
-            or TerminalFamily.Konsole;
+        bool extended = identification.Family is TerminalFamily.Kitty or 
+                                                 TerminalFamily.Iterm2 or 
+                                                 TerminalFamily.WezTerm or 
+                                                 TerminalFamily.Alacritty or
+                                                 TerminalFamily.WindowsTerminal or 
+                                                 TerminalFamily.Foot or
+                                                 TerminalFamily.Konsole;
 
         return new TextStylingCapabilities(
             Italic: identification.Family != TerminalFamily.Unknown,
@@ -669,22 +686,24 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             Hyperlinks: extended);
     }
 
+    // @formatter:off
     private static GraphicsCapabilities ResolveGraphics(TerminalIdentification identification) =>
         identification.Family switch
         {
-            TerminalFamily.Kitty => new GraphicsCapabilities(Sixel: false, KittyGraphics: true, Iterm2InlineImages: false),
-            TerminalFamily.Iterm2 => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, Iterm2InlineImages: true),
-            TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true, KittyGraphics: false, Iterm2InlineImages: true),
-            TerminalFamily.Foot => new GraphicsCapabilities(Sixel: true, KittyGraphics: false, Iterm2InlineImages: false),
-            TerminalFamily.Mlterm => new GraphicsCapabilities(Sixel: true, KittyGraphics: false, Iterm2InlineImages: false),
-            _ => GraphicsCapabilities.None,
+            TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  Iterm2InlineImages: false),
+            TerminalFamily.Iterm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, Iterm2InlineImages: true),
+            TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, Iterm2InlineImages: true),
+            TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, Iterm2InlineImages: false),
+            TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, Iterm2InlineImages: false),
+            _                      => GraphicsCapabilities.None,
         };
+    // @formatter:on
 
     private static CursorCapabilities ResolveCursor(TerminalIdentification identification)
     {
-        bool modern = identification.Family is not (TerminalFamily.Unknown
-            or TerminalFamily.Rxvt
-            or TerminalFamily.Mlterm);
+        bool modern = identification.Family is not (TerminalFamily.Unknown or
+                                                    TerminalFamily.Rxvt or 
+                                                    TerminalFamily.Mlterm);
 
         return new CursorCapabilities(
             ShapeControl: modern,
@@ -695,13 +714,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static WindowCapabilities ResolveWindow(TerminalIdentification identification)
     {
-        bool pixelSize = identification.Family is TerminalFamily.Kitty
-            or TerminalFamily.Iterm2
-            or TerminalFamily.WezTerm
-            or TerminalFamily.Foot
-            or TerminalFamily.Alacritty
-            or TerminalFamily.WindowsTerminal
-            or TerminalFamily.Konsole;
+        bool pixelSize = identification.Family is TerminalFamily.Kitty or 
+                                                  TerminalFamily.Iterm2 or 
+                                                  TerminalFamily.WezTerm or 
+                                                  TerminalFamily.Foot or
+                                                  TerminalFamily.Alacritty or 
+                                                  TerminalFamily.WindowsTerminal or
+                                                  TerminalFamily.Konsole;
 
         return new WindowCapabilities(
             TitleSet: identification.Family != TerminalFamily.Unknown,
@@ -719,16 +738,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     // ---- Probe sequence byte-strings ----
 
     /// <summary><c>CSI &gt; q</c> — XTVERSION request.</summary>
-    private static ReadOnlyMemory<byte> XtVersionRequest { get; } = new byte[] { 0x1B, (byte)'[', (byte)'>', (byte)'q' };
+    private static ReadOnlyMemory<byte> XtVersionRequest { get; } = new byte[] { 0x1B, (byte) '[', (byte) '>', (byte) 'q' };
 
     /// <summary><c>CSI 16 t</c> — request single character-cell size in pixels.</summary>
-    private static ReadOnlyMemory<byte> CellSizeRequest { get; } = new byte[] { 0x1B, (byte)'[', (byte)'1', (byte)'6', (byte)'t' };
+    private static ReadOnlyMemory<byte> CellSizeRequest { get; } = new byte[] { 0x1B, (byte) '[', (byte) '1', (byte) '6', (byte) 't' };
 
     /// <summary><c>CSI c</c> — Primary Device Attributes (DA1) request, used as the sentinel.</summary>
-    private static ReadOnlyMemory<byte> Da1Request { get; } = new byte[] { 0x1B, (byte)'[', (byte)'c' };
+    private static ReadOnlyMemory<byte> Da1Request { get; } = new byte[] { 0x1B, (byte) '[', (byte) 'c' };
 
     // ---- Internal collaborators ----
 
+    // ReSharper disable once NotAccessedPositionalProperty.Local
     private readonly record struct ProbeResponses(
         DeviceResponseEvent? XtVersion,
         DeviceResponseEvent? PrimaryDeviceAttributes);
@@ -748,14 +768,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         public bool SynchronizedOutput;
         public KittyKeyboardFlags KittyFlags;
 
-        public bool IsEmpty =>
-            !MouseTracking
-            && !AnyEventMouse
-            && !FocusEvents
-            && !BracketedPaste
-            && !KittyKeyboard
-            && !Win32InputMode
-            && !SynchronizedOutput;
+        public bool IsEmpty => !MouseTracking &&
+                               !AnyEventMouse &&
+                               !FocusEvents &&
+                               !BracketedPaste &&
+                               !KittyKeyboard &&
+                               !Win32InputMode &&
+                               !SynchronizedOutput;
     }
 
     private sealed class ResponseCollector : IInputEventSink
@@ -769,18 +788,19 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (inputEvent is not DeviceResponseEvent response) return;
 
             _responses.Add(response);
+
             if (response.Kind == DeviceResponseKind.PrimaryDeviceAttributes)
-            {
                 SeenSentinel = true;
-            }
         }
 
         public DeviceResponseEvent? FindFirst(DeviceResponseKind kind)
         {
             foreach (var response in _responses)
             {
-                if (response.Kind == kind) return response;
+                if (response.Kind == kind)
+                    return response;
             }
+
             return null;
         }
     }

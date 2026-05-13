@@ -23,7 +23,7 @@ namespace Cursorial.Output;
 /// </remarks>
 /// <param name="Foreground">Glyph color. Defaults to <see cref="Color.Default"/>.</param>
 /// <param name="Background">Background color behind the glyph. Defaults to <see cref="Color.Default"/>.</param>
-/// <param name="Attributes">Bitset of independently-toggleable attributes (bold, italic, …).</param>
+/// <param name="Attributes">Bitset of independently toggleable attributes (bold, italic, …).</param>
 /// <param name="UnderlineStyle">Shape of the underline; only emitted when <see cref="TextAttributes.Underline"/> is set.</param>
 /// <param name="UnderlineColor">
 /// Color of the underline (SGR 58). Only emitted when the colored-underline capability is

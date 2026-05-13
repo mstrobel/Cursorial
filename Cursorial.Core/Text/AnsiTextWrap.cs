@@ -41,7 +41,11 @@ public readonly record struct WrapOptions
     public bool BreakLongWords
     {
         get => _breakLongWordsSet ? _breakLongWords : true;
-        init { _breakLongWords = value; _breakLongWordsSet = true; }
+        init
+        {
+            _breakLongWords = value;
+            _breakLongWordsSet = true;
+        }
     }
 
     /// <summary>
@@ -61,7 +65,11 @@ public readonly record struct WrapOptions
     public bool TrimTrailingSpaces
     {
         get => _trimTrailingSpacesSet ? _trimTrailingSpaces : true;
-        init { _trimTrailingSpaces = value; _trimTrailingSpacesSet = true; }
+        init
+        {
+            _trimTrailingSpaces = value;
+            _trimTrailingSpacesSet = true;
+        }
     }
 }
 
@@ -110,14 +118,16 @@ public static class AnsiTextWrap
         // streamed directly.
         var line = new StringBuilder();
         int lineWidth = 0;
-        int lastBreakOpportunityIndex = -1;   // Index in `line` immediately AFTER the last
-                                              // whitespace run we could break on.
+        int lastBreakOpportunityIndex = -1; // Index in `line` immediately AFTER the last
+                                            // whitespace run we could break on.
         int lastBreakOpportunityWidth = -1;
 
         int i = 0;
+
         while (i < text.Length)
         {
             int escapeLength = MeasureEscapeSequence(text, i);
+
             if (escapeLength > 0)
             {
                 line.Append(text, i, escapeLength);
@@ -137,6 +147,7 @@ public static class AnsiTextWrap
                 i++;
                 continue;
             }
+
             if (text[i] == '\r')
             {
                 // CR (alone) or CR-LF: treat as a single line break.
@@ -146,8 +157,10 @@ public static class AnsiTextWrap
                 lineWidth = 0;
                 lastBreakOpportunityIndex = -1;
                 lastBreakOpportunityWidth = -1;
+
                 if (i + 1 < text.Length && text[i + 1] == '\n') i += 2;
                 else i++;
+
                 continue;
             }
 
@@ -166,6 +179,7 @@ public static class AnsiTextWrap
                     string overflow = line.ToString(
                         lastBreakOpportunityIndex,
                         line.Length - lastBreakOpportunityIndex);
+
                     line.Length = lastBreakOpportunityIndex;
                     CommitLine(output, line, options);
                     output.Append(options.NewLine);
@@ -209,7 +223,7 @@ public static class AnsiTextWrap
     public static int MeasureEscapeSequence(string text, int index)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if ((uint)index >= (uint)text.Length) return 0;
+        if ((uint) index >= (uint) text.Length) return 0;
         if (text[index] != '\x1b') return 0;
 
         int i = index + 1;
@@ -222,8 +236,8 @@ public static class AnsiTextWrap
         {
             case '[':
                 // CSI: parameter / intermediate bytes (0x20-0x3F), then final (0x40-0x7E).
-                while (i < text.Length && text[i] is >= (char)0x20 and < (char)0x40) i++;
-                if (i < text.Length && text[i] is >= (char)0x40 and <= (char)0x7E) i++;
+                while (i < text.Length && text[i] is >= (char) 0x20 and < (char) 0x40) i++;
+                if (i < text.Length && text[i] is >= (char) 0x40 and <= (char) 0x7E) i++;
                 return i - index;
 
             case ']':
@@ -231,14 +245,22 @@ public static class AnsiTextWrap
                 while (i < text.Length)
                 {
                     char c = text[i];
-                    if (c == '\x07') { i++; break; }
+
+                    if (c == '\x07')
+                    {
+                        i++;
+                        break;
+                    }
+
                     if (c == '\x1b' && i + 1 < text.Length && text[i + 1] == '\\')
                     {
                         i += 2;
                         break;
                     }
+
                     i++;
                 }
+
                 return i - index;
 
             case 'P': // DCS
@@ -249,13 +271,16 @@ public static class AnsiTextWrap
                 while (i < text.Length)
                 {
                     char c = text[i];
+
                     if (c == '\x1b' && i + 1 < text.Length && text[i + 1] == '\\')
                     {
                         i += 2;
                         break;
                     }
+
                     i++;
                 }
+
                 return i - index;
 
             case 'O':
@@ -265,8 +290,8 @@ public static class AnsiTextWrap
 
             default:
                 // ESC + optional intermediates + final byte.
-                while (i < text.Length && text[i] is >= (char)0x20 and <= (char)0x2F) i++;
-                if (i < text.Length && text[i] is >= (char)0x30 and <= (char)0x7E) i++;
+                while (i < text.Length && text[i] is >= (char) 0x20 and <= (char) 0x2F) i++;
+                if (i < text.Length && text[i] is >= (char) 0x30 and <= (char) 0x7E) i++;
                 return i - index;
         }
     }
@@ -291,10 +316,9 @@ public static class AnsiTextWrap
         if (options.TrimTrailingSpaces)
         {
             while (line.Length > 0 && (line[^1] == ' ' || line[^1] == '\t'))
-            {
                 line.Length--;
-            }
         }
+
         output.Append(line);
     }
 }

@@ -3,7 +3,7 @@ namespace Cursorial.Input.Events;
 /// <summary>
 /// A mouse event reporting button activity, motion, drag, or wheel deltas.
 /// </summary>
-public sealed record class MouseEvent : InputEvent
+public sealed record MouseEvent : InputEvent
 {
     /// <summary>What kind of mouse activity this event represents.</summary>
     public required MouseEventKind Kind { get; init; }

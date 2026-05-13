@@ -5,7 +5,7 @@ namespace Cursorial.Input.Events;
 /// can log, forward, or attempt their own parsing — useful when terminals emit sequences the
 /// library does not yet recognize.
 /// </summary>
-public sealed record class UnknownEvent : InputEvent
+public sealed record UnknownEvent : InputEvent
 {
     /// <summary>The raw bytes that could not be classified.</summary>
     public required ReadOnlyMemory<byte> RawBytes { get; init; }

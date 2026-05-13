@@ -16,8 +16,8 @@ namespace Cursorial.Output;
 /// </para>
 /// <para>
 /// The quantizer is constructed with a capability set and produces an unchanged copy of any
-/// already-renderable style. Same instance is safe to reuse for many styles; it has no internal
-/// state beyond the capabilities.
+/// already-renderable style. The same instance is safe to reuse for many styles; it has no
+/// internal state beyond the capabilities.
 /// </para>
 /// </remarks>
 public sealed class StyleQuantizer
@@ -41,20 +41,16 @@ public sealed class StyleQuantizer
         var attrs = QuantizeAttributes(style.Attributes);
 
         UnderlineStyle underlineStyle = style.UnderlineStyle;
+
         if (!_capabilities.Styling.ExtendedUnderline && underlineStyle != UnderlineStyle.Single)
-        {
             underlineStyle = UnderlineStyle.Single;
-        }
 
         Color underlineColor = style.UnderlineColor;
+
         if (!_capabilities.Styling.ColoredUnderline && !underlineColor.IsDefault)
-        {
             underlineColor = Color.Default;
-        }
         else if (!underlineColor.IsDefault)
-        {
             underlineColor = QuantizeColor(underlineColor);
-        }
 
         return new Style(fg, bg, attrs, underlineStyle, underlineColor);
     }
@@ -63,19 +59,21 @@ public sealed class StyleQuantizer
     {
         var depth = _capabilities.Color.Depth;
 
+        // @formatter:off
         return color.Kind switch
-        {
-            ColorKind.Default => color,
-            _ when depth == ColorDepth.NoColor => Color.Default,
-            ColorKind.Rgb when depth == ColorDepth.Truecolor => color,
-            ColorKind.Rgb when depth == ColorDepth.Ansi256 => Color.FromPalette(NearestPaletteIndex(color.Red, color.Green, color.Blue)),
-            ColorKind.Rgb /* Ansi16 */ => Color.FromPalette(NearestAnsi16Index(color.Red, color.Green, color.Blue)),
-            ColorKind.Palette when depth >= ColorDepth.Ansi256 => color,
-            ColorKind.Palette /* Ansi16 */ => color.PaletteIndex < 16
-                ? color
-                : Color.FromPalette(PaletteIndexToAnsi16(color.PaletteIndex)),
-            _ => color,
-        };
+               {
+                   ColorKind.Default                                  => color,
+                   _ when depth == ColorDepth.NoColor                 => Color.Default,
+                   ColorKind.Rgb when depth == ColorDepth.Truecolor   => color,
+                   ColorKind.Rgb when depth == ColorDepth.Ansi256     => Color.FromPalette(NearestPaletteIndex(color.Red, color.Green, color.Blue)),
+                   ColorKind.Rgb /* Ansi16 */                         => Color.FromPalette(NearestAnsi16Index(color.Red, color.Green, color.Blue)),
+                   ColorKind.Palette when depth >= ColorDepth.Ansi256 => color,
+                   ColorKind.Palette /* Ansi16 */                     => color.PaletteIndex < 16 
+                                                                             ? color 
+                                                                             : Color.FromPalette(PaletteIndexToAnsi16(color.PaletteIndex)),
+                   _                                                  => color
+               };
+        // @formatter:on
     }
 
     private TextAttributes QuantizeAttributes(TextAttributes attributes)
@@ -89,6 +87,7 @@ public sealed class StyleQuantizer
         if (!s.Underline) attributes &= ~TextAttributes.Underline;
         if (!s.Strikethrough) attributes &= ~TextAttributes.Strikethrough;
         if (!s.Overline) attributes &= ~TextAttributes.Overline;
+
         return attributes;
     }
 
@@ -106,7 +105,7 @@ public sealed class StyleQuantizer
         int ri = CubeAxisIndex(red);
         int gi = CubeAxisIndex(green);
         int bi = CubeAxisIndex(blue);
-        byte cubeIndex = (byte)(16 + 36 * ri + 6 * gi + bi);
+        byte cubeIndex = (byte) (16 + 36 * ri + 6 * gi + bi);
         int cubeR = CubeAxisValue(ri);
         int cubeG = CubeAxisValue(gi);
         int cubeB = CubeAxisValue(bi);
@@ -116,6 +115,7 @@ public sealed class StyleQuantizer
         int avg = (red + green + blue) / 3;
         int grayIndex;
         int grayValue;
+
         if (avg < 8)
         {
             grayIndex = 0;
@@ -131,9 +131,10 @@ public sealed class StyleQuantizer
             grayIndex = (avg - 8 + 5) / 10; // round half-up.
             grayValue = 8 + grayIndex * 10;
         }
+
         int grayDist = Diff(red, grayValue) + Diff(green, grayValue) + Diff(blue, grayValue);
 
-        return grayDist < cubeDist ? (byte)(232 + grayIndex) : cubeIndex;
+        return grayDist < cubeDist ? (byte) (232 + grayIndex) : cubeIndex;
     }
 
     /// <summary>
@@ -153,7 +154,7 @@ public sealed class StyleQuantizer
 
         // Bright bit if any channel is very bright (saturated).
         bool bright = red > 192 || green > 192 || blue > 192;
-        return (byte)(bright ? baseIndex + 8 : baseIndex);
+        return (byte) (bright ? baseIndex + 8 : baseIndex);
     }
 
     /// <summary>
@@ -171,12 +172,12 @@ public sealed class StyleQuantizer
             int ri = n / 36;
             int gi = (n / 6) % 6;
             int bi = n % 6;
-            return NearestAnsi16Index((byte)CubeAxisValue(ri), (byte)CubeAxisValue(gi), (byte)CubeAxisValue(bi));
+            return NearestAnsi16Index((byte) CubeAxisValue(ri), (byte) CubeAxisValue(gi), (byte) CubeAxisValue(bi));
         }
 
         // Grayscale: 0 → black, 23 → white, with a midline crossover.
         int grayValue = 8 + (index - 232) * 10;
-        return NearestAnsi16Index((byte)grayValue, (byte)grayValue, (byte)grayValue);
+        return NearestAnsi16Index((byte) grayValue, (byte) grayValue, (byte) grayValue);
     }
 
     private static int CubeAxisIndex(byte value)

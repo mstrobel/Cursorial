@@ -5,6 +5,8 @@ using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 
+// ReSharper disable ChangeFieldTypeToSystemThreadingLock
+
 namespace Cursorial.Input;
 
 /// <summary>
@@ -24,9 +26,9 @@ namespace Cursorial.Input;
 /// <para>
 /// <b>Bare-ESC ambiguity.</b> The classifier holds a lone ESC pending until it knows whether
 /// it's the start of a sequence (CSI / SS3 / Alt+key) or an Escape keypress. This device
-/// owns the resolution: if no further bytes arrive within
-/// <paramref name="escapeAmbiguityTimeout"/> (default 50&#xa0;ms — the xterm convention), it
-/// calls <see cref="VtSequenceClassifier.Flush"/> to commit the bare ESC as an Escape event.
+/// owns the resolution: if no further bytes arrive within <em>escapeAmbiguityTimeout</em>
+/// (default 50&#xa0;ms — the xterm convention), it calls <see cref="VtSequenceClassifier.Flush"/>
+/// to commit the bare ESC as an Escape event.
 /// </para>
 /// <para>
 /// <b>Single-shot.</b> The device is single-shot: <see cref="ReadAllAsync"/> may be called
@@ -36,7 +38,7 @@ namespace Cursorial.Input;
 /// </remarks>
 public sealed class VtInputDevice : IAsyncInputDevice
 {
-    /// <summary>The xterm convention for resolving bare-ESC vs CSI/SS3/Alt+key ambiguity.</summary>
+    /// <summary>The xterm convention for resolving bare-ESC vs. CSI/SS3/Alt+key ambiguity.</summary>
     public static TimeSpan DefaultEscapeAmbiguityTimeout { get; } = TimeSpan.FromMilliseconds(50);
 
     private readonly IInputByteSource _source;
@@ -49,7 +51,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
     private readonly VtSequenceClassifier _classifier = new();
     private readonly VtInputInterpreter _interpreter;
 
-    // SingleWriter is false because EnqueueExternalEvent allows other components (e.g. a SIGWINCH
+    // SingleWriter is false because EnqueueExternalEvent allows other components (e.g., a SIGWINCH
     // resize monitor wired up by TerminalSession) to push events alongside the byte pump.
     private readonly Channel<InputEvent> _channel = Channel.CreateUnbounded<InputEvent>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
@@ -117,9 +119,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (Volatile.Read(ref _disposed) != 0)
-        {
             throw new ObjectDisposedException(nameof(VtInputDevice));
-        }
 
         if (Interlocked.Exchange(ref _enumerationStarted, 1) != 0)
         {
@@ -131,9 +131,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
         EnsurePumpStarted();
 
         await foreach (var inputEvent in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-        {
             yield return inputEvent;
-        }
     }
 
     /// <inheritdoc/>
@@ -144,6 +142,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
         // Stop the pump if it was started.
         Task? pumpTask;
         CancellationTokenSource? pumpCts;
+
         lock (_startLock)
         {
             pumpTask = _pumpTask;
@@ -152,6 +151,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
 
         try
         {
+            // ReSharper disable once MethodHasAsyncOverload
             pumpCts?.Cancel();
         }
         catch (ObjectDisposedException)
@@ -193,6 +193,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
 
             _pumpCts = new CancellationTokenSource();
             var token = _pumpCts.Token;
+            // ReSharper disable once MethodSupportsCancellation
             _pumpTask = Task.Run(() => PumpAsync(token));
         }
     }
@@ -219,6 +220,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
                 }
 
                 System.IO.Pipelines.ReadResult result;
+
                 try
                 {
                     result = await pendingRead.ConfigureAwait(false);
@@ -233,15 +235,15 @@ public sealed class VtInputDevice : IAsyncInputDevice
                 }
 
                 // Mirror VtInputMode.MouseEncoding onto the classifier's X10 framing flag.
-                // The mode is mutable from outside (negotiator, app code) so we re-sync each
+                // The mode is mutable from outside (negotiator, app code), so we re-sync each
                 // batch rather than only at startup; the comparison is a single field read.
                 _classifier.X10MouseFramingEnabled = _mode.MouseEncoding == MouseEncoding.X10;
 
                 var buffer = result.Buffer;
+
                 foreach (var segment in buffer)
-                {
                     _classifier.Process(segment.Span, _interpreter);
-                }
+
                 _source.Reader.AdvanceTo(buffer.End);
 
                 if (result.IsCompleted) break;

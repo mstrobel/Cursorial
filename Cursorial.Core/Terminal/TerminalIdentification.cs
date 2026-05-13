@@ -15,7 +15,7 @@ namespace Cursorial.Terminal;
 /// multiplexers commonly downgrade or filter passthrough sequences; consumers may need to wrap
 /// outgoing sequences in DCS pass-through to reach the outer terminal.
 /// </param>
-public sealed record class TerminalIdentification(
+public sealed record TerminalIdentification(
     TerminalFamily Family,
     string? Name,
     string? Version,

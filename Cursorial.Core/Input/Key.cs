@@ -10,6 +10,7 @@ namespace Cursorial.Input;
 /// </summary>
 public enum Key
 {
+    // @formatter:off
     None = 0,
 
     /// <summary>
@@ -73,5 +74,6 @@ public enum Key
     MediaPrevious,
     VolumeUp,
     VolumeDown,
-    VolumeMute,
+    VolumeMute
+    // @formatter:on
 }

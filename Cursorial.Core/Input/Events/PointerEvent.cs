@@ -13,7 +13,7 @@ namespace Cursorial.Input.Events;
 /// POSIX path that might surface these), so consumer pattern-matches against
 /// <see cref="InputEvent"/> can include a branch that becomes live without an API change.
 /// </remarks>
-public sealed record class PointerEvent : InputEvent
+public sealed record PointerEvent : InputEvent
 {
     /// <summary>Whether the pointer is a pen/stylus or a finger touch.</summary>
     public required PointerKind PointerKind { get; init; }

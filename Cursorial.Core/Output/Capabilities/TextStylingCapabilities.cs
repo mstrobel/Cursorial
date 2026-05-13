@@ -15,21 +15,19 @@ namespace Cursorial.Output.Capabilities;
 /// <param name="Strikethrough">SGR 9.</param>
 /// <param name="Overline">SGR 53.</param>
 /// <param name="Hyperlinks">OSC 8 — hyperlink anchors with URI and optional id.</param>
-public sealed record class TextStylingCapabilities(
-    bool Italic,
-    bool Underline,
-    bool ExtendedUnderline,
-    bool ColoredUnderline,
-    bool Strikethrough,
-    bool Overline,
-    bool Hyperlinks)
+public sealed record TextStylingCapabilities(bool Italic,
+                                             bool Underline,
+                                             bool ExtendedUnderline,
+                                             bool ColoredUnderline,
+                                             bool Strikethrough,
+                                             bool Overline,
+                                             bool Hyperlinks)
 {
-    public static TextStylingCapabilities None { get; } = new(
-        Italic: false,
-        Underline: false,
-        ExtendedUnderline: false,
-        ColoredUnderline: false,
-        Strikethrough: false,
-        Overline: false,
-        Hyperlinks: false);
+    public static TextStylingCapabilities None { get; } = new(Italic: false,
+                                                              Underline: false,
+                                                              ExtendedUnderline: false,
+                                                              ColoredUnderline: false,
+                                                              Strikethrough: false,
+                                                              Overline: false,
+                                                              Hyperlinks: false);
 }

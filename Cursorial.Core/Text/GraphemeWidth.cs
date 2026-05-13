@@ -17,7 +17,7 @@ namespace Cursorial.Text;
 /// <para>
 /// <b>Accuracy.</b> The wide-character ranges below are hand-coded to cover the common majority:
 /// Hangul, CJK Unified Ideographs (Plane 0 + Plane 2), Compatibility Ideographs, Fullwidth Forms,
-/// the major emoji blocks, and a few smaller blocks. Recently-added codepoints outside these
+/// the major emoji blocks, and a few smaller blocks. Recently added codepoints outside these
 /// ranges will report width 1 instead of 2. A full <c>EastAsianWidth.txt</c>-backed table can
 /// drop in later without breaking the public surface — the API is just <c>int</c> in / <c>int</c> out.
 /// </para>
@@ -39,18 +39,19 @@ public static class GraphemeWidth
     public static int CodepointWidth(int codepoint)
     {
         // ASCII fast path — printable ASCII is overwhelmingly the common case.
-        if ((uint)codepoint < 0x80)
+        if ((uint) codepoint < 0x80)
         {
             return codepoint switch
-            {
-                < 0x20 => 0, // C0 controls.
-                0x7F => 0,   // DEL.
-                _ => 1,
-            };
+                   {
+                       < 0x20 => 0, // C0 controls.
+                       0x7F   => 0, // DEL.
+                       _      => 1,
+                   };
         }
 
         if (codepoint < 0)
             throw new ArgumentOutOfRangeException(nameof(codepoint), "Codepoint must be non-negative.");
+
         if (codepoint > 0x10FFFF)
             throw new ArgumentOutOfRangeException(nameof(codepoint), "Codepoint exceeds Unicode maximum.");
 
@@ -59,8 +60,9 @@ public static class GraphemeWidth
 
         // Soft hyphen and other format controls — render as zero width.
         // Use Rune.GetUnicodeCategory for everything that needs a category check.
-        if (!Rune.IsValid(codepoint)) return 0; // Surrogate halves — should not occur, defensive.
+        if (!Rune.IsValid(codepoint)) return 0; // Surrogate halves — should not occur - defensive.
         var category = Rune.GetUnicodeCategory(new Rune(codepoint));
+
         switch (category)
         {
             case UnicodeCategory.NonSpacingMark:
@@ -104,23 +106,27 @@ public static class GraphemeWidth
                 i++;
                 continue;
             }
+
             i += consumed;
 
             int cp = rune.Value;
+
             if (cp == 0xFE0F)
             {
                 // Emoji presentation selector — bump width to at least 2.
                 width = Math.Max(width, 2);
                 continue;
             }
+
             if (cp == 0xFE0E)
             {
-                // Text presentation selector — pin to 1 if the base was 2 by default but we
+                // Text presentation selector — pin to 1 if the base was 2 by default, but we
                 // want text rendering.
                 if (!seenBase) continue;
                 width = Math.Min(width, 1);
                 continue;
             }
+
             if (cp == 0x200D)
             {
                 // ZWJ — continuation of the joined sequence, doesn't add width.
@@ -128,6 +134,7 @@ public static class GraphemeWidth
             }
 
             int w = CodepointWidth(cp);
+
             if (!seenBase)
             {
                 width = w;
@@ -169,11 +176,13 @@ public static class GraphemeWidth
     {
         int total = 0;
         var enumerator = StringInfo.GetTextElementEnumerator(text);
+
         while (enumerator.MoveNext())
         {
-            string cluster = (string)enumerator.Current!;
+            string cluster = (string) enumerator.Current;
             total += ClusterWidth(cluster);
         }
+
         return total;
     }
 
@@ -189,41 +198,41 @@ public static class GraphemeWidth
         if (cp <= 0xFFFF)
         {
             return cp switch
-            {
-                >= 0x1100 and <= 0x115F => true,             // Hangul Jamo
-                0x2329 or 0x232A => true,                    // Left/right-pointing angle bracket
-                >= 0x2E80 and <= 0x303E => true,             // CJK Radicals, Kangxi Radicals, Ideographic Description, CJK Symbols and Punctuation (subset)
-                >= 0x3041 and <= 0x33FF => true,             // Hiragana / Katakana / Bopomofo / Hangul Compatibility Jamo / Enclosed CJK / CJK Compatibility
-                >= 0x3400 and <= 0x4DBF => true,             // CJK Extension A
-                >= 0x4E00 and <= 0x9FFF => true,             // CJK Unified Ideographs
-                >= 0xA000 and <= 0xA4CF => true,             // Yi Syllables / Yi Radicals
-                >= 0xA960 and <= 0xA97F => true,             // Hangul Jamo Extended-A
-                >= 0xAC00 and <= 0xD7A3 => true,             // Hangul Syllables
-                >= 0xF900 and <= 0xFAFF => true,             // CJK Compatibility Ideographs
-                >= 0xFE10 and <= 0xFE19 => true,             // Vertical Forms
-                >= 0xFE30 and <= 0xFE4F => true,             // CJK Compatibility Forms
-                >= 0xFE50 and <= 0xFE6F => true,             // Small Form Variants (some narrow but treated wide for simplicity)
-                >= 0xFF00 and <= 0xFF60 => true,             // Fullwidth Forms
-                >= 0xFFE0 and <= 0xFFE6 => true,             // Fullwidth signs
-                _ => false,
-            };
+                   {
+                       >= 0x1100 and <= 0x115F => true, // Hangul Jamo
+                       0x2329 or 0x232A        => true, // Left/right-pointing angle bracket
+                       >= 0x2E80 and <= 0x303E => true, // CJK Radicals, Kangxi Radicals, Ideographic Description, CJK Symbols and Punctuation (subset)
+                       >= 0x3041 and <= 0x33FF => true, // Hiragana / Katakana / Bopomofo / Hangul Compatibility Jamo / Enclosed CJK / CJK Compatibility
+                       >= 0x3400 and <= 0x4DBF => true, // CJK Extension A
+                       >= 0x4E00 and <= 0x9FFF => true, // CJK Unified Ideographs
+                       >= 0xA000 and <= 0xA4CF => true, // Yi Syllables / Yi Radicals
+                       >= 0xA960 and <= 0xA97F => true, // Hangul Jamo Extended-A
+                       >= 0xAC00 and <= 0xD7A3 => true, // Hangul Syllables
+                       >= 0xF900 and <= 0xFAFF => true, // CJK Compatibility Ideographs
+                       >= 0xFE10 and <= 0xFE19 => true, // Vertical Forms
+                       >= 0xFE30 and <= 0xFE4F => true, // CJK Compatibility Forms
+                       >= 0xFE50 and <= 0xFE6F => true, // Small Form Variants (some narrow but treated wide for simplicity)
+                       >= 0xFF00 and <= 0xFF60 => true, // Fullwidth Forms
+                       >= 0xFFE0 and <= 0xFFE6 => true, // Fullwidth signs
+                       _                       => false
+                   };
         }
 
         // Supplementary planes.
         return cp switch
-        {
-            >= 0x1F300 and <= 0x1F64F => true, // Misc Symbols and Pictographs, Emoticons
-            >= 0x1F680 and <= 0x1F6FF => true, // Transport and Map Symbols
-            >= 0x1F700 and <= 0x1F77F => true, // Alchemical Symbols
-            >= 0x1F780 and <= 0x1F7FF => true, // Geometric Shapes Extended
-            >= 0x1F800 and <= 0x1F8FF => true, // Supplemental Arrows-C
-            >= 0x1F900 and <= 0x1F9FF => true, // Supplemental Symbols and Pictographs
-            >= 0x1FA00 and <= 0x1FA6F => true, // Chess Symbols
-            >= 0x1FA70 and <= 0x1FAFF => true, // Symbols and Pictographs Extended-A
-            >= 0x1FB00 and <= 0x1FBFF => true, // Symbols for Legacy Computing
-            >= 0x20000 and <= 0x2FFFD => true, // CJK Extension B, C, D, E, F, I (Plane 2)
-            >= 0x30000 and <= 0x3FFFD => true, // CJK Extension G, H (Plane 3)
-            _ => false,
-        };
+               {
+                   >= 0x1F300 and <= 0x1F64F => true, // Misc Symbols and Pictographs, Emoticons
+                   >= 0x1F680 and <= 0x1F6FF => true, // Transport and Map Symbols
+                   >= 0x1F700 and <= 0x1F77F => true, // Alchemical Symbols
+                   >= 0x1F780 and <= 0x1F7FF => true, // Geometric Shapes Extended
+                   >= 0x1F800 and <= 0x1F8FF => true, // Supplemental Arrows-C
+                   >= 0x1F900 and <= 0x1F9FF => true, // Supplemental Symbols and Pictographs
+                   >= 0x1FA00 and <= 0x1FA6F => true, // Chess Symbols
+                   >= 0x1FA70 and <= 0x1FAFF => true, // Symbols and Pictographs Extended-A
+                   >= 0x1FB00 and <= 0x1FBFF => true, // Symbols for Legacy Computing
+                   >= 0x20000 and <= 0x2FFFD => true, // CJK Extension B, C, D, E, F, I (Plane 2)
+                   >= 0x30000 and <= 0x3FFFD => true, // CJK Extension G, H (Plane 3)
+                   _                         => false
+               };
     }
 }

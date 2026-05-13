@@ -7,7 +7,7 @@ namespace Cursorial.Input.Events;
 /// <see cref="ProtocolCapabilities.BracketedPaste"/> is true; otherwise pasted text arrives
 /// as individual <see cref="KeyEvent"/>s indistinguishable from typed input.
 /// </summary>
-public sealed record class PasteEvent : InputEvent
+public sealed record PasteEvent : InputEvent
 {
     /// <summary>The pasted text. May contain embedded newlines.</summary>
     public required ReadOnlyMemory<char> Text { get; init; }

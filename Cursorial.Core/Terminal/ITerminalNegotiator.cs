@@ -21,7 +21,7 @@ namespace Cursorial.Terminal;
 /// </para>
 /// <para>
 /// <b>Statefulness and restore.</b> Negotiation is not read-only when opt-ins are enabled —
-/// it changes terminal state. The negotiator records every opt-in it performs and reverses
+/// it changes the terminal state. The negotiator records every opt-in it performs and reverses
 /// them on <see cref="RestoreAsync"/> or <see cref="IAsyncDisposable.DisposeAsync"/>.
 /// Applications MUST ensure the negotiator is disposed (or restored) before exit, otherwise
 /// the terminal can be left in a non-default state — Kitty keyboard pushed, mouse tracking

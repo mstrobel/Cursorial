@@ -21,17 +21,13 @@ public static class StdioTransports
     public static IStdioTransports Open()
     {
         if (OperatingSystem.IsWindows())
-        {
             return WindowsStdioTransports.Open();
-        }
 
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD())
-        {
             return PosixStdioTransports.Open();
-        }
 
-        throw new PlatformNotSupportedException(
-            "Cursorial stdio transports are only implemented for Linux, macOS, FreeBSD, and Windows.");
+        throw new PlatformNotSupportedException("Cursorial stdio transports are only implemented for " +
+                                                "Linux, macOS, FreeBSD, and Windows.");
     }
 }
 
@@ -55,7 +51,9 @@ internal sealed class StreamInputByteSource : IInputByteSource
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
         await _reader.CompleteAsync().ConfigureAwait(false);
     }
 }
@@ -79,7 +77,9 @@ internal sealed class StreamOutputByteSink : IOutputByteSink
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
         try
         {
             await _writer.FlushAsync().ConfigureAwait(false);
@@ -88,6 +88,7 @@ internal sealed class StreamOutputByteSink : IOutputByteSink
         {
             // Best-effort flush — the underlying stream may have closed already.
         }
+
         await _writer.CompleteAsync().ConfigureAwait(false);
     }
 }

@@ -22,12 +22,10 @@ namespace Cursorial.Output.Capabilities;
 /// <c>s × w</c> cell block (1–7 cells tall). Enables double-height text, large titles, and
 /// the fractional <c>n/d</c> scaling that builds on the same machinery.
 /// </param>
-public sealed record class TextSizingCapabilities(
-    bool Width,
-    bool Scale)
+public sealed record TextSizingCapabilities(bool Width,
+                                            bool Scale)
 {
     /// <summary>A capability set reporting no text-sizing support.</summary>
-    public static TextSizingCapabilities None { get; } = new(
-        Width: false,
-        Scale: false);
+    public static TextSizingCapabilities None { get; } = new(Width: false,
+                                                             Scale: false);
 }

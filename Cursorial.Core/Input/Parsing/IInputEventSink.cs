@@ -12,7 +12,7 @@ namespace Cursorial.Input.Parsing;
 /// <remarks>
 /// Implementations MUST treat the call as synchronous and non-blocking — the interpreter
 /// invokes the sink from inside its own <see cref="IVtSequenceTokenSink"/> callbacks, which
-/// are themselves invoked from the byte-pump loop. Any deferral (queueing, marshalling) is
+/// are themselves invoked from the byte-pump loop. Any deferral (queueing, marshaling) is
 /// the sink's job, not the interpreter's.
 /// </remarks>
 public interface IInputEventSink

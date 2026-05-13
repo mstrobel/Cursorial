@@ -44,12 +44,11 @@ public sealed class TerminalSession : IAsyncDisposable
     private PosixResizeMonitor? _resizeMonitor;
     private int _disposed;
 
-    private TerminalSession(
-        TerminalCapabilities capabilities,
-        IAsyncInputDevice input,
-        IOutputByteSink output,
-        ITerminalNegotiator negotiator,
-        IStdioTransports? ownedTransports)
+    private TerminalSession(TerminalCapabilities capabilities,
+                            IAsyncInputDevice input,
+                            IOutputByteSink output,
+                            ITerminalNegotiator negotiator,
+                            IStdioTransports? ownedTransports)
     {
         Capabilities = capabilities;
         _input = input;
@@ -58,7 +57,7 @@ public sealed class TerminalSession : IAsyncDisposable
         _ownedTransports = ownedTransports;
 
         // Only attach safety-net handlers and the resize monitor when we own the transports —
-        // i.e. only for the happy-path (parameterless) overload. BYO callers have their own
+        // i.e., only for the happy-path (parameterless) overload. BYO callers have their own
         // signal-handling strategy and shouldn't be surprised by ours.
         if (_ownedTransports is not null)
         {
@@ -78,7 +77,7 @@ public sealed class TerminalSession : IAsyncDisposable
 
     /// <summary>
     /// Opens a session over caller-supplied transports. Useful for embedding inside a tool that
-    /// already manages terminal state, or for driving the input pipeline from a recorded trace.
+    /// already manages the terminal state or for driving the input pipeline from a recorded trace.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -140,22 +139,29 @@ public sealed class TerminalSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var transports = StdioTransports.Open();
+
         try
         {
             return await OpenInternalAsync(
-                    transports.Source,
-                    transports.Sink,
-                    ownedTransports: transports,
-                    options,
-                    cancellationToken)
-                .ConfigureAwait(false);
+                           transports.Source,
+                           transports.Sink,
+                           ownedTransports: transports,
+                           options,
+                           cancellationToken)
+                       .ConfigureAwait(false);
         }
         catch
-        {
+        { 
+            // @formatter:off
+            
             // OpenInternalAsync handles the negotiator + device cleanup. We're responsible
             // for the transports we just opened.
-            try { await transports.DisposeAsync().ConfigureAwait(false); } catch { }
+            try { await transports.DisposeAsync().ConfigureAwait(false); }
+            catch { /* best-effort */ }
+            
             throw;
+            
+            // @formatter:on
         }
     }
 
@@ -174,9 +180,8 @@ public sealed class TerminalSession : IAsyncDisposable
 
         try
         {
-            var capabilities = await negotiator
-                .NegotiateAsync(options.Negotiation, cancellationToken)
-                .ConfigureAwait(false);
+            var capabilities = await negotiator.NegotiateAsync(options.Negotiation, cancellationToken)
+                                               .ConfigureAwait(false);
 
             device = new VtInputDevice(
                 source,
@@ -188,6 +193,8 @@ public sealed class TerminalSession : IAsyncDisposable
         }
         catch
         {
+            // @formatter:off
+
             // Failed somewhere between negotiation and device construction — clean up the
             // negotiator + device. The caller is responsible for the transports they own
             // (BYO) or for transport cleanup happening one level up (parameterless overload).
@@ -201,11 +208,15 @@ public sealed class TerminalSession : IAsyncDisposable
             catch { /* swallow during failed-init cleanup */ }
 
             throw;
+
+            // @formatter:on
         }
     }
 
     public async ValueTask DisposeAsync()
     {
+        // @formatter:off
+        
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         // Unregister safety-net handlers first. Doing so early prevents a signal-handler
@@ -216,6 +227,7 @@ public sealed class TerminalSession : IAsyncDisposable
         // ResizeEvent into a channel that's about to complete.
         try { _resizeMonitor?.Dispose(); }
         catch { /* best-effort */ }
+
         _resizeMonitor = null;
 
         // Restore opt-ins FIRST, while the input pump is still running. The terminal may emit
@@ -245,6 +257,8 @@ public sealed class TerminalSession : IAsyncDisposable
             try { await _ownedTransports.DisposeAsync().ConfigureAwait(false); }
             catch { /* best-effort */ }
         }
+        
+        // @formatter:on
     }
 
     // ---- Signal-handler safety net ----
@@ -269,10 +283,9 @@ public sealed class TerminalSession : IAsyncDisposable
         // with keyboard/mouse input. Windows console resize delivery (WINDOW_BUFFER_SIZE_EVENT
         // via ReadConsoleInput) is not yet plumbed — TODO.
         if (_input is not VtInputDevice device) return;
+
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsFreeBSD())
-        {
             return;
-        }
 
         try
         {
@@ -296,7 +309,7 @@ public sealed class TerminalSession : IAsyncDisposable
         }
         catch (PlatformNotSupportedException)
         {
-            // Signal not supported on this OS — ignore.
+            // Signal is not supported on this OS — ignore.
         }
         catch
         {
@@ -306,29 +319,35 @@ public sealed class TerminalSession : IAsyncDisposable
 
     private void UnregisterSafetyHandlers()
     {
+        // @formatter:off
         if (_processExitHandler is not null)
         {
-            try { AppDomain.CurrentDomain.ProcessExit -= _processExitHandler; } catch { }
+            try { AppDomain.CurrentDomain.ProcessExit -= _processExitHandler; }
+            catch { /* best-effort */ }
+
             _processExitHandler = null;
         }
 
         foreach (var registration in _signalRegistrations)
         {
-            try { registration.Dispose(); } catch { }
+            try { registration.Dispose(); }
+            catch { /* best-effort */ }
         }
+
         _signalRegistrations.Clear();
+        // @formatter:on
     }
 
     private void HandleSignal(PosixSignalContext context)
     {
-        // Suppress the default action — we'll exit ourselves after cleanup so terminal state
+        // Suppress the default action — we'll exit ourselves after cleanup, so terminal state
         // is restored deterministically before the process goes away.
         context.Cancel = true;
 
         EmergencyRestoreAndDispose();
 
         // Standard POSIX convention: signal exit code is 128 + signal number.
-        Environment.Exit(128 + Math.Abs((int)context.Signal));
+        Environment.Exit(128 + Math.Abs((int) context.Signal));
     }
 
     private void HandleProcessExit(object? sender, EventArgs e)
@@ -341,13 +360,16 @@ public sealed class TerminalSession : IAsyncDisposable
 
     private void EmergencyRestoreAndDispose()
     {
+        // @formatter:off
+
         // Two-phase shutdown when the process is going down:
         //   Phase 1 — guaranteed: synchronously restore termios / Windows console mode so the
         //   user's shell isn't left in raw mode. This is always safe to attempt (it's
         //   idempotent and doesn't write to the VT stream); it must run before any awaits.
         if (_ownedTransports is not null)
         {
-            try { _ownedTransports.RestoreTerminalState(); } catch { /* best-effort */ }
+            try { _ownedTransports.RestoreTerminalState(); }
+            catch { /* best-effort */ }
         }
 
         // Phase 2 — best-effort within a bounded budget: stop the input pump and write VT
@@ -356,9 +378,12 @@ public sealed class TerminalSession : IAsyncDisposable
         // cancellation mid-syscall, so the pump may not unwind cleanly until the next byte
         // arrives (or never, if the terminal is already closing). Cap the wait at 2 s so the
         // process can still exit when the pump won't unblock. If we time out here, the
-        // worst-case visible artifact is a single residual opt-in (e.g. Kitty flags still
+        // worst-case visible artifact is a single residual opt-in (e.g., Kitty flags still
         // pushed) — annoying but not data-destructive, since phase 1 already restored the
         // mode that determines whether the user can see a prompt at all.
-        try { DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)); } catch { }
+        try { DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)); }
+        catch { /* best-effort */ }
+        
+        // @formatter:on
     }
 }

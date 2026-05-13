@@ -45,7 +45,7 @@ public enum TextSizingHorizontalAlignment : byte
 /// </param>
 /// <param name="Numerator">
 /// Fractional-scale numerator <c>n</c>. Range 0–15. Used with <see cref="Denominator"/> to
-/// render text at a fraction of its natural height (e.g. <c>n=1:d=2</c> = half height inside the
+/// render text at a fraction of its natural height (e.g. <c>n=1:d=2</c> = half-height inside the
 /// <see cref="Scale"/>-tall block).
 /// </param>
 /// <param name="Denominator">
@@ -66,11 +66,10 @@ public readonly record struct TextSizing(
     public static TextSizing Normal => default;
 
     /// <summary>True when every parameter is at its spec-default and the metadata block would be empty.</summary>
-    public bool IsNormal =>
-        (Scale == 0 || Scale == 1)
-        && Width == 0
-        && Numerator == 0
-        && Denominator == 0
-        && Vertical == TextSizingVerticalAlignment.Top
-        && Horizontal == TextSizingHorizontalAlignment.Left;
+    public bool IsNormal => Scale is 0 or 1 &&
+                            Width is 0 &&
+                            Numerator is 0 &&
+                            Denominator is 0 &&
+                            Vertical is TextSizingVerticalAlignment.Top &&
+                            Horizontal is TextSizingHorizontalAlignment.Left;
 }

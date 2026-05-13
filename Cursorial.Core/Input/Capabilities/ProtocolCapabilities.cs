@@ -18,15 +18,13 @@ namespace Cursorial.Input.Capabilities;
 /// True when the device participates in Microsoft's Win32 Input Mode for ConPTY
 /// (xterm DECSET 9001), which carries lossless Win32 console key records over a VT channel.
 /// </param>
-public sealed record class ProtocolCapabilities(
-    bool BracketedPaste,
-    bool FocusEvents,
-    bool KittyKeyboardProtocol,
-    bool Win32InputMode)
+public sealed record ProtocolCapabilities(bool BracketedPaste,
+                                          bool FocusEvents,
+                                          bool KittyKeyboardProtocol,
+                                          bool Win32InputMode)
 {
-    public static ProtocolCapabilities None { get; } = new(
-        BracketedPaste: false,
-        FocusEvents: false,
-        KittyKeyboardProtocol: false,
-        Win32InputMode: false);
+    public static ProtocolCapabilities None { get; } = new(BracketedPaste: false,
+                                                           FocusEvents: false,
+                                                           KittyKeyboardProtocol: false,
+                                                           Win32InputMode: false);
 }

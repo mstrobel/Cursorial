@@ -28,7 +28,7 @@ public interface IAsyncInputDevice : IInputDevice
     /// <summary>
     /// Returns an asynchronous stream of input events. Iteration begins reading from the
     /// underlying source on first <c>MoveNextAsync</c>; the sequence completes when the source
-    /// signals end-of-input or <paramref name="cancellationToken"/> is cancelled.
+    /// signals end-of-input or <paramref name="cancellationToken"/> is canceled.
     /// </summary>
     IAsyncEnumerable<InputEvent> ReadAllAsync(CancellationToken cancellationToken = default);
 }

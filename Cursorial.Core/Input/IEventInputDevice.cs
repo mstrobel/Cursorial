@@ -13,7 +13,7 @@ namespace Cursorial.Input;
 /// pumping; <see cref="StopAsync"/> halts it without releasing the device. Whether
 /// <see cref="StartAsync"/> may be called again after <see cref="StopAsync"/> is
 /// implementation-defined: devices over a restartable source MAY support it; devices over a
-/// non-restartable source (e.g. a <see cref="System.IO.Pipelines.PipeReader"/> that has been
+/// non-restartable source (e.g., a <see cref="System.IO.Pipelines.PipeReader"/> that has been
 /// completed) MUST throw <see cref="InvalidOperationException"/> from <see cref="StartAsync"/>
 /// in that case.
 /// </para>
@@ -34,7 +34,7 @@ public interface IEventInputDevice : IInputDevice
 {
     /// <summary>
     /// Raised for each input event produced by the device. Handlers run on the device's
-    /// internal pump; long-running work should be marshalled off the handler so it does not
+    /// internal pump; long-running work should be marshaled off the handler so it does not
     /// stall further input delivery.
     /// </summary>
     event EventHandler<InputEvent>? Input;

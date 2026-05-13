@@ -129,10 +129,12 @@ public sealed class VtSequenceClassifier
                 sink.OnEscDispatch(intermediates: ReadOnlySpan<byte>.Empty, final: 0);
                 ResetToGround();
                 break;
+
             case State.Ss3:
                 FlushSs3AsRecovery(sink);
                 ResetToGround();
                 break;
+
             case State.X10MouseCb:
             case State.X10MouseCx:
             case State.X10MouseCy:
@@ -174,62 +176,81 @@ public sealed class VtSequenceClassifier
             case State.Ground:
                 StepGround(b, sink);
                 break;
+
             case State.Escape:
                 StepEscape(b, sink);
                 break;
+
             case State.EscapeIntermediate:
                 StepEscapeIntermediate(b, sink);
                 break;
+
             case State.Ss3:
                 StepSs3(b, sink);
                 break;
+
             case State.CsiEntry:
                 StepCsiEntry(b, sink);
                 break;
+
             case State.CsiParam:
                 StepCsiParam(b, sink);
                 break;
+
             case State.CsiIntermediate:
                 StepCsiIntermediate(b, sink);
                 break;
+
             case State.CsiIgnore:
                 StepCsiIgnore(b);
                 break;
+
             case State.OscString:
                 StepOscString(b, sink);
                 break;
+
             case State.OscEsc:
                 StepOscEsc(b, sink);
                 break;
+
             case State.DcsEntry:
                 StepDcsEntry(b, sink);
                 break;
+
             case State.DcsParam:
                 StepDcsParam(b, sink);
                 break;
+
             case State.DcsIntermediate:
                 StepDcsIntermediate(b, sink);
                 break;
+
             case State.DcsPassthrough:
                 StepDcsPassthrough(b, sink);
                 break;
+
             case State.DcsPassthroughEsc:
                 StepDcsPassthroughEsc(b, sink);
                 break;
+
             case State.DcsIgnore:
                 StepDcsIgnore(b);
                 break;
+
             case State.DcsIgnoreEsc:
                 StepDcsIgnoreEsc(b);
                 break;
+
             case State.X10MouseCb:
                 _x10MouseCb = b;
                 _state = State.X10MouseCx;
                 break;
+
             case State.X10MouseCx:
                 _x10MouseCx = b;
                 _state = State.X10MouseCy;
                 break;
+
             case State.X10MouseCy:
                 sink.OnX10MouseDispatch(_x10MouseCb, _x10MouseCx, b);
                 ResetToGround();
@@ -259,20 +280,24 @@ public sealed class VtSequenceClassifier
     {
         switch (b)
         {
-            case (byte)'[':
+            case (byte) '[':
                 _state = State.CsiEntry;
                 return;
-            case (byte)']':
+
+            case (byte) ']':
                 _oscLength = 0;
                 _state = State.OscString;
                 return;
-            case (byte)'P':
+
+            case (byte) 'P':
                 _state = State.DcsEntry;
                 return;
-            case (byte)'O':
+
+            case (byte) 'O':
                 // Single Shift 3: one more byte will follow as the SS3 final.
                 _state = State.Ss3;
                 return;
+
             case VtInputSequences.Escape:
                 // Two ESCs in a row — commit the first as a bare ESC and start a new sequence.
                 sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
@@ -291,7 +316,7 @@ public sealed class VtSequenceClassifier
 
         if (b is >= 0x30 and <= 0x7E)
         {
-            // Final byte of an ESC sequence with no intermediates (e.g. ESC 7 = DECSC).
+            // Final byte of an ESC sequence with no intermediates (e.g., ESC 7 = DECSC).
             sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, b);
             ResetToGround();
             return;
@@ -327,7 +352,7 @@ public sealed class VtSequenceClassifier
         {
             // Dispatch as ESC dispatch with intermediate 'O' so the interpreter recognizes SS3.
             Span<byte> intermediates = stackalloc byte[1];
-            intermediates[0] = (byte)'O';
+            intermediates[0] = (byte) 'O';
             sink.OnEscDispatch(intermediates, b);
             ResetToGround();
             return;
@@ -353,7 +378,7 @@ public sealed class VtSequenceClassifier
         // user's two keystrokes are preserved when an SS3 sequence never completes.
         sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
         Span<byte> oByte = stackalloc byte[1];
-        oByte[0] = (byte)'O';
+        oByte[0] = (byte) 'O';
         sink.OnPrint(oByte);
     }
 
@@ -361,7 +386,7 @@ public sealed class VtSequenceClassifier
 
     private void StepCsiEntry(byte b, IVtSequenceTokenSink sink)
     {
-        if (b is (byte)'?' or (byte)'>' or (byte)'<' or (byte)'=')
+        if (b is (byte) '?' or (byte) '>' or (byte) '<' or (byte) '=')
         {
             _privatePrefix = b;
             _state = State.CsiParam;
@@ -373,12 +398,13 @@ public sealed class VtSequenceClassifier
 
     private void StepCsiParam(byte b, IVtSequenceTokenSink sink)
     {
-        if (b is (>= (byte)'0' and <= (byte)'9') or (byte)';' or (byte)':')
+        if (b is (>= (byte) '0' and <= (byte) '9') or (byte) ';' or (byte) ':')
         {
             if (!AppendParameter(b))
                 _state = State.CsiIgnore;
             else
                 _state = State.CsiParam;
+
             return;
         }
 
@@ -405,6 +431,7 @@ public sealed class VtSequenceClassifier
         {
             if (!AppendIntermediate(b))
                 _state = State.CsiIgnore;
+
             return;
         }
 
@@ -427,11 +454,11 @@ public sealed class VtSequenceClassifier
     {
         // X10 mouse exception — an unadorned `CSI M` introduces three raw bytes when framing
         // is enabled. See class remarks for why this lives in the classifier.
-        if (final == (byte)'M'
-            && X10MouseFramingEnabled
-            && _privatePrefix == 0
-            && _parameterLength == 0
-            && _intermediateLength == 0)
+        if (final == (byte) 'M' &&
+            X10MouseFramingEnabled &&
+            _privatePrefix == 0 &&
+            _parameterLength == 0 &&
+            _intermediateLength == 0)
         {
             _state = State.X10MouseCb;
             return;
@@ -463,7 +490,7 @@ public sealed class VtSequenceClassifier
 
     private void StepOscEsc(byte b, IVtSequenceTokenSink sink)
     {
-        if (b == (byte)'\\')
+        if (b == (byte) '\\')
         {
             // ESC \ = ST: terminate OSC.
             sink.OnOscDispatch(OscBodySpan);
@@ -481,7 +508,7 @@ public sealed class VtSequenceClassifier
 
     private void StepDcsEntry(byte b, IVtSequenceTokenSink sink)
     {
-        if (b is (byte)'?' or (byte)'>' or (byte)'<' or (byte)'=')
+        if (b is (byte) '?' or (byte) '>' or (byte) '<' or (byte) '=')
         {
             _privatePrefix = b;
             _state = State.DcsParam;
@@ -493,12 +520,13 @@ public sealed class VtSequenceClassifier
 
     private void StepDcsParam(byte b, IVtSequenceTokenSink sink)
     {
-        if (b is (>= (byte)'0' and <= (byte)'9') or (byte)';' or (byte)':')
+        if (b is (>= (byte) '0' and <= (byte) '9') or (byte) ';' or (byte) ':')
         {
             if (!AppendParameter(b))
                 _state = State.DcsIgnore;
             else
                 _state = State.DcsParam;
+
             return;
         }
 
@@ -525,6 +553,7 @@ public sealed class VtSequenceClassifier
         {
             if (!AppendIntermediate(b))
                 _state = State.DcsIgnore;
+
             return;
         }
 
@@ -560,7 +589,7 @@ public sealed class VtSequenceClassifier
 
     private void StepDcsPassthroughEsc(byte b, IVtSequenceTokenSink sink)
     {
-        if (b == (byte)'\\')
+        if (b == (byte) '\\')
         {
             sink.OnDcsUnhook();
             ResetToGround();
@@ -583,7 +612,7 @@ public sealed class VtSequenceClassifier
 
     private void StepDcsIgnoreEsc(byte b)
     {
-        if (b == (byte)'\\')
+        if (b == (byte) '\\')
             ResetToGround();
         else
             _state = State.DcsIgnore;
@@ -611,7 +640,7 @@ public sealed class VtSequenceClassifier
         {
             // Drop overflow bytes silently; the OSC will still dispatch with the prefix at
             // termination. This is preferable to discarding the entire OSC since the leading
-            // bytes (e.g. OSC parameter prefix) are usually what the consumer needs.
+            // bytes (e.g., OSC parameter prefix) are usually what the consumer needs.
             return;
         }
 

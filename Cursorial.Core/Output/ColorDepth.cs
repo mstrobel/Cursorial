@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// The maximum color fidelity an output channel supports. Values are ordered from least to

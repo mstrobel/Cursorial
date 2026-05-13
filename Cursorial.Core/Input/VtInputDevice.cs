@@ -1,8 +1,11 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Cursorial.Core.Input.Parsing;
 
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// Concrete <see cref="IAsyncInputDevice"/> built on top of an <see cref="IInputByteSource"/>

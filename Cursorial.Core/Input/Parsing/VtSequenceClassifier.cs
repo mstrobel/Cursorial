@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Cursorial.Core.Input.Parsing;
+namespace Cursorial.Input.Parsing;
 
 /// <summary>
 /// Stateful byte-level classifier for VT/ANSI input sequences. Consumes bytes (which may
@@ -31,7 +31,7 @@ namespace Cursorial.Core.Input.Parsing;
 /// <see cref="IVtSequenceTokenSink.OnDcsPut"/> rather than buffered.
 /// </para>
 /// <para>
-/// <b>API stability.</b> Types in the <c>Cursorial.Core.Input.Parsing</c> namespace are public
+/// <b>API stability.</b> Types in the <c>Cursorial.Input.Parsing</c> namespace are public
 /// so advanced consumers can compose alternative pipelines (recording / replay, fuzz harnesses,
 /// custom input devices). They are NOT covered by Cursorial's outer-API stability guarantees —
 /// expect the classifier, interpreter, and sink interfaces to evolve as new protocols land.

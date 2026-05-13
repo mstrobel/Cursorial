@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// Distinguishes the lifecycle phase of a <see cref="PointerEvent"/>.

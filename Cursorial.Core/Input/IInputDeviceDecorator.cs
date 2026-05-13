@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input;
 
 /// <summary>
 /// Optional marker implemented by input devices that wrap another device. Useful for

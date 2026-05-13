@@ -1,9 +1,13 @@
 using System.IO.Pipelines;
-using Cursorial.Core.Input;
-using Cursorial.Core.Input.Parsing;
-using Cursorial.Core.Output;
 
-namespace Cursorial.Core.Terminal;
+using Cursorial.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
+using Cursorial.Output;
+using Cursorial.Output.Capabilities;
+
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// VT/ANSI implementation of <see cref="ITerminalNegotiator"/>. Drives the probe-and-respond

@@ -1,15 +1,17 @@
 using System.IO.Pipelines;
 
-namespace Cursorial.Core.Output;
+using Cursorial.Input;
+
+namespace Cursorial.Output;
 
 /// <summary>
 /// Abstraction over the destination of bytes written to the terminal — the output counterpart
-/// to <see cref="Cursorial.Core.Input.IInputByteSource"/>. Used by anything that emits VT
+/// to <see cref="IInputByteSource"/>. Used by anything that emits VT
 /// sequences: capability negotiation, rendering, cursor manipulation, OSC requests.
 /// </summary>
 /// <remarks>
 /// <para>
-/// As with <see cref="Cursorial.Core.Input.IInputByteSource"/>, not every output channel goes
+/// As with <see cref="IInputByteSource"/>, not every output channel goes
 /// through a byte stream. Win32 console output can take structured paths (e.g.
 /// <c>WriteConsoleOutput</c>) that bypass VT entirely. When a writer IS built on a byte sink,
 /// using this abstraction lets the same writer target a real terminal, an in-memory buffer

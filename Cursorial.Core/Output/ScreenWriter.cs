@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// Emits screen-level escape sequences: clear screen and line, alternate-screen-buffer toggle,

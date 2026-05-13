@@ -1,6 +1,4 @@
-using System.Buffers;
-
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// Shared internal helpers used by the byte-level writers (<see cref="SgrEncoder"/>,

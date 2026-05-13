@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// An input chunk the device could not classify. Emitted (rather than dropped) so consumers

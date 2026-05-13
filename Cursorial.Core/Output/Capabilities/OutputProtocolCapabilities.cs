@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Describes opt-in protocol features a terminal accepts on its output (write) side.

@@ -1,7 +1,9 @@
 using System.Buffers;
 using System.Text;
 
-namespace Cursorial.Core.Output;
+using Cursorial.Output.Capabilities;
+
+namespace Cursorial.Output;
 
 /// <summary>
 /// Emits OSC 8 hyperlink-anchor sequences. The terminal interprets the text emitted between an
@@ -38,12 +40,13 @@ public static class HyperlinkWriter
         // is 4 bytes/char.
         int uriMax = Encoding.UTF8.GetMaxByteCount(uri.Length);
         int idMax = id.IsEmpty ? 0 : 3 + Encoding.UTF8.GetMaxByteCount(id.Length);
-        int budget = VtOutputSequences.Hyperlink.Prefix.Length + idMax + 1 + uriMax
-            + VtOutputSequences.KittyTextSizing.StringTerminator.Length;
+
+        int budget = VtOutputSequences.Hyperlink.Prefix.Length + idMax + 1 + uriMax +
+                     VtOutputSequences.KittyTextSizing.StringTerminator.Length;
 
         // For long URIs spill onto the heap; the common case stays on the stack via GetSpan.
         byte[]? rented = budget > StackBufferThreshold ? new byte[budget] : null;
-        Span<byte> buffer = rented is not null ? rented : writer.GetSpan(budget);
+        Span<byte> buffer = rented ?? writer.GetSpan(budget);
 
         int written = 0;
         VtOutputSequences.Hyperlink.Prefix.CopyTo(buffer[written..]);
@@ -51,12 +54,13 @@ public static class HyperlinkWriter
 
         if (!id.IsEmpty)
         {
-            buffer[written++] = (byte)'i';
-            buffer[written++] = (byte)'d';
-            buffer[written++] = (byte)'=';
+            buffer[written++] = (byte) 'i';
+            buffer[written++] = (byte) 'd';
+            buffer[written++] = (byte) '=';
             written += Encoding.UTF8.GetBytes(id, buffer[written..]);
         }
-        buffer[written++] = (byte)';';
+
+        buffer[written++] = (byte) ';';
         written += Encoding.UTF8.GetBytes(uri, buffer[written..]);
 
         var st = VtOutputSequences.KittyTextSizing.StringTerminator;
@@ -68,6 +72,7 @@ public static class HyperlinkWriter
             var dest = writer.GetSpan(written);
             buffer[..written].CopyTo(dest);
         }
+
         writer.Advance(written);
     }
 

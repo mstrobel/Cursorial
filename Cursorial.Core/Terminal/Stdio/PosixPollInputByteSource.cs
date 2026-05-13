@@ -1,8 +1,9 @@
 using System.IO.Pipelines;
 using System.Runtime.InteropServices;
-using Cursorial.Core.Input;
 
-namespace Cursorial.Core.Terminal.Stdio;
+using Cursorial.Input;
+
+namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
 /// POSIX <see cref="IInputByteSource"/> that pumps bytes from a file descriptor into a

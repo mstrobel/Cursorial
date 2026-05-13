@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Cursorial.Core.Text;
+namespace Cursorial.Text;
 
 /// <summary>
 /// Options governing <see cref="AnsiTextWrap.Wrap(string, int, in WrapOptions)"/>. The

@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// Identifies the kind of <see cref="DeviceResponseEvent"/>. <see cref="Unknown"/> is used

@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <!-- Required by LibraryImport-generated marshalling stubs (Stdio P/Invoke). -->
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <RootNamespace>Cursorial</RootNamespace>
     </PropertyGroup>
 
 </Project>

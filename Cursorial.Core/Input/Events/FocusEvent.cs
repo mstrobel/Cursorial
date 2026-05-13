@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// Reports that the terminal window gained or lost keyboard focus. Only emitted when the

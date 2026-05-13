@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input;
 
 /// <summary>
 /// Bitmask of modifier keys held during an input event. Toggle modifiers (<see cref="CapsLock"/>,

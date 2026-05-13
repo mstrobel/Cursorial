@@ -1,7 +1,7 @@
-using Cursorial.Core.Input;
-using Cursorial.Core.Output;
+using Cursorial.Input.Capabilities;
+using Cursorial.Output.Capabilities;
 
-namespace Cursorial.Core.Terminal;
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// The realized capability surface of a terminal session — what the terminal is, what it

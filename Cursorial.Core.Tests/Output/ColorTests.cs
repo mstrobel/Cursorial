@@ -1,6 +1,6 @@
-using Cursorial.Core.Output;
+using Cursorial.Output;
 
-namespace Cursorial.Core.Tests.Output;
+namespace Cursorial.Tests.Output;
 
 public class ColorTests
 {

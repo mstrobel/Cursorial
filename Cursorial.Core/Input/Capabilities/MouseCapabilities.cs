@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Capabilities;
 
 /// <summary>
 /// Describes which mouse interactions an input device reports.

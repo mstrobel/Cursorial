@@ -1,8 +1,8 @@
 using System.Buffers;
-using System.IO.Pipelines;
-using Cursorial.Core.Terminal.Stdio;
 
-namespace Cursorial.Core.Tests.Terminal.Stdio;
+using Cursorial.Terminal.Stdio;
+
+namespace Cursorial.Tests.Terminal.Stdio;
 
 /// <summary>
 /// Tests for the generic <see cref="Stream"/> → <see cref="IInputByteSource"/> /

@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input.Parsing;
+namespace Cursorial.Input.Parsing;
 
 /// <summary>
 /// UTF-8 byte-string constants for the VT/ANSI input sequences Cursorial parses. Exposed as

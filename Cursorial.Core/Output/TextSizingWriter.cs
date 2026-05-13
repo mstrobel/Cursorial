@@ -1,7 +1,9 @@
 using System.Buffers;
 using System.Text;
 
-namespace Cursorial.Core.Output;
+using Cursorial.Output.Capabilities;
+
+namespace Cursorial.Output;
 
 /// <summary>
 /// Emits Kitty text-sizing OSC 66 sequences. Format on the wire is
@@ -11,14 +13,14 @@ namespace Cursorial.Core.Output;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Gate on <see cref="TextSizingCapabilities"/> at the call site — a non-supporting terminal
+/// Gate on <see cref="WriteSplit"/> at the call site — a non-supporting terminal
 /// renders the text at normal size and silently ignores the OSC. The writer itself is pure
 /// byte production; it doesn't consult capabilities.
 /// </para>
 /// <para>
 /// The spec caps a single OSC 66 payload at 4096 UTF-8 bytes. Longer strings MUST be split
-/// across multiple emissions to avoid truncation. <see cref="WriteSplit"/> handles that
-/// automatically by chunking on grapheme boundaries; the bare <see cref="Write"/> overloads
+/// across multiple emissions to avoid truncation. <see cref="Write"/> handles that
+/// automatically by chunking on grapheme boundaries; the bare <see cref="TextSizingCapabilities"/> overloads
 /// emit a single sequence and assume the caller already respects the cap.
 /// </para>
 /// </remarks>

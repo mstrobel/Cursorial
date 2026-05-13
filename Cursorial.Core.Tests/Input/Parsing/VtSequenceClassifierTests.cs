@@ -1,6 +1,6 @@
-using Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Parsing;
 
-namespace Cursorial.Core.Tests.Input.Parsing;
+namespace Cursorial.Tests.Input.Parsing;
 
 public class VtSequenceClassifierTests
 {

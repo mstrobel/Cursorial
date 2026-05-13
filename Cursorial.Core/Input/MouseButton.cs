@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input;
 
 /// <summary>
 /// Identifies a single mouse button. Extended buttons beyond <see cref="X2"/> map to

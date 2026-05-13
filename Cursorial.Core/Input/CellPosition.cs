@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input;
 
 /// <summary>
 /// A position within the terminal grid, reported in cell coordinates and optionally pixel

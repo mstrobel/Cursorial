@@ -1,10 +1,13 @@
 using System.Buffers;
 using System.Text;
-using Cursorial.Core.Input;
-using Cursorial.Core.Input.Parsing;
-using Cursorial.Core.Output;
-using Cursorial.Core.Terminal;
+
+using Cursorial.Input;
+using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
+using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Terminal;
+using Cursorial.Terminal.Stdio;
 
 // REPL for exercising Cursorial against a real terminal.
 //
@@ -154,7 +157,7 @@ static async Task DumpRawAsync()
     Console.WriteLine("Dumping raw stdin bytes. Press Ctrl+C to stop.");
     Console.WriteLine();
 
-    await using (var transports = Cursorial.Core.Terminal.Stdio.StdioTransports.Open())
+    await using (var transports = StdioTransports.Open())
     {
         using var stopCts = new CancellationTokenSource();
         var reader = transports.Source.Reader;
@@ -164,7 +167,7 @@ static async Task DumpRawAsync()
             while (!stopCts.IsCancellationRequested)
             {
                 var result = await reader.ReadAsync(stopCts.Token);
-                var bytes = BuffersExtensions.ToArray(result.Buffer);
+                var bytes = result.Buffer.ToArray();
                 reader.AdvanceTo(result.Buffer.End);
 
                 foreach (byte b in bytes)
@@ -191,16 +194,16 @@ static async Task TraceAsync()
     Console.WriteLine("Tracing raw bytes + decoded events. Press Ctrl+C to stop.");
     Console.WriteLine();
 
-    await using var transports = Cursorial.Core.Terminal.Stdio.StdioTransports.Open();
+    await using var transports = StdioTransports.Open();
     var mode = new VtInputMode();
     var negotiator = new VtTerminalNegotiator(transports.Source, transports.Sink, mode);
 
     try
     {
         // For tracing we want every key event to arrive as an escape sequence carrying full
-        // modifier state — including for plain text keys. Otherwise Kitty's text-shortcut
+        // modifier state — including for plain text keys. Otherwise, Kitty's text-shortcut
         // optimization elides the modifier annotation on presses of printable keys, leaving
-        // an asymmetric press-vs-release picture in the trace.
+        // an asymmetric press-vs.-release picture in the trace.
         var traceOptions = new NegotiationOptions
         {
             KittyKeyboardFlags = KittyKeyboardFlags.DisambiguateEscapeCodes
@@ -244,7 +247,7 @@ static async Task TraceAsync()
                 var buffer = result.Buffer;
                 if (buffer.Length > 0)
                 {
-                    var bytes = BuffersExtensions.ToArray(buffer);
+                    var bytes = buffer.ToArray();
                     await writer.WriteAsync(Encoding.UTF8.GetBytes(
                         $"RX  {BytesToHex(bytes)}  |{BytesToPrintable(bytes)}|\r\n"));
 
@@ -299,7 +302,7 @@ static async Task DemoTextSizingAsync()
     var caps = session.Capabilities.Output.TextSizing;
     var writer = session.Output.Writer;
 
-    if (!caps.Width && !caps.Scale)
+    if (caps is { Width: false, Scale: false })
     {
         await WriteLineAsync(writer,
             "  Terminal does not advertise text-sizing support. Sending the sequences anyway —");
@@ -365,8 +368,8 @@ static async Task WriteSizedAsync(
     string metadata,
     string text)
 {
-    // ESC ] 66 ; <metadata> ; <text> ST.  Uses the centralized prefix/terminator constants so
-    // the demo doubles as exercise for the Cursorial.Core.Output byte-string surface.
+    // ESC ] 66 ; <metadata> ; <text> ST.  Uses the centralized prefix/terminator constants,
+    // so the demo doubles as an exercise for the Cursorial.Output byte-string surface.
     var metadataBytes = Encoding.UTF8.GetBytes(metadata);
     var textBytes = Encoding.UTF8.GetBytes(text);
     var prefix = VtOutputSequences.KittyTextSizing.Prefix;
@@ -402,7 +405,7 @@ static async Task DemoRenderAsync()
     var writer = session.Output.Writer;
 
     // Enter alt screen and reset SGR. We leave the cursor decision to the cell buffer
-    // (CursorVisible = false renders DECRST 25 on first frame).
+    // (CursorVisible = false renders DECRST 25 on the first frame).
     ScreenWriter.WriteEnterAlternateScreen(writer);
     SgrEncoder.WriteReset(writer);
     await writer.FlushAsync();
@@ -508,13 +511,11 @@ static async Task DemoRenderAsync()
     }
 }
 
-/// <summary>
-/// Paint the render-demo content into <paramref name="buf"/>. Uses every piece of the rendering
-/// surface we've built: SGR styles via <c>buffer.Set</c>, wide glyphs that auto-pair into
-/// wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
-/// that changes once per second — the clock is how you tell the diff renderer is doing per-cell
-/// deltas instead of repainting the whole screen each frame.
-/// </summary>
+// Paint the render-demo content into <paramref name="buf"/>. Uses every piece of the rendering
+// surface we've built: SGR styles via <c>buffer.Set</c>, wide glyphs that auto-pair into
+// wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
+// that changes once per second — the clock is how you tell the diff renderer is doing per-cell
+// deltas instead of repainting the whole screen each frame.
 static void PaintRenderShowcase(CellBuffer buf, TerminalSession session)
 {
     var writer = session.Output.Writer;
@@ -729,7 +730,7 @@ static async Task ProbeAsync()
 
     var collected = new List<byte>();
 
-    await using (var transports = Cursorial.Core.Terminal.Stdio.StdioTransports.Open())
+    await using (var transports = StdioTransports.Open())
     {
         await transports.Sink.Writer.WriteAsync(new byte[] { 0x1B, (byte)'[', (byte)'>', (byte)'q' });
         await transports.Sink.Writer.WriteAsync(new byte[] { 0x1B, (byte)'[', (byte)'c' });
@@ -747,7 +748,7 @@ static async Task ProbeAsync()
             if (completed != readTask) break;
 
             var result = await readTask;
-            collected.AddRange(BuffersExtensions.ToArray(result.Buffer));
+            collected.AddRange(result.Buffer.ToArray());
             reader.AdvanceTo(result.Buffer.End);
             if (result.IsCompleted) break;
         }
@@ -769,22 +770,22 @@ static async Task ProbeAsync()
 }
 
 static bool IsStopSignal(InputEvent inputEvent) =>
-    inputEvent is KeyEvent { Key: Key.Character, Modifiers: KeyModifiers.Control } k
-        && k.Text.Length > 0
-        && (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C');
+    inputEvent is KeyEvent { Key: Key.Character, Modifiers: KeyModifiers.Control, Text.Length: > 0 } k &&
+    (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C');
 
-static string FormatEvent(InputEvent inputEvent) => inputEvent switch
-{
-    KeyEvent k => FormatKeyEvent(k),
-    MouseEvent m => FormatMouseEvent(m),
-    FocusEvent f => $"Focus       {(f.HasFocus ? "in" : "out")}",
-    PasteEvent p => $"Paste       \"{Escape(new string(p.Text.Span))}\" ({p.Text.Length} char{(p.Text.Length == 1 ? "" : "s")})",
-    ResizeEvent r => $"Resize      {r.Columns}x{r.Rows} cells"
-                     + (r.PixelWidth is { } pw && r.PixelHeight is { } ph ? $" ({pw}x{ph} px)" : ""),
-    DeviceResponseEvent d => $"DeviceResp  {d.Kind} \"{Encoding.ASCII.GetString(d.Payload.Span)}\"",
-    UnknownEvent u => $"Unknown     {u.RawBytes.Length} bytes: {BytesToHex(u.RawBytes.Span)}",
-    _ => $"<unhandled event type {inputEvent.GetType().Name}>",
-};
+static string FormatEvent(InputEvent inputEvent) =>
+    inputEvent switch
+    {
+        KeyEvent k   => FormatKeyEvent(k),
+        MouseEvent m => FormatMouseEvent(m),
+        FocusEvent f => $"Focus       {(f.HasFocus ? "in" : "out")}",
+        PasteEvent p => $"Paste       \"{Escape(new string(p.Text.Span))}\" ({p.Text.Length} char{(p.Text.Length == 1 ? "" : "s")})",
+        ResizeEvent r => $"Resize      {r.Columns}x{r.Rows} cells"
+                         + (r is { PixelWidth: {} pw, PixelHeight: {} ph } ? $" ({pw}x{ph} px)" : ""),
+        DeviceResponseEvent d => $"DeviceResp  {d.Kind} \"{Encoding.ASCII.GetString(d.Payload.Span)}\"",
+        UnknownEvent u        => $"Unknown     {u.RawBytes.Length} bytes: {BytesToHex(u.RawBytes.Span)}",
+        _                     => $"<unhandled event type {inputEvent.GetType().Name}>",
+    };
 
 static string FormatKeyEvent(KeyEvent k)
 {

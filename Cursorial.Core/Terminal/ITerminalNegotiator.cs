@@ -1,4 +1,7 @@
-namespace Cursorial.Core.Terminal;
+using Cursorial.Input;
+using Cursorial.Output;
+
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// Detects a terminal's identity and capabilities and, when configured to do so, negotiates
@@ -9,8 +12,8 @@ namespace Cursorial.Core.Terminal;
 /// <remarks>
 /// <para>
 /// This interface deliberately abstracts over the detection mechanism. The VT implementation
-/// drives a probe-and-response dance over <see cref="Cursorial.Core.Input.IInputByteSource"/>
-/// and <see cref="Cursorial.Core.Output.IOutputByteSink"/> using the DA1 sentinel pattern. The
+/// drives a probe-and-response dance over <see cref="IInputByteSource"/>
+/// and <see cref="IOutputByteSink"/> using the DA1 sentinel pattern. The
 /// Win32 implementation produces equivalent results from <c>GetConsoleMode</c>,
 /// <c>GetCurrentConsoleFontEx</c>, registry inspection, and parent-process identification.
 /// Consumers only see the negotiated capabilities; how they were obtained is not part of the

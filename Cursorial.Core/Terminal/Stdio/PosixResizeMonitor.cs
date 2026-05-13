@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Cursorial.Core.Input;
 
-namespace Cursorial.Core.Terminal.Stdio;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
 /// Watches for terminal-window resize notifications via SIGWINCH on POSIX (Linux / macOS /

@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// A response from the terminal to a query previously issued by the application — for example

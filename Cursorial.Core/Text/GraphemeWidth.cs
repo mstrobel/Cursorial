@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Cursorial.Core.Text;
+namespace Cursorial.Text;
 
 /// <summary>
 /// Compute the display width of Unicode text in terminal cells.

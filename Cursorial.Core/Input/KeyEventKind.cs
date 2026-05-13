@@ -1,4 +1,7 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// Distinguishes a key press from a key release. Devices whose

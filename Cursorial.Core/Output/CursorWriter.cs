@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// Emits cursor-positioning, cursor-visibility, and cursor-shape escape sequences. Pure byte

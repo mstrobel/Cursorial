@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Describes window- and surface-level facilities a terminal exposes — distinct from

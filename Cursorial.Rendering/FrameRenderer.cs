@@ -1,11 +1,13 @@
 using System.Buffers;
 using System.Text;
-using Cursorial.Core.Output;
+
+using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 
 namespace Cursorial.Rendering;
 
 /// <summary>
-/// Stateful diff renderer. Holds the previously-emitted frame plus the SGR / cursor state
+/// Stateful diff renderer. Holds the previously emitted frame plus the SGR / cursor state
 /// believed-active on the terminal, and emits the minimum sequence of VT bytes to bring the
 /// terminal to match a supplied <see cref="CellBuffer"/>.
 /// </summary>
@@ -34,8 +36,8 @@ namespace Cursorial.Rendering;
 /// <para>
 /// <b>Full redraws fire when:</b> the renderer has no prior frame; the back buffer's
 /// dimensions don't match the front buffer's (the terminal resized); or
-/// <see cref="FrameRendererOptions.ForceFullRedraw"/> is set on the renderer. Otherwise the
-/// renderer diffs cell-by-cell.
+/// <see cref="FrameRendererOptions.ForceFullRedraw"/> is set on the renderer. Otherwise,
+/// the renderer diffs cell-by-cell.
 /// </para>
 /// <para>
 /// <b>Wide cells.</b> <see cref="CellKind.WideContinuation"/> cells are skipped during
@@ -69,18 +71,7 @@ public sealed class FrameRenderer
     {
     }
 
-    /// <summary>
-    /// Construct a renderer that adapts each cell's <see cref="Style"/> to the target terminal's
-    /// <paramref name="capabilities"/> before diffing or emitting. RGB colors are quantized to
-    /// palette indices when truecolor isn't available; extended-underline shapes fall back to
-    /// <see cref="UnderlineStyle.Single"/>; unsupported attributes are dropped.
-    /// </summary>
-    public FrameRenderer(OutputCapabilities capabilities)
-        : this(capabilities, options: default)
-    {
-    }
-
-    public FrameRenderer(OutputCapabilities? capabilities, FrameRendererOptions options)
+    public FrameRenderer(OutputCapabilities? capabilities, FrameRendererOptions options = default)
     {
         _options = options;
         _quantizer = capabilities is null ? null : new StyleQuantizer(capabilities);
@@ -151,7 +142,7 @@ public sealed class FrameRenderer
             {
                 // Quantize per cell when a StyleQuantizer is attached. The quantized form is
                 // what we emit, what we compare against the front buffer, and what we snapshot
-                // for next frame — all three must agree so a stable rendered frame produces an
+                // for the next frame — all three must agree so a stable rendered frame produces an
                 // empty delta.
                 var cell = Adapt(row[c]);
                 int frontIdx = r * _frontCols + c;
@@ -171,7 +162,7 @@ public sealed class FrameRenderer
 
                 if (cell == _frontCells![frontIdx]) continue;
 
-                // Re-position cursor if our tracked position isn't (r, c). After writing a cell
+                // Re-position the cursor if our tracked position isn't (r, c). After writing a cell
                 // at the right edge, the cursor's "next" position would equal Columns — we mark
                 // ourselves as out-of-position so the next emit triggers an explicit move.
                 if (_cursorRow != r || _cursorCol != c)
@@ -213,7 +204,7 @@ public sealed class FrameRenderer
         // Empty grapheme on a Single cell renders as a space; that paints the cell's background
         // and advances the cursor. WideLeft with empty grapheme is degenerate — emit two spaces
         // so the terminal still advances by 2.
-        string grapheme = cell.Grapheme is null || cell.Grapheme.Length == 0
+        string grapheme = string.IsNullOrEmpty(cell.Grapheme)
             ? (cell.Kind == CellKind.WideLeft ? "  " : " ")
             : cell.Grapheme;
 

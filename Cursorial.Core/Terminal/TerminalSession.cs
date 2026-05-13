@@ -1,10 +1,12 @@
 using System.Runtime.InteropServices;
-using Cursorial.Core.Input;
-using Cursorial.Core.Input.Parsing;
-using Cursorial.Core.Output;
-using Cursorial.Core.Terminal.Stdio;
 
-namespace Cursorial.Core.Terminal;
+using Cursorial.Input;
+using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
+using Cursorial.Output;
+using Cursorial.Terminal.Stdio;
+
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// A configured terminal session — the orchestrated combination of a negotiator (run once at

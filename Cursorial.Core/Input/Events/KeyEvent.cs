@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// A keyboard event. <see cref="Kind"/> distinguishes <see cref="KeyEventKind.Down"/> from

@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Output;
+using Cursorial.Output.Capabilities;
+
+namespace Cursorial.Output;
 
 /// <summary>
 /// Capability-aware <see cref="Style"/> adapter. Applies the target terminal's

@@ -1,8 +1,9 @@
 using System.Buffers;
 using System.Text;
-using Cursorial.Core.Output;
 
-namespace Cursorial.Core.Tests.Output;
+using Cursorial.Output;
+
+namespace Cursorial.Tests.Output;
 
 public class CursorWriterTests
 {

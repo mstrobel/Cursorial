@@ -1,6 +1,6 @@
-using Cursorial.Core.Text;
+using Cursorial.Text;
 
-namespace Cursorial.Core.Tests.Text;
+namespace Cursorial.Tests.Text;
 
 public class GraphemeWidthTests
 {

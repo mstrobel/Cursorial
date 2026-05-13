@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// A complete paste of text delivered as a single event. Only emitted by devices whose

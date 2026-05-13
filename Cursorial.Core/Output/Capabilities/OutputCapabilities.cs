@@ -1,8 +1,10 @@
-namespace Cursorial.Core.Output;
+using Cursorial.Input.Capabilities;
+
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Aggregate description of which output features a terminal honors, broken down by category.
-/// Mirrors the structure of <see cref="Cursorial.Core.Input.InputCapabilities"/> on the input
+/// Mirrors the structure of <see cref="InputCapabilities"/> on the input
 /// side — together they describe the full negotiated feature surface of a terminal session.
 /// </summary>
 public sealed record class OutputCapabilities(

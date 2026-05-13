@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input.Parsing;
 
 /// <summary>
 /// Receives <see cref="InputEvent"/>s emitted by an interpreter as it consumes classifier

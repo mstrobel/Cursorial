@@ -1,4 +1,7 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// Transforms a stream of input events — filtering, reordering, fabricating, or rewriting —

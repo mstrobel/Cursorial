@@ -1,9 +1,10 @@
 using System.Buffers;
 using System.IO.Pipelines;
-using Cursorial.Core.Input;
-using Cursorial.Core.Output;
 
-namespace Cursorial.Core.Tests.Terminal;
+using Cursorial.Input;
+using Cursorial.Output;
+
+namespace Cursorial.Tests.Terminal;
 
 /// <summary>
 /// Test-only <see cref="IInputByteSource"/> backed by a <see cref="Pipe"/>. Tests pre-populate

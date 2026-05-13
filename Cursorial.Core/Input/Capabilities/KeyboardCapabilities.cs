@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input.Capabilities;
 
 /// <summary>
 /// Describes the fidelity of keyboard input a device reports.

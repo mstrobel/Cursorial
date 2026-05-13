@@ -1,6 +1,6 @@
 using System.IO.Pipelines;
 
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input;
 
 /// <summary>
 /// Abstraction over a stream of raw input bytes. Used by parser-based input devices —

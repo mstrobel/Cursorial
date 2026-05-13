@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input;
 
 /// <summary>
 /// Bitmask of mouse buttons currently held. Each <see cref="MouseButton"/> value (other than

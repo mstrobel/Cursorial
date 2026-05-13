@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// Encodes a <see cref="Style"/> into the SGR escape-sequence bytes that drive a terminal's

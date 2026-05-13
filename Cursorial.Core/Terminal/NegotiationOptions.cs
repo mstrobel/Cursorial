@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Terminal;
+using Cursorial.Input.Parsing;
+
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// Knobs controlling what <see cref="ITerminalNegotiator.NegotiateAsync"/> attempts to enable
@@ -35,14 +37,14 @@ public sealed record class NegotiationOptions
 
     /// <summary>
     /// The Kitty keyboard protocol flags to push when <see cref="EnableKittyKeyboard"/> is true.
-    /// Default omits <see cref="Cursorial.Core.Input.Parsing.KittyKeyboardFlags.ReportAllKeysAsEscapeCodes"/>
+    /// Default omits <see cref="Input.Parsing.KittyKeyboardFlags.ReportAllKeysAsEscapeCodes"/>
     /// because that flag changes the encoding of plain text input — opt in deliberately when needed.
     /// </summary>
-    public Cursorial.Core.Input.Parsing.KittyKeyboardFlags KittyKeyboardFlags { get; init; } =
-        Cursorial.Core.Input.Parsing.KittyKeyboardFlags.DisambiguateEscapeCodes
-        | Cursorial.Core.Input.Parsing.KittyKeyboardFlags.ReportEventTypes
-        | Cursorial.Core.Input.Parsing.KittyKeyboardFlags.ReportAlternateKeys
-        | Cursorial.Core.Input.Parsing.KittyKeyboardFlags.ReportAssociatedText;
+    public KittyKeyboardFlags KittyKeyboardFlags { get; init; } =
+        KittyKeyboardFlags.DisambiguateEscapeCodes
+        | KittyKeyboardFlags.ReportEventTypes
+        | KittyKeyboardFlags.ReportAlternateKeys
+        | KittyKeyboardFlags.ReportAssociatedText;
 
     /// <summary>Enable Win32 Input Mode (DECSET 9001) when running under a ConPTY-backed terminal.</summary>
     public bool EnableWin32InputMode { get; init; } = true;

@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Terminal;
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// Reads process environment variables. Abstracted so the terminal negotiator can be exercised

@@ -1,7 +1,9 @@
-using Cursorial.Core.Input;
-using Cursorial.Core.Tests.Terminal;
+using Cursorial.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+using Cursorial.Tests.Terminal;
 
-namespace Cursorial.Core.Tests.Input;
+namespace Cursorial.Tests.Input;
 
 public class EventInputDeviceTests
 {

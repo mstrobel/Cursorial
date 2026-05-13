@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Terminal;
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// What the negotiation phase learned about the terminal's identity. All fields except

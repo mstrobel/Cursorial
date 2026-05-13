@@ -1,9 +1,11 @@
-namespace Cursorial.Core.Output;
+using Cursorial.Output.Capabilities;
+
+namespace Cursorial.Output;
 
 /// <summary>
 /// Output-side byte-string constants — the wire form of escape sequences the application
 /// emits to drive terminal behavior. The input-side mirror (sequences the terminal sends
-/// back) lives in <c>VtInputSequences</c> under <c>Cursorial.Core.Input.Parsing</c>.
+/// back) lives in <c>VtInputSequences</c> under <c>Cursorial.Input.Parsing</c>.
 /// </summary>
 /// <remarks>
 /// As Cursorial's output surface grows (SGR builders, cursor control, screen control,

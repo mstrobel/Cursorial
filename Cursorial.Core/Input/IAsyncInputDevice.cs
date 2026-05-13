@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// An input device whose events are consumed via an awaitable <see cref="IAsyncEnumerable{T}"/>.

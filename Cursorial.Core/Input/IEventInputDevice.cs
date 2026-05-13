@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// An input device that delivers events through classic .NET delegate events. Subscribers

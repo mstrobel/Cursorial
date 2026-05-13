@@ -1,6 +1,6 @@
-using Cursorial.Core.Terminal;
+using Cursorial.Terminal;
 
-namespace Cursorial.Core.Tests.Terminal;
+namespace Cursorial.Tests.Terminal;
 
 /// <summary>
 /// Test stub for <see cref="IEnvironmentReader"/>. Tests build the desired environment with

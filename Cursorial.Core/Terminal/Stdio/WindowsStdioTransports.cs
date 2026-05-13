@@ -1,9 +1,11 @@
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
-using Cursorial.Core.Input;
-using Cursorial.Core.Output;
 
-namespace Cursorial.Core.Terminal.Stdio;
+using Cursorial.Input;
+using Cursorial.Output;
+
+using Microsoft.Win32.SafeHandles;
+
+namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
 /// Windows implementation of <see cref="IStdioTransports"/>. Disables echo / line / processed

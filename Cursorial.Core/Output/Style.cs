@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// The full set of SGR-controlled styling applied to a run of text: foreground / background

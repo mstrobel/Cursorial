@@ -1,8 +1,9 @@
 using System.IO.Pipelines;
-using Cursorial.Core.Input;
-using Cursorial.Core.Output;
 
-namespace Cursorial.Core.Terminal.Stdio;
+using Cursorial.Input;
+using Cursorial.Output;
+
+namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
 /// Public factory for <see cref="IStdioTransports"/>. Dispatches to the platform-specific

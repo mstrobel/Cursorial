@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// A non-mouse pointing-device event: pen, stylus, or finger touch. Reported only by devices

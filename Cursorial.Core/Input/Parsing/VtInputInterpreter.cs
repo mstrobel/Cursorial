@@ -1,7 +1,9 @@
 using System.Buffers;
 using System.Text;
 
-namespace Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input.Parsing;
 
 /// <summary>
 /// Consumes <see cref="IVtSequenceTokenSink"/> callbacks from <see cref="VtSequenceClassifier"/>

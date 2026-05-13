@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input.Parsing;
 
 /// <summary>
 /// Mutable bag of terminal-mode state the input interpreter consults when classifying

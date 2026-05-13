@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// Cursor shape and blink behavior as configured via DECSCUSR (<c>CSI Ps SP q</c>). The pairs

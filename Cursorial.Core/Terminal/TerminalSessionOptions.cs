@@ -1,6 +1,6 @@
-using Cursorial.Core.Input;
+using Cursorial.Input;
 
-namespace Cursorial.Core.Terminal;
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// Configuration for opening a <see cref="TerminalSession"/>. Carries every knob the session

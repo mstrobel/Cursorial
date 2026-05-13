@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Describes inline-image and bitmap-graphics protocols a terminal accepts.

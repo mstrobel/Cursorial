@@ -1,7 +1,7 @@
-using Cursorial.Core.Input;
-using Cursorial.Core.Output;
+using Cursorial.Input;
+using Cursorial.Output;
 
-namespace Cursorial.Core.Terminal.Stdio;
+namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
 /// A platform-specific pair of <see cref="IInputByteSource"/> and <see cref="IOutputByteSink"/>

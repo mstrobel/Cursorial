@@ -1,4 +1,7 @@
-namespace Cursorial.Core.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input;
 
 /// <summary>
 /// Push-style <see cref="IEventInputDevice"/> built on top of a pull-style

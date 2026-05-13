@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// A mouse event reporting button activity, motion, drag, or wheel deltas.

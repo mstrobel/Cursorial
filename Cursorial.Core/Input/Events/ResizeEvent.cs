@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// Terminal window resize notification. Delivered through the input pipeline so consumers

@@ -1,8 +1,10 @@
-using Cursorial.Core.Input;
-using Cursorial.Core.Input.Parsing;
-using Cursorial.Core.Tests.Terminal;
+using Cursorial.Input;
+using Cursorial.Input.Capabilities;
+using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
+using Cursorial.Tests.Terminal;
 
-namespace Cursorial.Core.Tests.Input;
+namespace Cursorial.Tests.Input;
 
 public class VtInputDeviceTests
 {

@@ -1,9 +1,11 @@
 using System.Buffers;
 using System.Text;
-using Cursorial.Core.Output;
+
+using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 
-namespace Cursorial.Rendering.Tests;
+namespace Cursorial.Tests.Rendering;
 
 public class FrameRendererQuantizationTests
 {

@@ -1,9 +1,7 @@
-using Cursorial.Core.Input;
-using Cursorial.Core.Input.Parsing;
-using Cursorial.Core.Output;
-using Cursorial.Core.Terminal;
+using Cursorial.Input.Events;
+using Cursorial.Terminal;
 
-namespace Cursorial.Core.Tests.Terminal;
+namespace Cursorial.Tests.Terminal;
 
 public class TerminalSessionTests
 {

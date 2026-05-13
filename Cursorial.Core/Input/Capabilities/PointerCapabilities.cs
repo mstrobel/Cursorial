@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Capabilities;
 
 /// <summary>
 /// Describes pen, stylus, and touch input fidelity. On most terminals these are unsupported;

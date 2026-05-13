@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Terminal;
+namespace Cursorial.Terminal;
 
 /// <summary>
 /// Identifies a terminal program by family. Used by quirk-handling code to opt into or around

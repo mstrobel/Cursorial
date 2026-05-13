@@ -1,6 +1,6 @@
-using Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Parsing;
 
-namespace Cursorial.Core.Tests.Input.Parsing;
+namespace Cursorial.Tests.Input.Parsing;
 
 /// <summary>
 /// Test sink that records every classifier callback as a strongly-typed record so individual

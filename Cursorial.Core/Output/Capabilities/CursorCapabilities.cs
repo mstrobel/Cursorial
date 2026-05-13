@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Describes which cursor-presentation controls a terminal honors.

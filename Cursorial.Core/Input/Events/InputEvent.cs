@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Events;
 
 /// <summary>
 /// Base type for all events produced by an <see cref="IInputDevice"/>. The concrete derived

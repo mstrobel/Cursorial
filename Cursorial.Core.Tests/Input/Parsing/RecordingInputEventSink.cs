@@ -1,7 +1,7 @@
-using Cursorial.Core.Input;
-using Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
 
-namespace Cursorial.Core.Tests.Input.Parsing;
+namespace Cursorial.Tests.Input.Parsing;
 
 /// <summary>Test sink that captures every event the interpreter emits.</summary>
 internal sealed class RecordingInputEventSink : IInputEventSink

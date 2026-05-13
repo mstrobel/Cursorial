@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Describes the color fidelity and color-control facilities an output channel supports.

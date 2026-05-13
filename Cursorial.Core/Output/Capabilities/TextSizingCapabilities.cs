@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output.Capabilities;
 
 /// <summary>
 /// Describes a terminal's support for the Kitty text-sizing protocol — OSC 66 sequences that

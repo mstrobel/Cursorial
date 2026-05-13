@@ -1,4 +1,4 @@
-using Cursorial.Core.Output;
+using Cursorial.Output;
 
 namespace Cursorial.Rendering;
 

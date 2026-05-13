@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Output;
+namespace Cursorial.Output;
 
 /// <summary>
 /// Built-in <see cref="IBlendingMode"/> singletons. All modes short-circuit to "return source"

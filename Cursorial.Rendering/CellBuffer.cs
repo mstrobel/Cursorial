@@ -1,5 +1,5 @@
-using Cursorial.Core.Output;
-using Cursorial.Core.Text;
+using Cursorial.Output;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering;
 

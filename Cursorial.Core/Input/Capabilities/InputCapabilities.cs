@@ -1,4 +1,4 @@
-namespace Cursorial.Core.Input;
+namespace Cursorial.Input.Capabilities;
 
 /// <summary>
 /// Aggregate description of which input categories a device can produce, broken down by

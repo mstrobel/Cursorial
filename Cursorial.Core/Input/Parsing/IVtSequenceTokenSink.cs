@@ -1,4 +1,6 @@
-namespace Cursorial.Core.Input.Parsing;
+using Cursorial.Input.Events;
+
+namespace Cursorial.Input.Parsing;
 
 /// <summary>
 /// Receives classified tokens emitted by <see cref="VtSequenceClassifier"/>. The classifier

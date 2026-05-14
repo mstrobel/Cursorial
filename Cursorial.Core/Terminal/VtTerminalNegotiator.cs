@@ -195,9 +195,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         // Kitty keyboard: gate on family because pushing on a non-Kitty terminal is silently
         // ignored, which would cause us to wrongly report the protocol as enabled.
-        if (options.EnableKittyKeyboard
-            && TerminalSupportsKittyKeyboard(identification.Family)
-            && options.KittyKeyboardFlags != KittyKeyboardFlags.None)
+        if (options.EnableKittyKeyboard &&
+            TerminalSupportsKittyKeyboard(identification.Family) &&
+            options.KittyKeyboardFlags != KittyKeyboardFlags.None)
         {
             QueueKittyPush(options.KittyKeyboardFlags);
             applied.KittyKeyboard = true;
@@ -370,9 +370,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         try
         {
-            while (!collector.SeenSentinel
-                   && !cancellationToken.IsCancellationRequested
-                   && !timeoutTask.IsCompleted)
+            while (!collector.SeenSentinel &&
+                   !cancellationToken.IsCancellationRequested &&
+                   !timeoutTask.IsCompleted)
             {
                 pendingRead ??= _source.Reader.ReadAsync(cancellationToken).AsTask();
 

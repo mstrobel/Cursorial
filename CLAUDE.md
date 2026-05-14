@@ -134,7 +134,7 @@ not yet plumbed — TODO when needed.
 
 `Cursorial.Rendering` (the cell-buffer + diff frame renderer) is described in "Rendering conventions" below.
 Higher-level concerns (widget tree, layout, focus, input routing) are not started; if/when they land they live in
-a separate `Cursorial.Widgets` library on top of `Cursorial.Rendering` rather than in `Cursorial.Rendering` itself,
+a separate `Cursorial.UI` library on top of `Cursorial.Rendering` rather than in `Cursorial.Rendering` itself,
 which is meant to be the lowest layer with a TUI abstraction (everything above byte writing).
 
 ## Input module conventions (`Cursorial.Core.Input`)

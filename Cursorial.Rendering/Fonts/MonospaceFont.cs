@@ -23,6 +23,9 @@ public sealed class MonospaceFont : IGlyphFont
     public static MonospaceFont Default { get; } = new();
 
     /// <inheritdoc/>
+    public Style EnsureCompatibleStyle(in Style style) => style;
+
+    /// <inheritdoc/>
     public Size Measure(ReadOnlySpan<char> text)
     {
         if (text.IsEmpty) return Size.Empty;

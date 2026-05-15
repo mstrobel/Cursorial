@@ -17,5 +17,5 @@ internal sealed class StubEnvironmentReader : IEnvironmentReader
     }
 
     public string? GetVariable(string name) =>
-        _values.TryGetValue(name, out var value) ? value : null;
+        _values.GetValueOrDefault(name);
 }

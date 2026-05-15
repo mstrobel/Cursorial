@@ -38,6 +38,9 @@ public readonly record struct Style(
 {
     /// <summary>The "no styling" sentinel — default colors and no attributes.</summary>
     public static Style Default => default;
+    
+    /// <summary>The default color for text shadows.</summary>
+    public static Style DefaultShadow => Default.WithForeground(Color.FromRgba(0, 0, 0, 127));
 
     /// <summary>Replace the foreground color.</summary>
     public Style WithForeground(Color color) => this with { Foreground = color };
@@ -61,9 +64,8 @@ public readonly record struct Style(
     public Style WithUnderlineColor(Color color) => this with { UnderlineColor = color };
 
     /// <summary>True when no foreground, background, or attribute carries any non-default value.</summary>
-    public bool IsDefault =>
-        Foreground.IsDefault
-        && Background.IsDefault
-        && Attributes == TextAttributes.None
-        && UnderlineColor.IsDefault;
+    public bool IsDefault => Foreground.IsDefault &&
+                             Background.IsDefault &&
+                             Attributes == TextAttributes.None &&
+                             UnderlineColor.IsDefault;
 }

@@ -89,8 +89,8 @@ public sealed class SizedTextFragment : IBufferFragment
 
         bool needsWidth = Sizing.Width != 0;
 
-        if (needsScale && !capabilities.TextSizing.Scale) return false;
         if (needsWidth && !capabilities.TextSizing.Width) return false;
+        if (needsScale && !capabilities.TextSizing.Scale) return false;
 
         // If neither sub-feature is exercised, the fragment renders identically to plain text, and
         // a regular MonospaceFont would be the better choice.

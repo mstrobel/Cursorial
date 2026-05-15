@@ -221,17 +221,17 @@ public static class GraphemeWidth
         // Supplementary planes.
         return cp switch
                {
-                   >= 0x1F300 and <= 0x1F64F => true, // Misc Symbols and Pictographs, Emoticons
-                   >= 0x1F680 and <= 0x1F6FF => true, // Transport and Map Symbols
-                   >= 0x1F700 and <= 0x1F77F => true, // Alchemical Symbols
-                   >= 0x1F780 and <= 0x1F7FF => true, // Geometric Shapes Extended
-                   >= 0x1F800 and <= 0x1F8FF => true, // Supplemental Arrows-C
-                   >= 0x1F900 and <= 0x1F9FF => true, // Supplemental Symbols and Pictographs
-                   >= 0x1FA00 and <= 0x1FA6F => true, // Chess Symbols
-                   >= 0x1FA70 and <= 0x1FAFF => true, // Symbols and Pictographs Extended-A
-                   >= 0x1FB00 and <= 0x1FBFF => true, // Symbols for Legacy Computing
-                   >= 0x20000 and <= 0x2FFFD => true, // CJK Extension B, C, D, E, F, I (Plane 2)
-                   >= 0x30000 and <= 0x3FFFD => true, // CJK Extension G, H (Plane 3)
+                   >= 0x1F300 and <= 0x1F64F => true,  // Misc Symbols and Pictographs, Emoticons
+                   >= 0x1F680 and <= 0x1F6FF => true,  // Transport and Map Symbols
+                   >= 0x1F700 and <= 0x1F77F => true,  // Alchemical Symbols
+                   >= 0x1F780 and <= 0x1F7FF => true,  // Geometric Shapes Extended
+                   >= 0x1F800 and <= 0x1F8FF => true,  // Supplemental Arrows-C
+                   >= 0x1F900 and <= 0x1F9FF => true,  // Supplemental Symbols and Pictographs
+                   >= 0x1FA00 and <= 0x1FA6F => true,  // Chess Symbols
+                   >= 0x1FA70 and <= 0x1FAFF => true,  // Symbols and Pictographs Extended-A
+                   >= 0x1FB00 and <= 0x1FBFF => false, // Symbols for Legacy Computing
+                   >= 0x20000 and <= 0x2FFFD => true,  // CJK Extension B, C, D, E, F, I (Plane 2)
+                   >= 0x30000 and <= 0x3FFFD => true,  // CJK Extension G, H (Plane 3)
                    _                         => false
                };
     }

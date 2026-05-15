@@ -5,8 +5,9 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
-using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Content;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
 
@@ -466,7 +467,7 @@ static async Task DemoRenderAsync()
 
             if (stopCts.IsCancellationRequested) break;
 
-            PaintRenderShowcase(buffer);
+            PaintRenderShowcase(buffer, session.Capabilities.Output);
 
             var scratch = new ArrayBufferWriter<byte>();
             renderer.Render(buffer, scratch);
@@ -518,14 +519,19 @@ static async Task DemoRenderAsync()
 // wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
 // that changes once per second — the clock is how you tell the diff renderer is doing per-cell
 // deltas instead of repainting the whole screen each frame.
-static void PaintRenderShowcase(CellBuffer buf)
+static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
 {
-    // Everything that used to flow through session.Output.Writer (sized text via OSC 66) now
-    // goes through the cell buffer as a fragment — the FrameRenderer handles emission, capability
-    // gating, and DECSC/DECRC bracketing for us.
+    // The sized title flows through a ScaledText content (Phase 3) — on terminals that honor
+    // OSC 66 it attaches a SizedTextFragment; on the rest it falls back to a bundled FIGlet
+    // face. The cell buffer + FrameRenderer take care of the rest (capability gating,
+    // DECSC/DECRC bracketing, diff rendering).
     buf.CursorVisible = false;
     buf.Clear();
 
+    var style = Style.Default;//.WithBackground(Color.FromRgb(40, 44, 52));
+    
+    buf.Fill(new Cell("", CellKind.Single, style));
+    
     int cols = buf.Columns;
     int rows = buf.Rows;
 
@@ -541,7 +547,7 @@ static void PaintRenderShowcase(CellBuffer buf)
 
     // ---- 16-color ANSI palette ----
     int row = 5;
-    if (row < rows) PaintLine(buf, row, 1, "ANSI 16-color palette:", default);
+    if (row < rows) PaintLine(buf, row, 1, "ANSI 16-color palette:", style);
     if (row + 1 < rows)
     {
         for (int i = 0; i < 16 && (1 + i * 3 + 2) < cols; i++)
@@ -561,7 +567,7 @@ static void PaintRenderShowcase(CellBuffer buf)
 
     // ---- Truecolor gradient ----
     row += 2;
-    if (row < rows) PaintLine(buf, row, 1, "24-bit truecolor gradient:", default);
+    if (row < rows) PaintLine(buf, row, 1, "24-bit truecolor gradient:", style);
     if (row + 1 < rows)
     {
         int width = Math.Min(cols - 2, 60);
@@ -583,64 +589,68 @@ static void PaintRenderShowcase(CellBuffer buf)
 
     // ---- Wide glyphs ----
     row += 3;
-    if (row < rows) PaintLine(buf, row, 1, "Wide glyphs (emoji + CJK, each occupies 2 cells):", default);
+    if (row < rows) PaintLine(buf, row, 1, "Wide glyphs (emoji + CJK, each occupies 2 cells):", style);
+
     if (row + 1 < rows)
     {
         int x = 1;
         foreach (var g in new[] { "🚀", "🌍", "🎨", "🐈", "中", "日", "本", "文" })
         {
             if (x + 2 >= cols) break;
-            buf.Set(row + 1, x, g, Style.Default);
+            buf.Set(row + 1, x, g, style);
             x += 3; // 2 cells for the glyph + 1 space
         }
     }
 
     // ---- Attribute showcase ----
     row += 2;
-    if (row < rows) PaintLine(buf, row, 1, "Text attributes:", default);
+    if (row < rows) PaintLine(buf, row, 1, "Text attributes:", style);
     if (row + 1 < rows)
     {
         int x = 1;
         x += PaintWord(buf, row + 1, x, "Bold ",
-            Style.Default.WithAttributes(TextAttributes.Bold));
+            style.WithAttributes(TextAttributes.Bold));
         x += PaintWord(buf, row + 1, x, "Italic ",
-            Style.Default.WithAttributes(TextAttributes.Italic));
+            style.WithAttributes(TextAttributes.Italic));
         x += PaintWord(buf, row + 1, x, "Underline ",
-            Style.Default.WithAttributes(TextAttributes.Underline));
+            style.WithAttributes(TextAttributes.Underline));
         x += PaintWord(buf, row + 1, x, "Curly ",
-            Style.Default
+            style
                 .WithAttributes(TextAttributes.Underline)
                 .WithUnderlineStyle(UnderlineStyle.Curly)
                 .WithUnderlineColor(Color.FromRgb(255, 80, 80)));
         x += PaintWord(buf, row + 1, x, "Strike ",
-            Style.Default.WithAttributes(TextAttributes.Strikethrough));
+            style.WithAttributes(TextAttributes.Strikethrough));
         PaintWord(buf, row + 1, x, "Inverse",
-            Style.Default.WithAttributes(TextAttributes.Inverse));
+            style.WithAttributes(TextAttributes.Inverse));
     }
 
     // ---- Alpha-blended overlay ----
     row += 2;
-    if (row < rows) PaintLine(buf, row, 1, "Alpha-blended overlay (Multiply mode, α=128):", default);
+    if (row < rows) PaintLine(buf, row, 1, "Alpha-blended overlay (Multiply mode, α=128):", style);
     if (row + 1 < rows && row + 4 < rows)
     {
         // Backdrop: solid color stripes.
         var stripes = new[]
-        {
-            Color.FromRgb(220, 60, 60),
-            Color.FromRgb(60, 220, 60),
-            Color.FromRgb(60, 60, 220),
-            Color.FromRgb(220, 220, 60),
-        };
+                      {
+                          Color.FromRgb(220, 60, 60),
+                          Color.FromRgb(60, 220, 60),
+                          Color.FromRgb(60, 60, 220),
+                          Color.FromRgb(220, 220, 60),
+                      };
+
         int barWidth = Math.Min(cols - 2, 60);
+
         for (int dy = 0; dy < 3; dy++)
         {
             if (row + 1 + dy >= rows) break;
+
             for (int x = 0; x < barWidth; x++)
             {
                 var bg = stripes[(x * stripes.Length) / barWidth];
+
                 buf.Set(row + 1 + dy, 1 + x, " ",
-                    new Style(
-                        Color.Default, bg, default, default, default));
+                        new(Color.Default, bg, default, default, default));
             }
         }
 
@@ -671,26 +681,25 @@ static void PaintRenderShowcase(CellBuffer buf)
     }
 
     // ---- Sized Text below Title Bar ----
-    // Registered as a cell-buffer fragment so the renderer owns its emission — bracketed with
-    // DECSC / DECRC after the regular cell pass, capability-gated on OSC 66 support, and
-    // composing with the rest of the painted UI. On terminals without OSC 66 the fragment
-    // reports unsupported and the renderer skips it; a future ScaledText content type will
-    // fall back to a Figlet rendering through the font system.
-    var sizedTitleStyle = Style.Default
-        .WithForeground(Color.FromPalette(4))
+    // ScaledText is the capability-aware entry point: when the terminal honors OSC 66 it
+    // attaches a SizedTextFragment (Kitty / Ghostty / etc.); otherwise it falls back to a
+    // bundled FIGlet face. The styled title here uses italic + curly underline so the OSC 66
+    // path picks up the SGR backdrop visibly when supported.
+    var sizedTitleStyle = style
+        .WithForeground(Color.FromRgb(192, 202, 245))
         .WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
         .WithUnderlineStyle(UnderlineStyle.Curly)
         .WithUnderlineColor(Color.FromPalette(5));
 
-    buf.AddFragment(2, 1, new SizedTextFragment(new TextSizing(Scale: 2),
-                                                "Cursorial Rendering Demo",
-                                                sizedTitleStyle));
+    var sizedTitle = new ScaledText("Cursorial Rendering Demo", new TextSizing(Scale: 2));
+
+    sizedTitle.Paint(buf, row: 2, column: 1, style: sizedTitleStyle, capabilities: outputCaps);
 
     // ---- Clock in top-right corner ----
     string clock = DateTime.Now.ToString("HH:mm:ss");
     if (clock.Length + 1 < cols)
     {
-        var clockStyle = Style.Default
+        var clockStyle = style
             .WithForeground(Color.FromRgb(255, 255, 255))
             .WithBackground(Color.FromRgb(40, 40, 70))
             .WithAttributes(TextAttributes.Bold);

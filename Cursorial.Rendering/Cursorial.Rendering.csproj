@@ -10,4 +10,17 @@
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!--
+            Bundled FIGlet fonts — public-domain Glenn Chappell originals from the canonical
+            FIGlet 2.x distribution. Embedded as resources so consumers don't need to ship .flf
+            files of their own for the common cases.
+        -->
+        <EmbeddedResource Include="Fonts\Embedded\standard.flf" LogicalName="Cursorial.Rendering.Fonts.Embedded.standard.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\slant.flf"    LogicalName="Cursorial.Rendering.Fonts.Embedded.slant.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\small.flf"    LogicalName="Cursorial.Rendering.Fonts.Embedded.small.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\big.flf"      LogicalName="Cursorial.Rendering.Fonts.Embedded.big.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\mini.flf"     LogicalName="Cursorial.Rendering.Fonts.Embedded.mini.flf" />
+    </ItemGroup>
+
 </Project>

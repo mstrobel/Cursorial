@@ -26,6 +26,17 @@ namespace Cursorial.Rendering.Fonts;
 public interface IGlyphFont
 {
     /// <summary>
+    /// Ensures the specified <paramref name="style"/> is compatible with this font. May adjust
+    /// properties such as colors or attributes in the style to adhere to font-specific constraints
+    /// or limitations.
+    /// </summary>
+    /// <param name="style">The style to validate and potentially adjust.</param>
+    /// <returns>
+    /// A modified <see cref="Style"/> instance that is compatible with the current font.
+    /// </returns>
+    Style EnsureCompatibleStyle(in Style style);
+
+    /// <summary>
     /// Measure the cell footprint of <paramref name="text"/> when painted with this font, without
     /// touching a buffer. Used by layout code to allocate space before painting.
     /// </summary>

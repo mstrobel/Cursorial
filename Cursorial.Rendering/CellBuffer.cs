@@ -141,7 +141,7 @@ public sealed class CellBuffer
         var previous = _cells[index];
 
         // Apply the active blending mode against the cell being overwritten. SourceOver / empty
-        // stack is a no-op (the mode just returns source) but every other mode tints / darkens /
+        // stack is a no-op (the mode just returns source), but every other mode tints / darkens /
         // lightens based on the existing color at this position.
         var blended = BlendStyle(style, previous.Style);
 
@@ -210,6 +210,7 @@ public sealed class CellBuffer
         ValidateCoordinates(row, column);
 
         var key = (row, column);
+
         if (_fragments.TryGetValue(key, out var existing))
             ClearCoverage(row, column, existing.Fragment.GetSize());
 
@@ -237,19 +238,23 @@ public sealed class CellBuffer
         int colEnd = Math.Min(_columns, column + Math.Max(1, size.Columns));
 
         for (int r = row; r < rowEnd; r++)
+        {
             for (int c = column; c < colEnd; c++)
             {
                 // Cleanup: if we cover the right half of a wide-left, the left becomes orphaned.
                 // Reset it to blank so we never expose a half-painted wide cell.
                 int idx = r * _columns + c;
                 var existing = _cells[idx];
+
                 if (existing.Kind == CellKind.WideContinuation && c > 0)
                     _cells[idx - 1] = Cell.Blank;
+
                 if (existing.Kind == CellKind.WideLeft && c + 1 < _columns)
                     _cells[idx + 1] = Cell.Blank;
 
                 _cells[idx] = Cell.FragmentCover;
             }
+        }
     }
 
     private void ClearCoverage(int row, int column, Size size)
@@ -258,8 +263,10 @@ public sealed class CellBuffer
         int colEnd = Math.Min(_columns, column + Math.Max(1, size.Columns));
 
         for (int r = row; r < rowEnd; r++)
+        {
             for (int c = column; c < colEnd; c++)
                 _cells[r * _columns + c] = Cell.Blank;
+        }
     }
 
     /// <summary>
@@ -292,8 +299,8 @@ public sealed class CellBuffer
     {
         return source with
                {
-                   Foreground = Composite(source.Foreground, backdrop.Foreground, mode),
-                   Background = Composite(source.Background, backdrop.Background, mode),
+                   Foreground = Composite(source.Foreground, backdrop.Background, mode),
+                   Background = source.Background != Color.Default ? Composite(source.Background, backdrop.Background, mode) : backdrop.Background,
                    UnderlineColor = Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
                };
     }
@@ -302,7 +309,7 @@ public sealed class CellBuffer
     /// Compose <paramref name="source"/> over <paramref name="backdrop"/>: first apply the
     /// blending mode's color math, then composite the result against the backdrop linearly
     /// using the source's alpha. Returns an opaque color — the cell buffer always stores
-    /// fully-resolved colors because terminal output is fundamentally opaque.
+    /// fully resolved colors because terminal output is fundamentally opaque.
     /// </summary>
     /// <remarks>
     /// Compositing is skipped (the mode's blended color is returned verbatim, normalized to
@@ -315,8 +322,8 @@ public sealed class CellBuffer
     {
         var blended = mode.Blend(source, backdrop);
 
-        // Alpha compositing only engages for RGB-on-RGB. Otherwise the source's alpha is
-        // ignored and the blended color (which is whatever the mode produced) wins outright.
+        // Alpha compositing only engages for RGB-on-RGB. Otherwise, the source's alpha is
+        // ignored, and the blended color (which is whatever the mode produced) wins outright.
         if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb || source.Alpha == 255)
         {
             return blended.Kind == ColorKind.Rgb ? blended.WithAlpha(255) : blended;
@@ -333,7 +340,7 @@ public sealed class CellBuffer
 
     /// <summary>
     /// Resize the buffer to <paramref name="columns"/> × <paramref name="rows"/>. Contents are
-    /// discarded; the new buffer is initialized to blank cells. Cursor state is preserved.
+    /// discarded; the new buffer is initialized to blank cells. The cursor state is preserved.
     /// </summary>
     public void Resize(int columns, int rows)
     {

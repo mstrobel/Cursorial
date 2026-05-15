@@ -18,10 +18,27 @@ namespace Cursorial.Output.Capabilities;
 /// True when the terminal accepts OSC 4 to redefine indexed palette colors, OSC 10 to set the
 /// default foreground, and OSC 11 to set the default background.
 /// </param>
+/// <param name="DefaultForeground">
+/// The terminal's default foreground color, as reported by an OSC 10 query at session open.
+/// <see langword="null"/> when the terminal didn't respond or the response couldn't be parsed.
+/// Useful for theme code that needs to pick accent colors against the user's actual scheme.
+/// </param>
+/// <param name="DefaultBackground">
+/// The terminal's default background color, as reported by an OSC 11 query at session open.
+/// <see langword="null"/> when the terminal didn't respond. The most common consumer of this
+/// is light-vs-dark scheme detection (test the luminance of the response).
+/// </param>
+/// <param name="DefaultCursorColor">
+/// The terminal's default cursor color, as reported by an OSC 12 query at session open.
+/// <see langword="null"/> when the terminal didn't respond.
+/// </param>
 public sealed record ColorCapabilities(ColorDepth Depth,
                                        bool TruecolorVerified,
                                        bool DefaultColorReset,
-                                       bool OscPaletteSet)
+                                       bool OscPaletteSet,
+                                       Color? DefaultForeground = null,
+                                       Color? DefaultBackground = null,
+                                       Color? DefaultCursorColor = null)
 {
     public static ColorCapabilities None { get; } = new(Depth: ColorDepth.NoColor,
                                                         TruecolorVerified: false,

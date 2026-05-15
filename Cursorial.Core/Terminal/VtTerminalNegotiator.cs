@@ -1,4 +1,5 @@
 using System.IO.Pipelines;
+using System.Text;
 
 using Cursorial.Input;
 using Cursorial.Input.Capabilities;
@@ -113,6 +114,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             await VerifyAppliedOptInsAsync(options, cancellationToken).ConfigureAwait(false);
 
             ApplyToInputMode(_applied);
+        }
+
+        // Probe color capabilities — empirical truecolor verification via OSC 4 set+query
+        // round-trip, plus default fg / bg / cursor color queries (OSC 10 / 11 / 12). Skipped
+        // when opt-ins are turned off, since the same connection-quality assumption (the
+        // terminal is alive and willing to respond) underlies both phases.
+        if (options.OptIns == OptInPolicy.Allowed)
+        {
+            await ProbeColorsAsync(options, cancellationToken).ConfigureAwait(false);
         }
 
         // _negotiated is now durably 1 even if anything above threw — restore still runs.
@@ -507,6 +517,184 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         SynchronizedOutput,
     }
 
+    // ---- Color probes -----------------------------------------------------------------
+
+    // Stash for color-probe results, read by ResolveColorCapabilities after probes complete.
+    private bool _truecolorVerified;
+    private Output.Color? _defaultForeground;
+    private Output.Color? _defaultBackground;
+    private Output.Color? _defaultCursorColor;
+
+    // Fixed three-byte probe color used for truecolor verification. The triplet is arbitrary
+    // but distinctive — picked so it doesn't land near any common default-palette value
+    // (avoiding false positives if a terminal's palette[255] happens to be close to our probe).
+    private const byte TruecolorProbeRed   = 0xAB;
+    private const byte TruecolorProbeGreen = 0xCD;
+    private const byte TruecolorProbeBlue  = 0xEF;
+
+    /// <summary>
+    /// Probe color capabilities — set palette slot 255 to a distinctive triplet, query it back
+    /// for empirical truecolor verification, and query OSC 10 / 11 / 12 for the terminal's
+    /// default foreground / background / cursor colors. All queries plus the DA1 sentinel are
+    /// batched into a single round-trip; responses route to a single shared collector.
+    /// </summary>
+    private async Task ProbeColorsAsync(NegotiationOptions options, CancellationToken cancellationToken)
+    {
+        // Write the truecolor SET — palette slot 255 to (AB, CD, EF). Use 2-digit hex so the
+        // terminal's 16-bit-internal representation (rgb:abab/cdcd/efef on xterm-class
+        // terminals) round-trips cleanly when we parse the top byte of each channel.
+        await WriteOsc4SetAsync(255, TruecolorProbeRed, TruecolorProbeGreen, TruecolorProbeBlue,
+                                cancellationToken).ConfigureAwait(false);
+
+        // Query palette slot 255 to see what the terminal stored.
+        await WriteOsc4QueryAsync(255, cancellationToken).ConfigureAwait(false);
+
+        // Default-color queries — OSC 10 / 11 / 12 each accept a single "?" parameter to ask
+        // for the current value.
+        await WriteAsync(Osc10Query, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(Osc11Query, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(Osc12Query, cancellationToken).ConfigureAwait(false);
+
+        // DA1 sentinel.
+        await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
+
+        var collector = _probeCollector!;
+        var classifier = _probeClassifier!;
+        var interpreter = _probeInterpreter!;
+
+        await DrainResponsesUntilSentinelAsync(classifier,
+                                               interpreter,
+                                               collector,
+                                               sentinelTarget: collector.SentinelCount + 1,
+                                               options.ProbeTimeout,
+                                               cancellationToken).ConfigureAwait(false);
+
+        // Extract truecolor verification — find the PaletteColor response for slot 255 (or
+        // accept any PaletteColor response if it's the only one, since the index is in the
+        // payload).
+        foreach (var response in collector.Responses)
+        {
+            if (response.Kind != DeviceResponseKind.PaletteColor) continue;
+            if (!TryParsePalettePayload(response.Payload.Span, out int index, out byte r, out byte g, out byte b))
+                continue;
+            if (index != 255) continue;
+
+            // Byte-exact comparison: a truecolor terminal stores the value losslessly, so the
+            // top byte of each channel in its response matches what we sent. A terminal that
+            // quantizes to 256 colors (or to a different palette representation) returns a
+            // different value.
+            _truecolorVerified = r == TruecolorProbeRed &&
+                                 g == TruecolorProbeGreen &&
+                                 b == TruecolorProbeBlue;
+            break;
+        }
+
+        // Default colors — first matching response per kind. Most terminals send one of each;
+        // if multiple arrive we take the first as the canonical value.
+        _defaultForeground   = FindFirstColor(collector, DeviceResponseKind.ForegroundColor);
+        _defaultBackground   = FindFirstColor(collector, DeviceResponseKind.BackgroundColor);
+        _defaultCursorColor  = FindFirstColor(collector, DeviceResponseKind.CursorColor);
+    }
+
+    private static Output.Color? FindFirstColor(ResponseCollector collector, DeviceResponseKind kind)
+    {
+        foreach (var response in collector.Responses)
+        {
+            if (response.Kind != kind) continue;
+            if (TryParseRgbColor(response.Payload.Span, out byte r, out byte g, out byte b))
+                return Output.Color.FromRgb(r, g, b);
+        }
+        return null;
+    }
+
+    /// <summary>Parse "<c>&lt;index&gt;;rgb:RRRR/GGGG/BBBB</c>" — an OSC 4 palette-color payload.</summary>
+    private static bool TryParsePalettePayload(ReadOnlySpan<byte> payload, out int index,
+                                               out byte r, out byte g, out byte b)
+    {
+        index = 0;
+        r = g = b = 0;
+
+        int separator = payload.IndexOf((byte) ';');
+        if (separator < 0) return false;
+
+        if (!TryParseAsciiInt(payload[..separator], out index)) return false;
+        return TryParseRgbColor(payload[(separator + 1)..], out r, out g, out b);
+    }
+
+    /// <summary>Parse "<c>rgb:R*/G*/B*</c>" with 1–4 hex digits per channel, reducing to 8-bit.</summary>
+    private static bool TryParseRgbColor(ReadOnlySpan<byte> payload, out byte r, out byte g, out byte b)
+    {
+        r = g = b = 0;
+
+        // Must begin with the "rgb:" prefix.
+        ReadOnlySpan<byte> prefix = "rgb:"u8;
+        if (payload.Length < prefix.Length) return false;
+        if (!payload[..prefix.Length].SequenceEqual(prefix)) return false;
+
+        var rest = payload[prefix.Length..];
+        int slash1 = rest.IndexOf((byte) '/');
+        if (slash1 < 0) return false;
+        var redSpan = rest[..slash1];
+        var afterRed = rest[(slash1 + 1)..];
+
+        int slash2 = afterRed.IndexOf((byte) '/');
+        if (slash2 < 0) return false;
+        var greenSpan = afterRed[..slash2];
+        var blueSpan = afterRed[(slash2 + 1)..];
+
+        return TryParseHexChannel(redSpan,   out r) &&
+               TryParseHexChannel(greenSpan, out g) &&
+               TryParseHexChannel(blueSpan,  out b);
+    }
+
+    /// <summary>
+    /// Convert a 1–4 hex-digit X11 color-channel string to 8-bit. One-digit values duplicate
+    /// (F → FF); two-or-more-digit values take the leading two hex digits.
+    /// </summary>
+    private static bool TryParseHexChannel(ReadOnlySpan<byte> hex, out byte value)
+    {
+        value = 0;
+        if (hex.IsEmpty || hex.Length > 4) return false;
+
+        if (hex.Length == 1)
+        {
+            if (!TryParseHexDigit(hex[0], out int d)) return false;
+            value = (byte) ((d << 4) | d);
+            return true;
+        }
+
+        if (!TryParseHexDigit(hex[0], out int hi)) return false;
+        if (!TryParseHexDigit(hex[1], out int lo)) return false;
+        value = (byte) ((hi << 4) | lo);
+        return true;
+    }
+
+    private static bool TryParseHexDigit(byte b, out int value)
+    {
+        if (b >= (byte) '0' && b <= (byte) '9') { value = b - (byte) '0';      return true; }
+        if (b >= (byte) 'a' && b <= (byte) 'f') { value = b - (byte) 'a' + 10; return true; }
+        if (b >= (byte) 'A' && b <= (byte) 'F') { value = b - (byte) 'A' + 10; return true; }
+        value = 0;
+        return false;
+    }
+
+    private async ValueTask WriteOsc4SetAsync(int index, byte r, byte g, byte b, CancellationToken ct)
+    {
+        // "ESC ] 4 ; <index> ; rgb:RR/GG/BB ESC \"
+        var payload = Encoding.ASCII.GetBytes($"\x1b]4;{index};rgb:{r:x2}/{g:x2}/{b:x2}\x1b\\");
+        await WriteAsync(payload, ct).ConfigureAwait(false);
+    }
+
+    private async ValueTask WriteOsc4QueryAsync(int index, CancellationToken ct)
+    {
+        var payload = Encoding.ASCII.GetBytes($"\x1b]4;{index};?\x1b\\");
+        await WriteAsync(payload, ct).ConfigureAwait(false);
+    }
+
+    private static ReadOnlyMemory<byte> Osc10Query { get; } = "\x1b]10;?\x1b\\"u8.ToArray();
+    private static ReadOnlyMemory<byte> Osc11Query { get; } = "\x1b]11;?\x1b\\"u8.ToArray();
+    private static ReadOnlyMemory<byte> Osc12Query { get; } = "\x1b]12;?\x1b\\"u8.ToArray();
+
     /// <summary>
     /// Parse a <c>CSI 16 t</c> response payload of the form "6;height;width". The leading "6;"
     /// (the reply code) is consumed by the classifier into the 'parameters' span; what arrives
@@ -812,12 +1000,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         return new ColorCapabilities(
             Depth: depth,
-            // Empirical truecolor verification (OSC 11 round-trip) is a follow-up; for now
-            // report the claimed depth without empirical confirmation.
-            TruecolorVerified: false,
+            TruecolorVerified: _truecolorVerified,
             DefaultColorReset: depth >= ColorDepth.Ansi16,
             OscPaletteSet: depth >= ColorDepth.Ansi256 &&
-                           identification.Family is not TerminalFamily.AppleTerminal);
+                           identification.Family is not TerminalFamily.AppleTerminal,
+            DefaultForeground: _defaultForeground,
+            DefaultBackground: _defaultBackground,
+            DefaultCursorColor: _defaultCursorColor);
     }
 
     private ColorDepth ResolveColorDepth(TerminalIdentification identification)

@@ -932,6 +932,17 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
+    public void DecRqmPrivateResponse_EmitsDecRqmPrivateEvent()
+    {
+        // CSI ? 1006 ; 1 $ y — DECRQM private response for SGR mouse, status=set.
+        Feed("\x1b[?1006;1$y");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.DecRqmPrivate, r.Kind);
+        Assert.Equal("1006;1", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
     public void DsrCursorPositionReport_EmitsCursorPositionEvent()
     {
         // CSI 12 ; 34 R — cursor at row 12, col 34.

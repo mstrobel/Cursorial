@@ -48,6 +48,27 @@ public static class VtOutputSequences
     /// is benign (the body is ignored) but leaves the user with unrendered escape bytes if the
     /// terminal also strips OSCs it doesn't recognize.
     /// </remarks>
+    /// <summary>
+    /// xterm window-manipulation OSC sequences. Format: <c>ESC ] N ; payload ST</c> where N is
+    /// 0 (both icon and title), 1 (icon only), or 2 (title only). Universally supported by
+    /// terminal emulators that report <see cref="OutputCapabilities.Window"/>.<c>TitleSet</c>
+    /// or <c>IconSet</c>.
+    /// </summary>
+    public static class Window
+    {
+        /// <summary><c>ESC ] 0 ;</c> — set both icon name and window title.</summary>
+        public static ReadOnlySpan<byte> IconAndTitlePrefix => "\x1b]0;"u8;
+
+        /// <summary><c>ESC ] 1 ;</c> — set icon name only.</summary>
+        public static ReadOnlySpan<byte> IconPrefix => "\x1b]1;"u8;
+
+        /// <summary><c>ESC ] 2 ;</c> — set window title only.</summary>
+        public static ReadOnlySpan<byte> TitlePrefix => "\x1b]2;"u8;
+
+        /// <summary><c>ESC \</c> — String Terminator (ST). BEL (0x07) also works on most terminals.</summary>
+        public static ReadOnlySpan<byte> StringTerminator => "\x1b\\"u8;
+    }
+
     public static class KittyTextSizing
     {
         /// <summary><c>ESC ] 66 ;</c> — opening of the OSC 66 envelope. The metadata block follows.</summary>

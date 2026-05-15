@@ -51,6 +51,9 @@ public sealed class Image : IContent
     /// <summary>Style applied to the placeholder rectangle when no graphics protocol is supported.</summary>
     public Style PlaceholderStyle { get; }
 
+    /// <summary>Text to display when no graphics protocol is supported. For icons, could be an emoji.</summary>
+    public string PlaceholderText => "[image]";
+
     /// <inheritdoc/>
     public Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities)
     {

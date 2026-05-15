@@ -177,6 +177,19 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     {
         if (!intermediates.IsEmpty)
         {
+            // DECRQM response (CSI ? <mode> ; <status> $ y) — the documented mechanism for
+            // verifying which DEC private modes the terminal actually set. We surface it as a
+            // DeviceResponseEvent so the negotiator's verification phase can match responses
+            // by mode-number.
+            if (privatePrefix == VtInputSequences.DecPrivatePrefix &&
+                final == (byte) 'y' &&
+                intermediates.Length == 1 &&
+                intermediates[0] == (byte) '$')
+            {
+                EmitDeviceResponse(DeviceResponseKind.DecRqmPrivate, parameters);
+                return;
+            }
+
             // CSI sequences with intermediate bytes are mostly mode-control commands that don't
             // turn into input events. Surface as UnknownEvent rather than dropping silently.
             EmitUnknownCsi(privatePrefix, parameters, intermediates, final);

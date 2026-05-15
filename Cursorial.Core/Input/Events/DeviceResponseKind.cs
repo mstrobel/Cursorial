@@ -78,5 +78,15 @@ public enum DeviceResponseKind
     /// indicates the requested termcap entry was not recognized; otherwise the payload carries
     /// the (still hex-encoded) name=value pairs.
     /// </summary>
-    XtGetTcap
+    XtGetTcap,
+
+    /// <summary>
+    /// Response to a DECRQM (Request Mode) query — <c>CSI ? &lt;mode&gt; ; &lt;status&gt; $ y</c>
+    /// for DEC private modes (1006, 1004, 2004, 2026, …). The
+    /// <see cref="DeviceResponseEvent.Payload"/> carries the raw parameter run
+    /// "<c>&lt;mode&gt;;&lt;status&gt;</c>" as ASCII bytes; consumers re-parse to extract the
+    /// mode-number and status code (0 = not recognized, 1 = set, 2 = reset, 3 = permanently set,
+    /// 4 = permanently reset).
+    /// </summary>
+    DecRqmPrivate
 }

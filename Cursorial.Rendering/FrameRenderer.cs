@@ -57,6 +57,7 @@ public sealed class FrameRenderer
     private int _frontRows;
 
     private Style _currentStyle;
+    private Hyperlink _currentHyperlink;
     private int _cursorRow;
     private int _cursorCol;
     private bool _firstFrame = true;
@@ -110,6 +111,7 @@ public sealed class FrameRenderer
             SgrEncoder.WriteReset(output);
             CursorWriter.WriteMoveTo(output, 0, 0);
             _currentStyle = Style.Default;
+            _currentHyperlink = Hyperlink.None;
             _cursorRow = 0;
             _cursorCol = 0;
             _frontCols = back.Columns;
@@ -129,6 +131,14 @@ public sealed class FrameRenderer
         // SGR re-establishment cost (a handful of bytes).
         SgrEncoder.WriteReset(output);
         _currentStyle = Style.Default;
+
+        // Same reasoning for OSC 8 — leaving a hyperlink open at frame boundary would extend
+        // the link target into the next prompt or any subsequent ad-hoc terminal output.
+        if (!_currentHyperlink.IsEmpty)
+        {
+            HyperlinkWriter.WriteClose(output);
+            _currentHyperlink = Hyperlink.None;
+        }
 
         _firstFrame = false;
     }
@@ -181,6 +191,20 @@ public sealed class FrameRenderer
                     CursorWriter.WriteMoveTo(output, r, c);
                     _cursorRow = r;
                     _cursorCol = c;
+                }
+
+                // Hyperlink state is a separate OSC 8 channel — emit close then open at
+                // boundaries, independent of the SGR delta. The hyperlink is part of Style so
+                // the inequality check above already covers the case where only the link
+                // changed (in which case SgrEncoder.WriteDelta below produces no bytes).
+                if (cell.Style.Hyperlink != _currentHyperlink)
+                {
+                    if (!_currentHyperlink.IsEmpty)
+                        HyperlinkWriter.WriteClose(output);
+                    if (!cell.Style.Hyperlink.IsEmpty)
+                        HyperlinkWriter.WriteOpen(output, cell.Style.Hyperlink.Uri.AsSpan(),
+                                                  cell.Style.Hyperlink.Id.AsSpan());
+                    _currentHyperlink = cell.Style.Hyperlink;
                 }
 
                 if (cell.Style != _currentStyle)

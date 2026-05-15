@@ -44,6 +44,24 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private int _restored;
     private AppliedOptIns _applied;
 
+    // Probe-phase pending read, persisted across DrainResponsesUntilSentinelAsync calls so a
+    // second drain phase (DECRQM verification, future truecolor / default-color probes) can
+    // reuse a still-in-flight read instead of starting a concurrent one on the same
+    // PipeReader (which throws "Concurrent reads or writes are not supported.").
+    private Task<System.IO.Pipelines.ReadResult>? _pendingProbeRead;
+
+    // Shared probe pipeline: a single classifier + interpreter + collector serves every probe
+    // phase. The classifier holds partial-sequence state that must persist across phases (a
+    // sequence split across two reads should reassemble cleanly), and the collector
+    // accumulates every response we've seen so far — each phase waits for an additional
+    // sentinel (DA1) tick rather than starting from zero. This is also what makes the
+    // in-memory test fixture work: when responses are pre-enqueued, the first read returns
+    // everything in one buffer; with shared state, the verification phase finds its DECRQM
+    // responses already in the collector instead of waiting on an empty pipe.
+    private VtSequenceClassifier? _probeClassifier;
+    private VtInputInterpreter? _probeInterpreter;
+    private ResponseCollector? _probeCollector;
+
     public VtTerminalNegotiator(
         IInputByteSource source,
         IOutputByteSink sink,
@@ -85,6 +103,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (options.OptIns == OptInPolicy.Allowed)
         {
             await ApplyOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
+
+            // After applying opt-ins, query DECRQM for each DEC private mode we just enabled.
+            // A status=0 (unrecognized) or 2 (reset) response means the terminal silently
+            // didn't honor our DECSET — we clear the corresponding bit so the realized
+            // capabilities reflect what the terminal *actually* supports, not what we asked
+            // for. Modes the terminal doesn't acknowledge with a DECRQM response at all leave
+            // their bit alone (absent evidence is not evidence of absence).
+            await VerifyAppliedOptInsAsync(options, cancellationToken).ConfigureAwait(false);
+
             ApplyToInputMode(_applied);
         }
 
@@ -304,16 +331,20 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         await WriteAsync(CellSizeRequest, cancellationToken).ConfigureAwait(false);
         await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
 
-        var collector = new ResponseCollector();
-        var classifier = new VtSequenceClassifier();
-        var interpreter = new VtInputInterpreter(_mode, collector, _time);
+        // Initialize the shared probe pipeline. This collector accumulates every response
+        // across every probe phase the negotiator runs.
+        _probeCollector ??= new ResponseCollector();
+        _probeClassifier ??= new VtSequenceClassifier();
+        _probeInterpreter ??= new VtInputInterpreter(_mode, _probeCollector, _time);
 
-        await DrainResponsesUntilSentinelAsync(classifier,
-                                               interpreter,
-                                               collector,
+        await DrainResponsesUntilSentinelAsync(_probeClassifier,
+                                               _probeInterpreter,
+                                               _probeCollector,
+                                               sentinelTarget: _probeCollector.SentinelCount + 1,
                                                options.ProbeTimeout,
                                                cancellationToken).ConfigureAwait(false);
 
+        var collector = _probeCollector;
         var cellSize = collector.FindFirst(DeviceResponseKind.CellSizeInPixels);
 
         if (cellSize is not null && TryParseCellSize(cellSize.Payload.Span, out int h, out int w))
@@ -325,6 +356,155 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         return new ProbeResponses(
             XtVersion: collector.FindFirst(DeviceResponseKind.XtVersion),
             PrimaryDeviceAttributes: collector.FindFirst(DeviceResponseKind.PrimaryDeviceAttributes));
+    }
+
+    /// <summary>
+    /// Verify that the DEC private modes we just enabled actually took effect, by batching
+    /// DECRQM queries (<c>CSI ? &lt;mode&gt; $ p</c>) for each applied bit plus a DA1 sentinel.
+    /// Responses arrive tagged by mode number (<c>CSI ? &lt;mode&gt; ; &lt;status&gt; $ y</c>),
+    /// so they can be matched in parallel as they stream in.
+    /// </summary>
+    /// <remarks>
+    /// Status interpretation per the VT510 reference:
+    /// <list type="bullet">
+    /// <item><description>0 — unrecognized; the terminal doesn't implement this mode. Clear the bit.</description></item>
+    /// <item><description>1 — set; the mode is currently on. Confirmed.</description></item>
+    /// <item><description>2 — reset; the mode is off (our DECSET didn't stick). Clear the bit.</description></item>
+    /// <item><description>3 — permanently set; mode is always on. Treat as confirmed.</description></item>
+    /// <item><description>4 — permanently reset; mode can never be on. Clear the bit.</description></item>
+    /// </list>
+    /// If no DECRQM response arrives for a given mode by the time DA1 returns, we leave the
+    /// bit as-is — silence is treated as "unknowable" rather than "definitely unsupported",
+    /// because some legacy terminals respond to DA1 but not to DECRQM.
+    /// </remarks>
+    private async Task VerifyAppliedOptInsAsync(
+        NegotiationOptions options, CancellationToken cancellationToken)
+    {
+        // Build the (mode, applied-bit) pairs we want to verify. Kitty keyboard and Win32 input
+        // mode don't have DECRQM responses (Kitty uses its own keyboard-stack query, Win32
+        // input mode is an MS extension with no documented verification path) — skip those.
+        // Mouse tracking lives in two bits: MouseTracking covers both SGR (1006) and button-
+        // event (1002); we verify 1006 since that's the one consumers depend on directly.
+        var probes = new List<(int Mode, ModeBit Bit)>(6);
+        if (_applied.MouseTracking)      probes.Add((1006, ModeBit.MouseTracking));
+        if (_applied.MouseTracking)      probes.Add((1002, ModeBit.MouseTrackingButtonEvent));
+        if (_applied.AnyEventMouse)      probes.Add((1003, ModeBit.AnyEventMouse));
+        if (_applied.FocusEvents)        probes.Add((1004, ModeBit.FocusEvents));
+        if (_applied.BracketedPaste)     probes.Add((2004, ModeBit.BracketedPaste));
+        if (_applied.SynchronizedOutput) probes.Add((2026, ModeBit.SynchronizedOutput));
+
+        if (probes.Count == 0) return;
+
+        // Emit queries + DA1 sentinel.
+        foreach (var probe in probes)
+            await WriteDecRqmAsync(probe.Mode, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
+
+        // Share the probe pipeline with the identification phase. The collector already holds
+        // identification responses; drain until *another* sentinel arrives — that's the DA1
+        // that terminates this phase. If responses were pre-enqueued (in tests, or by a chatty
+        // terminal), they're already in the collector and the drain returns immediately.
+        var collector = _probeCollector!;
+        var classifier = _probeClassifier!;
+        var interpreter = _probeInterpreter!;
+
+        await DrainResponsesUntilSentinelAsync(classifier,
+                                               interpreter,
+                                               collector,
+                                               sentinelTarget: collector.SentinelCount + 1,
+                                               options.ProbeTimeout,
+                                               cancellationToken).ConfigureAwait(false);
+
+        // For each probe, find the matching DECRQM response and update _applied. Either of
+        // the mouse-tracking probes (1006 SGR or 1002 button-event) reporting unsupported is
+        // enough to drop the whole MouseTracking bit, since SGR without button-event yields
+        // no useful press events and button-event without SGR can't decode coordinates.
+        foreach (var probe in probes)
+        {
+            if (!TryFindDecRqmStatus(collector, probe.Mode, out int status)) continue;
+            bool confirmed = status is 1 or 3;
+            if (!confirmed) ClearAppliedBit(probe.Bit);
+        }
+    }
+
+    private async ValueTask WriteDecRqmAsync(int mode, CancellationToken cancellationToken)
+    {
+        // CSI ? <mode> $ p — 5 fixed bytes plus the ASCII mode digits.
+        Span<byte> bytes = stackalloc byte[16];
+        int written = 0;
+        bytes[written++] = 0x1B;
+        bytes[written++] = (byte) '[';
+        bytes[written++] = (byte) '?';
+
+        // Decimal-format the mode in place.
+        Span<byte> digits = stackalloc byte[6];
+        int digitCount = 0;
+        int v = mode;
+        do { digits[digitCount++] = (byte) ('0' + v % 10); v /= 10; } while (v > 0);
+        for (int i = digitCount - 1; i >= 0; i--) bytes[written++] = digits[i];
+
+        bytes[written++] = (byte) '$';
+        bytes[written++] = (byte) 'p';
+
+        // Cannot pass stackalloc spans to async APIs; rent a heap byte[] for this one write.
+        var payload = bytes[..written].ToArray();
+        await WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool TryFindDecRqmStatus(ResponseCollector collector, int mode, out int status)
+    {
+        status = 0;
+        foreach (var response in collector.Responses)
+        {
+            if (response.Kind != DeviceResponseKind.DecRqmPrivate) continue;
+
+            // Payload is "<mode>;<status>" as ASCII bytes.
+            var payload = response.Payload.Span;
+            int sep = payload.IndexOf((byte) ';');
+            if (sep < 0) continue;
+
+            if (!TryParseAsciiInt(payload[..sep], out int respMode)) continue;
+            if (respMode != mode) continue;
+
+            if (!TryParseAsciiInt(payload[(sep + 1)..], out status)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private static bool TryParseAsciiInt(ReadOnlySpan<byte> bytes, out int value)
+    {
+        value = 0;
+        if (bytes.IsEmpty) return false;
+        foreach (byte b in bytes)
+        {
+            if (b < (byte) '0' || b > (byte) '9') return false;
+            value = value * 10 + (b - (byte) '0');
+        }
+        return true;
+    }
+
+    private void ClearAppliedBit(ModeBit bit)
+    {
+        switch (bit)
+        {
+            case ModeBit.MouseTracking:              _applied.MouseTracking = false; break;
+            case ModeBit.MouseTrackingButtonEvent:   _applied.MouseTracking = false; break;
+            case ModeBit.AnyEventMouse:              _applied.AnyEventMouse = false; break;
+            case ModeBit.FocusEvents:                _applied.FocusEvents = false; break;
+            case ModeBit.BracketedPaste:             _applied.BracketedPaste = false; break;
+            case ModeBit.SynchronizedOutput:         _applied.SynchronizedOutput = false; break;
+        }
+    }
+
+    private enum ModeBit
+    {
+        MouseTracking,
+        MouseTrackingButtonEvent,
+        AnyEventMouse,
+        FocusEvents,
+        BracketedPaste,
+        SynchronizedOutput,
     }
 
     /// <summary>
@@ -357,9 +537,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         VtSequenceClassifier classifier,
         VtInputInterpreter interpreter,
         ResponseCollector collector,
+        int sentinelTarget,
         TimeSpan probeTimeout,
         CancellationToken cancellationToken)
     {
+        // Fast path — sentinel already observed (e.g., a previous phase processed pre-buffered
+        // bytes that included this phase's response set).
+        if (collector.SentinelCount >= sentinelTarget) return;
+
         // Total-elapsed timeout for the probe phase. We use Task.WhenAny rather than the
         // CancellationToken passed to ReadAsync because Stream.ReadAsync over POSIX stdin
         // (`__ConsoleStream` on a thread-pool worker performing a synchronous `read(2)`)
@@ -368,19 +553,21 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // eventually produces land in the StreamPipeReader's buffer for the input device
         // pump to consume.
         var timeoutTask = Task.Delay(probeTimeout, _time, cancellationToken);
-        Task<ReadResult>? pendingRead = null;
 
         try
         {
-            while (!collector.SeenSentinel &&
+            while (collector.SentinelCount < sentinelTarget &&
                    !cancellationToken.IsCancellationRequested &&
                    !timeoutTask.IsCompleted)
             {
-                pendingRead ??= _source.Reader.ReadAsync(cancellationToken).AsTask();
+                // Reuse a pending read from a previous drain phase if one is still in flight.
+                // Starting a fresh ReadAsync while the old one is alive throws "Concurrent
+                // reads or writes are not supported." on the underlying PipeReader.
+                _pendingProbeRead ??= _source.Reader.ReadAsync(cancellationToken).AsTask();
 
-                var completed = await Task.WhenAny(pendingRead, timeoutTask).ConfigureAwait(false);
+                var completed = await Task.WhenAny(_pendingProbeRead, timeoutTask).ConfigureAwait(false);
 
-                if (completed != pendingRead)
+                if (completed != _pendingProbeRead)
                 {
                     // Timeout (or outer cancel) fired before bytes arrived.
                     break;
@@ -390,7 +577,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
                 try
                 {
-                    result = await pendingRead.ConfigureAwait(false);
+                    result = await _pendingProbeRead.ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -398,7 +585,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 }
                 finally
                 {
-                    pendingRead = null;
+                    _pendingProbeRead = null;
                 }
 
                 var buffer = result.Buffer;
@@ -789,7 +976,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         private readonly List<DeviceResponseEvent> _responses = [];
 
-        public bool SeenSentinel { get; private set; }
+        /// <summary>
+        /// Total number of DA1 (PrimaryDeviceAttributes) responses observed since construction.
+        /// Each probe phase increments this once — phase N completes when the count reaches N.
+        /// </summary>
+        public int SentinelCount { get; private set; }
+
+        public IReadOnlyList<DeviceResponseEvent> Responses => _responses;
 
         public void OnInputEvent(InputEvent inputEvent)
         {
@@ -798,7 +991,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             _responses.Add(response);
 
             if (response.Kind == DeviceResponseKind.PrimaryDeviceAttributes)
-                SeenSentinel = true;
+                SentinelCount++;
         }
 
         public DeviceResponseEvent? FindFirst(DeviceResponseKind kind)

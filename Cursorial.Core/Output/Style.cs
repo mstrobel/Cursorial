@@ -29,12 +29,18 @@ namespace Cursorial.Output;
 /// Color of the underline (SGR 58). Only emitted when the colored-underline capability is
 /// available; <see cref="Color.Default"/> means "follow the foreground."
 /// </param>
+/// <param name="Hyperlink">
+/// OSC 8 hyperlink anchor for this cell. <see cref="Hyperlink.None"/> (the default) means no
+/// hyperlink. The renderer emits hyperlink open/close brackets at run boundaries so adjacent
+/// cells with the same hyperlink share one logical link target.
+/// </param>
 public readonly record struct Style(
     Color Foreground,
     Color Background,
     TextAttributes Attributes,
     UnderlineStyle UnderlineStyle,
-    Color UnderlineColor)
+    Color UnderlineColor,
+    Hyperlink Hyperlink = default)
 {
     /// <summary>The "no styling" sentinel — default colors and no attributes.</summary>
     public static Style Default => default;
@@ -63,9 +69,17 @@ public readonly record struct Style(
     /// <summary>Replace the underline color.</summary>
     public Style WithUnderlineColor(Color color) => this with { UnderlineColor = color };
 
-    /// <summary>True when no foreground, background, or attribute carries any non-default value.</summary>
+    /// <summary>Replace the hyperlink — pass <see cref="Output.Hyperlink.None"/> (or <c>default</c>) to clear.</summary>
+    public Style WithHyperlink(Hyperlink hyperlink) => this with { Hyperlink = hyperlink };
+
+    /// <summary>Convenience: replace the hyperlink with the given URI and optional id.</summary>
+    public Style WithHyperlink(string? uri, string? id = null)
+        => this with { Hyperlink = new Hyperlink(uri, id) };
+
+    /// <summary>True when no foreground, background, attribute, or hyperlink carries any non-default value.</summary>
     public bool IsDefault => Foreground.IsDefault &&
                              Background.IsDefault &&
                              Attributes == TextAttributes.None &&
-                             UnderlineColor.IsDefault;
+                             UnderlineColor.IsDefault &&
+                             Hyperlink.IsEmpty;
 }

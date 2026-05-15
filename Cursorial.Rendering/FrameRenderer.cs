@@ -3,7 +3,6 @@ using System.Text;
 
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
-using Cursorial.Rendering.Fragments;
 
 namespace Cursorial.Rendering;
 
@@ -172,10 +171,11 @@ public sealed class FrameRenderer
                 }
 
                 // Fragment-covered cells are painted by the fragment's protocol payload in the
-                // post-cell pass; the normal emit must never write glyphs to these positions or
+                // post-cell pass; the normal emit must never write glyphs to these positions, or
                 // it would overdraw the fragment. Snapshot the cover marker into the front so
                 // subsequent diff comparisons match.
-                if (cell.Kind == CellKind.CoveredByFragment)
+                if (cell.Kind == CellKind.CoveredByFragment &&
+                    cell.Style.Background == _frontCells![frontIdx].Style.Background)
                 {
                     _frontCells![frontIdx] = cell;
                     continue;
@@ -194,7 +194,7 @@ public sealed class FrameRenderer
                 }
 
                 // Hyperlink state is a separate OSC 8 channel — emit close then open at
-                // boundaries, independent of the SGR delta. The hyperlink is part of Style so
+                // boundaries, independent of the SGR delta. The hyperlink is part of Style, so
                 // the inequality check above already covers the case where only the link
                 // changed (in which case SgrEncoder.WriteDelta below produces no bytes).
                 if (cell.Style.Hyperlink != _currentHyperlink)

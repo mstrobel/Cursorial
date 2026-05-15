@@ -82,4 +82,16 @@ public readonly record struct Style(
                              Attributes == TextAttributes.None &&
                              UnderlineColor.IsDefault &&
                              Hyperlink.IsEmpty;
+
+    public Style BlendOver(in Style backdrop, IBlendingMode? blendingMode = null)
+    {
+        var mode = blendingMode ?? BlendingModes.Default;
+
+        return this with
+               {
+                   Foreground = Color.Composite(Foreground, backdrop.Background, mode),
+                   Background = Background != Color.Default ? Color.Composite(Background, backdrop.Background, mode) : backdrop.Background,
+                   UnderlineColor = Color.Composite(UnderlineColor, backdrop.UnderlineColor, mode)
+               };
+    }
 }

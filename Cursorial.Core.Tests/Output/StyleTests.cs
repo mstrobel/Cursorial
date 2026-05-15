@@ -7,7 +7,7 @@ public class StyleTests
     [Fact]
     public void Default_IsTrulyDefault()
     {
-        var s = Style.Default;
+        Style s = Style.Default;
         Assert.True(s.IsDefault);
         Assert.True(s.Foreground.IsDefault);
         Assert.True(s.Background.IsDefault);
@@ -25,11 +25,11 @@ public class StyleTests
     [Fact]
     public void WithForeground_PreservesEverythingElse()
     {
-        var s = Style.Default
-            .WithBackground(Color.FromPalette(2))
-            .WithAttributes(TextAttributes.Bold);
+        Style s = Style.Default
+                       .WithBackground(Color.FromPalette(2))
+                       .WithAttributes(TextAttributes.Bold);
 
-        var s2 = s.WithForeground(Color.FromRgb(255, 0, 0));
+        Style s2 = s.WithForeground(Color.FromRgb(255, 0, 0));
 
         Assert.Equal(Color.FromRgb(255, 0, 0), s2.Foreground);
         Assert.Equal(Color.FromPalette(2), s2.Background);
@@ -39,8 +39,8 @@ public class StyleTests
     [Fact]
     public void AddAttributes_OrsIntoExisting()
     {
-        var s = Style.Default.WithAttributes(TextAttributes.Bold);
-        var s2 = s.AddAttributes(TextAttributes.Italic);
+        Style s = Style.Default.WithAttributes(TextAttributes.Bold);
+        Style s2 = s.AddAttributes(TextAttributes.Italic);
 
         Assert.Equal(TextAttributes.Bold | TextAttributes.Italic, s2.Attributes);
     }
@@ -48,8 +48,8 @@ public class StyleTests
     [Fact]
     public void RemoveAttributes_ClearsBits()
     {
-        var s = Style.Default.WithAttributes(TextAttributes.Bold | TextAttributes.Italic);
-        var s2 = s.RemoveAttributes(TextAttributes.Italic);
+        Style s = Style.Default.WithAttributes(TextAttributes.Bold | TextAttributes.Italic);
+        Style s2 = s.RemoveAttributes(TextAttributes.Italic);
 
         Assert.Equal(TextAttributes.Bold, s2.Attributes);
     }
@@ -57,12 +57,13 @@ public class StyleTests
     [Fact]
     public void Equality_IsComponentWise()
     {
-        var a = Style.Default
-            .WithForeground(Color.FromRgb(1, 2, 3))
-            .WithAttributes(TextAttributes.Bold);
-        var b = Style.Default
-            .WithForeground(Color.FromRgb(1, 2, 3))
-            .WithAttributes(TextAttributes.Bold);
+        Style a = Style.Default
+                       .WithForeground(Color.FromRgb(1, 2, 3))
+                       .WithAttributes(TextAttributes.Bold);
+
+        Style b = Style.Default
+                       .WithForeground(Color.FromRgb(1, 2, 3))
+                       .WithAttributes(TextAttributes.Bold);
 
         Assert.Equal(a, b);
         Assert.NotEqual(a, b.WithAttributes(TextAttributes.Italic));

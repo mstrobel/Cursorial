@@ -38,8 +38,7 @@ public class HyperlinkWriterTests
     [Fact]
     public void WriteHyperlink_OneShot_OpensTextCloses()
     {
-        var s = Encode(w => HyperlinkWriter.WriteHyperlink(
-            w, "https://cursorial.dev".AsSpan(), "click here".AsSpan()));
+        var s = Encode(w => HyperlinkWriter.WriteHyperlink(w, "https://cursorial.dev".AsSpan(), "click here".AsSpan()));
         Assert.Equal("\x1b]8;;https://cursorial.dev\x1b\\click here\x1b]8;;\x1b\\", s);
     }
 

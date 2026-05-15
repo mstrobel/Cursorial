@@ -15,7 +15,7 @@ namespace Cursorial.Output;
 /// <see cref="Output.Capabilities.WindowCapabilities.TitleSet"/> /
 /// <see cref="Output.Capabilities.WindowCapabilities.IconSet"/> on the negotiated
 /// <see cref="Output.Capabilities.OutputCapabilities"/>. Emitting OSC 0/1/2 to a
-/// non-supporting terminal is benign (most strip unrecognized OSCs) but the title won't change.
+/// non-supporting terminal is benign (most strip unrecognized OSCs), but the title won't change.
 /// </para>
 /// <para>
 /// The supplied <see cref="string"/> is encoded as UTF-8. Most modern terminals decode the OSC
@@ -60,8 +60,8 @@ public static class WindowWriter
         var terminator = VtOutputSequences.Window.StringTerminator;
         int payloadBytes = Encoding.UTF8.GetByteCount(payload);
         var dest = writer.GetSpan(prefix.Length + payloadBytes + terminator.Length);
-
         int written = 0;
+
         prefix.CopyTo(dest[written..]);
         written += prefix.Length;
 

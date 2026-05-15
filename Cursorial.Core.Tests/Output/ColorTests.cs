@@ -25,7 +25,7 @@ public class ColorTests
     {
         var c = Color.FromPalette(42);
         Assert.Equal(ColorKind.Palette, c.Kind);
-        Assert.Equal((byte)42, c.PaletteIndex);
+        Assert.Equal((byte) 42, c.PaletteIndex);
         Assert.False(c.IsDefault);
     }
 
@@ -34,9 +34,9 @@ public class ColorTests
     {
         var c = Color.FromRgb(10, 20, 30);
         Assert.Equal(ColorKind.Rgb, c.Kind);
-        Assert.Equal((byte)10, c.Red);
-        Assert.Equal((byte)20, c.Green);
-        Assert.Equal((byte)30, c.Blue);
+        Assert.Equal((byte) 10, c.Red);
+        Assert.Equal((byte) 20, c.Green);
+        Assert.Equal((byte) 30, c.Blue);
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class ColorTests
     [Fact]
     public void FromRgb_DefaultsToFullyOpaque()
     {
-        Assert.Equal((byte)255, Color.FromRgb(1, 2, 3).Alpha);
+        Assert.Equal((byte) 255, Color.FromRgb(1, 2, 3).Alpha);
         Assert.True(Color.FromRgb(1, 2, 3).IsOpaque);
     }
 
@@ -68,14 +68,14 @@ public class ColorTests
     public void FromRgba_CarriesExplicitAlpha()
     {
         var c = Color.FromRgba(1, 2, 3, 128);
-        Assert.Equal((byte)128, c.Alpha);
+        Assert.Equal((byte) 128, c.Alpha);
         Assert.False(c.IsOpaque);
     }
 
     [Fact]
     public void FromPalette_DefaultsToFullyOpaque()
     {
-        Assert.Equal((byte)255, Color.FromPalette(5).Alpha);
+        Assert.Equal((byte) 255, Color.FromPalette(5).Alpha);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class ColorTests
     {
         // default(Color) has Kind=Default and alpha=0. Color.Default also has alpha=0 (we
         // chose 0 specifically so this equality holds).
-        Assert.Equal(Color.Default, default(Color));
+        Assert.Equal(Color.Default, default);
     }
 
     [Fact]

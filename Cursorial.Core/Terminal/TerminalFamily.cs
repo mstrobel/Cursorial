@@ -11,7 +11,6 @@ namespace Cursorial.Terminal;
 /// variables, and platform-specific signals (notably the Win32 console host detection on
 /// Windows). The TERM env var alone is unreliable — most modern terminals report
 /// <c>xterm-256color</c> regardless of identity.
-/// <c>xterm-256color</c> regardless of identity.
 /// </remarks>
 public enum TerminalFamily
 {

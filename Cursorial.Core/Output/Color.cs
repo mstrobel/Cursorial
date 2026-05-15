@@ -33,22 +33,17 @@ namespace Cursorial.Output;
 /// </remarks>
 public readonly record struct Color
 {
-    private readonly byte _byte0; // R or palette index, depending on kind.
-    private readonly byte _byte1; // G.
-    private readonly byte _byte2; // B.
-    private readonly byte _alpha; // Alpha (0–255). Meaningful only for ColorKind.Rgb.
-
-    /// <summary>The representation of this color.</summary>
-    public ColorKind Kind { get; }
-
     private Color(ColorKind kind, byte b0, byte b1, byte b2, byte alpha)
     {
         Kind = kind;
-        _byte0 = b0;
-        _byte1 = b1;
-        _byte2 = b2;
-        _alpha = alpha;
+        PaletteIndex = b0;
+        Green = b1;
+        Blue = b2;
+        Alpha = alpha;
     }
+
+    /// <summary>The representation of this color.</summary>
+    public ColorKind Kind { get; }
 
     /// <summary>
     /// The terminal's default color for the slot this is assigned to (foreground or background).
@@ -57,11 +52,48 @@ public readonly record struct Color
     /// </summary>
     public static Color Default { get; } = new(ColorKind.Default, 0, 0, 0, 0);
 
+    /// <summary>
+    /// The palette index. Defined only when <see cref="Kind"/> is <see cref="ColorKind.Palette"/>;
+    /// reads as 0 for other kinds (callers should guard on <see cref="Kind"/>).
+    /// </summary>
+    public byte PaletteIndex { get; }
+
+    /// <summary>Red component for <see cref="ColorKind.Rgb"/> colors; 0 otherwise.</summary>
+    public byte Red => PaletteIndex;
+
+    /// <summary>Green component for <see cref="ColorKind.Rgb"/> colors; 0 otherwise.</summary>
+    public byte Green { get; }
+
+    /// <summary>Blue component for <see cref="ColorKind.Rgb"/> colors; 0 otherwise.</summary>
+    public byte Blue { get; }
+
+    /// <summary>
+    /// Alpha channel. 0 = fully transparent (source completely yields to backdrop during
+    /// compositing); 255 = fully opaque (source replaces backdrop). Meaningful only for
+    /// <see cref="ColorKind.Rgb"/> colors — non-RGB kinds short-circuit through compositing
+    /// regardless of this value.
+    /// </summary>
+    public byte Alpha { get; }
+    
+    public uint RgbaValue => (uint)Red << 16 | (uint)Green << 8 | Blue;
+
+    /// <summary>True when this color requests the terminal's default for its slot.</summary>
+    public bool IsDefault => Kind == ColorKind.Default;
+
+    /// <summary>True when the color is fully opaque (alpha = 255) or its kind ignores alpha.</summary>
+    public bool IsOpaque => Kind != ColorKind.Rgb || Alpha == 255;
+
     /// <summary>Construct a palette color from a 0–255 index. Indices 0–15 are the ANSI base colors.</summary>
-    public static Color FromPalette(byte index) => new(ColorKind.Palette, index, 0, 0, 255);
+    public static Color FromPalette(byte index)
+    {
+        return new Color(ColorKind.Palette, index, 0, 0, 255);
+    }
 
     /// <summary>Construct a fully-opaque 24-bit truecolor value.</summary>
-    public static Color FromRgb(byte red, byte green, byte blue) => new(ColorKind.Rgb, red, green, blue, 255);
+    public static Color FromRgb(byte red, byte green, byte blue)
+    {
+        return new Color(ColorKind.Rgb, red, green, blue, 255);
+    }
 
     /// <summary>
     /// Construct a 24-bit truecolor value with an explicit alpha channel. <paramref name="alpha"/>
@@ -70,36 +102,9 @@ public readonly record struct Color
     /// color with the backdrop linearly.
     /// </summary>
     public static Color FromRgba(byte red, byte green, byte blue, byte alpha)
-        => new(ColorKind.Rgb, red, green, blue, alpha);
-
-    /// <summary>
-    /// The palette index. Defined only when <see cref="Kind"/> is <see cref="ColorKind.Palette"/>;
-    /// reads as 0 for other kinds (callers should guard on <see cref="Kind"/>).
-    /// </summary>
-    public byte PaletteIndex => _byte0;
-
-    /// <summary>Red component for <see cref="ColorKind.Rgb"/> colors; 0 otherwise.</summary>
-    public byte Red => _byte0;
-
-    /// <summary>Green component for <see cref="ColorKind.Rgb"/> colors; 0 otherwise.</summary>
-    public byte Green => _byte1;
-
-    /// <summary>Blue component for <see cref="ColorKind.Rgb"/> colors; 0 otherwise.</summary>
-    public byte Blue => _byte2;
-
-    /// <summary>
-    /// Alpha channel. 0 = fully transparent (source completely yields to backdrop during
-    /// compositing); 255 = fully opaque (source replaces backdrop). Meaningful only for
-    /// <see cref="ColorKind.Rgb"/> colors — non-RGB kinds short-circuit through compositing
-    /// regardless of this value.
-    /// </summary>
-    public byte Alpha => _alpha;
-
-    /// <summary>True when this color requests the terminal's default for its slot.</summary>
-    public bool IsDefault => Kind == ColorKind.Default;
-
-    /// <summary>True when the color is fully opaque (alpha = 255) or its kind ignores alpha.</summary>
-    public bool IsOpaque => Kind != ColorKind.Rgb || _alpha == 255;
+    {
+        return new Color(ColorKind.Rgb, red, green, blue, alpha);
+    }
 
     /// <summary>
     /// Return a copy of this color with <see cref="Alpha"/> set to <paramref name="alpha"/>.
@@ -108,17 +113,50 @@ public readonly record struct Color
     public Color WithAlpha(byte alpha)
     {
         if (Kind == ColorKind.Default) return this;
-        return new(Kind, _byte0, _byte1, _byte2, alpha);
+        return new Color(Kind, PaletteIndex, Green, Blue, alpha);
     }
 
-    public override string ToString() =>
-        Kind switch
-        {
-            ColorKind.Default => "default",
-            ColorKind.Palette => _alpha == 255 ? $"palette({_byte0})" : $"palette({_byte0},a={_alpha})",
-            ColorKind.Rgb     => _alpha == 255 ? $"rgb({_byte0},{_byte1},{_byte2})" : $"rgba({_byte0},{_byte1},{_byte2},{_alpha})",
-            _                 => "<invalid>"
-        };
+    public override string ToString()
+    {
+        return Kind switch
+               {
+                   ColorKind.Default => "default",
+                   ColorKind.Palette => Alpha == 255 ? $"palette({PaletteIndex})" : $"palette({PaletteIndex},a={Alpha})",
+                   ColorKind.Rgb     => Alpha == 255 ? $"rgb({PaletteIndex},{Green},{Blue})" : $"rgba({PaletteIndex},{Green},{Blue},{Alpha})",
+                   _                 => "<invalid>"
+               };
+    }
+
+    /// <summary>
+    /// Compose <paramref name="source"/> over <paramref name="backdrop"/>: first apply the
+    /// blending mode's color math, then composite the result against the backdrop linearly
+    /// using the source's alpha. Returns an opaque color — the cell buffer always stores
+    /// fully resolved colors because terminal output is fundamentally opaque.
+    /// </summary>
+    /// <remarks>
+    /// Compositing is skipped (the mode's blended color is returned verbatim, normalized to
+    /// alpha 255) when either operand isn't <see cref="ColorKind.Rgb"/>. The terminal default
+    /// has no known RGB equivalent to mix against, and quantizing palette colors into RGB just
+    /// to composite and back would be lossy and surprising. This matches how the built-in
+    /// blending modes handle non-RGB inputs.
+    /// </remarks>
+    public static Color Composite(Color source, Color backdrop, IBlendingMode mode)
+    {
+        var blended = mode.Blend(source, backdrop);
+
+        // Alpha compositing only engages for RGB-on-RGB. Otherwise, the source's alpha is
+        // ignored, and the blended color (which is whatever the mode produced) wins outright.
+        if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb || source.Alpha == 255)
+            return blended.Kind == ColorKind.Rgb ? blended.WithAlpha(255) : blended;
+
+        int a = source.Alpha;
+        int inv = 255 - a;
+
+        return FromRgb(
+            (byte) ((blended.Red * a + backdrop.Red * inv) / 255),
+            (byte) ((blended.Green * a + backdrop.Green * inv) / 255),
+            (byte) ((blended.Blue * a + backdrop.Blue * inv) / 255));
+    }
 }
 
 /// <summary>The representation a <see cref="Color"/> carries.</summary>

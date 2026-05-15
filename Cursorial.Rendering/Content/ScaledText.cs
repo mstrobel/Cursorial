@@ -2,7 +2,6 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Fragments;
-using Cursorial.Text;
 
 namespace Cursorial.Rendering.Content;
 
@@ -30,9 +29,8 @@ namespace Cursorial.Rendering.Content;
 /// </remarks>
 public sealed class ScaledText : IContent
 {
-    private readonly IGlyphFont _fallbackFont;
-    private bool? _wouldWrap;
     private int? _lastBufferWidth;
+    private bool? _wouldWrap;
 
     /// <summary>
     /// Construct a scaled-text content. Pass <paramref name="fallbackFont"/> to override the
@@ -45,7 +43,7 @@ public sealed class ScaledText : IContent
         Text = text;
         Sizing = sizing;
 
-        _fallbackFont = fallbackFont ?? PickDefaultFallback(sizing);
+        FallbackFont = fallbackFont ?? PickDefaultFallback(sizing);
     }
 
     /// <summary>The text to render.</summary>
@@ -58,7 +56,7 @@ public sealed class ScaledText : IContent
     public TextSizing Sizing { get; }
 
     /// <summary>The font used when OSC 66 isn't supported.</summary>
-    public IGlyphFont FallbackFont => _fallbackFont;
+    public IGlyphFont FallbackFont { get; }
 
     /// <inheritdoc/>
     public Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities)
@@ -76,8 +74,7 @@ public sealed class ScaledText : IContent
 
         // Try the OSC 66 path first.
         var fragment = new SizedTextFragment(Sizing, text, style);
-
-        if (fragment.IsSupported(capabilities) && _fallbackFont is not FigletFont)
+        if (fragment.IsSupported(capabilities))
         {
             _wouldWrap ??= text.Length * Math.Max((int) Sizing.Scale, 1) > buffer.Columns - column;
 
@@ -88,14 +85,14 @@ public sealed class ScaledText : IContent
             return fragment.GetSize();
         }
 
-        _wouldWrap ??= _fallbackFont.Measure(text).Columns > buffer.Columns - column;
-        
+        _wouldWrap ??= FallbackFont.Measure(text).Columns > buffer.Columns - column;
+
         if (_wouldWrap is true)
             goto monospaceFallback;
 
         // Fall back to cell-grid font rendering.
-        return _fallbackFont.Paint(buffer, row, column, text, style);
-        
+        return FallbackFont.Paint(buffer, row, column, text, style);
+
     monospaceFallback:
         // If the text is too wide for the buffer, use monospace fallback.
         return MonospaceFont.Default.Paint(buffer, row, column, text, style);

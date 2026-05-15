@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Text;
+
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
@@ -73,20 +74,23 @@ public class FrameRendererFragmentTests
                    {
                        TextSizing = new TextSizingCapabilities(Width: true, Scale: true),
                    };
+
         var r = new FrameRenderer(caps);
         var buffer = new CellBuffer(20, 2);
+
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "Hello",
             Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+
         buffer.AddFragment(0, 0, fragment);
 
         var output = Render(r, buffer);
 
-        Assert.Contains("\x1b]66;", output);   // OSC 66 prefix
-        Assert.Contains("s=2", output);        // scale metadata
-        Assert.Contains("Hello", output);      // payload
-        Assert.Contains("\x1b\\", output);     // ST
+        Assert.Contains("\x1b]66;", output); // OSC 66 prefix
+        Assert.Contains("s=2", output);      // scale metadata
+        Assert.Contains("Hello", output);    // payload
+        Assert.Contains("\x1b\\", output);   // ST
     }
 
     [Fact]
@@ -95,10 +99,12 @@ public class FrameRendererFragmentTests
         var caps = OutputCapabilities.None; // no TextSizing
         var r = new FrameRenderer(caps);
         var buffer = new CellBuffer(20, 2);
+
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "Hello",
             Style.Default);
+
         buffer.AddFragment(0, 0, fragment);
 
         var output = Render(r, buffer);
@@ -123,6 +129,7 @@ public class FrameRendererFragmentTests
             new TextSizing(Scale: 1, Width: 3),
             "Hello",
             Style.Default);
+
         Assert.Equal(new Size(15, 1), fragment.GetSize());
     }
 

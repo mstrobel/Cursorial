@@ -31,13 +31,14 @@ public class BlendingModesTests
         var source = sourceIsDefault ? Color.Default : Color.FromPalette(3);
         var backdrop = backdropIsDefault ? Color.Default : Color.FromPalette(7);
 
-        foreach (var mode in new[] {
+        IBlendingMode[] allModes =
+        [
             BlendingModes.Multiply, BlendingModes.Screen, BlendingModes.Overlay,
-            BlendingModes.Darken, BlendingModes.Lighten, BlendingModes.Plus,
-        })
-        {
+            BlendingModes.Darken, BlendingModes.Lighten, BlendingModes.Plus
+        ];
+
+        foreach (var mode in allModes)
             Assert.Equal(source, mode.Blend(source, backdrop));
-        }
     }
 
     [Fact]
@@ -138,6 +139,6 @@ public class BlendingModesTests
         var s = Color.FromRgb(128, 128, 128);
         var b = Color.FromRgb(192, 192, 192);
         var result = BlendingModes.Overlay.Blend(s, b);
-        Assert.InRange(result.Red, (byte)190, (byte)196);
+        Assert.InRange(result.Red, (byte) 190, (byte) 196);
     }
 }

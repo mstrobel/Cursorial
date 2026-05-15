@@ -38,7 +38,7 @@ public sealed class Image : IContent
     private readonly ImageData _data;
 
     /// <summary>Construct an image content from the supplied data.</summary>
-    public Image(ImageData data, in Style placeholderStyle = default)
+    public Image(ImageData data, in Style placeholderStyle = default, string? placeholderText = null)
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
@@ -49,7 +49,7 @@ public sealed class Image : IContent
     public ImageData Data => _data;
 
     /// <summary>Style applied to the placeholder rectangle when no graphics protocol is supported.</summary>
-    public Style PlaceholderStyle { get; }
+    public Style PlaceholderStyle { get; init; }
 
     /// <summary>Text to display when no graphics protocol is supported. For icons, could be an emoji.</summary>
     public string PlaceholderText => "[image]";

@@ -15,7 +15,7 @@ namespace Cursorial.Rendering.Fonts;
 /// glyph is painted over the same region with its own style. Overlapping cells (where the
 /// shadow and foreground both light up) get the foreground style; cells touched only by the
 /// shadow keep the shadow style. The most common configuration is a low-alpha or dark-tone
-/// shadow color so the unique shadow cells look like a real drop-shadow.
+/// shadow color, so the unique shadow cells look like a real drop-shadow.
 /// </para>
 /// <para>
 /// <b>Measure.</b> Reported size includes the shadow offset — a text rendered with a (1,1)
@@ -33,10 +33,6 @@ public sealed class ShadowedFont : IGlyphFont
 
     private readonly IBlendingMode? _shadowBlendingMode;
 
-    public static ShadowedFont Default { get; } = new(MonospaceFont.Default, 
-                                                      shadowStyle: Style.DefaultShadow,
-                                                      shadowBlendingMode: BlendingModes.Multiply);
-
     /// <summary>Construct a shadow-decorated font.</summary>
     /// <param name="inner">The underlying font that lays down the glyph cells.</param>
     /// <param name="offset">Shadow displacement in cells. Default is (1, 1) — one cell right, one cell down.</param>
@@ -52,6 +48,11 @@ public sealed class ShadowedFont : IGlyphFont
 
         _shadowBlendingMode = shadowBlendingMode;
     }
+
+    /// <summary>The default shadowed font, with a 1-cell offset and default shadow style.</summary>
+    public static ShadowedFont Default { get; } = new(MonospaceFont.Default,
+                                                      shadowStyle: Style.DefaultShadow,
+                                                      shadowBlendingMode: BlendingModes.Multiply);
 
     /// <summary>The underlying font that produces glyph cell patterns.</summary>
     public IGlyphFont Inner { get; }

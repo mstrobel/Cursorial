@@ -19,7 +19,7 @@ public class CellTests
     [Fact]
     public void Blank_EqualsDefault()
     {
-        Assert.Equal(Cell.Blank, default(Cell));
+        Assert.Equal(Cell.Blank, default);
     }
 
     [Fact]

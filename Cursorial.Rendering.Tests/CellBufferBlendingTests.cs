@@ -48,7 +48,7 @@ public class CellBufferBlendingTests
     public void Pop_EmptyStack_Throws()
     {
         var buf = new CellBuffer(2, 2);
-        Assert.Throws<InvalidOperationException>(() => buf.PopBlendingMode());
+        Assert.Throws<InvalidOperationException>(buf.PopBlendingMode);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class CellBufferBlendingTests
         // foreground content was there), so seed the bg with half-gray too.
         buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(128, 128, 128)));
 
-        // Push Multiply, set with half-gray foreground. Result should be ~1/4
+        // Push Multiply, set with half-gray foreground. The result should be ~1/4
         // (half-gray × half-gray = quarter-gray).
         buf.PushBlendingMode(BlendingModes.Multiply);
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgb(128, 128, 128)));
@@ -99,7 +99,7 @@ public class CellBufferBlendingTests
         buf.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(128, 128, 128)));
 
         // 128 * 200 / 255 ≈ 100.
-        Assert.Equal((byte)100, buf[0, 0].Style.Background.Red);
+        Assert.Equal((byte) 100, buf[0, 0].Style.Background.Red);
     }
 
     [Fact]
@@ -135,11 +135,14 @@ public class CellBufferBlendingTests
     {
         var buf = new CellBuffer(3, 2);
         var fill = new Cell("x", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(100, 100, 100)));
+
         buf.Fill(fill);
 
         for (int r = 0; r < 2; r++)
+        {
             for (int c = 0; c < 3; c++)
                 Assert.Equal(fill, buf[r, c]);
+        }
     }
 
     [Fact]
@@ -156,10 +159,10 @@ public class CellBufferBlendingTests
         buf.Fill(new Cell(" ", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(128, 128, 128))));
 
         // Each cell multiplied: half-gray * red = (128, 0, 0), etc.
-        Assert.Equal((byte)128, buf[0, 0].Style.Background.Red);
-        Assert.Equal((byte)0, buf[0, 0].Style.Background.Green);
-        Assert.Equal((byte)128, buf[0, 1].Style.Background.Green);
-        Assert.Equal((byte)128, buf[0, 2].Style.Background.Blue);
+        Assert.Equal((byte) 128, buf[0, 0].Style.Background.Red);
+        Assert.Equal((byte) 0, buf[0, 0].Style.Background.Green);
+        Assert.Equal((byte) 128, buf[0, 1].Style.Background.Green);
+        Assert.Equal((byte) 128, buf[0, 2].Style.Background.Blue);
     }
 
     // ---- Alpha compositing ----
@@ -169,7 +172,7 @@ public class CellBufferBlendingTests
     {
         var buf = new CellBuffer(3, 1);
         // Alpha controls how much of the backdrop *cell's background* shows through the
-        // newly-painted foreground (the source's glyph fully replaces the prior glyph).
+        // newly painted foreground (the source's glyph fully replaces the prior glyph).
         // Seed the backdrop bg with the color we expect to see preserved.
         buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(200, 100, 50)));
 
@@ -202,9 +205,9 @@ public class CellBufferBlendingTests
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(255, 255, 255, 128)));
 
         var fg = buf[0, 0].Style.Foreground;
-        Assert.InRange(fg.Red, (byte)126, (byte)130);
-        Assert.InRange(fg.Green, (byte)126, (byte)130);
-        Assert.InRange(fg.Blue, (byte)126, (byte)130);
+        Assert.InRange(fg.Red, (byte) 126, (byte) 130);
+        Assert.InRange(fg.Green, (byte) 126, (byte) 130);
+        Assert.InRange(fg.Blue, (byte) 126, (byte) 130);
     }
 
     [Fact]
@@ -215,7 +218,7 @@ public class CellBufferBlendingTests
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(200, 200, 200, 128)));
 
         // Stored cell's alpha is normalized to 255 — alpha is consumed at composite time.
-        Assert.Equal((byte)255, buf[0, 0].Style.Foreground.Alpha);
+        Assert.Equal((byte) 255, buf[0, 0].Style.Foreground.Alpha);
     }
 
     [Fact]
@@ -232,7 +235,7 @@ public class CellBufferBlendingTests
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(128, 128, 128, 128)));
 
         var fg = buf[0, 0].Style.Foreground;
-        Assert.InRange(fg.Red, (byte)145, (byte)155);
+        Assert.InRange(fg.Red, (byte) 145, (byte) 155);
     }
 
     [Fact]
@@ -258,7 +261,7 @@ public class CellBufferBlendingTests
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromPalette(3).WithAlpha(128)));
 
         Assert.Equal(ColorKind.Palette, buf[0, 0].Style.Foreground.Kind);
-        Assert.Equal((byte)3, buf[0, 0].Style.Foreground.PaletteIndex);
+        Assert.Equal((byte) 3, buf[0, 0].Style.Foreground.PaletteIndex);
     }
 
     // ---- Clear and indexer don't blend ----
@@ -271,7 +274,7 @@ public class CellBufferBlendingTests
         buf.PushBlendingMode(BlendingModes.Multiply);
         buf.Clear();
 
-        Assert.Equal(default(Cell), buf[0, 0]);
+        Assert.Equal(default, buf[0, 0]);
     }
 
     [Fact]

@@ -1,6 +1,5 @@
 using Cursorial.Input.Parsing;
 using Cursorial.Output;
-using Cursorial.Output.Capabilities;
 using Cursorial.Terminal;
 
 namespace Cursorial.Tests.Terminal;
@@ -28,17 +27,18 @@ public class VtTerminalNegotiatorColorProbeTests
     /// Standard negotiation options for these tests — minimum-friction (all DEC mode opt-ins
     /// off so the DECRQM verification phase is a no-op), short timeout.
     /// </summary>
-    private static NegotiationOptions Options() => new()
-    {
-        ProbeTimeout = TimeSpan.FromMilliseconds(200),
-        EnableMouseTracking = false,
-        EnableFocusEvents = false,
-        EnableBracketedPaste = false,
-        EnableAnyEventMouse = false,
-        EnableKittyKeyboard = false,
-        EnableWin32InputMode = false,
-        EnableSynchronizedOutput = false,
-    };
+    private static NegotiationOptions Options()
+        => new()
+           {
+               ProbeTimeout = TimeSpan.FromMilliseconds(200),
+               EnableMouseTracking = false,
+               EnableFocusEvents = false,
+               EnableBracketedPaste = false,
+               EnableAnyEventMouse = false,
+               EnableKittyKeyboard = false,
+               EnableWin32InputMode = false,
+               EnableSynchronizedOutput = false,
+           };
 
     [Fact]
     public async Task NegotiateAsync_EmitsColorProbeSequences()
@@ -174,6 +174,7 @@ public class VtTerminalNegotiatorColorProbeTests
         // The whole color-probe phase is a single round-trip — multiple queries, one DA1.
         // Enqueue every response interleaved before the final DA1 to mimic a chatty terminal.
         _source.Enqueue("\x1b[?64c");
+
         _source.Enqueue(
             "\x1b]4;255;rgb:abab/cdcd/efef\x1b\\" +
             "\x1b]10;rgb:cccc/cccc/cccc\x1b\\" +
@@ -198,13 +199,15 @@ public class VtTerminalNegotiatorColorProbeTests
         _source.Enqueue("\x1b[?64c"); // single DA1 sufficient
 
         await using var negotiator = BuildNegotiator();
+
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            OptIns = OptInPolicy.Ignored,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            OptIns = OptInPolicy.Ignored,
+                                        });
 
         var written = await AllWrittenAsync();
+
         Assert.DoesNotContain("\x1b]4;", written);
         Assert.DoesNotContain("\x1b]10;?", written);
     }

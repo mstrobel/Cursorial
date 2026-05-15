@@ -753,6 +753,11 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
 
     var style = Style.Default;//.WithBackground(Color.FromRgb(40, 44, 52));
     
+    if (outputCaps.Color.DefaultBackground is {} bgDefault)
+        style = style.WithBackground(bgDefault);
+    if (outputCaps.Color.DefaultForeground is {} fgDefault)
+        style = style.WithForeground(fgDefault);
+
     buf.Fill(new Cell("", CellKind.Single, style));
     
     int cols = buf.Columns;

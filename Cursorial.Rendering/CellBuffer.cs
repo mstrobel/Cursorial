@@ -247,12 +247,12 @@ public sealed class CellBuffer
                 var existing = _cells[idx];
 
                 if (existing.Kind == CellKind.WideContinuation && c > 0)
-                    _cells[idx - 1] = Cell.Blank;
+                    _cells[idx - 1] = Cell.Blank with { Style = Cell.Blank.Style.WithBackground(existing.Style.Background) };
 
                 if (existing.Kind == CellKind.WideLeft && c + 1 < _columns)
-                    _cells[idx + 1] = Cell.Blank;
+                    _cells[idx + 1] = Cell.Blank with { Style = Cell.Blank.Style.WithBackground(existing.Style.Background) };
 
-                _cells[idx] = Cell.FragmentCover;
+                _cells[idx] = Cell.FragmentCover with { Style = Cell.Blank.Style.WithBackground(existing.Style.Background) };
             }
         }
     }
@@ -265,7 +265,10 @@ public sealed class CellBuffer
         for (int r = row; r < rowEnd; r++)
         {
             for (int c = column; c < colEnd; c++)
-                _cells[r * _columns + c] = Cell.Blank;
+            {
+                var cell = _cells[r * _columns + c];
+                _cells[r * _columns + c] = Cell.Blank with { Style = Cell.Blank.Style.WithBackground(cell.Style.Background) };
+            }
         }
     }
 
@@ -286,56 +289,20 @@ public sealed class CellBuffer
         }
 
         for (int i = 0; i < _cells.Length; i++)
-        {
-            var existing = _cells[i];
-            _cells[i] = cell with { Style = BlendStyle(cell.Style, existing.Style, mode) };
-        }
+            _cells[i] = cell with { Style = BlendStyle(cell.Style, _cells[i].Style, mode) };
     }
 
     private Style BlendStyle(in Style source, in Style backdrop)
-        => BlendStyle(source, backdrop, CurrentBlendingMode);
+        => source.BlendOver(backdrop, CurrentBlendingMode);
 
     private static Style BlendStyle(in Style source, in Style backdrop, IBlendingMode mode)
     {
         return source with
                {
-                   Foreground = Composite(source.Foreground, backdrop.Background, mode),
-                   Background = source.Background != Color.Default ? Composite(source.Background, backdrop.Background, mode) : backdrop.Background,
-                   UnderlineColor = Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
+                   Foreground = Color.Composite(source.Foreground, backdrop.Background, mode),
+                   Background = source.Background != Color.Default ? Color.Composite(source.Background, backdrop.Background, mode) : backdrop.Background,
+                   UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
                };
-    }
-
-    /// <summary>
-    /// Compose <paramref name="source"/> over <paramref name="backdrop"/>: first apply the
-    /// blending mode's color math, then composite the result against the backdrop linearly
-    /// using the source's alpha. Returns an opaque color — the cell buffer always stores
-    /// fully resolved colors because terminal output is fundamentally opaque.
-    /// </summary>
-    /// <remarks>
-    /// Compositing is skipped (the mode's blended color is returned verbatim, normalized to
-    /// alpha 255) when either operand isn't <see cref="ColorKind.Rgb"/>. The terminal default
-    /// has no known RGB equivalent to mix against, and quantizing palette colors into RGB just
-    /// to composite and back would be lossy and surprising. This matches how the built-in
-    /// blending modes handle non-RGB inputs.
-    /// </remarks>
-    private static Color Composite(Color source, Color backdrop, IBlendingMode mode)
-    {
-        var blended = mode.Blend(source, backdrop);
-
-        // Alpha compositing only engages for RGB-on-RGB. Otherwise, the source's alpha is
-        // ignored, and the blended color (which is whatever the mode produced) wins outright.
-        if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb || source.Alpha == 255)
-        {
-            return blended.Kind == ColorKind.Rgb ? blended.WithAlpha(255) : blended;
-        }
-
-        int a = source.Alpha;
-        int inv = 255 - a;
-
-        return Color.FromRgb(
-            (byte) ((blended.Red * a + backdrop.Red * inv) / 255),
-            (byte) ((blended.Green * a + backdrop.Green * inv) / 255),
-            (byte) ((blended.Blue * a + backdrop.Blue * inv) / 255));
     }
 
     /// <summary>

@@ -26,7 +26,7 @@ namespace Cursorial.Output.Capabilities;
 /// <param name="DefaultBackground">
 /// The terminal's default background color, as reported by an OSC 11 query at session open.
 /// <see langword="null"/> when the terminal didn't respond. The most common consumer of this
-/// is light-vs-dark scheme detection (test the luminance of the response).
+/// is light-vs.-dark scheme detection (test the luminance of the response).
 /// </param>
 /// <param name="DefaultCursorColor">
 /// The terminal's default cursor color, as reported by an OSC 12 query at session open.

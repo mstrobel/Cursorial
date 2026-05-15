@@ -27,8 +27,10 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(5, 5);
         for (int r = 0; r < 5; r++)
+        {
             for (int c = 0; c < 5; c++)
                 Assert.Equal(default(Cell), buf[r, c]);
+        }
     }
 
     // ---- Set ----
@@ -77,7 +79,7 @@ public class CellBufferTests
         buf.Set(0, 0, "a", Style.Default);
 
         Assert.Equal(CellKind.Single, buf[0, 0].Kind);
-        Assert.Equal(default(Cell), buf[0, 1]); // orphan continuation cleared
+        Assert.Equal(default, buf[0, 1]); // orphan continuation cleared
     }
 
     [Fact]
@@ -89,7 +91,7 @@ public class CellBufferTests
 
         buf.Set(0, 1, "x", Style.Default);
 
-        Assert.Equal(default(Cell), buf[0, 0]); // orphan wide-left cleared
+        Assert.Equal(default, buf[0, 0]); // orphan wide-left cleared
         Assert.Equal(CellKind.Single, buf[0, 1].Kind);
         Assert.Equal("x", buf[0, 1].Grapheme);
     }
@@ -123,9 +125,12 @@ public class CellBufferTests
         buf.Set(1, 1, "中", Style.Default);
 
         buf.Clear();
+
         for (int r = 0; r < 3; r++)
+        {
             for (int c = 0; c < 3; c++)
                 Assert.Equal(default(Cell), buf[r, c]);
+        }
     }
 
     [Fact]
@@ -133,10 +138,14 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(2, 2);
         var fill = new Cell(".", CellKind.Single, Style.Default.WithAttributes(TextAttributes.Italic));
+
         buf.Fill(fill);
+
         for (int r = 0; r < 2; r++)
+        {
             for (int c = 0; c < 2; c++)
                 Assert.Equal(fill, buf[r, c]);
+        }
     }
 
     // ---- Resize ----
@@ -150,7 +159,7 @@ public class CellBufferTests
 
         Assert.Equal(5, buf.Columns);
         Assert.Equal(5, buf.Rows);
-        Assert.Equal(default(Cell), buf[0, 0]);
+        Assert.Equal(default, buf[0, 0]);
     }
 
     [Fact]
@@ -160,7 +169,7 @@ public class CellBufferTests
         buf.Set(0, 0, "a", Style.Default);
         buf.Resize(3, 3);
 
-        Assert.Equal(default(Cell), buf[0, 0]);
+        Assert.Equal(default, buf[0, 0]);
     }
 
     // ---- Cursor ----

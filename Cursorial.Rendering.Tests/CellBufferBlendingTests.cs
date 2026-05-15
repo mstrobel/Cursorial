@@ -74,10 +74,13 @@ public class CellBufferBlendingTests
     public void Set_MultiplyMode_BlendsAgainstPreviousCell()
     {
         var buf = new CellBuffer(3, 1);
-        // Lay down a half-gray cell first.
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(128, 128, 128)));
+        // Lay down a half-gray cell first. The foreground composes against the underlying
+        // cell's *background* (not foreground — the source's glyph replaces whatever
+        // foreground content was there), so seed the bg with half-gray too.
+        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(128, 128, 128)));
 
-        // Push Multiply, set with another half-gray. Result should be ~1/4.
+        // Push Multiply, set with half-gray foreground. Result should be ~1/4
+        // (half-gray × half-gray = quarter-gray).
         buf.PushBlendingMode(BlendingModes.Multiply);
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgb(128, 128, 128)));
 
@@ -165,9 +168,12 @@ public class CellBufferBlendingTests
     public void Set_AlphaZeroSource_LeavesBackdropColorUnchanged()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(200, 100, 50)));
+        // Alpha controls how much of the backdrop *cell's background* shows through the
+        // newly-painted foreground (the source's glyph fully replaces the prior glyph).
+        // Seed the backdrop bg with the color we expect to see preserved.
+        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(200, 100, 50)));
 
-        // Fully transparent source — backdrop wins entirely.
+        // Fully transparent source foreground — backdrop bg shows through entirely.
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(0, 0, 0, 0)));
 
         Assert.Equal(Color.FromRgb(200, 100, 50), buf[0, 0].Style.Foreground);
@@ -189,7 +195,8 @@ public class CellBufferBlendingTests
     public void Set_HalfAlphaSource_LinearlyBlendsWithBackdrop()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(0, 0, 0)));
+        // Backdrop bg = black; the source's foreground alpha-blends against it.
+        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(0, 0, 0)));
 
         // Half-alpha white over black — expect mid-gray (~128).
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(255, 255, 255, 128)));
@@ -215,10 +222,12 @@ public class CellBufferBlendingTests
     public void Set_AlphaCompositesUnderMultiplyMode()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(200, 200, 200)));
+        // Backdrop bg = light-gray — the alpha-blended source foreground composes against the
+        // underlying cell's *background*, since the source's glyph replaces the prior glyph.
+        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(200, 200, 200)));
 
-        // Multiply with mid-gray would normally give (200 * 128/255) = ~100.
-        // Half-alpha source means: result = blended * 0.5 + backdrop * 0.5 = ~100 * 0.5 + 200 * 0.5 = ~150.
+        // Multiply with mid-gray gives (200 * 128/255) ≈ 100.
+        // Half-alpha source: result = blended * 0.5 + backdrop * 0.5 = 100 * 0.5 + 200 * 0.5 ≈ 150.
         buf.PushBlendingMode(BlendingModes.Multiply);
         buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(128, 128, 128, 128)));
 

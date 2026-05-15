@@ -1,4 +1,5 @@
 using Cursorial.Output;
+using Cursorial.Rendering.Fragments;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering;
@@ -37,6 +38,7 @@ public sealed class CellBuffer
     private int _columns;
     private int _rows;
     private readonly Stack<IBlendingMode> _blendStack = new();
+    private readonly Dictionary<(int Row, int Column), FragmentEntry> _fragments = new();
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
     public CellBuffer(int columns, int rows)
@@ -166,9 +168,99 @@ public sealed class CellBuffer
 
     /// <summary>
     /// Reset every cell to <see cref="Cell.Blank"/>. Does NOT apply the active blending mode —
-    /// clear is an explicit reset.
+    /// clear is an explicit reset. Also removes every registered fragment.
     /// </summary>
-    public void Clear() => Array.Clear(_cells);
+    public void Clear()
+    {
+        Array.Clear(_cells);
+        _fragments.Clear();
+    }
+
+    // ---- Fragment sidecar -----------------------------------------------------------------
+
+    /// <summary>
+    /// All fragments currently registered against the buffer, keyed by anchor cell. The renderer
+    /// iterates this collection after the regular cell-grid pass and emits each fragment's
+    /// protocol bytes at its anchor. Order is iteration order of the underlying dictionary —
+    /// fragments must not depend on each other's visual ordering at the cell layer.
+    /// </summary>
+    public IReadOnlyDictionary<(int Row, int Column), FragmentEntry> Fragments => _fragments;
+
+    /// <summary>
+    /// Register <paramref name="fragment"/> at the anchor cell <c>(row, column)</c>. The cells
+    /// in the fragment's <see cref="IBufferFragment.GetSize"/> rectangle are marked as
+    /// <see cref="CellKind.CoveredByFragment"/> so the renderer skips them during the normal
+    /// cell-emission pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <paramref name="anchorStyle"/> is the style the renderer applies as the SGR backdrop when
+    /// it positions the cursor at the anchor — useful when the fragment needs the cell-grid
+    /// background to "show through" around or behind its content. The fragment is free to emit
+    /// its own SGR inside <c>Emit</c>; this style only governs the entry state.
+    /// </para>
+    /// <para>
+    /// If a fragment is already registered at this anchor, it is replaced. Covered cells from
+    /// the previous fragment are reset to blank before the new fragment's coverage is applied.
+    /// </para>
+    /// </remarks>
+    public void AddFragment(int row, int column, IBufferFragment fragment, in Style anchorStyle = default)
+    {
+        ArgumentNullException.ThrowIfNull(fragment);
+        ValidateCoordinates(row, column);
+
+        var key = (row, column);
+        if (_fragments.TryGetValue(key, out var existing))
+            ClearCoverage(row, column, existing.Fragment.GetSize());
+
+        _fragments[key] = new FragmentEntry(fragment, anchorStyle);
+        ApplyCoverage(row, column, fragment.GetSize());
+    }
+
+    /// <summary>
+    /// Remove the fragment anchored at <c>(row, column)</c>. Covered cells are reset to blank;
+    /// no-op if no fragment is registered there. Returns true when a fragment was removed.
+    /// </summary>
+    public bool RemoveFragment(int row, int column)
+    {
+        ValidateCoordinates(row, column);
+
+        if (!_fragments.Remove((row, column), out var entry)) return false;
+
+        ClearCoverage(row, column, entry.Fragment.GetSize());
+        return true;
+    }
+
+    private void ApplyCoverage(int row, int column, Size size)
+    {
+        int rowEnd = Math.Min(_rows, row + Math.Max(1, size.Rows));
+        int colEnd = Math.Min(_columns, column + Math.Max(1, size.Columns));
+
+        for (int r = row; r < rowEnd; r++)
+            for (int c = column; c < colEnd; c++)
+            {
+                // Cleanup: if we cover the right half of a wide-left, the left becomes orphaned.
+                // Reset it to blank so we never expose a half-painted wide cell.
+                int idx = r * _columns + c;
+                var existing = _cells[idx];
+                if (existing.Kind == CellKind.WideContinuation && c > 0)
+                    _cells[idx - 1] = Cell.Blank;
+                if (existing.Kind == CellKind.WideLeft && c + 1 < _columns)
+                    _cells[idx + 1] = Cell.Blank;
+
+                _cells[idx] = Cell.FragmentCover;
+            }
+    }
+
+    private void ClearCoverage(int row, int column, Size size)
+    {
+        int rowEnd = Math.Min(_rows, row + Math.Max(1, size.Rows));
+        int colEnd = Math.Min(_columns, column + Math.Max(1, size.Columns));
+
+        for (int r = row; r < rowEnd; r++)
+            for (int c = column; c < colEnd; c++)
+                _cells[r * _columns + c] = Cell.Blank;
+    }
 
     /// <summary>
     /// Replace every cell with <paramref name="cell"/>, blending its <see cref="Style"/> against
@@ -257,7 +349,15 @@ public sealed class CellBuffer
         _columns = columns;
         _rows = rows;
         _cells = new Cell[checked(columns * rows)];
+        _fragments.Clear();
     }
+
+    /// <summary>
+    /// A fragment registered against a <see cref="CellBuffer"/>: the fragment itself and the
+    /// anchor style the renderer uses as the SGR backdrop before invoking the fragment's emit
+    /// callback.
+    /// </summary>
+    public readonly record struct FragmentEntry(IBufferFragment Fragment, Style AnchorStyle);
 
     /// <summary>Internal: raw row span for renderer access. Not part of the public-API stability guarantee.</summary>
     internal ReadOnlySpan<Cell> GetRowSpan(int row)

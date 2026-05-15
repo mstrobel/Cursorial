@@ -175,11 +175,11 @@ public static class GraphemeWidth
     private static int StringWidthCore(string text)
     {
         int total = 0;
-        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        var enumerator = text.GetGraphemeEnumerator();
 
         while (enumerator.MoveNext())
         {
-            string cluster = (string) enumerator.Current;
+            var cluster = enumerator.Current;
             total += ClusterWidth(cluster);
         }
 

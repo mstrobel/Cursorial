@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 
 using Cursorial.Output.Capabilities;
+using Cursorial.Text;
 
 namespace Cursorial.Output;
 
@@ -92,13 +93,13 @@ public static class TextSizingWriter
 
         // Split on grapheme cluster boundaries — splitting a UTF-8 sequence mid-glyph would
         // corrupt the rendered text.
-        var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
+        var enumerator = text.GetGraphemeEnumerator();
         var batch = new StringBuilder(capacity: 256);
         int batchBytes = 0;
 
         while (enumerator.MoveNext())
         {
-            string cluster = (string) enumerator.Current;
+            var cluster = enumerator.Current;
             int clusterBytes = Encoding.UTF8.GetByteCount(cluster);
 
             if (batchBytes + clusterBytes > VtOutputSequences.KittyTextSizing.MaxTextBytes && batchBytes > 0)
@@ -113,9 +114,7 @@ public static class TextSizingWriter
         }
 
         if (batchBytes > 0)
-        {
             Write(writer, sizing, batch.ToString().AsSpan());
-        }
     }
 
     private static void WriteMetadata(in TextSizing sizing, Span<byte> buffer, ref int written)

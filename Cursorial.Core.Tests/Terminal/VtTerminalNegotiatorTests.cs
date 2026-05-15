@@ -237,7 +237,7 @@ public class VtTerminalNegotiatorTests
 
         Assert.True(caps.Output.Graphics.KittyGraphics);
         Assert.False(caps.Output.Graphics.Sixel);
-        Assert.False(caps.Output.Graphics.Iterm2InlineImages);
+        Assert.False(caps.Output.Graphics.ITerm2InlineImages);
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
         var caps = await negotiator.NegotiateAsync(FastTimeout());
 
-        Assert.True(caps.Output.Graphics.Iterm2InlineImages);
+        Assert.True(caps.Output.Graphics.ITerm2InlineImages);
         Assert.False(caps.Output.Graphics.KittyGraphics);
     }
 

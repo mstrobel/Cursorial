@@ -690,11 +690,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static GraphicsCapabilities ResolveGraphics(TerminalIdentification identification) =>
         identification.Family switch
         {
-            TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  Iterm2InlineImages: false),
-            TerminalFamily.Iterm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, Iterm2InlineImages: true),
-            TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, Iterm2InlineImages: true),
-            TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, Iterm2InlineImages: false),
-            TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, Iterm2InlineImages: false),
+            TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+            TerminalFamily.Iterm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+            TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: true),
+            TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+            TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
             _                      => GraphicsCapabilities.None,
         };
     // @formatter:on

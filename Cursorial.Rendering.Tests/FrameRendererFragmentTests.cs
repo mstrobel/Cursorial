@@ -1,0 +1,141 @@
+using System.Buffers;
+using System.Text;
+using Cursorial.Output;
+using Cursorial.Output.Capabilities;
+using Cursorial.Rendering;
+using Cursorial.Rendering.Fragments;
+
+namespace Cursorial.Tests.Rendering;
+
+public class FrameRendererFragmentTests
+{
+    private static string Render(FrameRenderer renderer, CellBuffer back)
+    {
+        var w = new ArrayBufferWriter<byte>();
+        renderer.Render(back, w);
+        return Encoding.UTF8.GetString(w.WrittenSpan);
+    }
+
+    [Fact]
+    public void CoveredCells_AreSkippedInNormalEmission()
+    {
+        // Without a fragment, cells get glyphs emitted. With one, the covered region must NOT
+        // emit glyphs from the normal pass — the fragment's Emit owns that visual range.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        buffer.Set(0, 0, "a", Style.Default);
+        // Add a fragment whose StubFragment emits a recognizable sentinel string.
+        buffer.AddFragment(0, 1, new SentinelFragment(new Size(2, 1), "[F]"));
+        buffer.Set(0, 3, "z", Style.Default); // outside coverage
+
+        var output = Render(r, buffer);
+
+        Assert.Contains("a", output);
+        Assert.Contains("z", output);
+        Assert.Contains("[F]", output);
+    }
+
+    [Fact]
+    public void Fragments_AreBracketedWithSaveRestoreCursor()
+    {
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        buffer.AddFragment(0, 0, new SentinelFragment(new Size(1, 1), "FRAG"));
+
+        var output = Render(r, buffer);
+
+        // Note: \x1b7 is greedy and parses as one char (U+01B7). Use  for explicit ESC.
+        int saveIdx = output.IndexOf("7");
+        int fragIdx = output.IndexOf("FRAG");
+        int restoreIdx = output.IndexOf("8");
+
+        Assert.True(saveIdx >= 0, "DECSC must appear before the fragment payload.");
+        Assert.True(fragIdx > saveIdx, "Fragment body must appear between DECSC and DECRC.");
+        Assert.True(restoreIdx > fragIdx, "DECRC must appear after the fragment payload.");
+    }
+
+    [Fact]
+    public void UnsupportedFragment_IsSkipped()
+    {
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        buffer.AddFragment(0, 0, new SentinelFragment(new Size(1, 1), "NOPE", supported: false));
+
+        var output = Render(r, buffer);
+
+        Assert.DoesNotContain("NOPE", output);
+    }
+
+    [Fact]
+    public void SizedTextFragment_EmitsOsc66()
+    {
+        var caps = OutputCapabilities.None with
+                   {
+                       TextSizing = new TextSizingCapabilities(Width: true, Scale: true),
+                   };
+        var r = new FrameRenderer(caps);
+        var buffer = new CellBuffer(20, 2);
+        var fragment = new SizedTextFragment(
+            new TextSizing(Scale: 2),
+            "Hello",
+            Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+        buffer.AddFragment(0, 0, fragment);
+
+        var output = Render(r, buffer);
+
+        Assert.Contains("\x1b]66;", output);   // OSC 66 prefix
+        Assert.Contains("s=2", output);        // scale metadata
+        Assert.Contains("Hello", output);      // payload
+        Assert.Contains("\x1b\\", output);     // ST
+    }
+
+    [Fact]
+    public void SizedTextFragment_WithoutCapability_DoesNotEmit()
+    {
+        var caps = OutputCapabilities.None; // no TextSizing
+        var r = new FrameRenderer(caps);
+        var buffer = new CellBuffer(20, 2);
+        var fragment = new SizedTextFragment(
+            new TextSizing(Scale: 2),
+            "Hello",
+            Style.Default);
+        buffer.AddFragment(0, 0, fragment);
+
+        var output = Render(r, buffer);
+
+        Assert.DoesNotContain("\x1b]66;", output);
+        Assert.DoesNotContain("Hello", output);
+    }
+
+    [Fact]
+    public void SizedTextFragment_ReportsCorrectSize()
+    {
+        // "Hello" = 5 narrow clusters, scale 2 → width 10, height 2.
+        var fragment = new SizedTextFragment(new TextSizing(Scale: 2), "Hello", Style.Default);
+        Assert.Equal(new Size(10, 2), fragment.GetSize());
+    }
+
+    [Fact]
+    public void SizedTextFragment_FixedWidthOverridesNaturalWidth()
+    {
+        // Width=3 forces 3 cells per cluster regardless of natural width. 5 clusters × 3 = 15.
+        var fragment = new SizedTextFragment(
+            new TextSizing(Scale: 1, Width: 3),
+            "Hello",
+            Style.Default);
+        Assert.Equal(new Size(15, 1), fragment.GetSize());
+    }
+
+    private sealed class SentinelFragment(Size size, string sentinel, bool supported = true) : IBufferFragment
+    {
+        public Size GetSize() => size;
+        public bool IsSupported(OutputCapabilities capabilities) => supported;
+        public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+        {
+            var bytes = Encoding.UTF8.GetBytes(sentinel);
+            var dest = output.GetSpan(bytes.Length);
+            bytes.CopyTo(dest);
+            output.Advance(bytes.Length);
+        }
+    }
+}

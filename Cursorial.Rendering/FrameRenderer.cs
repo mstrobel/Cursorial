@@ -3,6 +3,7 @@ using System.Text;
 
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
+using Cursorial.Rendering.Fragments;
 
 namespace Cursorial.Rendering;
 
@@ -48,6 +49,7 @@ namespace Cursorial.Rendering;
 public sealed class FrameRenderer
 {
     private readonly FrameRendererOptions _options;
+    private readonly OutputCapabilities? _capabilities;
     private readonly StyleQuantizer? _quantizer;
 
     private Cell[]? _frontCells;
@@ -70,6 +72,7 @@ public sealed class FrameRenderer
     public FrameRenderer(OutputCapabilities? capabilities, FrameRendererOptions options = default)
     {
         _options = options;
+        _capabilities = capabilities;
         _quantizer = capabilities is null ? null : new StyleQuantizer(capabilities);
     }
 
@@ -115,6 +118,7 @@ public sealed class FrameRenderer
         }
 
         EmitDiff(back, output);
+        EmitFragments(back, output);
         EmitCursor(back, output);
 
         // End-of-frame SGR reset. Without this, the terminal's SGR state at frame boundary is
@@ -157,6 +161,16 @@ public sealed class FrameRenderer
                     continue;
                 }
 
+                // Fragment-covered cells are painted by the fragment's protocol payload in the
+                // post-cell pass; the normal emit must never write glyphs to these positions or
+                // it would overdraw the fragment. Snapshot the cover marker into the front so
+                // subsequent diff comparisons match.
+                if (cell.Kind == CellKind.CoveredByFragment)
+                {
+                    _frontCells![frontIdx] = cell;
+                    continue;
+                }
+
                 if (cell == _frontCells![frontIdx]) continue;
 
                 // Re-position the cursor if our tracked position isn't (r, c). After writing a cell
@@ -185,6 +199,46 @@ public sealed class FrameRenderer
                 if (_cursorCol >= back.Columns)
                     _cursorCol = -1;
             }
+        }
+    }
+
+    private void EmitFragments(CellBuffer back, IBufferWriter<byte> output)
+    {
+        if (back.Fragments.Count == 0) return;
+
+        // Use OutputCapabilities.None when the renderer wasn't constructed with capabilities —
+        // fragments that strictly require a feature will report unsupported and skip, which is
+        // the right answer when we have no information.
+        var caps = _capabilities ?? OutputCapabilities.None;
+
+        foreach (var ((row, col), entry) in back.Fragments)
+        {
+            if (!entry.Fragment.IsSupported(caps)) continue;
+            if (row < 0 || row >= back.Rows || col < 0 || col >= back.Columns) continue;
+
+            // Bracket every fragment with DECSC / DECRC. DECSC saves both cursor position and
+            // the SGR state; DECRC restores both. Our _currentStyle and _cursorRow/_cursorCol
+            // tracking remain valid across the fragment, since the cursor is brought back to
+            // exactly where it was. Position the cursor at the anchor and apply the
+            // fragment's anchor style as the SGR backdrop before invoking emit — that gives
+            // fragments a defined SGR state to inherit if they want, even though they're free
+            // to emit their own SGR over it.
+            CursorWriter.WriteSavePosition(output);
+            CursorWriter.WriteMoveTo(output, row, col);
+
+            if (entry.AnchorStyle != Style.Default)
+                SgrEncoder.WriteAbsolute(output, entry.AnchorStyle);
+
+            entry.Fragment.Emit(row, col, output, caps);
+
+            CursorWriter.WriteRestorePosition(output);
+
+            // DECRC's SGR-restore behavior varies across terminals (xterm restores it, some VT
+            // emulators don't). Explicitly resync our SGR tracking by writing an SGR reset; the
+            // next cell that needs styling will pay the re-establishment cost. This also keeps
+            // the post-fragment SGR state predictable for any subsequent fragments.
+            SgrEncoder.WriteReset(output);
+            _currentStyle = Style.Default;
         }
     }
 

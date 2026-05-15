@@ -45,35 +45,44 @@ public static class HyperlinkWriter
                      VtOutputSequences.KittyTextSizing.StringTerminator.Length;
 
         // For long URIs spill onto the heap; the common case stays on the stack via GetSpan.
-        byte[]? rented = budget > StackBufferThreshold ? new byte[budget] : null;
-        Span<byte> buffer = rented ?? writer.GetSpan(budget);
+        byte[]? rented = budget > StackBufferThreshold ? ArrayPool<byte>.Shared.Rent(budget) : null;
 
-        int written = 0;
-        VtOutputSequences.Hyperlink.Prefix.CopyTo(buffer[written..]);
-        written += VtOutputSequences.Hyperlink.Prefix.Length;
-
-        if (!id.IsEmpty)
+        try
         {
-            buffer[written++] = (byte) 'i';
-            buffer[written++] = (byte) 'd';
-            buffer[written++] = (byte) '=';
-            written += Encoding.UTF8.GetBytes(id, buffer[written..]);
+            Span<byte> buffer = rented ?? writer.GetSpan(budget);
+
+            int written = 0;
+            VtOutputSequences.Hyperlink.Prefix.CopyTo(buffer[written..]);
+            written += VtOutputSequences.Hyperlink.Prefix.Length;
+
+            if (!id.IsEmpty)
+            {
+                buffer[written++] = (byte) 'i';
+                buffer[written++] = (byte) 'd';
+                buffer[written++] = (byte) '=';
+                written += Encoding.UTF8.GetBytes(id, buffer[written..]);
+            }
+
+            buffer[written++] = (byte) ';';
+            written += Encoding.UTF8.GetBytes(uri, buffer[written..]);
+
+            var st = VtOutputSequences.KittyTextSizing.StringTerminator;
+            st.CopyTo(buffer[written..]);
+            written += st.Length;
+
+            if (rented is not null)
+            {
+                var dest = writer.GetSpan(written);
+                buffer[..written].CopyTo(dest);
+            }
+
+            writer.Advance(written);
         }
-
-        buffer[written++] = (byte) ';';
-        written += Encoding.UTF8.GetBytes(uri, buffer[written..]);
-
-        var st = VtOutputSequences.KittyTextSizing.StringTerminator;
-        st.CopyTo(buffer[written..]);
-        written += st.Length;
-
-        if (rented is not null)
+        finally
         {
-            var dest = writer.GetSpan(written);
-            buffer[..written].CopyTo(dest);
+            if (rented != null)
+                ArrayPool<byte>.Shared.Return(rented);
         }
-
-        writer.Advance(written);
     }
 
     /// <summary>Close the current hyperlink anchor (<c>ESC ] 8 ; ; ST</c>).</summary>

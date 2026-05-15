@@ -6,6 +6,7 @@ using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Fragments;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
 
@@ -465,7 +466,7 @@ static async Task DemoRenderAsync()
 
             if (stopCts.IsCancellationRequested) break;
 
-            PaintRenderShowcase(buffer, session);
+            PaintRenderShowcase(buffer);
 
             var scratch = new ArrayBufferWriter<byte>();
             renderer.Render(buffer, scratch);
@@ -517,10 +518,11 @@ static async Task DemoRenderAsync()
 // wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
 // that changes once per second — the clock is how you tell the diff renderer is doing per-cell
 // deltas instead of repainting the whole screen each frame.
-static void PaintRenderShowcase(CellBuffer buf, TerminalSession session)
+static void PaintRenderShowcase(CellBuffer buf)
 {
-    var writer = session.Output.Writer;
-
+    // Everything that used to flow through session.Output.Writer (sized text via OSC 66) now
+    // goes through the cell buffer as a fragment — the FrameRenderer handles emission, capability
+    // gating, and DECSC/DECRC bracketing for us.
     buf.CursorVisible = false;
     buf.Clear();
 
@@ -669,17 +671,20 @@ static void PaintRenderShowcase(CellBuffer buf, TerminalSession session)
     }
 
     // ---- Sized Text below Title Bar ----
-    CursorWriter.WriteSavePosition(writer);
-    CursorWriter.WriteMoveTo(writer, 2, 1);
+    // Registered as a cell-buffer fragment so the renderer owns its emission — bracketed with
+    // DECSC / DECRC after the regular cell pass, capability-gated on OSC 66 support, and
+    // composing with the rest of the painted UI. On terminals without OSC 66 the fragment
+    // reports unsupported and the renderer skips it; a future ScaledText content type will
+    // fall back to a Figlet rendering through the font system.
+    var sizedTitleStyle = Style.Default
+        .WithForeground(Color.FromPalette(4))
+        .WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
+        .WithUnderlineStyle(UnderlineStyle.Curly)
+        .WithUnderlineColor(Color.FromPalette(5));
 
-    SgrEncoder.WriteAbsolute(
-        writer,
-        Style.Default.WithForeground(Color.FromPalette(4))
-             .WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
-             .WithUnderlineStyle(UnderlineStyle.Curly)
-             .WithUnderlineColor(Color.FromPalette(5)));
-    TextSizingWriter.Write(writer, new(Scale: 2), "Cursorial Rendering Demo");
-    CursorWriter.WriteRestorePosition(writer);
+    buf.AddFragment(2, 1, new SizedTextFragment(new TextSizing(Scale: 2),
+                                                "Cursorial Rendering Demo",
+                                                sizedTitleStyle));
 
     // ---- Clock in top-right corner ----
     string clock = DateTime.Now.ToString("HH:mm:ss");
@@ -914,7 +919,7 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Header("Output — Graphics");
     Row("Sixel",                 caps.Output.Graphics.Sixel);
     Row("Kitty graphics",        caps.Output.Graphics.KittyGraphics);
-    Row("iTerm2 inline images",  caps.Output.Graphics.Iterm2InlineImages);
+    Row("iTerm2 inline images",  caps.Output.Graphics.ITerm2InlineImages);
 
     Header("Output — Cursor / Window");
     Row("Cursor shape control",  caps.Output.Cursor.ShapeControl);

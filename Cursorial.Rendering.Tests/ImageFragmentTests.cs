@@ -1,0 +1,234 @@
+using System.Buffers;
+using System.Text;
+using Cursorial.Output;
+using Cursorial.Output.Capabilities;
+using Cursorial.Rendering;
+using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fragments;
+
+namespace Cursorial.Tests.Rendering;
+
+public class KittyImageFragmentTests
+{
+    private static byte[] FakePng(int seed = 1)
+    {
+        // Doesn't actually need to be a valid PNG for the fragment's wire-format tests — the
+        // fragment just base64-encodes whatever bytes we give it. Make the payload large
+        // enough that we exercise the chunking boundary (≥ 4096 base64 bytes → ≥ 3072 raw).
+        var bytes = new byte[6000];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte) ((i * seed) & 0xFF);
+        return bytes;
+    }
+
+    [Fact]
+    public void GetSize_MatchesImageDataCellSize()
+    {
+        var data = new ImageData(FakePng(), ImageFormat.Png, new Size(20, 10));
+        var fragment = new KittyImageFragment(data);
+        Assert.Equal(new Size(20, 10), fragment.GetSize());
+    }
+
+    [Fact]
+    public void IsSupported_GatedOnKittyGraphics()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 5));
+        var fragment = new KittyImageFragment(data);
+
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
+                   };
+        Assert.True(fragment.IsSupported(caps));
+
+        Assert.False(fragment.IsSupported(OutputCapabilities.None));
+    }
+
+    [Fact]
+    public void Emit_FirstChunkHasFullHeader()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(20, 10));
+        var fragment = new KittyImageFragment(data);
+        var w = new ArrayBufferWriter<byte>();
+        fragment.Emit(0, 0, w, OutputCapabilities.None);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        // APC introducer: ESC _ G ...
+        Assert.StartsWith("_G", text);
+        // Full transmit header
+        Assert.Contains("a=T", text);
+        Assert.Contains("f=100", text);
+        Assert.Contains("c=20", text);
+        Assert.Contains("r=10", text);
+        Assert.Contains("q=2", text);
+        // String terminator
+        Assert.EndsWith("\\", text);
+    }
+
+    [Fact]
+    public void Emit_LargePayload_ChunksAcross4096ByteBoundary()
+    {
+        var data = new ImageData(FakePng(), ImageFormat.Png, new Size(20, 10));
+        var fragment = new KittyImageFragment(data);
+        var w = new ArrayBufferWriter<byte>();
+        fragment.Emit(0, 0, w, OutputCapabilities.None);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        // Multiple APC packets — each APC starts with ESC _.
+        int packetCount = 0;
+        int idx = 0;
+        while ((idx = text.IndexOf("_", idx, StringComparison.Ordinal)) >= 0)
+        {
+            packetCount++;
+            idx++;
+        }
+        Assert.True(packetCount >= 2,
+            $"Expected the 6000-byte payload to chunk into ≥ 2 APC packets, got {packetCount}.");
+
+        // First chunk: m=1 (more coming). Final chunk: m=0.
+        Assert.Contains("m=1", text);
+        Assert.Contains("m=0", text);
+    }
+
+    [Fact]
+    public void Emit_SmallPayload_SinglePacketWithMZero()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var fragment = new KittyImageFragment(data);
+        var w = new ArrayBufferWriter<byte>();
+        fragment.Emit(0, 0, w, OutputCapabilities.None);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        // Single APC means m=0 (final chunk) and no m=1.
+        Assert.Contains("m=0", text);
+        Assert.DoesNotContain("m=1", text);
+    }
+}
+
+public class ITerm2ImageFragmentTests
+{
+    [Fact]
+    public void GetSize_MatchesImageDataCellSize()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(8, 4));
+        Assert.Equal(new Size(8, 4), new ITerm2ImageFragment(data).GetSize());
+    }
+
+    [Fact]
+    public void IsSupported_GatedOnITerm2Caps()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 5));
+        var fragment = new ITerm2ImageFragment(data);
+
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+                   };
+        Assert.True(fragment.IsSupported(caps));
+        Assert.False(fragment.IsSupported(OutputCapabilities.None));
+    }
+
+    [Fact]
+    public void Emit_OscHeaderWithCellDimensionsAndInlineFlag()
+    {
+        var data = new ImageData([1, 2, 3, 4, 5, 6, 7, 8], ImageFormat.Png, new Size(12, 6));
+        var fragment = new ITerm2ImageFragment(data);
+        var w = new ArrayBufferWriter<byte>();
+        fragment.Emit(0, 0, w, OutputCapabilities.None);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        Assert.StartsWith("]1337;File=", text);
+        Assert.Contains("size=8", text);
+        Assert.Contains("width=12", text);
+        Assert.Contains("height=6", text);
+        Assert.Contains("inline=1", text);
+        Assert.Contains("preserveAspectRatio=0", text);
+        Assert.EndsWith("\\", text);
+
+        // Base64 payload is present.
+        Assert.Contains(Convert.ToBase64String(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }), text);
+    }
+}
+
+public class ImageContentTests
+{
+    private static byte[] PngBytes() => [137, 80, 78, 71]; // first four bytes of a PNG signature, enough for tests
+
+    [Fact]
+    public void Paint_WhenKittySupported_AttachesKittyFragment()
+    {
+        var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, new Size(10, 5)));
+        var buffer = new CellBuffer(20, 10);
+
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
+                   };
+        var painted = content.Paint(buffer, 0, 0, Style.Default, caps);
+
+        Assert.Single(buffer.Fragments);
+        Assert.IsType<KittyImageFragment>(buffer.Fragments[(0, 0)].Fragment);
+        Assert.Equal(new Size(10, 5), painted);
+    }
+
+    [Fact]
+    public void Paint_WhenOnlyITerm2Supported_AttachesIterm2Fragment()
+    {
+        var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, new Size(8, 4)));
+        var buffer = new CellBuffer(20, 10);
+
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+                   };
+        content.Paint(buffer, 0, 0, Style.Default, caps);
+
+        Assert.IsType<ITerm2ImageFragment>(buffer.Fragments[(0, 0)].Fragment);
+    }
+
+    [Fact]
+    public void Paint_KittyWithJpegFormat_FallsThroughToITerm2()
+    {
+        // Kitty can't accept JPEG via encoded-bytes transmission; should skip and prefer iTerm2.
+        var content = new Image(new ImageData(PngBytes(), ImageFormat.Jpeg, new Size(5, 5)));
+        var buffer = new CellBuffer(20, 10);
+
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: true),
+                   };
+        content.Paint(buffer, 0, 0, Style.Default, caps);
+
+        Assert.IsType<ITerm2ImageFragment>(buffer.Fragments[(0, 0)].Fragment);
+    }
+
+    [Fact]
+    public void Paint_WhenNoGraphicsSupported_PaintsPlaceholderRectangle()
+    {
+        var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, new Size(10, 3)));
+        var buffer = new CellBuffer(20, 10);
+
+        var painted = content.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
+
+        // No fragment registered — placeholder painted as cells.
+        Assert.Empty(buffer.Fragments);
+        Assert.Equal(new Size(10, 3), painted);
+
+        // Center row should contain the "[image]" label.
+        int centerRow = 0 + 3 / 2;
+        var rowText = string.Concat(Enumerable.Range(0, 10).Select(c => buffer[centerRow, c].Grapheme ?? " "));
+        Assert.Contains("[image]", rowText);
+    }
+
+    [Fact]
+    public void Paint_PlaceholderStyleOverridesCallerStyle()
+    {
+        var placeholder = Style.Default.WithBackground(Color.FromRgb(50, 50, 50));
+        var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, new Size(4, 2)), placeholder);
+        var buffer = new CellBuffer(10, 5);
+
+        content.Paint(buffer, 0, 0, Style.Default.WithBackground(Color.FromRgb(255, 0, 0)), OutputCapabilities.None);
+
+        // Every painted cell should carry the PlaceholderStyle's background, not the caller's.
+        Assert.Equal(Color.FromRgb(50, 50, 50), buffer[0, 0].Style.Background);
+    }
+}

@@ -25,13 +25,21 @@ while (true)
     string? line = Console.ReadLine();
     if (line is null) break;
 
-    string command = line.Trim().ToLowerInvariant();
-    if (command is "quit" or "exit" or "q") break;
-    if (command.Length == 0) continue;
+    string trimmed = line.Trim();
+    if (trimmed.Length == 0) continue;
+
+    // Split the verb (lowercased for dispatch) from its argument (original case preserved —
+    // file paths and similar args need it). A trailing-args-friendly split keeps the existing
+    // arg-less commands working unchanged.
+    int spaceIdx = trimmed.IndexOf(' ');
+    string verb = (spaceIdx < 0 ? trimmed : trimmed[..spaceIdx]).ToLowerInvariant();
+    string argument = spaceIdx < 0 ? "" : trimmed[(spaceIdx + 1)..].Trim();
+
+    if (verb is "quit" or "exit" or "q") break;
 
     try
     {
-        switch (command)
+        switch (verb)
         {
             case "help" or "?":
                 PrintHelp();
@@ -54,11 +62,14 @@ while (true)
             case "render" or "showcase":
                 await DemoRenderAsync();
                 break;
+            case "image":
+                await DemoImageAsync(argument);
+                break;
             case "probe":
                 await ProbeAsync();
                 break;
             default:
-                Console.WriteLine($"Unknown command: '{command}'. Type 'help' for the list.");
+                Console.WriteLine($"Unknown command: '{verb}'. Type 'help' for the list.");
                 break;
         }
     }
@@ -99,6 +110,10 @@ static void PrintHelp()
     Console.WriteLine("  render           Cursorial.Rendering showcase — opens the alternate screen,");
     Console.WriteLine("                   draws a panel of colors, wide glyphs, attributes, and an");
     Console.WriteLine("                   alpha-blended overlay, with a clock ticking in the corner.");
+    Console.WriteLine("                   (Press q or Ctrl+C to exit)");
+    Console.WriteLine("  image <path>     Load and render the file at <path> via the negotiated graphics");
+    Console.WriteLine("                   protocol (Kitty graphics → iTerm2 inline → cell placeholder).");
+    Console.WriteLine("                   Supports PNG / JPEG / GIF; format inferred from extension.");
     Console.WriteLine("                   (Press q or Ctrl+C to exit)");
     Console.WriteLine("  probe            Send XTVERSION + DA1 and dump the raw response bytes for 1 second.");
     Console.WriteLine("                   Confirms whether the terminal responds to standard probes.");
@@ -512,6 +527,214 @@ static async Task DemoRenderAsync()
 
         return false;
     }
+}
+
+static async Task DemoImageAsync(string argument)
+{
+    if (string.IsNullOrWhiteSpace(argument))
+    {
+        Console.WriteLine("Usage: image <path-to-png-jpeg-or-gif>");
+        return;
+    }
+
+    string path = argument.Trim('"', '\'');
+    if (path.StartsWith("~/", StringComparison.Ordinal))
+    {
+        path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
+    }
+
+    if (!File.Exists(path))
+    {
+        Console.WriteLine($"File not found: {path}");
+        return;
+    }
+
+    byte[] bytes;
+    try
+    {
+        bytes = await File.ReadAllBytesAsync(path);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Failed to read {path}: {ex.Message}");
+        return;
+    }
+
+    var format = Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png"            => Cursorial.Rendering.Fragments.ImageFormat.Png,
+        ".jpg" or ".jpeg" => Cursorial.Rendering.Fragments.ImageFormat.Jpeg,
+        ".gif"            => Cursorial.Rendering.Fragments.ImageFormat.Gif,
+        _ => Cursorial.Rendering.Fragments.ImageFormat.Png, // best-guess; Kitty will refuse non-PNG, iTerm2 accepts most
+    };
+
+    Console.WriteLine(
+        $"Image demo. Loading {path} ({bytes.Length} bytes, {format}). Press q or Ctrl+C to exit.");
+
+    await using var session = await TerminalSession.OpenAsync();
+    var writer = session.Output.Writer;
+
+    ScreenWriter.WriteEnterAlternateScreen(writer);
+    SgrEncoder.WriteReset(writer);
+    await writer.FlushAsync();
+
+    int cols = Math.Max(20, Console.WindowWidth);
+    int rows = Math.Max(8, Console.WindowHeight);
+
+    var buffer = new CellBuffer(cols, rows);
+    var renderer = new FrameRenderer(session.Capabilities.Output);
+
+    var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
+    using var stopCts = new CancellationTokenSource();
+    var inputPump = Task.Run(async () =>
+    {
+        try
+        {
+            // ReSharper disable AccessToDisposedClosure
+            await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+            {
+                events.Enqueue(evt);
+            }
+            // ReSharper restore AccessToDisposedClosure
+        }
+        catch (OperationCanceledException) { }
+    });
+
+    try
+    {
+        // Render once on entry, then only repaint when something material changes (resize).
+        // Images are expensive to re-emit (base64-encoded protocol payloads can be hundreds of
+        // KB) — re-rendering at 30 fps for static content would be wasteful and visible as
+        // flicker on slower terminals.
+        bool needsRepaint = true;
+
+        while (!stopCts.IsCancellationRequested)
+        {
+            while (events.TryDequeue(out var evt))
+            {
+                switch (evt)
+                {
+                    case ResizeEvent { Columns: > 0, Rows: > 0 } r:
+                        buffer.Resize(r.Columns, r.Rows);
+                        needsRepaint = true;
+                        break;
+
+                    case KeyEvent k when IsExit(k):
+                        stopCts.Cancel();
+                        break;
+                }
+            }
+
+            if (stopCts.IsCancellationRequested) break;
+
+            if (needsRepaint)
+            {
+                PaintImageShowcase(buffer, path, bytes, format, session.Capabilities.Output);
+
+                var scratch = new ArrayBufferWriter<byte>();
+                renderer.Render(buffer, scratch);
+                await writer.WriteAsync(scratch.WrittenMemory);
+                await writer.FlushAsync();
+
+                needsRepaint = false;
+            }
+
+            try { await Task.Delay(50, stopCts.Token); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+    finally
+    {
+        stopCts.Cancel();
+
+        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
+
+        CursorWriter.WriteShow(writer);
+        SgrEncoder.WriteReset(writer);
+        ScreenWriter.WriteLeaveAlternateScreen(writer);
+
+        try { await writer.FlushAsync(); } catch { /* best-effort */ }
+    }
+
+    Console.WriteLine("Image demo exited.");
+
+    static bool IsExit(KeyEvent k)
+    {
+        if (k.Kind != KeyEventKind.Down) return false;
+        if (k.Key == Key.Escape) return true;
+        if (k is { Key: Key.Character, Text.Length: > 0 } && (k.Text.Span[0] == 'q' || k.Text.Span[0] == 'Q'))
+            return true;
+        if (k.Key == Key.Character &&
+            k.Modifiers.HasFlag(KeyModifiers.Control) &&
+            k.Text.Length > 0 &&
+            (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C'))
+        {
+            return true;
+        }
+        return false;
+    }
+}
+
+static void PaintImageShowcase(
+    CellBuffer buf,
+    string path,
+    byte[] bytes,
+    Cursorial.Rendering.Fragments.ImageFormat format,
+    OutputCapabilities outputCaps)
+{
+    buf.CursorVisible = false;
+    buf.Clear();
+
+    int cols = buf.Columns;
+    int rows = buf.Rows;
+
+    // Reserve top rows for the header (path + protocol info) and bottom rows for the footer.
+    // The image occupies the rectangle between them, centered horizontally.
+    const int headerRows = 3;
+    const int footerRows = 2;
+
+    int availableRows = Math.Max(1, rows - headerRows - footerRows);
+    int availableCols = Math.Max(1, cols - 2);
+
+    int imageW = Math.Max(10, Math.Min(60, availableCols));
+    int imageH = Math.Max(4, Math.Min(availableRows, 20));
+
+    int anchorRow = headerRows;
+    int anchorCol = Math.Max(1, (cols - imageW) / 2);
+
+    // Header line 1: full path (truncated from the left if too long, so the file name stays visible).
+    string header = $"image: {path}";
+    if (header.Length > cols - 2) header = "..." + header[^(cols - 5)..];
+    PaintLine(buf, 0, 1, header,
+        Style.Default.WithForeground(Color.FromRgb(220, 220, 255))
+                     .WithAttributes(TextAttributes.Bold));
+
+    // Header line 2: chosen protocol + cell footprint.
+    string protocol = ChooseProtocolLabel(outputCaps, format);
+    string sub = $"  {bytes.Length:N0} bytes, {format} → {imageW}×{imageH} cells via {protocol}";
+    PaintLine(buf, 1, 1, sub, Style.Default.WithForeground(Color.FromRgb(160, 160, 200)));
+
+    // Image (capability-aware — Image content picks Kitty / iTerm2 / placeholder at paint time).
+    var data = new Cursorial.Rendering.Fragments.ImageData(bytes, format, new Size(imageW, imageH));
+    var placeholderStyle = Style.Default
+        .WithBackground(Color.FromRgb(40, 40, 70))
+        .WithForeground(Color.FromRgb(200, 200, 220));
+    var content = new Cursorial.Rendering.Content.Image(data, placeholderStyle);
+    content.Paint(buf, anchorRow, anchorCol, Style.Default, outputCaps);
+
+    // Footer.
+    int footerRow = Math.Min(anchorRow + imageH + 1, rows - 1);
+    PaintLine(buf, footerRow, 1, "Press q or Ctrl+C to return.",
+        Style.Default.WithForeground(Color.FromRgb(180, 180, 220)));
+}
+
+static string ChooseProtocolLabel(OutputCapabilities caps, Cursorial.Rendering.Fragments.ImageFormat format)
+{
+    if (caps.Graphics.KittyGraphics && format == Cursorial.Rendering.Fragments.ImageFormat.Png)
+        return "Kitty graphics protocol";
+    if (caps.Graphics.ITerm2InlineImages)
+        return "iTerm2 inline images";
+    return "cell-grid placeholder (no graphics support)";
 }
 
 // Paint the render-demo content into <paramref name="buf"/>. Uses every piece of the rendering

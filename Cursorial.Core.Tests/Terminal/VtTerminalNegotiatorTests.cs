@@ -80,7 +80,7 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
         var caps = await negotiator.NegotiateAsync(FastTimeout());
 
-        Assert.Equal(TerminalFamily.Iterm2, caps.Terminal.Family);
+        Assert.Equal(TerminalFamily.ITerm2, caps.Terminal.Family);
         Assert.Equal("iTerm2", caps.Terminal.Name);
         Assert.Equal("3.4.5", caps.Terminal.Version);
     }
@@ -108,7 +108,7 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
         var caps = await negotiator.NegotiateAsync(FastTimeout());
 
-        Assert.Equal(TerminalFamily.Iterm2, caps.Terminal.Family);
+        Assert.Equal(TerminalFamily.ITerm2, caps.Terminal.Family);
         Assert.Equal("iTerm.app", caps.Terminal.Name);
         Assert.Equal("3.4.5", caps.Terminal.Version);
     }

@@ -22,7 +22,7 @@ public enum TerminalFamily
 
     Kitty,
     Ghostty,
-    Iterm2,
+    ITerm2,
     WezTerm,
     Alacritty,
     Foot,

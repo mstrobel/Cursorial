@@ -276,7 +276,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.WezTerm or
                   TerminalFamily.Konsole or
                   TerminalFamily.Foot or
-                  TerminalFamily.Iterm2; // Partial support since iTerm2 3.5.
+                  TerminalFamily.ITerm2; // Partial support since iTerm2 3.5.
 
     private static bool TerminalSupportsWin32InputMode(TerminalFamily family) =>
         family is TerminalFamily.WindowsTerminal or
@@ -285,7 +285,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static bool TerminalSupportsSynchronizedOutput(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
-                  TerminalFamily.Iterm2 or
+                  TerminalFamily.ITerm2 or
                   TerminalFamily.WezTerm or
                   TerminalFamily.Alacritty or
                   TerminalFamily.WindowsTerminal or
@@ -481,7 +481,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // Match case-insensitively on substrings — terminals self-report with varied casing.
         if (name.Contains("kitty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Kitty;
         if (name.Contains("ghostty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Ghostty;
-        if (name.Contains("iTerm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Iterm2;
+        if (name.Contains("iTerm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.ITerm2;
         if (name.Contains("WezTerm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.WezTerm;
         if (name.Contains("Alacritty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Alacritty;
         if (name.Contains("foot", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Foot;
@@ -501,7 +501,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         if (_environment.GetVariable("KITTY_PID") is { Length: > 0 }) return TerminalFamily.Kitty;
         if (_environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
-        if (_environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.Iterm2;
+        if (_environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
 
         if (rawTermProgram is { Length: > 0 })
         {
@@ -647,7 +647,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // Known truecolor families.
         if (identification.Family is TerminalFamily.Kitty or
                                      TerminalFamily.Ghostty or
-                                     TerminalFamily.Iterm2 or
+                                     TerminalFamily.ITerm2 or
                                      TerminalFamily.WezTerm or
                                      TerminalFamily.Alacritty or
                                      TerminalFamily.WindowsTerminal or
@@ -675,7 +675,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // underline, overline) is more recent.
         bool extended = identification.Family is TerminalFamily.Kitty or
                                                  TerminalFamily.Ghostty or
-                                                 TerminalFamily.Iterm2 or 
+                                                 TerminalFamily.ITerm2 or 
                                                  TerminalFamily.WezTerm or 
                                                  TerminalFamily.Alacritty or
                                                  TerminalFamily.WindowsTerminal or 
@@ -698,7 +698,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         {
             TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
             TerminalFamily.Ghostty => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
-            TerminalFamily.Iterm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+            TerminalFamily.ITerm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
             TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: true),
             TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
             TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
@@ -723,7 +723,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         bool pixelSize = identification.Family is TerminalFamily.Kitty or 
                                                   TerminalFamily.Ghostty or 
-                                                  TerminalFamily.Iterm2 or 
+                                                  TerminalFamily.ITerm2 or 
                                                   TerminalFamily.WezTerm or 
                                                   TerminalFamily.Foot or
                                                   TerminalFamily.Alacritty or 

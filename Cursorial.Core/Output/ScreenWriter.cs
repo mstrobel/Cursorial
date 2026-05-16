@@ -91,6 +91,43 @@ public static class ScreenWriter
         writer.Advance(3);
     }
 
+    /// <summary>
+    /// Scroll the active region up by <paramref name="lines"/> lines (<c>CSI Ps S</c>, SU).
+    /// Top <paramref name="lines"/> rows scroll off; <paramref name="lines"/> blank rows appear
+    /// at the bottom. Used by the diff renderer when it detects the back buffer equals the
+    /// front buffer shifted up by N rows — emitting one SU is dramatically smaller than
+    /// repainting every cell.
+    /// </summary>
+    public static void WriteScrollUp(IBufferWriter<byte> writer, int lines)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lines);
+        WriteScrollFinal(writer, lines, (byte) 'S');
+    }
+
+    /// <summary>
+    /// Scroll the active region down by <paramref name="lines"/> lines (<c>CSI Ps T</c>, SD).
+    /// Bottom <paramref name="lines"/> rows scroll off; <paramref name="lines"/> blank rows
+    /// appear at the top.
+    /// </summary>
+    public static void WriteScrollDown(IBufferWriter<byte> writer, int lines)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(lines);
+        WriteScrollFinal(writer, lines, (byte) 'T');
+    }
+
+    private static void WriteScrollFinal(IBufferWriter<byte> writer, int lines, byte final)
+    {
+        var buffer = writer.GetSpan(8);
+        int written = 0;
+        buffer[written++] = Escape;
+        buffer[written++] = CsiOpen;
+        VtWriterUtilities.WriteAsciiInt(lines, buffer, ref written);
+        buffer[written++] = final;
+        writer.Advance(written);
+    }
+
     private static void WriteEd(IBufferWriter<byte> writer, byte digit) => WriteSingleDigitFinal(writer, digit, (byte) 'J');
     private static void WriteEl(IBufferWriter<byte> writer, byte digit) => WriteSingleDigitFinal(writer, digit, (byte) 'K');
 

@@ -67,6 +67,13 @@ public sealed class FrameRenderer
     // each render; cleared (set to false) at the start of each ComputeCoveredCells pass.
     private bool[]? _coveredCells;
 
+    // Reusable scratch buffer for the per-render "is this cell inside a dirty region?"
+    // lookup. Only built when CellBuffer.DirtyRegions is non-empty; sized parallel to
+    // _coveredCells. When the back buffer doesn't supply dirty regions, this field stays
+    // logically inactive — the cell loop falls back to the full-buffer diff.
+    private bool[]? _dirtyCells;
+    private bool _hasDirtyRegions;
+
     private Style _currentStyle;
     private Hyperlink _currentHyperlink;
     private int _cursorRow;
@@ -135,10 +142,21 @@ public sealed class FrameRenderer
             _frontFragments.Clear();
         }
 
-        if (_coveredCells is null || _coveredCells.Length != back.Rows * back.Columns)
-            _coveredCells = new bool[back.Rows * back.Columns];
+        int cellCount = back.Rows * back.Columns;
+        if (_coveredCells is null || _coveredCells.Length != cellCount)
+            _coveredCells = new bool[cellCount];
+        if (_dirtyCells is null || _dirtyCells.Length != cellCount)
+            _dirtyCells = new bool[cellCount];
 
         ComputeCoveredCells(back);
+        ComputeDirtyCells(back);
+
+        // Scroll detection — only meaningful on incremental renders, only safe when no
+        // fragments are anchored (fragments shouldn't scroll with cell content). When the
+        // back buffer is the front shifted up/down by K rows, emit SU/SD and shift _frontCells
+        // in place so the subsequent EmitDiff only repaints the K newly-uncovered rows.
+        if (!fullRedraw && back.Fragments.Count == 0)
+            TryDetectAndApplyScroll(back, output);
 
         EmitDiff(back, output);
         EmitFragments(back, output);
@@ -160,6 +178,11 @@ public sealed class FrameRenderer
             HyperlinkWriter.WriteClose(output);
             _currentHyperlink = Hyperlink.None;
         }
+
+        // Consume the buffer's dirty regions so the next render starts fresh. Consumers using
+        // explicit dirty tracking re-mark on each frame; consumers that never mark are
+        // unaffected (the list was empty going in and goes out the same way).
+        back.ClearDirty();
 
         _firstFrame = false;
     }
@@ -198,6 +221,31 @@ public sealed class FrameRenderer
     }
 
     /// <summary>
+    /// Recompute the dirty-cells bitmask for the current frame from
+    /// <see cref="CellBuffer.DirtyRegions"/>. When the back buffer has no dirty regions, this
+    /// is a no-op and <see cref="_hasDirtyRegions"/> remains false — the cell loop falls back
+    /// to a full-buffer diff (the safe default). When regions are present, only cells inside
+    /// the union of those regions are eligible for emission.
+    /// </summary>
+    private void ComputeDirtyCells(CellBuffer back)
+    {
+        _hasDirtyRegions = back.DirtyRegions.Count > 0;
+        if (!_hasDirtyRegions) return;
+
+        var dirty = _dirtyCells!;
+        Array.Clear(dirty);
+
+        foreach (var region in back.DirtyRegions)
+        {
+            int rowEnd = Math.Min(back.Rows, region.RowEnd);
+            int colEnd = Math.Min(back.Columns, region.ColumnEnd);
+            for (int r = Math.Max(0, region.Row); r < rowEnd; r++)
+                for (int c = Math.Max(0, region.Column); c < colEnd; c++)
+                    dirty[r * back.Columns + c] = true;
+        }
+    }
+
+    /// <summary>
     /// Build the cell the renderer should actually emit for <paramref name="backCell"/> at
     /// (<paramref name="row"/>, <paramref name="column"/>). For uncovered cells this is the
     /// back cell itself. For cells covered by a Cell-layer fragment, this is a space carrying
@@ -217,6 +265,106 @@ public sealed class FrameRenderer
             Style: Style.Default.WithBackground(backCell.Style.Background));
     }
 
+    /// <summary>
+    /// Maximum number of rows to consider for a scroll-detection match. The cost of detection
+    /// is O(rows × cols × MaxScroll); 8 covers the practical cases (a log scrolling one or
+    /// two lines at a time, a chat view paging up by a handful) without making the detection
+    /// itself expensive on large buffers.
+    /// </summary>
+    private const int MaxScrollDetect = 8;
+
+    /// <summary>
+    /// Detect whether the back buffer matches the front buffer shifted up or down by some K
+    /// rows. On a match, emit SU / SD K, shift <see cref="_frontCells"/> in place, and the
+    /// subsequent <see cref="EmitDiff"/> naturally repaints only the K newly-uncovered rows
+    /// (the shifted region matches by construction).
+    /// </summary>
+    private void TryDetectAndApplyScroll(CellBuffer back, IBufferWriter<byte> output)
+    {
+        if (_frontCells is null) return;
+
+        int cols = back.Columns;
+        int rows = back.Rows;
+        int maxK = Math.Min(rows / 2, MaxScrollDetect);
+
+        // Scroll up: back[k..] == front[..rows - k]. New content arrives at the bottom rows.
+        for (int k = 1; k <= maxK; k++)
+        {
+            if (!CellsShiftedMatch(back, _frontCells, cols, rows, k, scrollUp: true)) continue;
+            ApplyScroll(output, cols, rows, k, scrollUp: true);
+            return;
+        }
+
+        // Scroll down: back[..rows - k] == front[k..]. New content arrives at the top rows.
+        for (int k = 1; k <= maxK; k++)
+        {
+            if (!CellsShiftedMatch(back, _frontCells, cols, rows, k, scrollUp: false)) continue;
+            ApplyScroll(output, cols, rows, k, scrollUp: false);
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Compare a shifted slice of the back buffer to the corresponding slice of the front
+    /// buffer.
+    /// <para>
+    /// <b>Scroll up</b> (top content moves off, new content at bottom): the back's top rows
+    /// equal the front's lower rows — <c>back[r] == front[r + k]</c> for <c>r ∈ [0, rows-k)</c>.
+    /// </para>
+    /// <para>
+    /// <b>Scroll down</b> (bottom content moves off, new content at top): the back's lower rows
+    /// equal the front's top rows — <c>back[r + k] == front[r]</c> for <c>r ∈ [0, rows-k)</c>.
+    /// </para>
+    /// </summary>
+    private bool CellsShiftedMatch(CellBuffer back, Cell[] front, int cols, int rows, int k, bool scrollUp)
+    {
+        int compareRows = rows - k;
+        for (int r = 0; r < compareRows; r++)
+        {
+            int backRow = scrollUp ? r : r + k;
+            int frontRow = scrollUp ? r + k : r;
+
+            var backSpan = back.GetRowSpan(backRow);
+            for (int c = 0; c < cols; c++)
+            {
+                var backAdapted = Adapt(backSpan[c]);
+                if (!backAdapted.Equals(front[frontRow * cols + c])) return false;
+            }
+        }
+        return true;
+    }
+
+    private void ApplyScroll(IBufferWriter<byte> output, int cols, int rows, int k, bool scrollUp)
+    {
+        if (scrollUp) ScreenWriter.WriteScrollUp(output, k);
+        else          ScreenWriter.WriteScrollDown(output, k);
+
+        // Shift the front buffer to reflect the scroll. The newly-uncovered rows become blank
+        // on the terminal (per SU/SD semantics) — we initialize the corresponding front cells
+        // to default so the cell diff sees back != front and repaints with whatever the
+        // caller has there.
+        var front = _frontCells!;
+        if (scrollUp)
+        {
+            Array.Copy(front, k * cols, front, 0, (rows - k) * cols);
+            Array.Clear(front, (rows - k) * cols, k * cols);
+        }
+        else
+        {
+            Array.Copy(front, 0, front, k * cols, (rows - k) * cols);
+            Array.Clear(front, 0, k * cols);
+        }
+
+        // The scroll command moves the cursor to (0, 0) on most terminals — force CUP next.
+        // Also reset our tracked SGR / hyperlink because SU/SD don't carry SGR state in a
+        // well-defined way.
+        _cursorCol = -1;
+        _cursorRow = -1;
+        _currentStyle = Style.Default;
+        _currentHyperlink = Hyperlink.None;
+        SgrEncoder.WriteReset(output);
+    }
+
     private void EmitDiff(CellBuffer back, IBufferWriter<byte> output)
     {
         for (int r = 0; r < back.Rows; r++)
@@ -225,6 +373,15 @@ public sealed class FrameRenderer
 
             for (int c = 0; c < back.Columns; c++)
             {
+                int frontIdx = r * _frontCols + c;
+
+                // Dirty-region opt-in: cells outside any marked region are skipped entirely.
+                // The renderer trusts that the consumer is responsible for marking every
+                // cell they've changed; cells outside the union of regions stay as the front
+                // believed they were. This shortcut applies only when DirtyRegions is non-
+                // empty — empty regions fall back to a full-buffer diff.
+                if (_hasDirtyRegions && !_dirtyCells![frontIdx]) continue;
+
                 // Compute the cell we actually want on the terminal for this position: under
                 // a Cell-layer fragment, that's a bg-only space; everywhere else it's the back
                 // cell verbatim. Then quantize for capability-aware emission. The same value
@@ -232,7 +389,6 @@ public sealed class FrameRenderer
                 // frame produces an empty delta.
                 var intended = IntendedCellFor(r, c, row[c], back);
                 var cell = Adapt(intended);
-                int frontIdx = r * _frontCols + c;
 
                 // Wide-continuation cells are skipped from emission here. They aren't "left
                 // undrawn" — the wide glyph emitted at the corresponding WideLeft position

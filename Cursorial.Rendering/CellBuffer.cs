@@ -40,6 +40,7 @@ public sealed class CellBuffer
     private int _rows;
     private readonly Stack<IBlendingMode> _blendStack = new();
     private readonly Dictionary<(int Row, int Column), FragmentEntry> _fragments = new();
+    private readonly List<Rect> _dirtyRegions = [];
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
     public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null)
@@ -184,6 +185,7 @@ public sealed class CellBuffer
     {
         Array.Clear(_cells);
         _fragments.Clear();
+        _dirtyRegions.Clear();
     }
 
     // ---- Fragment sidecar -----------------------------------------------------------------
@@ -234,6 +236,54 @@ public sealed class CellBuffer
         ValidateCoordinates(row, column);
         return _fragments.Remove((row, column));
     }
+
+    // ---- Dirty-region tracking ------------------------------------------------------------
+
+    /// <summary>
+    /// Rectangles the caller has marked as needing inspection in the next render. The renderer
+    /// short-circuits to only the union of these regions when the list is non-empty —
+    /// everything outside is assumed unchanged. An empty list lets the renderer fall back to
+    /// its default full-buffer diff (safe for callers that don't bother tracking dirtiness).
+    /// </summary>
+    /// <remarks>
+    /// Marking is an <em>optimization hint</em>: cells inside marked regions still benefit from
+    /// the renderer's back-vs-front comparison (no emit when unchanged); cells outside any
+    /// marked region are skipped entirely (no comparison, no emit). Consumers using dirty
+    /// regions accept the responsibility of marking every position they've actually changed —
+    /// missing a change leaves the terminal showing stale content for that cell.
+    /// </remarks>
+    public IReadOnlyList<Rect> DirtyRegions => _dirtyRegions;
+
+    /// <summary>
+    /// Mark a rectangular region as needing the renderer's attention on the next render. Empty
+    /// rectangles (zero width or height) are dropped silently — callers can call <c>MarkDirty</c>
+    /// with computed rectangles without pre-checking the result.
+    /// </summary>
+    public void MarkDirty(int row, int column, int columns, int rows)
+        => MarkDirty(new Rect(row, column, columns, rows));
+
+    /// <summary>Mark a <see cref="Rect"/> as needing the renderer's attention on the next render.</summary>
+    public void MarkDirty(in Rect region)
+    {
+        if (region.IsEmpty) return;
+        if (region.Row >= _rows || region.Column >= _columns) return;
+        if (region.RowEnd <= 0 || region.ColumnEnd <= 0) return;
+
+        // Clamp to buffer bounds — out-of-range marks waste renderer work and confuse the
+        // bitmask computation.
+        int row = Math.Max(0, region.Row);
+        int col = Math.Max(0, region.Column);
+        int rowEnd = Math.Min(_rows, region.RowEnd);
+        int colEnd = Math.Min(_columns, region.ColumnEnd);
+        _dirtyRegions.Add(new Rect(row, col, colEnd - col, rowEnd - row));
+    }
+
+    /// <summary>
+    /// Drop all dirty-region marks. The <see cref="FrameRenderer"/> calls this automatically at
+    /// the end of each render so consumers don't have to manage the lifecycle themselves;
+    /// callers performing manual emission can invoke it explicitly when needed.
+    /// </summary>
+    public void ClearDirty() => _dirtyRegions.Clear();
 
     /// <summary>
     /// Replace every cell with <paramref name="cell"/>, blending its <see cref="Style"/> against
@@ -287,6 +337,7 @@ public sealed class CellBuffer
         _rows = rows;
         _cells = new Cell[checked(columns * rows)];
         _fragments.Clear();
+        _dirtyRegions.Clear();
     }
 
     /// <summary>

@@ -1032,6 +1032,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var cursor = ResolveCursor(identification);
         var window = ResolveWindow(identification);
 
+        // Tmux is the only multiplexer we wrap for today — its DCS passthrough envelope has a
+        // well-defined wire format. screen has a similar mechanism (DCS through screen's own
+        // multiplexer) but the syntax differs; deferred until someone needs it.
+        bool multiplexerPassthrough = identification.Family == TerminalFamily.Tmux ||
+                                      (identification.InsideMultiplexer &&
+                                       identification.Family != TerminalFamily.GnuScreen);
+
         var protocol = new OutputProtocolCapabilities(
             BracketedPasteEnable: applied.BracketedPaste,
             FocusReportingEnable: applied.FocusEvents,
@@ -1050,7 +1057,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // Clipboard support is not negotiated yet — leaving false until a probe lands.
             ClipboardWrite: false,
             ClipboardRead: false,
-            SynchronizedOutput: applied.SynchronizedOutput);
+            SynchronizedOutput: applied.SynchronizedOutput,
+            MultiplexerPassthrough: multiplexerPassthrough);
 
         return new OutputCapabilities(
             Color: color,

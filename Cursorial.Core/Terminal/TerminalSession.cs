@@ -41,7 +41,7 @@ public sealed class TerminalSession : IAsyncDisposable
     private readonly IStdioTransports? _ownedTransports;
     private readonly List<PosixSignalRegistration> _signalRegistrations = [];
     private EventHandler? _processExitHandler;
-    private PosixResizeMonitor? _resizeMonitor;
+    private IResizeMonitor? _resizeMonitor;
     private int _disposed;
 
     private TerminalSession(TerminalCapabilities capabilities,
@@ -278,24 +278,23 @@ public sealed class TerminalSession : IAsyncDisposable
 
     private void StartResizeMonitor()
     {
-        // POSIX delivers terminal resizes via SIGWINCH; we register a watcher and feed each
-        // resize back into the input device's event stream so consumers see them interleaved
-        // with keyboard/mouse input. Windows console resize delivery (WINDOW_BUFFER_SIZE_EVENT
-        // via ReadConsoleInput) is not yet plumbed — TODO.
+        // POSIX delivers terminal resizes via SIGWINCH; Windows reports them as console-buffer-
+        // size events. The factory picks the right implementation for the current OS (or
+        // returns null on platforms we don't support, which silently turns resize delivery off).
+        // Either way, each detected resize is fed back into the input device's event stream so
+        // consumers see them interleaved with keyboard / mouse input.
         if (_input is not VtInputDevice device) return;
-
-        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsFreeBSD())
-            return;
 
         try
         {
-            _resizeMonitor = new PosixResizeMonitor(device.EnqueueExternalEvent);
-            _resizeMonitor.Start();
+            _resizeMonitor = ResizeMonitor.Create(device.EnqueueExternalEvent);
+            _resizeMonitor?.Start();
         }
         catch
         {
             // Resize delivery is best-effort — session opening must not fail because we
-            // couldn't subscribe to SIGWINCH (some sandboxes block signal registration).
+            // couldn't subscribe to SIGWINCH (sandboxes that block signal registration) or
+            // couldn't query the Windows console (no console attached).
             _resizeMonitor?.Dispose();
             _resizeMonitor = null;
         }

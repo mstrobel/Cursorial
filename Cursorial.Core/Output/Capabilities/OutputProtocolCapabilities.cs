@@ -29,6 +29,14 @@ namespace Cursorial.Output.Capabilities;
 /// DECSET 2026 — defer screen updates until end-sync, eliminating mid-frame tearing during
 /// large redraws.
 /// </param>
+/// <param name="MultiplexerPassthrough">
+/// True when the application is running inside a terminal multiplexer (tmux today; screen may
+/// follow) and protocol payloads that the multiplexer doesn't natively understand must be
+/// wrapped in the multiplexer's passthrough envelope to reach the outer terminal. Today this
+/// affects Kitty graphics (APC G), iTerm2 inline images (OSC 1337), and any future protocol
+/// the multiplexer doesn't pass through unchanged. <see cref="Output.TmuxPassthrough"/> is the
+/// utility that wraps a payload in <c>DCS tmux ; … ST</c> with the required ESC-doubling.
+/// </param>
 public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
                                                 bool FocusReportingEnable,
                                                 bool SgrMouseEnable,
@@ -39,7 +47,8 @@ public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
                                                 bool Win32InputModeEnable,
                                                 bool ClipboardWrite,
                                                 bool ClipboardRead,
-                                                bool SynchronizedOutput)
+                                                bool SynchronizedOutput,
+                                                bool MultiplexerPassthrough = false)
 {
     public static OutputProtocolCapabilities None { get; } = new(BracketedPasteEnable: false,
                                                                  FocusReportingEnable: false,

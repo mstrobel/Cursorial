@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Text;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 
 namespace Cursorial.Rendering.Fragments;
@@ -53,6 +54,23 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         ArgumentNullException.ThrowIfNull(output);
         if (_data.Bytes.IsEmpty) return;
 
+        if (capabilities.Protocol.MultiplexerPassthrough)
+        {
+            // Inside a multiplexer (tmux) that would strip the OSC 1337 sequence — build the
+            // payload into a scratch buffer first, then wrap it in DCS tmux passthrough so the
+            // outer terminal receives the OSC intact.
+            var scratch = new ArrayBufferWriter<byte>();
+            WriteOscPayload(scratch);
+            TmuxPassthrough.WriteWrapped(output, scratch.WrittenSpan);
+        }
+        else
+        {
+            WriteOscPayload(output);
+        }
+    }
+
+    private void WriteOscPayload(IBufferWriter<byte> output)
+    {
         // Build the header string up to the ':' separator. ASCII-only; we encode as raw bytes.
         var header = new StringBuilder();
         header.Append("\x1B]1337;File=");

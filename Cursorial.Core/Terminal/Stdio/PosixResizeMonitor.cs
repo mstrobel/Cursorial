@@ -24,7 +24,7 @@ namespace Cursorial.Terminal.Stdio;
 /// terminal themselves.
 /// </para>
 /// </remarks>
-internal sealed class PosixResizeMonitor : IDisposable
+internal sealed class PosixResizeMonitor : IResizeMonitor
 {
     private readonly Action<ResizeEvent> _onResize;
     private readonly TimeProvider _time;

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Text;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 
 namespace Cursorial.Rendering.Fragments;
@@ -71,10 +72,10 @@ public sealed class KittyImageFragment : IBufferFragment
         // a single allocation here is fine.
         string base64 = Convert.ToBase64String(_data.Bytes.Span);
         byte[] ascii = Encoding.ASCII.GetBytes(base64);
-        EmitFromBytes(output, format, ascii);
+        EmitFromBytes(output, format, ascii, capabilities.Protocol.MultiplexerPassthrough);
     }
 
-    private void EmitFromBytes(IBufferWriter<byte> output, int format, ReadOnlySpan<byte> base64)
+    private void EmitFromBytes(IBufferWriter<byte> output, int format, ReadOnlySpan<byte> base64, bool wrap)
     {
         int remaining = base64.Length;
         int offset = 0;
@@ -85,7 +86,7 @@ public sealed class KittyImageFragment : IBufferFragment
             int take = Math.Min(MaxChunkBytes, remaining);
             bool isLast = take == remaining;
             var chunk = base64.Slice(offset, take);
-            EmitChunk(output, format, chunk, firstChunk, isLast);
+            EmitChunk(output, format, chunk, firstChunk, isLast, wrap);
             offset += take;
             remaining -= take;
             firstChunk = false;
@@ -93,7 +94,26 @@ public sealed class KittyImageFragment : IBufferFragment
     }
 
     private void EmitChunk(IBufferWriter<byte> output, int format, ReadOnlySpan<byte> chunk,
-                           bool firstChunk, bool isLast)
+                           bool firstChunk, bool isLast, bool wrap)
+    {
+        if (wrap)
+        {
+            // Inside a multiplexer that strips unknown escape sequences (tmux). Build the APC
+            // payload into a scratch buffer, then wrap that in a DCS tmux passthrough envelope
+            // so it reaches the outer terminal intact. Per-chunk wrapping keeps the APC
+            // framing logic identical to the direct path.
+            var scratch = new ArrayBufferWriter<byte>();
+            WriteApcChunk(scratch, format, chunk, firstChunk, isLast);
+            TmuxPassthrough.WriteWrapped(output, scratch.WrittenSpan);
+        }
+        else
+        {
+            WriteApcChunk(output, format, chunk, firstChunk, isLast);
+        }
+    }
+
+    private void WriteApcChunk(IBufferWriter<byte> output, int format, ReadOnlySpan<byte> chunk,
+                               bool firstChunk, bool isLast)
     {
         // Header bytes for the chunk. The first chunk carries full transmit params; subsequent
         // chunks carry only m=. Quietness q=2 always (we don't read responses).

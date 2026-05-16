@@ -15,62 +15,82 @@ namespace Cursorial.Rendering.Fragments;
 /// <see cref="Fonts.IGlyphFont"/> instead.
 /// </para>
 /// <para>
-/// <b>Anchor and layering.</b> A fragment is registered at one anchor cell via
-/// <see cref="CellBuffer.AddFragment"/>. The buffer doesn't touch the cell grid — fragments
-/// are a pure overlay registration. The renderer paints the cell grid first, then emits each
-/// fragment's protocol payload on top. Anything the caller painted under the fragment's
-/// footprint remains visible through any region the fragment's payload doesn't cover; this
-/// matters for fragments that don't fill every cell (transparent backgrounds, partial
-/// coverage) and for the unsupported-fragment case where no payload is emitted at all.
+/// <b>Layer.</b> Each fragment declares whether its payload lives in the cell stream
+/// (<see cref="FragmentLayer.Cells"/>) or on a separate display plane
+/// (<see cref="FragmentLayer.Overlay"/>). The renderer uses this to decide what happens to the
+/// cells under the fragment: Cell-layer fragments skip the foreground glyph in those cells
+/// (the fragment's payload owns them) but still paint the cell's background so panels show
+/// through; Overlay-layer fragments leave cells untouched. See <see cref="FragmentLayer"/> for
+/// the full contract.
+/// </para>
+/// <para>
+/// <b>Diffing.</b> The renderer snapshots registered fragments per render and skips re-emission
+/// on the next render when the same instance with the same anchor style is still registered.
+/// Callers should reuse fragment instances across frames when content is stable — constructing
+/// a new instance per frame defeats the diff. Mutating an instance in place is supported
+/// (caller takes responsibility for not changing its size or coverage in ways the buffer would
+/// need to know about).
 /// </para>
 /// <para>
 /// <b>Capability gating.</b> The renderer calls <see cref="IsSupported"/> for every fragment on
 /// every frame and skips emission when the answer is false. Implementations are expected to be
-/// stateless and cheap to instantiate. When a fragment is unsupported the cells under it still
-/// render normally — callers wanting a richer fallback than "what's under the fragment" should
-/// build a higher-level <c>IContent</c> that chooses among multiple fragments at paint time.
+/// stateless and cheap to instantiate. When a Cell-layer fragment is unsupported the cells
+/// under it render normally (no covered-cell treatment) — callers wanting a richer fallback
+/// should build a higher-level <c>IContent</c> that chooses among multiple fragments.
 /// </para>
 /// <para>
-/// <b>Cursor and SGR.</b> The renderer brackets every fragment emission with
-/// <see cref="VtOutputSequences.SaveCursor"/> / <see cref="VtOutputSequences.RestoreCursor"/>
-/// (<c>ESC 7</c> / <c>ESC 8</c>) and re-positions the cursor to the anchor cell before calling
-/// <see cref="Emit"/>. Fragments may emit any SGR they need inside the brackets without
-/// disturbing the renderer's tracked SGR state for the next frame.
+/// <b>Cursor and SGR.</b> The renderer brackets every fragment emission (and erase) with
+/// DECSC / DECRC and re-positions the cursor to the anchor cell before calling. Fragments may
+/// emit any SGR they need inside the brackets without disturbing the renderer's tracked SGR
+/// state for the next frame.
 /// </para>
 /// </remarks>
 public interface IBufferFragment
 {
     /// <summary>
-    /// The cell footprint the fragment occupies, anchored at its registration cell. Used by
-    /// <see cref="CellBuffer.AddFragment"/> to mark covered cells so the renderer's normal
-    /// emission pass skips them.
+    /// Classification of the fragment by display-stack layer — see <see cref="FragmentLayer"/>
+    /// for the rendering implications. Defaults to <see cref="FragmentLayer.Cells"/> since
+    /// every fragment currently shipped is cell-stream-based; future overlay-layer fragments
+    /// override to return <see cref="FragmentLayer.Overlay"/>.
+    /// </summary>
+    FragmentLayer Layer => FragmentLayer.Cells;
+
+    /// <summary>
+    /// The cell footprint the fragment occupies, anchored at its registration cell. Used by the
+    /// renderer to derive the covered-cells set for Cell-layer fragments (so the cell-emit
+    /// pass can skip glyphs in those positions) and to bracket the visual region for layout.
     /// </summary>
     /// <remarks>
     /// Sizes should reflect the cell rectangle the fragment will visually occupy on a supporting
     /// terminal — even though the protocol payload may emit at sub-cell or super-cell granularity.
-    /// Over-reporting wastes cells; under-reporting causes normal-pass overdraw that corrupts the
-    /// fragment's rendering.
+    /// Over-reporting wastes cells (the renderer skips more cells than the fragment paints);
+    /// under-reporting causes normal-pass overdraw that corrupts the fragment's rendering.
     /// </remarks>
     Size GetSize();
 
     /// <summary>
     /// Return true when the supplied capabilities allow this fragment to render. The renderer
-    /// skips emission when this returns false; the anchor cell is still marked as covered, so
-    /// callers wanting a fallback path should check before adding the fragment (or use a higher-
-    /// level <c>IContent</c> that orchestrates the choice).
+    /// skips both emission and the covered-cells treatment when this returns false — cells
+    /// under an unsupported fragment render normally, so callers see the fall-through state
+    /// without an explicit branch.
     /// </summary>
     bool IsSupported(OutputCapabilities capabilities);
 
     /// <summary>
     /// Emit the fragment's bytes to <paramref name="output"/>. The renderer has already positioned
-    /// the cursor at the anchor cell (<paramref name="row"/>, <paramref name="column"/>) and has
-    /// bracketed this call with cursor save / restore, so implementations don't need to manage
-    /// cursor state. SGR state at entry is undefined; emit explicit SGR for everything the
-    /// fragment relies on.
+    /// the cursor at the anchor cell and bracketed this call with cursor save / restore, so
+    /// implementations don't need to manage cursor state. SGR state at entry is undefined; emit
+    /// explicit SGR for everything the fragment relies on.
     /// </summary>
-    /// <param name="row">Anchor row (0-based) — passed for convenience; the cursor is already there.</param>
-    /// <param name="column">Anchor column (0-based) — passed for convenience; the cursor is already there.</param>
-    /// <param name="output">Destination buffer writer — usually backed by the session's output sink.</param>
-    /// <param name="capabilities">Realized terminal capabilities — implementations may read them to adjust emission.</param>
     void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities);
+
+    /// <summary>
+    /// Emit the bytes that erase the fragment's contribution to the terminal's display. Called
+    /// when the renderer's fragment diff detects this fragment was registered last render but
+    /// isn't this render. Cell-layer fragments leave this as the default no-op: cell repainting
+    /// in the next cell pass overwrites their payload. Overlay-layer fragments override to emit
+    /// the protocol's delete command (Kitty graphics <c>a=d</c>, etc.) so the overlay actually
+    /// goes away.
+    /// </summary>
+    void EmitErase(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities) {}
 }

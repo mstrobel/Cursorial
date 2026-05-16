@@ -3,6 +3,7 @@ using System.Text;
 
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
+using Cursorial.Rendering.Fragments;
 
 namespace Cursorial.Rendering;
 
@@ -54,6 +55,17 @@ public sealed class FrameRenderer
     private Cell[]? _frontCells;
     private int _frontCols;
     private int _frontRows;
+
+    // Snapshot of fragments emitted on the previous render. Compared against the back buffer's
+    // fragments on each render to decide which ones to (re-)emit and which removed-fragments
+    // need EmitErase. Reference equality on IBufferFragment + value equality on AnchorStyle —
+    // callers that want stable diff-skipping reuse the same fragment instance across frames.
+    private readonly Dictionary<(int Row, int Column), CellBuffer.FragmentEntry> _frontFragments = new();
+
+    // Reusable scratch buffer for the per-render "is this cell covered by a Cell-layer
+    // fragment?" lookup. Sized to the current frontCells dimensions on full-redraw and reused
+    // each render; cleared (set to false) at the start of each ComputeCoveredCells pass.
+    private bool[]? _coveredCells;
 
     private Style _currentStyle;
     private Hyperlink _currentHyperlink;
@@ -116,7 +128,17 @@ public sealed class FrameRenderer
             _frontCols = back.Columns;
             _frontRows = back.Rows;
             _frontCells = new Cell[_frontCols * _frontRows];
+
+            // Full redraw nukes any prior fragment snapshot — none of those fragments can
+            // possibly survive on the cleared screen, so the next fragment-emit pass treats
+            // every registered fragment as new.
+            _frontFragments.Clear();
         }
+
+        if (_coveredCells is null || _coveredCells.Length != back.Rows * back.Columns)
+            _coveredCells = new bool[back.Rows * back.Columns];
+
+        ComputeCoveredCells(back);
 
         EmitDiff(back, output);
         EmitFragments(back, output);
@@ -142,6 +164,59 @@ public sealed class FrameRenderer
         _firstFrame = false;
     }
 
+    /// <summary>
+    /// Recompute <see cref="_coveredCells"/> for the current frame. A cell is covered when it
+    /// falls inside the footprint of a <see cref="FragmentLayer.Cells"/>-layer fragment whose
+    /// <see cref="IBufferFragment.IsSupported"/> returns true. The cell pass uses this to
+    /// substitute a background-only paint for the cell's normal emission — the fragment's own
+    /// payload will paint the foreground.
+    /// </summary>
+    private void ComputeCoveredCells(CellBuffer back)
+    {
+        var covered = _coveredCells!;
+        Array.Clear(covered);
+
+        if (back.Fragments.Count == 0) return;
+
+        var caps = _capabilities ?? OutputCapabilities.None;
+
+        foreach (var ((anchorRow, anchorCol), entry) in back.Fragments)
+        {
+            if (entry.Fragment.Layer != FragmentLayer.Cells) continue;
+            if (!entry.Fragment.IsSupported(caps)) continue;
+
+            var size = entry.Fragment.GetSize();
+            int rowEnd = Math.Min(back.Rows, anchorRow + Math.Max(1, size.Rows));
+            int colEnd = Math.Min(back.Columns, anchorCol + Math.Max(1, size.Columns));
+
+            for (int r = Math.Max(0, anchorRow); r < rowEnd; r++)
+            {
+                for (int c = Math.Max(0, anchorCol); c < colEnd; c++)
+                    covered[r * back.Columns + c] = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Build the cell the renderer should actually emit for <paramref name="backCell"/> at
+    /// (<paramref name="row"/>, <paramref name="column"/>). For uncovered cells this is the
+    /// back cell itself. For cells covered by a Cell-layer fragment, this is a space carrying
+    /// only the cell's background — the foreground glyph is dropped (the fragment's payload
+    /// owns the foreground), but the background still paints so UI panels show consistently
+    /// behind the fragment.
+    /// </summary>
+    private Cell IntendedCellFor(int row, int column, Cell backCell, CellBuffer back)
+    {
+        if (_coveredCells is null) return backCell;
+        if (!_coveredCells[row * back.Columns + column]) return backCell;
+
+        // Drop the foreground. Keep just the background — that's what carries through.
+        return new Cell(
+            Grapheme: " ",
+            Kind: CellKind.Single,
+            Style: Style.Default.WithBackground(backCell.Style.Background));
+    }
+
     private void EmitDiff(CellBuffer back, IBufferWriter<byte> output)
     {
         for (int r = 0; r < back.Rows; r++)
@@ -150,11 +225,13 @@ public sealed class FrameRenderer
 
             for (int c = 0; c < back.Columns; c++)
             {
-                // Quantize per cell when a StyleQuantizer is attached. The quantized form is
-                // what we emit, what we compare against the front buffer, and what we snapshot
-                // for the next frame — all three must agree so a stable rendered frame produces an
-                // empty delta.
-                var cell = Adapt(row[c]);
+                // Compute the cell we actually want on the terminal for this position: under
+                // a Cell-layer fragment, that's a bg-only space; everywhere else it's the back
+                // cell verbatim. Then quantize for capability-aware emission. The same value
+                // gets compared against the front and snapshotted into it, so a stable rendered
+                // frame produces an empty delta.
+                var intended = IntendedCellFor(r, c, row[c], back);
+                var cell = Adapt(intended);
                 int frontIdx = r * _frontCols + c;
 
                 // Wide-continuation cells are skipped from emission here. They aren't "left
@@ -191,8 +268,7 @@ public sealed class FrameRenderer
                     if (!_currentHyperlink.IsEmpty)
                         HyperlinkWriter.WriteClose(output);
                     if (!cell.Style.Hyperlink.IsEmpty)
-                        HyperlinkWriter.WriteOpen(output, cell.Style.Hyperlink.Uri.AsSpan(),
-                                                  cell.Style.Hyperlink.Id.AsSpan());
+                        HyperlinkWriter.WriteOpen(output, cell.Style.Hyperlink.Uri.AsSpan(), cell.Style.Hyperlink.Id.AsSpan());
                     _currentHyperlink = cell.Style.Hyperlink;
                 }
 
@@ -204,15 +280,14 @@ public sealed class FrameRenderer
 
                 // Wide-glyph defense for terminals that don't reliably render two-cell glyphs:
                 // pre-paint cells c and c+1 with the wide-left's style by emitting two spaces,
-                // then CUP back to c so the wide glyph emits at the right column. On a
-                // honoring terminal the wide glyph overpaints both spaces and the cursor
+                // then CUP back to c so the wide glyph emits at the right column. On an
+                // honoring terminal the wide glyph overpaints both spaces, and the cursor
                 // advances by 2; on a non-honoring one, the wide glyph shrinks to a single
-                // cell but our pre-painted space at c+1 keeps the cell's background/style
-                // intact. Either way we mark the cursor dirty afterward so the next emit
+                // cell, but our pre-painted space at c+1 keeps the cell's background/style
+                // intact. Either way we mark the cursor dirty afterward, so the next emit
                 // issues an explicit CUP rather than trusting the actual advance count.
                 bool wideDefense = cell.Kind == CellKind.WideLeft &&
-                                   _capabilities is not null &&
-                                   !_capabilities.TextSizing.WideGlyphs &&
+                                   _capabilities?.TextSizing.WideGlyphs is false &&
                                    c + 1 < back.Columns;
 
                 if (wideDefense)
@@ -252,42 +327,98 @@ public sealed class FrameRenderer
 
     private void EmitFragments(CellBuffer back, IBufferWriter<byte> output)
     {
-        if (back.Fragments.Count == 0) return;
-
         // Use OutputCapabilities.None when the renderer wasn't constructed with capabilities —
         // fragments that strictly require a feature will report unsupported and skip, which is
         // the right answer when we have no information.
         var caps = _capabilities ?? OutputCapabilities.None;
 
+        // Pass 1 — erase fragments that were in the front but aren't in the back. The cells
+        // pass above already repainted cells under removed Cell-layer fragments (front cells
+        // there held the bg-only-space form; back cells now want the real glyphs, so the diff
+        // fired). Overlay-layer fragments need their EmitErase to actually disappear from the
+        // terminal's overlay plane.
+        foreach (var (anchor, frontEntry) in _frontFragments)
+        {
+            if (back.Fragments.ContainsKey(anchor)) continue;
+            if (!frontEntry.Fragment.IsSupported(caps)) continue;
+            EmitFragmentEraseBytes(anchor.Row, anchor.Column, frontEntry, output, caps);
+        }
+
+        // Pass 2 — emit new or changed fragments. Reference equality on the IBufferFragment
+        // instance + value equality on the AnchorStyle is the diff key; callers that want
+        // stable skipping reuse instances across frames.
         foreach (var ((row, col), entry) in back.Fragments)
         {
             if (!entry.Fragment.IsSupported(caps)) continue;
             if (row < 0 || row >= back.Rows || col < 0 || col >= back.Columns) continue;
 
-            // Bracket every fragment with DECSC / DECRC. DECSC saves both cursor position and
-            // the SGR state; DECRC restores both. Our _currentStyle and _cursorRow/_cursorCol
-            // tracking remain valid across the fragment, since the cursor is brought back to
-            // exactly where it was. Position the cursor at the anchor and apply the
-            // fragment's anchor style as the SGR backdrop before invoking emit — that gives
-            // fragments a defined SGR state to inherit if they want, even though they're free
-            // to emit their own SGR over it.
-            CursorWriter.WriteSavePosition(output);
-            CursorWriter.WriteMoveTo(output, row, col);
+            if (_frontFragments.TryGetValue((row, col), out var frontEntry) &&
+                ReferenceEquals(frontEntry.Fragment, entry.Fragment) &&
+                frontEntry.AnchorStyle == entry.AnchorStyle)
+            {
+                // Same fragment instance with the same anchor style — terminal already shows
+                // its current payload, nothing to emit.
+                continue;
+            }
 
-            if (entry.AnchorStyle != Style.Default)
-                SgrEncoder.WriteAbsolute(output, entry.AnchorStyle);
+            // If a different fragment occupied this anchor on the previous render, erase it
+            // before painting the new one. Cell-layer EmitErase is a no-op; overlay-layer
+            // implementations send the protocol's delete command.
+            if (frontEntry.Fragment is not null &&
+                !ReferenceEquals(frontEntry.Fragment, entry.Fragment) &&
+                frontEntry.Fragment.IsSupported(caps))
+            {
+                EmitFragmentEraseBytes(row, col, frontEntry, output, caps);
+            }
 
-            entry.Fragment.Emit(row, col, output, caps);
-
-            CursorWriter.WriteRestorePosition(output);
-
-            // DECRC's SGR-restore behavior varies across terminals (xterm restores it, some VT
-            // emulators don't). Explicitly resync our SGR tracking by writing an SGR reset; the
-            // next cell that needs styling will pay the re-establishment cost. This also keeps
-            // the post-fragment SGR state predictable for any subsequent fragments.
-            SgrEncoder.WriteReset(output);
-            _currentStyle = Style.Default;
+            EmitFragmentBytes(row, col, entry, output, caps);
         }
+
+        // Snapshot for next render's diff. Copy keys/values rather than aliasing back. Fragments
+        // — if the caller mutates the buffer between renders, we still want the comparison to
+        // be against what we last emitted.
+        _frontFragments.Clear();
+        foreach (var (key, entry) in back.Fragments)
+            _frontFragments[key] = entry;
+    }
+
+    /// <summary>Bracket-emit a fragment's payload with DECSC / DECRC + cursor + SGR backdrop.</summary>
+    private void EmitFragmentBytes(int row, int col, CellBuffer.FragmentEntry entry,
+                                   IBufferWriter<byte> output, OutputCapabilities caps)
+    {
+        CursorWriter.WriteSavePosition(output);
+        CursorWriter.WriteMoveTo(output, row, col);
+
+        if (entry.AnchorStyle != Style.Default)
+            SgrEncoder.WriteAbsolute(output, entry.AnchorStyle);
+
+        entry.Fragment.Emit(row, col, output, caps);
+
+        CursorWriter.WriteRestorePosition(output);
+
+        // DECRC's SGR-restore behavior varies across terminals (xterm restores it; some VT
+        // emulators don't). Explicitly resync our SGR tracking by writing an SGR reset.
+        SgrEncoder.WriteReset(output);
+        _currentStyle = Style.Default;
+    }
+
+    /// <summary>
+    /// Bracket-emit a fragment's erase sequence. Cell-layer fragments default to a no-op
+    /// erase since cell repainting handles the visual removal; overlay-layer fragments emit
+    /// protocol-specific delete sequences.
+    /// </summary>
+    private void EmitFragmentEraseBytes(int row, int col, CellBuffer.FragmentEntry entry,
+                                        IBufferWriter<byte> output, OutputCapabilities caps)
+    {
+        CursorWriter.WriteSavePosition(output);
+        CursorWriter.WriteMoveTo(output, row, col);
+
+        entry.Fragment.EmitErase(row, col, output, caps);
+
+        CursorWriter.WriteRestorePosition(output);
+
+        SgrEncoder.WriteReset(output);
+        _currentStyle = Style.Default;
     }
 
     private Cell Adapt(in Cell cell)

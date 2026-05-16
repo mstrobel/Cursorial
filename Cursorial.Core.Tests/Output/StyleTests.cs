@@ -12,6 +12,7 @@ public class StyleTests
         Assert.True(s.Foreground.IsDefault);
         Assert.True(s.Background.IsDefault);
         Assert.Equal(TextAttributes.None, s.Attributes);
+        Assert.Equal(default, s.UnderlineStyle);
         Assert.True(s.UnderlineColor.IsDefault);
     }
 

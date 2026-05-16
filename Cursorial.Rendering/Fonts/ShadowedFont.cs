@@ -27,7 +27,7 @@ public sealed class ShadowedFont : IGlyphFont
 {
     private const TextAttributes ForbiddenAttributes = TextAttributes.Inverse;
 
-    private const TextAttributes ForbiddenShadowAttributes = TextAttributes.Underline |
+    private const TextAttributes ForbiddenShadowAttributes = //TextAttributes.Underline |
                                                              TextAttributes.Inverse |
                                                              TextAttributes.Overline;
 
@@ -44,7 +44,7 @@ public sealed class ShadowedFont : IGlyphFont
 
         Inner = inner;
         Offset = offset == default ? (1, 1) : offset;
-        ShadowStyle = shadowStyle with { Attributes = shadowStyle.Attributes & ~ForbiddenShadowAttributes };
+        ShadowStyle = EnsureCompatibleShadowStyle(shadowStyle.IsDefault ? Style.DefaultShadow : shadowStyle);
 
         _shadowBlendingMode = shadowBlendingMode;
     }
@@ -70,6 +70,14 @@ public sealed class ShadowedFont : IGlyphFont
     public Style EnsureCompatibleStyle(in Style style) 
         => style with { Attributes = style.Attributes & ~ForbiddenAttributes };
 
+    private Style EnsureCompatibleShadowStyle(in Style style) 
+        => style with
+           {
+               Attributes = style.Attributes & ~ForbiddenShadowAttributes,
+               UnderlineColor = style.Foreground,
+               Background = Color.Transparent
+           };
+
     /// <inheritdoc/>
     public Size Measure(ReadOnlySpan<char> text)
     {
@@ -87,7 +95,8 @@ public sealed class ShadowedFont : IGlyphFont
 
         if (text.IsEmpty) return Size.Empty;
 
-        var blendingMode = _shadowBlendingMode ?? (ShadowStyle == Style.DefaultShadow ? BlendingModes.Multiply : BlendingModes.Default);
+        var shadowStyle = ShadowStyle;
+        var blendingMode = _shadowBlendingMode ?? (shadowStyle == Style.DefaultShadow ? BlendingModes.Multiply : BlendingModes.Default);
         var pushBlendingMode = buffer.CurrentBlendingMode != blendingMode;
 
         // Paint the shadow first, then the glyph. The buffer's active blending mode applies to
@@ -98,7 +107,10 @@ public sealed class ShadowedFont : IGlyphFont
 
         try
         {
-            Inner.Paint(buffer, row + Offset.Rows, column + Offset.Columns, text, ShadowStyle);
+            var effectiveShadowStyle = shadowStyle.WithUnderlineStyle(style.UnderlineStyle)
+                                                  .BlendOver(style);
+
+            Inner.Paint(buffer, row + Offset.Rows, column + Offset.Columns, text, effectiveShadowStyle);
         }
         finally
         {

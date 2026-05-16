@@ -1,5 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Terminal;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering;
@@ -41,13 +42,14 @@ public sealed class CellBuffer
     private readonly Dictionary<(int Row, int Column), FragmentEntry> _fragments = new();
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
-    public CellBuffer(int columns, int rows)
+    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
         _columns = columns;
         _rows = rows;
         _cells = new Cell[checked(columns * rows)];
+        Capabilities = capabilities;
     }
 
     /// <summary>Width of the buffer in cells.</summary>
@@ -71,6 +73,14 @@ public sealed class CellBuffer
     /// <summary>Total cell count (Columns × Rows). Useful for sized-array operations.</summary>
     public int CellCount => _cells.Length;
 
+    /// <summary>
+    /// Represents the terminal capabilities associated with the cell buffer,
+    /// including information about the terminal's identification, input capabilities,
+    /// and output capabilities. This property can be used to determine the features
+    /// supported by the terminal.
+    /// </summary>
+    public TerminalCapabilities? Capabilities { get; }
+    
     /// <summary>
     /// The blending mode applied to each <see cref="Set"/> and <see cref="Fill"/> call. The top
     /// of the buffer's blend stack, or <see cref="BlendingModes.Default"/> when the stack is

@@ -40,6 +40,11 @@ public sealed class FigletFont : IGlyphFont
                                                        TextAttributes.Overline |
                                                        TextAttributes.Strikethrough;
 
+    // ReSharper disable once ReplaceWithFieldKeyword
+    private static readonly Style s_defaultStyle = default(Style) with { Background = Color.Transparent };
+
+    public static ref readonly Style DefaultStyle => ref s_defaultStyle;
+
     private readonly Dictionary<uint, FigletGlyph> _glyphs;
     private readonly FigletGlyph _spaceGlyph;
 

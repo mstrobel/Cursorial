@@ -18,33 +18,53 @@ public class FrameRendererFragmentTests
     }
 
     [Fact]
-    public void CellsUnderFragment_RenderNormally()
+    public void CellsOutsideFragment_RenderTheirGlyphs()
     {
-        // Fragments are pure overlays — cells in the fragment's footprint render in the
-        // normal pass, then the fragment emits on top. Anything not covered by the fragment's
-        // protocol payload shows the underlying cells through.
+        // Cells outside a Cell-layer fragment's footprint render normally — the fragment's
+        // covered-cell skip only applies inside the footprint.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         buffer.Set(0, 0, "a", Style.Default);
-        // Painted under the fragment — must appear in the output.
-        buffer.Set(0, 1, "U", Style.Default);
-        buffer.Set(0, 2, "V", Style.Default);
         buffer.AddFragment(0, 1, new SentinelFragment(new Size(2, 1), "[F]"));
         buffer.Set(0, 3, "z", Style.Default); // outside coverage
 
         var output = Render(r, buffer);
 
         Assert.Contains("a", output);
-        Assert.Contains("U", output);
-        Assert.Contains("V", output);
         Assert.Contains("z", output);
         Assert.Contains("[F]", output);
 
-        // The fragment payload comes after the cell pass, so it appears later in the byte
-        // stream than any of the underlying cell glyphs.
-        int uIdx = output.IndexOf('U');
+        // The fragment payload comes after the cell pass.
+        int aIdx = output.IndexOf('a');
         int fragIdx = output.IndexOf("[F]", StringComparison.Ordinal);
-        Assert.True(fragIdx > uIdx, "Fragment emission must follow the cell pass it overlays.");
+        Assert.True(fragIdx > aIdx, "Fragment emission must follow the cell pass.");
+    }
+
+    [Fact]
+    public void CellsUnderCellLayerFragment_DropTheGlyphButKeepTheBackground()
+    {
+        // For Cell-layer fragments, glyphs under the footprint are skipped — they'd corrupt
+        // the fragment's payload — but the cell's background still paints so panels behind
+        // fragments show consistent bg colors.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        var panelBg = Color.FromRgb(40, 60, 80);
+        buffer.Set(0, 1, "U", Style.Default.WithBackground(panelBg));
+        buffer.Set(0, 2, "V", Style.Default.WithBackground(panelBg));
+        buffer.AddFragment(0, 1, new SentinelFragment(new Size(2, 1), "[F]"));
+
+        var output = Render(r, buffer);
+
+        // Glyphs under the fragment are dropped (the fragment owns the foreground).
+        Assert.DoesNotContain("U", output);
+        Assert.DoesNotContain("V", output);
+
+        // The panel bg color (rgb 40,60,80) must still appear in the SGR stream for those
+        // cells so the panel reads as a single colored block behind the fragment.
+        Assert.Contains("48;2;40;60;80", output);
+
+        // The fragment still emits its payload.
+        Assert.Contains("[F]", output);
     }
 
     [Fact]

@@ -21,8 +21,8 @@ namespace Cursorial.Output;
 /// cell buffer where the active blending mode composites the source color over the existing
 /// cell's color. Alpha is meaningful only for <see cref="ColorKind.Rgb"/> colors — non-RGB
 /// kinds short-circuit through compositing (we don't know their RGB equivalent to mix against).
-/// Terminal output is always opaque: the cell buffer stores the composited result and the
-/// renderer emits SGR codes for it as if it were a fully-opaque color.
+/// Terminal output is always opaque: the cell buffer stores the composited result, and the
+/// renderer emits SGR codes for it as if it were a fully opaque color.
 /// </para>
 /// <para>
 /// Capability-aware downgrade (RGB→palette on terminals without truecolor, palette→16 on
@@ -52,6 +52,9 @@ public readonly record struct Color
     /// </summary>
     public static Color Default { get; } = new(ColorKind.Default, 0, 0, 0, 0);
 
+    /// <summary>Represents a fully transparent color in the RGB color space.</summary>
+    public static Color Transparent { get; } = new(ColorKind.Rgb, 0, 0, 0, 0);
+
     /// <summary>
     /// The palette index. Defined only when <see cref="Kind"/> is <see cref="ColorKind.Palette"/>;
     /// reads as 0 for other kinds (callers should guard on <see cref="Kind"/>).
@@ -68,8 +71,8 @@ public readonly record struct Color
     public byte Blue { get; }
 
     /// <summary>
-    /// Alpha channel. 0 = fully transparent (source completely yields to backdrop during
-    /// compositing); 255 = fully opaque (source replaces backdrop). Meaningful only for
+    /// Alpha channel. 0 = fully transparent (the source completely yields to backdrop during
+    /// compositing); 255 = fully opaque (the source replaces backdrop). Meaningful only for
     /// <see cref="ColorKind.Rgb"/> colors — non-RGB kinds short-circuit through compositing
     /// regardless of this value.
     /// </summary>
@@ -83,13 +86,16 @@ public readonly record struct Color
     /// <summary>True when the color is fully opaque (alpha = 255) or its kind ignores alpha.</summary>
     public bool IsOpaque => Kind != ColorKind.Rgb || Alpha == 255;
 
+    /// <summary>True when the color is fully transparent (alpha = 0).</summary>
+    public bool IsTransparent => this is { Kind: ColorKind.Rgb, Alpha: 0 };
+
     /// <summary>Construct a palette color from a 0–255 index. Indices 0–15 are the ANSI base colors.</summary>
     public static Color FromPalette(byte index)
     {
         return new Color(ColorKind.Palette, index, 0, 0, 255);
     }
 
-    /// <summary>Construct a fully-opaque 24-bit truecolor value.</summary>
+    /// <summary>Construct a fully opaque 24-bit truecolor value.</summary>
     public static Color FromRgb(byte red, byte green, byte blue)
     {
         return new Color(ColorKind.Rgb, red, green, blue, 255);
@@ -142,6 +148,9 @@ public readonly record struct Color
     /// </remarks>
     public static Color Composite(Color source, Color backdrop, IBlendingMode mode)
     {
+        if (source.IsTransparent)
+            return backdrop;
+
         var blended = mode.Blend(source, backdrop);
 
         // Alpha compositing only engages for RGB-on-RGB. Otherwise, the source's alpha is

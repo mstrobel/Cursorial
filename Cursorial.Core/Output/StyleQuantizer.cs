@@ -59,6 +59,9 @@ public sealed class StyleQuantizer
     {
         var depth = _capabilities.Color.Depth;
 
+        if (color == Color.Transparent)
+            return depth == ColorDepth.Truecolor ? color : Color.Default;
+
         // @formatter:off
         return color.Kind switch
                {

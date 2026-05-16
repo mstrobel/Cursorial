@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Cursorial.Output;
 
 /// <summary>
@@ -44,9 +46,11 @@ public readonly record struct Style(
 {
     /// <summary>The "no styling" sentinel — default colors and no attributes.</summary>
     public static Style Default => default;
-    
-    /// <summary>The default color for text shadows.</summary>
-    public static Style DefaultShadow => Default.WithForeground(Color.FromRgba(0, 0, 0, 127));
+
+    /// <summary>The default style for text shadows.</summary>
+    public static Style DefaultShadow { get; } = Default.WithForeground(Color.FromRgba(0, 0, 0, 127))
+                                                        .WithUnderlineColor(Color.FromRgba(0, 0, 0, 127))
+                                                        .WithBackground(Color.Transparent);
 
     /// <summary>Replace the foreground color.</summary>
     public Style WithForeground(Color color) => this with { Foreground = color };
@@ -77,11 +81,19 @@ public readonly record struct Style(
         => this with { Hyperlink = new Hyperlink(uri, id) };
 
     /// <summary>True when no foreground, background, attribute, or hyperlink carries any non-default value.</summary>
-    public bool IsDefault => Foreground.IsDefault &&
-                             Background.IsDefault &&
-                             Attributes == TextAttributes.None &&
-                             UnderlineColor.IsDefault &&
-                             Hyperlink.IsEmpty;
+    public bool IsDefault
+    {
+        get
+        {
+            return this == default;
+            // return Foreground.IsDefault &&
+            //        Background.IsDefault &&
+            //        Attributes == TextAttributes.None &&
+            //        UnderlineStyle == default &&
+            //        UnderlineColor.IsDefault &&
+            //        Hyperlink.IsEmpty;
+        }
+    }
 
     public Style BlendOver(in Style backdrop, IBlendingMode? blendingMode = null)
     {
@@ -91,7 +103,7 @@ public readonly record struct Style(
                {
                    Foreground = Color.Composite(Foreground, backdrop.Background, mode),
                    Background = Background != Color.Default ? Color.Composite(Background, backdrop.Background, mode) : backdrop.Background,
-                   UnderlineColor = Color.Composite(UnderlineColor, backdrop.UnderlineColor, mode)
+                   UnderlineColor = UnderlineColor != Color.Default ? Color.Composite(UnderlineColor, backdrop.Background, mode) : backdrop.UnderlineColor
                };
     }
 }

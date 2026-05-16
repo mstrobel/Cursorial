@@ -51,15 +51,15 @@ public static class BlendingModes
 
     private sealed class SourceOverMode : IBlendingMode
     {
-        public Color Blend(Color source, Color backdrop) => source;
+        public Color Blend(Color source, Color backdrop) => source.IsTransparent ? backdrop : source;
     }
 
     private abstract class RgbOnlyMode : IBlendingMode
     {
         public Color Blend(Color source, Color backdrop)
         {
-            if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb)
-                return source;
+            if (source.IsTransparent) return backdrop;
+            if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb) return source;
 
             return Color.FromRgb(
                 BlendChannel(source.Red, backdrop.Red),

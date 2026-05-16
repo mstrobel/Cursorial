@@ -74,7 +74,7 @@ public sealed class ScaledText : IContent
 
         // Try the OSC 66 path first.
         var fragment = new SizedTextFragment(Sizing, text, style);
-        if (fragment.IsSupported(capabilities))
+        if (fragment.IsSupported(capabilities) && FallbackFont is not FigletFont)
         {
             _wouldWrap ??= text.Length * Math.Max((int) Sizing.Scale, 1) > buffer.Columns - column;
 
@@ -115,7 +115,7 @@ public sealed class ScaledText : IContent
                    6      => FigletFonts.Standard,
                    5      => FigletFonts.Small,
                    3 or 4 => FigletFonts.Mini,
-                   2      => DecoratedFont.QuarterBlockUnderline,
+                   2      => DecoratedFont.HalfBlockUnderline,
                    _      => MonospaceFont.Default
                };
     }

@@ -929,13 +929,15 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
     // path picks up the SGR backdrop visibly when supported.
     var sizedTitleStyle = style
         .WithForeground(Color.FromRgb(192, 202, 245))
+        .WithBackground(Color.Transparent)
         .WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
         .WithUnderlineStyle(UnderlineStyle.Curly)
         .WithUnderlineColor(Color.FromPalette(5));
 
-    var sizedTitle = new ScaledText("Cursorial Rendering Demo", new TextSizing(Scale: 2), fallbackFont: DecoratedFont.HalfBlockUnderline);
-
-    sizedTitle.Paint(buf, row: 2, column: 1, style: sizedTitleStyle, capabilities: outputCaps);
+    // Reuse a single ScaledText instance across frames — Phase 6.8's fragment diff uses
+    // reference equality on the underlying IBufferFragment, so a stable instance lets the
+    // renderer skip re-emission when the title and sizing haven't changed.
+    RenderShowcaseFragments.Title.Paint(buf, row: 2, column: 1, style: sizedTitleStyle, capabilities: outputCaps);
 
     const int iconY = 5;
     const int iconCount = 4;
@@ -1233,4 +1235,18 @@ static string FormatCapabilities(TerminalCapabilities caps)
 file sealed class TraceEventSink(List<InputEvent> events) : IInputEventSink
 {
     public void OnInputEvent(InputEvent inputEvent) => events.Add(inputEvent);
+}
+
+/// <summary>
+/// Cache of stable fragment instances used by the render showcase. Hoisting these out of the
+/// per-frame paint loop lets the FrameRenderer's fragment diff (Phase 6.8) skip re-emission
+/// when nothing meaningful has changed — the reference-equality contract means the same
+/// instance across frames is enough to take the skip path.
+/// </summary>
+file static class RenderShowcaseFragments
+{
+    public static readonly ScaledText Title = new(
+        "Cursorial Rendering Demo",
+        new TextSizing(Scale: 2),
+        fallbackFont: ShadowedFont.Default);
 }

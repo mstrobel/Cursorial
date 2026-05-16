@@ -1,5 +1,6 @@
 using System.IO.Pipelines;
 using System.Text;
+using System.Text.RegularExpressions;
 
 using Cursorial.Input;
 using Cursorial.Input.Capabilities;
@@ -32,6 +33,17 @@ namespace Cursorial.Terminal;
 /// </remarks>
 public sealed class VtTerminalNegotiator : ITerminalNegotiator
 {
+    private enum ModeBit
+    {
+        MouseButtons,
+        MouseButtonTracking,
+        MouseMotionTracking,
+        ExtendedMouseTracking,
+        FocusEvents,
+        BracketedPaste,
+        SynchronizedOutput,
+    }
+
     private readonly IInputByteSource _source;
     private readonly IOutputByteSink _sink;
     private readonly VtInputMode _mode;
@@ -149,16 +161,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // turn them off in the reverse order.
             
             // @formatter:off
-            if (_applied.SynchronizedOutput) QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
-            if (_applied.Win32InputMode)     QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
-            if (_applied.KittyKeyboard)      QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
-            if (_applied.BracketedPaste)     QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
-            if (_applied.FocusEvents)        QueueWrite(VtInputSequences.OptInSequences.DisableFocusEvents);
-            if (_applied.AnyEventMouse)      QueueWrite(VtInputSequences.OptInSequences.DisableAnyEventMouse);
-            if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableButtonEventMouse);
-            if (_applied.MouseTracking)      QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
+            if (_applied.SynchronizedOutput)  QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
+            if (_applied.Win32InputMode)      QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
+            if (_applied.KittyKeyboard)       QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
+            if (_applied.BracketedPaste)      QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
+            if (_applied.FocusEvents)         QueueWrite(VtInputSequences.OptInSequences.DisableFocusEvents);
+            if (_applied.MouseMotionTracking)       QueueWrite(VtInputSequences.OptInSequences.DisableMotionMouse);
+            if (_applied.MouseButtonTracking) QueueWrite(VtInputSequences.OptInSequences.DisableButtonMotionMouse);
+            if (_applied.ExtendedMouseTracking)       QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
+            if (_applied.MouseButtons)        QueueWrite(VtInputSequences.OptInSequences.DisableMouseButtons);
             // @formatter:on
-            
+
             // Unconditional belt-and-braces: clear any Kitty multi-cursor extras the terminal
             // is holding onto. The spec says alt-screen-toggle clears these implicitly, but a
             // timing-dependent Kitty bug leaves ghost cursors after quit-during-resize; this
@@ -205,16 +218,32 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // Mouse: SGR encoding (1006) + button-event tracking (1002) is the standard combo
         // for press / release / drag on every modern terminal. Any-event tracking (1003) is
         // additive on top.
-        if (options.EnableMouseTracking)
+        if (options.EnableMouseTracking | options.EnableExtendedMouseTracking)
         {
-            QueueWrite(VtInputSequences.OptInSequences.EnableSgrMouse);
-            QueueWrite(VtInputSequences.OptInSequences.EnableButtonEventMouse);
-            applied.MouseTracking = true;
-
-            if (options.EnableAnyEventMouse)
+            if (options.EnableExtendedMouseTracking)
             {
-                QueueWrite(VtInputSequences.OptInSequences.EnableAnyEventMouse);
-                applied.AnyEventMouse = true;
+                QueueWrite(VtInputSequences.OptInSequences.EnableSgrMouse);
+                applied.ExtendedMouseTracking = true;
+            }
+
+            QueueWrite(VtInputSequences.OptInSequences.EnableButtonMotionMouse);
+            applied.MouseButtonTracking = true;
+
+            if (options.EnableMouseTracking)
+            {
+                QueueWrite(VtInputSequences.OptInSequences.EnableMotionMouse);
+                applied.MouseMotionTracking = true;
+            }
+        }
+        else if (options.EnableMouseButtons | options.EnableMouseButtonTracking)
+        {
+            QueueWrite(VtInputSequences.OptInSequences.EnableMouseButtons);
+            applied.MouseButtons = true;
+            
+            if (options.EnableMouseButtonTracking)
+            {
+                QueueWrite(VtInputSequences.OptInSequences.EnableButtonMotionMouse);
+                applied.MouseButtonTracking = true;
             }
         }
 
@@ -288,7 +317,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private void ApplyToInputMode(in AppliedOptIns applied)
     {
-        if (applied.MouseTracking) _mode.MouseEncoding = MouseEncoding.Sgr;
+        if (applied.ExtendedMouseTracking) _mode.MouseEncoding = MouseEncoding.Sgr;
         if (applied.FocusEvents) _mode.FocusReportingEnabled = true;
         if (applied.BracketedPaste) _mode.BracketedPasteEnabled = true;
         if (applied.KittyKeyboard) _mode.KittyKeyboard = applied.KittyFlags;
@@ -299,7 +328,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         // Reflect the restored state on the shared mode bag. The interpreter reads these,
         // so leaving them set after restore would mis-report capabilities.
-        if (_applied.MouseTracking) _mode.MouseEncoding = MouseEncoding.None;
+        if (_applied.ExtendedMouseTracking) _mode.MouseEncoding = MouseEncoding.None;
         if (_applied.FocusEvents) _mode.FocusReportingEnabled = false;
         if (_applied.BracketedPaste) _mode.BracketedPasteEnabled = false;
         if (_applied.KittyKeyboard) _mode.KittyKeyboard = KittyKeyboardFlags.None;
@@ -352,7 +381,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                                _probeCollector,
                                                sentinelTarget: _probeCollector.SentinelCount + 1,
                                                options.ProbeTimeout,
-                                               cancellationToken).ConfigureAwait(false);
+                                               cancellationToken)
+            .ConfigureAwait(false);
 
         var collector = _probeCollector;
         var cellSize = collector.FindFirst(DeviceResponseKind.CellSizeInPixels);
@@ -397,11 +427,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // event (1002); we verify 1006 since that's the one consumers depend on directly.
         var probes = new List<(int Mode, ModeBit Bit)>(6);
 
-        if (_applied.MouseTracking)      probes.Add((1006, ModeBit.MouseTracking));
-        if (_applied.MouseTracking)      probes.Add((1002, ModeBit.MouseTrackingButtonEvent));
-        if (_applied.AnyEventMouse)      probes.Add((1003, ModeBit.AnyEventMouse));
-        if (_applied.FocusEvents)        probes.Add((1004, ModeBit.FocusEvents));
-        if (_applied.BracketedPaste)     probes.Add((2004, ModeBit.BracketedPaste));
+        if (_applied.MouseButtons) probes.Add((1000, ModeBit.MouseButtons));
+        if (_applied.ExtendedMouseTracking) probes.Add((1006, ModeBit.ExtendedMouseTracking));
+        if (_applied.MouseButtonTracking) probes.Add((1002, ModeBit.MouseButtonTracking));
+        if (_applied.MouseMotionTracking) probes.Add((1003, ModeBit.MouseMotionTracking));
+        if (_applied.FocusEvents) probes.Add((1004, ModeBit.FocusEvents));
+        if (_applied.BracketedPaste) probes.Add((2004, ModeBit.BracketedPaste));
         if (_applied.SynchronizedOutput) probes.Add((2026, ModeBit.SynchronizedOutput));
 
         if (probes.Count == 0) return;
@@ -425,7 +456,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                                collector,
                                                sentinelTarget: collector.SentinelCount + 1,
                                                options.ProbeTimeout,
-                                               cancellationToken).ConfigureAwait(false);
+                                               cancellationToken)
+            .ConfigureAwait(false);
 
         // For each probe, find the matching DECRQM response and update _applied. Either of
         // the mouse-tracking probes (1006 SGR or 1002 button-event) reporting unsupported is
@@ -452,7 +484,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         Span<byte> digits = stackalloc byte[6];
         int digitCount = 0;
         int v = mode;
-        do { digits[digitCount++] = (byte) ('0' + v % 10); v /= 10; } while (v > 0);
+
+        do
+        {
+            digits[digitCount++] = (byte) ('0' + v % 10);
+            v /= 10;
+        }
+        while (v > 0);
+
         for (int i = digitCount - 1; i >= 0; i--) bytes[written++] = digits[i];
 
         bytes[written++] = (byte) '$';
@@ -466,6 +505,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static bool TryFindDecRqmStatus(ResponseCollector collector, int mode, out int status)
     {
         status = 0;
+
         foreach (var response in collector.Responses)
         {
             if (response.Kind != DeviceResponseKind.DecRqmPrivate) continue;
@@ -481,6 +521,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (!TryParseAsciiInt(payload[(sep + 1)..], out status)) continue;
             return true;
         }
+
         return false;
     }
 
@@ -488,35 +529,30 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         value = 0;
         if (bytes.IsEmpty) return false;
+
         foreach (byte b in bytes)
         {
             if (b < (byte) '0' || b > (byte) '9') return false;
             value = value * 10 + (b - (byte) '0');
         }
+
         return true;
     }
 
     private void ClearAppliedBit(ModeBit bit)
     {
+        // @formatter:off
         switch (bit)
         {
-            case ModeBit.MouseTracking:              _applied.MouseTracking = false; break;
-            case ModeBit.MouseTrackingButtonEvent:   _applied.MouseTracking = false; break;
-            case ModeBit.AnyEventMouse:              _applied.AnyEventMouse = false; break;
-            case ModeBit.FocusEvents:                _applied.FocusEvents = false; break;
-            case ModeBit.BracketedPaste:             _applied.BracketedPaste = false; break;
-            case ModeBit.SynchronizedOutput:         _applied.SynchronizedOutput = false; break;
+            case ModeBit.MouseButtons:          _applied.MouseButtons          = false; break;
+            case ModeBit.MouseButtonTracking:   _applied.MouseButtonTracking   = false; break;
+            case ModeBit.MouseMotionTracking:   _applied.MouseMotionTracking   = false; break;
+            case ModeBit.ExtendedMouseTracking: _applied.ExtendedMouseTracking = false; break;
+            case ModeBit.FocusEvents:           _applied.FocusEvents           = false; break;
+            case ModeBit.BracketedPaste:        _applied.BracketedPaste        = false; break;
+            case ModeBit.SynchronizedOutput:    _applied.SynchronizedOutput    = false; break;
         }
-    }
-
-    private enum ModeBit
-    {
-        MouseTracking,
-        MouseTrackingButtonEvent,
-        AnyEventMouse,
-        FocusEvents,
-        BracketedPaste,
-        SynchronizedOutput,
+        // @formatter:on
     }
 
     // ---- Color probes -----------------------------------------------------------------
@@ -530,9 +566,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     // A fixed three-byte probe color used for truecolor verification. The triplet is arbitrary
     // but distinctive — it was picked so it doesn't land near any common default-palette value
     // (avoiding false positives if a terminal's palette[255] happens to be close to our probe).
-    private const byte TruecolorProbeRed   = 0xAB;
+    private const byte TruecolorProbeRed = 0xAB;
     private const byte TruecolorProbeGreen = 0xCD;
-    private const byte TruecolorProbeBlue  = 0xEF;
+    private const byte TruecolorProbeBlue = 0xEF;
 
     /// <summary>
     /// Probe color capabilities — set palette slot 255 to a distinctive triplet, query it back
@@ -546,7 +582,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // terminal's 16-bit-internal representation (rgb:abab/cdcd/efef on xterm-class
         // terminals) round-trips cleanly when we parse the top byte of each channel.
         await WriteOsc4SetAsync(255, TruecolorProbeRed, TruecolorProbeGreen, TruecolorProbeBlue,
-                                cancellationToken).ConfigureAwait(false);
+                                cancellationToken)
+            .ConfigureAwait(false);
 
         // Query palette slot 255 to see what the terminal stored.
         await WriteOsc4QueryAsync(255, cancellationToken).ConfigureAwait(false);
@@ -569,7 +606,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                                collector,
                                                sentinelTarget: collector.SentinelCount + 1,
                                                options.ProbeTimeout,
-                                               cancellationToken).ConfigureAwait(false);
+                                               cancellationToken)
+            .ConfigureAwait(false);
 
         // Extract truecolor verification — find the PaletteColor response for slot 255 (or
         // accept any PaletteColor response if it's the only one, since the index is in the
@@ -577,8 +615,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         foreach (var response in collector.Responses)
         {
             if (response.Kind != DeviceResponseKind.PaletteColor) continue;
+
             if (!TryParsePalettePayload(response.Payload.Span, out int index, out byte r, out byte g, out byte b))
                 continue;
+
             if (index != 255) continue;
 
             // Byte-exact comparison: a truecolor terminal stores the value losslessly, so the
@@ -588,14 +628,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             _truecolorVerified = r == TruecolorProbeRed &&
                                  g == TruecolorProbeGreen &&
                                  b == TruecolorProbeBlue;
+
             break;
         }
 
         // Default colors — first matching response per kind. Most terminals send one of each;
         // if multiple responses arrive, we take the first as the canonical value.
-        _defaultForeground   = FindFirstColor(collector, DeviceResponseKind.ForegroundColor);
-        _defaultBackground   = FindFirstColor(collector, DeviceResponseKind.BackgroundColor);
-        _defaultCursorColor  = FindFirstColor(collector, DeviceResponseKind.CursorColor);
+        _defaultForeground = FindFirstColor(collector, DeviceResponseKind.ForegroundColor);
+        _defaultBackground = FindFirstColor(collector, DeviceResponseKind.BackgroundColor);
+        _defaultCursorColor = FindFirstColor(collector, DeviceResponseKind.CursorColor);
     }
 
     private static Color? FindFirstColor(ResponseCollector collector, DeviceResponseKind kind)
@@ -603,9 +644,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         foreach (var response in collector.Responses)
         {
             if (response.Kind != kind) continue;
+
             if (TryParseRgbColor(response.Payload.Span, out byte r, out byte g, out byte b))
                 return Color.FromRgb(r, g, b);
         }
+
         return null;
     }
 
@@ -644,9 +687,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var greenSpan = afterRed[..slash2];
         var blueSpan = afterRed[(slash2 + 1)..];
 
-        return TryParseHexChannel(redSpan,   out r) &&
+        return TryParseHexChannel(redSpan, out r) &&
                TryParseHexChannel(greenSpan, out g) &&
-               TryParseHexChannel(blueSpan,  out b);
+               TryParseHexChannel(blueSpan, out b);
     }
 
     /// <summary>
@@ -673,9 +716,24 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static bool TryParseHexDigit(byte b, out int value)
     {
-        if (b is >= (byte) '0' and <= (byte) '9') { value = b - (byte) '0';      return true; }
-        if (b is >= (byte) 'a' and <= (byte) 'f') { value = b - (byte) 'a' + 10; return true; }
-        if (b is >= (byte) 'A' and <= (byte) 'F') { value = b - (byte) 'A' + 10; return true; }
+        if (b is >= (byte) '0' and <= (byte) '9')
+        {
+            value = b - (byte) '0';
+            return true;
+        }
+
+        if (b is >= (byte) 'a' and <= (byte) 'f')
+        {
+            value = b - (byte) 'a' + 10;
+            return true;
+        }
+
+        if (b is >= (byte) 'A' and <= (byte) 'F')
+        {
+            value = b - (byte) 'A' + 10;
+            return true;
+        }
+
         value = 0;
         return false;
     }
@@ -834,8 +892,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         if (rawTerm is null) return false;
 
-        return rawTerm.StartsWith("screen", StringComparison.OrdinalIgnoreCase) ||
-               rawTerm.StartsWith("tmux", StringComparison.OrdinalIgnoreCase);
+        return MatchIdentifier(rawTerm, "screen") ||
+               MatchIdentifier(rawTerm, "tmux");
     }
 
     private static (TerminalFamily family, string? name, string? version) ParseXtVersionPayload(string? payload)
@@ -856,22 +914,28 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static TerminalFamily ClassifyByName(string name)
     {
         // Match case-insensitively on substrings — terminals self-report with varied casing.
-        if (name.Contains("kitty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Kitty;
-        if (name.Contains("ghostty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Ghostty;
-        if (name.Contains("iTerm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.ITerm2;
-        if (name.Contains("WezTerm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.WezTerm;
-        if (name.Contains("Alacritty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Alacritty;
-        if (name.Contains("foot", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Foot;
-        if (name.Contains("Konsole", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Konsole;
-        if (name.Contains("xterm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Xterm;
+        if (MatchIdentifier(name, "kitty")) return TerminalFamily.Kitty;
+        if (MatchIdentifier(name, "ghostty")) return TerminalFamily.Ghostty;
+        if (MatchIdentifier(name, "Rio")) return TerminalFamily.Rio;
+        if (MatchIdentifier(name, "iTerm[2]?")) return TerminalFamily.ITerm2;
+        if (MatchIdentifier(name, "WezTerm")) return TerminalFamily.WezTerm;
+        if (MatchIdentifier(name, "Alacritty")) return TerminalFamily.Alacritty;
+        if (MatchIdentifier(name, "foot")) return TerminalFamily.Foot;
+        if (MatchIdentifier(name, "Konsole")) return TerminalFamily.Konsole;
+        if (MatchIdentifier(name, "xterm")) return TerminalFamily.Xterm;
 
-        if (name.Contains("WindowsTerminal", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("Windows Terminal", StringComparison.OrdinalIgnoreCase))
+        if (MatchIdentifier(name, "WindowsTerminal") ||
+            MatchIdentifier(name, "Windows Terminal"))
         {
             return TerminalFamily.WindowsTerminal;
         }
 
         return TerminalFamily.Unknown;
+    }
+
+    private static bool MatchIdentifier(string input, string identifier)
+    {
+        return Regex.IsMatch(input, @$"\b{identifier}\b", RegexOptions.IgnoreCase);
     }
 
     private TerminalFamily ClassifyFromEnvironment(string? rawTerm, string? rawTermProgram)
@@ -889,19 +953,21 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 return TerminalFamily.AppleTerminal;
 
             if (rawTermProgram.Equals("ghostty", StringComparison.OrdinalIgnoreCase))
-                return TerminalFamily.Unknown; // No enum entry yet for Ghostty.
+                return TerminalFamily.Ghostty; // No enum entry yet for Ghostty.
         }
 
         if (rawTerm is { Length: > 0 })
         {
-            if (rawTerm.Contains("kitty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Kitty;
-            if (rawTerm.Contains("ghostty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Ghostty;
-            if (rawTerm.Contains("alacritty", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Alacritty;
-            if (rawTerm.Contains("foot", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Foot;
-            if (rawTerm.StartsWith("tmux", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Tmux;
-            if (rawTerm.StartsWith("screen", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.GnuScreen;
-            if (rawTerm.StartsWith("xterm", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Xterm;
-            if (rawTerm.StartsWith("rxvt", StringComparison.OrdinalIgnoreCase)) return TerminalFamily.Rxvt;
+            if (MatchIdentifier(rawTerm, "kitty")) return TerminalFamily.Kitty;
+            if (MatchIdentifier(rawTerm, "ghostty")) return TerminalFamily.Ghostty;
+            if (MatchIdentifier(rawTerm, "rio")) return TerminalFamily.Rio;
+            if (MatchIdentifier(rawTerm, "iTerm[2]")) return TerminalFamily.Rio;
+            if (MatchIdentifier(rawTerm, "alacritty")) return TerminalFamily.Alacritty;
+            if (MatchIdentifier(rawTerm, "foot")) return TerminalFamily.Foot;
+            if (MatchIdentifier(rawTerm, "tmux")) return TerminalFamily.Tmux;
+            if (MatchIdentifier(rawTerm, "screen")) return TerminalFamily.GnuScreen;
+            if (MatchIdentifier(rawTerm, "xterm")) return TerminalFamily.Xterm;
+            if (MatchIdentifier(rawTerm, "rxvt")) return TerminalFamily.Rxvt;
             // Anything claiming "color" or known VT lineage falls back to GenericVt.
             return TerminalFamily.GenericVt;
         }
@@ -916,16 +982,23 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         TerminalIdentification identification,
         in AppliedOptIns applied)
     {
-        var mouse = applied.MouseTracking
-                        ? new MouseCapabilities(
-                            ButtonPress: true,
-                            ButtonRelease: true,
-                            Drag: true,
-                            Motion: applied.AnyEventMouse,
-                            Wheel: true,
-                            PixelCoordinates: false,
-                            ExtendedButtonCount: 4)
-                        : MouseCapabilities.None;
+        var mouse = new MouseCapabilities(
+            ButtonPress: applied.MouseButtons |
+                         applied.MouseButtonTracking |
+                         applied.MouseMotionTracking |
+                         applied.ExtendedMouseTracking,
+            ButtonRelease: applied.MouseButtons |
+                           applied.MouseButtonTracking |
+                           applied.MouseMotionTracking |
+                           applied.ExtendedMouseTracking,
+            Drag: applied.MouseButtonTracking |
+                  applied.MouseMotionTracking |
+                  applied.ExtendedMouseTracking,
+            Motion: applied.MouseMotionTracking |
+                    applied.ExtendedMouseTracking,
+            Wheel: applied.ExtendedMouseTracking,
+            PixelCoordinates: false,
+            ExtendedButtonCount: 4);
 
         bool kittyEnabled = applied.KittyKeyboard;
 
@@ -962,8 +1035,16 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var protocol = new OutputProtocolCapabilities(
             BracketedPasteEnable: applied.BracketedPaste,
             FocusReportingEnable: applied.FocusEvents,
-            SgrMouseEnable: applied.MouseTracking,
-            AnyEventMouseEnable: applied.AnyEventMouse,
+            SgrMouseEnable: applied.ExtendedMouseTracking,
+            MouseButtonsEnable: applied.MouseButtons |
+                                applied.MouseButtonTracking |
+                                applied.MouseMotionTracking |
+                                applied.ExtendedMouseTracking,
+            MouseDragEnable: applied.MouseButtonTracking |
+                             applied.MouseMotionTracking |
+                             applied.ExtendedMouseTracking,
+            MouseMotionEnable: applied.MouseMotionTracking |
+                               applied.ExtendedMouseTracking,
             KittyKeyboardPush: applied.KittyKeyboard,
             Win32InputModeEnable: applied.Win32InputMode,
             // Clipboard support is not negotiated yet — leaving false until a probe lands.
@@ -989,13 +1070,39 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// gating keeps detection silent and matches the pattern used for Kitty keyboard, Win32 input
     /// mode, and synchronized output.
     /// </summary>
-    private static TextSizingCapabilities ResolveTextSizing(TerminalIdentification identification) =>
-        identification.Family switch
-        {
-            TerminalFamily.Kitty   => new TextSizingCapabilities(Width: true, Scale: true, WideGlyphs: true),
-            TerminalFamily.Ghostty => TextSizingCapabilities.None with { WideGlyphs = true },
-            _                      => TextSizingCapabilities.None
-        };
+    private static TextSizingCapabilities ResolveTextSizing(TerminalIdentification identification)
+    {
+        // OSC 66 (Width/Scale) is currently shipped only by Kitty. Wide-glyph rendering — the
+        // general ability to lay a wide grapheme across two cells correctly — is a broader
+        // baseline that most modern terminal emulators get right. We mark the families known
+        // to handle it reliably; everything else (including Unknown) stays false so the
+        // renderer falls back to its pre-paint-then-CUP-back defense.
+        bool wideGlyphs = identification.Family switch
+                          {
+                              TerminalFamily.Kitty           => true,
+                              TerminalFamily.Ghostty         => true,
+                              TerminalFamily.Rio             => true,
+                              TerminalFamily.ITerm2          => false,
+                              TerminalFamily.WezTerm         => true,
+                              TerminalFamily.Alacritty       => false,
+                              TerminalFamily.Konsole         => true,
+                              TerminalFamily.GnomeTerminal   => true,
+                              TerminalFamily.Foot            => true,
+                              TerminalFamily.WindowsTerminal => true,
+                              // Multiplexers pass wide-glyph rendering through to the host terminal; trust them
+                              // when the user is running one (the worst case is the host itself is unreliable,
+                              // which is the same as not running through a multiplexer at all).
+                              TerminalFamily.Tmux      => true,
+                              TerminalFamily.GnuScreen => true,
+                              _                        => false,
+                          };
+
+        return identification.Family switch
+               {
+                   TerminalFamily.Kitty => new TextSizingCapabilities(Width: true, Scale: true, WideGlyphs: wideGlyphs),
+                   _                    => TextSizingCapabilities.None with { WideGlyphs = wideGlyphs },
+               };
+    }
 
     private ColorCapabilities ResolveColor(TerminalIdentification identification)
     {
@@ -1016,9 +1123,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         var colorTerm = _environment.GetVariable("COLORTERM");
 
-        if (colorTerm is not null &&
-            (colorTerm.Equals("truecolor", StringComparison.OrdinalIgnoreCase) ||
-             colorTerm.Equals("24bit", StringComparison.OrdinalIgnoreCase)))
+        if (colorTerm is not null && (MatchIdentifier(colorTerm, "truecolor") ||
+                                      MatchIdentifier(colorTerm, "24bit")))
         {
             return ColorDepth.Truecolor;
         }
@@ -1042,9 +1148,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (term.Contains("256color", StringComparison.OrdinalIgnoreCase)) return ColorDepth.Ansi256;
         if (term.Contains("color", StringComparison.OrdinalIgnoreCase)) return ColorDepth.Ansi16;
 
-        return identification.Family == TerminalFamily.AppleTerminal
-                   ? ColorDepth.Ansi256
-                   : ColorDepth.NoColor;
+        if (identification.Family == TerminalFamily.AppleTerminal)
+            return ColorDepth.Ansi256;
+
+        return ColorDepth.NoColor;
     }
 
     private static TextStylingCapabilities ResolveStyling(TerminalIdentification identification)
@@ -1054,10 +1161,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // underline, overline) is more recent.
         bool extended = identification.Family is TerminalFamily.Kitty or
                                                  TerminalFamily.Ghostty or
-                                                 TerminalFamily.ITerm2 or 
-                                                 TerminalFamily.WezTerm or 
+                                                 TerminalFamily.ITerm2 or
+                                                 TerminalFamily.WezTerm or
                                                  TerminalFamily.Alacritty or
-                                                 TerminalFamily.WindowsTerminal or 
+                                                 TerminalFamily.WindowsTerminal or
                                                  TerminalFamily.Foot or
                                                  TerminalFamily.Konsole;
 
@@ -1077,6 +1184,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         {
             TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
             TerminalFamily.Ghostty => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+            TerminalFamily.Rio     => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
             TerminalFamily.ITerm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
             TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: true),
             TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
@@ -1088,7 +1196,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static CursorCapabilities ResolveCursor(TerminalIdentification identification)
     {
         bool modern = identification.Family is not (TerminalFamily.Unknown or
-                                                    TerminalFamily.Rxvt or 
+                                                    TerminalFamily.Rxvt or
                                                     TerminalFamily.Mlterm);
 
         return new CursorCapabilities(
@@ -1100,12 +1208,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static WindowCapabilities ResolveWindow(TerminalIdentification identification)
     {
-        bool pixelSize = identification.Family is TerminalFamily.Kitty or 
-                                                  TerminalFamily.Ghostty or 
-                                                  TerminalFamily.ITerm2 or 
-                                                  TerminalFamily.WezTerm or 
+        bool pixelSize = identification.Family is TerminalFamily.Kitty or
+                                                  TerminalFamily.Ghostty or
+                                                  TerminalFamily.ITerm2 or
+                                                  TerminalFamily.WezTerm or
                                                   TerminalFamily.Foot or
-                                                  TerminalFamily.Alacritty or 
+                                                  TerminalFamily.Alacritty or
                                                   TerminalFamily.WindowsTerminal or
                                                   TerminalFamily.Konsole;
 
@@ -1146,8 +1254,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// </summary>
     private struct AppliedOptIns
     {
-        public bool MouseTracking;
-        public bool AnyEventMouse;
+        public bool MouseButtons;
+        public bool ExtendedMouseTracking;
+        public bool MouseButtonTracking;
+        public bool MouseMotionTracking;
         public bool FocusEvents;
         public bool BracketedPaste;
         public bool KittyKeyboard;
@@ -1155,8 +1265,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         public bool SynchronizedOutput;
         public KittyKeyboardFlags KittyFlags;
 
-        public bool IsEmpty => !MouseTracking &&
-                               !AnyEventMouse &&
+        public bool IsEmpty => !MouseButtons &&
+                               !ExtendedMouseTracking &&
+                               !MouseButtonTracking &&
+                               !MouseMotionTracking &&
                                !FocusEvents &&
                                !BracketedPaste &&
                                !KittyKeyboard &&

@@ -14,7 +14,7 @@ namespace Cursorial.Output.Capabilities;
 /// <param name="SgrMouseEnable">
 /// DECSET 1006 — SGR mouse encoding (lossless coordinates, supports columns &gt; 223).
 /// </param>
-/// <param name="AnyEventMouseEnable">DECSET 1003 — report mouse motion regardless of button state.</param>
+/// <param name="MouseMotionEnable">DECSET 1003 — report mouse motion regardless of button state.</param>
 /// <param name="KittyKeyboardPush">
 /// CSI &gt; … u — push the application's preferred Kitty keyboard protocol flags onto the
 /// terminal's protocol stack. Must be popped on session end.
@@ -32,7 +32,9 @@ namespace Cursorial.Output.Capabilities;
 public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
                                                 bool FocusReportingEnable,
                                                 bool SgrMouseEnable,
-                                                bool AnyEventMouseEnable,
+                                                bool MouseButtonsEnable,
+                                                bool MouseDragEnable,
+                                                bool MouseMotionEnable,
                                                 bool KittyKeyboardPush,
                                                 bool Win32InputModeEnable,
                                                 bool ClipboardWrite,
@@ -42,7 +44,9 @@ public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
     public static OutputProtocolCapabilities None { get; } = new(BracketedPasteEnable: false,
                                                                  FocusReportingEnable: false,
                                                                  SgrMouseEnable: false,
-                                                                 AnyEventMouseEnable: false,
+                                                                 MouseButtonsEnable: false,
+                                                                 MouseDragEnable: false,
+                                                                 MouseMotionEnable: false,
                                                                  KittyKeyboardPush: false,
                                                                  Win32InputModeEnable: false,
                                                                  ClipboardWrite: false,

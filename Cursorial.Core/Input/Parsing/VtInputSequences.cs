@@ -236,13 +236,17 @@ public static class VtInputSequences
         public static ReadOnlySpan<byte> EnableSgrMouse => "\x1b[?1006h"u8;
         public static ReadOnlySpan<byte> DisableSgrMouse => "\x1b[?1006l"u8;
 
+        // ---- Button-event mouse (DECSET 1000) — press / release ----
+        public static ReadOnlySpan<byte> EnableMouseButtons => "\x1b[?1000h"u8;
+        public static ReadOnlySpan<byte> DisableMouseButtons => "\x1b[?1000l"u8;
+
         // ---- Button-event mouse tracking (DECSET 1002) — press / release / drag ----
-        public static ReadOnlySpan<byte> EnableButtonEventMouse => "\x1b[?1002h"u8;
-        public static ReadOnlySpan<byte> DisableButtonEventMouse => "\x1b[?1002l"u8;
+        public static ReadOnlySpan<byte> EnableButtonMotionMouse => "\x1b[?1002h"u8;
+        public static ReadOnlySpan<byte> DisableButtonMotionMouse => "\x1b[?1002l"u8;
 
         // ---- Any-event mouse tracking (DECSET 1003) — motion without button ----
-        public static ReadOnlySpan<byte> EnableAnyEventMouse => "\x1b[?1003h"u8;
-        public static ReadOnlySpan<byte> DisableAnyEventMouse => "\x1b[?1003l"u8;
+        public static ReadOnlySpan<byte> EnableMotionMouse => "\x1b[?1003h"u8;
+        public static ReadOnlySpan<byte> DisableMotionMouse => "\x1b[?1003l"u8;
 
         // ---- Focus events (DECSET 1004) ----
         public static ReadOnlySpan<byte> EnableFocusEvents => "\x1b[?1004h"u8;

@@ -187,21 +187,23 @@ public sealed class CellBuffer
     public IReadOnlyDictionary<(int Row, int Column), FragmentEntry> Fragments => _fragments;
 
     /// <summary>
-    /// Register <paramref name="fragment"/> at the anchor cell <c>(row, column)</c>. The cells
-    /// in the fragment's <see cref="IBufferFragment.GetSize"/> rectangle are marked as
-    /// <see cref="CellKind.CoveredByFragment"/> so the renderer skips them during the normal
-    /// cell-emission pass.
+    /// Register <paramref name="fragment"/> at the anchor cell <c>(row, column)</c>. Pure
+    /// metadata registration — the cell grid is <b>not</b> modified, so anything the caller
+    /// previously painted under the fragment's footprint continues to render in the cell pass
+    /// and shows through wherever the fragment's protocol payload doesn't draw.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <paramref name="anchorStyle"/> is the style the renderer applies as the SGR backdrop when
-    /// it positions the cursor at the anchor — useful when the fragment needs the cell-grid
-    /// background to "show through" around or behind its content. The fragment is free to emit
-    /// its own SGR inside <c>Emit</c>; this style only governs the entry state.
+    /// <paramref name="anchorStyle"/> is the style the renderer applies as the SGR backdrop
+    /// when it positions the cursor at the anchor — useful when the fragment needs an SGR
+    /// state to inherit. Fragments are free to emit their own SGR inside <c>Emit</c>; this
+    /// style only governs the entry state.
     /// </para>
     /// <para>
-    /// If a fragment is already registered at this anchor, it is replaced. Covered cells from
-    /// the previous fragment are reset to blank before the new fragment's coverage is applied.
+    /// If a fragment is already registered at this anchor, it is replaced. Removing a
+    /// fragment leaves the cells under it untouched — whatever was painted before the
+    /// fragment was added remains. Callers who want a clean state when removing a fragment
+    /// should explicitly repaint the region afterwards.
     /// </para>
     /// </remarks>
     public void AddFragment(int row, int column, IBufferFragment fragment, in Style anchorStyle = default)
@@ -209,67 +211,18 @@ public sealed class CellBuffer
         ArgumentNullException.ThrowIfNull(fragment);
         ValidateCoordinates(row, column);
 
-        var key = (row, column);
-
-        if (_fragments.TryGetValue(key, out var existing))
-            ClearCoverage(row, column, existing.Fragment.GetSize());
-
-        _fragments[key] = new FragmentEntry(fragment, anchorStyle);
-        ApplyCoverage(row, column, fragment.GetSize());
+        _fragments[(row, column)] = new FragmentEntry(fragment, anchorStyle);
     }
 
     /// <summary>
-    /// Remove the fragment anchored at <c>(row, column)</c>. Covered cells are reset to blank;
-    /// no-op if no fragment is registered there. Returns true when a fragment was removed.
+    /// Remove the fragment anchored at <c>(row, column)</c>. Returns true when a fragment was
+    /// removed. Cells under the removed fragment retain whatever they held before — see
+    /// <see cref="AddFragment"/> for the layering contract.
     /// </summary>
     public bool RemoveFragment(int row, int column)
     {
         ValidateCoordinates(row, column);
-
-        if (!_fragments.Remove((row, column), out var entry)) return false;
-
-        ClearCoverage(row, column, entry.Fragment.GetSize());
-        return true;
-    }
-
-    private void ApplyCoverage(int row, int column, Size size)
-    {
-        int rowEnd = Math.Min(_rows, row + Math.Max(1, size.Rows));
-        int colEnd = Math.Min(_columns, column + Math.Max(1, size.Columns));
-
-        for (int r = row; r < rowEnd; r++)
-        {
-            for (int c = column; c < colEnd; c++)
-            {
-                // Cleanup: if we cover the right half of a wide-left, the left becomes orphaned.
-                // Reset it to blank so we never expose a half-painted wide cell.
-                int idx = r * _columns + c;
-                var existing = _cells[idx];
-
-                if (existing.Kind == CellKind.WideContinuation && c > 0)
-                    _cells[idx - 1] = Cell.Blank with { Style = Cell.Blank.Style.WithBackground(existing.Style.Background) };
-
-                if (existing.Kind == CellKind.WideLeft && c + 1 < _columns)
-                    _cells[idx + 1] = Cell.Blank with { Style = Cell.Blank.Style.WithBackground(existing.Style.Background) };
-
-                _cells[idx] = Cell.FragmentCover with { Style = Cell.Blank.Style.WithBackground(existing.Style.Background) };
-            }
-        }
-    }
-
-    private void ClearCoverage(int row, int column, Size size)
-    {
-        int rowEnd = Math.Min(_rows, row + Math.Max(1, size.Rows));
-        int colEnd = Math.Min(_columns, column + Math.Max(1, size.Columns));
-
-        for (int r = row; r < rowEnd; r++)
-        {
-            for (int c = column; c < colEnd; c++)
-            {
-                var cell = _cells[r * _columns + c];
-                _cells[r * _columns + c] = Cell.Blank with { Style = Cell.Blank.Style.WithBackground(cell.Style.Background) };
-            }
-        }
+        return _fragments.Remove((row, column));
     }
 
     /// <summary>

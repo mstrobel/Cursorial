@@ -20,11 +20,17 @@ public sealed record NegotiationOptions
     /// </summary>
     public OptInPolicy OptIns { get; init; } = OptInPolicy.Allowed;
 
-    /// <summary>Enable mouse tracking (SGR 1006 + button-event mode 1002).</summary>
+    /// <summary>Enable mouse buttons (DECSET 1000).</summary>
+    public bool EnableMouseButtons { get; init; } = true;
+
+    /// <summary>Enable mouse button-event tracking (DECSET 1002).</summary>
+    public bool EnableMouseButtonTracking { get; init; } = true;
+
+    /// <summary>Enable any-event mouse motion (1003) on top of <see cref="EnableExtendedMouseTracking"/>.</summary>
     public bool EnableMouseTracking { get; init; } = true;
 
-    /// <summary>Enable any-event mouse motion (1003) on top of <see cref="EnableMouseTracking"/>.</summary>
-    public bool EnableAnyEventMouse { get; init; } = true;
+    /// <summary>Enable mouse tracking (SGR 1006 + button-event mode 1002).</summary>
+    public bool EnableExtendedMouseTracking { get; init; } = true;
 
     /// <summary>Enable focus-in / focus-out reports (DECSET 1004).</summary>
     public bool EnableFocusEvents { get; init; } = true;
@@ -41,10 +47,10 @@ public sealed record NegotiationOptions
     /// because that flag changes the encoding of plain text input — opt in deliberately when needed.
     /// </summary>
     public KittyKeyboardFlags KittyKeyboardFlags { get; init; } =
-        KittyKeyboardFlags.DisambiguateEscapeCodes
-        | KittyKeyboardFlags.ReportEventTypes
-        | KittyKeyboardFlags.ReportAlternateKeys
-        | KittyKeyboardFlags.ReportAssociatedText;
+        KittyKeyboardFlags.DisambiguateEscapeCodes |
+        KittyKeyboardFlags.ReportEventTypes |
+        KittyKeyboardFlags.ReportAlternateKeys |
+        KittyKeyboardFlags.ReportAssociatedText;
 
     /// <summary>Enable Win32 Input Mode (DECSET 9001) when running under a ConPTY-backed terminal.</summary>
     public bool EnableWin32InputMode { get; init; } = true;

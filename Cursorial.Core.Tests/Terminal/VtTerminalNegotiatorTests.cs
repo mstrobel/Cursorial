@@ -2,6 +2,8 @@ using Cursorial.Input.Parsing;
 using Cursorial.Output;
 using Cursorial.Terminal;
 
+// ReSharper disable MethodHasAsyncOverload
+
 namespace Cursorial.Tests.Terminal;
 
 public class VtTerminalNegotiatorTests
@@ -14,10 +16,10 @@ public class VtTerminalNegotiatorTests
         new(_source, _sink, mode, timeProvider: null, environmentReader: _env);
 
     private static NegotiationOptions DisableAllOptIns() => new()
-    {
-        ProbeTimeout = TimeSpan.FromMilliseconds(100),
-        OptIns = OptInPolicy.Ignored,
-    };
+                                                            {
+                                                                ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                                                OptIns = OptInPolicy.Ignored,
+                                                            };
 
     private async Task<string> AllWrittenAsync()
     {
@@ -26,14 +28,14 @@ public class VtTerminalNegotiatorTests
     }
 
     private static NegotiationOptions FastTimeout() => new()
-    {
-        ProbeTimeout = TimeSpan.FromMilliseconds(100),
-    };
+                                                       {
+                                                           ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                                       };
 
     private static NegotiationOptions ImmediateTimeout() => new()
-    {
-        ProbeTimeout = TimeSpan.FromMilliseconds(50),
-    };
+                                                            {
+                                                                ProbeTimeout = TimeSpan.FromMilliseconds(50),
+                                                            };
 
     // ---- Probe writes ----
 
@@ -51,8 +53,9 @@ public class VtTerminalNegotiatorTests
 
         Assert.Contains("\x1b[>q", asString); // XTVERSION
         Assert.Contains("\x1b[c", asString);  // DA1 sentinel
-        Assert.True(asString.IndexOf("\x1b[>q") < asString.IndexOf("\x1b[c"),
-            "XTVERSION must precede the DA1 sentinel.");
+
+        Assert.True(asString.IndexOf("\x1b[>q", StringComparison.Ordinal) < asString.IndexOf("\x1b[c", StringComparison.Ordinal),
+                    "XTVERSION must precede the DA1 sentinel.");
     }
 
     // ---- Identification from XTVERSION + DA1 ----
@@ -290,8 +293,7 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
         await negotiator.NegotiateAsync(FastTimeout());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await negotiator.NegotiateAsync(FastTimeout()));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await negotiator.NegotiateAsync(FastTimeout()));
     }
 
     [Fact]
@@ -300,8 +302,7 @@ public class VtTerminalNegotiatorTests
         var negotiator = BuildNegotiator();
         await negotiator.DisposeAsync();
 
-        await Assert.ThrowsAsync<ObjectDisposedException>(
-            async () => await negotiator.NegotiateAsync(FastTimeout()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await negotiator.NegotiateAsync(FastTimeout()));
     }
 
     [Fact]
@@ -342,8 +343,7 @@ public class VtTerminalNegotiatorTests
     public async Task NullOptions_ThrowsArgumentNullException()
     {
         await using var negotiator = BuildNegotiator();
-        await Assert.ThrowsAsync<ArgumentNullException>(
-            async () => await negotiator.NegotiateAsync(options: null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await negotiator.NegotiateAsync(options: null!));
     }
 
     // ---- Opt-in application ----
@@ -369,20 +369,20 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = true,
-            EnableAnyEventMouse = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = true,
+                                            EnableMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
 
         var written = await AllWrittenAsync();
-        Assert.Contains("\x1b[?1006h", written); // SGR mouse
-        Assert.Contains("\x1b[?1002h", written); // button-event tracking
+        Assert.Contains("\x1b[?1006h", written);       // SGR mouse
+        Assert.Contains("\x1b[?1002h", written);       // button-event tracking
         Assert.DoesNotContain("\x1b[?1003h", written); // any-event NOT enabled
     }
 
@@ -393,16 +393,16 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = true,
-            EnableAnyEventMouse = true,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = true,
+                                            EnableMouseTracking = true,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
 
         var written = await AllWrittenAsync();
         Assert.Contains("\x1b[?1006h", written);
@@ -417,15 +417,15 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = true,
-            EnableBracketedPaste = true,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = true,
+                                            EnableBracketedPaste = true,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
 
         var written = await AllWrittenAsync();
         Assert.Contains("\x1b[?1004h", written);
@@ -440,16 +440,16 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = true,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-            // Default flags = 1+2+4+16 = 23.
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = true,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                            // Default flags = 1+2+4+16 = 23.
+                                        });
 
         var written = await AllWrittenAsync();
         Assert.Contains("\x1b[>23u", written);
@@ -463,15 +463,15 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = true,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = true,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
 
         var written = await AllWrittenAsync();
         // Kitty push has the form CSI > <digits> u. The only legitimate `>` write is the
@@ -487,15 +487,15 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = true,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = true,
+                                            EnableSynchronizedOutput = false,
+                                        });
 
         var written = await AllWrittenAsync();
         Assert.DoesNotContain("9001", written);
@@ -509,15 +509,15 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = true,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = true,
+                                            EnableSynchronizedOutput = false,
+                                        });
 
         var written = await AllWrittenAsync();
         Assert.Contains("\x1b[?9001h", written);
@@ -531,15 +531,15 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = true,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = true,
+                                        });
 
         var written = await AllWrittenAsync();
         Assert.Contains("\x1b[?2026h", written);
@@ -555,9 +555,9 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator();
 
         var caps = await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-        });
+                                                   {
+                                                       ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                                   });
 
         Assert.True(caps.Input.Mouse.ButtonPress);
         Assert.True(caps.Input.Mouse.Motion); // EnableAnyEventMouse default true
@@ -569,7 +569,8 @@ public class VtTerminalNegotiatorTests
         Assert.True(caps.Input.Protocol.KittyKeyboardProtocol);
 
         Assert.True(caps.Output.Protocol.SgrMouseEnable);
-        Assert.True(caps.Output.Protocol.AnyEventMouseEnable);
+        Assert.True(caps.Output.Protocol.BracketedPasteEnable);
+        Assert.True(caps.Output.Protocol.MouseMotionEnable);
         Assert.True(caps.Output.Protocol.FocusReportingEnable);
         Assert.True(caps.Output.Protocol.BracketedPasteEnable);
         Assert.True(caps.Output.Protocol.KittyKeyboardPush);
@@ -585,9 +586,9 @@ public class VtTerminalNegotiatorTests
         await using var negotiator = BuildNegotiator(mode);
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                        });
 
         Assert.Equal(MouseEncoding.Sgr, mode.MouseEncoding);
         Assert.True(mode.BracketedPasteEnabled);
@@ -607,15 +608,16 @@ public class VtTerminalNegotiatorTests
         var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = false,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
+
         await _sink.ReadAllWrittenAsync();
 
         await negotiator.RestoreAsync();
@@ -634,9 +636,9 @@ public class VtTerminalNegotiatorTests
         var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                        });
 
         // Drain the writes from negotiation so we only inspect what restore emits.
         await _sink.ReadAllWrittenAsync();
@@ -645,13 +647,13 @@ public class VtTerminalNegotiatorTests
         var restored = await AllWrittenAsync();
 
         // LIFO: synchronized output → kitty pop → bracketed paste → focus → any-event mouse → button-event → SGR.
-        int idxSync = restored.IndexOf("\x1b[?2026l");
-        int idxKittyPop = restored.IndexOf("\x1b[<u");
-        int idxPaste = restored.IndexOf("\x1b[?2004l");
-        int idxFocus = restored.IndexOf("\x1b[?1004l");
-        int idxAnyEvent = restored.IndexOf("\x1b[?1003l");
-        int idxButtonEvent = restored.IndexOf("\x1b[?1002l");
-        int idxSgr = restored.IndexOf("\x1b[?1006l");
+        int idxSync = restored.IndexOf("\x1b[?2026l", StringComparison.Ordinal);
+        int idxKittyPop = restored.IndexOf("\x1b[<u", StringComparison.Ordinal);
+        int idxPaste = restored.IndexOf("\x1b[?2004l", StringComparison.Ordinal);
+        int idxFocus = restored.IndexOf("\x1b[?1004l", StringComparison.Ordinal);
+        int idxAnyEvent = restored.IndexOf("\x1b[?1003l", StringComparison.Ordinal);
+        int idxButtonEvent = restored.IndexOf("\x1b[?1002l", StringComparison.Ordinal);
+        int idxSgr = restored.IndexOf("\x1b[?1006l", StringComparison.Ordinal);
 
         Assert.True(idxSync >= 0);
         Assert.True(idxKittyPop > idxSync);
@@ -671,15 +673,16 @@ public class VtTerminalNegotiatorTests
         var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = true,
-            EnableBracketedPaste = true,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = true,
+                                            EnableBracketedPaste = true,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
+
         await _sink.ReadAllWrittenAsync(); // drain the enables
 
         await negotiator.DisposeAsync();
@@ -696,15 +699,16 @@ public class VtTerminalNegotiatorTests
         var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-            EnableMouseTracking = false,
-            EnableFocusEvents = true,
-            EnableBracketedPaste = false,
-            EnableKittyKeyboard = false,
-            EnableWin32InputMode = false,
-            EnableSynchronizedOutput = false,
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = true,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
+
         await _sink.ReadAllWrittenAsync();
 
         await negotiator.RestoreAsync();
@@ -727,9 +731,10 @@ public class VtTerminalNegotiatorTests
         var negotiator = BuildNegotiator(mode);
 
         await negotiator.NegotiateAsync(new NegotiationOptions
-        {
-            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-        });
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                        });
+
         Assert.Equal(MouseEncoding.Sgr, mode.MouseEncoding);
 
         await negotiator.RestoreAsync();

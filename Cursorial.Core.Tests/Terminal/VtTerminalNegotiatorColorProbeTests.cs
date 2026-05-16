@@ -31,10 +31,10 @@ public class VtTerminalNegotiatorColorProbeTests
         => new()
            {
                ProbeTimeout = TimeSpan.FromMilliseconds(200),
-               EnableMouseTracking = false,
+               EnableExtendedMouseTracking = false,
                EnableFocusEvents = false,
                EnableBracketedPaste = false,
-               EnableAnyEventMouse = false,
+               EnableMouseTracking = false,
                EnableKittyKeyboard = false,
                EnableWin32InputMode = false,
                EnableSynchronizedOutput = false,

@@ -18,22 +18,33 @@ public class FrameRendererFragmentTests
     }
 
     [Fact]
-    public void CoveredCells_AreSkippedInNormalEmission()
+    public void CellsUnderFragment_RenderNormally()
     {
-        // Without a fragment, cells get glyphs emitted. With one, the covered region must NOT
-        // emit glyphs from the normal pass — the fragment's Emit owns that visual range.
+        // Fragments are pure overlays — cells in the fragment's footprint render in the
+        // normal pass, then the fragment emits on top. Anything not covered by the fragment's
+        // protocol payload shows the underlying cells through.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         buffer.Set(0, 0, "a", Style.Default);
-        // Add a fragment whose StubFragment emits a recognizable sentinel string.
+        // Painted under the fragment — must appear in the output.
+        buffer.Set(0, 1, "U", Style.Default);
+        buffer.Set(0, 2, "V", Style.Default);
         buffer.AddFragment(0, 1, new SentinelFragment(new Size(2, 1), "[F]"));
         buffer.Set(0, 3, "z", Style.Default); // outside coverage
 
         var output = Render(r, buffer);
 
         Assert.Contains("a", output);
+        Assert.Contains("U", output);
+        Assert.Contains("V", output);
         Assert.Contains("z", output);
         Assert.Contains("[F]", output);
+
+        // The fragment payload comes after the cell pass, so it appears later in the byte
+        // stream than any of the underlying cell glyphs.
+        int uIdx = output.IndexOf('U');
+        int fragIdx = output.IndexOf("[F]", StringComparison.Ordinal);
+        Assert.True(fragIdx > uIdx, "Fragment emission must follow the cell pass it overlays.");
     }
 
     [Fact]

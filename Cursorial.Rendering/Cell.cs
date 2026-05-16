@@ -54,20 +54,12 @@ public readonly record struct Cell(string? Grapheme, CellKind Kind, Style Style)
     /// </remarks>
     public static Cell WideContinuation { get; } = new(null, CellKind.WideContinuation, default);
 
-    /// <summary>
-    /// The placeholder a covered-by-fragment cell occupies. Carries no grapheme; the
-    /// renderer skips it during the normal cell pass and the fragment's <c>Emit</c>
-    /// callback paints the region instead.
-    /// </summary>
-    public static Cell FragmentCover { get; } = new(null, CellKind.CoveredByFragment, default);
-
-    /// <summary>Number of terminal cells this entry occupies: 1 for single, 2 for wide-left, 0 for continuation or fragment cover.</summary>
+    /// <summary>Number of terminal cells this entry occupies: 1 for single, 2 for wide-left, 0 for continuation.</summary>
     public int Width => Kind switch
                         {
-                            CellKind.WideLeft           => 2,
-                            CellKind.WideContinuation   => 0,
-                            CellKind.CoveredByFragment  => 0,
-                            _                           => 1
+                            CellKind.WideLeft         => 2,
+                            CellKind.WideContinuation => 0,
+                            _                         => 1
                         };
 
     /// <summary>True when the cell is a blank single-width cell with default styling.</summary>
@@ -86,12 +78,5 @@ public enum CellKind : byte
     WideLeft = 1,
 
     /// <summary>The right-half placeholder of a wide-left grapheme. Renderer skips this cell.</summary>
-    WideContinuation = 2,
-
-    /// <summary>
-    /// Placeholder for a cell currently covered by an <see cref="Fragments.IBufferFragment"/>.
-    /// The renderer skips this cell during normal emission — the fragment's <c>Emit</c>
-    /// callback paints the region after the cell pass.
-    /// </summary>
-    CoveredByFragment = 3
+    WideContinuation = 2
 }

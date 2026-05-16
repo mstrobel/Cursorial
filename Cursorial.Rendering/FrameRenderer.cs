@@ -170,17 +170,6 @@ public sealed class FrameRenderer
                     continue;
                 }
 
-                // Fragment-covered cells are painted by the fragment's protocol payload in the
-                // post-cell pass; the normal emit must never write glyphs to these positions, or
-                // it would overdraw the fragment. Snapshot the cover marker into the front so
-                // subsequent diff comparisons match.
-                if (cell.Kind == CellKind.CoveredByFragment &&
-                    cell.Style.Background == _frontCells![frontIdx].Style.Background)
-                {
-                    _frontCells![frontIdx] = cell;
-                    continue;
-                }
-
                 if (cell == _frontCells![frontIdx]) continue;
 
                 // Re-position the cursor if our tracked position isn't (r, c). After writing a cell
@@ -213,15 +202,50 @@ public sealed class FrameRenderer
                     _currentStyle = cell.Style;
                 }
 
+                // Wide-glyph defense for terminals that don't reliably render two-cell glyphs:
+                // pre-paint cells c and c+1 with the wide-left's style by emitting two spaces,
+                // then CUP back to c so the wide glyph emits at the right column. On a
+                // honoring terminal the wide glyph overpaints both spaces and the cursor
+                // advances by 2; on a non-honoring one, the wide glyph shrinks to a single
+                // cell but our pre-painted space at c+1 keeps the cell's background/style
+                // intact. Either way we mark the cursor dirty afterward so the next emit
+                // issues an explicit CUP rather than trusting the actual advance count.
+                bool wideDefense = cell.Kind == CellKind.WideLeft &&
+                                   _capabilities is not null &&
+                                   !_capabilities.TextSizing.WideGlyphs &&
+                                   c + 1 < back.Columns;
+
+                if (wideDefense)
+                {
+                    var twoSpaces = output.GetSpan(2);
+                    twoSpaces[0] = (byte) ' ';
+                    twoSpaces[1] = (byte) ' ';
+                    output.Advance(2);
+
+                    CursorWriter.WriteMoveTo(output, r, c);
+                    _cursorRow = r;
+                    _cursorCol = c;
+                }
+
                 WriteGraphemeUtf8(output, cell);
                 _frontCells[frontIdx] = cell;
 
-                _cursorCol += cell.Width;
-
-                // If the next cursor position would be at or past the right edge, force a
-                // re-position before the next emit so terminal autowrap can't surprise us.
-                if (_cursorCol >= back.Columns)
+                if (wideDefense)
+                {
+                    // We don't know if the terminal actually advanced 1 or 2 cells after the
+                    // wide-glyph emission, so force CUP before the next emit instead of
+                    // trusting cell.Width.
                     _cursorCol = -1;
+                }
+                else
+                {
+                    _cursorCol += cell.Width;
+
+                    // If the next cursor position would be at or past the right edge, force a
+                    // re-position before the next emit so terminal autowrap can't surprise us.
+                    if (_cursorCol >= back.Columns)
+                        _cursorCol = -1;
+                }
             }
         }
     }

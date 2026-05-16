@@ -21,6 +21,7 @@ public enum TerminalFamily
 
     Kitty,
     Ghostty,
+    Rio,
     ITerm2,
     WezTerm,
     Alacritty,

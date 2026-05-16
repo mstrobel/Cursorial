@@ -16,9 +16,10 @@ namespace Cursorial.Rendering.Fragments;
 /// <para>
 /// <b>Coverage.</b> A glyph rendered with <c>Scale=s</c> and <c>Width=w</c> occupies an <c>s × w</c>
 /// cell block per the protocol; the fragment's <see cref="GetSize"/> multiplies that block by the
-/// number of clusters in <see cref="Text"/>. The buffer marks every cell in the bounding
-/// rectangle as <see cref="CellKind.CoveredByFragment"/> so the renderer's normal cell-emission
-/// pass skips the region.
+/// number of clusters in <see cref="Text"/>. Cells under that rectangle still render in the
+/// normal cell pass — anything the caller painted there shows through wherever the OSC 66
+/// payload doesn't cover (the protocol payload covers the whole rectangle in practice, but
+/// the per-fragment contract doesn't promise this).
 /// </para>
 /// <para>
 /// <b>Style.</b> The <see cref="Style"/> on the fragment becomes the SGR backdrop for the OSC 66

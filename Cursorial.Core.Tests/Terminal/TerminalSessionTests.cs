@@ -112,7 +112,7 @@ public class TerminalSessionTests
                 Negotiation = new NegotiationOptions
                 {
                     ProbeTimeout = TimeSpan.FromMilliseconds(100),
-                    EnableMouseTracking = false,
+                    EnableExtendedMouseTracking = false,
                     EnableFocusEvents = true,
                     EnableBracketedPaste = true,
                     EnableKittyKeyboard = false,

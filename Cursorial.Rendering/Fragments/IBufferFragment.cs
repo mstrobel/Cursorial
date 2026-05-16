@@ -15,19 +15,20 @@ namespace Cursorial.Rendering.Fragments;
 /// <see cref="Fonts.IGlyphFont"/> instead.
 /// </para>
 /// <para>
-/// <b>Anchor and bounds.</b> A fragment is registered at one anchor cell via
-/// <see cref="CellBuffer.AddFragment"/>. The buffer marks the cells in the fragment's
-/// <see cref="GetSize"/> rectangle as <see cref="CellKind.CoveredByFragment"/> so the renderer's
-/// normal cell-emission pass skips them — only the fragment's protocol payload paints those
-/// cells.
+/// <b>Anchor and layering.</b> A fragment is registered at one anchor cell via
+/// <see cref="CellBuffer.AddFragment"/>. The buffer doesn't touch the cell grid — fragments
+/// are a pure overlay registration. The renderer paints the cell grid first, then emits each
+/// fragment's protocol payload on top. Anything the caller painted under the fragment's
+/// footprint remains visible through any region the fragment's payload doesn't cover; this
+/// matters for fragments that don't fill every cell (transparent backgrounds, partial
+/// coverage) and for the unsupported-fragment case where no payload is emitted at all.
 /// </para>
 /// <para>
 /// <b>Capability gating.</b> The renderer calls <see cref="IsSupported"/> for every fragment on
 /// every frame and skips emission when the answer is false. Implementations are expected to be
-/// stateless and cheap to instantiate; an unsupported fragment paints nothing, but its anchor
-/// cell still appears as <see cref="CellKind.CoveredByFragment"/> — the caller is responsible
-/// for choosing a different fragment (or painting fallback cells) when the capability check
-/// fails. Higher-level <c>IContent</c> abstractions handle that automatically.
+/// stateless and cheap to instantiate. When a fragment is unsupported the cells under it still
+/// render normally — callers wanting a richer fallback than "what's under the fragment" should
+/// build a higher-level <c>IContent</c> that chooses among multiple fragments at paint time.
 /// </para>
 /// <para>
 /// <b>Cursor and SGR.</b> The renderer brackets every fragment emission with

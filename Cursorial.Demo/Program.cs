@@ -9,6 +9,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
@@ -78,6 +79,7 @@ while (true)
     catch (Exception ex)
     {
         Console.WriteLine($"Error: {ex.Message}");
+        Console.WriteLine($"{ex.StackTrace}");
     }
 }
 
@@ -128,10 +130,14 @@ static async Task NegotiateAsync()
     // write multi-line output through a raw-mode terminal (OPOST off) where bare \n doesn't
     // get a CR.
     TerminalCapabilities caps;
-    await using (var session = await TerminalSession.OpenAsync())
+
+    var sessionOptions = new TerminalSessionOptions { Negotiation = new NegotiationOptions { ProbeTimeout = TimeSpan.FromSeconds(3) } };
+    
+    await using (var session = await TerminalSession.OpenAsync(sessionOptions))
     {
         caps = session.Capabilities;
     }
+ 
     Console.Write(FormatCapabilities(caps));
 }
 
@@ -927,7 +933,7 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
         .WithUnderlineStyle(UnderlineStyle.Curly)
         .WithUnderlineColor(Color.FromPalette(5));
 
-    var sizedTitle = new ScaledText("Cursorial Rendering Demo", new TextSizing(Scale: 2));
+    var sizedTitle = new ScaledText("Cursorial Rendering Demo", new TextSizing(Scale: 2), fallbackFont: DecoratedFont.HalfBlockUnderline);
 
     sizedTitle.Paint(buf, row: 2, column: 1, style: sizedTitleStyle, capabilities: outputCaps);
 
@@ -1194,6 +1200,7 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Header("Output — Text Sizing (Kitty OSC 66)");
     Row("Width (w=)",            caps.Output.TextSizing.Width);
     Row("Scale (s=, n=/d=)",     caps.Output.TextSizing.Scale);
+    Row("Reliable Wide Glyphs",  caps.Output.TextSizing.WideGlyphs);
 
     Header("Output — Graphics");
     Row("Sixel",                 caps.Output.Graphics.Sixel);
@@ -1210,8 +1217,10 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Row("Alt screen buffer",     caps.Output.Window.AlternateScreenBuffer);
 
     Header("Output — Protocol opt-ins enabled");
-    Row("SGR mouse",             caps.Output.Protocol.SgrMouseEnable);
-    Row("Any-event mouse",       caps.Output.Protocol.AnyEventMouseEnable);
+    Row("SGR mouse reporting",   caps.Output.Protocol.SgrMouseEnable);
+    Row("Mouse buttons",         caps.Output.Protocol.MouseButtonsEnable);
+    Row("Mouse drag"     ,       caps.Output.Protocol.MouseDragEnable);
+    Row("Mouse motion",          caps.Output.Protocol.MouseMotionEnable);
     Row("Focus reporting",       caps.Output.Protocol.FocusReportingEnable);
     Row("Bracketed paste",       caps.Output.Protocol.BracketedPasteEnable);
     Row("Kitty keyboard push",   caps.Output.Protocol.KittyKeyboardPush);

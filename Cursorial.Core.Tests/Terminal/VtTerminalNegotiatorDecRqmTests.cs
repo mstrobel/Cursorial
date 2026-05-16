@@ -32,10 +32,12 @@ public class VtTerminalNegotiatorDecRqmTests
         await negotiator.NegotiateAsync(new NegotiationOptions
                                         {
                                             ProbeTimeout = TimeSpan.FromMilliseconds(200),
-                                            EnableMouseTracking = true,
+                                            EnableExtendedMouseTracking = true,
                                             EnableFocusEvents = true,
                                             EnableBracketedPaste = true,
-                                            EnableAnyEventMouse = false,
+                                            EnableMouseButtons = false,
+                                            EnableMouseButtonTracking = false,
+                                            EnableMouseTracking = false,
                                             EnableKittyKeyboard = false,
                                             EnableWin32InputMode = false,
                                             EnableSynchronizedOutput = false
@@ -50,8 +52,52 @@ public class VtTerminalNegotiatorDecRqmTests
         Assert.Contains("\x1b[?1004$p", written);
         Assert.Contains("\x1b[?2004$p", written);
 
+        // Lesser/redundant mouse modes shouldn't be queried.
+        Assert.DoesNotContain("\x1b[?1000$p", written);
+        Assert.DoesNotContain("\x1b[?2026$p", written);
+
         // Modes we didn't enable shouldn't be queried.
         Assert.DoesNotContain("\x1b[?1003$p", written);
+        Assert.DoesNotContain("\x1b[?2026$p", written);
+    }
+
+    [Fact]
+    public async Task NegotiateAsync_EmitsDecRqmQueriesForBasicMouseOnly()
+    {
+        // Two DA1 sentinels — one for each probe phase. Verification phase has no DECRQM
+        // responses in between; the negotiator should still complete (timeout-free since the
+        // sentinel arrives).
+        _source.Enqueue("\x1b[?64c"); // identification DA1
+        _source.Enqueue("\x1b[?64c"); // verification DA1
+
+        await using var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(200),
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableMouseButtons = true,
+                                            EnableMouseTracking = false,
+                                            EnableMouseButtonTracking = true,
+                                            EnableExtendedMouseTracking = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false
+                                        });
+
+        var written = await AllWrittenAsync();
+
+        // DECRQM queries for the three opt-ins we applied (mouse = 1000 + 1002) —
+        // order isn't strict but each query must appear.
+        Assert.Contains("\x1b[?1000$p", written);
+        Assert.Contains("\x1b[?1002$p", written);
+
+        // Modes we didn't enable shouldn't be queried.
+        Assert.DoesNotContain("\x1b[?1003$p", written);
+        Assert.DoesNotContain("\x1b[?1004$p", written);
+        Assert.DoesNotContain("\x1b[?1006$p", written);
+        Assert.DoesNotContain("\x1b[?2004$p", written);
         Assert.DoesNotContain("\x1b[?2026$p", written);
     }
 
@@ -64,17 +110,18 @@ public class VtTerminalNegotiatorDecRqmTests
 
         await using var negotiator = BuildNegotiator();
 
-        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
-                                                   {
-                                                       ProbeTimeout = TimeSpan.FromMilliseconds(200),
-                                                       EnableMouseTracking = true,
-                                                       EnableFocusEvents = false,
-                                                       EnableBracketedPaste = false,
-                                                       EnableAnyEventMouse = false,
-                                                       EnableKittyKeyboard = false,
-                                                       EnableWin32InputMode = false,
-                                                       EnableSynchronizedOutput = false
-                                                   });
+        TerminalCapabilities caps =
+            await negotiator.NegotiateAsync(new NegotiationOptions
+                                            {
+                                                ProbeTimeout = TimeSpan.FromMilliseconds(200),
+                                                EnableExtendedMouseTracking = true,
+                                                EnableFocusEvents = false,
+                                                EnableBracketedPaste = false,
+                                                EnableMouseTracking = false,
+                                                EnableKittyKeyboard = false,
+                                                EnableWin32InputMode = false,
+                                                EnableSynchronizedOutput = false
+                                            });
 
         // SGR mouse came back unsupported → realized capabilities reflect no mouse tracking,
         // even though the negotiator emitted the DECSET sequences.
@@ -94,17 +141,18 @@ public class VtTerminalNegotiatorDecRqmTests
 
         await using var negotiator = BuildNegotiator();
 
-        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
-                                                   {
-                                                       ProbeTimeout = TimeSpan.FromMilliseconds(200),
-                                                       EnableMouseTracking = true,
-                                                       EnableFocusEvents = false,
-                                                       EnableBracketedPaste = false,
-                                                       EnableAnyEventMouse = false,
-                                                       EnableKittyKeyboard = false,
-                                                       EnableWin32InputMode = false,
-                                                       EnableSynchronizedOutput = false
-                                                   });
+        TerminalCapabilities caps =
+            await negotiator.NegotiateAsync(new NegotiationOptions
+                                            {
+                                                ProbeTimeout = TimeSpan.FromMilliseconds(200),
+                                                EnableExtendedMouseTracking = true,
+                                                EnableFocusEvents = false,
+                                                EnableBracketedPaste = false,
+                                                EnableMouseTracking = false,
+                                                EnableKittyKeyboard = false,
+                                                EnableWin32InputMode = false,
+                                                EnableSynchronizedOutput = false
+                                            });
 
         Assert.True(caps.Input.Mouse.ButtonPress);
     }
@@ -118,17 +166,18 @@ public class VtTerminalNegotiatorDecRqmTests
 
         await using var negotiator = BuildNegotiator();
 
-        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
-                                                   {
-                                                       ProbeTimeout = TimeSpan.FromMilliseconds(200),
-                                                       EnableMouseTracking = false,
-                                                       EnableFocusEvents = true,
-                                                       EnableBracketedPaste = false,
-                                                       EnableAnyEventMouse = false,
-                                                       EnableKittyKeyboard = false,
-                                                       EnableWin32InputMode = false,
-                                                       EnableSynchronizedOutput = false
-                                                   });
+        TerminalCapabilities caps =
+            await negotiator.NegotiateAsync(new NegotiationOptions
+                                            {
+                                                ProbeTimeout = TimeSpan.FromMilliseconds(200),
+                                                EnableExtendedMouseTracking = false,
+                                                EnableFocusEvents = true,
+                                                EnableBracketedPaste = false,
+                                                EnableMouseTracking = false,
+                                                EnableKittyKeyboard = false,
+                                                EnableWin32InputMode = false,
+                                                EnableSynchronizedOutput = false
+                                            });
 
         Assert.True(caps.Input.Protocol.FocusEvents);
     }
@@ -143,17 +192,18 @@ public class VtTerminalNegotiatorDecRqmTests
 
         await using var negotiator = BuildNegotiator();
 
-        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
-                                                   {
-                                                       ProbeTimeout = TimeSpan.FromMilliseconds(200),
-                                                       EnableMouseTracking = false,
-                                                       EnableFocusEvents = false,
-                                                       EnableBracketedPaste = true,
-                                                       EnableAnyEventMouse = false,
-                                                       EnableKittyKeyboard = false,
-                                                       EnableWin32InputMode = false,
-                                                       EnableSynchronizedOutput = false
-                                                   });
+        TerminalCapabilities caps =
+            await negotiator.NegotiateAsync(new NegotiationOptions
+                                            {
+                                                ProbeTimeout = TimeSpan.FromMilliseconds(200),
+                                                EnableExtendedMouseTracking = false,
+                                                EnableFocusEvents = false,
+                                                EnableBracketedPaste = true,
+                                                EnableMouseTracking = false,
+                                                EnableKittyKeyboard = false,
+                                                EnableWin32InputMode = false,
+                                                EnableSynchronizedOutput = false
+                                            });
 
         Assert.False(caps.Input.Protocol.BracketedPaste);
     }
@@ -168,17 +218,18 @@ public class VtTerminalNegotiatorDecRqmTests
 
         await using var negotiator = BuildNegotiator();
 
-        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
-                                                   {
-                                                       ProbeTimeout = TimeSpan.FromMilliseconds(200),
-                                                       EnableMouseTracking = true,
-                                                       EnableFocusEvents = false,
-                                                       EnableBracketedPaste = false,
-                                                       EnableAnyEventMouse = false,
-                                                       EnableKittyKeyboard = false,
-                                                       EnableWin32InputMode = false,
-                                                       EnableSynchronizedOutput = false
-                                                   });
+        TerminalCapabilities caps =
+            await negotiator.NegotiateAsync(new NegotiationOptions
+                                            {
+                                                ProbeTimeout = TimeSpan.FromMilliseconds(200),
+                                                EnableExtendedMouseTracking = true,
+                                                EnableFocusEvents = false,
+                                                EnableBracketedPaste = false,
+                                                EnableMouseTracking = false,
+                                                EnableKittyKeyboard = false,
+                                                EnableWin32InputMode = false,
+                                                EnableSynchronizedOutput = false
+                                            });
 
         // Mouse tracking remains advertised — we have no evidence it doesn't work.
         Assert.True(caps.Input.Mouse.ButtonPress);

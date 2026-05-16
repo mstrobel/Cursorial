@@ -6,4 +6,9 @@ public static class TextExtensions
     {
         public GraphemeEnumerator GetGraphemeEnumerator() => new(target, 0);
     }
+
+    extension(ReadOnlySpan<char> target)
+    {
+        public GraphemeEnumerator GetGraphemeEnumerator() => new(target, 0);
+    }
 }

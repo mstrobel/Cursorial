@@ -147,8 +147,8 @@ public class GraphemeWidthTests
     }
 
     [Fact]
-    public void StringWidth_NullString_Throws()
+    public void StringWidth_NullString_ReturnsZero()
     {
-        Assert.Throws<ArgumentNullException>(() => GraphemeWidth.StringWidth((string)null!));
+        Assert.Equal(0, GraphemeWidth.StringWidth((string)null!));
     }
 }

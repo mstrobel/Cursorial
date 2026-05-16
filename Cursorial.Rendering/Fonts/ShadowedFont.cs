@@ -27,8 +27,7 @@ public sealed class ShadowedFont : IGlyphFont
 {
     private const TextAttributes ForbiddenAttributes = TextAttributes.Inverse;
 
-    private const TextAttributes ForbiddenShadowAttributes = //TextAttributes.Underline |
-                                                             TextAttributes.Inverse |
+    private const TextAttributes ForbiddenShadowAttributes = TextAttributes.Inverse |
                                                              TextAttributes.Overline;
 
     private readonly IBlendingMode? _shadowBlendingMode;
@@ -108,6 +107,7 @@ public sealed class ShadowedFont : IGlyphFont
         try
         {
             var effectiveShadowStyle = shadowStyle.WithUnderlineStyle(style.UnderlineStyle)
+                                                  .WithAttributes((shadowStyle.Attributes | style.Attributes) & ~ForbiddenShadowAttributes)
                                                   .BlendOver(style);
 
             Inner.Paint(buffer, row + Offset.Rows, column + Offset.Columns, text, effectiveShadowStyle);

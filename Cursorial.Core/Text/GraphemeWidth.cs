@@ -155,27 +155,12 @@ public static class GraphemeWidth
     /// Total display width of <paramref name="text"/>. Enumerates grapheme clusters via
     /// <see cref="StringInfo"/> so multi-codepoint glyphs are measured as a single unit.
     /// </summary>
-    public static int StringWidth(string text)
-    {
-        ArgumentNullException.ThrowIfNull(text);
-        return StringWidthCore(text);
-    }
-
-    /// <summary>
-    /// Span-based overload. Copies into a string internally (<see cref="StringInfo"/> requires a
-    /// <see cref="string"/>); use the <see cref="string"/> overload directly when you already
-    /// have one to avoid the allocation.
-    /// </summary>
     public static int StringWidth(ReadOnlySpan<char> text)
     {
         if (text.IsEmpty) return 0;
-        return StringWidthCore(text.ToString());
-    }
 
-    private static int StringWidthCore(string text)
-    {
         int total = 0;
-        var enumerator = text.GetGraphemeEnumerator();
+        var enumerator = ((ReadOnlySpan<char>) text.ToString()).GetGraphemeEnumerator();
 
         while (enumerator.MoveNext())
         {
@@ -184,6 +169,24 @@ public static class GraphemeWidth
         }
 
         return total;
+    }
+
+    /// <summary>
+    /// Calculates the number of grapheme clusters in the specified text string.
+    /// A grapheme cluster is the smallest unit of a writing system that displays as a single character
+    /// (e.g., letters, emojis, and composed characters).
+    /// </summary>
+    /// <param name="text">The input string for which grapheme clusters are to be counted.</param>
+    /// <returns>The total number of grapheme clusters in the provided string.</returns>
+    public static int ClusterCount(ReadOnlySpan<char> text)
+    {
+        int clusters = 0;
+        var enumerator = text.GetGraphemeEnumerator();
+
+        while (enumerator.MoveNext())
+            clusters++;
+
+        return clusters;
     }
 
     /// <summary>

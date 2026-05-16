@@ -3,20 +3,17 @@ using System.Globalization;
 
 namespace Cursorial.Text;
 
-public struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
+public ref struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
 {
     private const string? CannotEnumerateMessage = "No grapheme is available, or the end of the string has been reached.";
-    private readonly string _text;
+    private readonly ReadOnlySpan<char> _text;
     private readonly int _textStartIndex; // where in _text the enumeration should begin
 
     private int _currentTextElementOffset;
     private int _currentTextElementLength = -1;
 
-    internal GraphemeEnumerator(string text, int startIndex)
+    internal GraphemeEnumerator(ReadOnlySpan<char> text, int startIndex)
     {
-        if (text == null)
-            throw new ArgumentNullException(nameof(text), $"{nameof(text)} cannot be null");
-
         if (startIndex < 0 || startIndex > text.Length)
             throw new ArgumentOutOfRangeException(nameof(startIndex), $"{nameof(startIndex)} must be within the bounds of the text");
 
@@ -36,7 +33,7 @@ public struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
         if (newOffset >= _text.Length)
             return false; // reached the end of the data
 
-        _currentTextElementLength = NextGraphemeClusterLength(_text.AsSpan(newOffset));
+        _currentTextElementLength = NextGraphemeClusterLength(_text);
         return true;
     }
 
@@ -47,7 +44,7 @@ public struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
         if (_currentTextElementLength < 0)
             throw new InvalidOperationException(CannotEnumerateMessage);
 
-        return _text.AsSpan(_currentTextElementOffset).Slice(0, _currentTextElementLength);
+        return _text.Slice(_currentTextElementOffset, _currentTextElementLength);
     }
 
     public int ElementIndex

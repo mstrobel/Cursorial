@@ -22,10 +22,19 @@ namespace Cursorial.Output.Capabilities;
 /// <c>s × w</c> cell block (1–7 cells tall). Enables double-height text, large titles, and
 /// the fractional <c>n/d</c> scaling that builds on the same machinery.
 /// </param>
+/// <param name="WideGlyphs">
+/// True when the terminal is known to correctly render wide glyphs across two cells
+/// when no contents have been written to its neighboring continuation cell. A true
+/// value indicates that the wide glyph continuation cells do not need to be emitted.
+/// A value of false indicates the frame renderer must emit blank continuation cells
+/// <em>before</em> emitting its corresponding wide-left cell.
+/// </param>
 public sealed record TextSizingCapabilities(bool Width,
-                                            bool Scale)
+                                            bool Scale,
+                                            bool WideGlyphs = false)
 {
     /// <summary>A capability set reporting no text-sizing support.</summary>
     public static TextSizingCapabilities None { get; } = new(Width: false,
-                                                             Scale: false);
+                                                             Scale: false,
+                                                             WideGlyphs: false);
 }

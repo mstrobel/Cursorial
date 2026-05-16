@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Reflection;
 using System.Text;
 
 using Cursorial.Input;
@@ -8,6 +9,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fragments;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
 
@@ -561,12 +563,12 @@ static async Task DemoImageAsync(string argument)
     }
 
     var format = Path.GetExtension(path).ToLowerInvariant() switch
-    {
-        ".png"            => Cursorial.Rendering.Fragments.ImageFormat.Png,
-        ".jpg" or ".jpeg" => Cursorial.Rendering.Fragments.ImageFormat.Jpeg,
-        ".gif"            => Cursorial.Rendering.Fragments.ImageFormat.Gif,
-        _ => Cursorial.Rendering.Fragments.ImageFormat.Png, // best-guess; Kitty will refuse non-PNG, iTerm2 accepts most
-    };
+                 {
+                     ".png"            => ImageFormat.Png,
+                     ".jpg" or ".jpeg" => ImageFormat.Jpeg,
+                     ".gif"            => ImageFormat.Gif,
+                     _                 => ImageFormat.Png // best-guess; Kitty will refuse non-PNG, iTerm2 accepts most
+                 };
 
     Console.WriteLine(
         $"Image demo. Loading {path} ({bytes.Length} bytes, {format}). Press q or Ctrl+C to exit.");
@@ -679,7 +681,7 @@ static void PaintImageShowcase(
     CellBuffer buf,
     string path,
     byte[] bytes,
-    Cursorial.Rendering.Fragments.ImageFormat format,
+    ImageFormat format,
     OutputCapabilities outputCaps)
 {
     buf.CursorVisible = false;
@@ -705,21 +707,27 @@ static void PaintImageShowcase(
     // Header line 1: full path (truncated from the left if too long, so the file name stays visible).
     string header = $"image: {path}";
     if (header.Length > cols - 2) header = "..." + header[^(cols - 5)..];
+
     PaintLine(buf, 0, 1, header,
-        Style.Default.WithForeground(Color.FromRgb(220, 220, 255))
-                     .WithAttributes(TextAttributes.Bold));
+              Style.Default
+                   .WithForeground(Color.FromRgb(220, 220, 255))
+                   .WithAttributes(TextAttributes.Bold));
 
     // Header line 2: chosen protocol + cell footprint.
     string protocol = ChooseProtocolLabel(outputCaps, format);
     string sub = $"  {bytes.Length:N0} bytes, {format} → {imageW}×{imageH} cells via {protocol}";
+
     PaintLine(buf, 1, 1, sub, Style.Default.WithForeground(Color.FromRgb(160, 160, 200)));
 
     // Image (capability-aware — Image content picks Kitty / iTerm2 / placeholder at paint time).
-    var data = new Cursorial.Rendering.Fragments.ImageData(bytes, format, new Size(imageW, imageH));
+    var data = new ImageData(bytes, format, new Size(imageW, imageH));
+
     var placeholderStyle = Style.Default
-        .WithBackground(Color.FromRgb(40, 40, 70))
-        .WithForeground(Color.FromRgb(200, 200, 220));
-    var content = new Cursorial.Rendering.Content.Image(data, placeholderStyle);
+                                .WithBackground(Color.FromRgb(40, 40, 70))
+                                .WithForeground(Color.FromRgb(200, 200, 220));
+
+    var content = new Image(data, placeholderStyle);
+
     content.Paint(buf, anchorRow, anchorCol, Style.Default, outputCaps);
 
     // Footer.
@@ -728,9 +736,9 @@ static void PaintImageShowcase(
         Style.Default.WithForeground(Color.FromRgb(180, 180, 220)));
 }
 
-static string ChooseProtocolLabel(OutputCapabilities caps, Cursorial.Rendering.Fragments.ImageFormat format)
+static string ChooseProtocolLabel(OutputCapabilities caps, ImageFormat format)
 {
-    if (caps.Graphics.KittyGraphics && format == Cursorial.Rendering.Fragments.ImageFormat.Png)
+    if (caps.Graphics.KittyGraphics && format == ImageFormat.Png)
         return "Kitty graphics protocol";
     if (caps.Graphics.ITerm2InlineImages)
         return "iTerm2 inline images";
@@ -922,6 +930,40 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
     var sizedTitle = new ScaledText("Cursorial Rendering Demo", new TextSizing(Scale: 2));
 
     sizedTitle.Paint(buf, row: 2, column: 1, style: sizedTitleStyle, capabilities: outputCaps);
+
+    const int iconY = 5;
+    const int iconCount = 4;
+    const int iconColumns = 2;
+
+    var iconStyle = style.WithBackground(Color.FromRgb(40, 52, 87));
+
+    string[] icons = ["settings.png", "download.png", "calendar.png", "power.png"];
+    string[] iconFallbacks = ["⚙️", "⬇️", "📆", "⚡️"];
+
+    for (int i = 0; i < iconCount; i++)
+    {
+        var d = icons.Length - i;
+        var x = buf.Columns - ((d + 1) * (iconColumns + 1) + 1) - 8;
+        // Resolve each PNG to an embedded resource under Cursorial.Rendering.Icons.<name>.
+        // When the resource isn't shipped (or can't be loaded), Icon falls back to the glyph.
+        var icon = Icon.FromEmbedded(
+            assembly: Assembly.GetExecutingAssembly(),
+            resourceName: $"Icons/{icons[i]}",
+            fallbackGlyph: iconFallbacks[i],
+            fallbackStyle: iconStyle, renderSize: new Size(iconColumns, 0));
+        buf.Set(iconY, x, " ", iconStyle);
+        buf.Set(iconY, x + 1, " ", iconStyle);
+        icon.Paint(buf, row: iconY, column: x, style: iconStyle, capabilities: outputCaps);
+        buf.Set(iconY + 2, x, icon.FallbackGlyph, iconStyle);
+
+        if (i == 0)
+        {
+            var labelStyle = (style with { Foreground = style.Foreground.WithAlpha(0xC0) }).BlendOver(style);
+
+            PaintWord(buf, iconY - 3, x, "PNG Icons w/", labelStyle);
+            PaintWord(buf, iconY - 2, x, "Emoji Fallback", labelStyle);
+        }
+    }
 
     // ---- Clock in top-right corner ----
     string clock = DateTime.Now.ToString("HH:mm:ss");

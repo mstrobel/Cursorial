@@ -67,7 +67,7 @@ public sealed class KittyImageFragment : IBufferFragment
         int format = 100;
 
         // Base64-encode the whole payload, then chunk the ASCII output. Image payloads are
-        // measured in KB-to-MB ranges and emission is one-shot per fragment registration —
+        // measured in KB-to-MB ranges, and emission is one-shot per fragment registration —
         // a single allocation here is fine.
         string base64 = Convert.ToBase64String(_data.Bytes.Span);
         byte[] ascii = Encoding.ASCII.GetBytes(base64);
@@ -95,11 +95,12 @@ public sealed class KittyImageFragment : IBufferFragment
     private void EmitChunk(IBufferWriter<byte> output, int format, ReadOnlySpan<byte> chunk,
                            bool firstChunk, bool isLast)
     {
-        // Header bytes for the chunk. First chunk carries full transmit params; subsequent
+        // Header bytes for the chunk. The first chunk carries full transmit params; subsequent
         // chunks carry only m=. Quietness q=2 always (we don't read responses).
+        var rowQualifier = _data.CellSize.Rows >= 1 ? $"r={_data.CellSize.Rows}," : "";
         var header = firstChunk
                          ? Encoding.ASCII.GetBytes(
-                             $"a=T,f={format},c={_data.CellSize.Columns},r={_data.CellSize.Rows},q=2,m={(isLast ? 0 : 1)};")
+                             $"a=T,f={format},c={_data.CellSize.Columns},{rowQualifier}q=2,m={(isLast ? 0 : 1)};")
                          : Encoding.ASCII.GetBytes($"m={(isLast ? 0 : 1)};");
 
         // APC framing: ESC _ G <control-data> ; <payload> ESC \ — the "_G" prefix marks

@@ -13,4 +13,9 @@
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <EmbeddedResource Include="**/*.png">
+            <LogicalName>$([System.String]::new('%(RelativeDir)').Replace('\','/'))%(FileName)%(Extension)</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
 </Project>

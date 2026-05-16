@@ -10,7 +10,7 @@ namespace Cursorial.Rendering;
 /// <remarks>
 /// <para>
 /// A <see cref="Style.Default">default</see>-constructed cell is a single-width blank with default
-/// styling — the natural "empty" of a freshly-allocated buffer. To explicitly represent the right
+/// styling — the natural "empty" of a freshly allocated buffer. To explicitly represent the right
 /// half of a wide glyph, use <see cref="WideContinuation"/>; a single grapheme that occupies two
 /// cells is stored as a <see cref="CellKind.WideLeft"/> cell at the left position and a
 /// <see cref="CellKind.WideContinuation"/> at the position immediately right.
@@ -29,7 +29,7 @@ namespace Cursorial.Rendering;
 /// The grapheme cluster occupying the cell, as UTF-16. <see langword="null"/> or empty means a
 /// blank cell (rendered as a space).
 /// </param>
-/// <param name="Kind">Single-width, wide left half, or wide right-half continuation.</param>
+/// <param name="Kind">Single-width, wide left-half, or wide right-half continuation.</param>
 /// <param name="Style">Foreground / background / attribute / underline state applied to the cell.</param>
 public readonly record struct Cell(string? Grapheme, CellKind Kind, Style Style)
 {

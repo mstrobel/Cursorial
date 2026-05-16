@@ -58,8 +58,12 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         header.Append("\x1B]1337;File=");
         header.Append("size=").Append(_data.Bytes.Length).Append(';');
         header.Append("width=").Append(_data.CellSize.Columns).Append(';');
-        header.Append("height=").Append(_data.CellSize.Rows).Append(';');
-        header.Append("preserveAspectRatio=0;");
+
+        if (_data.CellSize.Rows > 0)
+            header.Append("height=").Append(_data.CellSize.Rows).Append(';').Append("preserveAspectRatio=0;");
+        else
+            header.Append("height=auto;preserveAspectRatio=1;");
+
         header.Append("inline=1");
         header.Append(':');
 

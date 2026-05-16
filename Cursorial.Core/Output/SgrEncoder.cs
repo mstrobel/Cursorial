@@ -112,9 +112,7 @@ public static class SgrEncoder
         {
             WriteAttributeChanges(added, removed, to.UnderlineStyle, buffer, ref written, ref needSeparator);
         }
-        else if (
-            (to.Attributes & TextAttributes.Underline) != 0
-            && from.UnderlineStyle != to.UnderlineStyle)
+        else if (to.Attributes.HasFlag(TextAttributes.Underline) && from.UnderlineStyle != to.UnderlineStyle)
         {
             // Underline was already on; only the shape changed. Re-emit it with the new shape.
             WriteUnderline(to.UnderlineStyle, buffer, ref written, ref needSeparator);

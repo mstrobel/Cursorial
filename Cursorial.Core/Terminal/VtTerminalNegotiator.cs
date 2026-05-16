@@ -49,11 +49,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     // second drain phase (DECRQM verification, future truecolor / default-color probes) can
     // reuse a still-in-flight read instead of starting a concurrent one on the same
     // PipeReader (which throws "Concurrent reads or writes are not supported.").
-    private Task<System.IO.Pipelines.ReadResult>? _pendingProbeRead;
+    private Task<ReadResult>? _pendingProbeRead;
 
     // Shared probe pipeline: a single classifier + interpreter + collector serves every probe
-    // phase. The classifier holds partial-sequence state that must persist across phases (a
-    // sequence split across two reads should reassemble cleanly), and the collector
+    // phase. The classifier holds a partial-sequence state that must persist across phases (a
+    // sequence split across two reads should reassemble cleanly). The collector
     // accumulates every response we've seen so far — each phase waits for an additional
     // sentinel (DA1) tick rather than starting from zero. This is also what makes the
     // in-memory test fixture work: when responses are pre-enqueued, the first read returns
@@ -274,7 +274,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         int total = prefix.Length + ascii.Length + 1;
         var span = _sink.Writer.GetSpan(total);
         prefix.CopyTo(span);
-        System.Text.Encoding.ASCII.GetBytes(ascii, span[prefix.Length..]);
+        Encoding.ASCII.GetBytes(ascii, span[prefix.Length..]);
         span[prefix.Length + ascii.Length] = VtInputSequences.OptInSequences.KittyPushSuffix;
         _sink.Writer.Advance(total);
     }
@@ -393,9 +393,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // Build the (mode, applied-bit) pairs we want to verify. Kitty keyboard and Win32 input
         // mode don't have DECRQM responses (Kitty uses its own keyboard-stack query, Win32
         // input mode is an MS extension with no documented verification path) — skip those.
-        // Mouse tracking lives in two bits: MouseTracking covers both SGR (1006) and button-
+        // Mouse tracking lives in two bits: MouseTracking covers both SGR (1006) and button
         // event (1002); we verify 1006 since that's the one consumers depend on directly.
         var probes = new List<(int Mode, ModeBit Bit)>(6);
+
         if (_applied.MouseTracking)      probes.Add((1006, ModeBit.MouseTracking));
         if (_applied.MouseTracking)      probes.Add((1002, ModeBit.MouseTrackingButtonEvent));
         if (_applied.AnyEventMouse)      probes.Add((1003, ModeBit.AnyEventMouse));
@@ -408,11 +409,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // Emit queries + DA1 sentinel.
         foreach (var probe in probes)
             await WriteDecRqmAsync(probe.Mode, cancellationToken).ConfigureAwait(false);
+
         await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
 
         // Share the probe pipeline with the identification phase. The collector already holds
         // identification responses; drain until *another* sentinel arrives — that's the DA1
-        // that terminates this phase. If responses were pre-enqueued (in tests, or by a chatty
+        // that terminates this phase. If responses were pre-enqueued (in tests or by a chatty
         // terminal), they're already in the collector and the drain returns immediately.
         var collector = _probeCollector!;
         var classifier = _probeClassifier!;
@@ -427,7 +429,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         // For each probe, find the matching DECRQM response and update _applied. Either of
         // the mouse-tracking probes (1006 SGR or 1002 button-event) reporting unsupported is
-        // enough to drop the whole MouseTracking bit, since SGR without button-event yields
+        // enough to drop the whole MouseTracking bit, since SGR without a button-event yields
         // no useful press events and button-event without SGR can't decode coordinates.
         foreach (var probe in probes)
         {
@@ -521,12 +523,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     // Stash for color-probe results, read by ResolveColorCapabilities after probes complete.
     private bool _truecolorVerified;
-    private Output.Color? _defaultForeground;
-    private Output.Color? _defaultBackground;
-    private Output.Color? _defaultCursorColor;
+    private Color? _defaultForeground;
+    private Color? _defaultBackground;
+    private Color? _defaultCursorColor;
 
-    // Fixed three-byte probe color used for truecolor verification. The triplet is arbitrary
-    // but distinctive — picked so it doesn't land near any common default-palette value
+    // A fixed three-byte probe color used for truecolor verification. The triplet is arbitrary
+    // but distinctive — it was picked so it doesn't land near any common default-palette value
     // (avoiding false positives if a terminal's palette[255] happens to be close to our probe).
     private const byte TruecolorProbeRed   = 0xAB;
     private const byte TruecolorProbeGreen = 0xCD;
@@ -590,19 +592,19 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
 
         // Default colors — first matching response per kind. Most terminals send one of each;
-        // if multiple arrive we take the first as the canonical value.
+        // if multiple responses arrive, we take the first as the canonical value.
         _defaultForeground   = FindFirstColor(collector, DeviceResponseKind.ForegroundColor);
         _defaultBackground   = FindFirstColor(collector, DeviceResponseKind.BackgroundColor);
         _defaultCursorColor  = FindFirstColor(collector, DeviceResponseKind.CursorColor);
     }
 
-    private static Output.Color? FindFirstColor(ResponseCollector collector, DeviceResponseKind kind)
+    private static Color? FindFirstColor(ResponseCollector collector, DeviceResponseKind kind)
     {
         foreach (var response in collector.Responses)
         {
             if (response.Kind != kind) continue;
             if (TryParseRgbColor(response.Payload.Span, out byte r, out byte g, out byte b))
-                return Output.Color.FromRgb(r, g, b);
+                return Color.FromRgb(r, g, b);
         }
         return null;
     }
@@ -671,9 +673,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static bool TryParseHexDigit(byte b, out int value)
     {
-        if (b >= (byte) '0' && b <= (byte) '9') { value = b - (byte) '0';      return true; }
-        if (b >= (byte) 'a' && b <= (byte) 'f') { value = b - (byte) 'a' + 10; return true; }
-        if (b >= (byte) 'A' && b <= (byte) 'F') { value = b - (byte) 'A' + 10; return true; }
+        if (b is >= (byte) '0' and <= (byte) '9') { value = b - (byte) '0';      return true; }
+        if (b is >= (byte) 'a' and <= (byte) 'f') { value = b - (byte) 'a' + 10; return true; }
+        if (b is >= (byte) 'A' and <= (byte) 'F') { value = b - (byte) 'A' + 10; return true; }
         value = 0;
         return false;
     }
@@ -715,8 +717,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var heightSpan = afterFirst[..secondSep];
         var widthSpan = afterFirst[(secondSep + 1)..];
 
-        if (!int.TryParse(System.Text.Encoding.ASCII.GetString(heightSpan), out height)) return false;
-        if (!int.TryParse(System.Text.Encoding.ASCII.GetString(widthSpan), out width)) return false;
+        if (!int.TryParse(Encoding.ASCII.GetString(heightSpan), out height)) return false;
+        if (!int.TryParse(Encoding.ASCII.GetString(widthSpan), out width)) return false;
 
         return height > 0 && width > 0;
     }
@@ -990,8 +992,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static TextSizingCapabilities ResolveTextSizing(TerminalIdentification identification) =>
         identification.Family switch
         {
-            TerminalFamily.Kitty => new TextSizingCapabilities(Width: true, Scale: true),
-            _                    => TextSizingCapabilities.None
+            TerminalFamily.Kitty   => new TextSizingCapabilities(Width: true, Scale: true, WideGlyphs: true),
+            TerminalFamily.Ghostty => TextSizingCapabilities.None with { WideGlyphs = true },
+            _                      => TextSizingCapabilities.None
         };
 
     private ColorCapabilities ResolveColor(TerminalIdentification identification)
@@ -1117,7 +1120,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     // ---- Helpers ----
 
     private static string? AsciiPayloadOrNull(ReadOnlyMemory<byte> payload) =>
-        payload.IsEmpty ? null : System.Text.Encoding.ASCII.GetString(payload.Span);
+        payload.IsEmpty ? null : Encoding.ASCII.GetString(payload.Span);
 
     // ---- Probe sequence byte-strings ----
 

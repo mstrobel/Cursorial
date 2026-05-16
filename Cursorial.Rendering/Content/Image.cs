@@ -1,6 +1,7 @@
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Content;
 
@@ -43,6 +44,7 @@ public sealed class Image : IContent
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
         PlaceholderStyle = placeholderStyle;
+        PlaceholderText = placeholderText ?? "[image]";
     }
 
     /// <summary>The image payload + cell footprint.</summary>
@@ -52,7 +54,7 @@ public sealed class Image : IContent
     public Style PlaceholderStyle { get; init; }
 
     /// <summary>Text to display when no graphics protocol is supported. For icons, could be an emoji.</summary>
-    public string PlaceholderText => "[image]";
+    public string PlaceholderText { get; init; }
 
     /// <inheritdoc/>
     public Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities)
@@ -72,6 +74,12 @@ public sealed class Image : IContent
 
     private IBufferFragment? ChooseFragment(OutputCapabilities capabilities)
     {
+        // No bytes → no transmittable payload, regardless of capability. This is the case
+        // Icon hits when its resource URI didn't resolve: it constructs an Image with empty
+        // bytes plus the configured fallback glyph, expecting the placeholder path. Without
+        // this guard, a graphics-capable terminal would receive an empty fragment.
+        if (_data.Bytes.IsEmpty) return null;
+
         // Kitty first — supports PNG natively, has the most predictable cell-footprint semantics.
         if (capabilities.Graphics.KittyGraphics && _data.Format == ImageFormat.Png)
             return new KittyImageFragment(_data);
@@ -88,34 +96,56 @@ public sealed class Image : IContent
         // Effective placeholder style: the content's PlaceholderStyle wins, falling back to the
         // caller-supplied style when no placeholder was configured. The caller's style is what
         // would have been the SGR backdrop for a real image fragment, so reusing it produces a
-        // visually-coherent "where the image would have been" affordance.
+        // visually coherent "where the image would have been" affordance.
         var fillStyle = PlaceholderStyle == Style.Default ? style : PlaceholderStyle;
-        int rowEnd = Math.Min(buffer.Rows, row + _data.CellSize.Rows);
-        int colEnd = Math.Min(buffer.Columns, column + _data.CellSize.Columns);
+        var cellSize = _data.CellSize;
+        var rowSpan = cellSize.Rows;
+        
+        if (rowSpan is 0)
+            rowSpan = Math.Max(1, cellSize.Columns / 2);
 
-        for (int r = row; r < rowEnd; r++)
-            for (int c = column; c < colEnd; c++)
-                buffer.Set(r, c, " ", fillStyle);
+        int rowEnd = Math.Min(buffer.Rows, row + rowSpan);
+        int colEnd = Math.Min(buffer.Columns, column + cellSize.Columns);
 
-        // Center a "[image]" label in the placeholder when there's room. Bog-standard ASCII so
-        // it always fits — callers wanting localization should supply their own placeholder
-        // content via a custom IContent.
-        const string label = "[image]";
-        if (_data.CellSize.Columns >= label.Length && _data.CellSize.Rows >= 1)
+        for (var r = rowEnd - 1; r >= row; r--)
         {
-            int labelRow = row + _data.CellSize.Rows / 2;
-            int labelCol = column + (_data.CellSize.Columns - label.Length) / 2;
-            if (labelRow >= 0 && labelRow < buffer.Rows)
-                for (int i = 0; i < label.Length; i++)
-                {
-                    int c = labelCol + i;
-                    if (c < 0 || c >= buffer.Columns) continue;
-                    buffer.Set(labelRow, c, label[i].ToString(), fillStyle);
-                }
+            for (var c = column; c < colEnd; c++)
+                buffer.Set(r, c, " ", fillStyle);
         }
 
-        int paintedCols = Math.Min(_data.CellSize.Columns, Math.Max(0, buffer.Columns - column));
-        int paintedRows = Math.Min(_data.CellSize.Rows, Math.Max(0, buffer.Rows - row));
+        // Center some custom text in the placeholder when there's room. Bog-standard ASCII, so
+        // it always fits — callers wanting localization should supply their own placeholder
+        // content via a custom IContent.
+        var label = PlaceholderText;
+        var labelLength = GraphemeWidth.StringWidth(label);
+
+        if (cellSize.Columns >= labelLength && rowSpan >= 1)
+        {
+            var labelRow = row + rowSpan / 2;
+            var labelCol = column + (cellSize.Columns - labelLength) / 2;
+
+            if (labelRow >= 0 && labelRow < buffer.Rows)
+            {
+                var advance = 0;
+                var enumerator = label.GetGraphemeEnumerator();
+
+                while (enumerator.MoveNext())
+                {
+                    var cluster = enumerator.Current;
+                    var width = GraphemeWidth.ClusterWidth(cluster);
+                    
+                    if (labelCol + advance + width > buffer.Columns) break;
+                    
+                    buffer.Set(labelRow, labelCol + advance, enumerator.Current.ToString(), fillStyle);
+                    
+                    advance += width;
+                }
+            }
+        }
+
+        var paintedCols = Math.Min(cellSize.Columns, Math.Max(0, buffer.Columns - column));
+        var paintedRows = Math.Min(rowSpan, Math.Max(0, buffer.Rows - row));
+
         return new Size(paintedCols, paintedRows);
     }
 }

@@ -27,10 +27,12 @@ public sealed record KeyEvent : InputEvent
     public bool IsRepeat { get; init; }
 
     /// <summary>
-    /// Number of physical repeats this event represents — 1 for the initial press and for any
-    /// repeat reported as a single event. Greater than 1 on sources that coalesce repeats into
-    /// one record (notably Win32 console input, which sets <c>KEY_EVENT_RECORD.wRepeatCount</c>).
-    /// Consumers that don't care about the distinction can ignore this field.
+    /// Repeat count for this event — 1 for the initial press; greater than 1 either on sources
+    /// that coalesce multiple physical repeats into one record (notably Win32 console input,
+    /// which sets <c>KEY_EVENT_RECORD.wRepeatCount</c>), or on the <c>KeyReleaseSynthesizer</c>
+    /// decorator's inferred repeats — there it's the Nth press since the initial activation
+    /// (2 for the first auto-repeat, 3 for the next, …). Consumers that don't care about the
+    /// distinction can ignore this field.
     /// </summary>
     public int RepeatCount { get; init; } = 1;
 

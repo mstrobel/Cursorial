@@ -53,6 +53,9 @@ while (true)
             case "read" or "report" or "events":
                 await ReadEventsAsync();
                 break;
+            case "read-synth" or "events-synth":
+                await ReadEventsWithSynthesisAsync();
+                break;
             case "raw":
                 await DumpRawAsync();
                 break;
@@ -100,6 +103,12 @@ static void PrintHelp()
     Console.WriteLine("  negotiate, caps  Open a session, dump negotiated TerminalCapabilities, restore");
     Console.WriteLine("  read, report     Open a session and stream input events to stdout");
     Console.WriteLine("                   (Press Ctrl+C inside read mode to return to the prompt)");
+    Console.WriteLine("  read-synth       Like 'read', but wraps the input device in a");
+    Console.WriteLine("                   KeyReleaseSynthesizer — terminals that don't natively");
+    Console.WriteLine("                   report key-up events get synthesized releases after a");
+    Console.WriteLine("                   short idle window. Synthesized events appear with");
+    Console.WriteLine("                   '(synth)' next to the kind so you can tell them apart.");
+    Console.WriteLine("                   (Press Ctrl+C to stop)");
     Console.WriteLine("  raw              Dump raw bytes from stdin verbatim — no parsing.");
     Console.WriteLine("                   Useful for seeing exactly what the terminal sends.");
     Console.WriteLine("                   (Press Ctrl+C to stop)");
@@ -161,6 +170,49 @@ static async Task ReadEventsAsync()
                 // column 0 instead of stair-stepping right.
                 await session.Output.Writer.WriteAsync(
                     Encoding.UTF8.GetBytes($"  [{eventCount,4}] {FormatEvent(inputEvent)}\r\n"));
+                await session.Output.Writer.FlushAsync();
+
+                if (IsStopSignal(inputEvent))
+                {
+                    stopCts.Cancel();
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* expected on stop */ }
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"Stopped after {eventCount} event(s).");
+}
+
+static async Task ReadEventsWithSynthesisAsync()
+{
+    Console.WriteLine("Reading input events with key-up synthesis. Press Ctrl+C to return.");
+    Console.WriteLine("Synthesized releases appear after the configured idle timeout " +
+                      $"({KeyReleaseSynthesizer.DefaultIdleTimeout.TotalMilliseconds:0} ms).");
+    Console.WriteLine();
+
+    int eventCount = 0;
+    await using (var session = await TerminalSession.OpenAsync())
+    {
+        // KeyReleaseSynthesizer is a decorator — it takes the session's IAsyncInputDevice and
+        // exposes a wrapped one. Per the decorator contract, disposing the synthesizer also
+        // disposes the inner. We dispose it explicitly so the synthesizer's pump task stops
+        // when this command returns; the outer `await using` on the session handles transport
+        // restoration.
+        await using var synth = new KeyReleaseSynthesizer(session.Input);
+        using var stopCts = new CancellationTokenSource();
+
+        try
+        {
+            await foreach (var inputEvent in synth.ReadAllAsync(stopCts.Token))
+            {
+                eventCount++;
+
+                var label = inputEvent.Synthesized ? " (synth)" : "";
+                await session.Output.Writer.WriteAsync(
+                    Encoding.UTF8.GetBytes($"  [{eventCount,4}]{label} {FormatEvent(inputEvent)}\r\n"));
                 await session.Output.Writer.FlushAsync();
 
                 if (IsStopSignal(inputEvent))

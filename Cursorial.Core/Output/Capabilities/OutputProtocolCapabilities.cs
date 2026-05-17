@@ -37,6 +37,13 @@ namespace Cursorial.Output.Capabilities;
 /// the multiplexer doesn't pass through unchanged. <see cref="Output.TmuxPassthrough"/> is the
 /// utility that wraps a payload in <c>DCS tmux ; … ST</c> with the required ESC-doubling.
 /// </param>
+/// <param name="MouseCursorShape">
+/// OSC 22 — Kitty's pointer-shape protocol. When true the terminal honors application requests
+/// for the GUI mouse cursor (I-beam over text inputs, hand over clickable elements, the family
+/// of resize cursors over draggable borders, …). Gated to terminals known to implement the
+/// protocol — Kitty, Ghostty, and Foot today. <see cref="Output.MouseCursorWriter"/> emits the
+/// sequences; the enum of supported shapes is <see cref="Output.MouseCursorShape"/>.
+/// </param>
 public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
                                                 bool FocusReportingEnable,
                                                 bool SgrMouseEnable,
@@ -48,7 +55,8 @@ public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
                                                 bool ClipboardWrite,
                                                 bool ClipboardRead,
                                                 bool SynchronizedOutput,
-                                                bool MultiplexerPassthrough = false)
+                                                bool MultiplexerPassthrough = false,
+                                                bool MouseCursorShape = false)
 {
     public static OutputProtocolCapabilities None { get; } = new(BracketedPasteEnable: false,
                                                                  FocusReportingEnable: false,

@@ -83,4 +83,26 @@ public static class VtOutputSequences
         /// </summary>
         public const int MaxTextBytes = 4096;
     }
+
+    /// <summary>
+    /// Kitty pointer-shape protocol — application-emitted OSC 22 sequences that ask the
+    /// terminal to display a specific GUI mouse cursor while the pointer hovers over the
+    /// application. Format: <c>ESC ] 22 ; [stack_op] shape[,shape…] ST</c>. The
+    /// <c>stack_op</c> is <c>&gt;</c> (push), <c>&lt;</c> (pop), or absent (replace current).
+    /// Per the spec at <see href="https://sw.kovidgoyal.net/kitty/pointer-shapes/"/>.
+    /// </summary>
+    public static class KittyPointerShape
+    {
+        /// <summary><c>ESC ] 22 ;</c> — opening of the OSC 22 envelope. Optional stack op + shape names follow.</summary>
+        public static ReadOnlySpan<byte> Prefix => "\x1b]22;"u8;
+
+        /// <summary><c>ESC \\</c> — String Terminator (ST).</summary>
+        public static ReadOnlySpan<byte> StringTerminator => "\x1b\\"u8;
+
+        /// <summary><c>ESC ] 22 ; ESC \\</c> — reset the current pointer shape to the terminal default.</summary>
+        public static ReadOnlySpan<byte> Reset => "\x1b]22;\x1b\\"u8;
+
+        /// <summary><c>ESC ] 22 ; &lt; ESC \\</c> — pop the topmost shape from the pointer-shape stack.</summary>
+        public static ReadOnlySpan<byte> Pop => "\x1b]22;<\x1b\\"u8;
+    }
 }

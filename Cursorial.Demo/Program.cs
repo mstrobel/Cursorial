@@ -1271,6 +1271,7 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Row("Title set",             caps.Output.Window.TitleSet);
     Row("Pixel size query",      caps.Output.Window.SizeQueryInPixels);
     Row("Alt screen buffer",     caps.Output.Window.AlternateScreenBuffer);
+    Row("Native cursor shape",   caps.Output.Protocol.MouseCursorShape);
 
     Header("Output — Protocol opt-ins enabled");
     Row("SGR mouse reporting",   caps.Output.Protocol.SgrMouseEnable);

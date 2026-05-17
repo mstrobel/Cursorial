@@ -50,7 +50,8 @@ public sealed record NegotiationOptions
         KittyKeyboardFlags.DisambiguateEscapeCodes |
         KittyKeyboardFlags.ReportEventTypes |
         KittyKeyboardFlags.ReportAlternateKeys |
-        KittyKeyboardFlags.ReportAssociatedText;
+        KittyKeyboardFlags.ReportAssociatedText |
+        KittyKeyboardFlags.ReportAllKeysAsEscapeCodes;
 
     /// <summary>Enable Win32 Input Mode (DECSET 9001) when running under a ConPTY-backed terminal.</summary>
     public bool EnableWin32InputMode { get; init; } = true;

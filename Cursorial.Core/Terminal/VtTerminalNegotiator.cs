@@ -358,6 +358,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.Konsole or
                   TerminalFamily.Foot;
 
+    /// <summary>
+    /// Kitty's OSC 22 pointer-shape protocol. Not negotiated — terminals don't advertise it; we
+    /// gate on family identification. Per <see href="https://sw.kovidgoyal.net/kitty/pointer-shapes/"/>
+    /// the protocol is honored by Kitty, Ghostty, and Foot. (Contour and Wayst also implement
+    /// it but aren't in our <see cref="TerminalFamily"/> enum yet.)
+    /// </summary>
+    private static bool TerminalSupportsMouseCursorShape(TerminalFamily family) =>
+        family is TerminalFamily.Kitty or
+                  TerminalFamily.Ghostty or
+                  TerminalFamily.Foot;
+
     // ---- Probe orchestration ----
 
     private async Task<ProbeResponses> ProbeIdentificationAsync(
@@ -1062,7 +1073,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             ClipboardWrite: false,
             ClipboardRead: false,
             SynchronizedOutput: applied.SynchronizedOutput,
-            MultiplexerPassthrough: multiplexerPassthrough);
+            MultiplexerPassthrough: multiplexerPassthrough,
+            MouseCursorShape: TerminalSupportsMouseCursorShape(identification.Family));
 
         return new OutputCapabilities(
             Color: color,

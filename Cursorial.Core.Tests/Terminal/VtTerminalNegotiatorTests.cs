@@ -448,11 +448,11 @@ public class VtTerminalNegotiatorTests
                                             EnableKittyKeyboard = true,
                                             EnableWin32InputMode = false,
                                             EnableSynchronizedOutput = false,
-                                            // Default flags = 1+2+4+16 = 23.
+                                            // Default flags = 1+2+4+8+16 = 31.
                                         });
 
         var written = await AllWrittenAsync();
-        Assert.Contains("\x1b[>23u", written);
+        Assert.Contains("\x1b[>31u", written);
     }
 
     [Fact]

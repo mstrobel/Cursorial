@@ -14,23 +14,45 @@ namespace Cursorial.Input;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Key-up synthesis.</b> After a key-down arrives, the synthesizer starts a timer; if no
-/// further activity for that key arrives within <see cref="DefaultIdleTimeout"/> (or the
-/// caller-supplied timeout), a synthesized release is emitted. Auto-repeat presses for the
-/// same key reset the timer; an actual key-up from the inner device — which can happen on
-/// terminals that mix protocols, or when only some keys report releases — cancels the pending
-/// synthesis.
+/// <b>Two timers per key.</b> A Down event arms two timers measured from the moment of that
+/// Down:
+/// </para>
+/// <list type="bullet">
+///   <item><description>
+///     <b>Up timer</b> (<see cref="DefaultUpTimeout"/>, default 50 ms) — fires first.
+///     The key transitions from <i>held</i> to <i>recently held</i> and a synthesized
+///     <see cref="KeyEventKind.Up"/> is emitted. This is the consumer's "the key released"
+///     signal.
+///   </description></item>
+///   <item><description>
+///     <b>Repeat timer</b> (<see cref="DefaultRepeatTimeout"/>, default 150 ms) — fires later.
+///     The key transitions from <i>recently held</i> to <i>forgotten</i> (removed from
+///     tracking). After this, the next Down is treated as a fresh activation.
+///   </description></item>
+/// </list>
+/// <para>
+/// Any Down for a still-tracked key (<i>held</i> or <i>recently held</i>) cancels the prior
+/// timers, restarts both timers, marks the forwarded event as
+/// <see cref="KeyEvent.IsRepeat"/>=true, and sets <see cref="KeyEvent.RepeatCount"/> to the
+/// running count since the initial press (2 for the first repeat, 3 for the next, …). A
+/// real Up from the inner device (mixed protocols, partially reporting terminals) forgets
+/// the key immediately, cancelling both pending timers.
 /// </para>
 /// <para>
-/// <b>Repeat inference.</b> When the inner device's
-/// <see cref="KeyboardCapabilities.ReportsRepeats"/> is false, the synthesizer infers
-/// auto-repeat from its own held-keys tracking: a key-down for a key that's currently held
-/// (we haven't synthesized or received a release for it yet) is marked as
-/// <see cref="KeyEvent.IsRepeat"/>=true before being forwarded, and
-/// <see cref="KeyEvent.RepeatCount"/> is set to the running count of repeats since the initial
-/// press (2 for the first repeat, 3 for the second, …). When the inner already reports
-/// repeats — Kitty keyboard, Win32 input mode — we leave the event untouched so we don't fight
-/// the protocol.
+/// The two-timer split lets the synth Up fire quickly (good UX for game-style "fire while
+/// held" patterns) while still letting a slightly late next Down be classified as a
+/// continuation rather than a fresh activation. For a user holding a key for several
+/// seconds with no Downs arriving between t=0 and t=150 ms, the consumer sees: Down @ t=0,
+/// synth Up @ t=50, Down (RepeatCount=1, IsRepeat=false) @ t≥150 (fresh press once the
+/// repeat window expired), then Down (RepeatCount=N, IsRepeat=true) as the inner sends more
+/// Downs, finally synth Up @ t=t_release+50.
+/// </para>
+/// <para>
+/// <b>When the inner already reports repeats.</b> If the inner device's
+/// <see cref="KeyboardCapabilities.ReportsRepeats"/> is true (Kitty keyboard, Win32 input
+/// mode), we leave the IsRepeat / RepeatCount fields untouched so we don't fight the
+/// protocol's classification. Up synthesis still runs for terminals that report repeats but
+/// not releases.
 /// </para>
 /// </remarks>
 /// <remarks>
@@ -52,13 +74,6 @@ namespace Cursorial.Input;
 /// timer- / state-derived.
 /// </para>
 /// <para>
-/// <b>Timing.</b> The default 150 ms idle timeout sits between OS auto-repeat delay (~250–500 ms)
-/// and auto-repeat interval (~30–50 ms): short enough that release feels responsive, long
-/// enough that we don't fabricate a release in the gap between two repeat events. Apps that
-/// want different feel can pass a custom timeout — shorter for snappier release detection,
-/// longer to tolerate jittery repeat intervals on slow terminals.
-/// </para>
-/// <para>
 /// <b>Single-shot.</b> Like the other input-device decorators, <see cref="ReadAllAsync"/> can
 /// be called at most once; subsequent calls throw. Disposing the synthesizer disposes the
 /// inner device.
@@ -66,11 +81,18 @@ namespace Cursorial.Input;
 /// </remarks>
 public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecorator
 {
-    /// <summary>Idle time after a key-down before a release is fabricated.</summary>
-    public static TimeSpan DefaultIdleTimeout { get; } = TimeSpan.FromMilliseconds(150);
+    /// <summary>Time after a Down before a release is fabricated, and the key enters the recently held state.</summary>
+    public static TimeSpan DefaultUpTimeout { get; } = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// Time after a Down before the key is forgotten entirely. Between
+    /// <see cref="DefaultUpTimeout"/> and this, a new Down still counts as a repeat.
+    /// </summary>
+    public static TimeSpan DefaultRepeatTimeout { get; } = TimeSpan.FromMilliseconds(150);
 
     private readonly IAsyncInputDevice _inner;
-    private readonly TimeSpan _idleTimeout;
+    private readonly TimeSpan _upTimeout;
+    private readonly TimeSpan _repeatTimeout;
     private readonly TimeProvider _time;
     private readonly bool _innerReportsRepeats;
     private readonly Channel<InputEvent> _channel;
@@ -82,12 +104,26 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
     private int _disposed;
 
     public KeyReleaseSynthesizer(IAsyncInputDevice inner,
-                                 TimeSpan? idleTimeout = null,
+                                 TimeSpan? upTimeout = null,
+                                 TimeSpan? repeatTimeout = null,
                                  TimeProvider? timeProvider = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _idleTimeout = idleTimeout ?? DefaultIdleTimeout;
+        _upTimeout = upTimeout ?? DefaultUpTimeout;
+        _repeatTimeout = repeatTimeout ?? DefaultRepeatTimeout;
         _time = timeProvider ?? TimeProvider.System;
+
+        if (_upTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(upTimeout), "Up timeout must be positive.");
+
+        if (_repeatTimeout < _upTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(repeatTimeout),
+                "Repeat timeout must be at least as long as the up timeout — the key transitions "
+                + "from held to recently-held when the up timer fires, then to forgotten when the "
+                + "repeat timer fires.");
+        }
 
         // Cache the inner's repeat-reporting capability — we only override IsRepeat on
         // devices that don't already classify it themselves. Kitty keyboard and Win32 input
@@ -114,6 +150,7 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
         get
         {
             var innerCaps = _inner.Capabilities;
+
             return innerCaps with
                    {
                        Keyboard = innerCaps.Keyboard with
@@ -149,7 +186,10 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
         {
             // Surface any pump-side exceptions to the caller. The pump completes when the
             // inner enumerator does (normal end, cancellation, or fault).
-            try { await pump.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            // @formatter:off
+            try { await pump.ConfigureAwait(false); }
+            catch (OperationCanceledException) {}
+            // @formatter:on
         }
     }
 
@@ -180,7 +220,7 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
                             toForward = down with { IsRepeat = true, RepeatCount = repeatCount };
                         }
 
-                        ScheduleRelease(down, cancellationToken);
+                        ScheduleTimers(down, cancellationToken);
                         break;
 
                     // Real release from a terminal that does report some / all key-ups —
@@ -194,7 +234,10 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
                 await _channel.Writer.WriteAsync(toForward, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) { /* expected on stop */ }
+        catch (OperationCanceledException)
+        {
+            /* expected on stop */
+        }
         finally
         {
             _channel.Writer.TryComplete();
@@ -216,11 +259,12 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
                 return true;
             }
         }
+
         nextCount = 0;
         return false;
     }
 
-    private void ScheduleRelease(KeyEvent down, CancellationToken cancellationToken)
+    private void ScheduleTimers(KeyEvent down, CancellationToken cancellationToken)
     {
         long version = Interlocked.Increment(ref _versionCounter);
         var id = HeldKeyId.From(down);
@@ -229,16 +273,19 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
         lock (_heldKeysLock)
         {
             // Carry forward the count from the prior tracking record if this key was already
-            // held — that's an auto-repeat in flight. Otherwise this is the initial press.
+            // tracked (held or recently-held) — that's an auto-repeat in flight. A fresh entry
+            // starts at RepeatCount=1 in the Held state.
             int repeatCount = _heldKeys.TryGetValue(id, out var prior) ? prior.RepeatCount + 1 : 1;
-            held = new HeldKey(down, id, version, repeatCount);
+            held = new HeldKey(down, id, version, repeatCount, HeldKeyState.Held);
             _heldKeys[id] = held;
         }
 
-        // Fire and forget — the release task is single-shot per scheduling. If a newer
-        // version of the key gets scheduled in the meantime, this task's timeout-check will
-        // see the version mismatch and skip emission.
-        _ = ReleaseAfterTimeoutAsync(held, cancellationToken);
+        // Fire and forget both timers. Each task's check under the lock uses the version to
+        // detect that a newer Down arrived (then the older timer no-ops). The Up timer
+        // additionally guards on State == Held, so it doesn't double-emit if it ever races with
+        // its own state transition.
+        _ = UpAfterTimeoutAsync(held, cancellationToken);
+        _ = ForgetAfterTimeoutAsync(held, cancellationToken);
     }
 
     private void ForgetHeldKey(KeyEvent up)
@@ -249,44 +296,51 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
         // the same Key enum to avoid wedged tracking. Non-character keys (LeftArrow, F1, …)
         // are unique by Key alone, so the exact-id removal handles them.
         var id = HeldKeyId.From(up);
+
         lock (_heldKeysLock)
         {
             if (_heldKeys.Remove(id)) return;
 
-            if (up.Key == Key.Character && up.Text.IsEmpty)
+            if (up is { Key: Key.Character, Text.IsEmpty: true })
             {
                 List<HeldKeyId>? toRemove = null;
+
                 foreach (var key in _heldKeys.Keys)
                 {
                     if (key.Key == Key.Character)
                         (toRemove ??= new()).Add(key);
                 }
+
                 if (toRemove is not null)
-                    foreach (var k in toRemove) _heldKeys.Remove(k);
+                    foreach (var k in toRemove)
+                        _heldKeys.Remove(k);
             }
         }
     }
 
-    private async Task ReleaseAfterTimeoutAsync(HeldKey held, CancellationToken cancellationToken)
+    private async Task UpAfterTimeoutAsync(HeldKey held, CancellationToken cancellationToken)
     {
-        try
-        {
-            await Task.Delay(_idleTimeout, _time, cancellationToken).ConfigureAwait(false);
-        }
+        // @formatter:off
+        try { await Task.Delay(_upTimeout, _time, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) { return; }
+        // @formatter:on
 
         if (cancellationToken.IsCancellationRequested) return;
 
         // Re-check under the lock: only emit if this is still the current pending release
-        // for this key. A newer press would have bumped the version (older task no-ops); a
-        // real release from the inner would have removed the key entirely.
+        // for this key AND it's still in the Held state. A newer press would have bumped the
+        // version (older task no-ops); a real release from the inner would have removed the
+        // key. Transition Held → RecentlyHeld in place — the version stays the same, so the
+        // matching ForgetAfterTimeoutAsync continues to be valid.
         bool emit = false;
+
         lock (_heldKeysLock)
         {
             if (_heldKeys.TryGetValue(held.Id, out var current) &&
-                current.Version == held.Version)
+                current.Version == held.Version &&
+                current.State == HeldKeyState.Held)
             {
-                _heldKeys.Remove(held.Id);
+                _heldKeys[held.Id] = current with { State = HeldKeyState.RecentlyHeld };
                 emit = true;
             }
         }
@@ -299,15 +353,35 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
                           IsRepeat = false,
                           RepeatCount = 1,
                           Synthesized = true,
-                          Timestamp = _time.GetUtcNow(),
+                          Timestamp = _time.GetUtcNow()
                       };
 
-        try
-        {
-            await _channel.Writer.WriteAsync(release, cancellationToken).ConfigureAwait(false);
-        }
+        // @formatter:off
+        try { await _channel.Writer.WriteAsync(release, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) { /* synthesis aborted; fine */ }
         catch (ChannelClosedException) { /* channel completed during dispose; fine */ }
+        // @formatter:on
+    }
+
+    private async Task ForgetAfterTimeoutAsync(HeldKey held, CancellationToken cancellationToken)
+    {
+        // @formatter:off
+        try { await Task.Delay(_repeatTimeout, _time, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return; }
+        // @formatter:on
+
+        if (cancellationToken.IsCancellationRequested) return;
+
+        // Remove the tracking entry if no newer Down has superseded it. After this fires, the
+        // next Down for this key starts a fresh hold (RepeatCount=1, IsRepeat=false).
+        lock (_heldKeysLock)
+        {
+            if (_heldKeys.TryGetValue(held.Id, out var current) &&
+                current.Version == held.Version)
+            {
+                _heldKeys.Remove(held.Id);
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -318,15 +392,35 @@ public sealed class KeyReleaseSynthesizer : IAsyncInputDevice, IInputDeviceDecor
         // Closing the channel unblocks any pending writes from release-timer tasks.
         _channel.Writer.TryComplete();
 
+        // @formatter:off
         try { await _inner.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
+        // @formatter:on
+    }
+
+    /// <summary>
+    /// Per-key tracking state. <see cref="Held"/> is the window where the synth Up hasn't fired
+    /// yet (within the up timeout of the last Down). <see cref="RecentlyHeld"/> is the window
+    /// after the synth Up has fired but before the repeat timeout expires — a Down arriving
+    /// here still counts as a repeat continuation rather than a fresh activation.
+    /// </summary>
+    private enum HeldKeyState
+    {
+        Held,
+        RecentlyHeld
     }
 
     /// <summary>
     /// Per-key tracking record. <see cref="Version"/> is the discriminator across rescheduled
     /// timers; <see cref="RepeatCount"/> is the running count of presses for this hold
-    /// (1 for the initial press, 2+ for subsequent auto-repeats).
+    /// (1 for the initial press, 2+ for subsequent auto-repeats); <see cref="State"/> tracks
+    /// whether the synth Up has already fired.
     /// </summary>
-    private sealed record HeldKey(KeyEvent OriginalDown, HeldKeyId Id, long Version, int RepeatCount);
+    private sealed record HeldKey(
+        KeyEvent OriginalDown,
+        HeldKeyId Id,
+        long Version,
+        int RepeatCount,
+        HeldKeyState State);
 
     /// <summary>
     /// Discriminator for the held-keys dictionary. The <see cref="Key"/> enum value alone isn't

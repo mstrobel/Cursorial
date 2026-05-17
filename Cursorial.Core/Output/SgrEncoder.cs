@@ -144,18 +144,18 @@ public static class SgrEncoder
     {
         // Attributes.
         var attrs = style.Attributes;
-        if ((attrs & TextAttributes.Bold) != 0) WriteParam(1, buffer, ref written, ref needSeparator);
-        if ((attrs & TextAttributes.Faint) != 0) WriteParam(2, buffer, ref written, ref needSeparator);
-        if ((attrs & TextAttributes.Italic) != 0) WriteParam(3, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Bold)) WriteParam(1, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Faint)) WriteParam(2, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Italic)) WriteParam(3, buffer, ref written, ref needSeparator);
 
-        if ((attrs & TextAttributes.Underline) != 0)
+        if (attrs.HasFlag(TextAttributes.Underline))
             WriteUnderline(style.UnderlineStyle, buffer, ref written, ref needSeparator);
 
-        if ((attrs & TextAttributes.Blink) != 0) WriteParam(5, buffer, ref written, ref needSeparator);
-        if ((attrs & TextAttributes.Inverse) != 0) WriteParam(7, buffer, ref written, ref needSeparator);
-        if ((attrs & TextAttributes.Hidden) != 0) WriteParam(8, buffer, ref written, ref needSeparator);
-        if ((attrs & TextAttributes.Strikethrough) != 0) WriteParam(9, buffer, ref written, ref needSeparator);
-        if ((attrs & TextAttributes.Overline) != 0) WriteParam(53, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Blink)) WriteParam(5, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Inverse)) WriteParam(7, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Hidden)) WriteParam(8, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Strikethrough)) WriteParam(9, buffer, ref written, ref needSeparator);
+        if (attrs.HasFlag(TextAttributes.Overline)) WriteParam(53, buffer, ref written, ref needSeparator);
 
         if (!style.Foreground.IsDefault) WriteForeground(style.Foreground, buffer, ref written, ref needSeparator);
         if (!style.Background.IsDefault) WriteBackground(style.Background, buffer, ref written, ref needSeparator);
@@ -172,29 +172,29 @@ public static class SgrEncoder
     {
         // Per-attribute SGR codes and their matching reset codes. Bold and Faint share SGR 22
         // for reset (xterm convention); we emit 22 once if either was removed.
-        if ((removed & TextAttributes.Bold) != 0 || (removed & TextAttributes.Faint) != 0)
+        if (removed.HasFlag(TextAttributes.Bold) || removed.HasFlag(TextAttributes.Faint))
             WriteParam(22, buffer, ref written, ref needSeparator);
 
-        if ((removed & TextAttributes.Italic) != 0) WriteParam(23, buffer, ref written, ref needSeparator);
-        if ((removed & TextAttributes.Underline) != 0) WriteParam(24, buffer, ref written, ref needSeparator);
-        if ((removed & TextAttributes.Blink) != 0) WriteParam(25, buffer, ref written, ref needSeparator);
-        if ((removed & TextAttributes.Inverse) != 0) WriteParam(27, buffer, ref written, ref needSeparator);
-        if ((removed & TextAttributes.Hidden) != 0) WriteParam(28, buffer, ref written, ref needSeparator);
-        if ((removed & TextAttributes.Strikethrough) != 0) WriteParam(29, buffer, ref written, ref needSeparator);
-        if ((removed & TextAttributes.Overline) != 0) WriteParam(55, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Italic)) WriteParam(23, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Underline)) WriteParam(24, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Blink)) WriteParam(25, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Inverse)) WriteParam(27, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Hidden)) WriteParam(28, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Strikethrough)) WriteParam(29, buffer, ref written, ref needSeparator);
+        if (removed.HasFlag(TextAttributes.Overline)) WriteParam(55, buffer, ref written, ref needSeparator);
 
-        if ((added & TextAttributes.Bold) != 0) WriteParam(1, buffer, ref written, ref needSeparator);
-        if ((added & TextAttributes.Faint) != 0) WriteParam(2, buffer, ref written, ref needSeparator);
-        if ((added & TextAttributes.Italic) != 0) WriteParam(3, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Bold)) WriteParam(1, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Faint)) WriteParam(2, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Italic)) WriteParam(3, buffer, ref written, ref needSeparator);
 
-        if ((added & TextAttributes.Underline) != 0)
+        if (added.HasFlag(TextAttributes.Underline))
             WriteUnderline(underlineStyle, buffer, ref written, ref needSeparator);
 
-        if ((added & TextAttributes.Blink) != 0) WriteParam(5, buffer, ref written, ref needSeparator);
-        if ((added & TextAttributes.Inverse) != 0) WriteParam(7, buffer, ref written, ref needSeparator);
-        if ((added & TextAttributes.Hidden) != 0) WriteParam(8, buffer, ref written, ref needSeparator);
-        if ((added & TextAttributes.Strikethrough) != 0) WriteParam(9, buffer, ref written, ref needSeparator);
-        if ((added & TextAttributes.Overline) != 0) WriteParam(53, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Blink)) WriteParam(5, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Inverse)) WriteParam(7, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Hidden)) WriteParam(8, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Strikethrough)) WriteParam(9, buffer, ref written, ref needSeparator);
+        if (added.HasFlag(TextAttributes.Overline)) WriteParam(53, buffer, ref written, ref needSeparator);
     }
 
     private static void WriteUnderline(

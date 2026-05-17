@@ -189,8 +189,10 @@ static async Task ReadEventsAsync()
 static async Task ReadEventsWithSynthesisAsync()
 {
     Console.WriteLine("Reading input events with key-up synthesis. Press Ctrl+C to return.");
-    Console.WriteLine("Synthesized releases appear after the configured idle timeout " +
-                      $"({KeyReleaseSynthesizer.DefaultIdleTimeout.TotalMilliseconds:0} ms).");
+    Console.WriteLine(
+        $"Synthesized releases appear after the up timeout ({KeyReleaseSynthesizer.DefaultUpTimeout.TotalMilliseconds:0} ms); " +
+        $"subsequent Downs within the repeat timeout ({KeyReleaseSynthesizer.DefaultRepeatTimeout.TotalMilliseconds:0} ms) " +
+        $"are marked IsRepeat.");
     Console.WriteLine();
 
     int eventCount = 0;
@@ -975,9 +977,9 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
     }
 
     // ---- Sized Text below Title Bar ----
-    // ScaledText is the capability-aware entry point: when the terminal honors OSC 66 it
+    // ScaledText is the capability-aware entry point: when the terminal honors OSC 66, it
     // attaches a SizedTextFragment (Kitty / Ghostty / etc.); otherwise it falls back to a
-    // bundled FIGlet face. The styled title here uses italic + curly underline so the OSC 66
+    // bundled FIGlet face. The styled title here uses italic + curly underline, so the OSC 66
     // path picks up the SGR backdrop visibly when supported.
     var sizedTitleStyle = style
         .WithForeground(Color.FromRgb(192, 202, 245))

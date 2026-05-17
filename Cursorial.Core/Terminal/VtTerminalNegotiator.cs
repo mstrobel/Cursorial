@@ -1003,10 +1003,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         bool kittyEnabled = applied.KittyKeyboard;
 
         var keyboard = new KeyboardCapabilities(
-            DistinguishesKeyUpDown: kittyEnabled && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
-            ReportsRepeats: kittyEnabled && (applied.KittyFlags & KittyKeyboardFlags.ReportEventTypes) != 0,
+            DistinguishesKeyUpDown: kittyEnabled &&
+                                    applied.KittyFlags.HasFlag(KittyKeyboardFlags.ReportEventTypes),
+            ReportsRepeats: kittyEnabled &&
+                            applied.KittyFlags.HasFlag(KittyKeyboardFlags.ReportEventTypes) &&
+                            applied.KittyFlags.HasFlag(KittyKeyboardFlags.ReportAllKeysAsEscapeCodes),
             DetailedModifiers: kittyEnabled,
-            TextInput: kittyEnabled && (applied.KittyFlags & KittyKeyboardFlags.ReportAssociatedText) != 0);
+            TextInput: kittyEnabled &&
+                       applied.KittyFlags.HasFlag(KittyKeyboardFlags.ReportAssociatedText));
 
         var protocol = new ProtocolCapabilities(
             BracketedPaste: applied.BracketedPaste,

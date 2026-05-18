@@ -26,4 +26,8 @@ public readonly record struct Rect(int Row, int Column, int Columns, int Rows)
     /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
     public bool Contains(int row, int column)
         => row >= Row && row < RowEnd && column >= Column && column < ColumnEnd;
+
+    /// <summary>True when this rectangle intersects with <paramref name="other"/>.</summary>
+    public bool Intersects(Rect other)
+        => Row < other.RowEnd && RowEnd > other.Row && Column < other.ColumnEnd && ColumnEnd > other.Column;
 }

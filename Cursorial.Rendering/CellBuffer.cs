@@ -305,6 +305,60 @@ public sealed class CellBuffer
             _cells[i] = cell with { Style = BlendStyle(cell.Style, _cells[i].Style, mode) };
     }
 
+    /// <summary>
+    /// Replace every cell inside <paramref name="region"/> with <paramref name="cell"/>, blending
+    /// against the existing contents through <see cref="CurrentBlendingMode"/>. The rect is
+    /// clamped to the buffer bounds — an out-of-buffer or empty rect is a no-op.
+    /// </summary>
+    public void Fill(in Rect region, in Cell cell)
+    {
+        if (region.IsEmpty) return;
+
+        int row = Math.Max(0, region.Row);
+        int col = Math.Max(0, region.Column);
+        int rowEnd = Math.Min(_rows, region.RowEnd);
+        int colEnd = Math.Min(_columns, region.ColumnEnd);
+        if (row >= rowEnd || col >= colEnd) return;
+
+        var mode = CurrentBlendingMode;
+        bool fast = ReferenceEquals(mode, BlendingModes.Default);
+
+        for (int r = row; r < rowEnd; r++)
+        {
+            int rowStart = r * _columns;
+            for (int c = col; c < colEnd; c++)
+            {
+                int idx = rowStart + c;
+                _cells[idx] = fast
+                    ? cell
+                    : cell with { Style = BlendStyle(cell.Style, _cells[idx].Style, mode) };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reset every cell inside <paramref name="region"/> to <see cref="Cell.Blank"/>. Does NOT
+    /// apply blending. Out-of-buffer or empty rects are no-ops. Fragments and dirty regions are
+    /// untouched (the rect-scoped clear is a cell-only operation).
+    /// </summary>
+    public void Clear(in Rect region)
+    {
+        if (region.IsEmpty) return;
+
+        int row = Math.Max(0, region.Row);
+        int col = Math.Max(0, region.Column);
+        int rowEnd = Math.Min(_rows, region.RowEnd);
+        int colEnd = Math.Min(_columns, region.ColumnEnd);
+        if (row >= rowEnd || col >= colEnd) return;
+
+        for (int r = row; r < rowEnd; r++)
+        {
+            int rowStart = r * _columns;
+            for (int c = col; c < colEnd; c++)
+                _cells[rowStart + c] = Cell.Blank;
+        }
+    }
+
     private Style BlendStyle(in Style source, in Style backdrop)
         => source.BlendOver(backdrop, CurrentBlendingMode);
 
@@ -317,6 +371,32 @@ public sealed class CellBuffer
                    UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
                };
     }
+
+    // ---- View factories -------------------------------------------------------------------
+
+    /// <summary>
+    /// A <see cref="CellBufferView"/> spanning the entire buffer. The view translates 0-based
+    /// view-local coordinates to backing-buffer coordinates and clips writes to a rectangle —
+    /// useful for handing a widget its own coordinate space without exposing the surrounding
+    /// surface. See <see cref="CellBufferView"/> for the full contract.
+    /// </summary>
+    public CellBufferView AsView() => new(this);
+
+    /// <summary>
+    /// A <see cref="CellBufferView"/> over the rectangle
+    /// (<paramref name="offsetRow"/>, <paramref name="offsetColumn"/>) × (<paramref name="columns"/>,
+    /// <paramref name="rows"/>). Negative offsets / dimensions are clamped, and the rect is
+    /// clipped against the buffer's bounds.
+    /// </summary>
+    public CellBufferView View(int offsetRow, int offsetColumn, int columns, int rows)
+        => new(this, offsetRow, offsetColumn, columns, rows);
+
+    /// <summary>
+    /// A <see cref="CellBufferView"/> over the rectangle <paramref name="region"/>. Negative offsets /
+    /// dimensions are clamped, and the rect is clipped against the buffer's bounds.
+    /// </summary>
+    public CellBufferView View(in Rect region)
+        => new(this, region.Row, region.Column, region.Columns, region.Rows);
 
     /// <summary>
     /// Resize the buffer to <paramref name="columns"/> × <paramref name="rows"/>. Contents are

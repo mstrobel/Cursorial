@@ -29,7 +29,7 @@ public class CellBufferTests
         for (int r = 0; r < 5; r++)
         {
             for (int c = 0; c < 5; c++)
-                Assert.Equal(default(Cell), buf[r, c]);
+                Assert.Equal(default(Cell), buf[c, r]);
         }
     }
 
@@ -55,18 +55,18 @@ public class CellBufferTests
         Assert.Equal(2, width);
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
         Assert.Equal("中", buf[0, 0].Grapheme);
-        Assert.Equal(CellKind.WideContinuation, buf[0, 1].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
     }
 
     [Fact]
     public void Set_WideCharacterAtRightEdge_DegradesToBlankSingleWidth()
     {
         var buf = new CellBuffer(3, 1);
-        int width = buf.Set(0, 2, "中", Style.Default); // last column
+        int width = buf.Set(2, 0, "中", Style.Default); // last column
 
         Assert.Equal(1, width);
-        Assert.Equal(CellKind.Single, buf[0, 2].Kind);
-        Assert.Null(buf[0, 2].Grapheme);
+        Assert.Equal(CellKind.Single, buf[2, 0].Kind);
+        Assert.Null(buf[2, 0].Grapheme);
     }
 
     [Fact]
@@ -74,12 +74,12 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(5, 1);
         buf.Set(0, 0, "中", Style.Default);
-        Assert.Equal(CellKind.WideContinuation, buf[0, 1].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
 
         buf.Set(0, 0, "a", Style.Default);
 
         Assert.Equal(CellKind.Single, buf[0, 0].Kind);
-        Assert.Equal(default, buf[0, 1]); // orphan continuation cleared
+        Assert.Equal(default, buf[1, 0]); // orphan continuation cleared
     }
 
     [Fact]
@@ -89,19 +89,19 @@ public class CellBufferTests
         buf.Set(0, 0, "中", Style.Default);
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
 
-        buf.Set(0, 1, "x", Style.Default);
+        buf.Set(1, 0, "x", Style.Default);
 
         Assert.Equal(default, buf[0, 0]); // orphan wide-left cleared
-        Assert.Equal(CellKind.Single, buf[0, 1].Kind);
-        Assert.Equal("x", buf[0, 1].Grapheme);
+        Assert.Equal(CellKind.Single, buf[1, 0].Kind);
+        Assert.Equal("x", buf[1, 0].Grapheme);
     }
 
     [Fact]
     public void Set_OutOfBounds_Throws()
     {
         var buf = new CellBuffer(5, 1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(1, 0, "a", Style.Default));
-        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(0, 5, "a", Style.Default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(0, 1, "a", Style.Default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(5, 0, "a", Style.Default));
     }
 
     // ---- Indexer ----
@@ -129,7 +129,7 @@ public class CellBufferTests
         for (int r = 0; r < 3; r++)
         {
             for (int c = 0; c < 3; c++)
-                Assert.Equal(default(Cell), buf[r, c]);
+                Assert.Equal(default(Cell), buf[c, r]);
         }
     }
 
@@ -144,7 +144,7 @@ public class CellBufferTests
         for (int r = 0; r < 2; r++)
         {
             for (int c = 0; c < 2; c++)
-                Assert.Equal(fill, buf[r, c]);
+                Assert.Equal(fill, buf[c, r]);
         }
     }
 

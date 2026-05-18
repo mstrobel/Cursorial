@@ -215,7 +215,7 @@ public class ImageContentTests
 
         // Center row should contain the "[image]" label.
         int centerRow = 0 + 3 / 2;
-        var rowText = string.Concat(Enumerable.Range(0, 10).Select(c => buffer[centerRow, c].Grapheme ?? " "));
+        var rowText = string.Concat(Enumerable.Range(0, 10).Select(c => buffer[c, centerRow].Grapheme ?? " "));
         Assert.Contains("[image]", rowText);
     }
 

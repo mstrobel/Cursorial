@@ -55,7 +55,7 @@ public class FrameRendererTests
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
         buf.Set(0, 0, "a", Style.Default);
-        buf.Set(0, 1, "b", Style.Default);
+        buf.Set(1, 0, "b", Style.Default);
 
         var output = Render(r, buf);
 
@@ -89,10 +89,10 @@ public class FrameRendererTests
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
         buf.Set(0, 0, "h", Style.Default);
-        buf.Set(0, 1, "i", Style.Default);
+        buf.Set(1, 0, "i", Style.Default);
         Render(r, buf);
 
-        buf.Set(0, 1, "o", Style.Default);
+        buf.Set(1, 0, "o", Style.Default);
         var output = Render(r, buf);
 
         // Should NOT re-emit 'h' (it's unchanged). Should emit 'o'.
@@ -140,7 +140,7 @@ public class FrameRendererTests
         var buf = new CellBuffer(3, 1);
         var bold = Style.Default.WithAttributes(TextAttributes.Bold);
         buf.Set(0, 0, "a", bold);
-        buf.Set(0, 1, "b", Style.Default);
+        buf.Set(1, 0, "b", Style.Default);
 
         var output = Render(r, buf);
 

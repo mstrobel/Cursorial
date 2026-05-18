@@ -49,7 +49,7 @@ public sealed class ITerm2ImageFragment : IBufferFragment
     }
 
     /// <inheritdoc/>
-    public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+    public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(output);
         if (_data.Bytes.IsEmpty) return;

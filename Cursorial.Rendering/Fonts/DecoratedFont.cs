@@ -149,19 +149,19 @@ public class DecoratedFont : IGlyphFont
     /// Paints text into a <see cref="CellBuffer"/> at the specified position and applies decoration based on the font style.
     /// </summary>
     /// <param name="buffer">The target <see cref="CellBuffer"/> where the text and decoration should be rendered.</param>
-    /// <param name="row">The starting row in the buffer where text and decoration should be painted.</param>
     /// <param name="column">The starting column in the buffer where text and decoration should be painted.</param>
+    /// <param name="row">The starting row in the buffer where text and decoration should be painted.</param>
     /// <param name="text">The text to be rendered in the buffer.</param>
     /// <param name="style">The style to be applied to the text and decoration.</param>
     /// <returns>
     /// A <see cref="Size"/> structure representing the number of columns and rows occupied by the rendered text and its decoration.
     /// </returns>
-    public Size Paint(CellBuffer buffer, int row, int column, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
         var above = Position == DecorationPosition.Above;
         var compatibleStyle = EnsureCompatibleStyle(style);
         
-        var size = Inner.Paint(buffer, above ? row + 1 : row, column, text, compatibleStyle);
+        var size = Inner.Paint(buffer, column, above ? row + 1 : row, text, compatibleStyle);
 
         _decoration ??= DecorationGlyph.ToString();
         _decorationWidth ??= GraphemeWidth.ClusterWidth(_decoration);
@@ -173,9 +173,9 @@ public class DecoratedFont : IGlyphFont
         for (int i = 0, n = size.Columns; i < n; i += offset)
         {
             if (above)
-                buffer.Set(row, column + i, _decoration, decoratorStyle);
+                buffer.Set(column + i, row, _decoration, decoratorStyle);
             else
-                buffer.Set(row + 1, column + i, _decoration, decoratorStyle);
+                buffer.Set(column + i, row + 1, _decoration, decoratorStyle);
         }
 
         return size with { Rows = size.Rows + 1 };

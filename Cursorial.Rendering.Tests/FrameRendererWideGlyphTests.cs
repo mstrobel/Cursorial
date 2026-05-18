@@ -74,7 +74,7 @@ public class FrameRendererWideGlyphTests
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(4, 1);
         buf.Set(0, 0, "中", Style.Default);
-        buf.Set(0, 2, "X", Style.Default); // first cell after the wide glyph's continuation
+        buf.Set(2, 0, "X", Style.Default); // first cell after the wide glyph's continuation
 
         var output = Render(r, buf);
 

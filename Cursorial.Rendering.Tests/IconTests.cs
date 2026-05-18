@@ -152,7 +152,7 @@ public class IconTests
         // The fallback "X" should appear somewhere in the painted region.
         bool found = false;
         for (int c = 0; c < 3 && !found; c++)
-            if (buffer[0, c].Grapheme == "X") found = true;
+            if (buffer[c, 0].Grapheme == "X") found = true;
         Assert.True(found);
     }
 
@@ -164,18 +164,18 @@ public class IconTests
                             renderSize: new Size(3, 1));
         var buffer = new CellBuffer(10, 3);
 
-        icon.Paint(buffer, 0, 0, Style.Default,
-                   OutputCapabilities.None with
-                   {
-                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true,
-                                                            ITerm2InlineImages: false),
-                   });
+        icon.Paint(buffer, 0, 0,
+                   Style.Default, OutputCapabilities.None with
+                                  {
+                                      Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true,
+                                                                          ITerm2InlineImages: false),
+                                  });
 
         // No image loaded → no fragment, even though Kitty is reported supported.
         Assert.Empty(buffer.Fragments);
         bool found = false;
         for (int c = 0; c < 3 && !found; c++)
-            if (buffer[0, c].Grapheme == "X") found = true;
+            if (buffer[c, 0].Grapheme == "X") found = true;
         Assert.True(found);
     }
 

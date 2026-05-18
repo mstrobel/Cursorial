@@ -1,4 +1,7 @@
+using System.Buffers;
+
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fragments;
 
@@ -74,9 +77,9 @@ public class CellBufferViewTests
         var view = new CellBuffer(10, 10).View(2, 2, 5, 5);
         Assert.True(view.Contains(0, 0));
         Assert.True(view.Contains(4, 4));
-        Assert.False(view.Contains(5, 0));
         Assert.False(view.Contains(0, 5));
-        Assert.False(view.Contains(-1, 0));
+        Assert.False(view.Contains(5, 0));
+        Assert.False(view.Contains(0, -1));
     }
 
     // ---- Coordinate translation via Set ----
@@ -85,25 +88,25 @@ public class CellBufferViewTests
     public void Set_AtViewOrigin_WritesAtBufferOffset()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
 
         view.Set(0, 0, "X", Style.Default with { Foreground = Color.FromRgb(255, 0, 0) });
 
-        Assert.Equal("X", buf[3, 4].Grapheme);
+        Assert.Equal("X", buf[4, 3].Grapheme);
         // Verify nothing else got written.
         Assert.Null(buf[0, 0].Grapheme);
-        Assert.Null(buf[2, 4].Grapheme);
+        Assert.Null(buf[4, 2].Grapheme);
     }
 
     [Fact]
     public void Set_TranslatesByOffsetForEachCell()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
 
-        view.Set(2, 3, "A", default);
+        view.Set(3, 2, "A", default);
 
-        Assert.Equal("A", buf[5, 7].Grapheme);
+        Assert.Equal("A", buf[7, 5].Grapheme);
     }
 
     // ---- Clipping ----
@@ -112,42 +115,42 @@ public class CellBufferViewTests
     public void Set_OutsideViewBounds_SilentlyDropped()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
 
         // Past the right edge of the view.
-        int written = view.Set(0, 5, "X", default);
+        int written = view.Set(5, 0, "X", default);
         Assert.Equal(0, written);
-        Assert.Null(buf[3, 9].Grapheme);
+        Assert.Null(buf[9, 3].Grapheme);
 
         // Past the bottom edge.
-        written = view.Set(5, 0, "Y", default);
+        written = view.Set(0, 5, "Y", default);
         Assert.Equal(0, written);
 
         // Negative.
-        written = view.Set(-1, 0, "Z", default);
+        written = view.Set(0, -1, "Z", default);
         Assert.Equal(0, written);
     }
 
     [Fact]
     public void Indexer_OutsideViewBounds_Throws()
     {
-        var view = new CellBuffer(10, 10).View(3, 4, 5, 5);
+        var view = new CellBuffer(10, 10).View(4, 3, 5, 5);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => view[5, 0]);
         Assert.Throws<ArgumentOutOfRangeException>(() => view[0, 5]);
-        Assert.Throws<ArgumentOutOfRangeException>(() => view[-1, 0]);
-        Assert.Throws<ArgumentOutOfRangeException>(() => view[0, -1] = default);
+        Assert.Throws<ArgumentOutOfRangeException>(() => view[5, 0]);
+        Assert.Throws<ArgumentOutOfRangeException>(() => view[0, -1]);
+        Assert.Throws<ArgumentOutOfRangeException>(() => view[-1, 0] = default);
     }
 
     [Fact]
     public void Indexer_InBounds_ReadsAndWritesAtTranslatedCoords()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
 
-        view[1, 2] = new Cell("Q", CellKind.Single, Style.Default);
-        Assert.Equal("Q", buf[4, 6].Grapheme);
-        Assert.Equal("Q", view[1, 2].Grapheme);
+        view[2, 1] = new Cell("Q", CellKind.Single, Style.Default);
+        Assert.Equal("Q", buf[6, 4].Grapheme);
+        Assert.Equal("Q", view[2, 1].Grapheme);
     }
 
     // ---- Wide cells crossing the view edge ----
@@ -156,32 +159,32 @@ public class CellBufferViewTests
     public void Set_WideGlyphAtViewRightEdge_DegradesToBlank()
     {
         var buf = new CellBuffer(20, 1);
-        var view = buf.View(0, 5, 10, 1); // columns 5..14
+        var view = buf.View(5, 0, 10, 1); // columns 5..14
 
         // Place a wide glyph at the last cell of the view (column 9 in view, 14 in buffer).
         // No room for the right half within the view — should degrade.
-        int written = view.Set(0, 9, "あ", default); // East-Asian wide
+        int written = view.Set(9, 0, "あ", default); // East-Asian wide
         Assert.Equal(1, written);
 
         // The wide glyph wasn't placed; the buffer cell at column 14 is a blank single, not a
         // WideLeft.
-        Assert.NotEqual(CellKind.WideLeft, buf[0, 14].Kind);
+        Assert.NotEqual(CellKind.WideLeft, buf[14, 0].Kind);
         // The next column (column 15 in buffer, past the view) must NOT be a continuation.
-        Assert.NotEqual(CellKind.WideContinuation, buf[0, 15].Kind);
+        Assert.NotEqual(CellKind.WideContinuation, buf[15, 0].Kind);
     }
 
     [Fact]
     public void Set_WideGlyphInsideViewRightEdge_FitsAndOccupiesTwoCells()
     {
         var buf = new CellBuffer(20, 1);
-        var view = buf.View(0, 5, 10, 1);
+        var view = buf.View(5, 0, 10, 1);
 
         // Place at view column 8 — there's room for both halves (columns 8 and 9 = buffer 13, 14).
-        int written = view.Set(0, 8, "あ", default);
+        int written = view.Set(8, 0, "あ", default);
         Assert.Equal(2, written);
 
-        Assert.Equal(CellKind.WideLeft, buf[0, 13].Kind);
-        Assert.Equal(CellKind.WideContinuation, buf[0, 14].Kind);
+        Assert.Equal(CellKind.WideLeft, buf[13, 0].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[14, 0].Kind);
     }
 
     // ---- Sub-views ----
@@ -190,7 +193,7 @@ public class CellBufferViewTests
     public void SubView_OffsetsAreCumulative()
     {
         var buf = new CellBuffer(20, 20);
-        var outer = buf.View(2, 3, 10, 10);
+        var outer = buf.View(3, 2, 10, 10);
         var inner = outer.View(1, 1, 5, 5);
 
         Assert.Equal(3, inner.OffsetRow);    // 2 + 1
@@ -199,14 +202,14 @@ public class CellBufferViewTests
         Assert.Equal(5, inner.Rows);
 
         inner.Set(0, 0, "Z", default);
-        Assert.Equal("Z", buf[3, 4].Grapheme);
+        Assert.Equal("Z", buf[4, 3].Grapheme);
     }
 
     [Fact]
     public void SubView_ClipsToParentBounds()
     {
         var buf = new CellBuffer(20, 20);
-        var outer = buf.View(2, 3, 10, 10); // covers buffer rows 2..11, cols 3..12.
+        var outer = buf.View(3, 2, 10, 10);   // covers buffer rows 2..11, cols 3..12.
         var inner = outer.View(8, 8, 10, 10); // requested 10x10 from (8,8) — extends past parent.
 
         // Inner is clipped against parent's bounds, not the buffer's.
@@ -219,7 +222,7 @@ public class CellBufferViewTests
     [Fact]
     public void SubView_OutsideParentBounds_IsEmpty()
     {
-        var outer = new CellBuffer(20, 20).View(2, 3, 10, 10);
+        var outer = new CellBuffer(20, 20).View(3, 2, 10, 10);
         var inner = outer.View(20, 20, 5, 5);
 
         Assert.True(inner.IsEmpty);
@@ -248,7 +251,7 @@ public class CellBufferViewTests
         // Outside: untouched.
         Assert.Equal("X", buf[0, 0].Grapheme);
         Assert.Equal("Y", buf[9, 9].Grapheme);
-        Assert.Null(buf[2, 3].Grapheme); // immediately above the view
+        Assert.Null(buf[3, 2].Grapheme); // immediately above the view
     }
 
     [Fact]
@@ -266,8 +269,8 @@ public class CellBufferViewTests
 
         // Outside: still "X".
         Assert.Equal("X", buf[0, 0].Grapheme);
-        Assert.Equal("X", buf[2, 3].Grapheme);
-        Assert.Equal("X", buf[7, 3].Grapheme); // immediately below the view
+        Assert.Equal("X", buf[3, 2].Grapheme);
+        Assert.Equal("X", buf[3, 7].Grapheme); // immediately below the view
     }
 
     // ---- Cursor accessors ----
@@ -276,7 +279,7 @@ public class CellBufferViewTests
     public void CursorRow_GetTranslatesFromBufferCoords()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
         buf.CursorRow = 5;
         buf.CursorColumn = 6;
 
@@ -290,7 +293,7 @@ public class CellBufferViewTests
         // The buffer cursor may be set outside the view by another widget. The getter returns
         // the literal math — negative or past-end — so the caller can inspect.
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
         buf.CursorRow = 0;
         Assert.Equal(-3, view.CursorRow);
     }
@@ -299,7 +302,7 @@ public class CellBufferViewTests
     public void CursorRow_SetInsideView_TranslatesAndWrites()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
         view.CursorRow = 2;
         view.CursorColumn = 3;
 
@@ -310,7 +313,7 @@ public class CellBufferViewTests
     [Fact]
     public void CursorRow_SetOutsideView_Throws()
     {
-        var view = new CellBuffer(10, 10).View(3, 4, 5, 5);
+        var view = new CellBuffer(10, 10).View(4, 3, 5, 5);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => view.CursorRow = -1);
         Assert.Throws<ArgumentOutOfRangeException>(() => view.CursorRow = 5);
@@ -351,22 +354,22 @@ public class CellBufferViewTests
     public void AddFragment_TranslatesAnchorToBufferCoords()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
         var fragment = new TestFragment();
 
         bool added = view.AddFragment(1, 1, fragment);
 
         Assert.True(added);
-        Assert.True(buf.Fragments.ContainsKey((4, 5))); // 3+1, 4+1
+        Assert.True(buf.Fragments.ContainsKey((5, 4))); // (col 4+1, row 3+1)
     }
 
     [Fact]
     public void AddFragment_OutsideView_NotRegistered()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
 
-        bool added = view.AddFragment(5, 0, new TestFragment()); // row=5 is past view's 5 rows
+        bool added = view.AddFragment(0, 5, new TestFragment()); // row=5 is past view's 5 rows
 
         Assert.False(added);
         Assert.Empty(buf.Fragments);
@@ -376,7 +379,7 @@ public class CellBufferViewTests
     public void RemoveFragment_TranslatesAnchor()
     {
         var buf = new CellBuffer(10, 10);
-        var view = buf.View(3, 4, 5, 5);
+        var view = buf.View(4, 3, 5, 5);
         view.AddFragment(2, 2, new TestFragment());
 
         Assert.True(view.RemoveFragment(2, 2));
@@ -389,7 +392,7 @@ public class CellBufferViewTests
     public void MarkDirty_TranslatesAndClipsToView()
     {
         var buf = new CellBuffer(20, 20);
-        var view = buf.View(2, 3, 10, 10);
+        var view = buf.View(3, 2, 10, 10);
 
         // View-local rect (1, 1) with 5x5 -> buffer rect (3, 4) with 5x5.
         view.MarkDirty(1, 1, 5, 5);
@@ -406,7 +409,7 @@ public class CellBufferViewTests
     public void MarkDirty_RegionExtendingPastView_ClippedToViewRect()
     {
         var buf = new CellBuffer(20, 20);
-        var view = buf.View(2, 3, 10, 10);
+        var view = buf.View(3, 2, 10, 10);
 
         // View-local rect (8, 8) with 5x5 -> would reach (13, 13) in view space, clipped to (10, 10).
         // Translates to buffer rect (10, 11) of size 2x2.
@@ -424,7 +427,7 @@ public class CellBufferViewTests
     public void MarkDirty_RegionEntirelyOutsideView_DroppedSilently()
     {
         var buf = new CellBuffer(20, 20);
-        var view = buf.View(2, 3, 10, 10);
+        var view = buf.View(3, 2, 10, 10);
 
         view.MarkDirty(20, 20, 5, 5);
         Assert.Empty(buf.DirtyRegions);
@@ -440,9 +443,9 @@ public class CellBufferViewTests
 
         Assert.Equal(".", buf[3, 3].Grapheme);
         Assert.Equal(".", buf[6, 6].Grapheme);
-        Assert.Null(buf[2, 3].Grapheme); // just above
-        Assert.Null(buf[3, 2].Grapheme); // just left
-        Assert.Null(buf[7, 3].Grapheme); // just below
+        Assert.Null(buf[3, 2].Grapheme); // just above
+        Assert.Null(buf[2, 3].Grapheme); // just left
+        Assert.Null(buf[3, 7].Grapheme); // just below
     }
 
     [Fact]
@@ -455,8 +458,8 @@ public class CellBufferViewTests
 
         Assert.Null(buf[3, 3].Grapheme);
         Assert.Null(buf[6, 6].Grapheme);
-        Assert.Equal("X", buf[2, 3].Grapheme);
-        Assert.Equal("X", buf[7, 3].Grapheme);
+        Assert.Equal("X", buf[3, 2].Grapheme);
+        Assert.Equal("X", buf[3, 7].Grapheme);
     }
 
     [Fact]
@@ -476,8 +479,8 @@ public class CellBufferViewTests
     {
         public Size GetSize() => new(0, 0);
         public bool IsSupported(Cursorial.Output.Capabilities.OutputCapabilities capabilities) => true;
-        public void Emit(int row, int column, System.Buffers.IBufferWriter<byte> output,
-                         Cursorial.Output.Capabilities.OutputCapabilities capabilities)
+        public void Emit(int column, int row, IBufferWriter<byte> output,
+                         OutputCapabilities capabilities)
         { }
     }
 }

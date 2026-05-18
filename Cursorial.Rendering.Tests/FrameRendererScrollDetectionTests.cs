@@ -19,7 +19,7 @@ public class FrameRendererScrollDetectionTests
     private static void FillRow(CellBuffer buffer, int row, string text)
     {
         for (int c = 0; c < buffer.Columns && c < text.Length; c++)
-            buffer.Set(row, c, text[c].ToString(), Style.Default);
+            buffer.Set(c, row, text[c].ToString(), Style.Default);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class FrameRendererScrollDetectionTests
         Render(r, buffer);
 
         // Change one cell — not a scroll.
-        buffer.Set(1, 2, "X", Style.Default);
+        buffer.Set(2, 1, "X", Style.Default);
         var output = Render(r, buffer);
 
         Assert.DoesNotContain("\x1b[1S", output);
@@ -137,7 +137,7 @@ public class FrameRendererScrollDetectionTests
         FillRow(buffer, 1, "BBBBB");
         FillRow(buffer, 2, "CCCCC");
         FillRow(buffer, 3, "DDDDD");
-        buffer.AddFragment(2, 0, new StubFragment());
+        buffer.AddFragment(0, 2, new StubFragment());
         Render(r, buffer);
 
         buffer.Clear();
@@ -145,7 +145,7 @@ public class FrameRendererScrollDetectionTests
         FillRow(buffer, 1, "CCCCC");
         FillRow(buffer, 2, "DDDDD");
         FillRow(buffer, 3, "EEEEE");
-        buffer.AddFragment(2, 0, new StubFragment());
+        buffer.AddFragment(0, 2, new StubFragment());
 
         var output = Render(r, buffer);
 
@@ -156,6 +156,6 @@ public class FrameRendererScrollDetectionTests
     {
         public Size GetSize() => new(1, 1);
         public bool IsSupported(OutputCapabilities capabilities) => true;
-        public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities) {}
+        public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) {}
     }
 }

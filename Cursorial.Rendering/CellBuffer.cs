@@ -39,7 +39,7 @@ public sealed class CellBuffer
     private int _columns;
     private int _rows;
     private readonly Stack<IBlendingMode> _blendStack = new();
-    private readonly Dictionary<(int Row, int Column), FragmentEntry> _fragments = new();
+    private readonly Dictionary<(int Column, int Row), FragmentEntry> _fragments = new();
     private readonly List<Rect> _dirtyRegions = [];
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
@@ -115,28 +115,28 @@ public sealed class CellBuffer
     /// AND the active blending mode — use <see cref="Set(int, int, string, in Style)"/> for
     /// normal text content.
     /// </summary>
-    public Cell this[int row, int column]
+    public Cell this[int column, int row]
     {
         get
         {
-            ValidateCoordinates(row, column);
+            ValidateCoordinates(column, row);
             return _cells[row * _columns + column];
         }
         set
         {
-            ValidateCoordinates(row, column);
+            ValidateCoordinates(column, row);
             _cells[row * _columns + column] = value;
         }
     }
 
     /// <summary>
-    /// Place <paramref name="grapheme"/> at <c>(row, column)</c> with the given <paramref name="style"/>,
+    /// Place <paramref name="grapheme"/> at <c>(column, row)</c> with the given <paramref name="style"/>,
     /// handling wide-cell width and adjacent-cell cleanup. Returns the number of cells the
     /// placement occupied (1 or 2).
     /// </summary>
-    public int Set(int row, int column, string? grapheme, in Style style)
+    public int Set(int column, int row, string? grapheme, in Style style)
     {
-        ValidateCoordinates(row, column);
+        ValidateCoordinates(column, row);
 
         int width = string.IsNullOrEmpty(grapheme) ? 1 : GraphemeWidth.ClusterWidth(grapheme.AsSpan());
         if (width < 1) width = 1; // Defensive — a "wide" zero-width is meaningless here.
@@ -196,10 +196,10 @@ public sealed class CellBuffer
     /// protocol bytes at its anchor. Order is iteration order of the underlying dictionary —
     /// fragments must not depend on each other's visual ordering at the cell layer.
     /// </summary>
-    public IReadOnlyDictionary<(int Row, int Column), FragmentEntry> Fragments => _fragments;
+    public IReadOnlyDictionary<(int Column, int Row), FragmentEntry> Fragments => _fragments;
 
     /// <summary>
-    /// Register <paramref name="fragment"/> at the anchor cell <c>(row, column)</c>. Pure
+    /// Register <paramref name="fragment"/> at the anchor cell <c>(column, row)</c>. Pure
     /// metadata registration — the cell grid is <b>not</b> modified, so anything the caller
     /// previously painted under the fragment's footprint continues to render in the cell pass
     /// and shows through wherever the fragment's protocol payload doesn't draw.
@@ -218,23 +218,23 @@ public sealed class CellBuffer
     /// should explicitly repaint the region afterwards.
     /// </para>
     /// </remarks>
-    public void AddFragment(int row, int column, IBufferFragment fragment, in Style anchorStyle = default)
+    public void AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
     {
         ArgumentNullException.ThrowIfNull(fragment);
-        ValidateCoordinates(row, column);
+        ValidateCoordinates(column, row);
 
-        _fragments[(row, column)] = new FragmentEntry(fragment, anchorStyle);
+        _fragments[(column, row)] = new FragmentEntry(fragment, anchorStyle);
     }
 
     /// <summary>
-    /// Remove the fragment anchored at <c>(row, column)</c>. Returns true when a fragment was
+    /// Remove the fragment anchored at <c>(column, row)</c>. Returns true when a fragment was
     /// removed. Cells under the removed fragment retain whatever they held before — see
     /// <see cref="AddFragment"/> for the layering contract.
     /// </summary>
-    public bool RemoveFragment(int row, int column)
+    public bool RemoveFragment(int column, int row)
     {
-        ValidateCoordinates(row, column);
-        return _fragments.Remove((row, column));
+        ValidateCoordinates(column, row);
+        return _fragments.Remove((column, row));
     }
 
     // ---- Dirty-region tracking ------------------------------------------------------------
@@ -259,8 +259,8 @@ public sealed class CellBuffer
     /// rectangles (zero width or height) are dropped silently — callers can call <c>MarkDirty</c>
     /// with computed rectangles without pre-checking the result.
     /// </summary>
-    public void MarkDirty(int row, int column, int columns, int rows)
-        => MarkDirty(new Rect(row, column, columns, rows));
+    public void MarkDirty(int column, int row, int columns, int rows)
+        => MarkDirty(new Rect(column, row, columns, rows));
 
     /// <summary>Mark a <see cref="Rect"/> as needing the renderer's attention on the next render.</summary>
     public void MarkDirty(in Rect region)
@@ -271,11 +271,11 @@ public sealed class CellBuffer
 
         // Clamp to buffer bounds — out-of-range marks waste renderer work and confuse the
         // bitmask computation.
-        int row = Math.Max(0, region.Row);
         int col = Math.Max(0, region.Column);
-        int rowEnd = Math.Min(_rows, region.RowEnd);
+        int row = Math.Max(0, region.Row);
         int colEnd = Math.Min(_columns, region.ColumnEnd);
-        _dirtyRegions.Add(new Rect(row, col, colEnd - col, rowEnd - row));
+        int rowEnd = Math.Min(_rows, region.RowEnd);
+        _dirtyRegions.Add(new Rect(col, row, colEnd - col, rowEnd - row));
     }
 
     /// <summary>
@@ -388,15 +388,15 @@ public sealed class CellBuffer
     /// <paramref name="rows"/>). Negative offsets / dimensions are clamped, and the rect is
     /// clipped against the buffer's bounds.
     /// </summary>
-    public CellBufferView View(int offsetRow, int offsetColumn, int columns, int rows)
-        => new(this, offsetRow, offsetColumn, columns, rows);
+    public CellBufferView View(int offsetColumn, int offsetRow, int columns, int rows)
+        => new(this, offsetColumn, offsetRow, columns, rows);
 
     /// <summary>
     /// A <see cref="CellBufferView"/> over the rectangle <paramref name="region"/>. Negative offsets /
     /// dimensions are clamped, and the rect is clipped against the buffer's bounds.
     /// </summary>
     public CellBufferView View(in Rect region)
-        => new(this, region.Row, region.Column, region.Columns, region.Rows);
+        => new(this, region.Column, region.Row, region.Columns, region.Rows);
 
     /// <summary>
     /// Resize the buffer to <paramref name="columns"/> × <paramref name="rows"/>. Contents are
@@ -435,7 +435,7 @@ public sealed class CellBuffer
         return _cells.AsSpan(row * _columns, _columns);
     }
 
-    private void ValidateCoordinates(int row, int column)
+    private void ValidateCoordinates(int column, int row)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(row);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(row, _rows);

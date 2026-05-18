@@ -73,7 +73,7 @@ public readonly struct CellBufferView
     /// the buffer bounds. Passing a region entirely outside the buffer produces a zero-sized
     /// view — every coordinate-bearing operation on such a view is a no-op.
     /// </summary>
-    public CellBufferView(CellBuffer buffer, int offsetRow, int offsetColumn, int columns, int rows)
+    public CellBufferView(CellBuffer buffer, int offsetColumn, int offsetRow, int columns, int rows)
     {
         ArgumentNullException.ThrowIfNull(buffer);
 
@@ -118,10 +118,10 @@ public readonly struct CellBufferView
     public Rect Bounds => new(0, 0, Columns, Rows);
 
     /// <summary>The view's rectangle in backing-buffer coordinates.</summary>
-    public Rect BufferBounds => new(OffsetRow, OffsetColumn, Columns, Rows);
+    public Rect BufferBounds => new(OffsetColumn, OffsetRow, Columns, Rows);
 
     /// <summary>True when (<paramref name="row"/>, <paramref name="column"/>) is inside the view.</summary>
-    public bool Contains(int row, int column)
+    public bool Contains(int column, int row)
         => row >= 0 && row < Rows && column >= 0 && column < Columns;
 
     // ---- Cursor pass-through ------------------------------------------------------------
@@ -192,17 +192,17 @@ public readonly struct CellBufferView
     /// bypasses wide-cell consistency handling and the active blending mode (matching
     /// <see cref="CellBuffer"/>'s indexer behavior).
     /// </summary>
-    public Cell this[int row, int column]
+    public Cell this[int column, int row]
     {
         get
         {
-            ValidateCoordinates(row, column);
-            return _buffer[row + OffsetRow, column + OffsetColumn];
+            ValidateCoordinates(column, row);
+            return _buffer[column + OffsetColumn, row + OffsetRow];
         }
         set
         {
-            ValidateCoordinates(row, column);
-            _buffer[row + OffsetRow, column + OffsetColumn] = value;
+            ValidateCoordinates(column, row);
+            _buffer[column + OffsetColumn, row + OffsetRow] = value;
         }
     }
 
@@ -213,7 +213,7 @@ public readonly struct CellBufferView
     /// past the view's right edge degrade to a blank single cell. Returns the number of cells
     /// the placement occupied (0, 1, or 2).
     /// </summary>
-    public int Set(int row, int column, string? grapheme, in Style style)
+    public int Set(int column, int row, string? grapheme, in Style style)
     {
         if ((uint) row >= (uint) Rows || (uint) column >= (uint) Columns) return 0;
 
@@ -226,10 +226,10 @@ public readonly struct CellBufferView
         // version anchored on the view's right edge.
         if (width == 2 && column + 1 >= Columns)
         {
-            return _buffer.Set(row + OffsetRow, column + OffsetColumn, null, style);
+            return _buffer.Set(column + OffsetColumn, row + OffsetRow, null, style);
         }
 
-        return _buffer.Set(row + OffsetRow, column + OffsetColumn, grapheme, style);
+        return _buffer.Set(column + OffsetColumn, row + OffsetRow, grapheme, style);
     }
 
     /// <summary>
@@ -257,27 +257,27 @@ public readonly struct CellBufferView
     // ---- Fragments ----------------------------------------------------------------------
 
     /// <summary>
-    /// Register <paramref name="fragment"/> at the view-local <c>(row, column)</c>. Translates
+    /// Register <paramref name="fragment"/> at the view-local <c>(column, row)</c>. Translates
     /// to backing-buffer coordinates. Anchors outside the view rect are silently dropped —
     /// returns false. The cell grid is not modified (see <see cref="CellBuffer.AddFragment"/>
     /// for the layering contract).
     /// </summary>
-    public bool AddFragment(int row, int column, IBufferFragment fragment, in Style anchorStyle = default)
+    public bool AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
     {
         ArgumentNullException.ThrowIfNull(fragment);
-        if (!Contains(row, column)) return false;
-        _buffer.AddFragment(row + OffsetRow, column + OffsetColumn, fragment, anchorStyle);
+        if (!Contains(column, row)) return false;
+        _buffer.AddFragment(column + OffsetColumn, row + OffsetRow, fragment, anchorStyle);
         return true;
     }
 
     /// <summary>
-    /// Remove the fragment anchored at the view-local <c>(row, column)</c>. Returns false when
+    /// Remove the fragment anchored at the view-local <c>(column, row)</c>. Returns false when
     /// the coordinates are outside the view or no fragment was registered there.
     /// </summary>
-    public bool RemoveFragment(int row, int column)
+    public bool RemoveFragment(int column, int row)
     {
-        if (!Contains(row, column)) return false;
-        return _buffer.RemoveFragment(row + OffsetRow, column + OffsetColumn);
+        if (!Contains(column, row)) return false;
+        return _buffer.RemoveFragment(column + OffsetColumn, row + OffsetRow);
     }
 
     // ---- Dirty-region tracking ----------------------------------------------------------
@@ -286,8 +286,8 @@ public readonly struct CellBufferView
     /// Mark a rectangular region of the view as dirty. The rect is translated to backing-buffer
     /// coordinates and clipped against the view's bounds before being recorded.
     /// </summary>
-    public void MarkDirty(int row, int column, int columns, int rows)
-        => MarkDirty(new Rect(row, column, columns, rows));
+    public void MarkDirty(int column, int row, int columns, int rows)
+        => MarkDirty(new Rect(column, row, columns, rows));
 
     /// <summary>Mark a <see cref="Rect"/> (in view-local coordinates) as dirty.</summary>
     public void MarkDirty(in Rect region)
@@ -302,7 +302,7 @@ public readonly struct CellBufferView
         if (row >= rowEnd || col >= colEnd) return;
 
         // Translate to backing-buffer coords and forward.
-        _buffer.MarkDirty(new Rect(row + OffsetRow, col + OffsetColumn, colEnd - col, rowEnd - row));
+        _buffer.MarkDirty(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row));
     }
 
     // ---- Sub-views ----------------------------------------------------------------------
@@ -313,7 +313,7 @@ public readonly struct CellBufferView
     /// dimensions are clipped against this view's bounds so the sub-view can never address
     /// cells the parent can't.
     /// </summary>
-    public CellBufferView View(int offsetRow, int offsetColumn, int columns, int rows)
+    public CellBufferView View(int offsetColumn, int offsetRow, int columns, int rows)
     {
         // Compute the requested rect in this view's local space, then clip against the view.
         int localRow = Math.Max(0, offsetRow);
@@ -327,21 +327,26 @@ public readonly struct CellBufferView
         // The sub-view's offset is in backing-buffer coordinates.
         return new CellBufferView(
             _buffer,
-            OffsetRow + localRow,
             OffsetColumn + localCol,
-            clippedCols,
+            OffsetRow + localRow,
+            clippedCols, 
             clippedRows);
     }
 
-    private void ValidateCoordinates(int row, int column)
+    private void ValidateCoordinates(int column, int row)
     {
         if ((uint) row >= (uint) Rows)
+        {
             throw new ArgumentOutOfRangeException(
                 nameof(row), row,
                 $"Row {row} is outside the view's rows [0, {Rows}).");
+        }
+
         if ((uint) column >= (uint) Columns)
+        {
             throw new ArgumentOutOfRangeException(
                 nameof(column), column,
                 $"Column {column} is outside the view's columns [0, {Columns}).");
+        }
     }
 }

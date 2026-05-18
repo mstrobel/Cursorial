@@ -55,12 +55,12 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
 
         // If we can't even query the initial size, there's no console attached and polling
         // will never produce a useful result — silently no-op.
-        if (!TryReadSize(out int rows, out int cols)) return;
+        if (!TryReadSize(out int cols, out int rows)) return;
 
-        EmitResize(rows, cols);
+        EmitResize(cols, rows);
 
         _cts = new CancellationTokenSource();
-        _pollTask = Task.Run(() => PollLoopAsync(rows, cols, _cts.Token));
+        _pollTask = Task.Run(() => PollLoopAsync(cols, rows, _cts.Token));
     }
 
     public void Dispose()
@@ -74,10 +74,10 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         _pollTask = null;
     }
 
-    private async Task PollLoopAsync(int initialRows, int initialCols, CancellationToken ct)
+    private async Task PollLoopAsync(int initialCols, int initialRows, CancellationToken ct)
     {
-        int lastRows = initialRows;
         int lastCols = initialCols;
+        int lastRows = initialRows;
 
         try
         {
@@ -86,12 +86,12 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
                 try { await Task.Delay(PollInterval, _time, ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
 
-                if (!TryReadSize(out int rows, out int cols)) continue;
+                if (!TryReadSize(out int cols, out int rows)) continue;
                 if (rows == lastRows && cols == lastCols) continue;
 
-                lastRows = rows;
                 lastCols = cols;
-                EmitResize(rows, cols);
+                lastRows = rows;
+                EmitResize(cols, rows);
             }
         }
         catch
@@ -101,7 +101,7 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         }
     }
 
-    private void EmitResize(int rows, int cols)
+    private void EmitResize(int cols, int rows)
     {
         try
         {
@@ -121,7 +121,7 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
     /// <inheritdoc/>
     public (int Columns, int Rows)? QueryCurrentSize()
     {
-        return TryReadSize(out int rows, out int cols) ? (cols, rows) : null;
+        return TryReadSize(out int cols, out int rows) ? (cols, rows) : null;
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
     /// "window" size (<c>srWindow</c>) is what users see; <c>dwSize</c> is the buffer size,
     /// which on legacy conhost is larger than the window to support scrollback.
     /// </summary>
-    private static bool TryReadSize(out int rows, out int cols)
+    private static bool TryReadSize(out int cols, out int rows)
     {
         rows = 0;
         cols = 0;

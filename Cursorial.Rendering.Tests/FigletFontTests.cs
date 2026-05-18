@@ -101,15 +101,15 @@ public class FigletFontTests
         var painted = font.Paint(buffer, 0, 0, "A", Style.Default);
 
         Assert.Equal(new Size(3, 3), painted);
-        Assert.Equal("A", buffer[0, 1].Grapheme);
-        Assert.Equal("/", buffer[1, 0].Grapheme);
+        Assert.Equal("A", buffer[1, 0].Grapheme);
+        Assert.Equal("/", buffer[0, 1].Grapheme);
         Assert.Equal("_", buffer[1, 1].Grapheme);
-        Assert.Equal("\\", buffer[1, 2].Grapheme);
-        Assert.Equal("A", buffer[2, 0].Grapheme);
+        Assert.Equal("\\", buffer[2, 1].Grapheme);
+        Assert.Equal("A", buffer[0, 2].Grapheme);
         Assert.Equal("A", buffer[2, 2].Grapheme);
         // Glyph spaces are transparent — the cells stay blank.
         Assert.True(string.IsNullOrEmpty(buffer[0, 0].Grapheme));
-        Assert.True(string.IsNullOrEmpty(buffer[2, 1].Grapheme));
+        Assert.True(string.IsNullOrEmpty(buffer[1, 2].Grapheme));
     }
 
     [Fact]
@@ -125,8 +125,8 @@ public class FigletFontTests
         font.Paint(buffer, 0, 0, "X", Style.Default);
 
         Assert.Equal("X", buffer[0, 0].Grapheme);
-        Assert.Equal(" ", buffer[0, 1].Grapheme); // hardblank → visible space
-        Assert.Equal("X", buffer[0, 2].Grapheme);
+        Assert.Equal(" ", buffer[1, 0].Grapheme); // hardblank → visible space
+        Assert.Equal("X", buffer[2, 0].Grapheme);
     }
 
     [Fact]
@@ -140,15 +140,15 @@ public class FigletFontTests
 
         try
         {
-            font.Paint(buffer, 0, 0, "A",
-                       Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+            font.Paint(buffer, 0, 0,
+                       "A", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
         }
         finally
         {
             buffer.PopBlendingMode();
         }
 
-        Assert.Equal(Color.FromRgb(255, 255, 0), buffer[0, 1].Style.Background);
+        Assert.Equal(Color.FromRgb(255, 255, 0), buffer[1, 0].Style.Background);
         Assert.Equal(Color.FromRgb(255, 0, 0), buffer[0, 0].Style.Background); // untouched
     }
 
@@ -159,11 +159,11 @@ public class FigletFontTests
         var buffer = new CellBuffer(5, 5);
 
         // 'A' is 3 wide. Anchor at column 3 — only 2 columns fit.
-        font.Paint(buffer, 0, 3, "A", Style.Default);
+        font.Paint(buffer, 3, 0, "A", Style.Default);
 
         // Cells inside the buffer at the right side got painted; the third column would have
         // been at col 5, which is past the right edge.
-        Assert.Equal("A", buffer[0, 4].Grapheme);
+        Assert.Equal("A", buffer[4, 0].Grapheme);
     }
 
     [Fact]
@@ -336,7 +336,7 @@ public class FigletFontTests
         {
             for (int c = 0; c < buffer.Columns && !anyInk; c++)
             {
-                if (!string.IsNullOrEmpty(buffer[r, c].Grapheme))
+                if (!string.IsNullOrEmpty(buffer[c, r].Grapheme))
                     anyInk = true;
             }
         }

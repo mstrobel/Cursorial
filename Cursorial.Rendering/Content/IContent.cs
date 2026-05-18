@@ -31,9 +31,9 @@ public interface IContent
     /// region matches the content."
     /// </summary>
     /// <param name="buffer">Target cell buffer.</param>
-    /// <param name="row">Anchor row (0-based, top of the painted region).</param>
     /// <param name="column">Anchor column (0-based, left of the painted region).</param>
+    /// <param name="row">Anchor row (0-based, top of the painted region).</param>
     /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop; fonts pass it to <see cref="CellBuffer.Set"/>.</param>
     /// <param name="capabilities">Realized terminal capabilities — drives which rendering path the content chooses.</param>
-    Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities);
+    Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities);
 }

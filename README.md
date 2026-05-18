@@ -1,4 +1,4 @@
-# Cursorial
+![Cursorial](cursorial.png)
 
 A cross-platform .NET library for building visually rich terminal applications with first-class mouse and keyboard support.
 

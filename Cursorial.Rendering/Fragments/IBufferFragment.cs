@@ -82,7 +82,7 @@ public interface IBufferFragment
     /// implementations don't need to manage cursor state. SGR state at entry is undefined; emit
     /// explicit SGR for everything the fragment relies on.
     /// </summary>
-    void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities);
+    void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities);
 
     /// <summary>
     /// Emit the bytes that erase the fragment's contribution to the terminal's display. Called
@@ -92,5 +92,5 @@ public interface IBufferFragment
     /// the protocol's delete command (Kitty graphics <c>a=d</c>, etc.) so the overlay actually
     /// goes away.
     /// </summary>
-    void EmitErase(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities) {}
+    void EmitErase(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) {}
 }

@@ -18,13 +18,13 @@ public class CursorWriterTests
     public void WriteMoveTo_ZeroBasedRowColTranslateToOneBasedOnWire()
     {
         Assert.Equal("\x1b[1;1H", Encode(w => CursorWriter.WriteMoveTo(w, 0, 0)));
-        Assert.Equal("\x1b[5;10H", Encode(w => CursorWriter.WriteMoveTo(w, 4, 9)));
+        Assert.Equal("\x1b[5;10H", Encode(w => CursorWriter.WriteMoveTo(w, 9, 4)));
     }
 
     [Fact]
     public void WriteMoveTo_NegativeArgsClampToZero()
     {
-        Assert.Equal("\x1b[1;1H", Encode(w => CursorWriter.WriteMoveTo(w, -5, -3)));
+        Assert.Equal("\x1b[1;1H", Encode(w => CursorWriter.WriteMoveTo(w, -3, -5)));
     }
 
     [Fact]

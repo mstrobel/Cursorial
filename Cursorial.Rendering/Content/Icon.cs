@@ -105,14 +105,14 @@ public sealed class Icon : IContent
     public bool ImageLoaded => _image is not null;
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities)
+    public Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities)
     {
         if (_image is not null)
         {
             // Image owns the capability-aware decision — Kitty graphics if supported, otherwise
             // iTerm2 inline images, otherwise the placeholder rectangle with the FallbackGlyph
             // centered.
-            return _image.Paint(buffer, row, column, in style, capabilities);
+            return _image.Paint(buffer, column, row, in style, capabilities);
         }
 
         // Image bytes never loaded — paint the placeholder rectangle directly via a glyph-only
@@ -121,7 +121,7 @@ public sealed class Icon : IContent
         // glyph-painting branch.
         var stub = new ImageData([], Format, RenderSize);
         var placeholder = new Image(stub, FallbackStyle, FallbackGlyph);
-        return placeholder.Paint(buffer, row, column, in style, capabilities);
+        return placeholder.Paint(buffer, column, row, in style, capabilities);
     }
 
     /// <summary>

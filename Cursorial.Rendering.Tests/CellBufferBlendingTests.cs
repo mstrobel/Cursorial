@@ -141,7 +141,7 @@ public class CellBufferBlendingTests
         for (int r = 0; r < 2; r++)
         {
             for (int c = 0; c < 3; c++)
-                Assert.Equal(fill, buf[r, c]);
+                Assert.Equal(fill, buf[c, r]);
         }
     }
 
@@ -151,8 +151,8 @@ public class CellBufferBlendingTests
         var buf = new CellBuffer(3, 1);
         // Different existing backgrounds in each cell.
         buf.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(255, 0, 0)));
-        buf.Set(0, 1, " ", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
-        buf.Set(0, 2, " ", Style.Default.WithBackground(Color.FromRgb(0, 0, 255)));
+        buf.Set(1, 0, " ", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+        buf.Set(2, 0, " ", Style.Default.WithBackground(Color.FromRgb(0, 0, 255)));
 
         buf.PushBlendingMode(BlendingModes.Multiply);
         // Fill with half-gray.
@@ -161,8 +161,8 @@ public class CellBufferBlendingTests
         // Each cell multiplied: half-gray * red = (128, 0, 0), etc.
         Assert.Equal((byte) 128, buf[0, 0].Style.Background.Red);
         Assert.Equal((byte) 0, buf[0, 0].Style.Background.Green);
-        Assert.Equal((byte) 128, buf[0, 1].Style.Background.Green);
-        Assert.Equal((byte) 128, buf[0, 2].Style.Background.Blue);
+        Assert.Equal((byte) 128, buf[1, 0].Style.Background.Green);
+        Assert.Equal((byte) 128, buf[2, 0].Style.Background.Blue);
     }
 
     // ---- Alpha compositing ----

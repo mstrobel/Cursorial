@@ -57,7 +57,7 @@ public sealed class Image : IContent
     public string PlaceholderText { get; init; }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities)
+    public Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -65,11 +65,11 @@ public sealed class Image : IContent
         IBufferFragment? fragment = ChooseFragment(capabilities);
         if (fragment is not null)
         {
-            buffer.AddFragment(row, column, fragment, style);
+            buffer.AddFragment(column, row, fragment, style);
             return fragment.GetSize();
         }
 
-        return PaintPlaceholder(buffer, row, column, style);
+        return PaintPlaceholder(buffer, column, row, style);
     }
 
     private IBufferFragment? ChooseFragment(OutputCapabilities capabilities)
@@ -91,7 +91,7 @@ public sealed class Image : IContent
         return null;
     }
 
-    private Size PaintPlaceholder(CellBuffer buffer, int row, int column, in Style style)
+    private Size PaintPlaceholder(CellBuffer buffer, int column, int row, in Style style)
     {
         // Effective placeholder style: the content's PlaceholderStyle wins, falling back to the
         // caller-supplied style when no placeholder was configured. The caller's style is what
@@ -110,7 +110,7 @@ public sealed class Image : IContent
         for (var r = rowEnd - 1; r >= row; r--)
         {
             for (var c = column; c < colEnd; c++)
-                buffer.Set(r, c, " ", fillStyle);
+                buffer.Set(c, r, " ", fillStyle);
         }
 
         // Center some custom text in the placeholder when there's room. Bog-standard ASCII, so
@@ -136,7 +136,7 @@ public sealed class Image : IContent
                     
                     if (labelCol + advance + width > buffer.Columns) break;
                     
-                    buffer.Set(labelRow, labelCol + advance, enumerator.Current.ToString(), fillStyle);
+                    buffer.Set(labelCol + advance, labelRow, enumerator.Current.ToString(), fillStyle);
                     
                     advance += width;
                 }

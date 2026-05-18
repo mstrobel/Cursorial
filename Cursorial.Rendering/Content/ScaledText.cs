@@ -59,7 +59,7 @@ public sealed class ScaledText : IContent
     public IGlyphFont FallbackFont { get; }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int row, int column, in Style style, OutputCapabilities capabilities)
+    public Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -81,7 +81,7 @@ public sealed class ScaledText : IContent
             if (_wouldWrap is true)
                 goto monospaceFallback;
 
-            buffer.AddFragment(row, column, fragment, style);
+            buffer.AddFragment(column, row, fragment, style);
             return fragment.GetSize();
         }
 
@@ -91,11 +91,11 @@ public sealed class ScaledText : IContent
             goto monospaceFallback;
 
         // Fall back to cell-grid font rendering.
-        return FallbackFont.Paint(buffer, row, column, text, style);
+        return FallbackFont.Paint(buffer, column, row, text, style);
 
     monospaceFallback:
         // If the text is too wide for the buffer, use monospace fallback.
-        return MonospaceFont.Default.Paint(buffer, row, column, text, style);
+        return MonospaceFont.Default.Paint(buffer, column, row, text, style);
     }
 
     private static IGlyphFont PickDefaultFallback(TextSizing sizing, bool isMultiLine = false)

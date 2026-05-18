@@ -60,7 +60,7 @@ public sealed class FrameRenderer
     // fragments on each render to decide which ones to (re-)emit and which removed-fragments
     // need EmitErase. Reference equality on IBufferFragment + value equality on AnchorStyle —
     // callers that want stable diff-skipping reuse the same fragment instance across frames.
-    private readonly Dictionary<(int Row, int Column), CellBuffer.FragmentEntry> _frontFragments = new();
+    private readonly Dictionary<(int Column, int Row), CellBuffer.FragmentEntry> _frontFragments = new();
 
     // Reusable scratch buffer for the per-render "is this cell covered by a Cell-layer
     // fragment?" lookup. Sized to the current frontCells dimensions on full-redraw and reused
@@ -225,14 +225,14 @@ public sealed class FrameRenderer
 
         var caps = _capabilities ?? OutputCapabilities.None;
 
-        foreach (var ((anchorRow, anchorCol), entry) in back.Fragments)
+        foreach (var ((anchorCol, anchorRow), entry) in back.Fragments)
         {
             if (entry.Fragment.Layer != FragmentLayer.Cells) continue;
             if (!entry.Fragment.IsSupported(caps)) continue;
 
             var size = entry.Fragment.GetSize();
-            int rowEnd = Math.Min(back.Rows, anchorRow + Math.Max(1, size.Rows));
             int colEnd = Math.Min(back.Columns, anchorCol + Math.Max(1, size.Columns));
+            int rowEnd = Math.Min(back.Rows, anchorRow + Math.Max(1, size.Rows));
 
             for (int r = Math.Max(0, anchorRow); r < rowEnd; r++)
             {
@@ -275,7 +275,7 @@ public sealed class FrameRenderer
     /// owns the foreground), but the background still paints so UI panels show consistently
     /// behind the fragment.
     /// </summary>
-    private Cell IntendedCellFor(int row, int column, Cell backCell, CellBuffer back)
+    private Cell IntendedCellFor(int column, int row, Cell backCell, CellBuffer back)
     {
         if (_coveredCells is null) return backCell;
         if (!_coveredCells[row * back.Columns + column]) return backCell;
@@ -409,7 +409,7 @@ public sealed class FrameRenderer
                 // cell verbatim. Then quantize for capability-aware emission. The same value
                 // gets compared against the front and snapshotted into it, so a stable rendered
                 // frame produces an empty delta.
-                var intended = IntendedCellFor(r, c, row[c], back);
+                var intended = IntendedCellFor(c, r, row[c], back);
                 var cell = Adapt(intended);
 
                 // Wide-continuation cells are skipped from emission here. They aren't "left
@@ -432,7 +432,7 @@ public sealed class FrameRenderer
                 // ourselves as out-of-position so the next emit triggers an explicit move.
                 if (_cursorRow != r || _cursorCol != c)
                 {
-                    CursorWriter.WriteMoveTo(output, r, c);
+                    CursorWriter.WriteMoveTo(output, c, r);
                     _cursorRow = r;
                     _cursorCol = c;
                 }
@@ -475,7 +475,7 @@ public sealed class FrameRenderer
                     twoSpaces[1] = (byte) ' ';
                     output.Advance(2);
 
-                    CursorWriter.WriteMoveTo(output, r, c);
+                    CursorWriter.WriteMoveTo(output, c, r);
                     _cursorRow = r;
                     _cursorCol = c;
                 }
@@ -519,18 +519,18 @@ public sealed class FrameRenderer
         {
             if (back.Fragments.ContainsKey(anchor)) continue;
             if (!frontEntry.Fragment.IsSupported(caps)) continue;
-            EmitFragmentEraseBytes(anchor.Row, anchor.Column, frontEntry, output, caps);
+            EmitFragmentEraseBytes(anchor.Column, anchor.Row, frontEntry, output, caps);
         }
 
         // Pass 2 — emit new or changed fragments. Reference equality on the IBufferFragment
         // instance + value equality on the AnchorStyle is the diff key; callers that want
         // stable skipping reuse instances across frames.
-        foreach (var ((row, col), entry) in back.Fragments)
+        foreach (var ((col, row), entry) in back.Fragments)
         {
             if (!entry.Fragment.IsSupported(caps)) continue;
-            if (row < 0 || row >= back.Rows || col < 0 || col >= back.Columns) continue;
+            if (col < 0 || col >= back.Columns || row < 0 || row >= back.Rows) continue;
 
-            if (_frontFragments.TryGetValue((row, col), out var frontEntry) &&
+            if (_frontFragments.TryGetValue((col, row), out var frontEntry) &&
                 ReferenceEquals(frontEntry.Fragment, entry.Fragment) &&
                 frontEntry.AnchorStyle == entry.AnchorStyle)
             {
@@ -546,10 +546,10 @@ public sealed class FrameRenderer
                 !ReferenceEquals(frontEntry.Fragment, entry.Fragment) &&
                 frontEntry.Fragment.IsSupported(caps))
             {
-                EmitFragmentEraseBytes(row, col, frontEntry, output, caps);
+                EmitFragmentEraseBytes(col, row, frontEntry, output, caps);
             }
 
-            EmitFragmentBytes(row, col, entry, output, caps);
+            EmitFragmentBytes(col, row, entry, output, caps);
         }
 
         // Snapshot for next render's diff. Copy keys/values rather than aliasing back. Fragments
@@ -561,16 +561,16 @@ public sealed class FrameRenderer
     }
 
     /// <summary>Bracket-emit a fragment's payload with DECSC / DECRC + cursor + SGR backdrop.</summary>
-    private void EmitFragmentBytes(int row, int col, CellBuffer.FragmentEntry entry,
+    private void EmitFragmentBytes(int col, int row, CellBuffer.FragmentEntry entry,
                                    IBufferWriter<byte> output, OutputCapabilities caps)
     {
         CursorWriter.WriteSavePosition(output);
-        CursorWriter.WriteMoveTo(output, row, col);
+        CursorWriter.WriteMoveTo(output, col, row);
 
         if (entry.AnchorStyle != Style.Default)
             SgrEncoder.WriteAbsolute(output, entry.AnchorStyle);
 
-        entry.Fragment.Emit(row, col, output, caps);
+        entry.Fragment.Emit(col, row, output, caps);
 
         CursorWriter.WriteRestorePosition(output);
 
@@ -585,13 +585,13 @@ public sealed class FrameRenderer
     /// erase since cell repainting handles the visual removal; overlay-layer fragments emit
     /// protocol-specific delete sequences.
     /// </summary>
-    private void EmitFragmentEraseBytes(int row, int col, CellBuffer.FragmentEntry entry,
+    private void EmitFragmentEraseBytes(int col, int row, CellBuffer.FragmentEntry entry,
                                         IBufferWriter<byte> output, OutputCapabilities caps)
     {
         CursorWriter.WriteSavePosition(output);
-        CursorWriter.WriteMoveTo(output, row, col);
+        CursorWriter.WriteMoveTo(output, col, row);
 
-        entry.Fragment.EmitErase(row, col, output, caps);
+        entry.Fragment.EmitErase(col, row, output, caps);
 
         CursorWriter.WriteRestorePosition(output);
 
@@ -642,7 +642,7 @@ public sealed class FrameRenderer
 
         if (_cursorRow != back.CursorRow || _cursorCol != back.CursorColumn)
         {
-            CursorWriter.WriteMoveTo(output, back.CursorRow, back.CursorColumn);
+            CursorWriter.WriteMoveTo(output, back.CursorColumn, back.CursorRow);
             _cursorRow = back.CursorRow;
             _cursorCol = back.CursorColumn;
         }

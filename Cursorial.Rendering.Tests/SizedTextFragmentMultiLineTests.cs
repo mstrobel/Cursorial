@@ -256,12 +256,12 @@ public class SizedTextFragmentMultiLineTests
         // Pre-paint cells in the fragment's footprint that we don't want to see emitted.
         for (int row = 0; row < 4; row++)
             for (int col = 0; col < 10; col++)
-                buffer.Set(row, col, "X", Style.Default);
+                buffer.Set(col, row, "X", Style.Default);
 
         buffer.AddFragment(0, 0, new SizedTextFragment(
-            new TextSizing(Scale: 2),
-            "hi\nbye",
-            Style.Default));
+                               new TextSizing(Scale: 2),
+                               "hi\nbye",
+                               Style.Default));
 
         var w = new ArrayBufferWriter<byte>();
         r.Render(buffer, w);

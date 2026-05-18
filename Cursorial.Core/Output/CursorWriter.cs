@@ -25,7 +25,7 @@ public static class CursorWriter
     private const byte CsiSeparator = (byte) ';';
 
     /// <summary>Move the cursor to the absolute 0-based <paramref name="row"/> / <paramref name="column"/> (CUP).</summary>
-    public static void WriteMoveTo(IBufferWriter<byte> writer, int row, int column)
+    public static void WriteMoveTo(IBufferWriter<byte> writer, int column, int row)
     {
         ArgumentNullException.ThrowIfNull(writer);
         var buffer = writer.GetSpan(16);

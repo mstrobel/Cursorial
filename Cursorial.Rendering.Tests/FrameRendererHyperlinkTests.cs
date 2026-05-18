@@ -46,8 +46,8 @@ public class FrameRendererHyperlinkTests
         var buf = new CellBuffer(5, 1);
         var link = Style.Default.WithHyperlink("https://example.com");
         buf.Set(0, 0, "a", link);
-        buf.Set(0, 1, "b", link);
-        buf.Set(0, 2, "c", link);
+        buf.Set(1, 0, "b", link);
+        buf.Set(2, 0, "c", link);
 
         var output = Render(r, buf);
 
@@ -70,7 +70,7 @@ public class FrameRendererHyperlinkTests
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
         buf.Set(0, 0, "a", Style.Default.WithHyperlink("https://a.example"));
-        buf.Set(0, 1, "b", Style.Default.WithHyperlink("https://b.example"));
+        buf.Set(1, 0, "b", Style.Default.WithHyperlink("https://b.example"));
 
         var output = Render(r, buf);
 
@@ -89,7 +89,7 @@ public class FrameRendererHyperlinkTests
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
         buf.Set(0, 0, "a", Style.Default.WithHyperlink("https://example.com"));
-        buf.Set(0, 1, "b", Style.Default); // no hyperlink
+        buf.Set(1, 0, "b", Style.Default); // no hyperlink
 
         var output = Render(r, buf);
 

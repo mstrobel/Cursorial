@@ -88,7 +88,7 @@ public sealed class ShadowedFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int row, int column, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
         ArgumentNullException.ThrowIfNull(buffer);
 
@@ -110,7 +110,7 @@ public sealed class ShadowedFont : IGlyphFont
                                                   .WithAttributes((shadowStyle.Attributes | style.Attributes) & ~ForbiddenShadowAttributes)
                                                   .BlendOver(style);
 
-            Inner.Paint(buffer, row + Offset.Rows, column + Offset.Columns, text, effectiveShadowStyle);
+            Inner.Paint(buffer, column + Offset.Columns, row + Offset.Rows, text, effectiveShadowStyle);
         }
         finally
         {
@@ -118,7 +118,7 @@ public sealed class ShadowedFont : IGlyphFont
                 buffer.PopBlendingMode();
         }
 
-        var painted = Inner.Paint(buffer, row, column, text, style);
+        var painted = Inner.Paint(buffer, column, row, text, style);
         if (painted.IsEmpty)
             return Size.Empty;
 

@@ -25,8 +25,8 @@ public class FrameRendererFragmentTests
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         buffer.Set(0, 0, "a", Style.Default);
-        buffer.AddFragment(0, 1, new SentinelFragment(new Size(2, 1), "[F]"));
-        buffer.Set(0, 3, "z", Style.Default); // outside coverage
+        buffer.AddFragment(1, 0, new SentinelFragment(new Size(2, 1), "[F]"));
+        buffer.Set(3, 0, "z", Style.Default); // outside coverage
 
         var output = Render(r, buffer);
 
@@ -49,9 +49,9 @@ public class FrameRendererFragmentTests
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         var panelBg = Color.FromRgb(40, 60, 80);
-        buffer.Set(0, 1, "U", Style.Default.WithBackground(panelBg));
-        buffer.Set(0, 2, "V", Style.Default.WithBackground(panelBg));
-        buffer.AddFragment(0, 1, new SentinelFragment(new Size(2, 1), "[F]"));
+        buffer.Set(1, 0, "U", Style.Default.WithBackground(panelBg));
+        buffer.Set(2, 0, "V", Style.Default.WithBackground(panelBg));
+        buffer.AddFragment(1, 0, new SentinelFragment(new Size(2, 1), "[F]"));
 
         var output = Render(r, buffer);
 
@@ -168,7 +168,7 @@ public class FrameRendererFragmentTests
     {
         public Size GetSize() => size;
         public bool IsSupported(OutputCapabilities capabilities) => supported;
-        public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+        public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
         {
             var bytes = Encoding.UTF8.GetBytes(sentinel);
             var dest = output.GetSpan(bytes.Length);

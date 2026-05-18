@@ -21,7 +21,7 @@ public class FrameRendererDirtyRegionTests
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 2);
         buffer.Set(0, 0, "a", Style.Default);
-        buffer.Set(1, 4, "z", Style.Default);
+        buffer.Set(4, 1, "z", Style.Default);
 
         var output = Render(r, buffer);
 
@@ -38,9 +38,9 @@ public class FrameRendererDirtyRegionTests
         Render(r, buffer);
 
         // Paint a cell inside the dirty region and one outside; only the marked one should emit.
-        buffer.Set(0, 1, "I", Style.Default);
-        buffer.Set(0, 8, "O", Style.Default);
-        buffer.MarkDirty(new Rect(Row: 0, Column: 0, Columns: 3, Rows: 1));
+        buffer.Set(1, 0, "I", Style.Default);
+        buffer.Set(8, 0, "O", Style.Default);
+        buffer.MarkDirty(new Rect(Column: 0, Row: 0, Columns: 3, Rows: 1));
 
         var output = Render(r, buffer);
 
@@ -57,11 +57,11 @@ public class FrameRendererDirtyRegionTests
         var buffer = new CellBuffer(10, 2);
         Render(r, buffer);
 
-        buffer.Set(0, 1, "X", Style.Default);
-        buffer.Set(0, 5, "Y", Style.Default);
+        buffer.Set(1, 0, "X", Style.Default);
+        buffer.Set(5, 0, "Y", Style.Default);
         // Two overlapping regions covering both X (col 1) and Y (col 5).
         buffer.MarkDirty(new Rect(0, 0, 4, 1));
-        buffer.MarkDirty(new Rect(0, 3, 4, 1));
+        buffer.MarkDirty(new Rect(3, 0, 4, 1));
 
         var output = Render(r, buffer);
 

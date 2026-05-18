@@ -768,10 +768,10 @@ static void PaintImageShowcase(
     string header = $"image: {path}";
     if (header.Length > cols - 2) header = "..." + header[^(cols - 5)..];
 
-    PaintLine(buf, 0, 1, header,
-              Style.Default
-                   .WithForeground(Color.FromRgb(220, 220, 255))
-                   .WithAttributes(TextAttributes.Bold));
+    PaintLine(buf, 1, 0,
+              header, Style.Default
+                           .WithForeground(Color.FromRgb(220, 220, 255))
+                           .WithAttributes(TextAttributes.Bold));
 
     // Header line 2: chosen protocol + cell footprint.
     string protocol = ChooseProtocolLabel(outputCaps, format);
@@ -788,12 +788,12 @@ static void PaintImageShowcase(
 
     var content = new Image(data, placeholderStyle);
 
-    content.Paint(buf, anchorRow, anchorCol, Style.Default, outputCaps);
+    content.Paint(buf, anchorCol, anchorRow, Style.Default, outputCaps);
 
     // Footer.
     int footerRow = Math.Min(anchorRow + imageH + 1, rows - 1);
-    PaintLine(buf, footerRow, 1, "Press q or Ctrl+C to return.",
-        Style.Default.WithForeground(Color.FromRgb(180, 180, 220)));
+    PaintLine(buf, 1, footerRow,
+        "Press q or Ctrl+C to return.", Style.Default.WithForeground(Color.FromRgb(180, 180, 220)));
 }
 
 static string ChooseProtocolLabel(OutputCapabilities caps, ImageFormat format)
@@ -843,7 +843,7 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
 
     // ---- 16-color ANSI palette ----
     int row = 5;
-    if (row < rows) PaintLine(buf, row, 1, "ANSI 16-color palette:", style);
+    if (row < rows) PaintLine(buf, 1, row, "ANSI 16-color palette:", style);
     if (row + 1 < rows)
     {
         for (int i = 0; i < 16 && (1 + i * 3 + 2) < cols; i++)
@@ -856,14 +856,14 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
                 UnderlineStyle: default,
                 UnderlineColor: default);
             int x = 1 + i * 3;
-            buf.Set(row + 1, x,     " ", swatch);
-            buf.Set(row + 1, x + 1, " ", swatch);
+            buf.Set(x,     row + 1, " ", swatch);
+            buf.Set(x + 1, row + 1, " ", swatch);
         }
     }
 
     // ---- Truecolor gradient ----
     row += 2;
-    if (row < rows) PaintLine(buf, row, 1, "24-bit truecolor gradient:", style);
+    if (row < rows) PaintLine(buf, 1, row, "24-bit truecolor gradient:", style);
     if (row + 1 < rows)
     {
         int width = Math.Min(cols - 2, 60);
@@ -879,13 +879,13 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
                 Attributes: default,
                 UnderlineStyle: default,
                 UnderlineColor: default);
-            buf.Set(row + 1, 1 + i, " ", swatch);
+            buf.Set(1 + i, row + 1, " ", swatch);
         }
     }
 
     // ---- Wide glyphs ----
     row += 3;
-    if (row < rows) PaintLine(buf, row, 1, "Wide glyphs (emoji + CJK, each occupies 2 cells):", style);
+    if (row < rows) PaintLine(buf, 1, row, "Wide glyphs (emoji + CJK, each occupies 2 cells):", style);
 
     if (row + 1 < rows)
     {
@@ -893,37 +893,37 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
         foreach (var g in new[] { "🚀", "🌍", "🎨", "🐈", "中", "日", "本", "文" })
         {
             if (x + 2 >= cols) break;
-            buf.Set(row + 1, x, g, style);
+            buf.Set(x, row + 1, g, style);
             x += 3; // 2 cells for the glyph + 1 space
         }
     }
 
     // ---- Attribute showcase ----
     row += 2;
-    if (row < rows) PaintLine(buf, row, 1, "Text attributes:", style);
+    if (row < rows) PaintLine(buf, 1, row, "Text attributes:", style);
     if (row + 1 < rows)
     {
         int x = 1;
-        x += PaintWord(buf, row + 1, x, "Bold ",
-            style.WithAttributes(TextAttributes.Bold));
-        x += PaintWord(buf, row + 1, x, "Italic ",
-            style.WithAttributes(TextAttributes.Italic));
-        x += PaintWord(buf, row + 1, x, "Underline ",
-            style.WithAttributes(TextAttributes.Underline));
-        x += PaintWord(buf, row + 1, x, "Curly ",
-            style
-                .WithAttributes(TextAttributes.Underline)
-                .WithUnderlineStyle(UnderlineStyle.Curly)
-                .WithUnderlineColor(Color.FromRgb(255, 80, 80)));
-        x += PaintWord(buf, row + 1, x, "Strike ",
-            style.WithAttributes(TextAttributes.Strikethrough));
-        PaintWord(buf, row + 1, x, "Inverse",
-            style.WithAttributes(TextAttributes.Inverse));
+        x += PaintWord(buf, x, row + 1,
+            "Bold ", style.WithAttributes(TextAttributes.Bold));
+        x += PaintWord(buf, x, row + 1,
+            "Italic ", style.WithAttributes(TextAttributes.Italic));
+        x += PaintWord(buf, x, row + 1,
+            "Underline ", style.WithAttributes(TextAttributes.Underline));
+        x += PaintWord(buf, x, row + 1,
+            "Curly ", style
+                      .WithAttributes(TextAttributes.Underline)
+                      .WithUnderlineStyle(UnderlineStyle.Curly)
+                      .WithUnderlineColor(Color.FromRgb(255, 80, 80)));
+        x += PaintWord(buf, x, row + 1,
+            "Strike ", style.WithAttributes(TextAttributes.Strikethrough));
+        PaintWord(buf, x, row + 1,
+            "Inverse", style.WithAttributes(TextAttributes.Inverse));
     }
 
     // ---- Alpha-blended overlay ----
     row += 2;
-    if (row < rows) PaintLine(buf, row, 1, "Alpha-blended overlay (Multiply mode, α=128):", style);
+    if (row < rows) PaintLine(buf, 1, row, "Alpha-blended overlay (Multiply mode, α=128):", style);
     if (row + 1 < rows && row + 4 < rows)
     {
         // Backdrop: solid color stripes.
@@ -945,8 +945,8 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
             {
                 var bg = stripes[(x * stripes.Length) / barWidth];
 
-                buf.Set(row + 1 + dy, 1 + x, " ",
-                        new(Color.Default, bg, default, default, default));
+                buf.Set(1 + x, row + 1 + dy,
+                        " ", new(Color.Default, bg, default, default, default));
             }
         }
 
@@ -962,11 +962,11 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
                 if (row + 1 + dy >= rows) break;
                 for (int dx = 0; dx < overlayWidth; dx++)
                 {
-                    buf.Set(row + 1 + dy, 1 + overlayStart + dx, " ",
-                        new Style(
-                            Color.Default,
-                            Color.FromRgba(128, 128, 128, 128),
-                            default, default, default));
+                    buf.Set(1 + overlayStart + dx, row + 1 + dy,
+                            " ", new Style(
+                                Color.Default,
+                                Color.FromRgba(128, 128, 128, 128),
+                                default, default, default));
                 }
             }
         }
@@ -991,7 +991,7 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
     // Reuse a single ScaledText instance across frames — Phase 6.8's fragment diff uses
     // reference equality on the underlying IBufferFragment, so a stable instance lets the
     // renderer skip re-emission when the title and sizing haven't changed.
-    RenderShowcaseFragments.Title.Paint(buf, row: 2, column: 1, style: sizedTitleStyle, capabilities: outputCaps);
+    RenderShowcaseFragments.Title.Paint(buf, column: 1, row: 2, style: sizedTitleStyle, capabilities: outputCaps);
 
     const int iconY = 5;
     const int iconCount = 4;
@@ -1013,17 +1013,17 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
             resourceName: $"Icons/{icons[i]}",
             fallbackGlyph: iconFallbacks[i],
             fallbackStyle: iconStyle, renderSize: new Size(iconColumns, 0));
-        buf.Set(iconY, x, " ", iconStyle);
-        buf.Set(iconY, x + 1, " ", iconStyle);
-        icon.Paint(buf, row: iconY, column: x, style: iconStyle, capabilities: outputCaps);
-        buf.Set(iconY + 2, x, icon.FallbackGlyph, iconStyle);
+        buf.Set(x, iconY, " ", iconStyle);
+        buf.Set(x + 1, iconY, " ", iconStyle);
+        icon.Paint(buf, column: x, row: iconY, style: iconStyle, capabilities: outputCaps);
+        buf.Set(x, iconY + 2, icon.FallbackGlyph, iconStyle);
 
         if (i == 0)
         {
             var labelStyle = (style with { Foreground = style.Foreground.WithAlpha(0xC0) }).BlendOver(style);
 
-            PaintWord(buf, iconY - 3, x, "PNG Icons w/", labelStyle);
-            PaintWord(buf, iconY - 2, x, "Emoji Fallback", labelStyle);
+            PaintWord(buf, x, iconY - 3, "PNG Icons w/", labelStyle);
+            PaintWord(buf, x, iconY - 2, "Emoji Fallback", labelStyle);
         }
     }
 
@@ -1036,11 +1036,11 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
             .WithBackground(Color.FromRgb(40, 40, 70))
             .WithAttributes(TextAttributes.Bold);
         int x = cols - clock.Length - 1;
-        PaintLine(buf, 0, x, " " + clock, clockStyle);
+        PaintLine(buf, x, 0, " " + clock, clockStyle);
     }
 }
 
-static void PaintLine(CellBuffer buf, int row, int col, string text, Style style)
+static void PaintLine(CellBuffer buf, int col, int row, string text, Style style)
 {
     if (row < 0 || row >= buf.Rows) return;
     int x = col;
@@ -1049,12 +1049,12 @@ static void PaintLine(CellBuffer buf, int row, int col, string text, Style style
     {
         if (x >= buf.Columns) break;
         var cluster = (string)enumerator.Current;
-        int width = buf.Set(row, x, cluster, style);
+        int width = buf.Set(x, row, cluster, style);
         x += width;
     }
 }
 
-static int PaintWord(CellBuffer buf, int row, int col, string text, Style style)
+static int PaintWord(CellBuffer buf, int col, int row, string text, Style style)
 {
     int startCol = col;
     int x = col;
@@ -1063,7 +1063,7 @@ static int PaintWord(CellBuffer buf, int row, int col, string text, Style style)
     {
         if (row >= buf.Rows || x >= buf.Columns) break;
         var cluster = (string)enumerator.Current;
-        int width = buf.Set(row, x, cluster, style);
+        int width = buf.Set(x, row, cluster, style);
         x += width;
     }
     return x - startCol;

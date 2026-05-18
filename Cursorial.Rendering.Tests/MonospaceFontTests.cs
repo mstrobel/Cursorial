@@ -35,18 +35,18 @@ public class MonospaceFontTests
     public void Paint_AsciiAtAnchor_LaysDownCells()
     {
         var buffer = new CellBuffer(10, 1);
-        var painted = MonospaceFont.Default.Paint(buffer, 0, 2, "hi", Style.Default);
+        var painted = MonospaceFont.Default.Paint(buffer, 2, 0, "hi", Style.Default);
 
         Assert.Equal(new Size(2, 1), painted);
-        Assert.Equal("h", buffer[0, 2].Grapheme);
-        Assert.Equal("i", buffer[0, 3].Grapheme);
+        Assert.Equal("h", buffer[2, 0].Grapheme);
+        Assert.Equal("i", buffer[3, 0].Grapheme);
     }
 
     [Fact]
     public void Paint_AtRightEdge_ClipsRatherThanThrows()
     {
         var buffer = new CellBuffer(5, 1);
-        var painted = MonospaceFont.Default.Paint(buffer, 0, 3, "abcdef", Style.Default);
+        var painted = MonospaceFont.Default.Paint(buffer, 3, 0, "abcdef", Style.Default);
 
         // Only 2 cells fit at column 3 in a 5-wide buffer (cols 3, 4).
         Assert.Equal(new Size(2, 1), painted);
@@ -56,8 +56,8 @@ public class MonospaceFontTests
     public void Paint_OutOfBoundsAnchor_PaintsNothing()
     {
         var buffer = new CellBuffer(5, 1);
-        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 5, 0, "x", Style.Default));
         Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 0, 5, "x", Style.Default));
+        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 5, 0, "x", Style.Default));
     }
 
     [Fact]
@@ -71,8 +71,8 @@ public class MonospaceFontTests
         buffer.PushBlendingMode(BlendingModes.Plus);
         try
         {
-            MonospaceFont.Default.Paint(buffer, 0, 0, "x",
-                Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+            MonospaceFont.Default.Paint(buffer, 0, 0,
+                "x", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
         }
         finally { buffer.PopBlendingMode(); }
 

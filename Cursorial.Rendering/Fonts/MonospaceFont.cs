@@ -43,7 +43,7 @@ public sealed class MonospaceFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int row, int column, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         if (text.IsEmpty) return Size.Empty;
@@ -76,7 +76,7 @@ public sealed class MonospaceFont : IGlyphFont
             // CellBuffer.Set takes a string; materialize the cluster once per call.
             // For most graphemes this is 1–4 chars — short enough that an alternative
             // span-based Set is a future micro-optimization.
-            int written = buffer.Set(row, col, cluster.ToString(), style);
+            int written = buffer.Set(col, row, cluster.ToString(), style);
             col += written;
         }
 

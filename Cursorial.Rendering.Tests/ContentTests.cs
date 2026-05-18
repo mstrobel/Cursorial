@@ -51,7 +51,7 @@ public class ScaledTextTests
         {
             for (int c = 0; c < painted.Columns && !anyInk; c++)
             {
-                if (!string.IsNullOrEmpty(buffer[r, c].Grapheme))
+                if (!string.IsNullOrEmpty(buffer[c, r].Grapheme))
                     anyInk = true;
             }
         }
@@ -81,7 +81,7 @@ public class ScaledTextTests
         {
             for (int c = 0; c < painted.Columns && !anyInk; c++)
             {
-                if (!string.IsNullOrEmpty(buffer[r, c].Grapheme))
+                if (!string.IsNullOrEmpty(buffer[c, r].Grapheme))
                     anyInk = true;
             }
         }
@@ -103,7 +103,7 @@ public class ScaledTextTests
         Assert.Empty(buffer.Fragments);
         Assert.Equal(new Size(2, 1), painted);
         Assert.Equal("H", buffer[0, 0].Grapheme);
-        Assert.Equal("i", buffer[0, 1].Grapheme);
+        Assert.Equal("i", buffer[1, 0].Grapheme);
     }
 
     [Fact]
@@ -159,8 +159,8 @@ public class ShadowedFontTests
 
         // Shadow at column 1 — was painted first, never overwritten by the glyph (whose right
         // edge is column 0).
-        Assert.Equal("X", buffer[0, 1].Grapheme);
-        Assert.Equal(shadowStyle.Foreground, buffer[0, 1].Style.Foreground);
+        Assert.Equal("X", buffer[1, 0].Grapheme);
+        Assert.Equal(shadowStyle.Foreground, buffer[1, 0].Style.Foreground);
     }
 
     [Fact]

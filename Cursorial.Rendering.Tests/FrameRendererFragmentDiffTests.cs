@@ -61,7 +61,7 @@ public class FrameRendererFragmentDiffTests
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         buffer.Set(0, 0, "Q", Style.Default);
-        buffer.Set(0, 1, "Z", Style.Default);
+        buffer.Set(1, 0, "Z", Style.Default);
         // Sentinel chosen to share no letters with the cell glyphs so contains-checks are
         // unambiguous.
         buffer.AddFragment(0, 0, new SentinelFragment(new Size(2, 1), "[OVL]"));
@@ -109,7 +109,7 @@ public class FrameRendererFragmentDiffTests
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         buffer.Set(0, 0, "X", Style.Default);
-        buffer.Set(0, 1, "Y", Style.Default);
+        buffer.Set(1, 0, "Y", Style.Default);
         buffer.AddFragment(0, 0, new EraseTrackingFragment(new Size(2, 1)));
 
         var output = Render(r, buffer);
@@ -183,7 +183,7 @@ public class FrameRendererFragmentDiffTests
         public FragmentLayer Layer => FragmentLayer.Cells;
         public Size GetSize() => size;
         public bool IsSupported(OutputCapabilities capabilities) => true;
-        public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+        public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
         {
             var bytes = Encoding.UTF8.GetBytes(sentinel);
             var dest = output.GetSpan(bytes.Length);
@@ -198,14 +198,14 @@ public class FrameRendererFragmentDiffTests
         public FragmentLayer Layer => FragmentLayer.Overlay;
         public Size GetSize() => size;
         public bool IsSupported(OutputCapabilities capabilities) => true;
-        public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+        public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
         {
             var bytes = "EMIT"u8;
             var dest = output.GetSpan(bytes.Length);
             bytes.CopyTo(dest);
             output.Advance(bytes.Length);
         }
-        public void EmitErase(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+        public void EmitErase(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
         {
             EraseEmitted = true;
             var bytes = "ERASE"u8;

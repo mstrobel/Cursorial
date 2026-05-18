@@ -9,7 +9,7 @@ namespace Cursorial.Rendering;
 /// <param name="Column">Left edge of the rectangle, 0-based. Inclusive.</param>
 /// <param name="Columns">Width in cells. Non-negative; 0 produces an empty rectangle.</param>
 /// <param name="Rows">Height in cells. Non-negative; 0 produces an empty rectangle.</param>
-public readonly record struct Rect(int Row, int Column, int Columns, int Rows)
+public readonly record struct Rect(int Column, int Row, int Columns, int Rows)
 {
     /// <summary>An empty rectangle anchored at (0, 0) with zero extent.</summary>
     public static Rect Empty => default;
@@ -24,7 +24,7 @@ public readonly record struct Rect(int Row, int Column, int Columns, int Rows)
     public bool IsEmpty => Columns == 0 || Rows == 0;
 
     /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
-    public bool Contains(int row, int column)
+    public bool Contains(int column, int row)
         => row >= Row && row < RowEnd && column >= Column && column < ColumnEnd;
 
     /// <summary>True when this rectangle intersects with <paramref name="other"/>.</summary>

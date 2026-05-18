@@ -135,7 +135,7 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int row, int column, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
         ArgumentNullException.ThrowIfNull(buffer);
 
@@ -152,7 +152,7 @@ public sealed class FigletFont : IGlyphFont
             var glyph = GetGlyph(cp);
             int overlap = prev is null ? 0 : ComputeOverlap(prev, glyph);
             caret -= overlap;
-            PaintGlyph(buffer, row, caret, glyph, compatibleStyle);
+            PaintGlyph(buffer, caret, row, glyph, compatibleStyle);
             caret += glyph.Width;
             prev = glyph;
         }
@@ -163,7 +163,7 @@ public sealed class FigletFont : IGlyphFont
         return new Size(painted, height);
     }
 
-    private void PaintGlyph(CellBuffer buffer, int row, int column, FigletGlyph glyph, in Style style)
+    private void PaintGlyph(CellBuffer buffer, int column, int row, FigletGlyph glyph, in Style style)
     {
         var lines = glyph.Lines;
 
@@ -189,7 +189,7 @@ public sealed class FigletFont : IGlyphFont
                 if (ch == ' ') continue;
 
                 string cluster = ch == HardBlank ? " " : ch.ToString();
-                buffer.Set(targetRow, targetCol, cluster, style);
+                buffer.Set(targetCol, targetRow, cluster, style);
             }
         }
     }

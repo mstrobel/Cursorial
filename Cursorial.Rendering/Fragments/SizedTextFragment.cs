@@ -128,7 +128,7 @@ public sealed class SizedTextFragment : IBufferFragment
     }
 
     /// <inheritdoc/>
-    public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities)
+    public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -150,7 +150,7 @@ public sealed class SizedTextFragment : IBufferFragment
             // line breaks within a single OSC 66 payload, so we emit one OSC 66 per line and
             // CUP explicitly between them.
             if (i > 0)
-                CursorWriter.WriteMoveTo(output, row + i * scale, column);
+                CursorWriter.WriteMoveTo(output, column, row + i * scale);
 
             TextSizingWriter.WriteSplit(output, Sizing, _lines[i]);
         }

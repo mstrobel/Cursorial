@@ -15,15 +15,15 @@ public class CellBufferFragmentTests
         // the caller painted them so they can render through any portion of the fragment's
         // protocol payload that doesn't fully cover them.
         var buffer = new CellBuffer(10, 3);
-        buffer.Set(0, 2, "a", Style.Default);
-        buffer.Set(0, 3, "b", Style.Default);
+        buffer.Set(2, 0, "a", Style.Default);
+        buffer.Set(3, 0, "b", Style.Default);
 
-        buffer.AddFragment(0, 2, new StubFragment(new Size(4, 2)));
+        buffer.AddFragment(2, 0, new StubFragment(new Size(4, 2)));
 
-        Assert.Equal("a", buffer[0, 2].Grapheme);
-        Assert.Equal("b", buffer[0, 3].Grapheme);
-        Assert.Equal(CellKind.Single, buffer[0, 2].Kind);
-        Assert.Equal(CellKind.Single, buffer[0, 3].Kind);
+        Assert.Equal("a", buffer[2, 0].Grapheme);
+        Assert.Equal("b", buffer[3, 0].Grapheme);
+        Assert.Equal(CellKind.Single, buffer[2, 0].Kind);
+        Assert.Equal(CellKind.Single, buffer[3, 0].Kind);
     }
 
     [Fact]
@@ -32,10 +32,10 @@ public class CellBufferFragmentTests
         var buffer = new CellBuffer(10, 3);
         var fragment = new StubFragment(new Size(2, 1));
 
-        buffer.AddFragment(1, 4, fragment);
+        buffer.AddFragment(4, 1, fragment);
 
-        Assert.True(buffer.Fragments.ContainsKey((1, 4)));
-        Assert.Same(fragment, buffer.Fragments[(1, 4)].Fragment);
+        Assert.True(buffer.Fragments.ContainsKey((4, 1)));
+        Assert.Same(fragment, buffer.Fragments[(4, 1)].Fragment);
     }
 
     [Fact]
@@ -88,11 +88,11 @@ public class CellBufferFragmentTests
         var buffer = new CellBuffer(10, 1);
         buffer.Set(0, 0, "中", Style.Default); // wide-left at (0,0), continuation at (0,1)
 
-        buffer.AddFragment(0, 1, new StubFragment(new Size(1, 1)));
+        buffer.AddFragment(1, 0, new StubFragment(new Size(1, 1)));
 
         // Cells are unchanged from before the fragment was added.
         Assert.Equal(CellKind.WideLeft, buffer[0, 0].Kind);
-        Assert.Equal(CellKind.WideContinuation, buffer[0, 1].Kind);
+        Assert.Equal(CellKind.WideContinuation, buffer[1, 0].Kind);
     }
 
     [Fact]
@@ -119,6 +119,6 @@ public class CellBufferFragmentTests
     {
         public Size GetSize() => size;
         public bool IsSupported(OutputCapabilities capabilities) => true;
-        public void Emit(int row, int column, IBufferWriter<byte> output, OutputCapabilities capabilities) { }
+        public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) { }
     }
 }

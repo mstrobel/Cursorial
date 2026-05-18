@@ -161,15 +161,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // turn them off in the reverse order.
             
             // @formatter:off
-            if (_applied.SynchronizedOutput)  QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
-            if (_applied.Win32InputMode)      QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
-            if (_applied.KittyKeyboard)       QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
-            if (_applied.BracketedPaste)      QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
-            if (_applied.FocusEvents)         QueueWrite(VtInputSequences.OptInSequences.DisableFocusEvents);
-            if (_applied.MouseMotionTracking)       QueueWrite(VtInputSequences.OptInSequences.DisableMotionMouse);
-            if (_applied.MouseButtonTracking) QueueWrite(VtInputSequences.OptInSequences.DisableButtonMotionMouse);
-            if (_applied.ExtendedMouseTracking)       QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
-            if (_applied.MouseButtons)        QueueWrite(VtInputSequences.OptInSequences.DisableMouseButtons);
+            if (_applied.SynchronizedOutput)    QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
+            if (_applied.Win32InputMode)        QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
+            if (_applied.KittyKeyboard)         QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
+            if (_applied.BracketedPaste)        QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
+            if (_applied.FocusEvents)           QueueWrite(VtInputSequences.OptInSequences.DisableFocusEvents);
+            if (_applied.MouseMotionTracking)   QueueWrite(VtInputSequences.OptInSequences.DisableMotionMouse);
+            if (_applied.MouseButtonTracking)   QueueWrite(VtInputSequences.OptInSequences.DisableButtonMotionMouse);
+            if (_applied.ExtendedMouseTracking) QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
+            if (_applied.MouseButtons)          QueueWrite(VtInputSequences.OptInSequences.DisableMouseButtons);
             // @formatter:on
 
             // Unconditional belt-and-braces: clear any Kitty multi-cursor extras the terminal

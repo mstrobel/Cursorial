@@ -388,6 +388,151 @@ public class VtInputInterpreterTests
 
     // ---- Modifier-bearing function / special keys ----
 
+    // ---- Kitty legacy form for F1-F4 (CSI <P|Q|R|S> with optional modifier and event sub-param) ----
+    //
+    // Kitty 0.46.2 sends F1, F2, F4 (and would send F3 via CSI R in some terminals — though
+    // Kitty itself routes F3 through the CSI 13~ tilde encoding) as letter-final CSI sequences
+    // even when ReportAllKeysAsEscapeCodes is enabled. The wire captures in /tmp/keytrace.log
+    // are the source of truth for these tests.
+
+    [Theory]
+    [InlineData("\x1b[P", Key.F1)]
+    [InlineData("\x1b[Q", Key.F2)]
+    [InlineData("\x1b[S", Key.F4)]
+    public void CsiLetterFinal_NoParams_EmitsFunctionKeyDown(string sequence, Key expected)
+    {
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+        Assert.False(k.IsRepeat);
+    }
+
+    [Theory]
+    [InlineData("\x1b[1;2P", Key.F1)]
+    [InlineData("\x1b[1;2Q", Key.F2)]
+    [InlineData("\x1b[1;2S", Key.F4)]
+    public void CsiLetterFinal_WithShiftModifier_EmitsModifiedFunctionKeyDown(string sequence, Key expected)
+    {
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal(KeyModifiers.Shift, k.Modifiers);
+    }
+
+    [Theory]
+    [InlineData("\x1b[1;1:3P", Key.F1)]
+    [InlineData("\x1b[1;1:3Q", Key.F2)]
+    [InlineData("\x1b[1;1:3S", Key.F4)]
+    public void CsiLetterFinal_WithReleaseEvent_EmitsFunctionKeyUp(string sequence, Key expected)
+    {
+        // Kitty event sub-param 3 = release. Modifier default of 1 (no mods) is explicit on the
+        // wire when any event field is non-default.
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+    }
+
+    [Theory]
+    [InlineData("\x1b[1;2:3P", Key.F1)]
+    [InlineData("\x1b[1;2:3Q", Key.F2)]
+    [InlineData("\x1b[1;2:3S", Key.F4)]
+    public void CsiLetterFinal_WithShiftAndReleaseEvent_EmitsModifiedFunctionKeyUp(string sequence, Key expected)
+    {
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.Equal(KeyModifiers.Shift, k.Modifiers);
+    }
+
+    // ---- Event sub-param on cursor keys / Home / End (legacy form release) ----
+
+    [Theory]
+    [InlineData("\x1b[1;1:3A", Key.UpArrow)]
+    [InlineData("\x1b[1;1:3B", Key.DownArrow)]
+    [InlineData("\x1b[1;1:3C", Key.RightArrow)]
+    [InlineData("\x1b[1;1:3D", Key.LeftArrow)]
+    [InlineData("\x1b[1;1:3F", Key.End)]
+    [InlineData("\x1b[1;1:3H", Key.Home)]
+    public void CsiArrowOrHomeEnd_WithReleaseEvent_EmitsKeyUp(string sequence, Key expected)
+    {
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+    }
+
+    // ---- Tilde-form keys with event sub-param (F3 etc.) ----
+
+    [Fact]
+    public void CsiTildeFunctionKey_WithReleaseEvent_EmitsKeyUp()
+    {
+        // F3 release per Kitty 0.46.2 wire capture: CSI 13 ; 1 : 3 ~
+        Feed("\x1b[13;1:3~");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.F3, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+    }
+
+    [Fact]
+    public void CsiTildeFunctionKey_WithShiftAndReleaseEvent_EmitsShiftKeyUp()
+    {
+        // Shift+F3 release.
+        Feed("\x1b[13;2:3~");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.F3, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+        Assert.Equal(KeyModifiers.Shift, k.Modifiers);
+    }
+
+    // ---- Kitty u-form for Enter / Tab / Backspace via ASCII codepoints ----
+    //
+    // Per Kitty's spec and /tmp/keytrace.log: Enter/Tab/Backspace are sent in u-form using their
+    // legacy ASCII codepoints (13, 9, 127) — *not* the unassigned PUA codes 57345/57346/57347.
+    // The existing CSI 27 u → Escape mapping is parallel to these.
+
+    [Theory]
+    [InlineData("\x1b[13u", Key.Enter)]
+    [InlineData("\x1b[9u", Key.Tab)]
+    [InlineData("\x1b[127u", Key.Backspace)]
+    [InlineData("\x1b[27u", Key.Escape)]
+    public void KittyUFormControlCodepoints_MapToNamedKey(string sequence, Key expected)
+    {
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(ReadOnlyMemory<char>.Empty, k.Text);
+    }
+
+    [Theory]
+    [InlineData("\x1b[13;1:3u", Key.Enter)]
+    [InlineData("\x1b[9;1:3u", Key.Tab)]
+    [InlineData("\x1b[127;1:3u", Key.Backspace)]
+    [InlineData("\x1b[27;1:3u", Key.Escape)]
+    public void KittyUFormControlCodepoints_WithReleaseEvent_EmitsKeyUp(string sequence, Key expected)
+    {
+        Feed(sequence);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyEventKind.Up, k.Kind);
+    }
+
     [Fact]
     public void CsiF5WithAltModifier_EmitsAltF5()
     {

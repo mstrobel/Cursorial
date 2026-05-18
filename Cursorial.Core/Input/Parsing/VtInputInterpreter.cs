@@ -255,8 +255,27 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
+        // Kitty encodes key release / repeat as a trailing :event_type sub-parameter on the
+        // modifier — e.g., CSI 1;1:3P for F1 release, CSI 13;1:3~ for F3 release. ParseParameters
+        // flattens ':' and ';' identically, so these otherwise miss the existing length-N shape
+        // checks. Strip the trailing :event off the raw bytes for finals that participate in
+        // this encoding; remember the event type so emission can carry it. Kitty 'u' final has
+        // its own bespoke sub-param parser (ParseKittyParameters), so skip preprocessing there.
+        ReadOnlySpan<byte> effectiveParameters = parameters;
+        KeyEventKind kind = KeyEventKind.Down;
+        bool isRepeat = false;
+
+        if (CarriesLegacyEventSubparam(final))
+        {
+            ExtractTrailingEventSubparam(parameters, out effectiveParameters, out int eventType);
+            kind = eventType == VtInputSequences.Kitty.ReleaseEvent
+                       ? KeyEventKind.Up
+                       : KeyEventKind.Down;
+            isRepeat = eventType == VtInputSequences.Kitty.RepeatEvent;
+        }
+
         Span<int> parameterBuffer = stackalloc int[8];
-        int parameterCount = ParseParameters(parameters, parameterBuffer);
+        int parameterCount = ParseParameters(effectiveParameters, parameterBuffer);
         ReadOnlySpan<int> p = parameterBuffer[..parameterCount];
 
         // Cursor Position Report — CSI <row> ; <col> R, the response to DSR-CPR (CSI 6 n).
@@ -286,7 +305,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         if (p.IsEmpty)
         {
-            if (!TryDecodeCsiNoParams(final))
+            if (!TryDecodeCsiNoParams(final, kind, isRepeat))
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
@@ -296,7 +315,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         if (p.Length == 1 && final == (byte) '~')
         {
-            if (!TryDecodeCsiTildeOneParam(p[0]))
+            if (!TryDecodeCsiTildeOneParam(p[0], kind, isRepeat))
             {
                 EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
             }
@@ -304,14 +323,16 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
-        // Modifier-bearing arrows / Home / End: CSI 1 ; <mod> <A|B|C|D|H|F>.
+        // Modifier-bearing legacy keys: CSI 1 ; <mod> <A|B|C|D|H|F|P|Q|R|S>. Covers the xterm
+        // modified cursor / Home / End form and the Kitty legacy F1–F4 form (which Kitty uses
+        // even with ReportAllKeysAsEscapeCodes enabled).
         if (p.Length == 2 && p[0] == 1)
         {
-            Key arrowKey = ArrowOrHomeEndKey(final);
+            Key legacyKey = LegacyKeyForFinal(final);
 
-            if (arrowKey != Key.None)
+            if (legacyKey != Key.None)
             {
-                EmitNamedKey(arrowKey, ParseModifiersParam(p[1]));
+                EmitNamedKey(legacyKey, ParseModifiersParam(p[1]), kind, isRepeat);
                 return;
             }
         }
@@ -321,7 +342,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         {
             if (TryFunctionOrSpecialKey(p[0], out Key funcKey))
             {
-                EmitNamedKey(funcKey, ParseModifiersParam(p[1]));
+                EmitNamedKey(funcKey, ParseModifiersParam(p[1]), kind, isRepeat);
             }
             else
             {
@@ -369,7 +390,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         return true;
     }
 
-    private bool TryDecodeCsiNoParams(byte final)
+    private bool TryDecodeCsiNoParams(byte final, KeyEventKind kind, bool isRepeat)
     {
         switch (final)
         {
@@ -382,23 +403,24 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 return true;
 
             case (byte) 'Z':
-                // BackTab — Shift+Tab.
-                EmitNamedKey(Key.Tab, KeyModifiers.Shift);
+                // BackTab — Shift+Tab. Never carries an event sub-param on the wire, so the
+                // kind argument is effectively always Down here.
+                EmitNamedKey(Key.Tab, KeyModifiers.Shift, kind, isRepeat);
                 return true;
         }
 
-        Key key = ArrowOrHomeEndKey(final);
+        Key key = LegacyKeyForFinal(final);
 
         if (key != Key.None)
         {
-            EmitNamedKey(key);
+            EmitNamedKey(key, KeyModifiers.None, kind, isRepeat);
             return true;
         }
 
         return false;
     }
 
-    private bool TryDecodeCsiTildeOneParam(int parameter)
+    private bool TryDecodeCsiTildeOneParam(int parameter, KeyEventKind kind, bool isRepeat)
     {
         switch (parameter)
         {
@@ -413,7 +435,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         if (TryFunctionOrSpecialKey(parameter, out Key key))
         {
-            EmitNamedKey(key);
+            EmitNamedKey(key, KeyModifiers.None, kind, isRepeat);
             return true;
         }
 
@@ -982,7 +1004,16 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // functional key codes) are treated as printable Unicode codepoints.
         key = code switch
               {
-                  // Navigation / control
+                  // Navigation / control. Kitty 0.46.2 reports Escape (27), Enter (13), Tab (9),
+                  // and Backspace (127) using their legacy ASCII codepoints rather than the PUA
+                  // codes — verified empirically via the demo's `trace` command. The PUA cases
+                  // below (EscapeKey = 57344, etc.) cover any future / alternate emitter that
+                  // chooses the functional form.
+                  VtInputSequences.Escape               => Key.Escape,
+                  VtInputSequences.Tab                  => Key.Tab,
+                  VtInputSequences.CarriageReturn       => Key.Enter,
+                  VtInputSequences.LineFeed             => Key.Enter,
+                  VtInputSequences.Delete               => Key.Backspace,
                   VtInputSequences.Kitty.EscapeKey      => Key.Escape,
                   VtInputSequences.Kitty.EnterKey       => Key.Enter,
                   VtInputSequences.Kitty.TabKey         => Key.Tab,
@@ -1305,7 +1336,25 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         if (key != Key.None) EmitNamedKey(key);
     }
 
-    private static Key ArrowOrHomeEndKey(byte final) => final switch
+    /// <summary>
+    /// Maps the CSI letter-final byte to its key for the legacy / xterm cursor-key and F1–F4
+    /// encodings — <c>CSI A</c>..<c>CSI D</c> for arrows, <c>CSI H</c>/<c>CSI F</c> for
+    /// Home/End, and <c>CSI P</c>..<c>CSI S</c> for F1–F4. Kitty also uses this encoding for
+    /// F1–F4 even with <c>ReportAllKeysAsEscapeCodes</c> enabled — verified empirically via
+    /// Kitty 0.46.2 (see /tmp/keytrace.log).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The R-final / F3 vs CPR ambiguity: a length-2 <c>CSI 1;X R</c> sequence is technically
+    /// ambiguous between a Cursor Position Report (row=1, col=X) and a Kitty legacy F3 press
+    /// with modifier X. We resolve it CPR-first at the dispatch site because Kitty 0.46.2
+    /// routes F3 through the <c>CSI 13~</c> tilde encoding — not <c>CSI R</c> — so the
+    /// ambiguity is theoretical for Kitty traffic. Other terminals that send F3 via
+    /// <c>CSI R</c> would clash here; if that becomes a real problem we can disambiguate by
+    /// gating CPR on an outstanding DSR request.
+    /// </para>
+    /// </remarks>
+    private static Key LegacyKeyForFinal(byte final) => final switch
                                                         {
                                                             (byte) 'A' => Key.UpArrow,
                                                             (byte) 'B' => Key.DownArrow,
@@ -1313,6 +1362,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                                             (byte) 'D' => Key.LeftArrow,
                                                             (byte) 'H' => Key.Home,
                                                             (byte) 'F' => Key.End,
+                                                            (byte) 'P' => Key.F1,
+                                                            (byte) 'Q' => Key.F2,
+                                                            (byte) 'R' => Key.F3,
+                                                            (byte) 'S' => Key.F4,
                                                             _          => Key.None,
                                                         };
 
@@ -1613,6 +1666,62 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                     Modifiers = modifiers,
                                     Kind = KeyEventKind.Down,
                                 });
+    }
+
+    /// <summary>
+    /// Emit a named key event with an explicit <see cref="KeyEventKind"/> and repeat flag — for
+    /// Kitty-protocol sequences that carry an event sub-parameter encoding release / repeat.
+    /// </summary>
+    private void EmitNamedKey(Key key, KeyModifiers modifiers, KeyEventKind kind, bool isRepeat)
+    {
+        _eventSink.OnInputEvent(new KeyEvent
+                                {
+                                    Timestamp = Now,
+                                    Key = key,
+                                    Modifiers = modifiers,
+                                    Kind = kind,
+                                    IsRepeat = isRepeat,
+                                });
+    }
+
+    /// <summary>
+    /// True for CSI final bytes that participate in Kitty's "legacy key" encoding where a
+    /// trailing <c>:event_type</c> sub-parameter signals press / repeat / release. Excludes
+    /// <c>u</c> (Kitty's primary form has its own bespoke sub-param parser) and the
+    /// device-response finals (<c>R</c>'s CPR collision is intentional and noted at the
+    /// dispatch site, but its sub-param form is handled here because Kitty doesn't actually
+    /// emit colon-bearing CPRs).
+    /// </summary>
+    private static bool CarriesLegacyEventSubparam(byte final) =>
+        final is (byte) 'A' or (byte) 'B' or (byte) 'C' or (byte) 'D'
+              or (byte) 'E' or (byte) 'F' or (byte) 'H'
+              or (byte) 'P' or (byte) 'Q' or (byte) 'R' or (byte) 'S'
+              or (byte) '~';
+
+    /// <summary>
+    /// Split a CSI raw-parameter byte span at the last <c>':'</c> and parse the trailing
+    /// integer as a Kitty event type. Returns the truncated prefix (without the colon and
+    /// sub-parameter) and the parsed event type. Defaults to event type = 1 (press) when there
+    /// is no colon or the trailing sub-parameter doesn't parse cleanly.
+    /// </summary>
+    private static bool ExtractTrailingEventSubparam(ReadOnlySpan<byte> raw,
+                                                     out ReadOnlySpan<byte> trimmed,
+                                                     out int eventType)
+    {
+        trimmed = raw;
+        eventType = VtInputSequences.Kitty.PressEvent;
+
+        if (raw.IsEmpty) return false;
+
+        int lastColon = raw.LastIndexOf((byte) ':');
+        if (lastColon < 0) return false;
+
+        var subParam = raw[(lastColon + 1)..];
+        if (!TryParseAsciiInt(subParam, out int parsed)) return false;
+
+        eventType = parsed;
+        trimmed = raw[..lastColon];
+        return true;
     }
 
     // ---- Bracketed paste ----

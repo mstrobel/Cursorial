@@ -85,6 +85,45 @@ public static class VtOutputSequences
     }
 
     /// <summary>
+    /// DECSET 2026 — synchronized output. Wrap a frame's emission between
+    /// <see cref="Begin"/> and <see cref="End"/> to ask the terminal to buffer paints and apply
+    /// them atomically, eliminating mid-frame tearing on supporting terminals. Caller is
+    /// responsible for gating emission on the negotiated
+    /// <c>OutputProtocolCapabilities.SynchronizedOutput</c>; sending these to a non-supporting
+    /// terminal is benign (they're DEC private modes that get silently ignored).
+    /// </summary>
+    public static class SynchronizedOutput
+    {
+        /// <summary><c>CSI ? 2026 h</c> — begin a synchronized-output frame.</summary>
+        public static ReadOnlySpan<byte> Begin => "\x1b[?2026h"u8;
+
+        /// <summary><c>CSI ? 2026 l</c> — end a synchronized-output frame; terminal commits the buffered paints.</summary>
+        public static ReadOnlySpan<byte> End => "\x1b[?2026l"u8;
+    }
+
+    /// <summary>
+    /// OSC 52 clipboard protocol. Format: <c>ESC ] 52 ; &lt;target&gt; ; &lt;base64-payload&gt; ST</c>.
+    /// Target is <c>c</c> for the system clipboard or <c>p</c> for the X11 primary selection;
+    /// other one-character codes select less-common selections (<c>q</c>, <c>s</c>, <c>0</c>..<c>7</c>).
+    /// A <c>?</c> payload requests a read (terminal responds with the same envelope holding the
+    /// current selection's base64).
+    /// </summary>
+    public static class Clipboard
+    {
+        /// <summary><c>ESC ] 52 ;</c> — opening of the OSC 52 envelope. Target and payload follow.</summary>
+        public static ReadOnlySpan<byte> Prefix => "\x1b]52;"u8;
+
+        /// <summary><c>ESC \</c> — String Terminator (ST).</summary>
+        public static ReadOnlySpan<byte> StringTerminator => "\x1b\\"u8;
+
+        /// <summary>Selection identifier for the system clipboard.</summary>
+        public const byte SystemTarget = (byte) 'c';
+
+        /// <summary>Selection identifier for the X11 primary selection.</summary>
+        public const byte PrimaryTarget = (byte) 'p';
+    }
+
+    /// <summary>
     /// Kitty pointer-shape protocol — application-emitted OSC 22 sequences that ask the
     /// terminal to display a specific GUI mouse cursor while the pointer hovers over the
     /// application. Format: <c>ESC ] 22 ; [stack_op] shape[,shape…] ST</c>. The

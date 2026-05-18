@@ -118,6 +118,12 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         }
     }
 
+    /// <inheritdoc/>
+    public (int Columns, int Rows)? QueryCurrentSize()
+    {
+        return TryReadSize(out int rows, out int cols) ? (cols, rows) : null;
+    }
+
     /// <summary>
     /// Query the current visible-window cell dimensions via the Windows console API. The
     /// "window" size (<c>srWindow</c>) is what users see; <c>dwSize</c> is the buffer size,

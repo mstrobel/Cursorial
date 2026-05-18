@@ -118,6 +118,18 @@ public sealed class FrameRenderer
         ArgumentNullException.ThrowIfNull(back);
         ArgumentNullException.ThrowIfNull(output);
 
+        // Synchronized output (DECSET 2026) brackets the entire frame so the terminal commits
+        // all paints atomically — eliminates mid-frame tearing on supporting terminals. We
+        // gate on the negotiated capability; non-supporting terminals would just print junk.
+        bool syncOutput = _capabilities?.Protocol.SynchronizedOutput == true;
+        if (syncOutput)
+        {
+            var begin = VtOutputSequences.SynchronizedOutput.Begin;
+            var span = output.GetSpan(begin.Length);
+            begin.CopyTo(span);
+            output.Advance(begin.Length);
+        }
+
         bool fullRedraw = _firstFrame ||
                           _frontCols != back.Columns ||
                           _frontRows != back.Rows ||
@@ -177,6 +189,16 @@ public sealed class FrameRenderer
         {
             HyperlinkWriter.WriteClose(output);
             _currentHyperlink = Hyperlink.None;
+        }
+
+        // Close the synchronized-output frame opened at the top — the terminal commits the
+        // buffered paints atomically here. Sequence is symmetric with the begin emit above.
+        if (syncOutput)
+        {
+            var end = VtOutputSequences.SynchronizedOutput.End;
+            var span = output.GetSpan(end.Length);
+            end.CopyTo(span);
+            output.Advance(end.Length);
         }
 
         // Consume the buffer's dirty regions so the next render starts fresh. Consumers using

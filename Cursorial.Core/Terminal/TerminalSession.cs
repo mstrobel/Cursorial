@@ -76,6 +76,42 @@ public sealed class TerminalSession : IAsyncDisposable
     public IOutputByteSink Output => _output;
 
     /// <summary>
+    /// Query the terminal's current cell-grid dimensions synchronously on demand, bypassing
+    /// the resize-event stream. Returns the size as <c>(Columns, Rows)</c>, or
+    /// <see langword="null"/> when the size can't be determined (BYO transport with no
+    /// platform resize monitor, the OS query failed, or stdio isn't a real TTY).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On happy-path sessions opened via the parameterless <see cref="OpenAsync(CancellationToken)"/>
+    /// overload, the query uses the platform path: <c>stty size</c> on POSIX, the
+    /// <c>GetConsoleScreenBufferInfo</c> Win32 API on Windows. Both are cheap (single
+    /// subprocess or single API call) and reflect the current size at the moment of the call —
+    /// useful for consumers that need the size at construction time before the first
+    /// <see cref="Cursorial.Input.Events.ResizeEvent"/> has reached the input stream.
+    /// </para>
+    /// <para>
+    /// On BYO sessions opened via <see cref="OpenAsync(IInputByteSource, IOutputByteSink, TerminalSessionOptions, CancellationToken)"/>,
+    /// there is no platform resize monitor — the caller manages their own transports and
+    /// resize signaling. This method returns <see langword="null"/>; consumers should query
+    /// their own transport layer or send a DSR request themselves.
+    /// </para>
+    /// <para>
+    /// The implementation is synchronous under the hood but exposed as
+    /// <see cref="ValueTask{TResult}"/> so a future revision can substitute a wire-level probe
+    /// (e.g. <c>CSI 18 t</c>) without changing the signature.
+    /// </para>
+    /// </remarks>
+    public ValueTask<(int Columns, int Rows)?> QueryTerminalSizeAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var monitor = _resizeMonitor;
+        var size = monitor?.QueryCurrentSize();
+        return ValueTask.FromResult(size);
+    }
+
+    /// <summary>
     /// Opens a session over caller-supplied transports. Useful for embedding inside a tool that
     /// already manages the terminal state or for driving the input pipeline from a recorded trace.
     /// </summary>

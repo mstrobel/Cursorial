@@ -477,8 +477,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         if (_mode.MouseEncoding == MouseEncoding.SgrPixels)
         {
-            int column = _mode.CellPixelWidth is int cw && cw > 0 ? x / cw : 0;
-            int row = _mode.CellPixelHeight is int ch && ch > 0 ? y / ch : 0;
+            int column = _mode.CellPixelWidth is int cw and > 0 ? x / cw : 0;
+            int row = _mode.CellPixelHeight is int ch and > 0 ? y / ch : 0;
             position = new CellPosition(column, row, PixelX: x, PixelY: y);
         }
         else
@@ -498,14 +498,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                               {
                                   VtInputSequences.SgrMouse.WheelUp   => notch,
                                   VtInputSequences.SgrMouse.WheelDown => -notch,
-                                  _                                   => 0,
+                                  _                                   => 0
                               };
 
             int wheelDeltaX = direction switch
                               {
                                   VtInputSequences.SgrMouse.WheelLeft  => -notch,
                                   VtInputSequences.SgrMouse.WheelRight => notch,
-                                  _                                    => 0,
+                                  _                                    => 0
                               };
 
             _eventSink.OnInputEvent(new MouseEvent
@@ -1405,6 +1405,10 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                   VtInputSequences.CsiTildeKey.F18 => Key.F18,
                   VtInputSequences.CsiTildeKey.F19 => Key.F19,
                   VtInputSequences.CsiTildeKey.F20 => Key.F20,
+                  VtInputSequences.CsiTildeKey.F21 => Key.F21,
+                  VtInputSequences.CsiTildeKey.F22 => Key.F22,
+                  VtInputSequences.CsiTildeKey.F23 => Key.F23,
+                  VtInputSequences.CsiTildeKey.F24 => Key.F24,
 
                   _ => Key.None,
               };

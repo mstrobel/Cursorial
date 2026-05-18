@@ -51,9 +51,9 @@ internal sealed class PosixResizeMonitor : IResizeMonitor
         // SIGWINCH is POSIX-only. Caller (TerminalSession) gates instantiation on the platform
         // already, but guard once more so a stray instantiation on Windows degrades to "no
         // resize events" instead of throwing.
-        if (!OperatingSystem.IsLinux()
-            && !OperatingSystem.IsMacOS()
-            && !OperatingSystem.IsFreeBSD())
+        if (!OperatingSystem.IsLinux() &&
+            !OperatingSystem.IsMacOS() &&
+            !OperatingSystem.IsFreeBSD())
         {
             return;
         }
@@ -102,6 +102,12 @@ internal sealed class PosixResizeMonitor : IResizeMonitor
             // Consumer callback faults are swallowed — a single bad subscriber must not break
             // future resize delivery.
         }
+    }
+
+    /// <inheritdoc/>
+    public (int Columns, int Rows)? QueryCurrentSize()
+    {
+        return TryReadSize(out int rows, out int cols) ? (cols, rows) : null;
     }
 
     /// <summary>

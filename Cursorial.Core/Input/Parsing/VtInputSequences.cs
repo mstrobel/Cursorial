@@ -224,6 +224,19 @@ public static class VtInputSequences
         public const int F18 = 32;
         public const int F19 = 33;
         public const int F20 = 34;
+
+        // F21–F24 — non-standard for CSI tilde encoding. xterm and most modern terminals don't
+        // send F21+ in raw tilde form (they route them through modifier combinations on F1–F12
+        // instead). The contiguous-after-F20 pattern below is what some niche / extended
+        // terminals use; Kitty's u-form (functional-key code U+E034..U+E037, decoded via
+        // VtInputInterpreter.TryMapKittyFunctionalKey) is the canonical 2020s path for F21+
+        // and is unaffected by what we accept here. The tilde codes below are an opportunistic
+        // catch-all: if a terminal sends them in this form, we decode correctly; if it uses a
+        // different scheme, we fall through to UnknownEvent, and the consumer can log the bytes.
+        public const int F21 = 35;
+        public const int F22 = 36;
+        public const int F23 = 37;
+        public const int F24 = 38;
     }
 
     /// <summary>
@@ -235,6 +248,13 @@ public static class VtInputSequences
         // ---- SGR mouse (DECSET 1006) ----
         public static ReadOnlySpan<byte> EnableSgrMouse => "\x1b[?1006h"u8;
         public static ReadOnlySpan<byte> DisableSgrMouse => "\x1b[?1006l"u8;
+
+        // ---- SGR-Pixels mouse (DECSET 1016) — like SGR mouse, but coordinates are reported
+        // in pixels rather than cells. The terminal interprets this as a strict superset of
+        // 1006 — applications usually enable both, with 1016 taking precedence for terminals
+        // that support it. Honored by Kitty, Ghostty, WezTerm, Foot, iTerm2, modern xterm.
+        public static ReadOnlySpan<byte> EnableSgrPixelsMouse => "\x1b[?1016h"u8;
+        public static ReadOnlySpan<byte> DisableSgrPixelsMouse => "\x1b[?1016l"u8;
 
         // ---- Button-event mouse (DECSET 1000) — press / release ----
         public static ReadOnlySpan<byte> EnableMouseButtons => "\x1b[?1000h"u8;

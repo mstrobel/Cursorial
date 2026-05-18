@@ -314,6 +314,10 @@ public class VtInputInterpreterTests
     [InlineData("\x1b[24~", Key.F12)]
     [InlineData("\x1b[25~", Key.F13)]
     [InlineData("\x1b[34~", Key.F20)]
+    [InlineData("\x1b[35~", Key.F21)]
+    [InlineData("\x1b[36~", Key.F22)]
+    [InlineData("\x1b[37~", Key.F23)]
+    [InlineData("\x1b[38~", Key.F24)]
     public void CsiTildeFunctionKey_EmitsExpectedKey(string sequence, Key expected)
     {
         Feed(sequence);

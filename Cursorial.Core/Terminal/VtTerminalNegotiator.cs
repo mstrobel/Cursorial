@@ -166,6 +166,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (_applied.KittyKeyboard)         QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
             if (_applied.BracketedPaste)        QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
             if (_applied.FocusEvents)           QueueWrite(VtInputSequences.OptInSequences.DisableFocusEvents);
+            if (_applied.SgrPixelsMouse)        QueueWrite(VtInputSequences.OptInSequences.DisableSgrPixelsMouse);
             if (_applied.MouseMotionTracking)   QueueWrite(VtInputSequences.OptInSequences.DisableMotionMouse);
             if (_applied.MouseButtonTracking)   QueueWrite(VtInputSequences.OptInSequences.DisableButtonMotionMouse);
             if (_applied.ExtendedMouseTracking) QueueWrite(VtInputSequences.OptInSequences.DisableSgrMouse);
@@ -217,7 +218,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         // Mouse: SGR encoding (1006) + button-event tracking (1002) is the standard combo
         // for press / release / drag on every modern terminal. Any-event tracking (1003) is
-        // additive on top.
+        // additive on top. SGR-Pixels (1016) is a further opt-in that swaps cell coords for
+        // pixel coords on mouse reports — gated on family because terminals that don't honor
+        // 1016 typically also don't ignore the DECSET cleanly.
         if (options.EnableMouseTracking | options.EnableExtendedMouseTracking)
         {
             if (options.EnableExtendedMouseTracking)
@@ -233,6 +236,21 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             {
                 QueueWrite(VtInputSequences.OptInSequences.EnableMotionMouse);
                 applied.MouseMotionTracking = true;
+            }
+
+            // SGR-Pixels (1016) is a strict extension of SGR (1006): on supporting terminals
+            // we get pixel coordinates surfaced in CellPosition.PixelX/Y alongside the
+            // cell-derived Column/Row. Off by default because it changes the rate of mouse
+            // motion reports from per-cell to per-pixel — roughly 10–20× the event volume for
+            // the same user action. Opt in only when the consumer actually wants the pixel
+            // precision (drag handles, sub-cell hot-spots). Family-gated because non-supporting
+            // terminals don't always ignore the DECSET cleanly.
+            if (options.EnableSgrPixelsMouse &&
+                applied.ExtendedMouseTracking &&
+                TerminalSupportsSgrPixelsMouse(identification.Family))
+            {
+                QueueWrite(VtInputSequences.OptInSequences.EnableSgrPixelsMouse);
+                applied.SgrPixelsMouse = true;
             }
         }
         else if (options.EnableMouseButtons | options.EnableMouseButtonTracking)
@@ -317,7 +335,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private void ApplyToInputMode(in AppliedOptIns applied)
     {
-        if (applied.ExtendedMouseTracking) _mode.MouseEncoding = MouseEncoding.Sgr;
+        // SGR-Pixels is a strict extension of SGR — when both apply, the pixels encoding wins
+        // and the interpreter routes pixel coords into CellPosition.PixelX/Y.
+        if (applied.SgrPixelsMouse) _mode.MouseEncoding = MouseEncoding.SgrPixels;
+        else if (applied.ExtendedMouseTracking) _mode.MouseEncoding = MouseEncoding.Sgr;
         if (applied.FocusEvents) _mode.FocusReportingEnabled = true;
         if (applied.BracketedPaste) _mode.BracketedPasteEnabled = true;
         if (applied.KittyKeyboard) _mode.KittyKeyboard = applied.KittyFlags;
@@ -328,7 +349,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     {
         // Reflect the restored state on the shared mode bag. The interpreter reads these,
         // so leaving them set after restore would mis-report capabilities.
-        if (_applied.ExtendedMouseTracking) _mode.MouseEncoding = MouseEncoding.None;
+        if (_applied.SgrPixelsMouse || _applied.ExtendedMouseTracking) _mode.MouseEncoding = MouseEncoding.None;
         if (_applied.FocusEvents) _mode.FocusReportingEnabled = false;
         if (_applied.BracketedPaste) _mode.BracketedPasteEnabled = false;
         if (_applied.KittyKeyboard) _mode.KittyKeyboard = KittyKeyboardFlags.None;
@@ -368,6 +389,39 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
                   TerminalFamily.Foot;
+
+    /// <summary>
+    /// DECSET 1016 (SGR-Pixels mouse) — terminals that report mouse coords in pixels rather
+    /// than cells. Gated on family because non-supporting terminals often don't ignore the
+    /// DECSET cleanly: some leave the previous mouse mode disabled instead. Honored by Kitty,
+    /// Ghostty, WezTerm, Foot, iTerm2, and modern xterm (358+).
+    /// </summary>
+    private static bool TerminalSupportsSgrPixelsMouse(TerminalFamily family) =>
+        family is TerminalFamily.Kitty or
+                  TerminalFamily.Ghostty or
+                  TerminalFamily.Rio or
+                  TerminalFamily.WezTerm or
+                  TerminalFamily.Foot or
+                  TerminalFamily.ITerm2 or
+                  TerminalFamily.Xterm;
+
+    /// <summary>
+    /// OSC 52 clipboard write. Most modern terminals honor this; some gate it behind a user
+    /// prompt or an allow-list. We claim support for the families known to implement it; older
+    /// terminals or those that strip OSCs we don't recognize silently fall through.
+    /// </summary>
+    private static bool TerminalSupportsClipboardWrite(TerminalFamily family) =>
+        family is TerminalFamily.Kitty or
+                  TerminalFamily.Ghostty or
+                  TerminalFamily.Rio or
+                  TerminalFamily.WezTerm or
+                  TerminalFamily.Foot or
+                  TerminalFamily.ITerm2 or
+                  TerminalFamily.Alacritty or
+                  TerminalFamily.Xterm or
+                  TerminalFamily.Konsole or
+                  TerminalFamily.WindowsTerminal or
+                  TerminalFamily.Tmux;
 
     // ---- Probe orchestration ----
 
@@ -589,6 +643,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// </summary>
     private async Task ProbeColorsAsync(NegotiationOptions options, CancellationToken cancellationToken)
     {
+        // ReSharper disable once CommentTypo
+
         // Write the truecolor SET — palette slot 255 to (AB, CD, EF). Use 2-digit hex so the
         // terminal's 16-bit-internal representation (rgb:abab/cdcd/efef on xterm-class
         // terminals) round-trips cleanly when we parse the top byte of each channel.
@@ -663,6 +719,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         return null;
     }
 
+    // ReSharper disable once CommentTypo
     /// <summary>Parse "<c>&lt;index&gt;;rgb:RRRR/GGGG/BBBB</c>" — an OSC 4 palette-color payload.</summary>
     private static bool TryParsePalettePayload(ReadOnlySpan<byte> payload, out int index,
                                                out byte r, out byte g, out byte b)
@@ -1008,7 +1065,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             Motion: applied.MouseMotionTracking |
                     applied.ExtendedMouseTracking,
             Wheel: applied.ExtendedMouseTracking,
-            PixelCoordinates: false,
+            PixelCoordinates: applied.SgrPixelsMouse,
             ExtendedButtonCount: 4);
 
         bool kittyEnabled = applied.KittyKeyboard;
@@ -1049,7 +1106,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         // Tmux is the only multiplexer we wrap for today — its DCS passthrough envelope has a
         // well-defined wire format. screen has a similar mechanism (DCS through screen's own
-        // multiplexer) but the syntax differs; deferred until someone needs it.
+        // multiplexer), but the syntax differs; deferred until someone needs it.
         bool multiplexerPassthrough = identification.Family == TerminalFamily.Tmux ||
                                       (identification.InsideMultiplexer &&
                                        identification.Family != TerminalFamily.GnuScreen);
@@ -1069,8 +1126,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                applied.ExtendedMouseTracking,
             KittyKeyboardPush: applied.KittyKeyboard,
             Win32InputModeEnable: applied.Win32InputMode,
-            // Clipboard support is not negotiated yet — leaving false until a probe lands.
-            ClipboardWrite: false,
+            // OSC 52 clipboard write is family-gated rather than probed — no DECRQM-style
+            // verification exists for it, and the write sequence itself is fire-and-forget.
+            // Read involves a request / response round-trip and isn't implemented yet, so the
+            // Read cap stays false.
+            ClipboardWrite: TerminalSupportsClipboardWrite(identification.Family),
             ClipboardRead: false,
             SynchronizedOutput: applied.SynchronizedOutput,
             MultiplexerPassthrough: multiplexerPassthrough,
@@ -1099,7 +1159,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // OSC 66 (Width/Scale) is currently shipped only by Kitty. Wide-glyph rendering — the
         // general ability to lay a wide grapheme across two cells correctly — is a broader
         // baseline that most modern terminal emulators get right. We mark the families known
-        // to handle it reliably; everything else (including Unknown) stays false so the
+        // to handle it reliably; everything else (including Unknown) stays false, so the
         // renderer falls back to its pre-paint-then-CUP-back defense.
         bool wideGlyphs = identification.Family switch
                           {
@@ -1282,6 +1342,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         public bool ExtendedMouseTracking;
         public bool MouseButtonTracking;
         public bool MouseMotionTracking;
+        public bool SgrPixelsMouse;
         public bool FocusEvents;
         public bool BracketedPaste;
         public bool KittyKeyboard;
@@ -1293,6 +1354,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                !ExtendedMouseTracking &&
                                !MouseButtonTracking &&
                                !MouseMotionTracking &&
+                               !SgrPixelsMouse &&
                                !FocusEvents &&
                                !BracketedPaste &&
                                !KittyKeyboard &&

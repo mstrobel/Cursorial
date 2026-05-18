@@ -63,6 +63,21 @@ public sealed record NegotiationOptions
     /// <summary>Enable mouse tracking (SGR 1006 + button-event mode 1002).</summary>
     public bool EnableExtendedMouseTracking { get; init; } = true;
 
+    /// <summary>
+    /// Enable SGR-Pixels mouse encoding (DECSET 1016) on top of
+    /// <see cref="EnableExtendedMouseTracking"/>. When the terminal supports it, mouse-event
+    /// coordinates carry pixel precision surfaced via <c>CellPosition.PixelX</c> /
+    /// <c>CellPosition.PixelY</c> alongside the cell-derived <c>Column</c> / <c>Row</c>.
+    /// </summary>
+    /// <remarks>
+    /// Off by default because it changes the rate of mouse events: motion reports fire on every
+    /// pixel of pointer movement rather than every cell, which is roughly 10–20× the event
+    /// volume for the same user action. Opt in only when the application actually consumes the
+    /// pixel data (drag handles, sub-cell hot-spots, custom cursor positioning); otherwise the
+    /// extra events are just consumer-side filter cost.
+    /// </remarks>
+    public bool EnableSgrPixelsMouse { get; init; }
+
     /// <summary>Enable focus-in / focus-out reports (DECSET 1004).</summary>
     public bool EnableFocusEvents { get; init; } = true;
 

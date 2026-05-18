@@ -16,6 +16,15 @@ internal interface IResizeMonitor : IDisposable
     /// the terminal themselves.
     /// </summary>
     void Start();
+
+    /// <summary>
+    /// One-shot synchronous read of the current cell-grid dimensions, bypassing the resize
+    /// event stream. Returns <see langword="null"/> when the size can't be determined (the
+    /// underlying query failed, stdin isn't a TTY, etc.). Used by
+    /// <c>TerminalSession.QueryTerminalSizeAsync</c> to satisfy callers that need the size up
+    /// front without waiting for a resize signal.
+    /// </summary>
+    (int Columns, int Rows)? QueryCurrentSize();
 }
 
 /// <summary>

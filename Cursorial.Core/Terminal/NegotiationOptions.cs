@@ -10,8 +10,39 @@ namespace Cursorial.Terminal;
 /// <see cref="OptIns"/> = <see cref="OptInPolicy.Ignored"/> to suppress every opt-in regardless
 /// of the individual flags.
 /// </summary>
+/// <remarks>
+/// The non-trivial defaults — <see cref="KittyKeyboardFlags"/> and <see cref="ProbeTimeout"/> —
+/// are exposed as <see cref="DefaultKittyKeyboardFlags"/> and <see cref="DefaultProbeTimeout"/>
+/// so consumers can compose against them in a single object-initializer rather than reading the
+/// defaults off a throwaway instance. For example, to add one extra Kitty flag to the defaults:
+/// <code>
+/// new NegotiationOptions {
+///     KittyKeyboardFlags = NegotiationOptions.DefaultKittyKeyboardFlags | SomeOtherFlag,
+/// }
+/// </code>
+/// </remarks>
 public sealed record NegotiationOptions
 {
+    /// <summary>
+    /// The default Kitty keyboard protocol flag set — addressable as a constant so consumers
+    /// can OR in additional flags or AND-out specific ones without reading from a throwaway
+    /// <see cref="NegotiationOptions"/> instance.
+    /// </summary>
+    public const KittyKeyboardFlags DefaultKittyKeyboardFlags =
+        KittyKeyboardFlags.DisambiguateEscapeCodes |
+        KittyKeyboardFlags.ReportEventTypes |
+        KittyKeyboardFlags.ReportAlternateKeys |
+        KittyKeyboardFlags.ReportAssociatedText |
+        KittyKeyboardFlags.ReportAllKeysAsEscapeCodes;
+
+    /// <summary>
+    /// The default per-probe response timeout. 500 ms is enough for slow remote terminals over
+    /// SSH but short enough to keep startup snappy. Exposed as a static field so consumers
+    /// extending the default (e.g. bumping it for a high-latency link) can reference it
+    /// directly: <c>ProbeTimeout = NegotiationOptions.DefaultProbeTimeout + extra</c>.
+    /// </summary>
+    public static TimeSpan DefaultProbeTimeout { get; } = TimeSpan.FromMilliseconds(500);
+
     /// <summary>
     /// Master policy. When <see cref="OptInPolicy.Allowed"/> (the default), individual
     /// <c>Enable…</c> flags are honored. When <see cref="OptInPolicy.Ignored"/>, the negotiator
@@ -43,15 +74,10 @@ public sealed record NegotiationOptions
 
     /// <summary>
     /// The Kitty keyboard protocol flags to push when <see cref="EnableKittyKeyboard"/> is true.
-    /// Default omits <see cref="Input.Parsing.KittyKeyboardFlags.ReportAllKeysAsEscapeCodes"/>
-    /// because that flag changes the encoding of plain text input — opt in deliberately when needed.
+    /// Defaults to <see cref="DefaultKittyKeyboardFlags"/>; reference that constant directly
+    /// when composing an extended flag set.
     /// </summary>
-    public KittyKeyboardFlags KittyKeyboardFlags { get; init; } =
-        KittyKeyboardFlags.DisambiguateEscapeCodes |
-        KittyKeyboardFlags.ReportEventTypes |
-        KittyKeyboardFlags.ReportAlternateKeys |
-        KittyKeyboardFlags.ReportAssociatedText |
-        KittyKeyboardFlags.ReportAllKeysAsEscapeCodes;
+    public KittyKeyboardFlags KittyKeyboardFlags { get; init; } = DefaultKittyKeyboardFlags;
 
     /// <summary>Enable Win32 Input Mode (DECSET 9001) when running under a ConPTY-backed terminal.</summary>
     public bool EnableWin32InputMode { get; init; } = true;
@@ -67,10 +93,9 @@ public sealed record NegotiationOptions
 
     /// <summary>
     /// Per-probe response timeout. Probes that don't reply within this window are treated as
-    /// unsupported. Defaults to 500 ms — enough for slow remote terminals over SSH but short
-    /// enough to keep startup snappy.
+    /// unsupported. Defaults to <see cref="DefaultProbeTimeout"/> (500 ms).
     /// </summary>
-    public TimeSpan ProbeTimeout { get; init; } = TimeSpan.FromMilliseconds(500);
+    public TimeSpan ProbeTimeout { get; init; } = DefaultProbeTimeout;
 }
 
 /// <summary>

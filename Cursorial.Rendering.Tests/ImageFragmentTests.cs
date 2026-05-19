@@ -102,6 +102,77 @@ public class KittyImageFragmentTests
         Assert.Contains("m=0", text);
         Assert.DoesNotContain("m=1", text);
     }
+
+    [Fact]
+    public void ImageId_IsAssignedAtConstruction_AndUniquePerInstance()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var a = new KittyImageFragment(data);
+        var b = new KittyImageFragment(data);
+
+        Assert.True(a.ImageId > 0);
+        Assert.NotEqual(a.ImageId, b.ImageId);
+    }
+
+    [Fact]
+    public void Emit_FirstChunkIncludesImageId()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var fragment = new KittyImageFragment(data);
+        var w = new ArrayBufferWriter<byte>();
+        fragment.Emit(0, 0, w, OutputCapabilities.None);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        Assert.Contains($"i={fragment.ImageId}", text);
+    }
+
+    [Fact]
+    public void EmitErase_EmitsKittyDeleteByIdSequence()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var fragment = new KittyImageFragment(data);
+        var w = new ArrayBufferWriter<byte>();
+
+        fragment.EmitErase(0, 0, w, OutputCapabilities.None);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        // ESC _ G a=d,d=I,i=<id>,q=2 ESC \
+        Assert.Equal($"\x1b_Ga=d,d=I,i={fragment.ImageId},q=2\x1b\\", text);
+    }
+
+    [Fact]
+    public void EmitErase_InsideMultiplexer_WrapsInTmuxPassthrough()
+    {
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var fragment = new KittyImageFragment(data);
+        var caps = OutputCapabilities.None with
+                   {
+                       Protocol = OutputCapabilities.None.Protocol with { MultiplexerPassthrough = true },
+                   };
+        var w = new ArrayBufferWriter<byte>();
+
+        fragment.EmitErase(0, 0, w, caps);
+        var text = Encoding.ASCII.GetString(w.WrittenSpan);
+
+        // Tmux passthrough envelope: ESC P tmux ; <doubled-ESC body> ESC \. The inner ESC of
+        // the APC introducer gets doubled.
+        Assert.Contains("Ptmux;", text);
+        Assert.Contains("\x1b\x1b_G", text);
+        Assert.Contains($"i={fragment.ImageId}", text);
+    }
+
+    [Fact]
+    public void Key_UsesImageIdSoTwoInstancesWithSameContentDiffDistinctly()
+    {
+        // The renderer uses fragment.Key for diff. Two fragments wrapping identical bytes get
+        // different image IDs (different wire identities), so their Keys must differ — otherwise
+        // the renderer would skip emit on a swap, leaving the old image on screen.
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var a = new KittyImageFragment(data);
+        var b = new KittyImageFragment(data);
+
+        Assert.NotEqual(a.Key, b.Key);
+    }
 }
 
 public class ITerm2ImageFragmentTests
@@ -167,7 +238,7 @@ public class ImageContentTests
 
         Assert.Single(buffer.Fragments);
         Assert.IsType<KittyImageFragment>(buffer.Fragments[(0, 0)].Fragment);
-        Assert.Equal(new Size(10, 5), painted);
+        Assert.Equal(new Size(10, 5), painted.Size);
     }
 
     [Fact]
@@ -211,7 +282,7 @@ public class ImageContentTests
 
         // No fragment registered — placeholder painted as cells.
         Assert.Empty(buffer.Fragments);
-        Assert.Equal(new Size(10, 3), painted);
+        Assert.Equal(new Size(10, 3), painted.Size);
 
         // Center row should contain the "[image]" label.
         int centerRow = 0 + 3 / 2;

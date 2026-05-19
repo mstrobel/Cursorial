@@ -141,7 +141,7 @@ public sealed class FrameRenderer
             // graphics, iTerm2 inline images, …) don't always remove their payloads on a plain
             // CSI 2 J — the image plane is independent of the cell grid on most implementations
             // — so we have to issue the protocol's explicit delete command first. Cell-layer
-            // EmitErase is a no-op by default, so iterating everything is safe and the
+            // EmitErase is a no-op by default, so iterating everything is safe, and the
             // pre-clear emission is the same regardless of layer.
             if (_frontFragments.Count > 0)
             {
@@ -393,7 +393,7 @@ public sealed class FrameRenderer
         }
 
         // The scroll command moves the cursor to (0, 0) on most terminals — force CUP next.
-        // Also reset our tracked SGR / hyperlink because SU/SD don't carry SGR state in a
+        // Also, reset our tracked SGR / hyperlink because SU/SD don't carry SGR state in a
         // well-defined way.
         _cursorCol = -1;
         _cursorRow = -1;
@@ -546,7 +546,7 @@ public sealed class FrameRenderer
             if (col < 0 || col >= back.Columns || row < 0 || row >= back.Rows) continue;
 
             if (_frontFragments.TryGetValue((col, row), out var frontEntry) &&
-                Equals(frontEntry.Fragment?.Key, entry.Fragment.Key) &&
+                Equals(frontEntry.Fragment.Key, entry.Fragment.Key) &&
                 frontEntry.AnchorStyle == entry.AnchorStyle)
             {
                 // Same key + same anchor style — terminal already shows the current payload.

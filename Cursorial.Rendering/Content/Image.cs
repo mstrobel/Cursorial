@@ -57,7 +57,22 @@ public sealed class Image : IContent
     public string PlaceholderText { get; init; }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities)
+    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        // The image's natural footprint is _data.CellSize. We don't downscale here — the
+        // protocol fragments carry that cell footprint on the wire, and an arbitrary smaller
+        // size would require re-encoding the image. Callers wanting an actual fit-to-bounds
+        // should re-construct the ImageData with the desired CellSize.
+        var natural = _data.CellSize;
+        int cols = Math.Min(natural.Columns, availableSpace.Columns);
+        int rows = Math.Min(natural.Rows, availableSpace.Rows);
+        return new Size(cols, rows);
+    }
+
+    /// <inheritdoc/>
+    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -65,11 +80,15 @@ public sealed class Image : IContent
         IBufferFragment? fragment = ChooseFragment(capabilities);
         if (fragment is not null)
         {
-            buffer.AddFragment(column, row, fragment, style);
-            return fragment.GetSize();
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            var size = fragment.GetSize();
+            return new Rect(bounds.Column, bounds.Row,
+                            Math.Min(size.Columns, bounds.Columns),
+                            Math.Min(size.Rows, bounds.Rows));
         }
 
-        return PaintPlaceholder(buffer, column, row, style);
+        var paintedSize = PaintPlaceholder(buffer, bounds, style);
+        return new Rect(bounds.Column, bounds.Row, paintedSize.Columns, paintedSize.Rows);
     }
 
     private IBufferFragment? ChooseFragment(OutputCapabilities capabilities)
@@ -91,7 +110,7 @@ public sealed class Image : IContent
         return null;
     }
 
-    private Size PaintPlaceholder(CellBuffer buffer, int column, int row, in Style style)
+    private Size PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style)
     {
         // Effective placeholder style: the content's PlaceholderStyle wins, falling back to the
         // caller-supplied style when no placeholder was configured. The caller's style is what
@@ -100,16 +119,20 @@ public sealed class Image : IContent
         var fillStyle = PlaceholderStyle == Style.Default ? style : PlaceholderStyle;
         var cellSize = _data.CellSize;
         var rowSpan = cellSize.Rows;
-        
+
         if (rowSpan is 0)
             rowSpan = Math.Max(1, cellSize.Columns / 2);
 
-        int rowEnd = Math.Min(buffer.Rows, row + rowSpan);
-        int colEnd = Math.Min(buffer.Columns, column + cellSize.Columns);
+        // Clip the placeholder to the smaller of the natural footprint, the allocated bounds,
+        // and the buffer extent.
+        int colWidth = Math.Min(cellSize.Columns, bounds.Columns);
+        int rowHeight = Math.Min(rowSpan, bounds.Rows);
+        int colEnd = Math.Min(buffer.Columns, bounds.Column + colWidth);
+        int rowEnd = Math.Min(buffer.Rows, bounds.Row + rowHeight);
 
-        for (var r = rowEnd - 1; r >= row; r--)
+        for (var r = rowEnd - 1; r >= bounds.Row; r--)
         {
-            for (var c = column; c < colEnd; c++)
+            for (var c = bounds.Column; c < colEnd; c++)
                 buffer.Set(c, r, " ", fillStyle);
         }
 
@@ -119,10 +142,10 @@ public sealed class Image : IContent
         var label = PlaceholderText;
         var labelLength = GraphemeWidth.StringWidth(label);
 
-        if (cellSize.Columns >= labelLength && rowSpan >= 1)
+        if (colWidth >= labelLength && rowHeight >= 1)
         {
-            var labelRow = row + rowSpan / 2;
-            var labelCol = column + (cellSize.Columns - labelLength) / 2;
+            var labelRow = bounds.Row + rowHeight / 2;
+            var labelCol = bounds.Column + (colWidth - labelLength) / 2;
 
             if (labelRow >= 0 && labelRow < buffer.Rows)
             {
@@ -133,18 +156,18 @@ public sealed class Image : IContent
                 {
                     var cluster = enumerator.Current;
                     var width = GraphemeWidth.ClusterWidth(cluster);
-                    
+
                     if (labelCol + advance + width > buffer.Columns) break;
-                    
+
                     buffer.Set(labelCol + advance, labelRow, enumerator.Current.ToString(), fillStyle);
-                    
+
                     advance += width;
                 }
             }
         }
 
-        var paintedCols = Math.Min(cellSize.Columns, Math.Max(0, buffer.Columns - column));
-        var paintedRows = Math.Min(rowSpan, Math.Max(0, buffer.Rows - row));
+        var paintedCols = Math.Min(colWidth, Math.Max(0, buffer.Columns - bounds.Column));
+        var paintedRows = Math.Min(rowHeight, Math.Max(0, buffer.Rows - bounds.Row));
 
         return new Size(paintedCols, paintedRows);
     }

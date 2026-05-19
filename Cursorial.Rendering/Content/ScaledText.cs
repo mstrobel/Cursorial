@@ -59,7 +59,33 @@ public sealed class ScaledText : IContent
     public IGlyphFont FallbackFont { get; }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities)
+    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        var text = Text;
+
+        // OSC 66 path: scaled glyphs at Sizing.Scale × text-width × 1 row. Wrap if it wouldn't fit.
+        var probeFragment = new SizedTextFragment(Sizing, text, Style.Default);
+        if (probeFragment.IsSupported(capabilities) && FallbackFont is not FigletFont)
+        {
+            int scaledWidth = text.Length * Math.Max((int) Sizing.Scale, 1);
+            if (scaledWidth <= availableSpace.Columns)
+                return probeFragment.GetSize();
+        }
+
+        // Fallback-font path: ask the font what footprint the text wants. If the font's width
+        // doesn't fit, monospace fallback kicks in at Paint and the footprint becomes
+        // (text.Length, 1).
+        var fontMeasure = FallbackFont.Measure(text);
+        if (fontMeasure.Columns <= availableSpace.Columns)
+            return fontMeasure;
+
+        return new Size(Math.Min(text.Length, availableSpace.Columns), 1);
+    }
+
+    /// <inheritdoc/>
+    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -76,26 +102,31 @@ public sealed class ScaledText : IContent
         var fragment = new SizedTextFragment(Sizing, text, style);
         if (fragment.IsSupported(capabilities) && FallbackFont is not FigletFont)
         {
-            _wouldWrap ??= text.Length * Math.Max((int) Sizing.Scale, 1) > buffer.Columns - column;
+            _wouldWrap ??= text.Length * Math.Max((int) Sizing.Scale, 1) > bounds.Columns;
 
             if (_wouldWrap is true)
                 goto monospaceFallback;
 
-            buffer.AddFragment(column, row, fragment, style);
-            return fragment.GetSize();
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            var size = fragment.GetSize();
+            return new Rect(bounds.Column, bounds.Row,
+                            Math.Min(size.Columns, bounds.Columns),
+                            Math.Min(size.Rows, bounds.Rows));
         }
 
-        _wouldWrap ??= FallbackFont.Measure(text).Columns > buffer.Columns - column;
+        _wouldWrap ??= FallbackFont.Measure(text).Columns > bounds.Columns;
 
         if (_wouldWrap is true)
             goto monospaceFallback;
 
         // Fall back to cell-grid font rendering.
-        return FallbackFont.Paint(buffer, column, row, text, style);
+        var painted = FallbackFont.Paint(buffer, bounds.Column, bounds.Row, text, style);
+        return new Rect(bounds.Column, bounds.Row, painted.Columns, painted.Rows);
 
     monospaceFallback:
-        // If the text is too wide for the buffer, use monospace fallback.
-        return MonospaceFont.Default.Paint(buffer, column, row, text, style);
+        // If the text is too wide for the bounds, use monospace fallback.
+        var monoPainted = MonospaceFont.Default.Paint(buffer, bounds.Column, bounds.Row, text, style);
+        return new Rect(bounds.Column, bounds.Row, monoPainted.Columns, monoPainted.Rows);
     }
 
     private static IGlyphFont PickDefaultFallback(TextSizing sizing, bool isMultiLine = false)

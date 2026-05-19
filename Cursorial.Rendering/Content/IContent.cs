@@ -21,19 +21,62 @@ namespace Cursorial.Rendering.Content;
 /// branching. <c>IContent</c> is where that orchestration lives.
 /// </para>
 /// </remarks>
+/// <summary>
+/// Convenience extension methods on <see cref="IContent"/> for common call shapes.
+/// </summary>
+public static class ContentExtensions
+{
+    /// <summary>
+    /// Paint <paramref name="content"/> with an implicit bounds rectangle running from
+    /// <c>(column, row)</c> to the buffer's far edge — the simple "paint here, use whatever
+    /// space is left" call. For layout-aware sizing the <see cref="IContent.Paint(CellBuffer, Rect, in Style, OutputCapabilities)"/>
+    /// overload should be called directly with an explicit <see cref="Rect"/>.
+    /// </summary>
+    public static Rect Paint(this IContent content,
+                             CellBuffer buffer,
+                             int column,
+                             int row,
+                             in Style style,
+                             OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(buffer);
+
+        var bounds = new Rect(column, row,
+                              Math.Max(0, buffer.Columns - column),
+                              Math.Max(0, buffer.Rows - row));
+        return content.Paint(buffer, bounds, in style, capabilities);
+    }
+}
+
 public interface IContent
 {
     /// <summary>
-    /// Paint this content into the buffer at the anchor cell, using
-    /// <paramref name="capabilities"/> to pick a rendering path. Returns the cell footprint
-    /// actually occupied. Implementations may write cells directly, attach a fragment to the
-    /// buffer's sidecar, or do both — the contract is just "after this call, the visible
-    /// region matches the content."
+    /// Compute the cell footprint this content wants given the bounding-box size it would be
+    /// allotted. Pure — no side effects, may be called multiple times during a layout pass.
+    /// Implementations should produce a desired <see cref="Size"/> that fits naturally in
+    /// <paramref name="availableSpace"/>; wrap-aware content (formatted text, etc.) should
+    /// perform internal wrapping at <c>availableSpace.Columns</c> and report the resulting
+    /// line count. The returned size may legitimately exceed <paramref name="availableSpace"/>
+    /// (the parent will then clip or scroll) but doing so signals "this content can't render
+    /// faithfully in that envelope."
+    /// </summary>
+    /// <param name="availableSpace">Maximum cells the content may use. Either dimension may be int.MaxValue when unconstrained.</param>
+    /// <param name="capabilities">Realized terminal capabilities — affects which rendering path Measure should account for (e.g., a Kitty image's footprint is different from its glyph placeholder).</param>
+    Size Measure(Size availableSpace, OutputCapabilities capabilities);
+
+    /// <summary>
+    /// Paint this content into the allocated <paramref name="bounds"/>. Implementations may
+    /// write cells directly, attach a fragment to the buffer's sidecar, or do both — the
+    /// contract is just "after this call, the painted region matches the content as it fits
+    /// inside <paramref name="bounds"/>." Content that would naturally render larger than
+    /// <paramref name="bounds"/> is responsible for clipping, scaling, or falling back to a
+    /// smaller representation. Returns the rectangle actually painted (may be smaller than
+    /// <paramref name="bounds"/> when the content didn't fill).
     /// </summary>
     /// <param name="buffer">Target cell buffer.</param>
-    /// <param name="column">Anchor column (0-based, left of the painted region).</param>
-    /// <param name="row">Anchor row (0-based, top of the painted region).</param>
+    /// <param name="bounds">Allocated rectangle in buffer-cell coordinates.</param>
     /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop; fonts pass it to <see cref="CellBuffer.Set"/>.</param>
     /// <param name="capabilities">Realized terminal capabilities — drives which rendering path the content chooses.</param>
-    Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities);
+    Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities);
 }

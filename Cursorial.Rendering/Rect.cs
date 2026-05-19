@@ -1,3 +1,5 @@
+using Cursorial.Input;
+
 namespace Cursorial.Rendering;
 
 /// <summary>
@@ -22,6 +24,12 @@ public readonly record struct Rect(int Column, int Row, int Columns, int Rows)
 
     /// <summary>True when either dimension is zero.</summary>
     public bool IsEmpty => Columns == 0 || Rows == 0;
+
+    /// <summary>The rectangle's anchor position.</summary>
+    public CellPosition Position => new(Column, Row);
+
+    /// <summary>The rectangle's dimensions as a <see cref="Size"/> (dropping the anchor position).</summary>
+    public Size Size => new(Columns, Rows);
 
     /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
     public bool Contains(int column, int row)

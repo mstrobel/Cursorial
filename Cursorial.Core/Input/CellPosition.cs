@@ -9,4 +9,12 @@ namespace Cursorial.Input;
 /// <param name="Row">Zero-based row (cell).</param>
 /// <param name="PixelX">Pixel X coordinate when reported by the terminal; null otherwise.</param>
 /// <param name="PixelY">Pixel Y coordinate when reported by the terminal; null otherwise.</param>
-public readonly record struct CellPosition(int Column, int Row, int? PixelX = null, int? PixelY = null);
+public readonly record struct CellPosition(int Column, int Row, int? PixelX = null, int? PixelY = null)
+{
+    /// <summary>
+    /// Indicates whether the terminal has reported pixel coordinates for the specified position.
+    /// This property returns true if both the <c>PixelX</c> and <c>PixelY</c> coordinates
+    /// have non-null values; otherwise, it returns false.
+    /// </summary>
+    public bool HasPixelCoordinates => PixelX.HasValue && PixelY.HasValue;
+}

@@ -26,7 +26,7 @@ public class ScaledTextTests
         Assert.NotEmpty(buffer.Fragments);
         Assert.IsType<SizedTextFragment>(buffer.Fragments[(0, 0)].Fragment);
         // OSC 66 size: 2 clusters × 1 (natural) × 2 (scale) = 4 columns, 2 rows.
-        Assert.Equal(new Size(4, 2), painted);
+        Assert.Equal(new Size(4, 2), painted.Size);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class ScaledTextTests
         var painted = content.Paint(buffer, 0, 0, Style.Default, WithTextSizing());
 
         Assert.Empty(buffer.Fragments);
-        Assert.Equal(new Size(2, 1), painted);
+        Assert.Equal(new Size(2, 1), painted.Size);
         Assert.Equal("H", buffer[0, 0].Grapheme);
         Assert.Equal("i", buffer[1, 0].Grapheme);
     }

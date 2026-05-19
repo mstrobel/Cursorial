@@ -105,14 +105,26 @@ public sealed class Icon : IContent
     public bool ImageLoaded => _image is not null;
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int column, int row, in Style style, OutputCapabilities capabilities)
+    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        // The icon's footprint is fixed at construction. Clamp to availableSpace so the parent
+        // sees a consistent "this is the largest box I'll use" answer.
+        int cols = Math.Min(RenderSize.Columns, availableSpace.Columns);
+        int rows = Math.Min(RenderSize.Rows, availableSpace.Rows);
+        return new Size(cols, rows);
+    }
+
+    /// <inheritdoc/>
+    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         if (_image is not null)
         {
             // Image owns the capability-aware decision — Kitty graphics if supported, otherwise
             // iTerm2 inline images, otherwise the placeholder rectangle with the FallbackGlyph
             // centered.
-            return _image.Paint(buffer, column, row, in style, capabilities);
+            return _image.Paint(buffer, bounds, in style, capabilities);
         }
 
         // Image bytes never loaded — paint the placeholder rectangle directly via a glyph-only
@@ -121,7 +133,7 @@ public sealed class Icon : IContent
         // glyph-painting branch.
         var stub = new ImageData([], Format, RenderSize);
         var placeholder = new Image(stub, FallbackStyle, FallbackGlyph);
-        return placeholder.Paint(buffer, column, row, in style, capabilities);
+        return placeholder.Paint(buffer, bounds, in style, capabilities);
     }
 
     /// <summary>

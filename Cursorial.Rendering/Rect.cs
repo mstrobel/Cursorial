@@ -7,12 +7,49 @@ namespace Cursorial.Rendering;
 /// dirty-region tracking, fragment-footprint reporting, and any other rendering-layer API that
 /// needs to talk about "a rectangular cell region."
 /// </summary>
-/// <param name="Row">Top edge of the rectangle, 0-based. Inclusive.</param>
-/// <param name="Column">Left edge of the rectangle, 0-based. Inclusive.</param>
-/// <param name="Columns">Width in cells. Non-negative; 0 produces an empty rectangle.</param>
-/// <param name="Rows">Height in cells. Non-negative; 0 produces an empty rectangle.</param>
-public readonly record struct Rect(int Column, int Row, int Columns, int Rows)
+public readonly record struct Rect
 {
+    /// <summary>
+    /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
+    /// (width and height).
+    /// </summary>
+    /// <param name="Row">Top edge of the rectangle, 0-based. Inclusive.</param>
+    /// <param name="Column">Left edge of the rectangle, 0-based. Inclusive.</param>
+    /// <param name="Columns">Width in cells. Non-negative; 0 produces an empty rectangle.</param>
+    /// <param name="Rows">Height in cells. Non-negative; 0 produces an empty rectangle.</param>
+    public Rect(int Column, int Row, int Columns, int Rows)
+    {
+        this.Column = Column;
+        this.Row = Row;
+        this.Columns = Columns;
+        this.Rows = Rows;
+    }
+
+    /// <summary>
+    /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
+    /// (width and height).
+    /// </summary>
+    /// <param name="column">Top edge of the rectangle, 0-based. Inclusive.</param>
+    /// <param name="row">Left edge of the rectangle, 0-based. Inclusive.</param>
+    /// <param name="size">Dimensions of the rectangle, measured in cells.</param>
+    public Rect(int column, int row, Size size) : this(column, row, size.Columns, size.Rows) {}
+
+    /// <summary>
+    /// Creates a rectangle from at cell coordinates (0, 0) with the given dimensions
+    /// (width and height).
+    /// </summary>
+    /// <param name="size">Dimensions of the rectangle, measured in cells.</param>
+    public Rect(Size size) : this(0, 0, size.Columns, size.Rows) {}
+
+    /// <summary>
+    /// A rectangle in cell coordinates — anchor (top-left) plus a <see cref="Size"/>. Used by
+    /// dirty-region tracking, fragment-footprint reporting, and any other rendering-layer API that
+    /// needs to talk about "a rectangular cell region."
+    /// </summary>
+    /// <param name="position">The anchor position (top-left corner) of the rectangle.</param>
+    /// <param name="size">Dimensions of the rectangle, measured in cells.</param>
+    public Rect(CellPosition position, Size size) : this(position.Column, position.Row, size) {}
+
     /// <summary>An empty rectangle anchored at (0, 0) with zero extent.</summary>
     public static Rect Empty => default;
 
@@ -31,6 +68,18 @@ public readonly record struct Rect(int Column, int Row, int Columns, int Rows)
     /// <summary>The rectangle's dimensions as a <see cref="Size"/> (dropping the anchor position).</summary>
     public Size Size => new(Columns, Rows);
 
+    /// <summary>Left edge of the rectangle, 0-based. Inclusive.</summary>
+    public int Column { get; init; }
+
+    /// <summary>Top edge of the rectangle, 0-based. Inclusive.</summary>
+    public int Row { get; init; }
+
+    /// <summary>Width in cells. Non-negative; 0 produces an empty rectangle.</summary>
+    public int Columns { get; init; }
+
+    /// <summary>Height in cells. Non-negative; 0 produces an empty rectangle.</summary>
+    public int Rows { get; init; }
+
     /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
     public bool Contains(int column, int row)
         => row >= Row && row < RowEnd && column >= Column && column < ColumnEnd;
@@ -38,4 +87,88 @@ public readonly record struct Rect(int Column, int Row, int Columns, int Rows)
     /// <summary>True when this rectangle intersects with <paramref name="other"/>.</summary>
     public bool Intersects(Rect other)
         => Row < other.RowEnd && RowEnd > other.Row && Column < other.ColumnEnd && ColumnEnd > other.Column;
+
+    /// <summary>
+    /// Deconstructs the rectangle into its top-left corner coordinates and dimensions.
+    /// </summary>
+    /// <param name="column">The column index of the top-left corner of the rectangle.</param>
+    /// <param name="row">The row index of the top-left corner of the rectangle.</param>
+    /// <param name="columns">The width of the rectangle in cells.</param>
+    /// <param name="rows">The height of the rectangle in cells.</param>
+    public void Deconstruct(out int column, out int row, out int columns, out int rows)
+    {
+        column = Column;
+        row = Row;
+        columns = Columns;
+        rows = Rows;
+    }
+
+    /// <summary>
+    /// Creates a rectangle positioned based on an anchor point, size, and optional margins.
+    /// </summary>
+    /// <param name="anchor">
+    /// Defines the anchor point relative to which the rectangle is positioned.
+    /// </param>
+    /// <param name="size">
+    /// Specifies the width (columns) and height (rows) of the rectangle.
+    /// </param>
+    /// <param name="margins">
+    /// Optional margins specifying the amount of space to exclude from each side of the available area. Defaults to no margins.
+    /// </param>
+    /// <returns>
+    /// A new rectangle positioned within the available area according to the specified anchor, size, and margins.
+    /// </returns>
+    public Rect LayoutContent(Anchor anchor, Size size, Margins margins = default)
+    {
+        var availableColumns = Columns - margins.Left - margins.Right;
+        var availableRows = Rows - margins.Top - margins.Bottom;
+
+        var column = anchor switch
+                     {
+                         Anchor.TopLeft or Anchor.Left or Anchor.BottomLeft    => Column + margins.Left,
+                         Anchor.Top or Anchor.Center or Anchor.Bottom          => Column + margins.Left + (availableColumns - size.Columns) / 2,
+                         Anchor.TopRight or Anchor.Right or Anchor.BottomRight => Column + margins.Left + availableColumns - size.Columns,
+                         _                                                     => Column + margins.Left
+                     };
+
+        var row = anchor switch
+                  {
+                      Anchor.TopLeft or Anchor.Top or Anchor.TopRight          => Row + margins.Top,
+                      Anchor.Left or Anchor.Center or Anchor.Right             => Row + margins.Top + (availableRows - size.Rows) / 2,
+                      Anchor.BottomLeft or Anchor.Bottom or Anchor.BottomRight => Row + margins.Top + availableRows - size.Rows,
+                      _                                                        => Row + margins.Top
+                  };
+
+        return new Rect(column, row, size);
+    }
+
+    /// <summary>
+    /// Calculates and returns the position of the content's anchor point within a rectangular region,
+    /// based on the specified anchor, size, and margins.
+    /// </summary>
+    /// <param name="anchor">Defines the anchor point of the content within the rectangular region.</param>
+    /// <param name="size">The size of the content in terms of columns and rows.</param>
+    /// <param name="margins">Optional margins applied to the rectangular region, used to adjust the layout.</param>
+    /// <returns>
+    /// A <see cref="CellPosition"/> representing the calculated position of the anchor point within the
+    /// rectangular region.
+    /// </returns>
+    public CellPosition AnchorContent(Anchor anchor, Size size, Margins margins = default)
+        => LayoutContent(anchor, size, margins).Position;
+
+    /// <summary>
+    /// Creates a new rectangle with the same top-left corner and the specified dimensions.
+    /// </summary>
+    /// <param name="size">The dimensions (width and height) to apply to the new rectangle.</param>
+    /// <return>A rectangle with the current top-left corner and the specified dimensions.</return>
+    public Rect WithSize(Size size) => new(Column, Row, size);
+
+    /// <summary>
+    /// Creates a new rectangle with the same top-left corner as the current rectangle but with the
+    /// specified dimensions.
+    /// </summary>
+    /// <param name="columns">The new width of the rectangle in cells. Must be non-negative.</param>
+    /// <param name="rows">The new height of the rectangle in cells. Must be non-negative.</param>
+    /// <returns>A new <see cref="Rect"/> instance with the updated dimensions and the same position.</returns>
+    public Rect WithSize(int columns, int rows) => new(Column, Row, columns, rows);
 }

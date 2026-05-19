@@ -27,8 +27,11 @@ public sealed class ImageData
     public ImageData(ReadOnlyMemory<byte> bytes, ImageFormat format, Size cellSize)
     {
         if (cellSize.Columns < 0 || cellSize.Rows < 0 || cellSize is { Columns: 0, Rows: 0 })
-            throw new ArgumentOutOfRangeException(nameof(cellSize),
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(cellSize),
                 $"Cell size must be positive in at least one dimensions, and never negative; got {cellSize}.");
+        }
 
         Bytes = bytes;
         Format = format;

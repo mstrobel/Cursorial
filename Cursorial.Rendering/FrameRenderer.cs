@@ -525,21 +525,31 @@ public sealed class FrameRenderer
         // the right answer when we have no information.
         var caps = _capabilities ?? OutputCapabilities.None;
 
-        // Pass 1 — erase fragments that were in the front but aren't in the back. The cells
-        // pass above already repainted cells under removed Cell-layer fragments (front cells
-        // there held the bg-only-space form; back cells now want the real glyphs, so the diff
-        // fired). Overlay-layer fragments need their EmitErase to actually disappear from the
-        // terminal's overlay plane.
+        // Pass 1 — erase any front fragment whose instance is no longer registered at the same
+        // anchor in the back buffer. Identity comparison on <see cref="IBufferFragment"/> covers
+        // three cases in one check:
+        //   * removed entirely      — front had F at A, back has nothing at A.
+        //   * replaced at anchor    — front had F1 at A, back has F2 at A (different instance).
+        //   * moved to a different  — front had F at A, back has F at B (anchor empty at A).
+        //     anchor
+        // The cells pass above already repainted glyphs under removed Cell-layer fragments;
+        // EmitErase is the only way to remove overlay-layer protocols (Kitty graphics, iTerm2
+        // inline images) since they live on a separate display plane. Cell-layer's default
+        // no-op EmitErase makes the iteration safe regardless of layer.
         foreach (var (anchor, frontEntry) in _frontFragments)
         {
-            if (back.Fragments.ContainsKey(anchor)) continue;
+            if (back.Fragments.TryGetValue(anchor, out var backEntry) &&
+                ReferenceEquals(backEntry.Fragment, frontEntry.Fragment))
+                continue;
+
             if (!frontEntry.Fragment.IsSupported(caps)) continue;
             EmitFragmentEraseBytes(anchor.Column, anchor.Row, frontEntry, output, caps);
         }
 
-        // Pass 2 — emit new or changed fragments. Reference equality on the IBufferFragment
-        // instance + value equality on the AnchorStyle is the diff key; callers that want
-        // stable skipping reuse instances across frames.
+        // Pass 2 — emit new or changed fragments. The Pass-1 identity check already issued
+        // erases for everything that needed one; this pass only writes the new payloads. The
+        // diff skip uses <see cref="IBufferFragment.Key"/> + AnchorStyle so callers that
+        // reconstruct fragments per frame can still participate via content-derived keys.
         foreach (var ((col, row), entry) in back.Fragments)
         {
             if (!entry.Fragment.IsSupported(caps)) continue;
@@ -550,20 +560,7 @@ public sealed class FrameRenderer
                 frontEntry.AnchorStyle == entry.AnchorStyle)
             {
                 // Same key + same anchor style — terminal already shows the current payload.
-                // Key defaults to reference identity (this), so reusing a fragment instance
-                // diff-skips by default; content-derived overrides let reconstruction-per-frame
-                // implementations participate in the skip too.
                 continue;
-            }
-
-            // If a different fragment occupied this anchor on the previous render, erase it
-            // before painting the new one. Cell-layer EmitErase is a no-op; overlay-layer
-            // implementations send the protocol's delete command.
-            if (frontEntry.Fragment is not null &&
-                !Equals(frontEntry.Fragment.Key, entry.Fragment.Key) &&
-                frontEntry.Fragment.IsSupported(caps))
-            {
-                EmitFragmentEraseBytes(col, row, frontEntry, output, caps);
             }
 
             EmitFragmentBytes(col, row, entry, output, caps);
@@ -663,6 +660,16 @@ public sealed class FrameRenderer
             _cursorRow = back.CursorRow;
             _cursorCol = back.CursorColumn;
         }
+    }
+
+    public void Close(IBufferWriter<byte> output)
+    {
+        var fragments = _frontFragments.ToList();
+        
+        _frontFragments.Clear();
+
+        foreach (var f in fragments)
+            f.Value.Fragment.EmitErase(f.Key.Column, f.Key.Row, output, _capabilities ?? OutputCapabilities.None);
     }
 }
 

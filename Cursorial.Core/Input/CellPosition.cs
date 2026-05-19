@@ -17,4 +17,13 @@ public readonly record struct CellPosition(int Column, int Row, int? PixelX = nu
     /// have non-null values; otherwise, it returns false.
     /// </summary>
     public bool HasPixelCoordinates => PixelX.HasValue && PixelY.HasValue;
+
+    /// <summary>
+    /// Defines an implicit conversion from a tuple containing column and row values to a <see cref="CellPosition"/>.
+    /// This allows for seamless creation of a <see cref="CellPosition"/> instance from a tuple with an integer
+    /// column and row without the need for an explicit constructor.
+    /// </summary>
+    /// <param name="tuple">A tuple containing two integers representing the column and row of the cell position.</param>
+    /// <returns>A new <see cref="CellPosition"/> instance initialized with the column and row values from the provided tuple.</returns>
+    public static implicit operator CellPosition((int Column, int Row) tuple) => new(tuple.Column, tuple.Row);
 }

@@ -3,6 +3,7 @@ using System.Reflection;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Content;
 
@@ -46,10 +47,8 @@ namespace Cursorial.Rendering.Content;
 /// constructor.
 /// </para>
 /// </remarks>
-public sealed class Icon : IContent
+public sealed class Icon : Image
 {
-    private readonly Image? _image;
-
     /// <summary>Construct an icon from a resource URI.</summary>
     /// <param name="resourceUri">URI identifying the image payload. See class remarks for supported schemes.</param>
     /// <param name="fallbackGlyph">Glyph (emoji / symbol / character) rendered when the image isn't available. Wide glyphs occupy the full <paramref name="renderSize"/>.</param>
@@ -62,78 +61,55 @@ public sealed class Icon : IContent
                 in Style fallbackStyle = default,
                 Size renderSize = default,
                 ImageFormat? format = null,
-                IResourceLoader? loader = null)
+                IResourceLoader? loader = null) : base(resourceUri,
+                                                       renderSize.IsEmpty ? new Size(2, 1) : renderSize, 
+                                                       fallbackStyle, 
+                                                       fallbackGlyph,
+                                                       loader)
     {
         ArgumentNullException.ThrowIfNull(resourceUri);
         ArgumentNullException.ThrowIfNull(fallbackGlyph);
 
-        ResourceUri = resourceUri;
-        FallbackGlyph = fallbackGlyph;
-        FallbackStyle = fallbackStyle;
-        RenderSize = renderSize.IsEmpty ? new Size(2, 1) : renderSize;
         Format = format ?? InferFormat(resourceUri);
-        Loader = loader ?? ResourceLoader.Default;
-
-        var bytes = Loader.TryLoadBytes(resourceUri);
-
-        if (bytes is not null)
-        {
-            var data = new ImageData(bytes, Format, RenderSize);
-            _image = new Image(data, FallbackStyle, FallbackGlyph);
-        }
     }
 
-    /// <summary>The URI the icon's image bytes were loaded from.</summary>
-    public Uri ResourceUri { get; }
-
-    /// <summary>The cell rectangle the icon paints into.</summary>
-    public Size RenderSize { get; }
-
     /// <summary>The glyph rendered when the image is unavailable or no graphics protocol is supported.</summary>
-    public string FallbackGlyph { get; }
+    public string FallbackGlyph => PlaceholderText;
 
     /// <summary>Style applied to the glyph-fallback placeholder.</summary>
-    public Style FallbackStyle { get; }
+    public Style FallbackStyle => PlaceholderStyle;
 
     /// <summary>Image format used to decode the loaded bytes.</summary>
-    public ImageFormat Format { get; }
-
-    /// <summary>The resource loader that was used to fetch the image bytes.</summary>
-    public IResourceLoader Loader { get; }
+    public ImageFormat Format { get; private init; }
 
     /// <summary>True when the image bytes loaded successfully at construction.</summary>
-    public bool ImageLoaded => _image is not null;
+    public bool ImageLoaded => Data is { Bytes.Length: > 0 };
 
     /// <inheritdoc/>
-    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
+        if (ImageLoaded is false || capabilities.Graphics is { KittyGraphics: false, ITerm2InlineImages: false })
+            return MeasurePlaceholder(availableSpace, capabilities);
+
         // The icon's footprint is fixed at construction. Clamp to availableSpace so the parent
         // sees a consistent "this is the largest box I'll use" answer.
-        int cols = Math.Min(RenderSize.Columns, availableSpace.Columns);
-        int rows = Math.Min(RenderSize.Rows, availableSpace.Rows);
+        int cols = RenderSize is { Columns: var c }  ? Math.Min(c, availableSpace.Columns) : availableSpace.Columns;
+        int rows = RenderSize is { Rows: var r } ? Math.Min(r > 0 ? r : (cols + 1) / 2, availableSpace.Rows) : availableSpace.Rows;
         return new Size(cols, rows);
     }
 
     /// <inheritdoc/>
-    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override Rect PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
     {
-        if (_image is not null)
-        {
-            // Image owns the capability-aware decision — Kitty graphics if supported, otherwise
-            // iTerm2 inline images, otherwise the placeholder rectangle with the FallbackGlyph
-            // centered.
-            return _image.Paint(buffer, bounds, in style, capabilities);
-        }
+        buffer.Set(bounds.Column, bounds.Row, FallbackGlyph, FallbackStyle);
+        return bounds.WithSize(GraphemeWidth.StringWidth(FallbackGlyph), 1);
+    }
 
-        // Image bytes never loaded — paint the placeholder rectangle directly via a glyph-only
-        // path. Build a minimal ImageData stand-in just to drive the placeholder logic
-        // through Image; reuses the same width/height/glyph rendering code, no separate
-        // glyph-painting branch.
-        var stub = new ImageData([], Format, RenderSize);
-        var placeholder = new Image(stub, FallbackStyle, FallbackGlyph);
-        return placeholder.Paint(buffer, bounds, in style, capabilities);
+    private Size MeasurePlaceholder(Size availableSpace, OutputCapabilities capabilities)
+    {
+        return (GraphemeWidth.StringWidth(FallbackGlyph), 1);
     }
 
     /// <summary>
@@ -172,19 +148,5 @@ public sealed class Icon : IContent
     {
         var uri = Path.IsPathRooted(path) ? ResourceLoader.File(path) : new Uri(path, UriKind.Relative);
         return new Icon(uri, fallbackGlyph, in fallbackStyle, renderSize, format);
-    }
-
-    private static ImageFormat InferFormat(Uri uri)
-    {
-        var path = uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
-        var ext = Path.GetExtension(path).ToLowerInvariant();
-
-        return ext switch
-               {
-                   ".png"            => ImageFormat.Png,
-                   ".jpg" or ".jpeg" => ImageFormat.Jpeg,
-                   ".gif"            => ImageFormat.Gif,
-                   _                 => ImageFormat.Png
-               };
     }
 }

@@ -115,8 +115,94 @@ public class CellBufferFragmentTests
         Assert.Empty(buffer.Fragments);
     }
 
+    // ---- Key lookup ----
+
+    [Fact]
+    public void ContainsFragment_ReturnsTrueAfterAdd()
+    {
+        var buffer = new CellBuffer(10, 3);
+        var fragment = new StubFragment(new Size(2, 1));
+        buffer.AddFragment(4, 1, fragment);
+
+        Assert.True(buffer.ContainsFragment(fragment.Key));
+    }
+
+    [Fact]
+    public void ContainsFragment_ReturnsFalseForUnknownKey()
+    {
+        var buffer = new CellBuffer(10, 3);
+        buffer.AddFragment(0, 0, new StubFragment(new Size(1, 1)));
+
+        Assert.False(buffer.ContainsFragment(new object()));
+    }
+
+    [Fact]
+    public void TryGetFragmentAnchor_ReturnsRegisteredAnchor()
+    {
+        var buffer = new CellBuffer(10, 3);
+        var fragment = new StubFragment(new Size(2, 1));
+        buffer.AddFragment(4, 1, fragment);
+
+        Assert.True(buffer.TryGetFragmentAnchor(fragment.Key, out var anchor));
+        Assert.Equal((4, 1), anchor);
+    }
+
+    [Fact]
+    public void TryGetFragmentAnchor_ReturnsFalseAfterRemove()
+    {
+        var buffer = new CellBuffer(10, 3);
+        var fragment = new StubFragment(new Size(2, 1));
+        buffer.AddFragment(4, 1, fragment);
+        buffer.RemoveFragment(4, 1);
+
+        Assert.False(buffer.TryGetFragmentAnchor(fragment.Key, out _));
+        Assert.False(buffer.ContainsFragment(fragment.Key));
+    }
+
+    [Fact]
+    public void AddFragment_ReplacingExistingAnchor_DropsOldKeyFromIndex()
+    {
+        // Replacing the fragment at an existing anchor must purge the previous fragment's Key
+        // from the secondary index — otherwise stale Keys would still resolve and the
+        // ContainsFragment / TryGetFragmentAnchor contracts would lie.
+        var buffer = new CellBuffer(10, 3);
+        var first = new StubFragment(new Size(2, 1));
+        var second = new StubFragment(new Size(3, 1));
+
+        buffer.AddFragment(0, 0, first);
+        buffer.AddFragment(0, 0, second);
+
+        Assert.False(buffer.ContainsFragment(first.Key));
+        Assert.True(buffer.ContainsFragment(second.Key));
+        Assert.True(buffer.TryGetFragmentAnchor(second.Key, out var anchor));
+        Assert.Equal((0, 0), anchor);
+    }
+
+    [Fact]
+    public void Clear_AlsoClearsKeyIndex()
+    {
+        var buffer = new CellBuffer(5, 1);
+        var fragment = new StubFragment(new Size(2, 1));
+        buffer.AddFragment(0, 0, fragment);
+        buffer.Clear();
+
+        Assert.False(buffer.ContainsFragment(fragment.Key));
+    }
+
+    [Fact]
+    public void Resize_AlsoClearsKeyIndex()
+    {
+        var buffer = new CellBuffer(5, 1);
+        var fragment = new StubFragment(new Size(2, 1));
+        buffer.AddFragment(0, 0, fragment);
+        buffer.Resize(10, 2);
+
+        Assert.False(buffer.ContainsFragment(fragment.Key));
+    }
+
     private sealed class StubFragment(Size size) : IBufferFragment
     {
+        public object Key => this;
         public Size GetSize() => size;
         public bool IsSupported(OutputCapabilities capabilities) => true;
         public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) { }

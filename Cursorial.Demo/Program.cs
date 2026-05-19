@@ -551,7 +551,7 @@ static async Task DemoRenderAsync()
             await writer.WriteAsync(scratch.WrittenMemory);
             await writer.FlushAsync();
 
-            try { await Task.Delay(33, stopCts.Token); } // ~30fps
+            try { await Task.Delay(333, stopCts.Token); } // ~30fps
             catch (OperationCanceledException) { break; }
         }
     }
@@ -560,6 +560,8 @@ static async Task DemoRenderAsync()
         stopCts.Cancel();
 
         try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
+
+        try { renderer.Close(writer); } catch { /* best-effort */ }
 
         CursorWriter.WriteShow(writer);
         SgrEncoder.WriteReset(writer);
@@ -988,10 +990,22 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
         .WithUnderlineStyle(UnderlineStyle.Curly)
         .WithUnderlineColor(Color.FromPalette(5));
 
+    Size desiredSize;
+    
     // Reuse a single ScaledText instance across frames — Phase 6.8's fragment diff uses
     // reference equality on the underlying IBufferFragment, so a stable instance lets the
     // renderer skip re-emission when the title and sizing haven't changed.
-    RenderShowcaseFragments.Title.Paint(buf, column: 1, row: 2, style: sizedTitleStyle, capabilities: outputCaps);
+    desiredSize = RenderShowcaseFragments.Title.Measure(buf.Size, outputCaps);
+    RenderShowcaseFragments.Title.Paint(buf, new Rect(1, 2, desiredSize), style: sizedTitleStyle, capabilities: outputCaps);
+
+    var iconMargin = new Margins(2, 1);
+
+    desiredSize = RenderShowcaseFragments.Icon.Measure(buf.Size, outputCaps);
+
+    RenderShowcaseFragments.Icon.Paint(buf,
+                                       buf.Bounds.LayoutContent(Anchor.BottomRight, desiredSize, iconMargin),
+                                       in style,
+                                       outputCaps);
 
     const int iconY = 5;
     const int iconCount = 4;
@@ -1300,6 +1314,12 @@ file sealed class TraceEventSink(List<InputEvent> events) : IInputEventSink
 /// </summary>
 file static class RenderShowcaseFragments
 {
+    public static readonly Icon Icon = Icon.FromEmbedded(
+        Assembly.GetExecutingAssembly(), 
+        "Icons/cursorial_icon.png",
+        "[C >_]",
+        renderSize: new Size(6, 0));
+
     public static readonly ScaledText Title = new(
         "Cursorial Rendering Demo",
         new TextSizing(Scale: 2),

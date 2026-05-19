@@ -1,0 +1,183 @@
+using Cursorial.Output;
+using Cursorial.Output.Capabilities;
+using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fragments;
+
+namespace Cursorial.Rendering;
+
+/// <summary>
+/// Represents an abstract base class for content elements that may use buffer fragments for rendering.
+/// </summary>
+/// <remarks>
+/// A <c>FragmentContent</c> manages the lifecycle of a buffer fragment that can be reused
+/// across multiple rendering passes. It provides mechanisms for measuring and painting content
+/// within a given space, as well as determining whether a new fragment is needed for rendering.
+/// </remarks>
+public abstract class FragmentContent : IContent
+{
+    /// <summary>Construct content from the supplied data.</summary>
+    protected FragmentContent(object? fragmentKey = null)
+    {
+        FragmentKey = fragmentKey ?? this;
+    }
+
+    /// <summary>
+    /// Gets the fragment key associated with the content, used to identify and manage buffer fragments.
+    /// </summary>
+    /// <remarks>
+    /// The <c>FragmentKey</c> uniquely identifies a buffer fragment associated with the content.
+    /// It is used by the rendering system to reuse existing fragments and optimize rendering performance.
+    /// If no specific key is provided during initialization, the content instance itself is used as the key.
+    /// </remarks>
+    protected internal object FragmentKey { get; private init; }
+
+    /// <summary>
+    /// Gets the desired size of the content after the measurement process.
+    /// </summary>
+    /// <remarks>
+    /// The <c>DesiredSize</c> property indicates the dimensions (in columns and rows)
+    /// that the content determines it needs during the measurement phase. This value is
+    /// calculated by invoking the <c>Measure</c> method, which internally calls
+    /// <c>MeasureOverride</c>, a method that subclasses must implement to define their
+    /// custom measurement logic.
+    /// The value of <c>DesiredSize</c> can be used to assess whether the content fits
+    /// within the available space or if adjustments are needed to ensure proper rendering.
+    /// </remarks>
+    protected Size? DesiredSize { get; private set; }
+
+    /// <summary>
+    /// Gets or sets the existing instance of an <see cref="IBufferFragment"/>
+    /// associated with the current content.
+    /// This property provides a reference to a pre-existing rendered fragment,
+    /// allowing the system to reuse or evaluate its status when determining
+    /// if rendering updates are necessary.
+    /// </summary>
+    protected internal IBufferFragment? ExistingFragment { get; protected set; }
+
+    // ReSharper disable once UnusedParameter.Global
+
+    /// <summary>
+    /// Determines whether a fragment is needed based on the current buffer state,
+    /// available rendering space, and output capabilities.
+    /// </summary>
+    /// <param name="buffer">The buffer that holds rendering content and fragments.</param>
+    /// <param name="availableSpace">The available space for rendering defined in rows and columns.</param>
+    /// <param name="capabilities">Optional output capabilities to consider during the decision-making process.</param>
+    /// <returns>
+    /// A boolean value indicating whether a new fragment is required.
+    /// Returns true if a fragment is needed, otherwise false.
+    /// </returns>
+    // ReSharper disable once VirtualMemberNeverOverridden.Global
+    protected internal virtual bool IsFragmentNeeded(CellBuffer buffer, Size availableSpace, OutputCapabilities? capabilities = null)
+    {
+        return ExistingFragment is not null ||
+               FragmentKey is not {} key ||
+               buffer.TryGetFragmentAnchor(key, out var p) is false ||
+               buffer.Fragments.TryGetValue(p, out var f) is false ||
+               f.Fragment.GetSize() is var s && (s.Columns < availableSpace.Rows || s.Rows < availableSpace.Rows);
+    }
+
+    /// <summary>Determines the required size to render the content within the specified constraints.</summary>
+    /// <param name="availableSpace">The amount of space available for rendering, expressed as a <see cref="Size"/> object.</param>
+    /// <param name="capabilities">The output capabilities of the rendering environment.</param>
+    /// <returns>The measured size of the content that fits within the given constraints, expressed as a <see cref="Size"/> object.</returns>
+    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    {
+        var size = MeasureOverride(availableSpace, capabilities);
+        DesiredSize = size;
+        return size;
+    }
+
+    /// <summary>
+    /// Measures the desired size of the content based on the available space and output capabilities.
+    /// </summary>
+    /// <param name="availableSpace">The available space, represented as a <c>Size</c> object, within which the content can be measured.</param>
+    /// <param name="capabilities">The output capabilities of the rendering environment, represented as an <c>OutputCapabilities</c> object.</param>
+    /// <returns>
+    /// A <c>Size</c> object representing the desired dimensions of the content after measurement.
+    /// </returns>
+    protected abstract Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities);
+
+    /// <summary>
+    /// Renders the content into the given buffer within the specified bounds and style, using the provided output capabilities.
+    /// </summary>
+    /// <param name="buffer">The buffer where the content will be rendered.</param>
+    /// <param name="bounds">The rectangular bounds defining the area for rendering.</param>
+    /// <param name="style">The styling information to apply during rendering.</param>
+    /// <param name="capabilities">The output capabilities to consider for rendering.</param>
+    /// <returns>A rectangle representing the actual area occupied by the rendered content.</returns>
+    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(buffer);
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        if (IsFragmentNeeded(buffer, bounds.Size, capabilities) is false)
+        {
+            if (ExistingFragment?.GetSize() is {} actualSize)
+                return bounds.WithSize(actualSize);
+
+            return bounds;
+        }
+
+        if (ExistingFragment is {} existingFragment)
+        {
+            ExistingFragment = null;
+
+            if (buffer.TryGetFragmentAnchor(existingFragment.Key, out var anchor))
+                buffer.RemoveFragment(anchor);
+        }
+
+        Rect actualBounds;
+        IBufferFragment? fragment = CreateFragment(buffer, bounds, style, capabilities);
+
+        if (fragment is not null)
+        {
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            ExistingFragment = fragment;
+
+            var size = fragment.GetSize();
+
+            actualBounds = new Rect(bounds.Column, bounds.Row,
+                                    Math.Min(size.Columns, bounds.Columns),
+                                    Math.Min(size.Rows, bounds.Rows));
+
+            PaintOverride(buffer, bounds, style, capabilities);
+        }
+        else
+        {
+            actualBounds = PaintPlaceholder(buffer, bounds, style, capabilities);
+        }
+
+        return actualBounds;
+    }
+
+    // ReSharper disable UnusedParameter.Global
+    /// <summary>
+    /// Performs custom rendering of the content within the specified bounds using the provided style and output capabilities.
+    /// </summary>
+    /// <param name="buffer">The buffer to draw the content into.</param>
+    /// <param name="bounds">The rectangular area within which the content should be rendered.</param>
+    /// <param name="style">The style to apply while rendering the content.</param>
+    /// <param name="capabilities">The output capabilities that define rendering constraints and features.</param>
+    protected virtual void PaintOverride(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities) {}
+
+    /// <summary>Renders a placeholder graphic within the specified bounds using the provided style and output capabilities.</summary>
+    /// <param name="buffer">The cell buffer where the placeholder will be rendered.</param>
+    /// <param name="bounds">The rectangular area defining the bounds of the placeholder graphic.</param>
+    /// <param name="style">The style applied to the placeholder during rendering.</param>
+    /// <param name="capabilities">The output capabilities to consider during rendering.</param>
+    /// <returns>A <see cref="Rect"/> representing the actual area occupied by the rendered placeholder.</returns>
+    protected abstract Rect PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities);
+
+    /// <summary>
+    /// Creates a buffer fragment based on the provided cell buffer, bounds, style, and output capabilities.
+    /// </summary>
+    /// <param name="buffer">The cell buffer from which the fragment is created.</param>
+    /// <param name="bounds">The rectangular bounds defining the area for the fragment.</param>
+    /// <param name="style">The style to apply when creating the fragment.</param>
+    /// <param name="capabilities">The output capabilities used in fragment creation.</param>
+    /// <returns>An instance of <see cref="IBufferFragment"/> representing the created fragment, or null if creation is not possible.</returns>
+    protected abstract IBufferFragment? CreateFragment(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities);
+
+    // ReSharper restore UnusedParameter.Global
+}

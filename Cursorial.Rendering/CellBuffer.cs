@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Terminal;
@@ -40,6 +41,13 @@ public sealed class CellBuffer
     private int _rows;
     private readonly Stack<IBlendingMode> _blendStack = new();
     private readonly Dictionary<(int Column, int Row), FragmentEntry> _fragments = new();
+
+    // Secondary index — maps each registered fragment's Key to the anchor it lives at, so
+    // ContainsFragment / TryGetFragmentAnchor are O(1) instead of scanning. Last-write-wins
+    // when two fragments share a Key at different anchors (an unusual case but legal — Key is
+    // implementation-defined, and two anchors holding the same logical fragment is a valid
+    // shape for repeating content).
+    private readonly Dictionary<object, (int Column, int Row)> _fragmentsByKey = new();
     private readonly List<Rect> _dirtyRegions = [];
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
@@ -58,6 +66,9 @@ public sealed class CellBuffer
 
     /// <summary>Height of the buffer in rows.</summary>
     public int Rows => _rows;
+
+    /// <summary>The buffer's dimensions, in cells.</summary>   
+    public (int Columns, int Rows) Dimensions => (_columns, _rows);
 
     /// <summary>Cursor row position (0-based). Used by the renderer at frame emission.</summary>
     public int CursorRow { get; set; }
@@ -185,6 +196,7 @@ public sealed class CellBuffer
     {
         Array.Clear(_cells);
         _fragments.Clear();
+        _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
     }
 
@@ -223,7 +235,16 @@ public sealed class CellBuffer
         ArgumentNullException.ThrowIfNull(fragment);
         ValidateCoordinates(column, row);
 
-        _fragments[(column, row)] = new FragmentEntry(fragment, anchorStyle);
+        var anchor = (column, row);
+
+        // If something was already registered at this anchor, drop its Key from the secondary
+        // index — otherwise that stale key would still resolve to this anchor after we replace
+        // the entry below.
+        if (_fragments.TryGetValue(anchor, out var existing))
+            _fragmentsByKey.Remove(existing.Fragment.Key);
+
+        _fragments[anchor] = new FragmentEntry(fragment, anchorStyle);
+        _fragmentsByKey[fragment.Key] = anchor;
     }
 
     /// <summary>
@@ -234,7 +255,56 @@ public sealed class CellBuffer
     public bool RemoveFragment(int column, int row)
     {
         ValidateCoordinates(column, row);
-        return _fragments.Remove((column, row));
+
+        if (!_fragments.TryGetValue((column, row), out var existing)) return false;
+
+        _fragments.Remove((column, row));
+
+        // Only drop the Key from the secondary index when it actually points at this anchor.
+        // A stale Key entry (from a fragment that moved or was replaced) would otherwise be
+        // erased here, breaking lookups for whatever's currently registered under the Key.
+        if (_fragmentsByKey.TryGetValue(existing.Fragment.Key, out var indexedAnchor) &&
+            indexedAnchor == (column, row))
+        {
+            _fragmentsByKey.Remove(existing.Fragment.Key);
+        }
+
+        var fragmentSize = existing.Fragment.GetSize();
+
+        MarkDirty(column, row, fragmentSize.Columns, fragmentSize.Rows);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Remove the fragment anchored at the specified position. Returns true when a fragment was
+    /// removed. Cells under the removed fragment retain whatever they held before — see
+    /// <see cref="AddFragment"/> for the layering contract.
+    /// </summary>
+    public bool RemoveFragment(CellPosition position) => RemoveFragment(position.Column, position.Row);
+
+    /// <summary>
+    /// True when a fragment with the given <paramref name="key"/> is currently registered on
+    /// the buffer. Useful for "is this image already on screen?" checks without scanning the
+    /// fragment dictionary. Comparison uses <see cref="object.Equals(object)"/>, so value-type
+    /// keys (records, tuples, <see cref="uint"/>, …) compare by value.
+    /// </summary>
+    public bool ContainsFragment(object key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return _fragmentsByKey.ContainsKey(key);
+    }
+
+    /// <summary>
+    /// Look up the anchor of the fragment registered under <paramref name="key"/>. Returns
+    /// <see langword="true"/> with the anchor when one is registered, <see langword="false"/>
+    /// otherwise. Combine with the <see cref="Fragments"/> dictionary to fetch the full entry
+    /// (<c>Fragments[anchor]</c>).
+    /// </summary>
+    public bool TryGetFragmentAnchor(object key, out (int Column, int Row) anchor)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return _fragmentsByKey.TryGetValue(key, out anchor);
     }
 
     // ---- Dirty-region tracking ------------------------------------------------------------
@@ -417,6 +487,7 @@ public sealed class CellBuffer
         _rows = rows;
         _cells = new Cell[checked(columns * rows)];
         _fragments.Clear();
+        _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
     }
 

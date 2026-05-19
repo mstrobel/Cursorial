@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
@@ -34,21 +36,38 @@ namespace Cursorial.Rendering.Content;
 /// <see cref="ITerm2ImageFragment"/> directly.
 /// </para>
 /// </remarks>
-public sealed class Image : IContent
+public class Image : FragmentContent
 {
-    private readonly ImageData _data;
+    private readonly ImageData? _data;
 
     /// <summary>Construct an image content from the supplied data.</summary>
-    public Image(ImageData data, in Style placeholderStyle = default, string? placeholderText = null)
+    public Image(ImageData? data, in Style placeholderStyle = default, string? placeholderText = null)
     {
-        ArgumentNullException.ThrowIfNull(data);
         _data = data;
         PlaceholderStyle = placeholderStyle;
         PlaceholderText = placeholderText ?? "[image]";
+        Loader = ResourceLoader.Default;
+        ResourceUri = null;
+        RenderSize = _data?.CellSize ?? Size.Empty;
     }
 
+    /// <summary>Construct an image content from the supplied data.</summary>
+    public Image(Uri resourceUri, Size renderSize = default, in Style placeholderStyle = default, string? placeholderText = null, IResourceLoader? loader = null)
+        : this(LoadImage(resourceUri, renderSize, loader), placeholderStyle, placeholderText)
+    {
+        ResourceUri = resourceUri;
+        RenderSize = renderSize;
+        Loader = loader ?? ResourceLoader.Default;
+    }
+
+    /// <summary>The URI from which the image bytes were loaded, provided it was loaded by URI.</summary>
+    public Uri? ResourceUri { get; }
+
+    /// <summary>The cell size the image paints into.</summary>
+    public Size RenderSize { get; }
+
     /// <summary>The image payload + cell footprint.</summary>
-    public ImageData Data => _data;
+    public ImageData? Data => _data;
 
     /// <summary>Style applied to the placeholder rectangle when no graphics protocol is supported.</summary>
     public Style PlaceholderStyle { get; init; }
@@ -56,8 +75,11 @@ public sealed class Image : IContent
     /// <summary>Text to display when no graphics protocol is supported. For icons, could be an emoji.</summary>
     public string PlaceholderText { get; init; }
 
+    /// <summary>The resource loader that was used to fetch the image bytes.</summary>
+    public IResourceLoader Loader { get; private set; }
+
     /// <inheritdoc/>
-    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -65,39 +87,20 @@ public sealed class Image : IContent
         // protocol fragments carry that cell footprint on the wire, and an arbitrary smaller
         // size would require re-encoding the image. Callers wanting an actual fit-to-bounds
         // should re-construct the ImageData with the desired CellSize.
-        var natural = _data.CellSize;
-        int cols = Math.Min(natural.Columns, availableSpace.Columns);
-        int rows = Math.Min(natural.Rows, availableSpace.Rows);
+        var natural = _data?.CellSize;
+        int cols = natural is { Columns: var c } ? Math.Min(c, availableSpace.Columns) : availableSpace.Columns;
+        int rows = natural is { Rows: var r } ? Math.Min(r, availableSpace.Rows) : availableSpace.Rows;
         return new Size(cols, rows);
     }
 
     /// <inheritdoc/>
-    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
-    {
-        ArgumentNullException.ThrowIfNull(buffer);
-        ArgumentNullException.ThrowIfNull(capabilities);
-
-        IBufferFragment? fragment = ChooseFragment(capabilities);
-        if (fragment is not null)
-        {
-            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
-            var size = fragment.GetSize();
-            return new Rect(bounds.Column, bounds.Row,
-                            Math.Min(size.Columns, bounds.Columns),
-                            Math.Min(size.Rows, bounds.Rows));
-        }
-
-        var paintedSize = PaintPlaceholder(buffer, bounds, style);
-        return new Rect(bounds.Column, bounds.Row, paintedSize.Columns, paintedSize.Rows);
-    }
-
-    private IBufferFragment? ChooseFragment(OutputCapabilities capabilities)
+    protected override IBufferFragment? CreateFragment(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         // No bytes → no transmittable payload, regardless of capability. This is the case
         // Icon hits when its resource URI didn't resolve: it constructs an Image with empty
         // bytes plus the configured fallback glyph, expecting the placeholder path. Without
         // this guard, a graphics-capable terminal would receive an empty fragment.
-        if (_data.Bytes.IsEmpty) return null;
+        if (_data?.Bytes.IsEmpty is not false) return null;
 
         // Kitty first — supports PNG natively, has the most predictable cell-footprint semantics.
         if (capabilities.Graphics.KittyGraphics && _data.Format == ImageFormat.Png)
@@ -110,14 +113,15 @@ public sealed class Image : IContent
         return null;
     }
 
-    private Size PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style)
+    /// <inheritdoc/>
+    protected override Rect PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         // Effective placeholder style: the content's PlaceholderStyle wins, falling back to the
         // caller-supplied style when no placeholder was configured. The caller's style is what
         // would have been the SGR backdrop for a real image fragment, so reusing it produces a
         // visually coherent "where the image would have been" affordance.
         var fillStyle = PlaceholderStyle == Style.Default ? style : PlaceholderStyle;
-        var cellSize = _data.CellSize;
+        var cellSize = _data?.CellSize ?? bounds.Size;
         var rowSpan = cellSize.Rows;
 
         if (rowSpan is 0)
@@ -169,6 +173,31 @@ public sealed class Image : IContent
         var paintedCols = Math.Min(colWidth, Math.Max(0, buffer.Columns - bounds.Column));
         var paintedRows = Math.Min(rowHeight, Math.Max(0, buffer.Rows - bounds.Row));
 
-        return new Size(paintedCols, paintedRows);
+        return bounds.WithSize(new Size(paintedCols, paintedRows));
+    }
+    
+    protected static ImageData? LoadImage(Uri resourceUri, Size renderSize, IResourceLoader? loader = null)
+    {
+        loader ??= ResourceLoader.Default;
+
+        var bytes = loader.TryLoadBytes(resourceUri);
+        if (bytes is not null)
+            return new ImageData(bytes, InferFormat(resourceUri), renderSize);
+
+        return null;
+    }
+
+    protected static ImageFormat InferFormat(Uri uri)
+    {
+        var path = uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+
+        return ext switch
+               {
+                   ".png"            => ImageFormat.Png,
+                   ".jpg" or ".jpeg" => ImageFormat.Jpeg,
+                   ".gif"            => ImageFormat.Gif,
+                   _                 => ImageFormat.Png
+               };
     }
 }

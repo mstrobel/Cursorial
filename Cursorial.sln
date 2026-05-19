@@ -10,6 +10,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.Rendering", "Curs
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.Rendering.Tests", "Cursorial.Rendering.Tests\Cursorial.Rendering.Tests.csproj", "{3FEA3D38-6489-40D5-A673-75E99B130C32}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{D94D4210-FB41-43D4-9F86-EC63DA148E26}"
+	ProjectSection(SolutionItems) = preProject
+		cursorial_banner.png = cursorial_banner.png
+		cursorial_banner.svg = cursorial_banner.svg
+		cursorial_icon.svg = cursorial_icon.svg
+		README.md = README.md
+		cursorial_icon.png = cursorial_icon.png
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

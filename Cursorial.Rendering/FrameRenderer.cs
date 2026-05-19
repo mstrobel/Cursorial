@@ -137,6 +137,22 @@ public sealed class FrameRenderer
 
         if (fullRedraw)
         {
+            // Erase outgoing fragments BEFORE the clear-screen. Overlay-layer protocols (Kitty
+            // graphics, iTerm2 inline images, …) don't always remove their payloads on a plain
+            // CSI 2 J — the image plane is independent of the cell grid on most implementations
+            // — so we have to issue the protocol's explicit delete command first. Cell-layer
+            // EmitErase is a no-op by default, so iterating everything is safe and the
+            // pre-clear emission is the same regardless of layer.
+            if (_frontFragments.Count > 0)
+            {
+                var caps = _capabilities ?? OutputCapabilities.None;
+                foreach (var (anchor, frontEntry) in _frontFragments)
+                {
+                    if (!frontEntry.Fragment.IsSupported(caps)) continue;
+                    EmitFragmentEraseBytes(anchor.Column, anchor.Row, frontEntry, output, caps);
+                }
+            }
+
             ScreenWriter.WriteClearScreen(output);
             SgrEncoder.WriteReset(output);
             CursorWriter.WriteMoveTo(output, 0, 0);
@@ -148,9 +164,8 @@ public sealed class FrameRenderer
             _frontRows = back.Rows;
             _frontCells = new Cell[_frontCols * _frontRows];
 
-            // Full redraw nukes any prior fragment snapshot — none of those fragments can
-            // possibly survive on the cleared screen, so the next fragment-emit pass treats
-            // every registered fragment as new.
+            // Front-fragment snapshot is now consumed (we just emitted erase for each); clear
+            // so the next fragment-emit pass treats every registered fragment as new.
             _frontFragments.Clear();
         }
 
@@ -531,11 +546,13 @@ public sealed class FrameRenderer
             if (col < 0 || col >= back.Columns || row < 0 || row >= back.Rows) continue;
 
             if (_frontFragments.TryGetValue((col, row), out var frontEntry) &&
-                ReferenceEquals(frontEntry.Fragment, entry.Fragment) &&
+                Equals(frontEntry.Fragment?.Key, entry.Fragment.Key) &&
                 frontEntry.AnchorStyle == entry.AnchorStyle)
             {
-                // Same fragment instance with the same anchor style — terminal already shows
-                // its current payload, nothing to emit.
+                // Same key + same anchor style — terminal already shows the current payload.
+                // Key defaults to reference identity (this), so reusing a fragment instance
+                // diff-skips by default; content-derived overrides let reconstruction-per-frame
+                // implementations participate in the skip too.
                 continue;
             }
 
@@ -543,7 +560,7 @@ public sealed class FrameRenderer
             // before painting the new one. Cell-layer EmitErase is a no-op; overlay-layer
             // implementations send the protocol's delete command.
             if (frontEntry.Fragment is not null &&
-                !ReferenceEquals(frontEntry.Fragment, entry.Fragment) &&
+                !Equals(frontEntry.Fragment.Key, entry.Fragment.Key) &&
                 frontEntry.Fragment.IsSupported(caps))
             {
                 EmitFragmentEraseBytes(col, row, frontEntry, output, caps);

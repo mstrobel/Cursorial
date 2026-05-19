@@ -25,11 +25,12 @@ namespace Cursorial.Rendering.Fragments;
 /// </para>
 /// <para>
 /// <b>Diffing.</b> The renderer snapshots registered fragments per render and skips re-emission
-/// on the next render when the same instance with the same anchor style is still registered.
-/// Callers should reuse fragment instances across frames when content is stable — constructing
-/// a new instance per frame defeats the diff. Mutating an instance in place is supported
-/// (caller takes responsibility for not changing its size or coverage in ways the buffer would
-/// need to know about).
+/// on the next render when the <see cref="Key"/> matches the previous render's key and the
+/// anchor style is unchanged. Implementations whose payload is stable across frames default to
+/// reference identity for <see cref="Key"/> — reusing the same instance is the diff-friendly
+/// pattern. Implementations that produce a new instance per frame (e.g., <see cref="IContent"/>
+/// fragments that reconstruct each render) should override <see cref="Key"/> with a
+/// content-derived value so reconstruction still diff-skips correctly.
 /// </para>
 /// <para>
 /// <b>Capability gating.</b> The renderer calls <see cref="IsSupported"/> for every fragment on
@@ -54,6 +55,18 @@ public interface IBufferFragment
     /// override to return <see cref="FragmentLayer.Overlay"/>.
     /// </summary>
     FragmentLayer Layer => FragmentLayer.Cells;
+
+    /// <summary>
+    /// Stable identity used by the renderer's per-anchor diff. The renderer skips re-emission
+    /// when the previous render's key at the same anchor compares equal to this one and the
+    /// anchor style is unchanged. Default is reference identity (<c>this</c>) — appropriate
+    /// for fragments whose payload doesn't change across frames and whose instance is reused.
+    /// Implementations that reconstruct per frame (e.g., a content layer that always builds a
+    /// fresh fragment in <c>Paint</c>) should override with a content-derived key so the diff
+    /// still works. The key is compared with <see cref="object.Equals(object)"/>, so value-type
+    /// keys (records, tuples) compare by value.
+    /// </summary>
+    object Key => this;
 
     /// <summary>
     /// The cell footprint the fragment occupies, anchored at its registration cell. Used by the

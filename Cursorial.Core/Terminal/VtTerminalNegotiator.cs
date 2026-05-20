@@ -643,7 +643,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// </summary>
     private async Task ProbeColorsAsync(NegotiationOptions options, CancellationToken cancellationToken)
     {
-        // ReSharper disable once CommentTypo
+        // ReSharper disable CommentTypo
 
         // Write the truecolor SET — palette slot 255 to (AB, CD, EF). Use 2-digit hex so the
         // terminal's 16-bit-internal representation (rgb:abab/cdcd/efef on xterm-class
@@ -652,6 +652,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                 cancellationToken)
             .ConfigureAwait(false);
 
+        // ReSharper restore CommentTypo
+        
         // Query palette slot 255 to see what the terminal stored.
         await WriteOsc4QueryAsync(255, cancellationToken).ConfigureAwait(false);
 
@@ -969,8 +971,27 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (string.IsNullOrEmpty(payload))
             return (TerminalFamily.Unknown, null, null);
 
-        // Common shapes: "iTerm2 3.4.5", "WezTerm 20240127", "kitty 0.34.1", "tmux 3.4".
-        // Split on the first run of whitespace; the first chunk is the name, the rest is the version.
+        // Form A: "name(version)" — e.g., "kitty(0.46.2)". Treat the parenthesized payload as a
+        // version only when it looks like one (contains a '.'). Some terminals park a bare build
+        // identifier in this slot — GNOME Terminal reports <c>VTE(7600)</c>, which is not a
+        // semantic version — and we want to leave the whole identifier as the name so the
+        // existing family classifier can still match it as a literal.
+        int parenOpen = payload.IndexOf('(');
+        int parenClose = payload.LastIndexOf(')');
+        if (parenOpen > 0 && parenClose > parenOpen + 1)
+        {
+            var inside = payload.AsSpan(parenOpen + 1, parenClose - parenOpen - 1);
+            if (inside.Contains('.'))
+            {
+                var parenName = payload[..parenOpen].Trim();
+                var parenVersion = inside.ToString();
+                return (ClassifyByName(parenName), parenName, parenVersion);
+            }
+        }
+
+        // Form B: "name version" — the historical xterm shape used by iTerm2, WezTerm, kitty
+        // (pre-0.46), tmux. Split on the first run of whitespace; the first chunk is the name,
+        // the rest is the version.
         int sepIndex = payload.IndexOfAny([' ', '\t']);
         string name = sepIndex < 0 ? payload : payload[..sepIndex];
         string? version = sepIndex < 0 ? null : payload[(sepIndex + 1)..].TrimStart();
@@ -990,6 +1011,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (MatchIdentifier(name, "Alacritty")) return TerminalFamily.Alacritty;
         if (MatchIdentifier(name, "foot")) return TerminalFamily.Foot;
         if (MatchIdentifier(name, "Konsole")) return TerminalFamily.Konsole;
+        if (MatchIdentifier(name, "VTE\\(7600\\)")) return TerminalFamily.Xterm;
         if (MatchIdentifier(name, "xterm")) return TerminalFamily.Xterm;
 
         if (MatchIdentifier(name, "WindowsTerminal") ||
@@ -1003,24 +1025,20 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static bool MatchIdentifier(string input, string identifier)
     {
-        return Regex.IsMatch(input, @$"\b{identifier}\b", RegexOptions.IgnoreCase);
+        return Regex.IsMatch(input, @$"\b{identifier}", RegexOptions.IgnoreCase);
     }
 
     private TerminalFamily ClassifyFromEnvironment(string? rawTerm, string? rawTermProgram)
     {
-        if (_environment.GetVariable("KITTY_PID") is { Length: > 0 }) return TerminalFamily.Kitty;
-        if (_environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
-        if (_environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
-
         if (rawTermProgram is { Length: > 0 })
         {
             var byName = ClassifyByName(rawTermProgram);
             if (byName != TerminalFamily.Unknown) return byName;
 
-            if (rawTermProgram.Equals("Apple_Terminal", StringComparison.OrdinalIgnoreCase))
+            if (MatchIdentifier(rawTermProgram, "Apple_Terminal"))
                 return TerminalFamily.AppleTerminal;
 
-            if (rawTermProgram.Equals("ghostty", StringComparison.OrdinalIgnoreCase))
+            if (MatchIdentifier(rawTermProgram, "ghostty"))
                 return TerminalFamily.Ghostty; // No enum entry yet for Ghostty.
         }
 
@@ -1033,9 +1051,18 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             if (MatchIdentifier(rawTerm, "alacritty")) return TerminalFamily.Alacritty;
             if (MatchIdentifier(rawTerm, "foot")) return TerminalFamily.Foot;
             if (MatchIdentifier(rawTerm, "tmux")) return TerminalFamily.Tmux;
+            if (MatchIdentifier(rawTerm, "VTE\\(7600\\)")) return TerminalFamily.Xterm;
             if (MatchIdentifier(rawTerm, "screen")) return TerminalFamily.GnuScreen;
             if (MatchIdentifier(rawTerm, "xterm")) return TerminalFamily.Xterm;
             if (MatchIdentifier(rawTerm, "rxvt")) return TerminalFamily.Rxvt;
+        }
+
+        if (_environment.GetVariable("KITTY_PID") is { Length: > 0 }) return TerminalFamily.Kitty;
+        if (_environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
+        if (_environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
+
+        if (rawTerm is { Length: > 0 })
+        {
             // Anything claiming "color" or known VT lineage falls back to GenericVt.
             return TerminalFamily.GenericVt;
         }
@@ -1156,11 +1183,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// </summary>
     private static TextSizingCapabilities ResolveTextSizing(TerminalIdentification identification)
     {
-        // OSC 66 (Width/Scale) is currently shipped only by Kitty. Wide-glyph rendering — the
-        // general ability to lay a wide grapheme across two cells correctly — is a broader
-        // baseline that most modern terminal emulators get right. We mark the families known
-        // to handle it reliably; everything else (including Unknown) stays false, so the
-        // renderer falls back to its pre-paint-then-CUP-back defense.
+        // OSC 66 (Width/Scale) is gated on version because terminals that predate text-sizing
+        // support don't strip the unknown OSC cleanly — they render the metadata block as
+        // literal text, corrupting the display. Kitty added text sizing in 0.40.0 (Oct 2024);
+        // older builds in the wild (0.3x.x) still get reported as Family.Kitty but can't
+        // actually render OSC 66. Any family without explicit version-gate support stays off.
+        // Wide-glyph rendering — the general ability to lay a wide grapheme across two cells
+        // correctly — is a broader baseline that most modern terminal emulators get right. We
+        // mark the families known to handle it reliably; everything else (including Unknown)
+        // stays false, so the renderer falls back to its pre-paint-then-CUP-back defense.
         bool wideGlyphs = identification.Family switch
                           {
                               TerminalFamily.Kitty           => true,
@@ -1181,11 +1212,56 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                               _                        => false,
                           };
 
-        return identification.Family switch
-               {
-                   TerminalFamily.Kitty => new TextSizingCapabilities(Width: true, Scale: true, WideGlyphs: wideGlyphs),
-                   _                    => TextSizingCapabilities.None with { WideGlyphs = wideGlyphs },
-               };
+        bool textSizing = identification.Family == TerminalFamily.Kitty &&
+                          TextSizingSupportedVersion(identification.Version);
+
+        return textSizing
+            ? new TextSizingCapabilities(Width: true, Scale: true, WideGlyphs: wideGlyphs)
+            : TextSizingCapabilities.None with { WideGlyphs = wideGlyphs };
+    }
+
+    /// <summary>
+    /// Kitty 0.40.0 was the first release to ship the OSC 66 text-sizing protocol; earlier
+    /// versions silently render the envelope's metadata block as literal text. Returns true
+    /// when the parsed version is &gt;= 0.40.0. When the version string can't be parsed (the
+    /// terminal didn't respond to XTVERSION, or reported a non-semver shape), returns false —
+    /// safer to assume "no" than to corrupt the display.
+    /// </summary>
+    private static bool TextSizingSupportedVersion(string? version)
+    {
+        if (!TryParseVersion(version, out var parsed)) return false;
+        return parsed.Major > 0 || parsed.Minor >= 40;
+    }
+
+    /// <summary>
+    /// Parse a dotted-version string into its major/minor/patch components. Accepts up to
+    /// three numeric components (extra components are ignored); patch defaults to 0 when only
+    /// 'major.minor' is supplied. Pre-release and build suffixes (after <c>-</c> or <c>+</c>)
+    /// are stripped from the patch component.
+    /// </summary>
+    private static bool TryParseVersion(string? version, out (int Major, int Minor, int Patch) result)
+    {
+        result = default;
+        if (string.IsNullOrEmpty(version)) return false;
+
+        var parts = version.Split('.');
+        if (parts.Length < 2) return false;
+
+        if (!int.TryParse(parts[0], out int major)) return false;
+        if (!int.TryParse(parts[1], out int minor)) return false;
+
+        int patch = 0;
+        if (parts.Length >= 3)
+        {
+            var patchToken = parts[2];
+            // Drop pre-release / build suffix: "0.40.0-rc1" → "0".
+            int suffix = patchToken.IndexOfAny(['-', '+']);
+            if (suffix >= 0) patchToken = patchToken[..suffix];
+            int.TryParse(patchToken, out patch);
+        }
+
+        result = (major, minor, patch);
+        return true;
     }
 
     private ColorCapabilities ResolveColor(TerminalIdentification identification)
@@ -1290,7 +1366,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             ColorControl: modern && identification.Family is not TerminalFamily.AppleTerminal);
     }
 
-    private static WindowCapabilities ResolveWindow(TerminalIdentification identification)
+    private WindowCapabilities ResolveWindow(TerminalIdentification identification)
     {
         bool pixelSize = identification.Family is TerminalFamily.Kitty or
                                                   TerminalFamily.Ghostty or
@@ -1306,7 +1382,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             IconSet: identification.Family is TerminalFamily.Xterm or TerminalFamily.Rxvt,
             SizeQueryInPixels: pixelSize,
             AlternateScreenBuffer: identification.Family != TerminalFamily.Unknown,
-            ScrollRegion: identification.Family != TerminalFamily.Unknown);
+            ScrollRegion: identification.Family != TerminalFamily.Unknown,
+            CellPixelWidth: _mode.CellPixelWidth,
+            CellPixelHeight: _mode.CellPixelHeight);
     }
 
     // ---- Helpers ----

@@ -1282,6 +1282,8 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Row("Cursor visibility",     caps.Output.Cursor.VisibilityControl);
     Row("Cursor blink control",  caps.Output.Cursor.BlinkControl);
     Row("Cursor color control",  caps.Output.Cursor.ColorControl);
+    Row("Cell pixel width",      caps.Output.Window.CellPixelWidth);
+    Row("Cell pixel height",     caps.Output.Window.CellPixelHeight);
     Row("Title set",             caps.Output.Window.TitleSet);
     Row("Pixel size query",      caps.Output.Window.SizeQueryInPixels);
     Row("Alt screen buffer",     caps.Output.Window.AlternateScreenBuffer);

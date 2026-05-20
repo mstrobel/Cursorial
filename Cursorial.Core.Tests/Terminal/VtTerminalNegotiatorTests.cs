@@ -100,6 +100,40 @@ public class VtTerminalNegotiatorTests
         Assert.Equal(TerminalFamily.WezTerm, caps.Terminal.Family);
     }
 
+    [Fact]
+    public async Task XtVersionResponseWithParenVersion_KittyShape_ExtractsVersion()
+    {
+        // Kitty 0.46+ reports XTVERSION as "kitty(0.46.2)" instead of the older "kitty 0.34.1"
+        // space-separated form. The parenthesized payload looks like a semantic version
+        // (contains a '.'), so the parser pulls it out.
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
+        _source.Enqueue("\x1b[?64;1;9c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.Kitty, caps.Terminal.Family);
+        Assert.Equal("kitty", caps.Terminal.Name);
+        Assert.Equal("0.46.2", caps.Terminal.Version);
+    }
+
+    [Fact]
+    public async Task XtVersionResponseWithParenIdentifier_VteShape_TreatsAsOpaqueName()
+    {
+        // GNOME Terminal's libvte reports XTVERSION as "VTE(7600)" where 7600 is a build
+        // identifier, NOT a version. The parenthesized content doesn't look like a version
+        // (no dot), so the parser leaves the whole "VTE(7600)" string as the name and version
+        // stays null. The family classifier handles the literal "VTE(7600)" pattern.
+        _source.Enqueue("\x1bP>|VTE(7600)\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal("VTE(7600)", caps.Terminal.Name);
+        Assert.Null(caps.Terminal.Version);
+    }
+
     // ---- Identification from environment when no XTVERSION arrives ----
 
     [Fact]
@@ -257,9 +291,10 @@ public class VtTerminalNegotiatorTests
     }
 
     [Fact]
-    public async Task KittyFamily_ReportsTextSizingWidthAndScale()
+    public async Task KittyFamily_ModernVersion_ReportsTextSizingWidthAndScale()
     {
-        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        // Kitty 0.40+ ships OSC 66 text sizing.
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
         _source.Enqueue("\x1b[?64c");
 
         await using var negotiator = BuildNegotiator();
@@ -267,6 +302,39 @@ public class VtTerminalNegotiatorTests
 
         Assert.True(caps.Output.TextSizing.Width);
         Assert.True(caps.Output.TextSizing.Scale);
+    }
+
+    [Fact]
+    public async Task KittyFamily_OldVersion_DisablesTextSizing()
+    {
+        // OSC 66 text sizing landed in Kitty 0.40.0 (Oct 2024). Older versions render the
+        // envelope's metadata block as literal text. The negotiator must gate the capability
+        // on version so we don't corrupt the display on 0.3x.x builds.
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.False(caps.Output.TextSizing.Width);
+        Assert.False(caps.Output.TextSizing.Scale);
+    }
+
+    [Fact]
+    public async Task KittyFamily_UnknownVersion_DisablesTextSizing()
+    {
+        // No XTVERSION response → can't know the version. Default conservatively to off so
+        // pre-0.40 Kitty (or other terminals that get misidentified as Kitty by the family
+        // classifier) don't get OSC 66 emissions they can't render.
+        _source.Enqueue("\x1b[?64;1;9c"); // DA1 only
+        _env.Set("TERM", "xterm-kitty");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.Kitty, caps.Terminal.Family);
+        Assert.False(caps.Output.TextSizing.Width);
+        Assert.False(caps.Output.TextSizing.Scale);
     }
 
     [Fact]
@@ -602,7 +670,7 @@ public class VtTerminalNegotiatorTests
     public async Task RestoreAsync_EmitsKittyMultiCursorClear_Unconditionally()
     {
         // Even when no opt-ins were applied, restore must emit the Kitty multi-cursor clear
-        // as a defensive cleanup — the protocol is fire-and-forget (no enable tracked) and
+        // as a defensive cleanup — the protocol is fire-and-forget (no enable tracked), and
         // the clear is a no-op on terminals that don't implement it.
         _source.Enqueue("\x1b[?64c"); // DA1 only — no XTVERSION → no family-gated opt-ins
         var negotiator = BuildNegotiator();

@@ -13,11 +13,15 @@ public sealed record WindowCapabilities(bool TitleSet,
                                         bool IconSet,
                                         bool SizeQueryInPixels,
                                         bool AlternateScreenBuffer,
-                                        bool ScrollRegion)
+                                        bool ScrollRegion,
+                                        int? CellPixelWidth,
+                                        int? CellPixelHeight)
 {
     public static WindowCapabilities None { get; } = new(TitleSet: false,
                                                          IconSet: false,
                                                          SizeQueryInPixels: false,
                                                          AlternateScreenBuffer: false,
-                                                         ScrollRegion: false);
+                                                         ScrollRegion: false,
+                                                         CellPixelHeight: null,
+                                                         CellPixelWidth: null);
 }

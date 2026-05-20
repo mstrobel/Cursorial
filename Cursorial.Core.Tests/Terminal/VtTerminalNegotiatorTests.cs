@@ -322,6 +322,30 @@ public class VtTerminalNegotiatorTests
         Assert.Equal(ColorDepth.Ansi256, caps.Output.Color.Depth);
     }
 
+    [Fact]
+    public async Task WindowsTerminal_GivesTruecolorDepth()
+    {
+        _env.Set("WT_SESSION", "guid");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(ColorDepth.Truecolor, caps.Output.Color.Depth);
+    }
+
+    [Fact]
+    public async Task WindowsConsoleHost_GivesTruecolorDepth()
+    {
+        _env.WithWindowsConsoleAttached();
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(ColorDepth.Truecolor, caps.Output.Color.Depth);
+    }
+
     // ---- Graphics inference ----
 
     [Fact]

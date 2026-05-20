@@ -1305,8 +1305,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                      TerminalFamily.WezTerm or
                                      TerminalFamily.Alacritty or
                                      TerminalFamily.WindowsTerminal or
+                                     TerminalFamily.WindowsConsoleHost or
                                      TerminalFamily.Foot or
-                                     TerminalFamily.Konsole)
+                                     TerminalFamily.Konsole or
+                                     TerminalFamily.GnomeTerminal)
         {
             return ColorDepth.Truecolor;
         }

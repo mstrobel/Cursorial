@@ -1011,7 +1011,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (MatchIdentifier(name, "Alacritty")) return TerminalFamily.Alacritty;
         if (MatchIdentifier(name, "foot")) return TerminalFamily.Foot;
         if (MatchIdentifier(name, "Konsole")) return TerminalFamily.Konsole;
-        if (MatchIdentifier(name, "VTE\\(7600\\)")) return TerminalFamily.Xterm;
+        if (MatchIdentifier(name, "VTE\\(7600\\)")) return TerminalFamily.GnomeTerminal;
         if (MatchIdentifier(name, "xterm")) return TerminalFamily.Xterm;
 
         if (MatchIdentifier(name, "WindowsTerminal") ||

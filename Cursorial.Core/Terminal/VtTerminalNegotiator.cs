@@ -1061,6 +1061,15 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (_environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
         if (_environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
 
+        // On Windows, if we got here without a more specific identification AND we're attached
+        // to a real console (conhost.exe — stdin is a console handle, not a pipe/file), classify
+        // as the legacy console host family. This unlocks Win32 Input Mode and other
+        // conhost-aware capability gates. Windows Terminal already returned above via
+        // WT_SESSION; remaining cases are conhost-backed (cmd.exe, PowerShell launched without
+        // Windows Terminal, etc.) or ConPTY-backed hosts that didn't set WT_SESSION.
+        if (_environment.IsAttachedToWindowsConsole())
+            return TerminalFamily.WindowsConsoleHost;
+
         if (rawTerm is { Length: > 0 })
         {
             // Anything claiming "color" or known VT lineage falls back to GenericVt.

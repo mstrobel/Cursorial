@@ -175,6 +175,67 @@ public class VtTerminalNegotiatorTests
     }
 
     [Fact]
+    public async Task WindowsConsoleAttachedWithoutWtSession_IdentifiesConHost()
+    {
+        // On Windows, when WT_SESSION isn't set but stdin is attached to a real console handle,
+        // we're under conhost.exe (cmd.exe / PowerShell without Windows Terminal). This unlocks
+        // Win32 Input Mode and the rest of the conhost-aware capability gates.
+        _env.WithWindowsConsoleAttached();
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.WindowsConsoleHost, caps.Terminal.Family);
+    }
+
+    [Fact]
+    public async Task WindowsConsoleAttachedWithWtSession_StillIdentifiesWindowsTerminal()
+    {
+        // Belt-and-braces: when WT_SESSION is set we choose WindowsTerminal even if a console
+        // is also attached (Windows Terminal hosts a console internally).
+        _env.WithWindowsConsoleAttached()
+            .Set("WT_SESSION", "guid");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.WindowsTerminal, caps.Terminal.Family);
+    }
+
+    [Fact]
+    public async Task NoConsoleAndNoTerminalSignals_FallsThroughToUnknown()
+    {
+        // Process not attached to a console, no env signals → can't classify. Negotiator
+        // returns Unknown rather than guessing.
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.Unknown, caps.Terminal.Family);
+    }
+
+    [Fact]
+    public async Task ConHost_GatesWin32InputModeOn()
+    {
+        // Verify the legacy-conhost identification flows through to the Win32-Input-Mode
+        // gate — conhost is in that family list, so DECSET 9001 should be queued.
+        _env.WithWindowsConsoleAttached();
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.WindowsConsoleHost, caps.Terminal.Family);
+
+        // Win32 Input Mode is a write-side opt-in: gate fires when the family matches.
+        var written = System.Text.Encoding.ASCII.GetString(await _sink.ReadAllWrittenAsync());
+        Assert.Contains("\x1b[?9001h", written);
+    }
+
+    [Fact]
     public async Task TmuxEnv_FlagsInsideMultiplexer()
     {
         _env.Set("TMUX", "/tmp/tmux-1000/default,1234,0");

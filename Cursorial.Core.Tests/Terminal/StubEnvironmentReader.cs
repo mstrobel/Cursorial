@@ -16,6 +16,21 @@ internal sealed class StubEnvironmentReader : IEnvironmentReader
         return this;
     }
 
+    /// <summary>
+    /// Whether <see cref="IsAttachedToWindowsConsole"/> reports true. Defaults to false so
+    /// tests don't accidentally pick up the host's real console state; the negotiator's
+    /// Windows-family branch only fires when this is explicitly enabled.
+    /// </summary>
+    public bool WindowsConsoleAttached { get; set; }
+
+    public StubEnvironmentReader WithWindowsConsoleAttached(bool value = true)
+    {
+        WindowsConsoleAttached = value;
+        return this;
+    }
+
     public string? GetVariable(string name) =>
         _values.GetValueOrDefault(name);
+
+    public bool IsAttachedToWindowsConsole() => WindowsConsoleAttached;
 }

@@ -203,7 +203,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // turn them off in the reverse order.
             
             // @formatter:off
-            if (_applied.SynchronizedOutput)    QueueWrite(VtInputSequences.OptInSequences.DisableSynchronizedOutput);
+            // Synchronized output is not session-level — it's wrapped per-frame by FrameRenderer,
+            // so there's nothing to disable here. Recorded support is cleared in
+            // ResetAppliedToReflectRestore so the capability reads consistently after restore.
             if (_applied.Win32InputMode)        QueueWrite(VtInputSequences.OptInSequences.DisableWin32InputMode);
             if (_applied.KittyKeyboard)         QueueWrite(VtInputSequences.OptInSequences.PopKittyKeyboard);
             if (_applied.BracketedPaste)        QueueWrite(VtInputSequences.OptInSequences.DisableBracketedPaste);
@@ -337,12 +339,16 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             applied.Win32InputMode = true;
         }
 
-        // Synchronized output: gate on family — older terminals interpret unknown DECSET
-        // numbers as set-private-mode no-ops, but the resulting SynchronizedOutput=true
-        // capability claim would be a lie.
+        // Synchronized output (DECSET 2026): record support so per-frame consumers (FrameRenderer)
+        // can wrap each redraw, but DO NOT issue DECSET 2026 here. DECSET 2026 begins a sync block
+        // that buffers output until DECRST 2026 ends it; issuing it once at session open and
+        // pairing it with DECRST at disposal makes the whole session a single sync block. Terminals
+        // that honor the protocol strictly (WezTerm, Kitty, …) buffer every byte we emit until
+        // session shutdown — interactive output stalls completely. Other terminals either don't
+        // support 2026 at all or have aggressive auto-end timeouts, hiding the bug. We still gate
+        // on family identification so the capability reflects realized support.
         if (options.EnableSynchronizedOutput && TerminalSupportsSynchronizedOutput(identification.Family))
         {
-            QueueWrite(VtInputSequences.OptInSequences.EnableSynchronizedOutput);
             applied.SynchronizedOutput = true;
         }
 

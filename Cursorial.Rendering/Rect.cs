@@ -13,16 +13,22 @@ public readonly record struct Rect
     /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
     /// (width and height).
     /// </summary>
-    /// <param name="Row">Top edge of the rectangle, 0-based. Inclusive.</param>
-    /// <param name="Column">Left edge of the rectangle, 0-based. Inclusive.</param>
-    /// <param name="Columns">Width in cells. Non-negative; 0 produces an empty rectangle.</param>
-    /// <param name="Rows">Height in cells. Non-negative; 0 produces an empty rectangle.</param>
-    public Rect(int Column, int Row, int Columns, int Rows)
+    /// <param name="row">Top edge of the rectangle, 0-based. Inclusive.</param>
+    /// <param name="column">Left edge of the rectangle, 0-based. Inclusive.</param>
+    /// <param name="columns">Width in cells. Non-negative; 0 produces an empty rectangle.</param>
+    /// <param name="rows">Height in cells. Non-negative; 0 produces an empty rectangle.</param>
+    public Rect(int column, int row, int columns, int rows)
     {
-        this.Column = Column;
-        this.Row = Row;
-        this.Columns = Columns;
-        this.Rows = Rows;
+        if (columns < 0)
+            throw new ArgumentOutOfRangeException(nameof(columns), "Rectangle anchor coordinates cannot be negative.");
+
+        if (rows < 0)
+            throw new ArgumentOutOfRangeException(nameof(rows), "Rectangle anchor coordinates cannot be negative.");
+
+        Column = column;
+        Row = row;
+        Columns = columns;
+        Rows = rows;
     }
 
     /// <summary>
@@ -171,4 +177,14 @@ public readonly record struct Rect
     /// <param name="rows">The new height of the rectangle in cells. Must be non-negative.</param>
     /// <returns>A new <see cref="Rect"/> instance with the updated dimensions and the same position.</returns>
     public Rect WithSize(int columns, int rows) => new(Column, Row, columns, rows);
+    
+    /// <summary>
+    /// Creates a new rectangle with the same dimensions as the current rectangle but with
+    /// the top-left corner translated by the specified offsets.
+    /// </summary>
+    /// <param name="offsetColumn">The relative horizontal offset in columns.</param>
+    /// <param name="offsetRow">The relative vertical offset in rows.</param>
+    /// <returns>A new <see cref="Rect"/> instance with the updated position and the same dimensions.</returns>
+    public Rect Translate(int offsetColumn, int offsetRow)
+        => new(Column + offsetColumn, Row + offsetRow, Columns, Rows);
 }

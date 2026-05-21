@@ -744,25 +744,31 @@ public class VtTerminalNegotiatorTests
     }
 
     [Fact]
-    public async Task EnableSynchronizedOutputOnSupportedFamily_WritesEnable()
+    public async Task EnableSynchronizedOutputOnSupportedFamily_RecordsCapabilityWithoutEnable()
     {
         _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
         _source.Enqueue("\x1b[?64c");
         await using var negotiator = BuildNegotiator();
 
-        await negotiator.NegotiateAsync(new NegotiationOptions
-                                        {
-                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
-                                            EnableExtendedMouseTracking = false,
-                                            EnableFocusEvents = false,
-                                            EnableBracketedPaste = false,
-                                            EnableKittyKeyboard = false,
-                                            EnableWin32InputMode = false,
-                                            EnableSynchronizedOutput = true,
-                                        });
+        var caps = await negotiator.NegotiateAsync(new NegotiationOptions
+                                                   {
+                                                       ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                                       EnableExtendedMouseTracking = false,
+                                                       EnableFocusEvents = false,
+                                                       EnableBracketedPaste = false,
+                                                       EnableKittyKeyboard = false,
+                                                       EnableWin32InputMode = false,
+                                                       EnableSynchronizedOutput = true,
+                                                   });
 
+        // Capability is reported as supported so per-frame consumers (FrameRenderer) can wrap
+        // their redraws in DECSET/DECRST 2026. But the negotiator must NOT issue a session-level
+        // DECSET 2026 — that begins a sync block which buffers all output until disposal on
+        // strictly-conforming terminals (WezTerm, Kitty).
+        Assert.True(caps.Output.Protocol.SynchronizedOutput);
         var written = await AllWrittenAsync();
-        Assert.Contains("\x1b[?2026h", written);
+        Assert.DoesNotContain("\x1b[?2026h", written);
+        Assert.DoesNotContain("\x1b[?2026l", written);
     }
 
     // ---- Capability reflection ----
@@ -866,8 +872,9 @@ public class VtTerminalNegotiatorTests
         await negotiator.RestoreAsync();
         var restored = await AllWrittenAsync();
 
-        // LIFO: synchronized output → kitty pop → bracketed paste → focus → any-event mouse → button-event → SGR.
-        int idxSync = restored.IndexOf("\x1b[?2026l", StringComparison.Ordinal);
+        // LIFO: kitty pop → bracketed paste → focus → any-event mouse → button-event → SGR.
+        // Synchronized output is NOT a session-level opt-in (FrameRenderer wraps per-frame),
+        // so no DECRST 2026 appears in restore.
         int idxKittyPop = restored.IndexOf("\x1b[<u", StringComparison.Ordinal);
         int idxPaste = restored.IndexOf("\x1b[?2004l", StringComparison.Ordinal);
         int idxFocus = restored.IndexOf("\x1b[?1004l", StringComparison.Ordinal);
@@ -875,8 +882,8 @@ public class VtTerminalNegotiatorTests
         int idxButtonEvent = restored.IndexOf("\x1b[?1002l", StringComparison.Ordinal);
         int idxSgr = restored.IndexOf("\x1b[?1006l", StringComparison.Ordinal);
 
-        Assert.True(idxSync >= 0);
-        Assert.True(idxKittyPop > idxSync);
+        Assert.DoesNotContain("\x1b[?2026l", restored);
+        Assert.True(idxKittyPop >= 0);
         Assert.True(idxPaste > idxKittyPop);
         Assert.True(idxFocus > idxPaste);
         Assert.True(idxAnyEvent > idxFocus);

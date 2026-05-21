@@ -40,7 +40,7 @@ public class FrameRendererDirtyRegionTests
         // Paint a cell inside the dirty region and one outside; only the marked one should emit.
         buffer.Set(1, 0, "I", Style.Default);
         buffer.Set(8, 0, "O", Style.Default);
-        buffer.MarkDirty(new Rect(Column: 0, Row: 0, Columns: 3, Rows: 1));
+        buffer.MarkDirty(new Rect(column: 0, row: 0, columns: 3, rows: 1));
 
         var output = Render(r, buffer);
 

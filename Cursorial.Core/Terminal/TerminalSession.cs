@@ -397,28 +397,34 @@ public sealed class TerminalSession : IAsyncDisposable
     {
         // @formatter:off
 
-        // Two-phase shutdown when the process is going down:
-        //   Phase 1 — guaranteed: synchronously restore termios / Windows console mode so the
-        //   user's shell isn't left in raw mode. This is always safe to attempt (it's
-        //   idempotent and doesn't write to the VT stream); it must run before any awaits.
+        // Three-phase shutdown when the process is going down. Ordering matters:
+        //   Phase 1 — emit VT opt-in disables synchronously WHILE raw mode is still active, via
+        //   a direct write(2)/WriteFile syscall that bypasses the async PipeWriter chain. Doing
+        //   this before termios restore means the disable bytes don't echo through cooked mode,
+        //   and going through a direct syscall means the write can't hang on a stuck async
+        //   pipeline. If the negotiator never ran or already restored, BuildRestoreSequence
+        //   returns an empty buffer and WriteBytesSync is a no-op.
+        if (_ownedTransports is not null)
+        {
+            try { _ownedTransports.WriteBytesSync(_negotiator.BuildRestoreSequence().Span); }
+            catch { /* best-effort */ }
+        }
+
+        // Phase 2 — synchronously restore termios / Windows console mode so the user's shell
+        // isn't left in raw mode. Idempotent.
         if (_ownedTransports is not null)
         {
             try { _ownedTransports.RestoreTerminalState(); }
             catch { /* best-effort */ }
         }
 
-        // Phase 2 — best-effort within a bounded budget: stop the input pump and write VT
-        // opt-in disable sequences (Kitty pop, mouse off, etc.) to the sink. These require
-        // async work that may block — on POSIX, `read(2)` in the pump doesn't honor token
-        // cancellation mid-syscall, so the pump may not unwind cleanly until the next byte
-        // arrives (or never, if the terminal is already closing). Cap the wait at 2 s so the
-        // process can still exit when the pump won't unblock. If we time out here, the
-        // worst-case visible artifact is a single residual opt-in (e.g., Kitty flags still
-        // pushed) — annoying but not data-destructive, since phase 1 already restored the
-        // mode that determines whether the user can see a prompt at all.
+        // Phase 3 — best-effort within a bounded budget: tear down the input pump and close
+        // the byte streams. Capped at 2 s so the process can still exit when async cleanup
+        // gets stuck. The critical state — opt-in disables and termios — was already handled
+        // synchronously above, so timing out here is non-destructive.
         try { DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)); }
         catch { /* best-effort */ }
-        
+
         // @formatter:on
     }
 }

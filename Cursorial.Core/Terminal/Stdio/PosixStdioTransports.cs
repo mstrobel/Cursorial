@@ -131,11 +131,35 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
         // @formatter:on
     }
 
+    public void WriteBytesSync(ReadOnlySpan<byte> bytes)
+    {
+        // Loop in case write(2) returns a short count (TTYs in raw mode generally don't, but
+        // POSIX permits it). EINTR (signal interrupted the syscall) is retried — we're often
+        // called from a signal-handler path ourselves, so the surrounding code is signal-aware.
+        while (!bytes.IsEmpty)
+        {
+            nint n = Write(fd: 1, ref MemoryMarshal.GetReference(bytes), (nuint) bytes.Length);
+            if (n < 0)
+            {
+                int err = Marshal.GetLastWin32Error();
+                if (err == 4 /* EINTR */) continue;
+                return; // best-effort — broken pipe / unwriteable fd
+            }
+
+            if (n == 0) return;
+            bytes = bytes[(int) n..];
+        }
+    }
+
     // ReSharper disable UnusedMethodReturnValue.Local
 
     /// <summary><c>tcflush(int fd, int queue_selector)</c> — discard pending TTY data.</summary>
     [LibraryImport("libc", EntryPoint = "tcflush", SetLastError = true)]
     private static partial int TcFlush(int fd, int queueSelector);
+
+    /// <summary><c>write(int fd, const void *buf, size_t count)</c> — write up to count bytes.</summary>
+    [LibraryImport("libc", EntryPoint = "write", SetLastError = true)]
+    private static partial nint Write(int fd, ref byte buf, nuint count);
 
     // ReSharper restore UnusedMethodReturnValue.Local
 

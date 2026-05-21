@@ -35,4 +35,14 @@ public interface IStdioTransports : IAsyncDisposable
     /// only via <see cref="IAsyncDisposable.DisposeAsync"/>.
     /// </remarks>
     void RestoreTerminalState();
+
+    /// <summary>
+    /// Synchronously emit raw bytes to the standard-output handle via a direct platform syscall
+    /// (POSIX <c>write(2)</c>, Windows <c>WriteFile</c>), bypassing the async <see cref="Sink"/>
+    /// chain. Intended for signal-handler / process-exit paths where the async pipeline may be
+    /// stuck or where ordering against <see cref="RestoreTerminalState"/> matters (e.g., emitting
+    /// VT opt-in disables before reverting to cooked mode, so the disable bytes don't echo).
+    /// Best-effort: errors are swallowed.
+    /// </summary>
+    void WriteBytesSync(ReadOnlySpan<byte> bytes);
 }

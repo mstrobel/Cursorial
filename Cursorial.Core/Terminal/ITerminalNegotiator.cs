@@ -63,4 +63,25 @@ public interface ITerminalNegotiator : IAsyncDisposable
     /// whether restore succeeded should check transport health separately.
     /// </remarks>
     Task RestoreAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Build the byte sequence that <see cref="RestoreAsync"/> would write to the output sink,
+    /// without performing any I/O of its own, and mark the negotiator as restored so subsequent
+    /// <see cref="RestoreAsync"/> calls become no-ops. The caller is responsible for writing
+    /// the bytes to whatever transport it controls.
+    /// </summary>
+    /// <remarks>
+    /// Intended for signal-handler / process-exit paths that need synchronous, bounded-latency
+    /// restore. Going through the async sink chain (PipeWriter → FileStream → write(2)) carries
+    /// hang risk if the pipeline is in a bad state when a signal arrives, and the resulting
+    /// late writes can also echo through cooked mode if termios has already been restored by
+    /// the time they reach the kernel. By having the caller take the bytes and emit them via a
+    /// direct syscall before touching termios, both problems are avoided.
+    /// </remarks>
+    /// <returns>
+    /// A read-only buffer containing the opt-in disable sequences in LIFO order, ready to be
+    /// written verbatim to the output transport. Empty when no opt-ins were applied or when
+    /// the negotiator has already been restored.
+    /// </returns>
+    ReadOnlyMemory<byte> BuildRestoreSequence();
 }

@@ -158,6 +158,26 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         // @formatter:on
     }
 
+    public void WriteBytesSync(ReadOnlySpan<byte> bytes)
+    {
+        // Loop in case WriteFile returns a short count (rare on a console handle, but the API
+        // permits it). Best-effort: errors are swallowed.
+        while (!bytes.IsEmpty)
+        {
+            if (!WriteFile(_stdoutHandle,
+                           ref MemoryMarshal.GetReference(bytes),
+                           (uint) bytes.Length,
+                           out uint written,
+                           IntPtr.Zero))
+            {
+                return; // broken handle / closed pipe
+            }
+
+            if (written == 0) return;
+            bytes = bytes[(int) written..];
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -181,4 +201,13 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool WriteFile(
+        IntPtr hFile,
+        ref byte lpBuffer,
+        uint nNumberOfBytesToWrite,
+        out uint lpNumberOfBytesWritten,
+        IntPtr lpOverlapped);
 }

@@ -236,6 +236,40 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
     }
 
+    public ReadOnlyMemory<byte> BuildRestoreSequence()
+    {
+        // Idempotent: once we hand bytes out for synchronous emission, RestoreAsync becomes a
+        // no-op so the same disable sequences aren't written twice (once via the sync path here,
+        // once via the async sink during DisposeAsync). Matches RestoreAsync's _restored gate.
+        if (Interlocked.Exchange(ref _restored, 1) != 0) return ReadOnlyMemory<byte>.Empty;
+        if (Volatile.Read(ref _negotiated) == 0) return ReadOnlyMemory<byte>.Empty;
+
+        var writer = new System.Buffers.ArrayBufferWriter<byte>();
+
+        // Mirror RestoreAsync's LIFO order. ClearKittyExtraCursors is emitted unconditionally
+        // (Kitty-only no-op elsewhere) just like the async path.
+        if (_applied.Win32InputMode)        AppendBytes(writer, VtInputSequences.OptInSequences.DisableWin32InputMode);
+        if (_applied.KittyKeyboard)         AppendBytes(writer, VtInputSequences.OptInSequences.PopKittyKeyboard);
+        if (_applied.BracketedPaste)        AppendBytes(writer, VtInputSequences.OptInSequences.DisableBracketedPaste);
+        if (_applied.FocusEvents)           AppendBytes(writer, VtInputSequences.OptInSequences.DisableFocusEvents);
+        if (_applied.SgrPixelsMouse)        AppendBytes(writer, VtInputSequences.OptInSequences.DisableSgrPixelsMouse);
+        if (_applied.MouseMotionTracking)   AppendBytes(writer, VtInputSequences.OptInSequences.DisableMotionMouse);
+        if (_applied.MouseButtonTracking)   AppendBytes(writer, VtInputSequences.OptInSequences.DisableButtonMotionMouse);
+        if (_applied.ExtendedMouseTracking) AppendBytes(writer, VtInputSequences.OptInSequences.DisableSgrMouse);
+        if (_applied.MouseButtons)          AppendBytes(writer, VtInputSequences.OptInSequences.DisableMouseButtons);
+        AppendBytes(writer, VtInputSequences.OptInSequences.ClearKittyExtraCursors);
+
+        ResetAppliedToReflectRestore();
+        return writer.WrittenMemory;
+
+        static void AppendBytes(System.Buffers.ArrayBufferWriter<byte> w, ReadOnlySpan<byte> bytes)
+        {
+            var dest = w.GetSpan(bytes.Length);
+            bytes.CopyTo(dest);
+            w.Advance(bytes.Length);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;

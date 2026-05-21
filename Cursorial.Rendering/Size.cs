@@ -50,4 +50,11 @@ public readonly record struct Size(int Columns, int Rows)
     /// and rows are increased by the vertical margin.
     /// </returns>
     public Size GrowBy(Margins margins) => new(Columns + margins.Horizontal, Rows + margins.Vertical);
+
+    /// <summary>
+    /// Clamps the current <see cref="Size"/> instance to the specified maximum dimensions.
+    /// </summary>
+    /// <param name="size">The maximum dimensions to which the size should be constrained.</param>
+    /// <returns>A new <see cref="Size"/> instance with dimensions clamped to the specified maximum.</returns>
+    public Size ClampTo(Size size) => new(Math.Min(Columns, size.Columns), Math.Min(Rows, size.Rows));
 }

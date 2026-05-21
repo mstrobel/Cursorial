@@ -31,7 +31,7 @@ public abstract record Block
     /// Horizontal margins are ignored at block-level — they're not meaningful when blocks
     /// occupy the full column budget.
     /// </summary>
-    public Margins Margin { get; init; } = default;
+    public Margins Margin { get; init; }
 }
 
 /// <summary>
@@ -42,6 +42,8 @@ public abstract record Block
 /// </summary>
 public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
 {
+    public static readonly Margins DefaultMargins = new(0, 1);
+    
     /// <summary>Wrap behavior for content exceeding the column budget.</summary>
     public WrapMode Wrap { get; init; } = WrapMode.WordWrap;
 
@@ -59,6 +61,8 @@ public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
 /// </summary>
 public sealed record HorizontalRule(string Glyph, Style Style = default) : Block
 {
+    public static Margins DefaultMargins { get; } = new(0, 1);
+
     /// <summary>Light horizontal box-drawing rule (U+2500 ─).</summary>
     public static HorizontalRule Light  { get; } = new("─");
 

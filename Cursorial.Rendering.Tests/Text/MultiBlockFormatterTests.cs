@@ -57,7 +57,7 @@ public class MultiBlockFormatterTests
     {
         var doc = new RichTextBuilder()
             .Run("first")
-            .Paragraph()
+            .Paragraph(margin: Margins.Zero)
             .Run("second")
             .Build();
         var ft = new TextFormatter().Format(doc, 20);
@@ -100,14 +100,14 @@ public class MultiBlockFormatterTests
     public void MaxRows_DropsBlocksPastBudget()
     {
         var doc = new RichTextBuilder()
-            .Run("first").Paragraph()
-            .Run("second").Paragraph()
+            .Run("first").Paragraph(/* default margins t=1, b=1 */)
+            .Run("second").Paragraph(/* default margins t=1, b=1 */)
             .Run("third")
             .Build();
-        var ft = new TextFormatter().Format(doc, 20, maxRows: 2);
+        var ft = new TextFormatter().Format(doc, 20, maxRows: 3);
 
         Assert.Equal(2, ft.Blocks.Length);
-        Assert.Equal(2, ft.Size.Rows);
+        Assert.Equal(3, ft.Size.Rows);
     }
 
     [Fact]
@@ -208,8 +208,8 @@ public class MultiBlockFormatterTests
     {
         var doc = new RichTextBuilder()
             .Run("alpha")
-            .HorizontalRule()
-            .Paragraph()
+            .HorizontalRule(/* default margins t=1, b=1 */)
+            .Paragraph(/* default margins t=1, b=1 */)
             .Run("beta")
             .Build();
         var ft = new TextFormatter().Format(doc, 10);
@@ -218,7 +218,7 @@ public class MultiBlockFormatterTests
         Assert.IsType<FormattedParagraph>(ft.Blocks[0]);
         Assert.IsType<FormattedHorizontalRule>(ft.Blocks[1]);
         Assert.IsType<FormattedParagraph>(ft.Blocks[2]);
-        Assert.Equal(3, ft.Size.Rows);
+        Assert.Equal(5, ft.Size.Rows);
     }
 
     // ---- Test helper ----

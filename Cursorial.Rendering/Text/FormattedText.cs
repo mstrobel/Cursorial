@@ -12,7 +12,7 @@ namespace Cursorial.Rendering.Text;
 /// The result of formatting a <see cref="RichText"/> document against a column budget. Immutable
 /// — format once and paint many times; querying <see cref="Size"/> doesn't need a buffer.
 /// </summary>
-public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size)
+public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size) : IContent
 {
     /// <summary>Empty formatted document — zero blocks, zero size.</summary>
     public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty);
@@ -33,12 +33,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         int rowsAvailable = bounds.Rows;
         bool first = true;
         int paintedWidth = 0;
+        Margins lastBlockMargins = Margins.Zero;
 
         foreach (var block in Blocks)
         {
             if (rowsAvailable <= 0) break;
 
-            int marginTop = first ? 0 : block.Margin.Top;
+            int marginTop = first ? 0 : Math.Max(block.Margin.Top, lastBlockMargins.Bottom);
             row += marginTop;
             rowsAvailable -= marginTop;
             if (rowsAvailable <= 0) break;
@@ -54,6 +55,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             row += blockHeight;
             rowsAvailable -= blockHeight;
             first = false;
+            lastBlockMargins = block.Margin;
         }
 
         return new Rect(bounds.Column, bounds.Row,
@@ -64,22 +66,23 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     private static int ComputeAnchorColumn(Rect bounds, FormattedBlock block)
     {
         var alignment = block switch
-        {
-            FormattedParagraph => TextAlignment.Left, // paragraphs already align their own lines internally
-            FormattedHorizontalRule hr => hr.Alignment,
-            FormattedFigletBlock fig => fig.Alignment,
-            FormattedSizedTextBlock sized => sized.Alignment,
-            FormattedContentBlock content => content.Alignment,
-            _ => TextAlignment.Left,
-        };
+                        {
+                            FormattedParagraph            => TextAlignment.Left, // paragraphs already align their own lines internally
+                            FormattedHorizontalRule hr    => hr.Alignment,
+                            FormattedFigletBlock fig      => fig.Alignment,
+                            FormattedSizedTextBlock sized => sized.Alignment,
+                            FormattedContentBlock content => content.Alignment,
+                            _                             => TextAlignment.Left
+                        };
 
         int slack = Math.Max(0, bounds.Columns - block.Size.Columns);
+
         return alignment switch
-        {
-            TextAlignment.Right => bounds.Column + slack,
-            TextAlignment.Center => bounds.Column + slack / 2,
-            _ => bounds.Column,
-        };
+               {
+                   TextAlignment.Right  => bounds.Column + slack,
+                   TextAlignment.Center => bounds.Column + slack / 2,
+                   _                    => bounds.Column
+               };
     }
 
     private static void PaintBlock(
@@ -151,6 +154,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         scaled.Paint(buffer, new Rect(column, row, sized.Size.Columns, sized.Size.Rows),
                      sized.Style, capabilities);
     }
+
+    Size IContent.Measure(Size availableSpace, OutputCapabilities capabilities)
+        => Size.ClampTo(availableSpace);
+
+    Rect IContent.Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+        => Paint(buffer, bounds, capabilities);
 }
 
 /// <summary>

@@ -65,10 +65,11 @@ public sealed class TextFormatter
         int totalRows = 0;
         int widthUsed = 0;
         bool first = true;
+        Margins lastBlockMargins = Margins.Zero;
 
         foreach (var block in text.Blocks)
         {
-            int marginTop = first ? 0 : block.Margin.Top;
+            int marginTop = first ? 0 : Math.Max(block.Margin.Top, lastBlockMargins.Bottom);
             int rowsBeforeBlock = totalRows + marginTop;
             int budget = maxRows is { } cap ? cap - rowsBeforeBlock : int.MaxValue;
             if (budget <= 0) break;
@@ -96,6 +97,7 @@ public sealed class TextFormatter
             totalRows = rowsBeforeBlock + formatted.Size.Rows;
             widthUsed = Math.Max(widthUsed, formatted.Size.Columns);
             first = false;
+            lastBlockMargins = block.Margin;
         }
 
         return new FormattedText(formattedBlocks.ToImmutable(), new Size(widthUsed, totalRows));

@@ -5,7 +5,7 @@ namespace Cursorial.Rendering.Text;
 /// <summary>
 /// An immutable rich-text document — an ordered sequence of <see cref="Block"/> values.
 /// Construct via <see cref="RichTextBuilder"/> for fluent assembly, or
-/// <c>BBCode.Parse</c> (coming with Phase 4) for the markup-language sugar.
+/// <see cref="TextMarkup.Parse(string)" /> for the markup-language sugar.
 /// </summary>
 /// <remarks>
 /// <para>

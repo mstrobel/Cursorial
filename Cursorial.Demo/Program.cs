@@ -11,6 +11,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Text;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
 
@@ -71,6 +72,9 @@ while (true)
             case "image":
                 await DemoImageAsync(argument);
                 break;
+            case "format" or "richtext":
+                await DemoFormatAsync();
+                break;
             case "probe":
                 await ProbeAsync();
                 break;
@@ -127,6 +131,10 @@ static void PrintHelp()
     Console.WriteLine("  image <path>     Load and render the file at <path> via the negotiated graphics");
     Console.WriteLine("                   protocol (Kitty graphics → iTerm2 inline → cell placeholder).");
     Console.WriteLine("                   Supports PNG / JPEG / GIF; format inferred from extension.");
+    Console.WriteLine("                   (Press q or Ctrl+C to exit)");
+    Console.WriteLine("  format, richtext Showcase the rich-text formatter — wrap modes, alignment");
+    Console.WriteLine("                   (including justify), soft hyphens, multi-block layout, BBcode-style" +
+                      "                   markup languge.");
     Console.WriteLine("                   (Press q or Ctrl+C to exit)");
     Console.WriteLine("  probe            Send XTVERSION + DA1 and dump the raw response bytes for 1 second.");
     Console.WriteLine("                   Confirms whether the terminal responds to standard probes.");
@@ -591,6 +599,215 @@ static async Task DemoRenderAsync()
 
         return false;
     }
+}
+
+static async Task DemoFormatAsync()
+{
+    Console.WriteLine("Formatting demo. Opening alt screen — press q or Ctrl+C to exit.");
+
+    await using var session = await TerminalSession.OpenAsync();
+    var writer = session.Output.Writer;
+
+    ScreenWriter.WriteEnterAlternateScreen(writer);
+    SgrEncoder.WriteReset(writer);
+    await writer.FlushAsync();
+
+    int cols = Math.Max(20, Console.WindowWidth);
+    int rows = Math.Max(8, Console.WindowHeight);
+
+    var buffer = new CellBuffer(cols, rows);
+    var renderer = new FrameRenderer(session.Capabilities.Output);
+
+    // Build once; re-format on resize. Cheap relative to a paint.
+    var doc = BuildFormattingShowcase();
+    var formatter = new TextFormatter { Trim = TextTrimming.WordEllipsis };
+
+    var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
+    using var stopCts = new CancellationTokenSource();
+    var inputPump = Task.Run(async () =>
+    {
+        try
+        {
+            // ReSharper disable AccessToDisposedClosure
+            await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+                events.Enqueue(evt);
+            // ReSharper restore AccessToDisposedClosure
+        }
+        catch (OperationCanceledException) { }
+    });
+
+    try
+    {
+        bool needsRepaint = true;
+
+        while (!stopCts.IsCancellationRequested)
+        {
+            while (events.TryDequeue(out var evt))
+            {
+                switch (evt)
+                {
+                    case ResizeEvent { Columns: > 0, Rows: > 0 } r:
+                        buffer.Resize(r.Columns, r.Rows);
+                        needsRepaint = true;
+                        break;
+                    case KeyEvent k when IsExit(k):
+                        stopCts.Cancel();
+                        break;
+                }
+            }
+
+            if (stopCts.IsCancellationRequested) break;
+
+            if (needsRepaint)
+            {
+                PaintFormattingShowcase(buffer, doc, formatter, session.Capabilities.Output);
+
+                var scratch = new ArrayBufferWriter<byte>();
+                renderer.Render(buffer, scratch);
+                await writer.WriteAsync(scratch.WrittenMemory);
+                await writer.FlushAsync();
+
+                needsRepaint = false;
+            }
+
+            try { await Task.Delay(50, stopCts.Token); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+    finally
+    {
+        stopCts.Cancel();
+
+        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
+        try { renderer.Close(writer); } catch { /* best-effort */ }
+
+        CursorWriter.WriteShow(writer);
+        SgrEncoder.WriteReset(writer);
+        ScreenWriter.WriteLeaveAlternateScreen(writer);
+
+        try { await writer.FlushAsync(); } catch { /* best-effort */ }
+    }
+
+    Console.WriteLine("Format demo exited.");
+
+    static bool IsExit(KeyEvent k)
+    {
+        if (k.Kind != KeyEventKind.Down) return false;
+        if (k.Key == Key.Escape) return true;
+        if (k is { Key: Key.Character, Text.Length: > 0 } && (k.Text.Span[0] == 'q' || k.Text.Span[0] == 'Q')) return true;
+        if (k.Key == Key.Character && k.Modifiers.HasFlag(KeyModifiers.Control) &&
+            k.Text.Length > 0 && (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C')) return true;
+        return false;
+    }
+}
+
+static RichText BuildFormattingShowcase()
+{
+    // A composite document mixing BBcode markup (for the prose-heavy sections) and the builder
+    // (for FIGlet + HR blocks that don't have terse markup equivalents). Builds once and is
+    // reused across resizes by re-formatting against the new column budget.
+    var builder = new RichTextBuilder();
+
+    // Title.
+    builder.Figlet("Rich Text",
+                   FigletFonts.Small,
+                   Style.Default.WithForeground(Color.FromPalette(5))
+                                .WithAttributes(TextAttributes.Bold),
+                   alignment: TextAlignment.Center);
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    // BBcode-driven intro.
+    TextMarkup.Parse(
+        "Cursorial's [b]TextFormatter[/b] lays out [fg=brightcyan]styled rich text[/fg] " +
+        "into cell-grid lines. Hand it a [link=https://en.wikipedia.org/wiki/BBCode]BBcode[/link]-flavored " +
+        "markup string or build it programmatically; the result is the same: an [i]immutable[/i] " +
+        "[fg=brightgreen]FormattedText[/fg] you can paint once or many times.",
+        builder);
+    builder.EndParagraph();
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    TextMarkup.Parse(
+        "[b][fg=brightyellow]Wrap modes.[/fg][/b]  [u]WordWrap[/u] breaks at whitespace and word " +
+        "boundaries; long words split mid-character. [u]WordWrapOverflow[/u] lets them overflow " +
+        "past the right edge. [u]CharacterWrap[/u] is CJK-friendly and breaks at any grapheme. " +
+        "[u]NoWrap[/u] keeps everything on a single line, relying on the active trim mode to clip.",
+        builder);
+    builder.EndParagraph();
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    // Justify demonstration — paragraph with align=justify.
+    TextMarkup.Parse(
+        "[p align=justify][b][fg=brightyellow]Justify alignment.[/fg][/b]  Slack cells are " +
+        "distributed across inter-word gaps so every line except the last fills the column budget " +
+        "exactly. The last line of a paragraph stays in its natural alignment — it would look " +
+        "stretched if it were justified to a half-empty row. Cell-aware width accounting means " +
+        "this also works for mixed-script text without surprises.[/p]",
+        builder);
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    TextMarkup.Parse(
+        "[b][fg=brightyellow]Soft hyphens.[/fg][/b]  Insert U+00AD where a long word can split. " +
+        "The hyphen is invisible until the formatter wraps at it, in which case a literal " +
+        "[fg=brightred]-[/fg] is appended to the previous line. Example: " +
+        "interna­tionali­zation, hyper­exten­sibility, " +
+        "contra­distinc­tion. Narrow the terminal to watch them activate.",
+        builder);
+    builder.EndParagraph();
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    TextMarkup.Parse(
+        "[b][fg=brightyellow]Grapheme maps.[/fg][/b]  Per-run substitution preserves cell-stream " +
+        "semantics. [font=fullwidth]Fullwidth[/font] · [font=doublestruck]DoubleStruck[/font] · " +
+        "[font=smallcaps]small caps[/font] · [font=superscript]012345[/font] · [font=subscript]012345[/font].",
+        builder);
+    builder.EndParagraph();
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    TextMarkup.Parse(
+        "[b][fg=brightyellow]Inline styles.[/fg][/b]  " +
+        "[b]bold[/b] · [i]italic[/i] · [u]underline[/u] · [s]strike[/s] · " +
+        "[fg=red]red[/fg] · [fg=#ffa500]hex orange[/fg] · [fg=42]palette 42[/fg] · " +
+        "[bg=blue][fg=brightwhite] on blue [/fg][/bg] · " +
+        "[link=https://github.com/anthropics/claude-code]Ctrl+click hyperlink[/link]",
+        builder);
+    builder.EndParagraph();
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    TextMarkup.Parse(
+        "Press [b][fg=brightcyan]q[/fg][/b] or [b][fg=brightcyan]Ctrl+C[/fg][/b] to exit.",
+        builder);
+
+    return builder.Build();
+}
+
+static void PaintFormattingShowcase(
+    CellBuffer buffer,
+    RichText doc,
+    TextFormatter formatter,
+    OutputCapabilities outputCaps)
+{
+    buffer.CursorVisible = false;
+    buffer.Clear();
+
+    const int marginX = 1;
+    const int marginY = 1;
+
+    int innerCols = Math.Max(20, Math.Min(120, buffer.Columns) - marginX * 2);
+    int innerRows = Math.Max(4, buffer.Rows - marginY * 2);
+
+    var formatted = formatter.Format(doc, innerCols, maxRows: innerRows, outputCaps);
+
+    var bounds = new Rect(buffer.Bounds.AnchorContent(Anchor.Center, formatted.Size, new(1, 2)),
+                          formatted.Size);
+
+    formatted.Paint(buffer, bounds, outputCaps);
 }
 
 static async Task DemoImageAsync(string argument)

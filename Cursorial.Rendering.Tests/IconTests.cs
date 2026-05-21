@@ -97,7 +97,7 @@ public class IconTests
             fallbackGlyph: "⚙️");
 
         Assert.True(icon.ImageLoaded);
-        Assert.Equal("embedded", icon.ResourceUri.Scheme);
+        Assert.Equal("embedded", icon.ResourceUri!.Scheme);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class IconTests
         {
             var icon = Icon.FromFile(temp, fallbackGlyph: "x");
             Assert.True(icon.ImageLoaded);
-            Assert.Equal("file", icon.ResourceUri.Scheme);
+            Assert.Equal("file", icon.ResourceUri!.Scheme);
         }
         finally
         {

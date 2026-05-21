@@ -107,7 +107,7 @@ public sealed class RichTextBuilder
     /// <summary>Append a hard line break inside the current paragraph.</summary>
     public RichTextBuilder LineBreak()
     {
-        AppendInline(Cursorial.Rendering.Text.LineBreak.Instance);
+        AppendInline(Text.LineBreak.Instance);
         return this;
     }
 
@@ -137,6 +137,16 @@ public sealed class RichTextBuilder
     // ---- Block transitions ----
 
     /// <summary>
+    /// Close the currently-open paragraph (if any) without starting a new one. Subsequent
+    /// inline appends will implicitly open a fresh paragraph using the formatter defaults.
+    /// </summary>
+    public RichTextBuilder EndParagraph()
+    {
+        FlushOpenParagraph();
+        return this;
+    }
+
+    /// <summary>
     /// Close the currently-open paragraph (if any) and start a fresh one with the supplied
     /// per-paragraph options. Subsequent inline appends accumulate into the new paragraph.
     /// </summary>
@@ -145,7 +155,7 @@ public sealed class RichTextBuilder
         TextAlignment alignment = TextAlignment.Left,
         TextTrimming trim = TextTrimming.None,
         int? maxLines = null,
-        Margins margin = default)
+        Margins? margin = null)
     {
         FlushOpenParagraph();
         _openInlines = ImmutableArray.CreateBuilder<Inline>();
@@ -153,7 +163,7 @@ public sealed class RichTextBuilder
         _openAlignment = alignment;
         _openTrim = trim;
         _openMaxLines = maxLines;
-        _openMargin = margin;
+        _openMargin = margin ?? TextParagraph.DefaultMargins;
         return this;
     }
 
@@ -162,10 +172,16 @@ public sealed class RichTextBuilder
         string glyph = "─",
         in Style style = default,
         TextAlignment alignment = TextAlignment.Left,
-        Margins margin = default)
+        Margins? margin = null)
     {
         FlushOpenParagraph();
-        _blocks.Add(new HorizontalRule(glyph, style) { Alignment = alignment, Margin = margin });
+
+        _blocks.Add(new HorizontalRule(glyph, style)
+                    {
+                        Alignment = alignment,
+                        Margin = margin ?? Text.HorizontalRule.DefaultMargins
+                    });
+
         return this;
     }
 
@@ -179,7 +195,9 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(face);
         FlushOpenParagraph();
+
         _blocks.Add(new FigletBlock(text, face, style) { Alignment = alignment, Margin = margin });
+
         return this;
     }
 
@@ -193,12 +211,14 @@ public sealed class RichTextBuilder
     {
         ArgumentNullException.ThrowIfNull(text);
         FlushOpenParagraph();
+
         _blocks.Add(new SizedTextBlock(text, sizing, style)
                     {
                         Fallback = fallback,
                         Alignment = alignment,
                         Margin = margin
                     });
+
         return this;
     }
 
@@ -236,14 +256,16 @@ public sealed class RichTextBuilder
     private void FlushOpenParagraph()
     {
         if (_openInlines is null) return;
+
         _blocks.Add(new TextParagraph(_openInlines.ToImmutable())
                     {
                         Wrap = _openWrap,
                         Alignment = _openAlignment,
                         Trim = _openTrim,
                         MaxLines = _openMaxLines,
-                        Margin = _openMargin,
+                        Margin = _openMargin
                     });
+
         _openInlines = null;
         _openWrap = WrapMode.WordWrap;
         _openAlignment = TextAlignment.Left;

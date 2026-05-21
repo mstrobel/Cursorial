@@ -110,41 +110,83 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 "create a new VtTerminalNegotiator for a fresh negotiation.");
         }
 
-        var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
-        var identification = ResolveIdentification(responses);
-
-        if (options.OptIns == OptInPolicy.Allowed)
+        try
         {
-            await ApplyOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
+            var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
+            var identification = ResolveIdentification(responses);
 
-            // After applying opt-ins, query DECRQM for each DEC private mode we just enabled.
-            // A status=0 (unrecognized) or 2 (reset) response means the terminal silently
-            // didn't honor our DECSET — we clear the corresponding bit so the realized
-            // capabilities reflect what the terminal *actually* supports, not what we asked
-            // for. Modes the terminal doesn't acknowledge with a DECRQM response at all leave
-            // their bit alone (absent evidence is not evidence of absence).
-            await VerifyAppliedOptInsAsync(options, cancellationToken).ConfigureAwait(false);
+            if (options.OptIns == OptInPolicy.Allowed)
+            {
+                await ApplyOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
 
-            ApplyToInputMode(_applied);
+                // After applying opt-ins, query DECRQM for each DEC private mode we just enabled.
+                // A status=0 (unrecognized) or 2 (reset) response means the terminal silently
+                // didn't honor our DECSET — we clear the corresponding bit so the realized
+                // capabilities reflect what the terminal *actually* supports, not what we asked
+                // for. Modes the terminal doesn't acknowledge with a DECRQM response at all leave
+                // their bit alone (absent evidence is not evidence of absence).
+                await VerifyAppliedOptInsAsync(options, cancellationToken).ConfigureAwait(false);
+
+                ApplyToInputMode(_applied);
+            }
+
+            // Probe color capabilities — empirical truecolor verification via OSC 4 set+query
+            // round-trip, plus default fg / bg / cursor color queries (OSC 10 / 11 / 12). Skipped
+            // when opt-ins are turned off, since the same connection-quality assumption (the
+            // terminal is alive and willing to respond) underlies both phases.
+            if (options.OptIns == OptInPolicy.Allowed)
+            {
+                await ProbeColorsAsync(options, cancellationToken).ConfigureAwait(false);
+            }
+
+            // _negotiated is now durably 1 even if anything above threw — restore still runs.
+            var inputCapabilities = ResolveInputCapabilities(identification, _applied);
+            var outputCapabilities = ResolveOutputCapabilities(identification, _applied);
+
+            return new TerminalCapabilities(
+                Terminal: identification,
+                Input: inputCapabilities,
+                Output: outputCapabilities);
         }
-
-        // Probe color capabilities — empirical truecolor verification via OSC 4 set+query
-        // round-trip, plus default fg / bg / cursor color queries (OSC 10 / 11 / 12). Skipped
-        // when opt-ins are turned off, since the same connection-quality assumption (the
-        // terminal is alive and willing to respond) underlies both phases.
-        if (options.OptIns == OptInPolicy.Allowed)
+        finally
         {
-            await ProbeColorsAsync(options, cancellationToken).ConfigureAwait(false);
+            // Release any in-flight probe read so the PipeReader's state is clean before the
+            // downstream VtInputDevice takes over. Without this, a probe phase that times out
+            // before bytes arrive leaves the reader's awaitable "active," and the next
+            // ReadAsync on the same pipe throws "Concurrent reads or writes are not supported."
+            await ReleasePendingProbeReadAsync().ConfigureAwait(false);
         }
+    }
 
-        // _negotiated is now durably 1 even if anything above threw — restore still runs.
-        var inputCapabilities = ResolveInputCapabilities(identification, _applied);
-        var outputCapabilities = ResolveOutputCapabilities(identification, _applied);
+    /// <summary>
+    /// If a probe-phase <see cref="PipeReader.ReadAsync(CancellationToken)"/> is still in flight
+    /// (because the phase's timeout fired before bytes arrived), cancel it and complete the
+    /// resulting <see cref="ReadResult"/> by calling <see cref="PipeReader.AdvanceTo(SequencePosition, SequencePosition)"/>
+    /// with <c>consumed = Start</c> and <c>examined = End</c> so any bytes that did arrive remain
+    /// available for the next reader (typically the input device's pump).
+    /// </summary>
+    private async ValueTask ReleasePendingProbeReadAsync()
+    {
+        if (_pendingProbeRead is null) return;
 
-        return new TerminalCapabilities(
-            Terminal: identification,
-            Input: inputCapabilities,
-            Output: outputCapabilities);
+        try
+        {
+            _source.Reader.CancelPendingRead();
+            var result = await _pendingProbeRead.ConfigureAwait(false);
+            // consumed = Start, examined = End: don't drop bytes that arrived between
+            // CancelPendingRead and the cancel-result being consumed — they're handed off to
+            // the next reader intact.
+            _source.Reader.AdvanceTo(result.Buffer.Start, result.Buffer.End);
+        }
+        catch
+        {
+            // Best-effort cleanup: if the read faulted, the downstream consumer will surface
+            // the same failure on its own next read attempt.
+        }
+        finally
+        {
+            _pendingProbeRead = null;
+        }
     }
 
     public async Task RestoreAsync(CancellationToken cancellationToken = default)
@@ -1457,7 +1499,6 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     // ---- Internal collaborators ----
 
-    // ReSharper disable once NotAccessedPositionalProperty.Local
     private readonly record struct ProbeResponses(
         DeviceResponseEvent? XtVersion,
         DeviceResponseEvent? PrimaryDeviceAttributes);

@@ -110,6 +110,22 @@ public class Image : FragmentContent
         if (capabilities.Graphics.ITerm2InlineImages)
             return new ITerm2ImageFragment(_data);
 
+        // Sixel third — PNG only (we don't decode JPEG / GIF). PNG path: decode to RGBA, quantize
+        // to a 256-color palette, encode the Sixel envelope. Heavier than Kitty / iTerm2 because
+        // we own the rasterizer, but it's the broadest fallback across legacy terminal emulators.
+        if (capabilities.Graphics.Sixel && _data.Format == ImageFormat.Png)
+        {
+            try
+            {
+                var decoded = PngDecoder.Decode(_data.Bytes.Span);
+                return new SixelFragment(decoded.Rgba, decoded.Width, decoded.Height, _data.CellSize);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
+            {
+                // Decode failure → fall through to the placeholder rather than crashing the render.
+            }
+        }
+
         return null;
     }
 

@@ -15,13 +15,22 @@ namespace Cursorial.Terminal;
 /// multiplexers commonly downgrade or filter passthrough sequences; consumers may need to wrap
 /// outgoing sequences in DCS pass-through to reach the outer terminal.
 /// </param>
+/// <param name="AdvertisesSixel">
+/// True when the DA1 (Primary Device Attributes) response included parameter <c>4</c>, which
+/// the DEC VT-series spec defines as "Sixel graphics support." Independent of
+/// <see cref="Family"/> — terminals like xterm built with <c>--enable-sixel-graphics</c>, or
+/// modern Kitty / Konsole / Alacritty builds, advertise Sixel without sharing a single family
+/// classification, so the DA1 advertisement is the reliable detection signal across the
+/// matrix.
+/// </param>
 public sealed record TerminalIdentification(
     TerminalFamily Family,
     string? Name,
     string? Version,
     string? RawTermEnv,
     string? RawTermProgramEnv,
-    bool InsideMultiplexer)
+    bool InsideMultiplexer,
+    bool AdvertisesSixel = false)
 {
     /// <summary>An identification reporting nothing known about the terminal.</summary>
     public static TerminalIdentification Unknown { get; } = new(

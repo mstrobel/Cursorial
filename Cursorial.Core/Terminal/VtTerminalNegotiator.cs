@@ -946,13 +946,43 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (family == TerminalFamily.Unknown)
             family = ClassifyFromEnvironment(rawTerm, rawTermProgram);
 
+        // DA1 response carries DEC private feature codes. Parameter 4 is "Sixel graphics
+        // support." Parsing it lets us detect Sixel on terminals the family list misses
+        // (xterm-with-sixel, modern Kitty, modern Konsole, …) without maintaining a
+        // perpetually-out-of-date family allow-list.
+        bool advertisesSixel = responses.PrimaryDeviceAttributes is { } da1 &&
+                               Da1Advertises(da1.Payload.Span, parameter: 4);
+
         return new TerminalIdentification(
             Family: family,
             Name: nameFromXt ?? rawTermProgram,
             Version: versionFromXt ?? termVersion,
             RawTermEnv: rawTerm,
             RawTermProgramEnv: rawTermProgram,
-            InsideMultiplexer: insideMultiplexer);
+            InsideMultiplexer: insideMultiplexer,
+            AdvertisesSixel: advertisesSixel);
+    }
+
+    /// <summary>
+    /// Scan a DA1 payload — semicolon-separated decimal parameters like <c>"64;1;4;9;22"</c> —
+    /// for an exact match of <paramref name="parameter"/>. The DEC spec defines each parameter
+    /// as a numbered feature; parameter 4 is Sixel, 22 is ANSI color, etc. Exact-match
+    /// semantics are required because "4" and "44" are different features (44 is PCTerm).
+    /// </summary>
+    private static bool Da1Advertises(ReadOnlySpan<byte> payload, int parameter)
+    {
+        int start = 0;
+        for (int i = 0; i <= payload.Length; i++)
+        {
+            if (i == payload.Length || payload[i] == (byte) ';')
+            {
+                var token = payload[start..i];
+                if (TryParseAsciiInt(token, out int value) && value == parameter)
+                    return true;
+                start = i + 1;
+            }
+        }
+        return false;
     }
 
     private bool DetectMultiplexer(string? rawTerm)
@@ -1350,18 +1380,29 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     }
 
     // @formatter:off
-    private static GraphicsCapabilities ResolveGraphics(TerminalIdentification identification) =>
-        identification.Family switch
-        {
-            TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
-            TerminalFamily.Ghostty => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
-            TerminalFamily.Rio     => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: true),
-            TerminalFamily.ITerm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
-            TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: true),
-            TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
-            TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
-            _                      => GraphicsCapabilities.None,
-        };
+    private static GraphicsCapabilities ResolveGraphics(TerminalIdentification identification)
+    {
+        // Base capabilities from family knowledge — what we know each family ships.
+        var fromFamily = identification.Family switch
+                         {
+                             TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+                             TerminalFamily.Ghostty => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+                             TerminalFamily.Rio     => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: true),
+                             TerminalFamily.ITerm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+                             TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: true),
+                             TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+                             TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+                             _                      => GraphicsCapabilities.None,
+                         };
+
+        // OR in DA1 advertisement: parameter 4 is the spec signal for Sixel. Lets us detect
+        // xterm-with-sixel, modern Kitty (0.41+), modern Konsole (24.04+), modern Alacritty
+        // forks, etc., without maintaining a perpetually-stale family allow-list.
+        if (identification.AdvertisesSixel)
+            return fromFamily with { Sixel = true };
+
+        return fromFamily;
+    }
     // @formatter:on
 
     private static CursorCapabilities ResolveCursor(TerminalIdentification identification)

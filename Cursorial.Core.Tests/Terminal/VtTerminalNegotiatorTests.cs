@@ -89,6 +89,73 @@ public class VtTerminalNegotiatorTests
     }
 
     [Fact]
+    public async Task Da1WithSixelParameter_FlagsAdvertisesSixelAndEnablesGraphicsSixel()
+    {
+        // DA1 parameter 4 = Sixel graphics per the DEC spec. Parsing it lets us detect Sixel
+        // on terminals the family allow-list misses (xterm-with-sixel, modern Kitty / Konsole).
+        _source.Enqueue("\x1b[?64;1;4;9c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.True(caps.Terminal.AdvertisesSixel);
+        Assert.True(caps.Output.Graphics.Sixel);
+    }
+
+    [Fact]
+    public async Task Da1WithoutSixelParameter_LeavesAdvertisesSixelFalse()
+    {
+        _source.Enqueue("\x1b[?64;1;9;22c"); // no 4
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.False(caps.Terminal.AdvertisesSixel);
+        Assert.False(caps.Output.Graphics.Sixel);
+    }
+
+    [Fact]
+    public async Task Da1WithParameter44_DoesNotMatchSixel()
+    {
+        // Parameter 44 is PCTerm — must not match a substring search on "4". The parser
+        // tokenizes by ';' and compares values exactly.
+        _source.Enqueue("\x1b[?64;1;44c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.False(caps.Terminal.AdvertisesSixel);
+    }
+
+    [Fact]
+    public async Task Da1WithSixelParameterFirst_AlsoDetected()
+    {
+        // Tokenization must work regardless of position in the parameter list.
+        _source.Enqueue("\x1b[?4;1;22c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.True(caps.Terminal.AdvertisesSixel);
+    }
+
+    [Fact]
+    public async Task Da1AdvertisesSixel_OverridesFamilyWithoutSixel()
+    {
+        // Family is Kitty (Sixel: false in the family list) but DA1 advertises it. Modern Kitty
+        // (0.41+) is exactly this case. The DA1 advertisement wins.
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
+        _source.Enqueue("\x1b[?62;4;22c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(TerminalFamily.Kitty, caps.Terminal.Family);
+        Assert.True(caps.Output.Graphics.Sixel);
+        Assert.True(caps.Output.Graphics.KittyGraphics); // family-derived caps preserved
+    }
+
+    [Fact]
     public async Task XtVersionResponseIdentifiesWezTerm()
     {
         _source.Enqueue("\x1bP>|WezTerm 20240127\x1b\\");

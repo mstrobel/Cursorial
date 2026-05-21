@@ -235,16 +235,78 @@ public class TextMarkupTests
     }
 
     [Fact]
+    public void Parse_ContentTag_LooksUpRegisteredContent()
+    {
+        var content = new StubContent(width: 3);
+        var options = new TextMarkupOptions
+        {
+            Content = new Dictionary<string, Cursorial.Rendering.Content.IContent> { ["icon"] = content }
+        };
+
+        var rt = TextMarkup.Parse("hi [content=icon/] there", options);
+        var paragraph = FirstParagraph(rt);
+
+        Assert.Equal(3, paragraph.Inlines.Length);
+        Assert.IsType<TextRun>(paragraph.Inlines[0]);
+        Assert.IsType<InlineContent>(paragraph.Inlines[1]);
+        Assert.Same(content, ((InlineContent) paragraph.Inlines[1]).Content);
+        Assert.IsType<TextRun>(paragraph.Inlines[2]);
+    }
+
+    [Fact]
+    public void Parse_ContentTag_CaseInsensitive()
+    {
+        var content = new StubContent(width: 2);
+        var options = new TextMarkupOptions
+        {
+            Content = new Dictionary<string, Cursorial.Rendering.Content.IContent>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Settings"] = content
+            }
+        };
+
+        var rt = TextMarkup.Parse("[content=settings/]", options);
+        var ic = (InlineContent) FirstParagraph(rt).Inlines[0];
+        Assert.Same(content, ic.Content);
+    }
+
+    [Fact]
+    public void Parse_ContentTag_UnknownName_Throws()
+    {
+        var ex = Assert.Throws<FormatException>(() => TextMarkup.Parse("[content=missing/]"));
+        Assert.Contains("missing", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_ContentTag_MissingName_Throws()
+    {
+        Assert.Throws<FormatException>(() => TextMarkup.Parse("[content/]"));
+    }
+
+    private sealed class StubContent(int width) : Cursorial.Rendering.Content.IContent
+    {
+        public Cursorial.Rendering.Size Measure(Cursorial.Rendering.Size availableSpace,
+                                                Cursorial.Output.Capabilities.OutputCapabilities capabilities)
+            => new(width, 1);
+
+        public Cursorial.Rendering.Rect Paint(
+            Cursorial.Rendering.CellBuffer buffer, Cursorial.Rendering.Rect bounds,
+            in Style style, Cursorial.Output.Capabilities.OutputCapabilities capabilities)
+            => bounds;
+    }
+
+    [Fact]
     public void Parse_TextMarkupRoundTripsThroughFormatter()
     {
         var rt = TextMarkup.Parse("[b]Hello[/b] [fg=red]world[/fg]");
         var ft = new TextFormatter().Format(rt, 80);
 
         var para = (FormattedParagraph) ft.Blocks[0];
-        var allText = string.Join("", para.Lines.SelectMany(l => l.Runs).Select(r => r.Text));
+        var textRuns = para.Lines.SelectMany(l => l.Runs).OfType<FormattedTextRun>().ToArray();
+        var allText = string.Concat(textRuns.Select(r => r.Text));
 
         Assert.Equal("Hello world", allText);
-        Assert.Contains(para.Lines.SelectMany(l => l.Runs), r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.Contains(para.Lines.SelectMany(l => l.Runs), r => r.Style.Foreground.PaletteIndex == 1);
+        Assert.Contains(textRuns, r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.Contains(textRuns, r => r.Style.Foreground.PaletteIndex == 1);
     }
 }

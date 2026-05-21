@@ -106,7 +106,7 @@ public sealed class TextFormatter
     private FormattedBlock FormatBlock(Block block, int availableColumns, OutputCapabilities capabilities) =>
         block switch
         {
-            TextParagraph p  => FormatParagraph(p, availableColumns),
+            TextParagraph p  => FormatParagraph(p, availableColumns, capabilities),
             HorizontalRule r => FormatHorizontalRule(r, availableColumns),
             FigletBlock f    => FormatFigletBlock(f, availableColumns),
             SizedTextBlock s => FormatSizedTextBlock(s, availableColumns, capabilities),
@@ -155,10 +155,10 @@ public sealed class TextFormatter
         return new FormattedContentBlock(block.Content, block.Alignment, size);
     }
 
-    private FormattedParagraph FormatParagraph(TextParagraph paragraph, int availableColumns)
+    private FormattedParagraph FormatParagraph(TextParagraph paragraph, int availableColumns, OutputCapabilities capabilities)
     {
         // 1. Decompose inlines into wrap atoms with applied glyph maps and soft-hyphen markers.
-        var atoms = new Tokenizer(this).Run(paragraph.Inlines);
+        var atoms = new Tokenizer(this, availableColumns, capabilities).Run(paragraph.Inlines);
 
         // 2. Greedy line packing per WrapMode.
         var lines = PackLines(atoms, availableColumns, paragraph.Wrap);
@@ -198,7 +198,7 @@ public sealed class TextFormatter
     /// flat list of <see cref="Atom"/>s consumable by the line packer. Held as a class so the
     /// in-progress word buffer can be mutated without ref-parameter closure pain.
     /// </summary>
-    private sealed class Tokenizer(TextFormatter outer)
+    private sealed class Tokenizer(TextFormatter outer, int availableColumns, OutputCapabilities capabilities)
     {
         private readonly List<Atom> _atoms = [];
         private readonly List<FormattedRun> _wordRuns = [];
@@ -218,10 +218,9 @@ public sealed class TextFormatter
                         FlushWord();
                         _atoms.Add(HardBreakAtom.Instance);
                         break;
-                    case InlineContent:
-                        throw new NotSupportedException(
-                            "InlineContent isn't handled by TextFormatter yet. Phase 2 covers " +
-                            "TextRun + LineBreak; InlineContent arrives in Phase 3.");
+                    case InlineContent ic:
+                        EmitInlineContent(ic);
+                        break;
                     default:
                         throw new NotSupportedException(
                             $"Inline type {inline.GetType().Name} is not handled by TextFormatter.");
@@ -240,7 +239,7 @@ public sealed class TextFormatter
             void EmitFragment()
             {
                 if (fragmentBuilder.Length == 0) return;
-                _wordRuns.Add(new FormattedRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink));
+                _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink));
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
                 fragmentWidth = 0;
@@ -294,7 +293,7 @@ public sealed class TextFormatter
                         EmitFragment();
                         FlushWord();
                         _atoms.Add(new SpaceAtom(
-                            new FormattedRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink),
+                            new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink),
                             outer.TabWidth));
                         continue;
                     }
@@ -305,7 +304,7 @@ public sealed class TextFormatter
                         FlushWord();
                         int spaceWidth = GraphemeWidth.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
-                            new FormattedRun(g.ToString(), run.Style, run.Hyperlink),
+                            new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink),
                             spaceWidth));
                         continue;
                     }
@@ -314,6 +313,27 @@ public sealed class TextFormatter
                     fragmentWidth += GraphemeWidth.ClusterWidth(g);
                 }
             }
+        }
+
+        private void EmitInlineContent(InlineContent ic)
+        {
+            // Flush the in-progress word — inline content is an atomic word of its own; it
+            // doesn't fuse with surrounding text. Width comes from IContent.Measure against the
+            // paragraph's column budget (clamped to a single row).
+            FlushWord();
+
+            // Pass the column budget as a hint; content may legitimately ask for more, in which
+            // case the wrap algorithm decides whether to overflow (WordWrapOverflow) or wrap to a
+            // fresh line (other modes). Content is atomic — never split.
+            var size = ic.Content.Measure(new Size(availableColumns, 1), capabilities);
+            int width = Math.Max(0, size.Columns);
+            if (width == 0) return;
+
+            var contentRun = new FormattedContentRun(ic.Content, width);
+            _atoms.Add(new WordAtom(
+                [contentRun],
+                width,
+                ImmutableArray<SoftBreakPoint>.Empty));
         }
 
         private void FlushWord()
@@ -442,6 +462,15 @@ public sealed class TextFormatter
             }
 
             var (head, tail) = SplitWordAtChar(word, columns);
+            if (head.Width == 0 && tail.Width == word.Width)
+            {
+                // SplitWordAtChar made no progress — the leading run is unsplittable (atomic
+                // inline content) and wider than the column budget. Place it on this empty line
+                // and accept overflow rather than recurse forever.
+                current.AppendWord(word);
+                return;
+            }
+
             if (head.Width > 0) current.AppendWord(head);
             if (tail.Width > 0)
             {
@@ -504,7 +533,7 @@ public sealed class TextFormatter
             // first = runs[0..FragmentIndex] + "-"
             var firstRuns = ImmutableArray.CreateBuilder<FormattedRun>(sb.FragmentIndex + 1);
             for (int r = 0; r < sb.FragmentIndex; r++) firstRuns.Add(word.Runs[r]);
-            firstRuns.Add(new FormattedRun("-", sb.Style, sb.Hyperlink));
+            firstRuns.Add(new FormattedTextRun("-", sb.Style, sb.Hyperlink));
 
             var restRuns = ImmutableArray.CreateBuilder<FormattedRun>(word.Runs.Length - sb.FragmentIndex);
             for (int r = sb.FragmentIndex; r < word.Runs.Length; r++) restRuns.Add(word.Runs[r]);
@@ -551,7 +580,24 @@ public sealed class TextFormatter
                 continue;
             }
 
-            var enumerator = run.Text.GetGraphemeEnumerator();
+            // Content runs are atomic — if the whole run fits in the remaining head budget,
+            // include it; otherwise push it (and everything after) to the tail.
+            if (run is not FormattedTextRun text)
+            {
+                if (headWidth + run.CellWidth <= maxWidth)
+                {
+                    headRuns.Add(run);
+                    headWidth += run.CellWidth;
+                }
+                else
+                {
+                    splittingInProgress = false;
+                    tailRuns.Add(run);
+                }
+                continue;
+            }
+
+            var enumerator = text.Text.GetGraphemeEnumerator();
             var headFragment = new StringBuilder();
             var tailFragment = new StringBuilder();
             int headFragmentWidth = 0;
@@ -575,12 +621,12 @@ public sealed class TextFormatter
 
             if (headFragment.Length > 0)
             {
-                headRuns.Add(new FormattedRun(headFragment.ToString(), run.Style, run.Hyperlink));
+                headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink));
                 headWidth += headFragmentWidth;
             }
 
             if (tailFragment.Length > 0)
-                tailRuns.Add(new FormattedRun(tailFragment.ToString(), run.Style, run.Hyperlink));
+                tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink));
         }
 
         var head = new WordAtom(headRuns.ToImmutable(), headWidth, ImmutableArray<SoftBreakPoint>.Empty);
@@ -627,15 +673,13 @@ public sealed class TextFormatter
 
         if (line.Width + ellipsisWidth <= maxWidth)
         {
-            var style = line.Runs.Count > 0 ? line.Runs[^1].Style : default;
-            line.Append(new FormattedRun(Ellipsis, style, null), ellipsisWidth);
+            line.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(line.Runs), null), ellipsisWidth);
             return line;
         }
 
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
         var clipped = ClipDraft(line, budget);
-        var clippedStyle = clipped.Runs.Count > 0 ? clipped.Runs[^1].Style : default;
-        clipped.Append(new FormattedRun(Ellipsis, clippedStyle, null), ellipsisWidth);
+        clipped.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(clipped.Runs), null), ellipsisWidth);
         return clipped;
     }
 
@@ -652,8 +696,17 @@ public sealed class TextFormatter
 
         for (int r = 0; r < line.Runs.Count; r++)
         {
-            var run = line.Runs[r];
-            var enumerator = run.Text.GetGraphemeEnumerator();
+            if (line.Runs[r] is not FormattedTextRun textRun)
+            {
+                // Content runs are atomic; if they fit in budget, advance; otherwise fall back
+                // to character ellipsis (we'd need a way to fold ellipsis into content otherwise).
+                cumulative += line.Runs[r].CellWidth;
+                if (cumulative > budget)
+                    return AppendEllipsisCharacter(line, maxWidth);
+                continue;
+            }
+
+            var enumerator = textRun.Text.GetGraphemeEnumerator();
             int charIndex = 0;
 
             while (enumerator.MoveNext())
@@ -666,8 +719,8 @@ public sealed class TextFormatter
                     if (cutRunIndex >= 0)
                     {
                         var draft = TruncateAt(line, cutRunIndex, cutCharIndex);
-                        var style = draft.Runs.Count > 0 ? draft.Runs[^1].Style : default;
-                        draft.Append(new FormattedRun(Ellipsis, style, null), ellipsisWidth);
+                        var style = LastTextRunStyle(draft.Runs);
+                        draft.Append(new FormattedTextRun(Ellipsis, style, null), ellipsisWidth);
                         return draft;
                     }
                     // No word boundary seen — fall back to character ellipsis.
@@ -686,9 +739,16 @@ public sealed class TextFormatter
         }
 
         // Whole line fits already — append ellipsis directly.
-        var styleEnd = line.Runs.Count > 0 ? line.Runs[^1].Style : default;
-        line.Append(new FormattedRun(Ellipsis, styleEnd, null), ellipsisWidth);
+        var styleEnd = LastTextRunStyle(line.Runs);
+        line.Append(new FormattedTextRun(Ellipsis, styleEnd, null), ellipsisWidth);
         return line;
+    }
+
+    private static Style LastTextRunStyle(IReadOnlyList<FormattedRun> runs)
+    {
+        for (int i = runs.Count - 1; i >= 0; i--)
+            if (runs[i] is FormattedTextRun text) return text.Style;
+        return default;
     }
 
     /// <summary>
@@ -704,14 +764,19 @@ public sealed class TextFormatter
         {
             var run = line.Runs[r];
             draft.Runs.Add(run);
-            draft.Width += GraphemeWidth.StringWidth(run.Text);
+            draft.Width += run.CellWidth;
         }
 
-        var partial = line.Runs[cutRunIndex].Text[..cutCharIndex].TrimEnd(' ');
-        if (partial.Length > 0)
+        // Word-boundary cuts always land on a space inside a text run; if we ever wire content
+        // runs to be wrap-boundary candidates we'd need more logic here.
+        if (line.Runs[cutRunIndex] is FormattedTextRun text)
         {
-            draft.Runs.Add(line.Runs[cutRunIndex] with { Text = partial });
-            draft.Width += GraphemeWidth.StringWidth(partial);
+            var partial = text.Text[..cutCharIndex].TrimEnd(' ');
+            if (partial.Length > 0)
+            {
+                draft.Runs.Add(text with { Text = partial });
+                draft.Width += GraphemeWidth.StringWidth(partial);
+            }
         }
 
         return draft;
@@ -753,7 +818,7 @@ public sealed class TextFormatter
     {
         if (padding <= 0) return line.ToFormattedLine();
         var runs = ImmutableArray.CreateBuilder<FormattedRun>(line.Runs.Count + 1);
-        runs.Add(new FormattedRun(new string(' ', padding), default, null));
+        runs.Add(new FormattedTextRun(new string(' ', padding), default, null));
         foreach (var run in line.Runs) runs.Add(run);
         return new FormattedLine(runs.ToImmutable(), line.Width + padding);
     }
@@ -763,10 +828,11 @@ public sealed class TextFormatter
         int slack = columns - line.Width;
         if (slack <= 0) return line.ToFormattedLine();
 
-        // Inter-word gaps are space-only runs sitting between non-space runs.
+        // Inter-word gaps are space-only text runs sitting between non-space runs. Content runs
+        // can't be gaps; their fixed width is treated as part of an adjacent "word."
         var gapIndices = new List<int>();
         for (int i = 1; i < line.Runs.Count - 1; i++)
-            if (IsAllSpaces(line.Runs[i].Text)) gapIndices.Add(i);
+            if (line.Runs[i] is FormattedTextRun text && IsAllSpaces(text.Text)) gapIndices.Add(i);
 
         if (gapIndices.Count == 0) return line.ToFormattedLine();
 
@@ -777,10 +843,10 @@ public sealed class TextFormatter
         for (int i = 0; i < line.Runs.Count; i++)
         {
             int gapPosition = gapIndices.IndexOf(i);
-            if (gapPosition >= 0)
+            if (gapPosition >= 0 && line.Runs[i] is FormattedTextRun gapText)
             {
                 int extra = extraPer + (gapPosition < remainder ? 1 : 0);
-                newRuns.Add(line.Runs[i] with { Text = line.Runs[i].Text + new string(' ', extra) });
+                newRuns.Add(gapText with { Text = gapText.Text + new string(' ', extra) });
             }
             else
             {
@@ -847,9 +913,12 @@ public sealed class TextFormatter
 
         public void TrimTrailingSpaces()
         {
-            while (Runs.Count > 0 && Runs[^1].Hyperlink is null && IsAllSpaces(Runs[^1].Text))
+            while (Runs.Count > 0
+                   && Runs[^1] is FormattedTextRun text
+                   && text.Hyperlink is null
+                   && IsAllSpaces(text.Text))
             {
-                Width -= GraphemeWidth.StringWidth(Runs[^1].Text);
+                Width -= text.CellWidth;
                 Runs.RemoveAt(Runs.Count - 1);
             }
         }

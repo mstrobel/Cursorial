@@ -708,6 +708,25 @@ static RichText BuildFormattingShowcase()
     // reused across resizes by re-formatting against the new column budget.
     var builder = new RichTextBuilder();
 
+    // Inline content registry: makes embedded icons / badges reachable from markup via
+    // [content=name/]. The PNG paths use embedded resources; Icon falls back to its glyph
+    // when the negotiated terminal can't render images, so the markup is portable.
+    var assembly = Assembly.GetExecutingAssembly();
+    var iconStyle = Style.Default.WithBackground(Color.FromRgb(40, 52, 87));
+
+    var contentRegistry = new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["settings"] = Icon.FromEmbedded(assembly, "Icons/settings.png", "⚙️ ",
+                                          fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+        ["download"] = Icon.FromEmbedded(assembly, "Icons/download.png", "⬇️ ",
+                                          fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+        ["calendar"] = Icon.FromEmbedded(assembly, "Icons/calendar.png", "📆 ",
+                                          fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+        ["power"] = Icon.FromEmbedded(assembly, "Icons/power.png", "⚡ ",
+                                       fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+    };
+    var markupOptions = new TextMarkupOptions { Content = contentRegistry };
+
     // Title.
     builder.Figlet("Rich Text",
                    FigletFonts.Small,
@@ -715,7 +734,7 @@ static RichText BuildFormattingShowcase()
                                 .WithAttributes(TextAttributes.Bold),
                    alignment: TextAlignment.Center);
 
-    builder.HorizontalRule(margin: new Margins(0, 1));
+    builder.HorizontalRule(HorizontalRule.Double);
 
     // BBcode-driven intro.
     TextMarkup.Parse(
@@ -723,7 +742,8 @@ static RichText BuildFormattingShowcase()
         "into cell-grid lines. Hand it a [link=https://en.wikipedia.org/wiki/BBCode]BBcode[/link]-flavored " +
         "markup string or build it programmatically; the result is the same: an [i]immutable[/i] " +
         "[fg=brightgreen]FormattedText[/fg] you can paint once or many times.",
-        builder);
+        builder,
+        markupOptions);
     builder.EndParagraph();
 
     builder.HorizontalRule(margin: new Margins(0, 1));
@@ -733,7 +753,8 @@ static RichText BuildFormattingShowcase()
         "boundaries; long words split mid-character. [u]WordWrapOverflow[/u] lets them overflow " +
         "past the right edge. [u]CharacterWrap[/u] is CJK-friendly and breaks at any grapheme. " +
         "[u]NoWrap[/u] keeps everything on a single line, relying on the active trim mode to clip.",
-        builder);
+        builder,
+        markupOptions);
     builder.EndParagraph();
 
     builder.HorizontalRule(margin: new Margins(0, 1));
@@ -745,7 +766,8 @@ static RichText BuildFormattingShowcase()
         "exactly. The last line of a paragraph stays in its natural alignment — it would look " +
         "stretched if it were justified to a half-empty row. Cell-aware width accounting means " +
         "this also works for mixed-script text without surprises.[/p]",
-        builder);
+        builder,
+        markupOptions);
 
     builder.HorizontalRule(margin: new Margins(0, 1));
 
@@ -755,7 +777,8 @@ static RichText BuildFormattingShowcase()
         "[fg=brightred]-[/fg] is appended to the previous line. Example: " +
         "interna­tionali­zation, hyper­exten­sibility, " +
         "contra­distinc­tion. Narrow the terminal to watch them activate.",
-        builder);
+        builder,
+        markupOptions);
     builder.EndParagraph();
 
     builder.HorizontalRule(margin: new Margins(0, 1));
@@ -764,7 +787,8 @@ static RichText BuildFormattingShowcase()
         "[b][fg=brightyellow]Grapheme maps.[/fg][/b]  Per-run substitution preserves cell-stream " +
         "semantics. [font=fullwidth]Fullwidth[/font] · [font=doublestruck]DoubleStruck[/font] · " +
         "[font=smallcaps]small caps[/font] · [font=superscript]012345[/font] · [font=subscript]012345[/font].",
-        builder);
+        builder,
+        markupOptions);
     builder.EndParagraph();
 
     builder.HorizontalRule(margin: new Margins(0, 1));
@@ -775,14 +799,30 @@ static RichText BuildFormattingShowcase()
         "[fg=red]red[/fg] · [fg=#ffa500]hex orange[/fg] · [fg=42]palette 42[/fg] · " +
         "[bg=blue][fg=brightwhite] on blue [/fg][/bg] · " +
         "[link=https://github.com/anthropics/claude-code]Ctrl+click hyperlink[/link]",
-        builder);
+        builder,
+        markupOptions);
+    builder.EndParagraph();
+
+    builder.HorizontalRule(margin: new Margins(0, 1));
+
+    TextMarkup.Parse(
+        "[b][fg=brightyellow]Inline content.[/fg][/b]  Register an [i]IContent[/i] under a name " +
+        "and reference it from markup with [fg=brightcyan]\\[content=name/\\][/fg]. The formatter " +
+        "places it atomically in the paragraph flow at its measured width:  " +
+        "[content=settings/] settings · " +
+        "[content=download/] download · " +
+        "[content=calendar/] calendar · " +
+        "[content=power/] power.",
+        builder,
+        markupOptions);
     builder.EndParagraph();
 
     builder.HorizontalRule(margin: new Margins(0, 1));
 
     TextMarkup.Parse(
         "Press [b][fg=brightcyan]q[/fg][/b] or [b][fg=brightcyan]Ctrl+C[/fg][/b] to exit.",
-        builder);
+        builder,
+        markupOptions);
 
     return builder.Build();
 }

@@ -9,7 +9,8 @@ public class TextFormatterTests
     private static string LineText(FormattedLine line)
     {
         var sb = new System.Text.StringBuilder();
-        foreach (var run in line.Runs) sb.Append(run.Text);
+        foreach (var run in line.Runs)
+            if (run is FormattedTextRun text) sb.Append(text.Text);
         return sb.ToString();
     }
 
@@ -294,7 +295,8 @@ public class TextFormatterTests
 
         // Last line should not be padded to budget.
         var last = para.Lines[^1];
-        Assert.True(last.Columns < 10 || last.Runs.All(r => !r.Text.Contains("  ")));
+        Assert.True(last.Columns < 10 ||
+                    last.Runs.OfType<FormattedTextRun>().All(r => !r.Text.Contains("  ")));
     }
 
     // ---- Styles + maps preserved through layout ----
@@ -311,7 +313,8 @@ public class TextFormatterTests
         var para = FirstParagraph(new TextFormatter().Format(doc, 80));
         var line = para.Lines[0];
 
-        Assert.Contains(line.Runs, r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.Contains(line.Runs.OfType<FormattedTextRun>(),
+                        r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]

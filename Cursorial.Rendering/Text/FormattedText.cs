@@ -92,7 +92,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         switch (block)
         {
             case FormattedParagraph paragraph:
-                PaintParagraph(paragraph, buffer, column, row, maxRows);
+                PaintParagraph(paragraph, buffer, column, row, maxRows, capabilities);
                 break;
             case FormattedHorizontalRule rule:
                 PaintHorizontalRule(rule, buffer, column, row, boundsColumns);
@@ -110,7 +110,9 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         }
     }
 
-    private static void PaintParagraph(FormattedParagraph paragraph, CellBuffer buffer, int column, int row, int maxRows)
+    private static void PaintParagraph(
+        FormattedParagraph paragraph, CellBuffer buffer, int column, int row, int maxRows,
+        OutputCapabilities capabilities)
     {
         int linesToPaint = Math.Min(paragraph.Lines.Length, maxRows);
         for (int i = 0; i < linesToPaint; i++)
@@ -119,12 +121,26 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             int cursor = column;
             foreach (var run in line.Runs)
             {
-                var enumerator = run.Text.GetGraphemeEnumerator();
-                while (enumerator.MoveNext())
+                switch (run)
                 {
-                    var grapheme = enumerator.Current;
-                    int width = buffer.Set(cursor, row + i, grapheme.ToString(), run.Style);
-                    cursor += width;
+                    case FormattedTextRun text:
+                    {
+                        var enumerator = text.Text.GetGraphemeEnumerator();
+                        while (enumerator.MoveNext())
+                        {
+                            var grapheme = enumerator.Current;
+                            int width = buffer.Set(cursor, row + i, grapheme.ToString(), text.Style);
+                            cursor += width;
+                        }
+                        break;
+                    }
+                    case FormattedContentRun content:
+                    {
+                        var bounds = new Rect(cursor, row + i, content.Width, 1);
+                        content.Content.Paint(buffer, bounds, content.Style, capabilities);
+                        cursor += content.Width;
+                        break;
+                    }
                 }
             }
         }
@@ -219,8 +235,36 @@ public sealed record FormattedContentBlock(
 public sealed record FormattedLine(ImmutableArray<FormattedRun> Runs, int Columns);
 
 /// <summary>
-/// The atomic unit of paintable content inside a <see cref="FormattedLine"/>. Carries the final
-/// visible text (post-glyph-map), the SGR style to apply, and an optional OSC&#x202F;8 hyperlink
-/// target. The renderer paints each run in order at the line's anchor row.
+/// The atomic unit of paintable content inside a <see cref="FormattedLine"/>. Concrete
+/// subtypes carry either visible text (<see cref="FormattedTextRun"/>) or an embedded
+/// <see cref="IContent"/> placement (<see cref="FormattedContentRun"/>). The painter walks the
+/// line's runs in order and dispatches per subtype.
 /// </summary>
-public sealed record FormattedRun(string Text, Style Style, string? Hyperlink = null);
+public abstract record FormattedRun
+{
+    /// <summary>The cell footprint this run occupies on its line.</summary>
+    public abstract int CellWidth { get; }
+}
+
+/// <summary>
+/// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
+/// hyperlink target. The painter walks graphemes and writes cells through
+/// <see cref="CellBuffer.Set"/>.
+/// </summary>
+public sealed record FormattedTextRun(string Text, Style Style, string? Hyperlink = null) : FormattedRun
+{
+    /// <inheritdoc/>
+    public override int CellWidth => GraphemeWidth.StringWidth(Text);
+}
+
+/// <summary>
+/// An inline <see cref="IContent"/> placement laid out atomically inside a paragraph flow.
+/// Width is known at format time (from <see cref="IContent.Measure"/>); the painter calls
+/// <see cref="IContent.Paint"/> with a rect of (<see cref="Width"/>, 1) anchored at the run's
+/// cell position, with the captured <see cref="Style"/> as backdrop.
+/// </summary>
+public sealed record FormattedContentRun(IContent Content, int Width, Style Style = default) : FormattedRun
+{
+    /// <inheritdoc/>
+    public override int CellWidth => Width;
+}

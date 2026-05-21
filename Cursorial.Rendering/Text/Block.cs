@@ -64,19 +64,19 @@ public sealed record HorizontalRule(string Glyph, Style Style = default) : Block
     public static Margins DefaultMargins { get; } = new(0, 1);
 
     /// <summary>Light horizontal box-drawing rule (U+2500 ─).</summary>
-    public static HorizontalRule Light  { get; } = new("─");
+    public static HorizontalRule Light  { get; } = new("─") { Margin = DefaultMargins };
 
     /// <summary>Heavy horizontal box-drawing rule (U+2501 ━).</summary>
-    public static HorizontalRule Heavy  { get; } = new("━");
+    public static HorizontalRule Heavy  { get; } = new("━") { Margin = DefaultMargins };
 
     /// <summary>Double horizontal box-drawing rule (U+2550 ═).</summary>
-    public static HorizontalRule Double { get; } = new("═");
+    public static HorizontalRule Double { get; } = new("═") { Margin = DefaultMargins };
 
     /// <summary>Triple-dash horizontal box-drawing rule (U+2504 ┄).</summary>
-    public static HorizontalRule Dashed { get; } = new("┄");
+    public static HorizontalRule Dashed { get; } = new("┄") { Margin = DefaultMargins };
 
     /// <summary>Quadruple-dot horizontal box-drawing rule (U+2508 ┈).</summary>
-    public static HorizontalRule Dotted { get; } = new("┈");
+    public static HorizontalRule Dotted { get; } = new("┈") { Margin = DefaultMargins };
 }
 
 /// <summary>

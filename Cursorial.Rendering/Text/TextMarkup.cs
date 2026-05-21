@@ -2,8 +2,32 @@ using System.Globalization;
 using System.Text;
 
 using Cursorial.Output;
+using Cursorial.Rendering.Content;
 
 namespace Cursorial.Rendering.Text;
+
+/// <summary>
+/// Caller-supplied data the markup parser pulls from. Lets the lexically-static markup
+/// reference dynamic things — most notably inline <see cref="IContent"/> instances embedded
+/// via <c>[content=name/]</c>.
+/// </summary>
+public sealed class TextMarkupOptions
+{
+    /// <summary>
+    /// Empty options — no registered content. <c>[content=name/]</c> in markup that hits this
+    /// options instance throws <see cref="FormatException"/>.
+    /// </summary>
+    public static TextMarkupOptions Empty { get; } = new();
+
+    /// <summary>
+    /// Named content registry consulted by the <c>[content=name/]</c> self-closing tag.
+    /// Keys are case-insensitive by convention; supply an
+    /// <see cref="IReadOnlyDictionary{TKey,TValue}"/> with a case-insensitive comparer for the
+    /// most ergonomic call-site behavior.
+    /// </summary>
+    public IReadOnlyDictionary<string, IContent> Content { get; init; } =
+        new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
+}
 
 /// <summary>
 /// BBcode-style markup parser that drives a <see cref="RichTextBuilder"/>. Sugar over the
@@ -24,6 +48,9 @@ namespace Cursorial.Rendering.Text;
 /// <item><c>[font=name][/font]</c> — per-grapheme remap; built-ins: <c>fullwidth</c>,
 ///       <c>doublestruck</c>, <c>smallcaps</c>, <c>superscript</c>, <c>subscript</c>.</item>
 /// <item><c>[br/]</c> — hard line break inside a paragraph.</item>
+/// <item><c>[content=name/]</c> — inline-content embedding. Resolves <c>name</c> against
+///       <see cref="TextMarkupOptions.Content"/>; the content is placed atomically in the
+///       paragraph flow (treated as an indivisible word at its measured width).</item>
 /// <item><c>[p attrs]…[/p]</c> — explicit paragraph block. Attributes:
 ///       <c>wrap=word|character|nowrap|overflow</c>, <c>align=left|right|center|justify</c>,
 ///       <c>trim=none|clip|char|word</c>, <c>maxlines=N</c>.</item>
@@ -50,21 +77,30 @@ namespace Cursorial.Rendering.Text;
 public static class TextMarkup
 {
     /// <summary>Parse <paramref name="markup"/> into a fresh <see cref="RichText"/> document.</summary>
-    public static RichText Parse(string markup)
+    public static RichText Parse(string markup) => Parse(markup, TextMarkupOptions.Empty);
+
+    /// <summary>Parse with caller-supplied <paramref name="options"/> (named content registry, etc.).</summary>
+    public static RichText Parse(string markup, TextMarkupOptions options)
     {
         ArgumentNullException.ThrowIfNull(markup);
+        ArgumentNullException.ThrowIfNull(options);
         var builder = new RichTextBuilder();
-        Parse(markup, builder);
+        Parse(markup, builder, options);
         return builder.Build();
     }
 
     /// <summary>Parse <paramref name="markup"/> into an existing builder, appending to whatever it already holds.</summary>
-    public static void Parse(string markup, RichTextBuilder builder)
+    public static void Parse(string markup, RichTextBuilder builder) =>
+        Parse(markup, builder, TextMarkupOptions.Empty);
+
+    /// <summary>Parse into an existing builder with caller-supplied options.</summary>
+    public static void Parse(string markup, RichTextBuilder builder, TextMarkupOptions options)
     {
         ArgumentNullException.ThrowIfNull(markup);
         ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(options);
 
-        new TextMarkupParser(markup, builder).Run();
+        new TextMarkupParser(markup, builder, options).Run();
     }
 
     // ---- Internal lexer ----
@@ -175,7 +211,7 @@ public static class TextMarkup
 
     // ---- Internal parser ----
 
-    private sealed class TextMarkupParser(string input, RichTextBuilder builder)
+    private sealed class TextMarkupParser(string input, RichTextBuilder builder, TextMarkupOptions options)
     {
         private readonly TextMarkupLexer _lexer = new(input);
         private readonly Stack<(string Name, StyleScope Scope)> _styleStack = new();
@@ -271,9 +307,26 @@ public static class TextMarkup
                 case "hr":
                     EmitHorizontalRule(token);
                     break;
+                case "content":
+                    EmitContent(token);
+                    break;
                 default:
                     throw Error(token.Position, $"Unknown self-closing markup tag [{token.Name}/].");
             }
+        }
+
+        private void EmitContent(Token token)
+        {
+            if (string.IsNullOrEmpty(token.Value))
+                throw Error(token.Position,
+                    "[content/] requires a name: [content=icon/]. Register names via TextMarkupOptions.Content.");
+
+            if (!options.Content.TryGetValue(token.Value, out var content))
+                throw Error(token.Position,
+                    $"No content registered under '{token.Value}'. Add it to TextMarkupOptions.Content " +
+                    "before parsing.");
+
+            builder.InlineContent(content);
         }
 
         private void Push(string name, StyleScope scope)

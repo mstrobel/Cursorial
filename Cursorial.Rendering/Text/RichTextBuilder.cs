@@ -10,7 +10,7 @@ namespace Cursorial.Rendering.Text;
 /// Fluent builder for <see cref="RichText"/> documents. Tracks an open <see cref="TextParagraph"/>
 /// and a stack of styles + glyph maps + hyperlinks that combine for each appended
 /// <see cref="TextRun"/>; closes the open paragraph automatically when a block-level transition
-/// (<see cref="HorizontalRule"/>, <see cref="Figlet"/>, etc.) is invoked.
+/// (<see cref="Text.HorizontalRule"/>, <see cref="Figlet"/>, etc.) is invoked.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -167,13 +167,15 @@ public sealed class RichTextBuilder
         return this;
     }
 
-    /// <summary>Append a <see cref="HorizontalRule"/> using the supplied glyph + style.</summary>
+    /// <summary>Append a <see cref="Text.HorizontalRule"/> using the supplied glyph + style.</summary>
     public RichTextBuilder HorizontalRule(
+        // ReSharper disable once MethodOverloadWithOptionalParameter
         string glyph = "─",
         in Style style = default,
         TextAlignment alignment = TextAlignment.Left,
         Margins? margin = null)
     {
+        ArgumentNullException.ThrowIfNull(glyph);
         FlushOpenParagraph();
 
         _blocks.Add(new HorizontalRule(glyph, style)
@@ -181,6 +183,21 @@ public sealed class RichTextBuilder
                         Alignment = alignment,
                         Margin = margin ?? Text.HorizontalRule.DefaultMargins
                     });
+
+        return this;
+    }
+
+    /// <summary>Append a <see cref="Text.HorizontalRule.Light">light horizontal rule</see> using the
+    /// supplied glyph + style.</summary>
+    public RichTextBuilder HorizontalRule() => HorizontalRule(Text.HorizontalRule.Light);
+
+    /// <summary>Append a <see cref="Text.HorizontalRule"/> using the supplied glyph + style.</summary>
+    public RichTextBuilder HorizontalRule(HorizontalRule standardRule)
+    {
+        ArgumentNullException.ThrowIfNull(standardRule);
+        FlushOpenParagraph();
+
+        _blocks.Add(standardRule);
 
         return this;
     }

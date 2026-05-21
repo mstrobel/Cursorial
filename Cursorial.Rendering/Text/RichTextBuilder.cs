@@ -32,10 +32,14 @@ public sealed class RichTextBuilder
     private readonly ImmutableArray<Block>.Builder _blocks = ImmutableArray.CreateBuilder<Block>();
     private ImmutableArray<Inline>.Builder? _openInlines;
 
-    // Per-paragraph configuration captured at the moment the paragraph is opened.
-    private TextAlignment _openAlignment;
-    private WrapMode _openWrap;
-    private TextTrimming _openTrim;
+    // Per-paragraph configuration captured at the moment the paragraph is opened. Fields are
+    // initialized to the documented defaults so an implicitly-opened paragraph (one created by
+    // a Run/LineBreak/etc. without a preceding Paragraph() call) gets sensible behavior — in
+    // particular, WrapMode.NoWrap is NOT the desired default. FlushOpenParagraph resets these
+    // to the same values after closing a paragraph.
+    private TextAlignment _openAlignment = TextAlignment.Left;
+    private WrapMode _openWrap = WrapMode.WordWrap;
+    private TextTrimming _openTrim = TextTrimming.None;
     private int? _openMaxLines;
     private Margins _openMargin;
 

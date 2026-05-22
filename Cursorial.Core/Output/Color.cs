@@ -101,6 +101,46 @@ public readonly record struct Color
         return new Color(ColorKind.Rgb, red, green, blue, 255);
     }
 
+    /// <summary>Construct a 24-bit truecolor value from a hex code.</summary>
+    public static Color FromHex(in ReadOnlySpan<char> hexCode)
+    {
+        var span = hexCode;
+        
+        // Remove leading '#' if present
+        if (span.Length > 0 && span[0] == '#')
+            span = span[1..];
+        
+        // Support 3-digit (#RGB) and 6-digit (#RRGGBB) hex codes
+        if (span.Length == 3)
+        {
+            // Convert 3-digit format to 6-digit by doubling each digit
+            byte r = (byte)(ParseHexDigit(span[0]) * 17);
+            byte g = (byte)(ParseHexDigit(span[1]) * 17);
+            byte b = (byte)(ParseHexDigit(span[2]) * 17);
+            return FromRgb(r, g, b);
+        }
+
+        if (span.Length == 6)
+        {
+            byte r = (byte)((ParseHexDigit(span[0]) << 4) | ParseHexDigit(span[1]));
+            byte g = (byte)((ParseHexDigit(span[2]) << 4) | ParseHexDigit(span[3]));
+            byte b = (byte)((ParseHexDigit(span[4]) << 4) | ParseHexDigit(span[5]));
+            return FromRgb(r, g, b);
+        }
+
+        throw new ArgumentException($"Invalid hex code format. Expected 3 or 6 hex digits, got {span.Length}.", nameof(hexCode));
+
+        static int ParseHexDigit(char c)
+        {
+            if (c is >= '0' and <= '9')
+                return c - '0';
+            if (c is >= 'a' and <= 'f')
+                return c - 'a' + 10;
+            if (c is >= 'A' and <= 'F')
+                return c - 'A' + 10;
+            throw new ArgumentException($"Invalid hex digit: '{c}'");
+        }
+    }
     /// <summary>
     /// Construct a 24-bit truecolor value with an explicit alpha channel. <paramref name="alpha"/>
     /// of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is fully transparent

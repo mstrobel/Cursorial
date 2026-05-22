@@ -30,6 +30,7 @@ namespace Cursorial.Rendering.Text;
 public sealed class RichTextBuilder
 {
     private readonly ImmutableArray<Block>.Builder _blocks = ImmutableArray.CreateBuilder<Block>();
+    private readonly Style _defaultStyle;
     private ImmutableArray<Inline>.Builder? _openInlines;
 
     // Per-paragraph configuration captured at the moment the paragraph is opened. Fields are
@@ -49,6 +50,11 @@ public sealed class RichTextBuilder
     private readonly Stack<IGlyphMap?> _maps = new();
     private readonly Stack<string?> _hyperlinks = new();
 
+    public RichTextBuilder(Style defaultStyle = default)
+    {
+        _defaultStyle = defaultStyle;
+    }
+
     /// <summary>
     /// Push <paramref name="style"/> onto the style stack. The pushed layer is merged with the
     /// previous top (child wins per <see cref="StyleExtensions.Compose"/>); subsequent
@@ -57,7 +63,7 @@ public sealed class RichTextBuilder
     /// </summary>
     public StyleScope Push(in Style style)
     {
-        var current = _styles.Count > 0 ? _styles.Peek() : default;
+        var current = _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
         _styles.Push(current.Compose(in style));
         return new StyleScope(this, StyleScope.Layer.Style);
     }
@@ -100,7 +106,7 @@ public sealed class RichTextBuilder
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, style, CurrentMap, CurrentHyperlink));
+        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink));
         return this;
     }
 
@@ -121,7 +127,8 @@ public sealed class RichTextBuilder
         ArgumentException.ThrowIfNullOrEmpty(uri);
         if (text.Length == 0) return this;
 
-        var resolvedStyle = style.Equals(default(Style)) ? CurrentStyle : CurrentStyle.Compose(in style);
+        var effectiveStyle = DefaultStyle(style);
+        var resolvedStyle = effectiveStyle == default ? CurrentStyle : CurrentStyle.Compose(in effectiveStyle);
         AppendInline(new TextRun(text, resolvedStyle, CurrentMap, uri));
         return this;
     }
@@ -178,7 +185,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(glyph);
         FlushOpenParagraph();
 
-        _blocks.Add(new HorizontalRule(glyph, style)
+        _blocks.Add(new HorizontalRule(glyph, DefaultStyle(style))
                     {
                         Alignment = alignment,
                         Margin = margin ?? Text.HorizontalRule.DefaultMargins
@@ -196,6 +203,9 @@ public sealed class RichTextBuilder
     {
         ArgumentNullException.ThrowIfNull(standardRule);
         FlushOpenParagraph();
+        
+        if (DefaultStyle(standardRule.Style) is {} ds && ds != default)
+            standardRule = standardRule with { Style = ds };
 
         _blocks.Add(standardRule);
 
@@ -213,7 +223,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(face);
         FlushOpenParagraph();
 
-        _blocks.Add(new FigletBlock(text, face, style) { Alignment = alignment, Margin = margin });
+        _blocks.Add(new FigletBlock(text, face, DefaultStyle(style)) { Alignment = alignment, Margin = margin });
 
         return this;
     }
@@ -229,7 +239,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(text);
         FlushOpenParagraph();
 
-        _blocks.Add(new SizedTextBlock(text, sizing, style)
+        _blocks.Add(new SizedTextBlock(text, sizing, DefaultStyle(style))
                     {
                         Fallback = fallback,
                         Alignment = alignment,
@@ -290,6 +300,8 @@ public sealed class RichTextBuilder
         _openMaxLines = null;
         _openMargin = default;
     }
+
+    private Style DefaultStyle(Style style) => style == default ? _defaultStyle : style;
 
     internal void PopLayer(StyleScope.Layer layer)
     {

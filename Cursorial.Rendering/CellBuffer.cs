@@ -39,6 +39,8 @@ public sealed class CellBuffer
     private Cell[] _cells;
     private int _columns;
     private int _rows;
+
+    private readonly Style _defaultStyle;
     private readonly Stack<IBlendingMode> _blendStack = new();
     private readonly Dictionary<(int Column, int Row), FragmentEntry> _fragments = new();
 
@@ -58,7 +60,21 @@ public sealed class CellBuffer
         _columns = columns;
         _rows = rows;
         _cells = new Cell[checked(columns * rows)];
+
         Capabilities = capabilities;
+
+        if (capabilities is { Output.Color: { DefaultForeground: var fg, DefaultBackground: var bg } } &&
+            (fg is { Kind: ColorKind.Rgb } || bg is { Kind: ColorKind.Rgb }))
+        {
+            // If the default foreground or background color is known, use the actual color in RGB
+            // form so we can take advantage of alpha blending.
+            _defaultStyle = Style.Default with
+                            {
+                                Foreground = fg ?? Color.Default,
+                                Background = bg ?? Color.Default
+                            };
+            Clear();
+        }
     }
 
     /// <summary>Width of the buffer in cells.</summary>
@@ -94,15 +110,18 @@ public sealed class CellBuffer
     public TerminalCapabilities? Capabilities { get; }
     
     /// <summary>
-    /// The blending mode applied to each <see cref="Set"/> and <see cref="Fill"/> call. The top
+    /// The blending mode applied to each <see cref="Set"/> and <see cref="Fill(in Cell)"/> call. The top
     /// of the buffer's blend stack, or <see cref="BlendingModes.Default"/> when the stack is
-    /// empty. <see cref="Clear"/> and the raw indexer setter do NOT consult this — they assign
+    /// empty. <see cref="Clear()"/> and the raw indexer setter do NOT consult this — they assign
     /// cells verbatim.
     /// </summary>
     public IBlendingMode CurrentBlendingMode =>
         _blendStack.Count > 0 ? _blendStack.Peek() : BlendingModes.Default;
 
-    /// <summary>Push a blending mode onto the stack; subsequent <see cref="Set"/> / <see cref="Fill"/> calls use it.</summary>
+    /// <summary>
+    /// Push a blending mode onto the stack; subsequent <see cref="Set"/> / <see cref="Fill(in Cell)"/>
+    /// calls use it.
+    /// </summary>
     public void PushBlendingMode(IBlendingMode mode)
     {
         ArgumentNullException.ThrowIfNull(mode);
@@ -167,6 +186,13 @@ public sealed class CellBuffer
         // lightens based on the existing color at this position.
         var blended = BlendStyle(style, previous.Style);
 
+        if (string.IsNullOrWhiteSpace(grapheme) && !previous.Grapheme.IsWhiteSpace() && style.Background.IsOpaque is false)
+        {
+            var foregroundUnderneath = Color.Composite(style.Background, previous.Style.Foreground, CurrentBlendingMode);
+            grapheme = previous.Grapheme;
+            blended = blended with { Foreground = foregroundUnderneath };
+        }
+
         // Cleanup: were we overwriting a wide-left's right half?
         if (previous.Kind == CellKind.WideContinuation && column > 0)
             _cells[index - 1] = Cell.Blank;
@@ -195,9 +221,12 @@ public sealed class CellBuffer
     public void Clear()
     {
         Array.Clear(_cells);
+
         _fragments.Clear();
         _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
+
+        FillWithDefaultStyleIfKnown();
     }
 
     // ---- Fragment sidecar -----------------------------------------------------------------
@@ -421,11 +450,13 @@ public sealed class CellBuffer
         int colEnd = Math.Min(_columns, region.ColumnEnd);
         if (row >= rowEnd || col >= colEnd) return;
 
+        var blank = Cell.Blank with { Style = _defaultStyle };
+
         for (int r = row; r < rowEnd; r++)
         {
             int rowStart = r * _columns;
             for (int c = col; c < colEnd; c++)
-                _cells[rowStart + c] = Cell.Blank;
+                _cells[rowStart + c] = blank;
         }
     }
 
@@ -489,6 +520,8 @@ public sealed class CellBuffer
         _fragments.Clear();
         _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
+
+        FillWithDefaultStyleIfKnown();
     }
 
     /// <summary>
@@ -512,5 +545,11 @@ public sealed class CellBuffer
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(row, _rows);
         ArgumentOutOfRangeException.ThrowIfNegative(column);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, _columns);
+    }
+    
+    private void FillWithDefaultStyleIfKnown()
+    {
+        if (_defaultStyle != default)
+            _cells.AsSpan().Fill(Cell.Blank with { Style = _defaultStyle });
     }
 }

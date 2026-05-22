@@ -202,9 +202,29 @@ public sealed class FigletFont : IGlyphFont
                 // composite correctly with the underlying cell grid).
                 if (ch == HardBlank) cluster = " ";
                 else cluster = line.Length == grapheme.Length ? line : grapheme.ToString();
-                
+
+                // Smushing: if a previous glyph in this same Paint call already wrote a non-space
+                // character into this cell (which happens when ComputeOverlap added the +1 smush
+                // bonus), apply the FIGlet smush rule to merge the two characters rather than
+                // letting the right glyph silently overwrite the left's edge. ComputeOverlap only
+                // grants the +1 when TrySmush already returned true, so the merge is always
+                // well-defined here. Falls back to plain overwrite if the existing cell holds a
+                // character that doesn't pair with the new one (defensive \u2014 shouldn't fire under
+                // a correct overlap computation).
+                if (cluster != " " && cluster.Length == 1)
+                {
+                    var existing = buffer[targetCol, targetRow];
+                    if (existing.Grapheme is { Length: > 0 } prev
+                        && prev.Length == 1 && prev[0] is var prevCh
+                        && prevCh != ' '
+                        && TrySmush(prevCh, ch, out char smushed))
+                    {
+                        cluster = smushed.ToString();
+                    }
+                }
+
                 buffer.Set(targetCol, targetRow, cluster, style);
-                
+
                 targetCol += width;
             }
         }

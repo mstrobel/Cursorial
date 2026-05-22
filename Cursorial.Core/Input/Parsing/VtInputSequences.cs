@@ -156,7 +156,10 @@ public static class VtInputSequences
         public const int WheelLeft = 2;
         public const int WheelRight = 3;
 
-        /// <summary>One wheel notch in the standard 1/120-unit convention shared with Win32.</summary>
+        /// <summary>
+        /// One wheel notch in the standard 1/120-unit convention shared with Win32.
+        /// But this is a terminal, so scale to terminal rows/columns.
+        /// </summary>
         public const int WheelDeltaPerNotch = 120;
 
         // ---- Terminator bytes ----

@@ -504,7 +504,7 @@ static async Task DemoRenderAsync()
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
 
-    var buffer = new CellBuffer(cols, rows);
+    var buffer = new CellBuffer(cols, rows, session.Capabilities);
     // Hand the renderer the negotiated capabilities so it can quantize cells before emission
     // (RGB → palette where truecolor isn't available, extended underline → Single where the
     // extended forms aren't supported, drop unsupported attributes, …). Without this, terminals
@@ -603,7 +603,7 @@ static async Task DemoRenderAsync()
 
 static async Task DemoFormatAsync()
 {
-    Console.WriteLine("Formatting demo. Opening alt screen — press q or Ctrl+C to exit.");
+    Console.WriteLine("Formatting demo. Opening alt screen — press q or Ctrl+C to exit; ↑/↓ + PgUp/PgDn + Home/End to scroll.");
 
     await using var session = await TerminalSession.OpenAsync();
     var writer = session.Output.Writer;
@@ -615,12 +615,51 @@ static async Task DemoFormatAsync()
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
 
-    var buffer = new CellBuffer(cols, rows);
+    var style = Style.Default
+                     .WithForeground(session.Capabilities.Output.Color.DefaultForeground ?? Color.Default)
+                     .WithBackground(session.Capabilities.Output.Color.DefaultBackground ?? Color.Default);
+
+    var screen = new CellBuffer(cols, rows, session.Capabilities);
     var renderer = new FrameRenderer(session.Capabilities.Output);
 
-    // Build once; re-format on resize. Cheap relative to a paint.
-    var doc = BuildFormattingShowcase();
+    var doc = BuildFormattingShowcase(style);
     var formatter = new TextFormatter { Trim = TextTrimming.WordEllipsis };
+
+    // Off-screen buffer the whole document paints into. Per-frame we blit a sliding window of
+    // its cells into `screen`. Re-built on resize.
+    CellBuffer? offscreen = null;
+    int docRows = 0;
+    int scrollOffset = 0;
+    int viewportRows = 0;
+
+    void Reformat()
+    {
+        var margins = new Margins(2, 1);
+        int viewWidth = Math.Max(20, Math.Min(80, screen.Columns) - margins.Horizontal);
+
+        viewportRows = Math.Max(4, screen.Rows - margins.Vertical);
+
+        // Format with no row cap; render into an off-screen buffer sized to the full document.
+        var ft = formatter.Format(doc, viewWidth, maxRows: null, session.Capabilities.Output);
+
+        docRows = Math.Max(1, ft.Size.Rows);
+        offscreen = new CellBuffer(viewWidth, docRows, session.Capabilities);
+
+        ft.Paint(offscreen,
+                 offscreen.Bounds.LayoutContent(Anchor.Top, ft.Size), 
+                 session.Capabilities.Output);
+
+        ClampScroll();
+    }
+
+    void ClampScroll()
+    {
+        int maxScroll = Math.Max(0, docRows - viewportRows);
+        if (scrollOffset < 0) scrollOffset = 0;
+        if (scrollOffset > maxScroll) scrollOffset = maxScroll;
+    }
+
+    Reformat();
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
     using var stopCts = new CancellationTokenSource();
@@ -647,11 +686,25 @@ static async Task DemoFormatAsync()
                 switch (evt)
                 {
                     case ResizeEvent { Columns: > 0, Rows: > 0 } r:
-                        buffer.Resize(r.Columns, r.Rows);
+                        screen.Resize(r.Columns, r.Rows);
+                        Reformat();
                         needsRepaint = true;
                         break;
                     case KeyEvent k when IsExit(k):
                         stopCts.Cancel();
+                        break;
+                    case KeyEvent { Kind: KeyEventKind.Down } k:
+                        if (HandleScrollKey(k, viewportRows, docRows, ref scrollOffset))
+                        {
+                            ClampScroll();
+                            needsRepaint = true;
+                        }
+                        break;
+                    case MouseEvent { Kind: MouseEventKind.Wheel } m:
+                        // Positive WheelDeltaY conventionally means scroll up.
+                        scrollOffset -= m.WheelDeltaY / 120;
+                        ClampScroll();
+                        needsRepaint = true;
                         break;
                 }
             }
@@ -660,10 +713,10 @@ static async Task DemoFormatAsync()
 
             if (needsRepaint)
             {
-                PaintFormattingShowcase(buffer, doc, formatter, session.Capabilities.Output);
+                PaintScrolledShowcase(screen, offscreen!, scrollOffset, viewportRows, docRows, style);
 
                 var scratch = new ArrayBufferWriter<byte>();
-                renderer.Render(buffer, scratch);
+                renderer.Render(screen, scratch);
                 await writer.WriteAsync(scratch.WrittenMemory);
                 await writer.FlushAsync();
 
@@ -699,14 +752,91 @@ static async Task DemoFormatAsync()
             k.Text.Length > 0 && (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C')) return true;
         return false;
     }
+
+    static bool HandleScrollKey(KeyEvent k, int viewportRows, int docRows, ref int scrollOffset)
+    {
+        switch (k.Key)
+        {
+            case Key.UpArrow:   scrollOffset -= 1; return true;
+            case Key.DownArrow: scrollOffset += 1; return true;
+            case Key.PageUp:    scrollOffset -= viewportRows - 1; return true;
+            case Key.PageDown:  scrollOffset += viewportRows - 1; return true;
+            case Key.Home:      scrollOffset = 0; return true;
+            case Key.End:       scrollOffset = docRows; return true;
+            default:            return false;
+        }
+    }
 }
 
-static RichText BuildFormattingShowcase()
+/// <summary>
+/// Blit the <paramref name="offscreen"/> document's rows [<paramref name="scrollOffset"/>,
+/// scrollOffset + viewportRows) into the visible <paramref name="screen"/>, plus a scroll
+/// indicator. Fragments whose anchor falls inside the visible window are re-attached at
+/// translated coordinates so inline graphics (Kitty icons, Sixel) scroll with the cells.
+/// </summary>
+static void PaintScrolledShowcase(
+    CellBuffer screen, CellBuffer offscreen, int scrollOffset, int viewportRows, int docRows, in Style style)
+{
+    screen.CursorVisible = false;
+    screen.Clear();
+
+    int innerCols = Math.Min(offscreen.Columns, screen.Columns);
+    int innerRows = Math.Min(viewportRows, screen.Rows);
+
+    var rect = screen.Bounds.LayoutContent(Anchor.Top, offscreen.Dimensions);
+    var screenView = screen.View(rect);
+    
+    // Cells.
+    for (int dy = 0; dy < innerRows; dy++)
+    {
+        int srcRow = scrollOffset + dy;
+        if (srcRow >= offscreen.Rows) break;
+        for (int dx = 0; dx < innerCols; dx++)
+        {
+            var cell = offscreen[dx, srcRow];
+            // Reuse the raw indexer rather than Set(); we already have the destination grapheme +
+            // style and don't want grapheme-width recomputation to second-guess the off-screen.
+            screenView[dx, dy] = cell;
+        }
+    }
+
+    // Fragments anchored within the visible window.
+    foreach (var (anchor, entry) in offscreen.Fragments)
+    {
+        int relRow = anchor.Row - scrollOffset;
+        if (relRow < 0 || relRow >= innerRows) continue;
+        if (anchor.Column < 0 || anchor.Column >= innerCols) continue;
+        screen.AddFragment(rect.Column + anchor.Column, rect.Row + relRow, entry.Fragment, entry.AnchorStyle);
+    }
+
+    // Scroll indicator in the top-right gutter.
+    if (docRows > viewportRows)
+    {
+        int percent = (int) (100.0 * scrollOffset / Math.Max(1, docRows - viewportRows));
+
+        string indicator = $" ▲▼ {percent,3}% ";
+
+        int x = Math.Max(0, screen.Columns - 1 - indicator.Length);
+        int y = Math.Min(rect.RowEnd, screen.Rows - 1 - (screen.Rows - viewportRows));
+
+        if (x > rect.ColumnEnd + 2)
+            x = rect.ColumnEnd + 2;
+
+        var indicatorStyle = Style.Default
+                                  .WithForeground(style.Background /*Color.FromRgb(20, 20, 30)*/)
+                                  .WithBackground(style.Foreground.WithAlpha(191));
+
+        for (int i = 0; i < indicator.Length && x + i < screen.Columns; i++)
+            screen.Set(x + i, y, indicator[i] == ' ' ? "" : indicator[i].ToString(), indicatorStyle);
+    }
+}
+
+static RichText BuildFormattingShowcase(in Style defaultStyle = default)
 {
     // A composite document mixing BBcode markup (for the prose-heavy sections) and the builder
     // (for FIGlet + HR blocks that don't have terse markup equivalents). Builds once and is
     // reused across resizes by re-formatting against the new column budget.
-    var builder = new RichTextBuilder();
+    var builder = new RichTextBuilder(defaultStyle);
 
     // Inline content registry: makes embedded icons / badges reachable from markup via
     // [content=name/]. The PNG paths use embedded resources; Icon falls back to its glyph
@@ -715,23 +845,24 @@ static RichText BuildFormattingShowcase()
     var iconStyle = Style.Default.WithBackground(Color.FromRgb(40, 52, 87));
 
     var contentRegistry = new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["settings"] = Icon.FromEmbedded(assembly, "Icons/settings.png", "⚙️ ",
-                                          fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
-        ["download"] = Icon.FromEmbedded(assembly, "Icons/download.png", "⬇️ ",
-                                          fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
-        ["calendar"] = Icon.FromEmbedded(assembly, "Icons/calendar.png", "📆 ",
-                                          fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
-        ["power"] = Icon.FromEmbedded(assembly, "Icons/power.png", "⚡ ",
-                                       fallbackStyle: iconStyle, renderSize: new Size(2, 0))
-    };
-    var markupOptions = new TextMarkupOptions { Content = contentRegistry };
+                          {
+                              ["settings"] = Icon.FromEmbedded(assembly, "Icons/settings.png", "⚙️ ",
+                                                               fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+                              ["download"] = Icon.FromEmbedded(assembly, "Icons/download.png", "⬇️ ",
+                                                               fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+                              ["calendar"] = Icon.FromEmbedded(assembly, "Icons/calendar.png", "📆 ",
+                                                               fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+                              ["power"] = Icon.FromEmbedded(assembly, "Icons/power.png", "⚡ ",
+                                                            fallbackStyle: iconStyle, renderSize: new Size(2, 0))
+                          };
+
+    var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = defaultStyle };
 
     // Title.
     builder.Figlet("Rich Text",
-                   FigletFonts.Small,
-                   Style.Default.WithForeground(Color.FromPalette(5))
-                                .WithAttributes(TextAttributes.Bold),
+                   FigletFonts.Standard,
+                   defaultStyle.WithForeground(Color.FromHex("#f92572"))
+                               .WithAttributes(TextAttributes.Bold),
                    alignment: TextAlignment.Center);
 
     builder.HorizontalRule(HorizontalRule.Double);
@@ -827,29 +958,6 @@ static RichText BuildFormattingShowcase()
     return builder.Build();
 }
 
-static void PaintFormattingShowcase(
-    CellBuffer buffer,
-    RichText doc,
-    TextFormatter formatter,
-    OutputCapabilities outputCaps)
-{
-    buffer.CursorVisible = false;
-    buffer.Clear();
-
-    const int marginX = 1;
-    const int marginY = 1;
-
-    int innerCols = Math.Max(20, Math.Min(120, buffer.Columns) - marginX * 2);
-    int innerRows = Math.Max(4, buffer.Rows - marginY * 2);
-
-    var formatted = formatter.Format(doc, innerCols, maxRows: innerRows, outputCaps);
-
-    var bounds = new Rect(buffer.Bounds.AnchorContent(Anchor.Center, formatted.Size, new(1, 2)),
-                          formatted.Size);
-
-    formatted.Paint(buffer, bounds, outputCaps);
-}
-
 static async Task DemoImageAsync(string argument)
 {
     if (string.IsNullOrWhiteSpace(argument))
@@ -902,7 +1010,7 @@ static async Task DemoImageAsync(string argument)
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
 
-    var buffer = new CellBuffer(cols, rows);
+    var buffer = new CellBuffer(cols, rows, session.Capabilities);
     var renderer = new FrameRenderer(session.Capabilities.Output);
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();

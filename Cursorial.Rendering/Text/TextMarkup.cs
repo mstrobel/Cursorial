@@ -27,6 +27,8 @@ public sealed class TextMarkupOptions
     /// </summary>
     public IReadOnlyDictionary<string, IContent> Content { get; init; } =
         new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
+
+    public Style DefaultStyle { get; init; }
 }
 
 /// <summary>
@@ -84,7 +86,7 @@ public static class TextMarkup
     {
         ArgumentNullException.ThrowIfNull(markup);
         ArgumentNullException.ThrowIfNull(options);
-        var builder = new RichTextBuilder();
+        var builder = new RichTextBuilder(options.DefaultStyle);
         Parse(markup, builder, options);
         return builder.Build();
     }

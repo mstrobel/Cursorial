@@ -2,6 +2,8 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 
+using SgrMouse = Cursorial.Input.Parsing.VtInputSequences.SgrMouse;
+
 namespace Cursorial.Tests.Input.Parsing;
 
 public class VtInputInterpreterTests
@@ -691,10 +693,10 @@ public class VtInputInterpreterTests
     }
 
     [Theory]
-    [InlineData(64, MouseEventKind.Wheel, 120, 0)]   // wheel up
-    [InlineData(65, MouseEventKind.Wheel, -120, 0)]  // wheel down
-    [InlineData(66, MouseEventKind.Wheel, 0, -120)]  // wheel left
-    [InlineData(67, MouseEventKind.Wheel, 0, 120)]   // wheel right
+    [InlineData(64, MouseEventKind.Wheel, SgrMouse.WheelDeltaPerNotch, 0)]  // wheel up
+    [InlineData(65, MouseEventKind.Wheel, -SgrMouse.WheelDeltaPerNotch, 0)] // wheel down
+    [InlineData(66, MouseEventKind.Wheel, 0, -SgrMouse.WheelDeltaPerNotch)] // wheel left
+    [InlineData(67, MouseEventKind.Wheel, 0, SgrMouse.WheelDeltaPerNotch)]  // wheel right
     public void SgrMouse_Wheel_EmitsWheelEventWithCorrectDeltas(int cb, MouseEventKind kind, int deltaY, int deltaX)
     {
         Feed($"\x1b[<{cb};5;5M");
@@ -715,7 +717,7 @@ public class VtInputInterpreterTests
         var m = _sink.Single<MouseEvent>();
         Assert.Equal(MouseEventKind.Wheel, m.Kind);
         Assert.Equal(KeyModifiers.Control, m.Modifiers);
-        Assert.Equal(120, m.WheelDeltaY);
+        Assert.Equal(SgrMouse.WheelDeltaPerNotch, m.WheelDeltaY);
     }
 
     [Fact]
@@ -848,7 +850,7 @@ public class VtInputInterpreterTests
 
         var m = _sink.Single<MouseEvent>();
         Assert.Equal(MouseEventKind.Wheel, m.Kind);
-        Assert.Equal(120, m.WheelDeltaY);
+        Assert.Equal(SgrMouse.WheelDeltaPerNotch, m.WheelDeltaY);
         Assert.Equal(499, m.Position.PixelX);
         Assert.Equal(299, m.Position.PixelY);
     }
@@ -1041,7 +1043,7 @@ public class VtInputInterpreterTests
 
         var m = _sink.Single<MouseEvent>();
         Assert.Equal(MouseEventKind.Wheel, m.Kind);
-        Assert.Equal(120, m.WheelDeltaY);
+        Assert.Equal(SgrMouse.WheelDeltaPerNotch, m.WheelDeltaY);
     }
 
     [Fact]

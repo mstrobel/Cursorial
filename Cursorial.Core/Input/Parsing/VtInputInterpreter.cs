@@ -517,7 +517,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                         ButtonsHeld = _heldButtons,
                                         Modifiers = modifiers,
                                         WheelDeltaY = wheelDeltaY,
-                                        WheelDeltaX = wheelDeltaX,
+                                        WheelDeltaX = wheelDeltaX
                                     });
 
             return true;

@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Cursorial.Output;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
 
@@ -174,22 +175,37 @@ public sealed class FigletFont : IGlyphFont
             if (targetRow >= buffer.Rows) break;
 
             var line = lines[r];
+            var targetCol = column;
 
-            for (int i = 0; i < line.Length; i++)
+            var e = line.GetGraphemeEnumerator();
+
+            while (e.MoveNext())
             {
-                int targetCol = column + i;
-
+                var grapheme = e.GetCurrentGrapheme();
+                var width = GraphemeWidth.StringWidth(grapheme);
+                
                 if (targetCol < 0) continue;
                 if (targetCol >= buffer.Columns) break;
 
-                char ch = line[i];
+                char ch = grapheme[0];
+
+                if (ch is ' ' or '\u00A0')
+                {
+                    targetCol += width;
+                    continue;
+                }
+
+                string cluster;
+
                 // Hardblanks render as visual spaces; pure spaces are transparent so previously
                 // painted cells show through (this is what makes kerned/smushed boundaries
                 // composite correctly with the underlying cell grid).
-                if (ch == ' ') continue;
-
-                string cluster = ch == HardBlank ? " " : ch.ToString();
+                if (ch == HardBlank) cluster = " ";
+                else cluster = line.Length == grapheme.Length ? line : grapheme.ToString();
+                
                 buffer.Set(targetCol, targetRow, cluster, style);
+                
+                targetCol += width;
             }
         }
     }

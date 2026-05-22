@@ -1,3 +1,5 @@
+using Cursorial.Text;
+
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
@@ -35,26 +37,55 @@ public sealed class FigletGlyph
         _ends = new int[lines.Length];
 
         int maxWidth = 0;
+
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            if (line.Length > maxWidth) maxWidth = line.Length;
 
-            // start = first non-space (hardblanks count as non-space — they're real ink).
-            // Same as Consolonia, except we don't pre-replace hardblanks so the smushing
-            // algorithm can still see them.
-            int start = line.Length;
-            for (int j = 0; j < line.Length; j++)
-                if (line[j] != ' ') { start = j; break; }
-            _starts[i] = start;
+            if (GraphemeWidth.StringWidth(line) is int lineLength && lineLength > maxWidth) 
+                maxWidth = lineLength;
 
-            int end = -1;
-            for (int j = line.Length - 1; j >= 0; j--)
-                if (line[j] != ' ') { end = j; break; }
-            _ends[i] = end;
+            _starts[i] = FindFirstNonSpace(line);
+            _ends[i] = FindLastNonSpace(line);
         }
 
         _width = maxWidth;
+    }
+
+    private static int FindFirstNonSpace(string line)
+    {
+        var enumerator = line.GetGraphemeEnumerator();
+        int position = 0;
+
+        while (enumerator.MoveNext())
+        {
+            if (enumerator.Current is not [' ']) return position;
+            position += GraphemeWidth.ClusterWidth(enumerator.Current);
+        }
+
+        return line.Length;
+    }
+
+    private static int FindLastNonSpace(string line)
+    {
+        var positions = new List<int>();
+        var enumerator = line.GetGraphemeEnumerator();
+        int position = 0;
+
+        while (enumerator.MoveNext())
+        {
+            positions.Add(position);
+            position += GraphemeWidth.ClusterWidth(enumerator.Current);
+        }
+
+        for (int j = positions.Count - 1, idx = 0; j >= 0; j--)
+        {
+            enumerator = line.GetGraphemeEnumerator();
+            while (idx < j && enumerator.MoveNext()) idx++;
+            if (enumerator.MoveNext() && enumerator.Current is not [' ']) return positions[j];
+        }
+
+        return -1;
     }
 
     /// <summary>The Unicode codepoint this glyph renders.</summary>

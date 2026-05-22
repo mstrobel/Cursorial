@@ -151,4 +151,124 @@ public class GraphemeWidthTests
     {
         Assert.Equal(0, GraphemeWidth.StringWidth((string)null!));
     }
+
+    // ---- ClusterCount ----
+
+    [Fact]
+    public void ClusterCount_Empty_ReturnsZero()
+    {
+        Assert.Equal(0, GraphemeWidth.ClusterCount(""));
+    }
+
+    [Fact]
+    public void ClusterCount_AsciiStringMatchesLength()
+    {
+        Assert.Equal(5, GraphemeWidth.ClusterCount("hello"));
+    }
+
+    [Fact]
+    public void ClusterCount_SurrogateEmojiIsOneCluster()
+    {
+        // 🚀 occupies 2 UTF-16 chars but is one grapheme cluster.
+        Assert.Equal(1, GraphemeWidth.ClusterCount("🚀"));
+    }
+
+    [Fact]
+    public void ClusterCount_ZwjFamilyEmojiIsOneCluster()
+    {
+        Assert.Equal(1, GraphemeWidth.ClusterCount("\U0001F468‍\U0001F469‍\U0001F467"));
+    }
+
+    [Fact]
+    public void ClusterCount_CombiningMarkClustersWithBase()
+    {
+        // 'a' + combining grave (U+0300) is one cluster.
+        Assert.Equal(1, GraphemeWidth.ClusterCount("à"));
+    }
+
+    [Fact]
+    public void ClusterCount_Vs16EmojiIsOneCluster()
+    {
+        // Phone (U+260E) + VS16 — one cluster.
+        Assert.Equal(1, GraphemeWidth.ClusterCount("☎️"));
+    }
+
+    [Fact]
+    public void ClusterCount_MixedClustersMatchVisibleGlyphs()
+    {
+        // "Hi🚀中" — 4 user-visible glyphs.
+        Assert.Equal(4, GraphemeWidth.ClusterCount("Hi🚀中"));
+    }
+
+    // ---- CodepointWidth: control / format ranges ----
+
+    [Theory]
+    [InlineData(0x80)] // C1 control
+    [InlineData(0x9F)] // C1 control range upper bound
+    public void CodepointWidth_C1Controls_AreZero(int cp)
+    {
+        Assert.Equal(0, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    [Theory]
+    [InlineData(0xAD)]   // SOFT HYPHEN (Cf)
+    [InlineData(0x180E)] // Mongolian Vowel Separator (Cf historically)
+    [InlineData(0x2060)] // Word Joiner (Cf)
+    public void CodepointWidth_FormatControls_AreZero(int cp)
+    {
+        Assert.Equal(0, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    [Theory]
+    [InlineData(0x1100)] // Hangul Jamo start
+    [InlineData(0x115F)] // Hangul Jamo end
+    [InlineData(0x2329)] // LEFT-POINTING ANGLE BRACKET
+    [InlineData(0x232A)] // RIGHT-POINTING ANGLE BRACKET
+    [InlineData(0x3041)] // Hiragana start
+    [InlineData(0xFF60)] // Fullwidth Forms end of wide range
+    [InlineData(0x2FFFD)] // CJK supplementary plane upper
+    public void CodepointWidth_BoundaryWideCodepoints_AreTwo(int cp)
+    {
+        Assert.Equal(2, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    [Theory]
+    [InlineData(0x100AB)] // Linear B Syllables (BMP-outside, narrow)
+    [InlineData(0x1FB00)] // Symbols for Legacy Computing — explicitly narrow
+    [InlineData(0x1FBFF)] // Symbols for Legacy Computing — explicitly narrow
+    public void CodepointWidth_SupplementaryButNotWide_IsOne(int cp)
+    {
+        Assert.Equal(1, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    [Theory]
+    [InlineData(0xD800)] // High surrogate — invalid scalar
+    [InlineData(0xDFFF)] // Low surrogate — invalid scalar
+    public void CodepointWidth_SurrogateHalves_AreZero(int cp)
+    {
+        Assert.Equal(0, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    // ---- ClusterWidth: edge cases ----
+
+    [Fact]
+    public void ClusterWidth_OnlyZwj_ReturnsZero()
+    {
+        // A lone ZWJ shouldn't claim cell width.
+        Assert.Equal(0, GraphemeWidth.ClusterWidth("‍"));
+    }
+
+    [Fact]
+    public void ClusterWidth_OnlyVs16_ReturnsTwo()
+    {
+        // A lone VS16 bumps to 2 by the spec even with no base — defensive.
+        Assert.Equal(2, GraphemeWidth.ClusterWidth("️"));
+    }
+
+    [Fact]
+    public void ClusterWidth_AsciiWithTrailingZeroWidth_StaysOne()
+    {
+        // 'a' followed by a zero-width joiner.
+        Assert.Equal(1, GraphemeWidth.ClusterWidth("a‍"));
+    }
 }

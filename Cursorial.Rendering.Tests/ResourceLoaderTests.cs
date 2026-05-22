@@ -11,7 +11,7 @@ public class ResourceLoaderTests
     {
         // Cursorial.Rendering ships standard.flf as an embedded resource. The default loader
         // should resolve embedded://Cursorial.Rendering/<resource-name>.
-        var uri = new Uri("embedded://Cursorial.Rendering/Cursorial.Rendering.Fonts.Embedded.standard.flf");
+        var uri = new Uri("embedded://Cursorial.Rendering/Fonts/Embedded/standard.flf");
 
         using var stream = ResourceLoader.Default.TryOpen(uri);
 
@@ -22,7 +22,7 @@ public class ResourceLoaderTests
     [Fact]
     public void TryLoadBytes_EmbeddedScheme_ReadsContent()
     {
-        var uri = new Uri("embedded://Cursorial.Rendering/Cursorial.Rendering.Fonts.Embedded.standard.flf");
+        var uri = new Uri("embedded://Cursorial.Rendering/Fonts/Embedded/standard.flf");
 
         // TryLoadBytes is a default-interface method, callable via the IResourceLoader handle.
         IResourceLoader loader = ResourceLoader.Default;

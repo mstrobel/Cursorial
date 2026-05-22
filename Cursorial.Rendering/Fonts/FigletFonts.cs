@@ -17,11 +17,20 @@ namespace Cursorial.Rendering.Fonts;
 /// </remarks>
 public static class FigletFonts
 {
-    private static readonly Lazy<FigletFont> s_standard = new(() => LoadEmbedded("standard.flf"));
-    private static readonly Lazy<FigletFont> s_slant = new(() => LoadEmbedded("slant.flf"));
-    private static readonly Lazy<FigletFont> s_small = new(() => LoadEmbedded("small.flf"));
-    private static readonly Lazy<FigletFont> s_big = new(() => LoadEmbedded("big.flf"));
-    private static readonly Lazy<FigletFont> s_mini = new(() => LoadEmbedded("mini.flf"));
+    private static readonly Lazy<FigletFont> s_standard = new(() => LoadEmbedded("Fonts/Embedded/standard.flf"));
+    private static readonly Lazy<FigletFont> s_slant = new(() => LoadEmbedded("Fonts/Embedded/slant.flf"));
+    private static readonly Lazy<FigletFont> s_small = new(() => LoadEmbedded("Fonts/Embedded/small.flf"));
+    private static readonly Lazy<FigletFont> s_big = new(() => LoadEmbedded("Fonts/Embedded/big.flf"));
+    private static readonly Lazy<FigletFont> s_mini = new(() => LoadEmbedded("Fonts/Embedded/mini.flf"));
+
+    private static readonly Lazy<FigletFont> s_ansiShadow = new(() => LoadEmbedded("Fonts/Embedded/ansi-shadow.flf"));
+    private static readonly Lazy<FigletFont> s_hp2640LargeType = new(() => LoadEmbedded("Fonts/Embedded/hp2640-largetype.flf"));
+    private static readonly Lazy<FigletFont> s_miniWi = new(() => LoadEmbedded("Fonts/Embedded/miniwi.flf"));
+    private static readonly Lazy<FigletFont> s_cga = new(() => LoadEmbedded("Fonts/Embedded/phm-cga.flf"));
+    private static readonly Lazy<FigletFont> s_lcdMatrix = new(() => LoadEmbedded("Fonts/Embedded/phm-lcdmatrix.flf"));
+    private static readonly Lazy<FigletFont> s_led = new(() => LoadEmbedded("Fonts/Embedded/phm-leds.flf"));
+    private static readonly Lazy<FigletFont> s_roman = new(() => LoadEmbedded("Fonts/Embedded/roman.flf"));
+    private static readonly Lazy<FigletFont> s_smallSlant = new(() => LoadEmbedded("Fonts/Embedded/small-slant.flf"));
 
     /// <summary>
     /// The canonical "Standard" FIGlet font (Glenn Chappell &amp; Ian Chai, 1993). 6 rows tall;
@@ -53,12 +62,55 @@ public static class FigletFonts
     public static FigletFont Mini => s_mini.Value;
 
     /// <summary>
+    /// A classic large block face with a shadow (Glenn Chappell, 1993).
+    /// </summary>
+    public static FigletFont AnsiShadow => s_ansiShadow.Value;
+    
+    /// <summary>
+    /// Recreation of the HP6440 terminals' Large Character Set, by Philippe Majerus.
+    /// </summary>
+    public static FigletFont Hp2640LargeType => s_hp2640LargeType.Value;
+    
+    /// <summary>
+    /// Recreation of the 'miniwi' bitmap font.
+    /// </summary>
+    public static FigletFont MiniWi => s_miniWi.Value;
+    
+    /// <summary>
+    /// Recreaton of the IBM CGA bold, straight from the CP437 ROM, by Philippe Majerus.
+    /// </summary>
+    public static FigletFont CGA => s_cga.Value;
+    
+    /// <summary>
+    /// Inspired by the Motorola MC6847 character generator, Tatung Einstein TC-01, TRS-80, and other
+    /// computers of the 1980s, this font features LCD-like 6×8 semi-pixels.
+    /// </summary>
+    public static FigletFont LCDMatrix => s_lcdMatrix.Value;
+    
+    /// <summary>
+    /// This font looks like a LED marquee or low-resolution LCD matrix displays. By Philippe Majerus.
+    /// </summary>
+    public static FigletFont LED => s_led.Value;
+    
+    /// <summary>
+    /// The classic FIGlet font "Roman" by Nick Miners, circa 1994.
+    /// </summary>
+    public static FigletFont Roman => s_roman.Value;
+
+    
+    /// <summary>
+    /// A smaller variant of the popular <see cref="Slant"/> font (Glenn Chappell, 1993).
+    /// </summary>
+    public static FigletFont SmallSlant => s_smallSlant.Value;
+
+    /// <summary>
     /// Load a FIGlet font from a stream. Equivalent to <see cref="FigletFontParser.Load"/>;
     /// exposed here so callers don't need to import the parser namespace for the common case.
     /// </summary>
     public static FigletFont Load(Stream stream, string name)
         => FigletFontParser.Load(stream, name);
 
+        
     /// <summary>
     /// Load a FIGlet font from a <c>.flf</c> file path. The font's <see cref="FigletFont.Name"/>
     /// is taken from the file stem.
@@ -69,7 +121,7 @@ public static class FigletFonts
     private static FigletFont LoadEmbedded(string resourceLeaf)
     {
         var assembly = typeof(FigletFonts).Assembly;
-        var resourceName = $"Cursorial.Rendering.Fonts.Embedded.{resourceLeaf}";
+        var resourceName = $"{resourceLeaf}";
 
         using var stream = assembly.GetManifestResourceStream(resourceName)
                            ?? throw new InvalidOperationException(

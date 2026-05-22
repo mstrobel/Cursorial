@@ -10,7 +10,8 @@ public ref struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
     private readonly int _textStartIndex; // where in _text the enumeration should begin
 
     private int _currentTextElementOffset;
-    private int _currentTextElementLength = -1;
+    private int _currentTextElementLength;
+    private bool _exhausted;
 
     internal GraphemeEnumerator(ReadOnlySpan<char> text, int startIndex)
     {
@@ -25,15 +26,23 @@ public ref struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
 
     public bool MoveNext()
     {
-        int newOffset = _currentTextElementOffset + _currentTextElementLength;
+        // Once the enumerator has walked past the last grapheme, subsequent MoveNext calls must
+        // stay false — that's the IEnumerator contract. A separate flag is necessary because the
+        // Reset state legitimately leaves _currentTextElementLength negative (it's the offset
+        // delta back to the start position).
+        if (_exhausted) return false;
 
-        _currentTextElementOffset = newOffset; // advance
-        _currentTextElementLength = -1;        // prevent future calls to MoveNext() or get_Current from succeeding if we've hit end of data
+        int newOffset = _currentTextElementOffset + _currentTextElementLength;
+        _currentTextElementOffset = newOffset;
+        _currentTextElementLength = -1; // mark invalid until we successfully read the next grapheme
 
         if (newOffset >= _text.Length)
-            return false; // reached the end of the data
+        {
+            _exhausted = true;
+            return false;
+        }
 
-        _currentTextElementLength = NextGraphemeClusterLength(_text);
+        _currentTextElementLength = NextGraphemeClusterLength(_text[newOffset..]);
         return true;
     }
 
@@ -41,7 +50,7 @@ public ref struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
     {
         // Generate and return a substring slice.
 
-        if (_currentTextElementLength < 0)
+        if (_currentTextElementLength <= 0)
             throw new InvalidOperationException(CannotEnumerateMessage);
 
         return _text.Slice(_currentTextElementOffset, _currentTextElementLength);
@@ -65,6 +74,7 @@ public ref struct GraphemeEnumerator : IEnumerator<ReadOnlySpan<char>>
 
         _currentTextElementOffset = _text.Length;
         _currentTextElementLength = _textStartIndex - _text.Length;
+        _exhausted = false;
     }
 
     object IEnumerator.Current => throw new NotSupportedException($"Use IEnumerator<ReadOnlySpan<char>>.Current or {nameof(GetCurrentGrapheme)}()");

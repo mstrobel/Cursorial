@@ -297,7 +297,7 @@ static async Task TraceAsync()
                                  | KittyKeyboardFlags.ReportEventTypes
                                  | KittyKeyboardFlags.ReportAlternateKeys
                                  | KittyKeyboardFlags.ReportAssociatedText
-                                 | KittyKeyboardFlags.ReportAllKeysAsEscapeCodes,
+                                 | KittyKeyboardFlags.ReportAllKeysAsEscapeCodes
         };
         await negotiator.NegotiateAsync(traceOptions);
 
@@ -723,7 +723,7 @@ static RichText BuildFormattingShowcase()
         ["calendar"] = Icon.FromEmbedded(assembly, "Icons/calendar.png", "📆 ",
                                           fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
         ["power"] = Icon.FromEmbedded(assembly, "Icons/power.png", "⚡ ",
-                                       fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+                                       fallbackStyle: iconStyle, renderSize: new Size(2, 0))
     };
     var markupOptions = new TextMarkupOptions { Content = contentRegistry };
 
@@ -1191,7 +1191,7 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
                           Color.FromRgb(220, 60, 60),
                           Color.FromRgb(60, 220, 60),
                           Color.FromRgb(60, 60, 220),
-                          Color.FromRgb(220, 220, 60),
+                          Color.FromRgb(220, 220, 60)
                       };
 
         int barWidth = Math.Min(cols - 2, 60);
@@ -1402,7 +1402,7 @@ static string FormatEvent(InputEvent inputEvent) =>
                          + (r is { PixelWidth: {} pw, PixelHeight: {} ph } ? $" ({pw}x{ph} px)" : ""),
         DeviceResponseEvent d => $"DeviceResp  {d.Kind} \"{Encoding.ASCII.GetString(d.Payload.Span)}\"",
         UnknownEvent u        => $"Unknown     {u.RawBytes.Length} bytes: {BytesToHex(u.RawBytes.Span)}",
-        _                     => $"<unhandled event type {inputEvent.GetType().Name}>",
+        _                     => $"<unhandled event type {inputEvent.GetType().Name}>"
     };
 
 static string FormatKeyEvent(KeyEvent k)

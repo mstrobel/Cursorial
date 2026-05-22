@@ -45,7 +45,7 @@ public static class GraphemeWidth
                    {
                        < 0x20 => 0, // C0 controls.
                        0x7F   => 0, // DEL.
-                       _      => 1,
+                       _      => 1
                    };
         }
 
@@ -160,7 +160,7 @@ public static class GraphemeWidth
         if (text.IsEmpty) return 0;
 
         int total = 0;
-        var enumerator = ((ReadOnlySpan<char>) text.ToString()).GetGraphemeEnumerator();
+        var enumerator = text.GetGraphemeEnumerator();
 
         while (enumerator.MoveNext())
         {

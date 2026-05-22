@@ -13,7 +13,7 @@ public class IconTests
     // only care about load success / failure paths.
     private static Uri KnownEmbeddedUri =>
         ResourceLoader.Embedded("Cursorial.Rendering",
-                                "Cursorial.Rendering.Fonts.Embedded.standard.flf");
+                                "Fonts/Embedded/standard.flf");
 
     private static Uri UnknownEmbeddedUri =>
         ResourceLoader.Embedded("Cursorial.Rendering", "does.not.exist.png");
@@ -93,7 +93,7 @@ public class IconTests
     {
         var icon = Icon.FromEmbedded(
             assemblyName: "Cursorial.Rendering",
-            resourceName: "Cursorial.Rendering.Fonts.Embedded.standard.flf",
+            resourceName: "Fonts/Embedded/standard.flf",
             fallbackGlyph: "⚙️");
 
         Assert.True(icon.ImageLoaded);

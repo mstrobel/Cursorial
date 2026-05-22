@@ -16,11 +16,19 @@
             FIGlet 2.x distribution. Embedded as resources so consumers don't need to ship .flf
             files of their own for the common cases.
         -->
-        <EmbeddedResource Include="Fonts\Embedded\standard.flf" LogicalName="Cursorial.Rendering.Fonts.Embedded.standard.flf" />
-        <EmbeddedResource Include="Fonts\Embedded\slant.flf"    LogicalName="Cursorial.Rendering.Fonts.Embedded.slant.flf" />
-        <EmbeddedResource Include="Fonts\Embedded\small.flf"    LogicalName="Cursorial.Rendering.Fonts.Embedded.small.flf" />
-        <EmbeddedResource Include="Fonts\Embedded\big.flf"      LogicalName="Cursorial.Rendering.Fonts.Embedded.big.flf" />
-        <EmbeddedResource Include="Fonts\Embedded\mini.flf"     LogicalName="Cursorial.Rendering.Fonts.Embedded.mini.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\standard.flf"         LogicalName="Fonts/Embedded/standard.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\slant.flf"            LogicalName="Fonts/Embedded/slant.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\small.flf"            LogicalName="Fonts/Embedded/small.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\big.flf"              LogicalName="Fonts/Embedded/big.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\mini.flf"             LogicalName="Fonts/Embedded/mini.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\ansi-shadow.flf"      LogicalName="Fonts/Embedded/ansi-shadow.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\hp2640-largetype.flf" LogicalName="Fonts/Embedded/hp2640-largetype.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\miniwi.flf"           LogicalName="Fonts/Embedded/miniwi.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\phm-cga.flf"          LogicalName="Fonts/Embedded/phm-cga.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\phm-lcdmatrix.flf"    LogicalName="Fonts/Embedded/phm-lcdmatrix.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\phm-leds.flf"         LogicalName="Fonts/Embedded/phm-leds.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\roman.flf"            LogicalName="Fonts/Embedded/roman.flf" />
+        <EmbeddedResource Include="Fonts\Embedded\small-slant.flf"      LogicalName="Fonts/Embedded/small-slant.flf" />
     </ItemGroup>
 
 </Project>

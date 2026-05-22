@@ -85,10 +85,10 @@ public sealed class ScaledText : IContent
     }
 
     /// <inheritdoc/>
-    public Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
-        ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(capabilities);
+        if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
 
         if (buffer.Columns != _lastBufferWidth)
         {

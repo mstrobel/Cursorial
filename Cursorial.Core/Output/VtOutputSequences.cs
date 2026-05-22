@@ -144,4 +144,38 @@ public static class VtOutputSequences
         /// <summary><c>ESC ] 22 ; &lt; ESC \\</c> — pop the topmost shape from the pointer-shape stack.</summary>
         public static ReadOnlySpan<byte> Pop => "\x1b]22;<\x1b\\"u8;
     }
+
+    /// <summary>
+    /// OSC 4 / 104 palette protocol. <c>OSC 4</c> sets or queries the terminal's 256-color
+    /// palette one entry at a time; <c>OSC 104</c> resets entries to their startup defaults.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set: <c>ESC ] 4 ; index ; rgb:RRRR/GGGG/BBBB ST</c>.
+    /// Query: <c>ESC ] 4 ; index ; ? ST</c> — terminal responds with an OSC 4 in the same shape.
+    /// Reset entry: <c>ESC ] 104 ; index ST</c>. Reset all: <c>ESC ] 104 ST</c>. Reset many:
+    /// <c>ESC ] 104 ; i1 ; i2 ; … ST</c>.
+    /// </para>
+    /// <para>
+    /// X11 hex channels accept 1–4 hex digits per channel. Cursorial emits 4-digit channels for
+    /// maximum fidelity (the low byte of each channel duplicates the high byte).
+    /// </para>
+    /// </remarks>
+    public static class Palette
+    {
+        /// <summary><c>ESC ] 4 ;</c> — opening of the OSC 4 envelope (set/query). Index + payload follow.</summary>
+        public static ReadOnlySpan<byte> SetPrefix => "\x1b]4;"u8;
+
+        /// <summary><c>; rgb:</c> — separator + X11 color-spec opening between index and channels.</summary>
+        public static ReadOnlySpan<byte> RgbInfix => ";rgb:"u8;
+
+        /// <summary><c>;?</c> — query suffix between the index and the string terminator.</summary>
+        public static ReadOnlySpan<byte> QuerySuffix => ";?"u8;
+
+        /// <summary><c>ESC ] 104</c> — opening of the OSC 104 envelope (reset).</summary>
+        public static ReadOnlySpan<byte> ResetPrefix => "\x1b]104"u8;
+
+        /// <summary><c>ESC \\</c> — String Terminator (ST).</summary>
+        public static ReadOnlySpan<byte> StringTerminator => "\x1b\\"u8;
+    }
 }

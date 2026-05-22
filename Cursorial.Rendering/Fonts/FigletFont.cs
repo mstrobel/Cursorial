@@ -136,11 +136,9 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
-        ArgumentNullException.ThrowIfNull(buffer);
-
-        if (text.IsEmpty) return Size.Empty;
+        if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
         if (row < 0 || row >= buffer.Rows || column >= buffer.Columns) return Size.Empty;
 
         int caret = column;
@@ -164,7 +162,7 @@ public sealed class FigletFont : IGlyphFont
         return new Size(painted, height);
     }
 
-    private void PaintGlyph(CellBuffer buffer, int column, int row, FigletGlyph glyph, in Style style)
+    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, in Style style)
     {
         var lines = glyph.Lines;
 

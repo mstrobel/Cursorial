@@ -237,7 +237,9 @@ public sealed class CellBuffer
     /// protocol bytes at its anchor. Order is iteration order of the underlying dictionary —
     /// fragments must not depend on each other's visual ordering at the cell layer.
     /// </summary>
-    public IReadOnlyDictionary<(int Column, int Row), FragmentEntry> Fragments => _fragments;
+    public FragmentDictionary Fragments => new(_fragments, this.Bounds);
+
+    internal Dictionary<(int Column, int Row), FragmentEntry> FragmentsInternal => _fragments;
 
     /// <summary>
     /// Register <paramref name="fragment"/> at the anchor cell <c>(column, row)</c>. Pure
@@ -256,7 +258,7 @@ public sealed class CellBuffer
     /// If a fragment is already registered at this anchor, it is replaced. Removing a
     /// fragment leaves the cells under it untouched — whatever was painted before the
     /// fragment was added remains. Callers who want a clean state when removing a fragment
-    /// should explicitly repaint the region afterwards.
+    /// should explicitly repaint the region afterward.
     /// </para>
     /// </remarks>
     public void AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
@@ -552,4 +554,6 @@ public sealed class CellBuffer
         if (_defaultStyle != default)
             _cells.AsSpan().Fill(Cell.Blank with { Style = _defaultStyle });
     }
+    
+    public static implicit operator CellBufferView(CellBuffer buffer) => buffer.AsView();
 }

@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Text;
@@ -29,7 +30,7 @@ namespace Cursorial.Rendering;
 /// visible, otherwise no-op."
 /// </para>
 /// <para>
-/// <b>Sub-views</b> via <see cref="View"/> compose: the new view's offset is added to the
+/// <b>Sub-views</b> via <see cref="View(in Rect)"/> compose: the new view's offset is added to the
 /// parent's, and its dimensions are clipped against the parent's rect. Two clip levels never
 /// get violated — a sub-view that asks for a region extending past its parent's bounds is
 /// silently trimmed.
@@ -62,8 +63,7 @@ public readonly struct CellBufferView
     /// <c>new CellBufferView(buffer, 0, 0, buffer.Columns, buffer.Rows)</c>.
     /// </summary>
     public CellBufferView(CellBuffer buffer)
-        : this(buffer, 0, 0, buffer?.Columns ?? 0, buffer?.Rows ?? 0)
-    { }
+        : this(buffer ?? throw new ArgumentNullException(nameof(buffer)), 0, 0, buffer.Columns, buffer.Rows) {}
 
     /// <summary>
     /// Construct a view covering the rectangle
@@ -96,8 +96,13 @@ public readonly struct CellBufferView
         Columns = Math.Max(0, clampedColumnEnd - clampedOffsetColumn);
     }
 
-    /// <summary>The underlying buffer. Surfaced for cases that need direct buffer access (e.g., resizing).</summary>
-    public CellBuffer Buffer => _buffer;
+    /// <summary>
+    /// The underlying buffer. Internal so external paint code can't escape the view's clip
+    /// contract — framework-internal consumers (renderer, fragment dispatch) reach across via
+    /// <c>InternalsVisibleTo</c>. Null on a default-constructed view (<c>default(CellBufferView)</c>),
+    /// in which case every public operation on the view is a safe no-op.
+    /// </summary>
+    internal CellBuffer Buffer => _buffer;
 
     /// <summary>Row offset of the view's <c>(0, 0)</c> on the backing buffer.</summary>
     public int OffsetRow { get; }
@@ -120,6 +125,9 @@ public readonly struct CellBufferView
     /// <summary>The view's rectangle in backing-buffer coordinates.</summary>
     public Rect BufferBounds => new(OffsetColumn, OffsetRow, Columns, Rows);
 
+    /// <summary>The view's dimensions, in cells.</summary>   
+    public (int Columns, int Rows) Dimensions => (Columns, Rows);
+    
     /// <summary>True when (<paramref name="row"/>, <paramref name="column"/>) is inside the view.</summary>
     public bool Contains(int column, int row)
         => row >= 0 && row < Rows && column >= 0 && column < Columns;
@@ -134,55 +142,55 @@ public readonly struct CellBufferView
     /// </summary>
     public int CursorRow
     {
-        get => _buffer.CursorRow - OffsetRow;
+        get => _buffer is null ? 0 : _buffer.CursorRow - OffsetRow;
         set
         {
             if ((uint) value >= (uint) Rows)
                 throw new ArgumentOutOfRangeException(
                     nameof(value), value,
                     $"Cursor row {value} is outside the view's rows [0, {Rows}). Use the underlying buffer if an out-of-view cursor position is intentional.");
-            _buffer.CursorRow = value + OffsetRow;
+            _buffer!.CursorRow = value + OffsetRow;
         }
     }
 
     /// <summary>Cursor column in view-local coordinates. See <see cref="CursorRow"/> for semantics.</summary>
     public int CursorColumn
     {
-        get => _buffer.CursorColumn - OffsetColumn;
+        get => _buffer is null ? 0 : _buffer.CursorColumn - OffsetColumn;
         set
         {
             if ((uint) value >= (uint) Columns)
                 throw new ArgumentOutOfRangeException(
                     nameof(value), value,
                     $"Cursor column {value} is outside the view's columns [0, {Columns}).");
-            _buffer.CursorColumn = value + OffsetColumn;
+            _buffer!.CursorColumn = value + OffsetColumn;
         }
     }
 
     /// <summary>Whether the cursor should be visible. Forwards directly to the backing buffer.</summary>
     public bool CursorVisible
     {
-        get => _buffer.CursorVisible;
-        set => _buffer.CursorVisible = value;
+        get => _buffer is not null && _buffer.CursorVisible;
+        set { if (_buffer is not null) _buffer.CursorVisible = value; }
     }
 
     /// <summary>Cursor shape. Forwards directly to the backing buffer.</summary>
     public CursorShape CursorShape
     {
-        get => _buffer.CursorShape;
-        set => _buffer.CursorShape = value;
+        get => _buffer is null ? default : _buffer.CursorShape;
+        set { if (_buffer is not null) _buffer.CursorShape = value; }
     }
 
     // ---- Blending stack pass-through ----------------------------------------------------
 
     /// <summary>Active blending mode on the backing buffer.</summary>
-    public IBlendingMode CurrentBlendingMode => _buffer.CurrentBlendingMode;
+    public IBlendingMode CurrentBlendingMode => _buffer?.CurrentBlendingMode ?? BlendingModes.Default;
 
     /// <summary>Push a blending mode onto the backing buffer's stack. Pair with <see cref="PopBlendingMode"/>.</summary>
-    public void PushBlendingMode(IBlendingMode mode) => _buffer.PushBlendingMode(mode);
+    public void PushBlendingMode(IBlendingMode mode) => _buffer?.PushBlendingMode(mode);
 
     /// <summary>Pop the topmost blending mode from the backing buffer's stack.</summary>
-    public IBlendingMode PopBlendingMode() => _buffer.PopBlendingMode();
+    public IBlendingMode PopBlendingMode() => _buffer is null ? BlendingModes.Default : _buffer.PopBlendingMode();
 
     // ---- Cell access --------------------------------------------------------------------
 
@@ -197,12 +205,12 @@ public readonly struct CellBufferView
         get
         {
             ValidateCoordinates(column, row);
-            return _buffer[column + OffsetColumn, row + OffsetRow];
+            return _buffer![column + OffsetColumn, row + OffsetRow];
         }
         set
         {
             ValidateCoordinates(column, row);
-            _buffer[column + OffsetColumn, row + OffsetRow] = value;
+            _buffer![column + OffsetColumn, row + OffsetRow] = value;
         }
     }
 
@@ -215,6 +223,7 @@ public readonly struct CellBufferView
     /// </summary>
     public int Set(int column, int row, string? grapheme, in Style style)
     {
+        if (_buffer is null) return 0;
         if ((uint) row >= (uint) Rows || (uint) column >= (uint) Columns) return 0;
 
         int width = string.IsNullOrEmpty(grapheme) ? 1 : GraphemeWidth.ClusterWidth(grapheme.AsSpan());
@@ -257,6 +266,15 @@ public readonly struct CellBufferView
     // ---- Fragments ----------------------------------------------------------------------
 
     /// <summary>
+    /// All fragments currently registered against the buffer, keyed by anchor cell. The renderer
+    /// iterates this collection after the regular cell-grid pass and emits each fragment's
+    /// protocol bytes at its anchor. Order is iteration order of the underlying dictionary —
+    /// fragments must not depend on each other's visual ordering at the cell layer.
+    /// </summary>
+    public FragmentDictionary Fragments =>
+        _buffer is null ? FragmentDictionary.Empty : new(_buffer.FragmentsInternal, Bounds);
+
+    /// <summary>
     /// Register <paramref name="fragment"/> at the view-local <c>(column, row)</c>. Translates
     /// to backing-buffer coordinates. Anchors outside the view rect are silently dropped —
     /// returns false. The cell grid is not modified (see <see cref="CellBuffer.AddFragment"/>
@@ -265,7 +283,7 @@ public readonly struct CellBufferView
     public bool AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
     {
         ArgumentNullException.ThrowIfNull(fragment);
-        if (!Contains(column, row)) return false;
+        if (_buffer is null || !Contains(column, row)) return false;
         _buffer.AddFragment(column + OffsetColumn, row + OffsetRow, fragment, anchorStyle);
         return true;
     }
@@ -276,8 +294,47 @@ public readonly struct CellBufferView
     /// </summary>
     public bool RemoveFragment(int column, int row)
     {
-        if (!Contains(column, row)) return false;
+        if (_buffer is null || !Contains(column, row)) return false;
         return _buffer.RemoveFragment(column + OffsetColumn, row + OffsetRow);
+    }
+
+    /// <summary>
+    /// Remove the fragment anchored at the specified position. Returns true when a fragment was
+    /// removed. Cells under the removed fragment retain whatever they held before — see
+    /// <see cref="AddFragment"/> for the layering contract.
+    /// </summary>
+    public bool RemoveFragment(CellPosition position) => RemoveFragment(position.Column, position.Row);
+
+    /// <summary>
+    /// True when a fragment with the given <paramref name="key"/> is currently registered on
+    /// the buffer. Useful for "is this image already on screen?" checks without scanning the
+    /// fragment dictionary. Comparison uses <see cref="object.Equals(object)"/>, so value-type
+    /// keys (records, tuples, <see cref="uint"/>, …) compare by value.
+    /// </summary>
+    public bool ContainsFragment(object key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return _buffer is not null && _buffer.ContainsFragment(key);
+    }
+
+    /// <summary>
+    /// Look up the anchor of the fragment registered under <paramref name="key"/>. Returns
+    /// <see langword="true"/> with the anchor when one is registered, <see langword="false"/>
+    /// otherwise. Combine with the <see cref="Fragments"/> dictionary to fetch the full entry
+    /// (<c>Fragments[anchor]</c>).
+    /// </summary>
+    public bool TryGetFragmentAnchor(object key, out (int Column, int Row) anchor)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+
+        if (_buffer is not null && _buffer.TryGetFragmentAnchor(key, out var parentAnchor))
+        {
+            anchor = TranslateFromParent(parentAnchor);
+            return true;
+        }
+
+        anchor = default;
+        return false;
     }
 
     // ---- Dirty-region tracking ----------------------------------------------------------
@@ -292,7 +349,7 @@ public readonly struct CellBufferView
     /// <summary>Mark a <see cref="Rect"/> (in view-local coordinates) as dirty.</summary>
     public void MarkDirty(in Rect region)
     {
-        if (region.IsEmpty || IsEmpty) return;
+        if (_buffer is null || region.IsEmpty || IsEmpty) return;
 
         // Clip the rect against the view's bounds in view-local space first.
         int row = Math.Max(0, region.Row);
@@ -315,6 +372,10 @@ public readonly struct CellBufferView
     /// </summary>
     public CellBufferView View(int offsetColumn, int offsetRow, int columns, int rows)
     {
+        // No backing buffer → no addressable cells anywhere; sub-viewing returns a default view
+        // (which is equivalently empty) rather than throwing through the constructor.
+        if (_buffer is null) return default;
+
         // Compute the requested rect in this view's local space, then clip against the view.
         int localRow = Math.Max(0, offsetRow);
         int localCol = Math.Max(0, offsetColumn);
@@ -329,9 +390,16 @@ public readonly struct CellBufferView
             _buffer,
             OffsetColumn + localCol,
             OffsetRow + localRow,
-            clippedCols, 
+            clippedCols,
             clippedRows);
     }
+
+    /// <summary>
+    /// Create a view nested inside this one. The new view's subregion is defined by the
+    /// given <paramref name="region"/>, which is in view-local coordinates.
+    /// </summary>
+    public CellBufferView View(in Rect region)
+        => View(region.Column, region.Row, region.Columns, region.Rows);
 
     private void ValidateCoordinates(int column, int row)
     {
@@ -349,4 +417,16 @@ public readonly struct CellBufferView
                 $"Column {column} is outside the view's columns [0, {Columns}).");
         }
     }
+
+    internal (int Column, int Row) TranslateToParent(in (int Column, int Row) position) => new(OffsetColumn + position.Column, OffsetRow + position.Row);
+
+    internal CellPosition TranslateToParent(in CellPosition position) => new(OffsetColumn + position.Column, OffsetRow + position.Row);
+
+    internal Rect TranslateToParent(in Rect bounds) => bounds.Translate(OffsetColumn, OffsetRow);
+    
+    internal (int Column, int Row) TranslateFromParent(in (int Column, int Row) position) => new(position.Column - OffsetColumn, position.Row - OffsetRow);
+    
+    internal CellPosition TranslateFromParent(in CellPosition position) => new(position.Column - OffsetColumn, position.Row - OffsetRow);
+    
+    internal Rect TranslateFromParent(in Rect bounds) => bounds.Translate(-OffsetColumn, -OffsetRow);
 }

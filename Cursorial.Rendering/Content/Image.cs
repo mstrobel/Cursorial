@@ -94,7 +94,7 @@ public class Image : FragmentContent
     }
 
     /// <inheritdoc/>
-    protected override IBufferFragment? CreateFragment(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         // No bytes → no transmittable payload, regardless of capability. This is the case
         // Icon hits when its resource URI didn't resolve: it constructs an Image with empty
@@ -130,7 +130,7 @@ public class Image : FragmentContent
     }
 
     /// <inheritdoc/>
-    protected override Rect PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         // Effective placeholder style: the content's PlaceholderStyle wins, falling back to the
         // caller-supplied style when no placeholder was configured. The caller's style is what

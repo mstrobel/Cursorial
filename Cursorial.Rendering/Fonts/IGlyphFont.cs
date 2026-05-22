@@ -54,5 +54,5 @@ public interface IGlyphFont
     /// extent are silently clipped — implementations should not throw on out-of-range targets,
     /// they should paint what fits.
     /// </remarks>
-    Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style);
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style);
 }

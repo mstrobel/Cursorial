@@ -156,7 +156,7 @@ public class DecoratedFont : IGlyphFont
     /// <returns>
     /// A <see cref="Size"/> structure representing the number of columns and rows occupied by the rendered text and its decoration.
     /// </returns>
-    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
         var above = Position == DecorationPosition.Above;
         var compatibleStyle = EnsureCompatibleStyle(style);

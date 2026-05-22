@@ -88,11 +88,9 @@ public sealed class ShadowedFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
-        ArgumentNullException.ThrowIfNull(buffer);
-
-        if (text.IsEmpty) return Size.Empty;
+        if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
         var shadowStyle = ShadowStyle;
         var blendingMode = _shadowBlendingMode ?? (shadowStyle == Style.DefaultShadow ? BlendingModes.Multiply : BlendingModes.Default);

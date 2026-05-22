@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using Cursorial.Input;
 
 namespace Cursorial.Rendering;
@@ -9,6 +11,11 @@ namespace Cursorial.Rendering;
 /// </summary>
 public readonly record struct Rect
 {
+    private readonly ushort _column;
+    private readonly ushort _row;
+    private readonly ushort _columns;
+    private readonly ushort _rows;
+
     /// <summary>
     /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
     /// (width and height).
@@ -24,6 +31,11 @@ public readonly record struct Rect
 
         if (rows < 0)
             throw new ArgumentOutOfRangeException(nameof(rows), "Rectangle anchor coordinates cannot be negative.");
+
+        _column = (ushort) column;
+        _row = (ushort) row;
+        _columns = (ushort) columns;
+        _rows = (ushort) rows;
 
         Column = column;
         Row = row;
@@ -75,16 +87,32 @@ public readonly record struct Rect
     public Size Size => new(Columns, Rows);
 
     /// <summary>Left edge of the rectangle, 0-based. Inclusive.</summary>
-    public int Column { get; init; }
+    public int Column
+    {
+        get => _column;
+        init => _column = ValidateDimension(in value);
+    }
 
     /// <summary>Top edge of the rectangle, 0-based. Inclusive.</summary>
-    public int Row { get; init; }
+    public int Row
+    {
+        get => _row;
+        init => _row = ValidateDimension(in value);
+    }
 
     /// <summary>Width in cells. Non-negative; 0 produces an empty rectangle.</summary>
-    public int Columns { get; init; }
+    public int Columns
+    {
+        get => _columns;
+        init => _columns = ValidateDimension(in value);
+    }
 
     /// <summary>Height in cells. Non-negative; 0 produces an empty rectangle.</summary>
-    public int Rows { get; init; }
+    public int Rows
+    {
+        get => _rows;
+        init => _rows = ValidateDimension(in value);
+    }
 
     /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
     public bool Contains(int column, int row)
@@ -187,4 +215,15 @@ public readonly record struct Rect
     /// <returns>A new <see cref="Rect"/> instance with the updated position and the same dimensions.</returns>
     public Rect Translate(int offsetColumn, int offsetRow)
         => new(Column + offsetColumn, Row + offsetRow, Columns, Rows);
+    
+    private ushort ValidateDimension(in int value, [CallerMemberName] string? propertyName = "dimensions")
+    {
+        if (value is >= 0 and <= ushort.MaxValue)
+            return (ushort) value;
+
+        throw new ArgumentOutOfRangeException(
+            propertyName,
+            value,
+            $"Rectangle {propertyName} must be between 0 and {ushort.MaxValue:N0}.");
+    }
 }

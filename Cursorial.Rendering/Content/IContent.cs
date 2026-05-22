@@ -33,14 +33,14 @@ public static class ContentExtensions
     /// overload should be called directly with an explicit <see cref="Rect"/>.
     /// </summary>
     public static Rect Paint(this IContent content,
-                             CellBuffer buffer,
+                             in CellBufferView buffer,
                              int column,
                              int row,
                              in Style style,
                              OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(content);
-        ArgumentNullException.ThrowIfNull(buffer);
+        if (buffer.IsEmpty) return new Rect(column, row, 0, 0);
 
         var bounds = new Rect(column, row,
                               Math.Max(0, buffer.Columns - column),
@@ -78,5 +78,5 @@ public interface IContent
     /// <param name="bounds">Allocated rectangle in buffer-cell coordinates.</param>
     /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop; fonts pass it to <see cref="CellBuffer.Set"/>.</param>
     /// <param name="capabilities">Realized terminal capabilities — drives which rendering path the content chooses.</param>
-    Rect Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities);
+    Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities);
 }

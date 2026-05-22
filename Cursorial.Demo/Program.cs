@@ -75,6 +75,9 @@ while (true)
             case "format" or "richtext":
                 await DemoFormatAsync();
                 break;
+            case "palette":
+                await DemoPaletteAsync();
+                break;
             case "probe":
                 await ProbeAsync();
                 break;
@@ -135,6 +138,9 @@ static void PrintHelp()
     Console.WriteLine("  format, richtext Showcase the rich-text formatter — wrap modes, alignment");
     Console.WriteLine("                   (including justify), soft hyphens, multi-block layout, BBcode-style" +
                       "                   markup languge.");
+    Console.WriteLine("                   (Press q or Ctrl+C to exit)");
+    Console.WriteLine("  palette          Query the terminal's 256-color palette via OSC 4 and display");
+    Console.WriteLine("                   each entry as a colored block with its hex code overlaid.");
     Console.WriteLine("                   (Press q or Ctrl+C to exit)");
     Console.WriteLine("  probe            Send XTVERSION + DA1 and dump the raw response bytes for 1 second.");
     Console.WriteLine("                   Confirms whether the terminal responds to standard probes.");
@@ -615,9 +621,7 @@ static async Task DemoFormatAsync()
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
 
-    var style = Style.Default
-                     .WithForeground(session.Capabilities.Output.Color.DefaultForeground ?? Color.Default)
-                     .WithBackground(session.Capabilities.Output.Color.DefaultBackground ?? Color.Default);
+    var style = ResolveDefaultStyle(session);
 
     var screen = new CellBuffer(cols, rows, session.Capabilities);
     var renderer = new FrameRenderer(session.Capabilities.Output);
@@ -627,10 +631,10 @@ static async Task DemoFormatAsync()
 
     // Off-screen buffer the whole document paints into. Per-frame we blit a sliding window of
     // its cells into `screen`. Re-built on resize.
-    CellBuffer? offscreen = null;
-    int docRows = 0;
+    CellBuffer? offscreen;
+    int docRows;
     int scrollOffset = 0;
-    int viewportRows = 0;
+    int viewportRows;
 
     void Reformat()
     {
@@ -768,14 +772,12 @@ static async Task DemoFormatAsync()
     }
 }
 
-/// <summary>
-/// Blit the <paramref name="offscreen"/> document's rows [<paramref name="scrollOffset"/>,
-/// scrollOffset + viewportRows) into the visible <paramref name="screen"/>, plus a scroll
-/// indicator. Fragments whose anchor falls inside the visible window are re-attached at
-/// translated coordinates so inline graphics (Kitty icons, Sixel) scroll with the cells.
-/// </summary>
+// Blit the <paramref name="offscreen"/> document's rows [<paramref name="scrollOffset"/>,
+// scrollOffset + viewportRows) into the visible <paramref name="screen"/>, plus a scroll
+// indicator. Fragments whose anchor falls inside the visible window are re-attached at
+// translated coordinates so inline graphics (Kitty icons, Sixel) scroll with the cells.
 static void PaintScrolledShowcase(
-    CellBuffer screen, CellBuffer offscreen, int scrollOffset, int viewportRows, int docRows, in Style style)
+    CellBufferView screen, CellBufferView offscreen, int scrollOffset, int viewportRows, int docRows, in Style style)
 {
     screen.CursorVisible = false;
     screen.Clear();
@@ -958,6 +960,246 @@ static RichText BuildFormattingShowcase(in Style defaultStyle = default)
     return builder.Build();
 }
 
+static async Task DemoPaletteAsync()
+{
+    Console.WriteLine("Palette demo. Opening alt screen — press q or Ctrl+C to exit.");
+
+    await using var session = await TerminalSession.OpenAsync();
+    var writer = session.Output.Writer;
+
+    ScreenWriter.WriteEnterAlternateScreen(writer);
+    SgrEncoder.WriteReset(writer);
+    await writer.FlushAsync();
+
+    using var palette = new TerminalPalette(session.Output, session.Capabilities.Output);
+
+    int cols = Math.Max(20, Console.WindowWidth);
+    int rows = Math.Max(8, Console.WindowHeight);
+    var buffer = new CellBuffer(cols, rows);
+    var renderer = new FrameRenderer(session.Capabilities.Output);
+
+    var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
+    using var stopCts = new CancellationTokenSource();
+
+    // Input pump — tees events to the palette (for query-response resolution) and to the local
+    // event queue (for resize + exit handling). Single owner of the input stream.
+    var inputPump = Task.Run(async () =>
+    {
+        try
+        {
+            // ReSharper disable AccessToDisposedClosure
+            await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+            {
+                palette.OnInputEvent(evt);
+                events.Enqueue(evt);
+            }
+            // ReSharper restore AccessToDisposedClosure
+        }
+        catch (OperationCanceledException) { }
+    });
+
+    IColorPalette? colors = null;
+    string? status = null;
+
+    if (!palette.IsSupported)
+    {
+        status = "Terminal doesn't advertise OSC 4 palette-query support.";
+    }
+    else
+    {
+        // Generous timeout — 256 round-trips at a few ms each on a fast terminal, much slower over SSH.
+        colors = await palette.QueryExtendedPaletteAsync(TimeSpan.FromSeconds(3), stopCts.Token);
+        if (colors is null || colors.Count == 0)
+        {
+            status = """
+                     No palette response within the timeout.
+                     Press [b][fg=brightcyan]q[/fg][/b] or [b][fg=brightcyan]Esc[/fg][/b] to exit.
+                     """;
+        }
+    }
+
+    try
+    {
+        bool needsRepaint = true;
+
+        while (!stopCts.IsCancellationRequested)
+        {
+            while (events.TryDequeue(out var evt))
+            {
+                switch (evt)
+                {
+                    case ResizeEvent { Columns: > 0, Rows: > 0 } r:
+                        buffer.Resize(r.Columns, r.Rows);
+                        needsRepaint = true;
+                        break;
+                    case KeyEvent k when IsExit(k):
+                        stopCts.Cancel();
+                        break;
+                }
+            }
+
+            if (stopCts.IsCancellationRequested) break;
+
+            if (needsRepaint)
+            {
+                PaintPaletteShowcase(buffer, colors, status);
+
+                var scratch = new ArrayBufferWriter<byte>();
+                renderer.Render(buffer, scratch);
+                await writer.WriteAsync(scratch.WrittenMemory);
+                await writer.FlushAsync();
+
+                needsRepaint = false;
+            }
+
+            try { await Task.Delay(50, stopCts.Token); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+    finally
+    {
+        stopCts.Cancel();
+
+        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
+        try { renderer.Close(writer); } catch { /* best-effort */ }
+
+        CursorWriter.WriteShow(writer);
+        SgrEncoder.WriteReset(writer);
+        ScreenWriter.WriteLeaveAlternateScreen(writer);
+
+        try { await writer.FlushAsync(); } catch { /* best-effort */ }
+    }
+
+    Console.WriteLine("Palette demo exited.");
+
+    static bool IsExit(KeyEvent k)
+    {
+        if (k.Kind != KeyEventKind.Down) return false;
+        if (k.Key == Key.Escape) return true;
+        if (k is { Key: Key.Character, Text.Length: > 0 } && (k.Text.Span[0] == 'q' || k.Text.Span[0] == 'Q')) return true;
+        if (k.Key == Key.Character && k.Modifiers.HasFlag(KeyModifiers.Control) &&
+            k.Text.Length > 0 && (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C')) return true;
+        return false;
+    }
+}
+
+static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, string? statusMessage)
+{
+    buffer.CursorVisible = false;
+    buffer.Clear();
+
+    if (palette is null || palette.Count == 0)
+    {
+        var msg = statusMessage ?? "[fg=#dcdcff]No palette data.[/]";
+        var rtb = new RichTextBuilder().Paragraph(alignment: TextAlignment.Center).Run(msg).EndParagraph().Build();
+        var msgFormatted = new TextFormatter().Format(rtb, buffer.Columns, buffer.Rows);
+
+        msgFormatted.Paint(buffer, buffer.Bounds, OutputCapabilities.None);
+        
+        return;
+    }
+
+    // Header.
+    string header = $"OSC 4 palette — {palette.Count} entries (press q to exit)";
+    var headerStyle = Style.Default
+                           .WithForeground(Color.FromRgb(20, 20, 30))
+                           .WithBackground(Color.FromRgb(180, 220, 255))
+                           .WithAttributes(TextAttributes.Bold);
+    PaintTextRow(buffer, 0, 0, header.PadRight(buffer.Columns), headerStyle);
+
+    // Grid layout. 16 columns; each cell wide enough to display "#RRGGBB" (7 chars) with one
+    // cell of horizontal breathing room. Adapts to narrow terminals by shrinking the cell width.
+    const int desiredGridCols = 16;
+    const int desiredCellWidth = 7 + /* side margins */ 2;
+
+    int cellWidth = Math.Max(desiredCellWidth, (buffer.Columns - 2) / desiredGridCols);
+    int cellHeight = 2;
+
+    int colsAvailable = Math.Min(16, buffer.Columns / cellWidth);
+    
+    int gridLeft = Math.Max(0, (buffer.Columns - cellWidth * colsAvailable) / 2);
+    int gridTop = 2;
+
+    int rowsAvailable = Math.Max(0, buffer.Rows - gridTop - 1);
+    int maxGridRows = Math.Max(1, rowsAvailable / cellHeight);
+    int gridRows = (palette.Count + colsAvailable - 1) / colsAvailable;
+
+    if (gridRows * cellHeight > rowsAvailable)
+    {
+        cellHeight = 1;
+        maxGridRows = Math.Max(1, rowsAvailable);
+        gridRows = Math.Min((palette.Count + colsAvailable - 1) / colsAvailable, maxGridRows);
+    }
+
+    int idx = 0;
+
+    for (int gy = 0; gy < gridRows; gy++)
+    {
+        for (int gx = 0; gx < colsAvailable; gx++)
+        {
+            if (idx >= palette.Count) break;
+
+            var color = palette[idx];
+            // Only paint hex when we have a real RGB color (Color.Default sentinel means the
+            // entry didn't respond — show as a dimly-marked tile so missing entries are obvious).
+            bool hasColor = color.Kind == ColorKind.Rgb;
+            var bg = hasColor ? color : Color.FromRgb(30, 30, 30);
+            var fg = hasColor ? PickReadableForeground(color) : Color.FromRgb(120, 120, 120);
+            var cellStyle = Style.Default.WithForeground(fg).WithBackground(bg);
+
+            int cellX = gridLeft + gx * cellWidth;
+            int cellY = gridTop + gy * cellHeight;
+
+            // Fill the cell with the color.
+            for (int dy = 0; dy < cellHeight && cellY + dy < buffer.Rows; dy++)
+            {
+                for (int dx = 0; dx < cellWidth && cellX + dx < buffer.Columns; dx++)
+                    buffer.Set(cellX + dx, cellY + dy, " ", cellStyle);
+            }
+
+            // Overlay: hex code on the first row of the cell, index on the second.
+            if (cellY < buffer.Rows)
+            {
+                string hex = hasColor ? $"#{color.Red:x2}{color.Green:x2}{color.Blue:x2}" : "—";
+                int hx = cellX + Math.Max(0, (cellWidth - hex.Length) / 2);
+                for (int i = 0; i < hex.Length && hx + i < buffer.Columns; i++)
+                    buffer.Set(hx + i, cellY, hex[i].ToString(), cellStyle);
+            }
+
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            if (cellHeight >= 2 && cellY + 1 < buffer.Rows)
+            {
+                string label = idx.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                int lx = cellX + Math.Max(0, (cellWidth - label.Length) / 2);
+                for (int i = 0; i < label.Length && lx + i < buffer.Columns; i++)
+                    buffer.Set(lx + i, cellY + 1, label[i].ToString(), cellStyle);
+            }
+
+            idx++;
+        }
+    }
+}
+
+static Color PickReadableForeground(in Color bg)
+{
+    // Relative luminance (Rec. 601) is plenty for picking light-vs.-dark text on a solid block.
+    int luminance = (bg.Red * 299 + bg.Green * 587 + bg.Blue * 114) / 1000;
+    return luminance > 140
+        ? Color.FromRgb(0, 0, 0)
+        : Color.FromRgb(255, 255, 255);
+}
+
+static void PaintTextRow(CellBufferView buffer, int column, int row, string text, in Style style)
+{
+    if (row < 0 || row >= buffer.Rows) return;
+    int x = column;
+    foreach (char c in text)
+    {
+        if (x >= buffer.Columns) break;
+        buffer.Set(x++, row, c.ToString(), style);
+    }
+}
+
 static async Task DemoImageAsync(string argument)
 {
     if (string.IsNullOrWhiteSpace(argument))
@@ -1105,7 +1347,7 @@ static async Task DemoImageAsync(string argument)
 }
 
 static void PaintImageShowcase(
-    CellBuffer buf,
+    CellBufferView buf,
     string path,
     byte[] bytes,
     ImageFormat format,
@@ -1177,7 +1419,7 @@ static string ChooseProtocolLabel(OutputCapabilities caps, ImageFormat format)
 // wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
 // that changes once per second — the clock is how you tell the diff renderer is doing per-cell
 // deltas instead of repainting the whole screen each frame.
-static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
+static void PaintRenderShowcase(CellBufferView buf, OutputCapabilities outputCaps)
 {
     // The sized title flows through a ScaledText content (Phase 3) — on terminals that honor
     // OSC 66 it attaches a SizedTextFragment; on the rest it falls back to a bundled FIGlet
@@ -1355,12 +1597,11 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
         .WithUnderlineStyle(UnderlineStyle.Curly)
         .WithUnderlineColor(Color.FromPalette(5));
 
-    Size desiredSize;
-    
+    var desiredSize = RenderShowcaseFragments.Title.Measure(buf.Size, outputCaps);
+
     // Reuse a single ScaledText instance across frames — Phase 6.8's fragment diff uses
     // reference equality on the underlying IBufferFragment, so a stable instance lets the
     // renderer skip re-emission when the title and sizing haven't changed.
-    desiredSize = RenderShowcaseFragments.Title.Measure(buf.Size, outputCaps);
     RenderShowcaseFragments.Title.Paint(buf, new Rect(1, 2, desiredSize), style: sizedTitleStyle, capabilities: outputCaps);
 
     var iconMargin = new Margins(2, 1);
@@ -1419,7 +1660,7 @@ static void PaintRenderShowcase(CellBuffer buf, OutputCapabilities outputCaps)
     }
 }
 
-static void PaintLine(CellBuffer buf, int col, int row, string text, Style style)
+static void PaintLine(CellBufferView buf, int col, int row, string text, Style style)
 {
     if (row < 0 || row >= buf.Rows) return;
     int x = col;
@@ -1433,7 +1674,7 @@ static void PaintLine(CellBuffer buf, int col, int row, string text, Style style
     }
 }
 
-static int PaintWord(CellBuffer buf, int col, int row, string text, Style style)
+static int PaintWord(CellBufferView buf, int col, int row, string text, Style style)
 {
     int startCol = col;
     int x = col;
@@ -1666,6 +1907,13 @@ static string FormatCapabilities(TerminalCapabilities caps)
     Row("Synchronized output",   caps.Output.Protocol.SynchronizedOutput);
 
     return sb.ToString();
+}
+
+static Style ResolveDefaultStyle(TerminalSession session)
+{
+    return Style.Default
+                .WithForeground(session.Capabilities.Output.Color.DefaultForeground ?? Color.Default)
+                .WithBackground(session.Capabilities.Output.Color.DefaultBackground ?? Color.Default);
 }
 
 file sealed class TraceEventSink(List<InputEvent> events) : IInputEventSink

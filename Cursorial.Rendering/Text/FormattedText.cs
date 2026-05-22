@@ -24,10 +24,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// the document anchors flush to the bounds). Content is clipped to the rect; returns the
     /// rectangle actually painted.
     /// </summary>
-    public Rect Paint(CellBuffer buffer, Rect bounds, OutputCapabilities capabilities)
+    public Rect Paint(in CellBufferView buffer, in Rect bounds, OutputCapabilities capabilities)
     {
-        ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(capabilities);
+        if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
 
         int row = bounds.Row;
         int rowsAvailable = bounds.Rows;
@@ -63,7 +63,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         row - bounds.Row);
     }
 
-    private static int ComputeAnchorColumn(Rect bounds, FormattedBlock block)
+    private static int ComputeAnchorColumn(in Rect bounds, FormattedBlock block)
     {
         var alignment = block switch
                         {
@@ -86,7 +86,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     private static void PaintBlock(
-        FormattedBlock block, CellBuffer buffer, int column, int row, int maxRows, int boundsColumns,
+        FormattedBlock block, in CellBufferView buffer, int column, int row, int maxRows, int boundsColumns,
         OutputCapabilities capabilities)
     {
         switch (block)
@@ -111,7 +111,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     private static void PaintParagraph(
-        FormattedParagraph paragraph, CellBuffer buffer, int column, int row, int maxRows,
+        FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
         OutputCapabilities capabilities)
     {
         int linesToPaint = Math.Min(paragraph.Lines.Length, maxRows);
@@ -146,7 +146,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         }
     }
 
-    private static void PaintHorizontalRule(FormattedHorizontalRule rule, CellBuffer buffer, int column, int row, int width)
+    private static void PaintHorizontalRule(FormattedHorizontalRule rule, in CellBufferView buffer, int column, int row, int width)
     {
         int glyphWidth = GraphemeWidth.StringWidth(rule.Glyph);
         if (glyphWidth <= 0) return;
@@ -161,7 +161,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     private static void PaintSizedText(
-        FormattedSizedTextBlock sized, CellBuffer buffer, int column, int row, OutputCapabilities capabilities)
+        FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row, OutputCapabilities capabilities)
     {
         // Mirror ScaledText's protocol: try OSC 66 fragment when supported, else fall back to
         // the configured glyph font. ScaledText itself encapsulates the decision tree, so we
@@ -174,7 +174,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     Size IContent.Measure(Size availableSpace, OutputCapabilities capabilities)
         => Size.ClampTo(availableSpace);
 
-    Rect IContent.Paint(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    Rect IContent.Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
         => Paint(buffer, bounds, capabilities);
 }
 
@@ -249,7 +249,7 @@ public abstract record FormattedRun
 /// <summary>
 /// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
 /// hyperlink target. The painter walks graphemes and writes cells through
-/// <see cref="CellBuffer.Set"/>.
+/// <see cref="CellBufferView.Set"/>.
 /// </summary>
 public sealed record FormattedTextRun(string Text, Style Style, string? Hyperlink = null) : FormattedRun
 {

@@ -101,7 +101,7 @@ public sealed class Icon : Image
     }
 
     /// <inheritdoc/>
-    protected override Rect PaintPlaceholder(CellBuffer buffer, Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         buffer.Set(bounds.Column, bounds.Row, FallbackGlyph, FallbackStyle);
         return bounds.WithSize(GraphemeWidth.StringWidth(FallbackGlyph), 1);

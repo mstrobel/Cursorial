@@ -43,10 +43,9 @@ public sealed class MonospaceFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(CellBuffer buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
-        ArgumentNullException.ThrowIfNull(buffer);
-        if (text.IsEmpty) return Size.Empty;
+        if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
         // Out-of-bounds anchor: nothing to paint. Don't throw; consumers should be free to ask
         // a font to "paint at a position that's now off-screen after a resize."

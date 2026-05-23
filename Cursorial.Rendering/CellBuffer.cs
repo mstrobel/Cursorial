@@ -440,9 +440,11 @@ public sealed class CellBuffer
     /// <summary>
     /// Reset every cell inside <paramref name="region"/> to <see cref="Cell.Blank"/>. Does NOT
     /// apply blending. Out-of-buffer or empty rects are no-ops. Fragments and dirty regions are
-    /// untouched (the rect-scoped clear is a cell-only operation).
+    /// untouched — this is a cell-only operation. Use <see cref="Clear()"/> (parameterless) to
+    /// wipe the whole buffer including fragments / dirty state, or remove fragments individually
+    /// via <see cref="RemoveFragment(int, int)"/>.
     /// </summary>
-    public void Clear(in Rect region)
+    public void ClearCells(in Rect region)
     {
         if (region.IsEmpty) return;
 

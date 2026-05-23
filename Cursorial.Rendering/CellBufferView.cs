@@ -255,12 +255,33 @@ public readonly struct CellBufferView
     /// <summary>
     /// Reset every cell in the view to <see cref="Cell.Blank"/>. Does NOT apply blending.
     /// Scoped to the view rect — cells outside are untouched, and the buffer's fragments /
-    /// dirty regions are also left alone (matching the rect-scoped <see cref="CellBuffer.Clear(in Rect)"/>).
+    /// dirty regions are also left alone (matching <see cref="CellBuffer.ClearCells(in Rect)"/>).
     /// </summary>
     public void Clear()
     {
-        if (IsEmpty) return;
-        _buffer.Clear(BufferBounds);
+        if (_buffer is null || IsEmpty) return;
+
+        // Drop fragments anchored inside the view's rect. The rect-scoped CellBuffer.Clear is
+        // contracted as cell-only — for parity with the parameterless CellBuffer.Clear (which
+        // wipes fragments wholesale), the view's Clear must take care of its own subset. Without
+        // this, callers that loop "Clear → repaint cells → re-attach fragments" (the format
+        // demo's scroll painter, future widget systems) end up with overlay protocols stacking
+        // up across frames because the previous frame's fragment anchors stay registered.
+        var bufferBounds = BufferBounds;
+        List<(int Column, int Row)>? toRemove = null;
+        foreach (var ((col, row), _) in _buffer.FragmentsInternal)
+        {
+            if (col >= bufferBounds.Column && col < bufferBounds.ColumnEnd &&
+                row >= bufferBounds.Row && row < bufferBounds.RowEnd)
+            {
+                (toRemove ??= new List<(int, int)>()).Add((col, row));
+            }
+        }
+        if (toRemove is not null)
+            foreach (var (col, row) in toRemove)
+                _buffer.RemoveFragment(col, row);
+
+        _buffer.ClearCells(bufferBounds);
     }
 
     // ---- Fragments ----------------------------------------------------------------------

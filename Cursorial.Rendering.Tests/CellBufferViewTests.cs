@@ -449,12 +449,12 @@ public class CellBufferViewTests
     }
 
     [Fact]
-    public void CellBuffer_ClearRect_ResetsOnlyTheGivenRect()
+    public void CellBuffer_ClearCells_ResetsOnlyTheGivenRect()
     {
         var buf = new CellBuffer(10, 10);
         buf.Fill(new Cell("X", CellKind.Single, Style.Default));
 
-        buf.Clear(new Rect(3, 3, 4, 4));
+        buf.ClearCells(new Rect(3, 3, 4, 4));
 
         Assert.Null(buf[3, 3].Grapheme);
         Assert.Null(buf[6, 6].Grapheme);

@@ -39,14 +39,19 @@ namespace Cursorial.Terminal;
 /// </remarks>
 public sealed class TerminalPalette : IDisposable
 {
+    [Flags]
+    private enum ModifiedDefaults : byte { None = 0, Foreground = 1, Background = 2, Cursor = 4 }
+
     /// <summary>Default budget for a single <see cref="QueryAsync"/> call.</summary>
     public static TimeSpan DefaultQueryTimeout { get; } = TimeSpan.FromMilliseconds(250);
 
     private readonly IOutputByteSink _sink;
     private readonly bool _supported;
+    private readonly ModifiedDefaults _supportedDefaults;
     private readonly object _lock = new();
     private readonly HashSet<byte> _modified = new();
     private readonly Dictionary<byte, TaskCompletionSource<Color?>> _pending = new();
+    private ModifiedDefaults _modifiedDefaults;
     private int _disposed;
 
     /// <summary>
@@ -61,6 +66,10 @@ public sealed class TerminalPalette : IDisposable
 
         _sink = sink;
         _supported = capabilities.Color.OscPaletteSet;
+
+        _supportedDefaults = capabilities.Color.DefaultColorReset
+                                 ? ModifiedDefaults.Foreground | ModifiedDefaults.Background | ModifiedDefaults.Cursor
+                                 : ModifiedDefaults.None;
     }
 
     /// <summary>
@@ -102,6 +111,105 @@ public sealed class TerminalPalette : IDisposable
         PaletteWriter.WriteSet(_sink.Writer, (byte) index, color.Red, color.Green, color.Blue);
 
         lock (_lock) _modified.Add((byte) index);
+    }
+
+    /// <summary>
+    /// Set palette terminal foreground to <paramref name="color"/>. The color must be
+    /// <see cref="ColorKind.Rgb"/>; <see cref="ColorKind.Default"/> and <see cref="ColorKind.Palette"/>
+    /// throw <see cref="ArgumentException"/> (they have no defined RGB value).
+    /// </summary>
+    public void SetForeground(in Color color)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        
+        if (color.Kind != ColorKind.Rgb)
+            throw new ArgumentException("Palette entries must be set to an RGB color.", nameof(color));
+
+        if (!_supportedDefaults.HasFlag(ModifiedDefaults.Foreground)) return;
+
+        PaletteWriter.WriteSetForeground(_sink.Writer, color.Red, color.Green, color.Blue);
+
+        lock (_lock) _modifiedDefaults |= ModifiedDefaults.Foreground;
+    }
+
+    /// <summary>
+    /// Resets the terminal's default foreground color.
+    /// </summary>
+    public void ResetForeground()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        if (!_supportedDefaults.HasFlag(ModifiedDefaults.Foreground)) return;
+
+        PaletteWriter.WriteResetForeground(_sink.Writer);
+
+        lock (_lock) _modifiedDefaults &= ~ModifiedDefaults.Foreground;
+    }
+
+    /// <summary>
+    /// Set palette terminal background to <paramref name="color"/>. The color must be
+    /// <see cref="ColorKind.Rgb"/>; <see cref="ColorKind.Default"/> and <see cref="ColorKind.Palette"/>
+    /// throw <see cref="ArgumentException"/> (they have no defined RGB value).
+    /// </summary>
+    public void SetBackground(in Color color)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        
+        if (color.Kind != ColorKind.Rgb)
+            throw new ArgumentException("Palette entries must be set to an RGB color.", nameof(color));
+
+        if (!_supportedDefaults.HasFlag(ModifiedDefaults.Background)) return;
+
+        PaletteWriter.WriteSetBackground(_sink.Writer, color.Red, color.Green, color.Blue);
+
+        lock (_lock) _modifiedDefaults |= ModifiedDefaults.Background;
+    }
+
+    /// <summary>
+    /// Resets the terminal's default background color.
+    /// </summary>
+    public void ResetBackground()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        if (!_supportedDefaults.HasFlag(ModifiedDefaults.Background)) return;
+
+        PaletteWriter.WriteResetBackground(_sink.Writer);
+
+        lock (_lock) _modifiedDefaults &= ~ModifiedDefaults.Background;
+    }
+
+    /// <summary>
+    /// Set palette terminal cursor to <paramref name="color"/>. The color must be
+    /// <see cref="ColorKind.Rgb"/>; <see cref="ColorKind.Default"/> and <see cref="ColorKind.Palette"/>
+    /// throw <see cref="ArgumentException"/> (they have no defined RGB value).
+    /// </summary>
+    public void SetCursor(in Color color)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        
+        if (color.Kind != ColorKind.Rgb)
+            throw new ArgumentException("Palette entries must be set to an RGB color.", nameof(color));
+
+        if (!_supportedDefaults.HasFlag(ModifiedDefaults.Cursor)) return;
+
+        PaletteWriter.WriteSetCursor(_sink.Writer, color.Red, color.Green, color.Blue);
+
+        lock (_lock) _modifiedDefaults |= ModifiedDefaults.Cursor;
+    }
+
+    /// <summary>
+    /// Resets the terminal's default cursor color.
+    /// </summary>
+    public void ResetCursor()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        if (!_supportedDefaults.HasFlag(ModifiedDefaults.Cursor)) return;
+
+        PaletteWriter.WriteResetCursor(_sink.Writer);
+
+        lock (_lock) _modifiedDefaults &= ~ModifiedDefaults.Cursor;
     }
 
     /// <summary>
@@ -288,10 +396,16 @@ public sealed class TerminalPalette : IDisposable
     public void ResetAll()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
         if (!_supported) return;
 
         PaletteWriter.WriteResetAll(_sink.Writer);
-        lock (_lock) _modified.Clear();
+
+        lock (_lock)
+        {
+            _modified.Clear();
+            _modifiedDefaults = ModifiedDefaults.None;
+        }
     }
 
     /// <summary>
@@ -329,7 +443,8 @@ public sealed class TerminalPalette : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-
+        
+        ModifiedDefaults modifiedDefaults;
         byte[]? modified = null;
         TaskCompletionSource<Color?>[]? pending = null;
 
@@ -343,6 +458,9 @@ public sealed class TerminalPalette : IDisposable
                 _modified.Clear();
             }
 
+            modifiedDefaults = _modifiedDefaults;
+            _modifiedDefaults = ModifiedDefaults.None;
+
             if (_pending.Count > 0)
             {
                 pending = _pending.Values.ToArray();
@@ -350,17 +468,37 @@ public sealed class TerminalPalette : IDisposable
             }
         }
 
+        // @formatter:off
         if (modified is not null && _supported)
         {
-            try
-            {
-                PaletteWriter.WriteResetMany(_sink.Writer, modified);
-            }
-            catch
-            {
-                /* best-effort during teardown */
-            }
+            try { PaletteWriter.WriteResetMany(_sink.Writer, modified); }
+            catch { /* best-effort during teardown */ }
         }
+        
+        if (modifiedDefaults is not ModifiedDefaults.None)
+        {
+            // No need to check `_supportedDefaults` here; we wouldn't have modified
+            // any defaults if we didn't support them.
+
+            if (modifiedDefaults.HasFlag(ModifiedDefaults.Foreground))
+            {
+                try { PaletteWriter.WriteResetForeground(_sink.Writer); }
+                catch { /* best-effort during teardown */ }
+            }
+            
+            if (modifiedDefaults.HasFlag(ModifiedDefaults.Background))
+            {
+                try { PaletteWriter.WriteResetBackground(_sink.Writer); }
+                catch { /* best-effort during teardown */ }
+            }
+            
+            if (modifiedDefaults.HasFlag(ModifiedDefaults.Cursor))
+            {
+                try { PaletteWriter.WriteResetCursor(_sink.Writer); }
+                catch { /* best-effort during teardown */ }
+            }
+        } 
+        // @formatter:on
 
         if (pending is not null)
         {

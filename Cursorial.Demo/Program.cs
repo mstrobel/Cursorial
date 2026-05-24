@@ -391,10 +391,14 @@ static async Task DemoTextSizingAsync()
     Console.WriteLine("Text-sizing demo. Press Enter to return; Ctrl+C also works.");
     Console.WriteLine();
 
-    await using var session = await TerminalSession.OpenAsync();
-    var caps = session.Capabilities.Output.TextSizing;
-    var writer = session.Output.Writer;
+    var (session, screen, renderer, style, palette, capabilities) = await PrepareDemo();
+    
+    await using var ds = session;
+    using var dp = palette;
 
+    var writer = session.Output.Writer;
+    var caps = capabilities.Output.TextSizing;
+    
     if (caps is { Width: false, Scale: false })
     {
         await WriteLineAsync(writer,
@@ -491,7 +495,12 @@ static async Task WriteLineAsync(System.IO.Pipelines.PipeWriter writer, string t
     await writer.WriteAsync(Encoding.UTF8.GetBytes(text + "\r\n"));
 }
 
-static async Task<(TerminalSession session, CellBuffer buffer, FrameRenderer renderer, Style style, TerminalPalette palette)> PrepareDemo()
+static async Task<(TerminalSession session,
+                   CellBuffer buffer,
+                   FrameRenderer renderer,
+                   Style style,
+                   TerminalPalette palette,
+                   TerminalCapabilities capabilities)> PrepareDemo()
 {
     var cts = new CancellationTokenSource();
 
@@ -504,7 +513,11 @@ static async Task<(TerminalSession session, CellBuffer buffer, FrameRenderer ren
     // it fires, but starting with the right dimensions avoids a redraw on the first resize.
     var size = await session.QueryTerminalSizeAsync();
 
-    var palette = new TerminalPalette(session.Output, session.Capabilities.Output);
+    var capabilities = session.Capabilities;
+    var palette = new TerminalPalette(session.Output, capabilities.Output);
+
+    var fg = Color.FromHex("#c0caf5");
+    var bg = Color.FromHex("#0d0f18");
 
     Color[] colors =
     [
@@ -524,6 +537,7 @@ static async Task<(TerminalSession session, CellBuffer buffer, FrameRenderer ren
         Color.FromHex("#c7a9ff"),
         Color.FromHex("#a4daff"),
         Color.FromHex("#c0caf5"),
+        Color.FromHex("#0d0f18"),
         Color.FromHex("#ff9e64"),
         Color.FromHex("#db4b4b")
     ];
@@ -531,31 +545,46 @@ static async Task<(TerminalSession session, CellBuffer buffer, FrameRenderer ren
     for (var i = 0; i < colors.Length; i++)
         palette.Set(i, colors[i]);
 
-    var style = Style.Default with
-                {
-                    Foreground = Color.FromHex("#c0caf5"),
-                    Background = Color.FromHex("#0d0f18")
-                };
+    palette.SetBackground(bg);
+    palette.SetForeground(fg);
+    palette.SetCursor(fg);
 
-    var buffer = new CellBuffer(size?.Columns ?? Console.WindowWidth, size?.Rows ?? Console.WindowHeight, session.Capabilities);
+    if (palette.IsSupported)
+    {
+        capabilities = capabilities with
+                       {
+                           Output = capabilities.Output with
+                                    {
+                                        // Report the (now overridden) rgb colors to enable alpha blending
+                                        // in cases where the user pulls from these.
+                                        Color = capabilities.Output.Color with
+                                                {
+                                                    DefaultForeground = fg,
+                                                    DefaultBackground = bg,
+                                                    DefaultCursorColor = fg, 
+                                                }
+                                    }
+                       };
+    }
 
-    buffer.Fill(Cell.Blank with { Style = style });
+    var style = Style.Default with { Foreground = fg, Background = bg }; // Use rgb colors to enable alpha blending.
+    var buffer = new CellBuffer(size?.Columns ?? Console.WindowWidth, size?.Rows ?? Console.WindowHeight, capabilities);
 
     // Hand the renderer the negotiated capabilities so it can quantize cells before emission
     // (RGB → palette where truecolor isn't available, extended underline → Single where the
     // extended forms aren't supported, drop unsupported attributes, …). Without this, terminals
     // like Apple Terminal that report Ansi256 receive raw truecolor SGR and render
     // unpredictably.
-    var renderer = new FrameRenderer(session.Capabilities.Output);
-
-    return (session, buffer, renderer, style, palette);
+    var renderer = new FrameRenderer(capabilities.Output);
+    
+    return (session, buffer, renderer, style, palette, capabilities);
 }
 
 static async Task DemoRenderAsync()
 {
     Console.WriteLine("Render demo. Opening alt screen — press q or Ctrl+C to exit.");
 
-    var (session, buffer, renderer, style, palette) = await PrepareDemo();
+    var (session, buffer, renderer, style, palette, capabilities) = await PrepareDemo();
 
     await using var ds = session;
     using var dp = palette;
@@ -608,7 +637,7 @@ static async Task DemoRenderAsync()
 
             if (stopCts.IsCancellationRequested) break;
 
-            PaintRenderShowcase(buffer, style, session.Capabilities.Output);
+            PaintRenderShowcase(buffer, style, capabilities.Output);
 
             var scratch = new ArrayBufferWriter<byte>();
             renderer.Render(buffer, scratch);
@@ -661,7 +690,7 @@ static async Task DemoFormatAsync()
 {
     Console.WriteLine("Formatting demo. Opening alt screen — press q or Ctrl+C to exit; ↑/↓ + PgUp/PgDn + Home/End to scroll.");
     
-    var (session, screen, renderer, style, palette) = await PrepareDemo();
+    var (session, screen, renderer, style, palette, capabilities) = await PrepareDemo();
     
     await using var ds = session;
     using var dp = palette;
@@ -693,15 +722,15 @@ static async Task DemoFormatAsync()
         viewportRows = Math.Max(4, screen.Rows - margins.Vertical);
 
         // Format with no row cap; render into an off-screen buffer sized to the full document.
-        var ft = formatter.Format(doc, viewWidth, maxRows: null, session.Capabilities.Output);
+        var ft = formatter.Format(doc, viewWidth, maxRows: null, capabilities.Output);
 
         docRows = Math.Max(1, ft.Size.Rows);
-        offscreen = new CellBuffer(viewWidth, docRows, session.Capabilities);
+        offscreen = new CellBuffer(viewWidth, docRows, capabilities);
         offscreen.Clear(style);
 
         ft.Paint(offscreen,
                  offscreen.Bounds.LayoutContent(Anchor.Top, ft.Size), 
-                 session.Capabilities.Output);
+                 capabilities.Output);
 
         ClampScroll();
     }
@@ -875,11 +904,11 @@ static void PaintScrolledShowcase(
             x = rect.ColumnEnd + 2;
 
         var indicatorStyle = Style.Default
-                                  .WithForeground(style.Background /*Color.FromRgb(20, 20, 30)*/)
+                                  .WithForeground(style.Background)
                                   .WithBackground(style.Foreground.WithAlpha(191));
 
-        // for (int i = 0; i < indicator.Length && x + i < screen.Columns; i++)
-        //     screen.Set(x + i, y, indicator[i] == ' ' ? "" : indicator[i].ToString(), indicatorStyle);
+        for (int i = 0; i < indicator.Length && x + i < screen.Columns; i++)
+            screen.Set(x + i, y, indicator[i] == ' ' ? "" : indicator[i].ToString(), indicatorStyle);
     }
 }
 
@@ -1014,19 +1043,19 @@ static async Task DemoPaletteAsync()
 {
     Console.WriteLine("Palette demo. Opening alt screen — press q or Ctrl+C to exit.");
 
-    await using var session = await TerminalSession.OpenAsync();
+    var (session, buffer, renderer, style, palette, capabilities) = await PrepareDemo();
+
+    await using var ds = session;
+    using var dp = palette;
+
     var writer = session.Output.Writer;
 
     ScreenWriter.WriteEnterAlternateScreen(writer);
     SgrEncoder.WriteReset(writer);
     await writer.FlushAsync();
 
-    using var palette = new TerminalPalette(session.Output, session.Capabilities.Output);
-
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
-    var buffer = new CellBuffer(cols, rows);
-    var renderer = new FrameRenderer(session.Capabilities.Output);
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
     using var stopCts = new CancellationTokenSource();
@@ -1092,7 +1121,7 @@ static async Task DemoPaletteAsync()
 
             if (needsRepaint)
             {
-                PaintPaletteShowcase(buffer, colors, status);
+                PaintPaletteShowcase(buffer, colors, style, status);
 
                 var scratch = new ArrayBufferWriter<byte>();
                 renderer.Render(buffer, scratch);
@@ -1133,7 +1162,7 @@ static async Task DemoPaletteAsync()
     }
 }
 
-static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, string? statusMessage)
+static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, in Style style, string? statusMessage)
 {
     buffer.CursorVisible = false;
     buffer.Clear();
@@ -1141,7 +1170,7 @@ static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, 
     if (palette is null || palette.Count == 0)
     {
         var msg = statusMessage ?? "[fg=#dcdcff]No palette data.[/]";
-        var rtb = new RichTextBuilder().Paragraph(alignment: TextAlignment.Center).Run(msg).EndParagraph().Build();
+        var rtb = new RichTextBuilder(style).Paragraph(alignment: TextAlignment.Center).Run(msg).EndParagraph().Build();
         var msgFormatted = new TextFormatter().Format(rtb, buffer.Columns, buffer.Rows);
 
         msgFormatted.Paint(buffer, buffer.Bounds, OutputCapabilities.None);
@@ -1151,8 +1180,7 @@ static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, 
 
     // Header.
     string header = $"OSC 4 palette — {palette.Count} entries (press q to exit)";
-    var headerStyle = Style.Default
-                           .WithForeground(Color.FromRgb(20, 20, 30))
+    var headerStyle = style.WithForeground(Color.FromRgb(20, 20, 30))
                            .WithBackground(Color.FromRgb(180, 220, 255))
                            .WithAttributes(TextAttributes.Bold);
     PaintTextRow(buffer, 0, 0, header.PadRight(buffer.Columns), headerStyle);
@@ -1195,7 +1223,7 @@ static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, 
             bool hasColor = color.Kind == ColorKind.Rgb;
             var bg = hasColor ? color : Color.FromRgb(30, 30, 30);
             var fg = hasColor ? PickReadableForeground(color) : Color.FromRgb(120, 120, 120);
-            var cellStyle = Style.Default.WithForeground(fg).WithBackground(bg);
+            var cellStyle = style.WithForeground(fg).WithBackground(bg);
 
             int cellX = gridLeft + gx * cellWidth;
             int cellY = gridTop + gy * cellHeight;
@@ -1302,7 +1330,11 @@ static async Task DemoImageAsync(string argument)
     Console.WriteLine(
         $"Image demo. Loading {path} ({bytes.Length} bytes, {format}). Press q or Ctrl+C to exit.");
 
-    await using var session = await TerminalSession.OpenAsync();
+    var (session, buffer, renderer, defaultStyle, palette, capabilities) = await PrepareDemo();
+
+    await using var ds = session;
+    using var dp = palette;
+
     var writer = session.Output.Writer;
 
     ScreenWriter.WriteEnterAlternateScreen(writer);
@@ -1311,13 +1343,6 @@ static async Task DemoImageAsync(string argument)
 
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
-
-    var buffer = new CellBuffer(cols, rows, session.Capabilities);
-    var renderer = new FrameRenderer(session.Capabilities.Output);
-    var defaultStyle = Style.Default;
-
-    if (session.Capabilities.Output.Color is { DefaultForeground: {} fg, DefaultBackground: {} bg })
-        defaultStyle = Style.Default with { Foreground = fg, Background = bg };
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
     using var stopCts = new CancellationTokenSource();
@@ -1364,7 +1389,7 @@ static async Task DemoImageAsync(string argument)
 
             if (needsRepaint)
             {
-                PaintImageShowcase(buffer, path, bytes, format, session.Capabilities.Output, defaultStyle);
+                PaintImageShowcase(buffer, path, bytes, format, capabilities.Output, defaultStyle);
 
                 var scratch = new ArrayBufferWriter<byte>();
                 renderer.Render(buffer, scratch);
@@ -1505,8 +1530,8 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
 
     // ---- Title bar ----
     var titleStyle = new Style(
-        Foreground: Color.FromRgb(20, 20, 30),
-        Background: Color.FromRgb(180, 220, 255),
+        Foreground: Colors.Black,
+        Background: Colors.LightBlue,
         Attributes: TextAttributes.Bold,
         UnderlineStyle: default,
         UnderlineColor: default);
@@ -1717,8 +1742,8 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
     if (clock.Length + 1 < cols)
     {
         var clockStyle = style
-            .WithForeground(Color.FromRgb(255, 255, 255))
-            .WithBackground(Color.FromRgb(40, 40, 70))
+            .WithForeground(Colors.TrueWhite)
+            .WithBackground(Colors.Extended1)
             .WithAttributes(TextAttributes.Bold);
         int x = cols - clock.Length - 1;
         PaintLine(buf, x, 0, " " + clock, clockStyle);
@@ -1974,13 +1999,6 @@ static string FormatCapabilities(TerminalCapabilities caps)
     return sb.ToString();
 }
 
-static Style ResolveDefaultStyle(TerminalSession session)
-{
-    return Style.Default
-                .WithForeground(session.Capabilities.Output.Color.DefaultForeground ?? Color.Default)
-                .WithBackground(session.Capabilities.Output.Color.DefaultBackground ?? Color.Default);
-}
-
 file sealed class TraceEventSink(List<InputEvent> events) : IInputEventSink
 {
     public void OnInputEvent(InputEvent inputEvent) => events.Add(inputEvent);
@@ -2003,5 +2021,5 @@ file static class RenderShowcaseFragments
     public static readonly ScaledText Title = new(
         "Cursorial Rendering Demo",
         new TextSizing(Scale: 2),
-        fallbackFont: ShadowedFont.Default);
+        fallbackFont: DecoratedFont.QuarterBlockUnderline);
 }

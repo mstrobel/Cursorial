@@ -15,6 +15,16 @@ public class TerminalPaletteTests
             Color = OutputCapabilities.None.Color with { OscPaletteSet = oscPaletteSet }
         };
 
+    private static OutputCapabilities CapsWith(bool oscPaletteSet, bool defaultColorReset) =>
+        OutputCapabilities.None with
+        {
+            Color = OutputCapabilities.None.Color with
+            {
+                OscPaletteSet = oscPaletteSet,
+                DefaultColorReset = defaultColorReset,
+            }
+        };
+
     private static DeviceResponseEvent PaletteResponse(int index, string rgbHex)
     {
         // rgbHex like "abab/cdcd/efef"
@@ -76,7 +86,7 @@ public class TerminalPaletteTests
         palette.Set(7, Color.FromRgb(0x12, 0x34, 0x56));
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]4;7;rgb:1212/3434/5656\x1b\\", ascii);
+        Assert.Equal("\x1b]4;7;rgb:1212/3434/5656\x1b\a", ascii);
         Assert.Contains((byte) 7, palette.ModifiedIndices);
     }
 
@@ -101,12 +111,12 @@ public class TerminalPaletteTests
         palette.Reset(7);
 
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
-        Assert.Equal("\x1b]104;7\x1b\\", ascii);
+        Assert.Equal("\x1b]104;7\x1b\a", ascii);
         Assert.Empty(palette.ModifiedIndices);
     }
 
     [Fact]
-    public async Task ResetAll_WritesOscOneZeroFour_AndClearsTracking()
+    public async Task ResetAll_WritesOsc_104_110_111_112_AndClearsTracking()
     {
         var sink = new InMemoryOutputByteSink();
         using var palette = new TerminalPalette(sink, CapsWith(true));
@@ -118,7 +128,7 @@ public class TerminalPaletteTests
         palette.ResetAll();
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]104\x1b\\", ascii);
+        Assert.Equal("\x1b]104\x1b\a\x1b]110\x1b\a\x1b]111\x1b\a\x1b]112\x1b\a", ascii);
         Assert.Empty(palette.ModifiedIndices);
     }
 
@@ -141,7 +151,7 @@ public class TerminalPaletteTests
         // Expect a single OSC 104 with all indices listed (the order within HashSet isn't
         // guaranteed; verify each index appears).
         Assert.StartsWith("\x1b]104;", ascii);
-        Assert.EndsWith("\x1b\\", ascii);
+        Assert.EndsWith("\x1b\a", ascii);
         Assert.Contains(";1", ascii);
         Assert.Contains(";7", ascii);
         Assert.Contains(";42", ascii);
@@ -250,6 +260,229 @@ public class TerminalPaletteTests
             Kind = DeviceResponseKind.PrimaryDeviceAttributes,
             Payload = Encoding.ASCII.GetBytes("64;1"),
         });
+    }
+
+    // ---- Default foreground / background / cursor ----
+
+    [Fact]
+    public async Task SetForeground_WritesOsc10()
+    {
+        var sink = new InMemoryOutputByteSink();
+        using var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetForeground(Color.FromRgb(0x12, 0x34, 0x56));
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+        Assert.Equal("\x1b]10;rgb:1212/3434/5656\x1b\a", ascii);
+    }
+
+    [Fact]
+    public async Task SetBackground_WritesOsc11()
+    {
+        var sink = new InMemoryOutputByteSink();
+        using var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetBackground(Color.FromRgb(0xAA, 0xBB, 0xCC));
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+        Assert.Equal("\x1b]11;rgb:aaaa/bbbb/cccc\x1b\a", ascii);
+    }
+
+    [Fact]
+    public async Task SetCursor_WritesOsc12()
+    {
+        var sink = new InMemoryOutputByteSink();
+        using var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetCursor(Color.FromRgb(0xDE, 0xAD, 0xBE));
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+        Assert.Equal("\x1b]12;rgb:dede/adad/bebe\x1b\a", ascii);
+    }
+
+    [Fact]
+    public async Task ResetForeground_AfterSet_WritesOsc110_AndClearsDirtyFlag()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetForeground(Color.FromRgb(0x10, 0x20, 0x30));
+        await sink.ReadAllWrittenAsync(); // drain
+        palette.ResetForeground();
+
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.Equal("\x1b]110\x1b\a", ascii);
+
+        // After explicit reset Dispose should not re-emit OSC 110.
+        palette.Dispose();
+        var disposeBytes = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.DoesNotContain("\x1b]110", disposeBytes);
+    }
+
+    [Fact]
+    public async Task ResetBackground_AfterSet_WritesOsc111_AndClearsDirtyFlag()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetBackground(Color.FromRgb(0x40, 0x50, 0x60));
+        await sink.ReadAllWrittenAsync();
+        palette.ResetBackground();
+
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.Equal("\x1b]111\x1b\a", ascii);
+
+        palette.Dispose();
+        var disposeBytes = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.DoesNotContain("\x1b]111", disposeBytes);
+    }
+
+    [Fact]
+    public async Task ResetCursor_AfterSet_WritesOsc112_AndClearsDirtyFlag()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetCursor(Color.FromRgb(0x70, 0x80, 0x90));
+        await sink.ReadAllWrittenAsync();
+        palette.ResetCursor();
+
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.Equal("\x1b]112\x1b\a", ascii);
+
+        palette.Dispose();
+        var disposeBytes = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.DoesNotContain("\x1b]112", disposeBytes);
+    }
+
+    [Theory]
+    [InlineData("SetForeground")]
+    [InlineData("SetBackground")]
+    [InlineData("SetCursor")]
+    public void SetDefault_NonRgbColor_Throws(string method)
+    {
+        var sink = new InMemoryOutputByteSink();
+        using var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        Action callPalette = () => InvokeSetDefault(palette, method, Color.FromPalette(5));
+        Action callDefault = () => InvokeSetDefault(palette, method, Color.Default);
+
+        Assert.Throws<ArgumentException>(callPalette);
+        Assert.Throws<ArgumentException>(callDefault);
+    }
+
+    [Theory]
+    [InlineData("SetForeground")]
+    [InlineData("SetBackground")]
+    [InlineData("SetCursor")]
+    [InlineData("ResetForeground")]
+    [InlineData("ResetBackground")]
+    [InlineData("ResetCursor")]
+    public async Task DefaultColorOps_WhenDefaultColorResetUnsupported_AreNoOps(string method)
+    {
+        var sink = new InMemoryOutputByteSink();
+        using var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: false));
+
+        if (method.StartsWith("Set", StringComparison.Ordinal))
+            InvokeSetDefault(palette, method, Color.FromRgb(1, 2, 3));
+        else
+            InvokeResetDefault(palette, method);
+
+        Assert.Empty(await sink.ReadAllWrittenAsync());
+    }
+
+    [Fact]
+    public async Task Dispose_RestoresEveryModifiedDefault()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetForeground(Color.FromRgb(0x10, 0x10, 0x10));
+        palette.SetBackground(Color.FromRgb(0x20, 0x20, 0x20));
+        palette.SetCursor(Color.FromRgb(0x30, 0x30, 0x30));
+        await sink.ReadAllWrittenAsync(); // drain set sequences
+
+        palette.Dispose();
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+        Assert.Contains("\x1b]110\x1b\a", ascii);
+        Assert.Contains("\x1b]111\x1b\a", ascii);
+        Assert.Contains("\x1b]112\x1b\a", ascii);
+    }
+
+    [Fact]
+    public async Task Dispose_OnlyRestoresDefaultsThatWereModified()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetBackground(Color.FromRgb(0x20, 0x20, 0x20));
+        await sink.ReadAllWrittenAsync();
+
+        palette.Dispose();
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+        Assert.Contains("\x1b]111\x1b\a", ascii);
+        Assert.DoesNotContain("\x1b]110", ascii);
+        Assert.DoesNotContain("\x1b]112", ascii);
+    }
+
+    [Fact]
+    public async Task ResetAll_AfterDefaultSets_ClearsModifiedDefaultsSoDisposeIsClean()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+
+        palette.SetForeground(Color.FromRgb(0x10, 0x10, 0x10));
+        palette.SetBackground(Color.FromRgb(0x20, 0x20, 0x20));
+        palette.SetCursor(Color.FromRgb(0x30, 0x30, 0x30));
+        await sink.ReadAllWrittenAsync();
+
+        // ResetAll itself emits the OSC 110 / 111 / 112 trio via WriteResetAll.
+        palette.ResetAll();
+        var resetAllAscii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.Equal("\x1b]104\x1b\a\x1b]110\x1b\a\x1b]111\x1b\a\x1b]112\x1b\a", resetAllAscii);
+
+        // Dispose should now write nothing — every modification flag was cleared.
+        palette.Dispose();
+        Assert.Empty(await sink.ReadAllWrittenAsync());
+    }
+
+    [Fact]
+    public void DefaultColorOps_AfterDispose_Throw()
+    {
+        var sink = new InMemoryOutputByteSink();
+        var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
+        palette.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => palette.SetForeground(Color.FromRgb(0, 0, 0)));
+        Assert.Throws<ObjectDisposedException>(() => palette.SetBackground(Color.FromRgb(0, 0, 0)));
+        Assert.Throws<ObjectDisposedException>(() => palette.SetCursor(Color.FromRgb(0, 0, 0)));
+        Assert.Throws<ObjectDisposedException>(palette.ResetForeground);
+        Assert.Throws<ObjectDisposedException>(palette.ResetBackground);
+        Assert.Throws<ObjectDisposedException>(palette.ResetCursor);
+    }
+
+    private static void InvokeSetDefault(TerminalPalette palette, string method, Color color)
+    {
+        switch (method)
+        {
+            case "SetForeground": palette.SetForeground(color); break;
+            case "SetBackground": palette.SetBackground(color); break;
+            case "SetCursor":     palette.SetCursor(color); break;
+            default: throw new ArgumentOutOfRangeException(nameof(method), method, null);
+        }
+    }
+
+    private static void InvokeResetDefault(TerminalPalette palette, string method)
+    {
+        switch (method)
+        {
+            case "ResetForeground": palette.ResetForeground(); break;
+            case "ResetBackground": palette.ResetBackground(); break;
+            case "ResetCursor":     palette.ResetCursor(); break;
+            default: throw new ArgumentOutOfRangeException(nameof(method), method, null);
+        }
     }
 
     [Fact]

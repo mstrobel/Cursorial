@@ -166,8 +166,17 @@ public static class VtOutputSequences
         /// <summary><c>ESC ] 4 ;</c> — opening of the OSC 4 envelope (set/query). Index + payload follow.</summary>
         public static ReadOnlySpan<byte> SetPrefix => "\x1b]4;"u8;
 
+        /// <summary><c>ESC ] 10 ;</c> — opening of the OSC 10 envelope (set/query). Payload follows.</summary>
+        public static ReadOnlySpan<byte> SetForegroundPrefix => "\x1b]10;"u8;
+
+        /// <summary><c>ESC ] 11 ;</c> — opening of the OSC 4 envelope (set/query). Payload follows.</summary>
+        public static ReadOnlySpan<byte> SetBackgroundPrefix => "\x1b]11;"u8;
+
+        /// <summary><c>ESC ] 12 ;</c> — opening of the OSC 4 envelope (set/query). Payload follows.</summary>
+        public static ReadOnlySpan<byte> SetCursorPrefix => "\x1b]12;"u8;
+
         /// <summary><c>; rgb:</c> — separator + X11 color-spec opening between index and channels.</summary>
-        public static ReadOnlySpan<byte> RgbInfix => ";rgb:"u8;
+        public static ReadOnlySpan<byte> RgbInfix => "rgb:"u8;
 
         /// <summary><c>;?</c> — query suffix between the index and the string terminator.</summary>
         public static ReadOnlySpan<byte> QuerySuffix => ";?"u8;
@@ -175,7 +184,16 @@ public static class VtOutputSequences
         /// <summary><c>ESC ] 104</c> — opening of the OSC 104 envelope (reset).</summary>
         public static ReadOnlySpan<byte> ResetPrefix => "\x1b]104"u8;
 
-        /// <summary><c>ESC \\</c> — String Terminator (ST).</summary>
-        public static ReadOnlySpan<byte> StringTerminator => "\x1b\\"u8;
+        /// <summary><c>ESC ] 110</c> — opening of the OSC 110 envelope (reset).</summary>
+        public static ReadOnlySpan<byte> ResetForegroundPrefix => "\x1b]110"u8;
+
+        /// <summary><c>ESC ] 110</c> — opening of the OSC 111 envelope (reset).</summary>
+        public static ReadOnlySpan<byte> ResetBackgroundPrefix => "\x1b]111"u8;
+
+        /// <summary><c>ESC ] 112</c> — opening of the OSC 111 envelope (reset).</summary>
+        public static ReadOnlySpan<byte> ResetCursorPrefix => "\x1b]112"u8;
+
+        /// <summary><c>ESC \a or \x7</c> — String Terminator (ST).</summary>
+        public static ReadOnlySpan<byte> StringTerminator => "\x1b\a"u8;
     }
 }

@@ -40,7 +40,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
         if (fillEntireBounds/* && DefaultStyle.Background.IsDefault is false*/)
         {
-            buffer.View(bounds).Fill(Cell.Blank with { Style = DefaultStyle });
+            buffer.ClearCells(bounds, DefaultStyle);
             row = bounds.Row + (bounds.Rows - Size.Rows) / 2;
         }
 

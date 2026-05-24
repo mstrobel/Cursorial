@@ -12,7 +12,7 @@ namespace Cursorial.Rendering.Text;
 /// The result of formatting a <see cref="RichText"/> document against a column budget. Immutable
 /// — format once and paint many times; querying <see cref="Size"/> doesn't need a buffer.
 /// </summary>
-public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size) : IContent
+public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, in Style DefaultStyle = default, bool FillEntireBounds = false) : IContent
 {
     /// <summary>Empty formatted document — zero blocks, zero size.</summary>
     public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty);
@@ -27,6 +27,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     public Rect Paint(in CellBufferView buffer, in Rect bounds, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
+
         if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
 
         int row = bounds.Row;
@@ -34,6 +35,14 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         bool first = true;
         int paintedWidth = 0;
         Margins lastBlockMargins = Margins.Zero;
+
+        var fillEntireBounds = FillEntireBounds;
+
+        if (fillEntireBounds/* && DefaultStyle.Background.IsDefault is false*/)
+        {
+            buffer.View(bounds).Fill(Cell.Blank with { Style = DefaultStyle });
+            row = bounds.Row + (bounds.Rows - Size.Rows) / 2;
+        }
 
         foreach (var block in Blocks)
         {
@@ -57,6 +66,9 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             first = false;
             lastBlockMargins = block.Margin;
         }
+
+        if (fillEntireBounds)
+            return bounds;
 
         return new Rect(bounds.Column, bounds.Row,
                         Math.Min(paintedWidth, bounds.Columns),

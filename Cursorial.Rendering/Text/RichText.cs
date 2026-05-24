@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 
+using Cursorial.Output;
+
 namespace Cursorial.Rendering.Text;
 
 /// <summary>
@@ -21,4 +23,8 @@ public sealed record RichText(ImmutableArray<Block> Blocks)
 
     /// <summary>True when the document has no blocks. Empty paragraphs do NOT count as empty here — they still occupy a row.</summary>
     public bool IsEmpty => Blocks.IsDefaultOrEmpty;
+    
+    /// <summary>The default style applied to all text in the document.</summary>
+    /// <remarks>The background of the default style is used for filling the entire document host when requested.</remarks>
+    public Style DefaultStyle { get; init; } = Style.Default;
 }

@@ -50,7 +50,8 @@ public sealed class TextFormatter
         RichText text,
         int availableColumns,
         int? maxRows = null,
-        OutputCapabilities? capabilities = null)
+        OutputCapabilities? capabilities = null,
+        bool fillEntireBounds = false)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (availableColumns <= 0)
@@ -100,7 +101,7 @@ public sealed class TextFormatter
             lastBlockMargins = block.Margin;
         }
 
-        return new FormattedText(formattedBlocks.ToImmutable(), new Size(widthUsed, totalRows));
+        return new FormattedText(formattedBlocks.ToImmutable(), new Size(widthUsed, totalRows), text.DefaultStyle, fillEntireBounds);
     }
 
     private FormattedBlock FormatBlock(Block block, int availableColumns, OutputCapabilities capabilities) =>

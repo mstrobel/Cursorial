@@ -42,8 +42,10 @@ public static class MedianCutQuantizer
     {
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width), width, "Width must be positive.");
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height), height, "Height must be positive.");
+
         if (maxColors is < 1 or > SixelEncoder.MaxPaletteSize)
             throw new ArgumentOutOfRangeException(nameof(maxColors), maxColors, $"maxColors must be in 1..{SixelEncoder.MaxPaletteSize}.");
+
         int expectedBytes = checked(width * height * 4);
         if (rgbaPixels.Length != expectedBytes)
             throw new ArgumentException($"rgbaPixels length {rgbaPixels.Length} doesn't match width × height × 4 = {expectedBytes}.", nameof(rgbaPixels));
@@ -52,11 +54,25 @@ public static class MedianCutQuantizer
 
         // Strip alpha into a packed RGB-triplet buffer to keep the working sets compact.
         var rgb = new byte[pixelCount * 3];
+        var tck = SixelColor.TransparentColorKey;
+
         for (int i = 0; i < pixelCount; i++)
         {
-            rgb[i * 3 + 0] = rgbaPixels[i * 4 + 0];
-            rgb[i * 3 + 1] = rgbaPixels[i * 4 + 1];
-            rgb[i * 3 + 2] = rgbaPixels[i * 4 + 2];
+            var alpha = rgbaPixels[i * 4 + 3];
+
+            if (alpha is 0)
+            {
+                // Replace transparent pixels with the transparent color key.
+                rgb[i * 3 + 0] = tck.R;
+                rgb[i * 3 + 1] = tck.G;
+                rgb[i * 3 + 2] = tck.B;
+            }
+            else
+            {
+                rgb[i * 3 + 0] = rgbaPixels[i * 4 + 0];
+                rgb[i * 3 + 1] = rgbaPixels[i * 4 + 1];
+                rgb[i * 3 + 2] = rgbaPixels[i * 4 + 2];
+            }
         }
 
         // Build the initial box covering every pixel.

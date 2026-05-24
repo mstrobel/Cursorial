@@ -8,7 +8,7 @@ namespace Cursorial.Rendering.Fragments;
 /// <summary>
 /// An image rendered via the Kitty graphics protocol — APC <c>G</c> escape with base64-encoded
 /// payload, chunked to fit the per-APC size limit. Painted in the cell rectangle declared by
-/// <see cref="ImageData.CellSize"/>; the protocol handles aspect-ratio adjustment from the
+/// <see cref="ImageData.RequestedSize"/>; the protocol handles aspect-ratio adjustment from the
 /// image's natural pixel size to the requested cell footprint.
 /// </summary>
 /// <remarks>
@@ -47,13 +47,17 @@ public sealed class KittyImageFragment : IBufferFragment
     }
 
     private readonly ImageData _data;
+    private readonly Size _displaySize;
+    private readonly (int Columns, int Rows)? _pixelSize;
     private readonly uint _imageId;
 
     /// <summary>Construct a Kitty image fragment for the supplied image data.</summary>
-    public KittyImageFragment(ImageData data)
+    public KittyImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null)
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
+        _displaySize = displaySize ?? data.RequestedSize ?? throw new InvalidOperationException("ImageData.CellSize or displaySize must be provided.");
+        _pixelSize = pixelSize;
         _imageId = (uint) Interlocked.Increment(ref _nextImageId);
     }
 
@@ -64,6 +68,9 @@ public sealed class KittyImageFragment : IBufferFragment
     public uint ImageId => _imageId;
 
     /// <inheritdoc/>
+    public FragmentLayer Layer => FragmentLayer.Overlay;
+
+    /// <inheritdoc/>
     /// <remarks>
     /// Each fragment instance owns a unique image ID, so two fragments wrapping identical
     /// bytes still diff distinctly — the wire identity matters more than content identity for
@@ -72,7 +79,7 @@ public sealed class KittyImageFragment : IBufferFragment
     public object Key => _imageId;
 
     /// <inheritdoc/>
-    public Size GetSize() => _data.CellSize;
+    public Size GetSize() => _displaySize;
 
     /// <inheritdoc/>
     public bool IsSupported(OutputCapabilities capabilities)
@@ -101,6 +108,7 @@ public sealed class KittyImageFragment : IBufferFragment
         // a single allocation here is fine.
         string base64 = Convert.ToBase64String(_data.Bytes.Span);
         byte[] ascii = Encoding.ASCII.GetBytes(base64);
+
         EmitFromBytes(output, format, ascii, capabilities.Protocol.MultiplexerPassthrough);
     }
 
@@ -192,10 +200,10 @@ public sealed class KittyImageFragment : IBufferFragment
         // Header bytes for the chunk. The first chunk carries full transmit params plus the
         // image ID (i=) so a later EmitErase can target this exact image. Subsequent chunks
         // carry only m=. Quietness q=2 always (we don't read responses).
-        var rowQualifier = _data.CellSize.Rows >= 1 ? $"r={_data.CellSize.Rows}," : "";
+        var rowQualifier = _displaySize.Rows >= 1 ? $"r={_displaySize.Rows}," : "";
         var header = firstChunk
                          ? Encoding.ASCII.GetBytes(
-                             $"a=T,f={format},i={_imageId},c={_data.CellSize.Columns},{rowQualifier}q=2,m={(isLast ? 0 : 1)};")
+                             $"a=T,f={format},i={_imageId},c={_displaySize.Columns},{rowQualifier}q=2,m={(isLast ? 0 : 1)};")
                          : Encoding.ASCII.GetBytes($"m={(isLast ? 0 : 1)};");
 
         // APC framing: ESC _ G <control-data> ; <payload> ESC \ — the "_G" prefix marks
@@ -217,4 +225,9 @@ public sealed class KittyImageFragment : IBufferFragment
 
         output.Advance(written);
     }
+    
+    /// <inheritdoc/>
+    public override string ToString()
+        => $"[{nameof(KittyImageFragment)} CellSize={_displaySize} PayloadLength={_data.Bytes.Length} " +
+           $"SourceFileName={(_data.SourceFileName != null ? $"'{_data.SourceFileName}'" : "<unknown>")}]";
 }

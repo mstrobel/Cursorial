@@ -265,12 +265,12 @@ public sealed class RichTextBuilder
     public RichText Build()
     {
         FlushOpenParagraph();
-        return new RichText(_blocks.ToImmutable());
+        return new RichText(_blocks.ToImmutable()) { DefaultStyle = _defaultStyle };
     }
 
     // ---- Internals ----
 
-    private Style CurrentStyle => _styles.Count > 0 ? _styles.Peek() : default;
+    private Style CurrentStyle => _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
     private IGlyphMap? CurrentMap => _maps.Count > 0 ? _maps.Peek() : null;
     private string? CurrentHyperlink => _hyperlinks.Count > 0 ? _hyperlinks.Peek() : null;
 

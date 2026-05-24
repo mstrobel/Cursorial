@@ -8,10 +8,12 @@ namespace Cursorial.Rendering.Fragments;
 /// </summary>
 public readonly record struct SixelColor(byte R, byte G, byte B)
 {
+    public static readonly SixelColor TransparentColorKey = new(0, 255, 255);
+
     /// <summary>Construct from a <see cref="Cursorial.Output.Color"/>. Default and palette colors collapse to black.</summary>
-    public static SixelColor From(Cursorial.Output.Color color)
+    public static SixelColor From(Output.Color color)
     {
-        if (color.Kind != Cursorial.Output.ColorKind.Rgb)
+        if (color.Kind != Output.ColorKind.Rgb || color.IsTransparent)
             return new SixelColor(0, 0, 0);
         return new SixelColor(color.Red, color.Green, color.Blue);
     }
@@ -114,7 +116,7 @@ public static class SixelEncoder
                 for (int r = 0; r < bandHeight; r++)
                 {
                     byte idx = indexedPixels[(bandStart + r) * width + col];
-                    colorsInBand[idx] = true;
+                    colorsInBand[idx] = IsOpaque(palette[idx]);
                 }
             }
 
@@ -130,7 +132,7 @@ public static class SixelEncoder
                 WriteAscii(output, "#");
                 WriteInt(output, colorIdx);
 
-                EmitBandPattern(output, indexedPixels, width, bandStart, bandHeight, (byte) colorIdx);
+                EmitBandPattern(output, indexedPixels, width, bandStart, bandHeight, (byte) colorIdx, palette);
             }
 
             if (band < bandCount - 1)
@@ -140,6 +142,8 @@ public static class SixelEncoder
         // ST.
         WriteAscii(output, "\x1b\\");
     }
+
+    private static bool IsOpaque(SixelColor color) => color != SixelColor.TransparentColorKey;
 
     /// <summary>
     /// Convenience overload — encodes into a freshly allocated byte array.
@@ -153,8 +157,8 @@ public static class SixelEncoder
         return writer.WrittenSpan.ToArray();
     }
 
-    private static void EmitBandPattern(IBufferWriter<byte> output, ReadOnlySpan<byte> pixels,
-                                        int width, int bandStart, int bandHeight, byte colorIdx)
+    private static void EmitBandPattern(IBufferWriter<byte> output, in ReadOnlySpan<byte> pixels,
+                                        int width, int bandStart, int bandHeight, byte colorIdx, in ReadOnlySpan<SixelColor> palette)
     {
         // Walk columns, build a 6-bit pattern (bit i = pixel set in row bandStart + i for the
         // current color), RLE-collapse runs of identical patterns. Bit 0 is the top row of the
@@ -165,9 +169,10 @@ public static class SixelEncoder
         for (int col = 0; col < width; col++)
         {
             byte pattern = 0;
+
             for (int r = 0; r < bandHeight; r++)
             {
-                if (pixels[(bandStart + r) * width + col] == colorIdx)
+                if (pixels[(bandStart + r) * width + col] == colorIdx && IsOpaque(palette[colorIdx]))
                     pattern |= (byte) (1 << r);
             }
 

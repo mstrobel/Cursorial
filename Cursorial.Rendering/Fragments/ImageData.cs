@@ -8,7 +8,7 @@ namespace Cursorial.Rendering.Fragments;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="CellSize"/> is the rectangle in cell coordinates the image will occupy. Both
+/// <see cref="RequestedSize"/> is the rectangle in cell coordinates the image will occupy. Both
 /// Kitty's protocol and iTerm2's inline-image protocol accept cell-based sizing, so the same
 /// value drives both wire formats. Callers that need precise pixel control (e.g., aligning to a
 /// known display-pixels-per-cell ratio) can compute cells from the negotiated
@@ -24,23 +24,24 @@ namespace Cursorial.Rendering.Fragments;
 public sealed class ImageData
 {
     /// <summary>Construct an image carrier from a byte buffer.</summary>
-    public ImageData(ReadOnlyMemory<byte> bytes, ImageFormat format, Size cellSize)
+    public ImageData(ReadOnlyMemory<byte> bytes, ImageFormat format, Size? requestedSize = null, string? sourceFileName = null)
     {
-        if (cellSize.Columns < 0 || cellSize.Rows < 0 || cellSize is { Columns: 0, Rows: 0 })
+        if (requestedSize?.Columns < 0 || requestedSize?.Rows < 0 || requestedSize is { Columns: 0, Rows: 0 })
         {
             throw new ArgumentOutOfRangeException(
-                nameof(cellSize),
-                $"Cell size must be positive in at least one dimensions, and never negative; got {cellSize}.");
+                nameof(requestedSize),
+                $"Cell size must be positive in at least one dimensions, and never negative; got {requestedSize}.");
         }
 
         Bytes = bytes;
         Format = format;
-        CellSize = cellSize;
+        RequestedSize = requestedSize;
+        SourceFileName = sourceFileName;
     }
 
     /// <summary>Construct an image carrier from a byte array.</summary>
-    public ImageData(byte[] bytes, ImageFormat format, Size cellSize)
-        : this((ReadOnlyMemory<byte>) (bytes ?? throw new ArgumentNullException(nameof(bytes))), format, cellSize) {}
+    public ImageData(byte[] bytes, ImageFormat format, Size requestedSize, string? sourceFileName = null)
+        : this((ReadOnlyMemory<byte>) (bytes ?? throw new ArgumentNullException(nameof(bytes))), format, requestedSize, sourceFileName) {}
 
     /// <summary>The encoded image bytes (PNG / JPEG / GIF — see <see cref="Format"/>).</summary>
     public ReadOnlyMemory<byte> Bytes { get; }
@@ -49,5 +50,13 @@ public sealed class ImageData
     public ImageFormat Format { get; }
 
     /// <summary>The cell rectangle this image occupies.</summary>
-    public Size CellSize { get; }
+    public Size? RequestedSize { get; }
+
+    /// <summary>The name of the source file, if available.</summary>
+    public string? SourceFileName { get; private init; }
+
+    /// <inheritdoc/>
+    public override string ToString()
+        => $"[ImageData Format={Format} Bytes={Bytes.Length}, RequestedSize={RequestedSize}, " +
+           $"SourceFileName={(SourceFileName != null ? $"'{SourceFileName}'" : "<unknown>")}]";
 }

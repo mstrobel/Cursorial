@@ -27,19 +27,26 @@ namespace Cursorial.Rendering.Fragments;
 public sealed class ITerm2ImageFragment : IBufferFragment
 {
     private readonly ImageData _data;
+    private readonly (int Columns, int Rows)? _pixelSize;
+    private readonly Size _displaySize;
 
     /// <summary>Construct an iTerm2 inline image fragment.</summary>
-    public ITerm2ImageFragment(ImageData data)
+    public ITerm2ImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null)
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
+        _pixelSize = pixelSize;
+        _displaySize = displaySize ?? data.RequestedSize ?? throw new InvalidOperationException("ImageData.CellSize or displaySize must be provided.");
     }
+
+    /// <inheritdoc/>
+    public FragmentLayer Layer => FragmentLayer.Overlay;
 
     /// <summary>The image being transmitted.</summary>
     public ImageData Image => _data;
 
     /// <inheritdoc/>
-    public Size GetSize() => _data.CellSize;
+    public Size GetSize() => _displaySize;
 
     /// <inheritdoc/>
     public bool IsSupported(OutputCapabilities capabilities)
@@ -71,14 +78,16 @@ public sealed class ITerm2ImageFragment : IBufferFragment
 
     private void WriteOscPayload(IBufferWriter<byte> output)
     {
+        var cellSize = _displaySize;
+
         // Build the header string up to the ':' separator. ASCII-only; we encode as raw bytes.
         var header = new StringBuilder();
         header.Append("\x1B]1337;File=");
         header.Append("size=").Append(_data.Bytes.Length).Append(';');
-        header.Append("width=").Append(_data.CellSize.Columns).Append(';');
+        header.Append("width=").Append(cellSize.Columns).Append(';');
 
-        if (_data.CellSize.Rows > 0)
-            header.Append("height=").Append(_data.CellSize.Rows).Append(';').Append("preserveAspectRatio=0;");
+        if (cellSize.Rows > 0)
+            header.Append("height=").Append(cellSize.Rows).Append(';').Append("preserveAspectRatio=0;");
         else
             header.Append("height=auto;preserveAspectRatio=1;");
 
@@ -100,4 +109,9 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         written += terminator.Length;
         output.Advance(written);
     }
+    
+    /// <inheritdoc/>
+    public override string ToString()
+        => $"[{nameof(ITerm2ImageFragment)} CellSize={_displaySize} PayloadLength={_data.Bytes.Length} " +
+           $"SourceFileName={(_data.SourceFileName != null ? $"'{_data.SourceFileName}'" : "<unknown>")}]";
 }

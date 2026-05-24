@@ -85,33 +85,6 @@ public sealed class Icon : Image
     /// <summary>True when the image bytes loaded successfully at construction.</summary>
     public bool ImageLoaded => Data is { Bytes.Length: > 0 };
 
-    /// <inheritdoc/>
-    protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities)
-    {
-        ArgumentNullException.ThrowIfNull(capabilities);
-
-        if (ImageLoaded is false || capabilities.Graphics is { KittyGraphics: false, ITerm2InlineImages: false })
-            return MeasurePlaceholder(availableSpace, capabilities);
-
-        // The icon's footprint is fixed at construction. Clamp to availableSpace so the parent
-        // sees a consistent "this is the largest box I'll use" answer.
-        int cols = RenderSize is { Columns: var c }  ? Math.Min(c, availableSpace.Columns) : availableSpace.Columns;
-        int rows = RenderSize is { Rows: var r } ? Math.Min(r > 0 ? r : (cols + 1) / 2, availableSpace.Rows) : availableSpace.Rows;
-        return new Size(cols, rows);
-    }
-
-    /// <inheritdoc/>
-    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
-    {
-        buffer.Set(bounds.Column, bounds.Row, FallbackGlyph, FallbackStyle);
-        return bounds.WithSize(GraphemeWidth.StringWidth(FallbackGlyph), 1);
-    }
-
-    private Size MeasurePlaceholder(Size availableSpace, OutputCapabilities capabilities)
-    {
-        return (GraphemeWidth.StringWidth(FallbackGlyph), 1);
-    }
-
     /// <summary>
     /// Convenience constructor — build an icon backed by an embedded assembly resource.
     /// Equivalent to <c>new Icon(ResourceLoader.Embedded(assemblyName, resourceName), …)</c>.

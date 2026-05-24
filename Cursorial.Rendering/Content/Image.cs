@@ -1,9 +1,7 @@
-using System.ComponentModel.DataAnnotations;
-
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
-using Cursorial.Text;
+using Cursorial.Rendering.Text;
 
 namespace Cursorial.Rendering.Content;
 
@@ -17,15 +15,13 @@ namespace Cursorial.Rendering.Content;
 /// <b>Protocol selection.</b> Kitty's graphics protocol is preferred when both Kitty and iTerm2
 /// are available because it supports both PNG and arbitrary placement IDs (useful for layered
 /// images in a future iteration). The iTerm2 path is the practical fallback on iTerm2 itself
-/// and on WezTerm. Sixel will join the chain once a sixel encoder is in place; today there's
-/// no upstream PNG → sixel converter in this repo so Sixel is silently skipped even on
-/// terminals that report support.
+/// and on WezTerm. Sixel is the fallback of last resort for whichever terminal support it.
 /// </para>
 /// <para>
 /// <b>Format compatibility.</b> Kitty only accepts PNG via the encoded-bytes transmission
 /// path; if the supplied <see cref="ImageData.Format"/> is JPEG or GIF and Kitty is the only
 /// supported protocol, this content treats Kitty as unsupported and falls through. Callers
-/// w`ho need cross-protocol compatibility should either re-encode upstream or supply PNG.
+/// who need cross-protocol compatibility should either re-encode upstream or supply PNG.
 /// </para>
 /// <para>
 /// <b>Fallback rendering.</b> When no graphics protocol is available, the content paints a
@@ -45,10 +41,10 @@ public class Image : FragmentContent
     {
         _data = data;
         PlaceholderStyle = placeholderStyle;
-        PlaceholderText = placeholderText ?? "[image]";
+        PlaceholderText = placeholderText ?? "[p align=center]\\[image\\][/p]";
         Loader = ResourceLoader.Default;
         ResourceUri = null;
-        RenderSize = _data?.CellSize ?? Size.Empty;
+        RenderSize = _data?.RequestedSize ?? Size.Empty;
     }
 
     /// <summary>Construct an image content from the supplied data.</summary>
@@ -79,36 +75,80 @@ public class Image : FragmentContent
     public IResourceLoader Loader { get; private set; }
 
     /// <inheritdoc/>
-    protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities)
+    protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities, out bool canCreateFragment)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
-        // The image's natural footprint is _data.CellSize. We don't downscale here — the
-        // protocol fragments carry that cell footprint on the wire, and an arbitrary smaller
-        // size would require re-encoding the image. Callers wanting an actual fit-to-bounds
-        // should re-construct the ImageData with the desired CellSize.
-        var natural = _data?.CellSize;
-        int cols = natural is { Columns: var c } ? Math.Min(c, availableSpace.Columns) : availableSpace.Columns;
-        int rows = natural is { Rows: var r } ? Math.Min(r, availableSpace.Rows) : availableSpace.Rows;
-        return new Size(cols, rows);
+        var desiredSize = MeasureImage(availableSpace, capabilities, out _);
+        if (desiredSize.IsEmpty)
+        {
+            canCreateFragment = false;
+            return Size.Empty;
+        }
+
+        canCreateFragment = true;
+        return desiredSize;
+    }
+
+    protected Size MeasureImage(Size availableSpace, OutputCapabilities capabilities, out (int Width, int Height) pixelSize)
+    {
+        var cellPixels = (Width: capabilities.Window.CellPixelWidth, Height: capabilities.Window.CellPixelHeight);
+        var cellRatio = (double?) capabilities.Window.CellPixelWidth / capabilities.Window.CellPixelHeight ?? 2.0;
+
+        pixelSize = ImageSizeHelper.DecodeSize(_data!.Bytes.Span, _data.Format);
+        
+        //
+        // HACK: Special code path for Sixel graphics, for which we don't support scaling at the moment.
+        //
+        if (capabilities is { Graphics: { KittyGraphics: false, ITerm2InlineImages: false, Sixel: true } })
+        {
+            if (cellPixels is ({} cpWidth, _))
+            {
+                var columns = (int) Math.Round((double) pixelSize.Width / cpWidth);
+                var naturalSize = new Size(columns, (int) Math.Round(columns * cellRatio));
+
+                //
+                // TODO: We need to decide on a default behavior when an image doesn't fit in the provided bounds.
+                //       Do we scale it down, overpaint, or attempt to clip it?
+                //
+                
+                // if (naturalSize.Columns <= availableSpace.Columns && naturalSize.Rows <= availableSpace.Rows)
+                    return naturalSize;
+            }
+
+            // Sixel doesn't support scaling at the moment.
+            return Size.Empty;
+        }
+ 
+        var baseSize = ResolveBaseSize(_data?.RequestedSize, RenderSize);
+
+        return ResolveRenderSize(baseSize, new Rect(0, 0, availableSpace), pixelSize, capabilities);
     }
 
     /// <inheritdoc/>
     protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
+        if (capabilities.Graphics is {KittyGraphics: false, ITerm2InlineImages: false, Sixel: false})
+            return null;
+
+        var baseSize = ResolveBaseSize(_data?.RequestedSize, RenderSize);
+
         // No bytes → no transmittable payload, regardless of capability. This is the case
         // Icon hits when its resource URI didn't resolve: it constructs an Image with empty
         // bytes plus the configured fallback glyph, expecting the placeholder path. Without
         // this guard, a graphics-capable terminal would receive an empty fragment.
         if (_data?.Bytes.IsEmpty is not false) return null;
 
-        // Kitty first — supports PNG natively, has the most predictable cell-footprint semantics.
+        var pixelSize = ImageSizeHelper.DecodeSize(_data.Bytes.Span, _data.Format);
+        var effectiveSize = ResolveRenderSize(baseSize, bounds, pixelSize, capabilities);
+        
+        // // Kitty first — supports PNG natively, has the most predictable cell-footprint semantics.
         if (capabilities.Graphics.KittyGraphics && _data.Format == ImageFormat.Png)
-            return new KittyImageFragment(_data);
+            return new KittyImageFragment(_data, effectiveSize);
 
         // iTerm2 second — accepts PNG / JPEG / GIF; format hint passes through unchanged.
         if (capabilities.Graphics.ITerm2InlineImages)
-            return new ITerm2ImageFragment(_data);
+            return new ITerm2ImageFragment(_data, effectiveSize, pixelSize);
 
         // Sixel third — PNG only (we don't decode JPEG / GIF). PNG path: decode to RGBA, quantize
         // to a 256-color palette, encode the Sixel envelope. Heavier than Kitty / iTerm2 because
@@ -117,8 +157,14 @@ public class Image : FragmentContent
         {
             try
             {
-                var decoded = PngDecoder.Decode(_data.Bytes.Span);
-                return new SixelFragment(decoded.Rgba, decoded.Width, decoded.Height, _data.CellSize);
+                // TODO: Fix this shite once we implement scaling for Sixel.
+                effectiveSize = DesiredSize ?? /* HACK! Should not calling Measure() be an error? */ MeasureOverride(bounds.Size, capabilities, out _);
+
+                if (effectiveSize.IsEmpty is false)
+                {
+                    var decoded = PngDecoder.Decode(_data.Bytes.Span);
+                    return new SixelFragment(decoded.Rgba, pixelSize.Width, pixelSize.Height, effectiveSize, imageData: _data);
+                }
             }
             catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
             {
@@ -129,67 +175,96 @@ public class Image : FragmentContent
         return null;
     }
 
-    /// <inheritdoc/>
-    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    private static Size ResolveBaseSize(Size? requestedSize, Size renderSize)
     {
-        // Effective placeholder style: the content's PlaceholderStyle wins, falling back to the
-        // caller-supplied style when no placeholder was configured. The caller's style is what
-        // would have been the SGR backdrop for a real image fragment, so reusing it produces a
-        // visually coherent "where the image would have been" affordance.
-        var fillStyle = PlaceholderStyle == Style.Default ? style : PlaceholderStyle;
-        var cellSize = _data?.CellSize ?? bounds.Size;
-        var rowSpan = cellSize.Rows;
+        if (requestedSize is not {} dataSize)
+            return renderSize;
 
-        if (rowSpan is 0)
-            rowSpan = Math.Max(1, cellSize.Columns / 2);
+        return dataSize.IsEmpty
+                   ? renderSize
+                   : renderSize.IsEmpty
+                       ? dataSize
+                       : dataSize.ClampTo(renderSize);
+    }
 
-        // Clip the placeholder to the smaller of the natural footprint, the allocated bounds,
-        // and the buffer extent.
-        int colWidth = Math.Min(cellSize.Columns, bounds.Columns);
-        int rowHeight = Math.Min(rowSpan, bounds.Rows);
-        int colEnd = Math.Min(buffer.Columns, bounds.Column + colWidth);
-        int rowEnd = Math.Min(buffer.Rows, bounds.Row + rowHeight);
+    internal static Size ResolveRenderSize(Size requestedSize, in Rect bounds, (int Width, int Height) pixelSize, OutputCapabilities capabilities)
+    {
+        var cellPixelSize = (Width: capabilities.Window.CellPixelWidth, Height: capabilities.Window.CellPixelHeight);
+        var cellAspectRatio = (double?)cellPixelSize.Width / cellPixelSize.Height ?? 0.5;
+        var aspectRatio = (double) pixelSize.Width / pixelSize.Height;
+        
+        // Adjust aspect ratio for cell aspect ratio if known
+        var effectiveAspectRatio = aspectRatio / cellAspectRatio;
 
-        for (var r = rowEnd - 1; r >= bounds.Row; r--)
+        Size preliminarySize;
+
+        if (requestedSize is { Columns: 0, Rows: 0 })
         {
-            for (var c = bounds.Column; c < colEnd; c++)
-                buffer.Set(c, r, " ", fillStyle);
-        }
-
-        // Center some custom text in the placeholder when there's room. Bog-standard ASCII, so
-        // it always fits — callers wanting localization should supply their own placeholder
-        // content via a custom IContent.
-        var label = PlaceholderText;
-        var labelLength = GraphemeWidth.StringWidth(label);
-
-        if (colWidth >= labelLength && rowHeight >= 1)
-        {
-            var labelRow = bounds.Row + rowHeight / 2;
-            var labelCol = bounds.Column + (colWidth - labelLength) / 2;
-
-            if (labelRow >= 0 && labelRow < buffer.Rows)
+            if (cellPixelSize is ({} cpWidth, _))
             {
-                var advance = 0;
-                var enumerator = label.GetGraphemeEnumerator();
+                var columns = (int) Math.Round((double) pixelSize.Width / cpWidth);
+                preliminarySize = new Size(columns, (int) Math.Round(columns / effectiveAspectRatio));
+            }
+            else
+            {
+                // The requested size is empty: use decoded size clamped to bounds, preserving aspect ratio.
+                int maxCols = bounds.Columns;
+                int maxRows = bounds.Rows;
 
-                while (enumerator.MoveNext())
+                int cols = Math.Min(requestedSize.Columns, maxCols);
+                int rows = Math.Min(requestedSize.Rows, maxRows);
+
+                // Clamp while preserving aspect ratio
+                if (cols > maxCols)
                 {
-                    var cluster = enumerator.Current;
-                    var width = GraphemeWidth.ClusterWidth(cluster);
-
-                    if (labelCol + advance + width > buffer.Columns) break;
-
-                    buffer.Set(labelCol + advance, labelRow, enumerator.Current.ToString(), fillStyle);
-
-                    advance += width;
+                    cols = maxCols;
+                    rows = Math.Max(1, (int) (cols / effectiveAspectRatio));
                 }
+
+                if (rows > maxRows)
+                {
+                    rows = maxRows;
+                    cols = Math.Max(1, (int) (rows * effectiveAspectRatio));
+                }
+
+                preliminarySize = new Size(cols, rows);
             }
         }
+        else if (requestedSize is { Columns: > 0, Rows: 0 })
+        {
+            // Only columns specified: compute rows based on aspect ratio
+            int cols = requestedSize.Columns;
+            int rows = Math.Max(1, (int)Math.Round(cols / effectiveAspectRatio));
+            preliminarySize = new Size(cols, rows);
+        }
+        else  if (requestedSize is { Columns: 0, Rows: > 0 })
+        {
+            // Only rows specified: compute columns based on aspect ratio
+            int rows = requestedSize.Rows;
+            int cols = Math.Max(1, (int) Math.Round(rows * effectiveAspectRatio));
+            preliminarySize = new Size(cols, rows).ClampTo(bounds.Size);
+        }
+        else
+        {
+            preliminarySize = requestedSize;
+        }
 
-        var paintedCols = Math.Min(colWidth, Math.Max(0, buffer.Columns - bounds.Column));
-        var paintedRows = Math.Min(rowHeight, Math.Max(0, buffer.Rows - bounds.Row));
+        if (preliminarySize.Columns > bounds.Columns)
+            return new(bounds.Columns, (int) Math.Round(bounds.Columns / effectiveAspectRatio));
 
-        return bounds.WithSize(new Size(paintedCols, paintedRows));
+        if (preliminarySize.Rows > bounds.Rows)
+            return new((int) Math.Round(bounds.Rows * effectiveAspectRatio), bounds.Rows);
+
+        return preliminarySize;
+    }
+
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities)
+    {
+        var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = PlaceholderStyle });
+        var formatter = new TextFormatter { Wrap = WrapMode.WordWrap, Alignment = TextAlignment.Center };
+        var formattedText = formatter.Format(richText, Math.Max(1, size.Columns), Math.Max(1, size.Rows), capabilities, fillEntireBounds: true);
+        
+        return formattedText;
     }
     
     protected static ImageData? LoadImage(Uri resourceUri, Size renderSize, IResourceLoader? loader = null)
@@ -198,7 +273,7 @@ public class Image : FragmentContent
 
         var bytes = loader.TryLoadBytes(resourceUri);
         if (bytes is not null)
-            return new ImageData(bytes, InferFormat(resourceUri), renderSize);
+            return new ImageData(bytes, InferFormat(resourceUri), renderSize, Path.GetFileName(resourceUri.LocalPath));
 
         return null;
     }

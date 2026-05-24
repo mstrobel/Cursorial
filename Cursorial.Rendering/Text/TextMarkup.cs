@@ -28,6 +28,7 @@ public sealed class TextMarkupOptions
     public IReadOnlyDictionary<string, IContent> Content { get; init; } =
         new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The default style applied to all text.</summary>
     public Style DefaultStyle { get; init; }
 }
 
@@ -252,15 +253,15 @@ public static class TextMarkup
         {
             switch (token.Name)
             {
-                case "b": Push(token.Name, builder.Push(Style.Default.WithAttributes(TextAttributes.Bold))); break;
-                case "i": Push(token.Name, builder.Push(Style.Default.WithAttributes(TextAttributes.Italic))); break;
-                case "u": Push(token.Name, builder.Push(Style.Default.WithAttributes(TextAttributes.Underline))); break;
-                case "s": Push(token.Name, builder.Push(Style.Default.WithAttributes(TextAttributes.Strikethrough))); break;
+                case "b": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Bold))); break;
+                case "i": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Italic))); break;
+                case "u": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Underline))); break;
+                case "s": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Strikethrough))); break;
                 case "fg":
-                    Push(token.Name, builder.Push(Style.Default.WithForeground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(options.DefaultStyle.WithForeground(ParseColor(token.Value, token.Position))));
                     break;
                 case "bg":
-                    Push(token.Name, builder.Push(Style.Default.WithBackground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(options.DefaultStyle.WithBackground(ParseColor(token.Value, token.Position))));
                     break;
                 case "link":
                     if (string.IsNullOrEmpty(token.Value))
@@ -294,8 +295,8 @@ public static class TextMarkup
 
             var top = _styleStack.Pop();
             if (top.Name != token.Name)
-                throw Error(token.Position,
-                    $"Mismatched closing tag: expected [/{top.Name}], got [/{token.Name}].");
+                throw Error(token.Position, $"Mismatched closing tag: expected [/{top.Name}], got [/{token.Name}].");
+
             top.Scope.Dispose();
         }
 
@@ -320,13 +321,10 @@ public static class TextMarkup
         private void EmitContent(Token token)
         {
             if (string.IsNullOrEmpty(token.Value))
-                throw Error(token.Position,
-                    "[content/] requires a name: [content=icon/]. Register names via TextMarkupOptions.Content.");
+                throw Error(token.Position, "[content/] requires a name: [content=icon/]. Register names via TextMarkupOptions.Content.");
 
             if (!options.Content.TryGetValue(token.Value, out var content))
-                throw Error(token.Position,
-                    $"No content registered under '{token.Value}'. Add it to TextMarkupOptions.Content " +
-                    "before parsing.");
+                throw Error(token.Position, $"No content registered under '{token.Value}'. Add it to TextMarkupOptions.Content before parsing.");
 
             builder.InlineContent(content);
         }
@@ -345,6 +343,7 @@ public static class TextMarkup
             var wrap = attrs.TryGetValue("wrap", out var w) ? ParseWrapMode(w, token.Position) : WrapMode.WordWrap;
             var align = attrs.TryGetValue("align", out var a) ? ParseAlignment(a, token.Position) : TextAlignment.Left;
             var trim = attrs.TryGetValue("trim", out var t) ? ParseTrimming(t, token.Position) : TextTrimming.None;
+
             int? maxLines = attrs.TryGetValue("maxlines", out var m)
                 ? int.Parse(m, CultureInfo.InvariantCulture)
                 : null;

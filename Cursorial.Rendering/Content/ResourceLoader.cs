@@ -43,7 +43,7 @@ public sealed class ResourceLoader : IResourceLoader
     public const string EmbeddedScheme = "embedded";
 
     /// <summary>Process-wide default loader. Stateless and safe to share across threads.</summary>
-    public static ResourceLoader Default { get; } = new();
+    public static IResourceLoader Default { get; } = new ResourceLoader();
 
     /// <inheritdoc/>
     public Stream? TryOpen(Uri uri)

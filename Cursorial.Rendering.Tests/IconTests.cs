@@ -129,8 +129,7 @@ public class IconTests
 
         var caps = OutputCapabilities.None with
                    {
-                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true,
-                                                            ITerm2InlineImages: false),
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
                    };
         icon.Paint(buffer, 0, 0, Style.Default, caps);
 
@@ -141,12 +140,14 @@ public class IconTests
     [Fact]
     public void Paint_WithoutGraphicsCaps_RendersGlyphPlaceholder()
     {
+        var renderSize = new Size(3, 1);
+
         var icon = new Icon(KnownEmbeddedUri,
                             fallbackGlyph: "X",
-                            renderSize: new Size(3, 1));
+                            renderSize: renderSize);
         var buffer = new CellBuffer(10, 3);
 
-        icon.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
+        icon.Paint(buffer, new Rect(0, 0, renderSize), Style.Default, OutputCapabilities.None);
 
         Assert.Empty(buffer.Fragments);
         // The fallback "X" should appear somewhere in the painted region.
@@ -159,12 +160,14 @@ public class IconTests
     [Fact]
     public void Paint_LoadFailed_StillRendersGlyph()
     {
+        var renderSize = new Size(3, 1);
+
         var icon = new Icon(UnknownEmbeddedUri,
                             fallbackGlyph: "X",
-                            renderSize: new Size(3, 1));
+                            renderSize: renderSize);
         var buffer = new CellBuffer(10, 3);
 
-        icon.Paint(buffer, 0, 0,
+        icon.Paint(buffer, new Rect(0, 0, renderSize),
                    Style.Default, OutputCapabilities.None with
                                   {
                                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true,

@@ -26,4 +26,7 @@ public readonly record struct CellPosition(int Column, int Row, int? PixelX = nu
     /// <param name="tuple">A tuple containing two integers representing the column and row of the cell position.</param>
     /// <returns>A new <see cref="CellPosition"/> instance initialized with the column and row values from the provided tuple.</returns>
     public static implicit operator CellPosition((int Column, int Row) tuple) => new(tuple.Column, tuple.Row);
+
+    /// <inheritdoc/>
+    public override string ToString() => $"({Column}, {Row})";
 }

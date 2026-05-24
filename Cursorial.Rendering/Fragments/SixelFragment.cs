@@ -44,6 +44,7 @@ public sealed class SixelFragment : IBufferFragment
 {
     private readonly ReadOnlyMemory<byte> _payload;
     private readonly Size _cellSize;
+    private readonly string? _sourceFileName;
 
     /// <summary>
     /// Construct a Sixel fragment from a pre-encoded payload. <paramref name="sixelPayload"/>
@@ -52,7 +53,7 @@ public sealed class SixelFragment : IBufferFragment
     /// </summary>
     /// <param name="sixelPayload">Pre-encoded Sixel byte sequence including DCS framing.</param>
     /// <param name="cellSize">The cell footprint the rendered image will occupy on the terminal.</param>
-    public SixelFragment(ReadOnlyMemory<byte> sixelPayload, Size cellSize)
+    public SixelFragment(ReadOnlyMemory<byte> sixelPayload, Size cellSize, ImageData? imageData = null)
     {
         if (sixelPayload.IsEmpty)
             throw new ArgumentException("Sixel payload must be non-empty.", nameof(sixelPayload));
@@ -65,6 +66,7 @@ public sealed class SixelFragment : IBufferFragment
 
         _payload = sixelPayload;
         _cellSize = cellSize;
+        _sourceFileName = imageData?.SourceFileName;
     }
 
     /// <summary>
@@ -79,7 +81,13 @@ public sealed class SixelFragment : IBufferFragment
     /// <param name="pixelHeight">Image height in pixels.</param>
     /// <param name="cellSize">Cell footprint the rendered image will occupy.</param>
     /// <param name="maxColors">Palette size cap, default 256 (Sixel's legacy ceiling).</param>
-    public SixelFragment(ReadOnlySpan<byte> rgbaPixels, int pixelWidth, int pixelHeight, Size cellSize, int maxColors = 256)
+    /// <param name="imageData">The source image data for debugging display purposes (optional).</param>
+    public SixelFragment(ReadOnlySpan<byte> rgbaPixels,
+                         int pixelWidth,
+                         int pixelHeight,
+                         Size cellSize,
+                         int maxColors = 256,
+                         ImageData? imageData = null)
     {
         if (cellSize.Columns < 0 || cellSize.Rows < 0 || cellSize is { Columns: 0, Rows: 0 })
         {
@@ -91,6 +99,7 @@ public sealed class SixelFragment : IBufferFragment
         var quantized = MedianCutQuantizer.Quantize(rgbaPixels, pixelWidth, pixelHeight, maxColors);
         _payload = SixelEncoder.Encode(quantized.IndexedPixels, pixelWidth, pixelHeight, quantized.Palette);
         _cellSize = cellSize;
+        _sourceFileName = imageData?.SourceFileName;
     }
 
     /// <summary>The pre-encoded Sixel payload (DCS framing included).</summary>
@@ -124,4 +133,9 @@ public sealed class SixelFragment : IBufferFragment
         _payload.Span.CopyTo(dest);
         output.Advance(_payload.Length);
     }
+    
+    /// <inheritdoc/>
+    public override string ToString()
+        => $"[SixelFragment CellSize={_cellSize} PayloadLength={_payload.Length} " +
+           $"SourceFileName={(_sourceFileName != null ? $"'{_sourceFileName}'" : "<unknown>")}]";
 }

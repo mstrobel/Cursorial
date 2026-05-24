@@ -21,6 +21,8 @@ public abstract class FragmentContent : IContent
         FragmentKey = fragmentKey ?? this;
     }
 
+    protected internal IContent? RealizedPlaceholder { get; protected set; }
+
     /// <summary>
     /// Gets the fragment key associated with the content, used to identify and manage buffer fragments.
     /// </summary>
@@ -83,7 +85,18 @@ public abstract class FragmentContent : IContent
     /// <returns>The measured size of the content that fits within the given constraints, expressed as a <see cref="Size"/> object.</returns>
     public Size Measure(Size availableSpace, OutputCapabilities capabilities)
     {
-        var size = MeasureOverride(availableSpace, capabilities);
+        var size = MeasureOverride(availableSpace, capabilities, out var canCreateFragment);
+
+        if (canCreateFragment is false)
+        {
+            RealizedPlaceholder ??= BuildPlaceholder(availableSpace, capabilities);
+        
+            if (RealizedPlaceholder is {} placeholder)
+                size = placeholder.Measure(availableSpace, capabilities);
+            else
+                size = Size.Empty;
+        }
+
         DesiredSize = size;
         return size;
     }
@@ -93,10 +106,11 @@ public abstract class FragmentContent : IContent
     /// </summary>
     /// <param name="availableSpace">The available space, represented as a <c>Size</c> object, within which the content can be measured.</param>
     /// <param name="capabilities">The output capabilities of the rendering environment, represented as an <c>OutputCapabilities</c> object.</param>
+    /// <param name="canCreateFragment"></param>
     /// <returns>
     /// A <c>Size</c> object representing the desired dimensions of the content after measurement.
     /// </returns>
-    protected abstract Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities);
+    protected abstract Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities, out bool canCreateFragment);
 
     /// <summary>
     /// Renders the content into the given buffer within the specified bounds and style, using the provided output capabilities.
@@ -109,6 +123,7 @@ public abstract class FragmentContent : IContent
     public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
+
         if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
 
         if (IsFragmentNeeded(buffer, bounds.Size, capabilities) is false)
@@ -151,6 +166,8 @@ public abstract class FragmentContent : IContent
         return actualBounds;
     }
 
+    protected abstract IContent BuildPlaceholder(Size size, OutputCapabilities capabilities);
+
     // ReSharper disable UnusedParameter.Global
     /// <summary>
     /// Performs custom rendering of the content within the specified bounds using the provided style and output capabilities.
@@ -167,7 +184,21 @@ public abstract class FragmentContent : IContent
     /// <param name="style">The style applied to the placeholder during rendering.</param>
     /// <param name="capabilities">The output capabilities to consider during rendering.</param>
     /// <returns>A <see cref="Rect"/> representing the actual area occupied by the rendered placeholder.</returns>
-    protected abstract Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities);
+    protected virtual Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
+        
+        var placeholderSize = DesiredSize ?? bounds.Size;
+
+        RealizedPlaceholder ??= BuildPlaceholder(placeholderSize, capabilities);
+        
+        if (RealizedPlaceholder is {} placeholder)
+            return placeholder.Paint(buffer, new Rect(bounds.Position, placeholderSize), style, capabilities);
+        
+        return bounds;
+    }
 
     /// <summary>
     /// Creates a buffer fragment based on the provided cell buffer, bounds, style, and output capabilities.

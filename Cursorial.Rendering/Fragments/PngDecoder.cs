@@ -38,8 +38,33 @@ public static class PngDecoder
     /// </summary>
     public static DecodedImage Decode(ReadOnlySpan<byte> pngBytes)
     {
+        if (Decode(pngBytes, out var decodedImage, out _, false))
+            return decodedImage;
+
+        throw new InvalidDataException("Input is not a PNG file.");
+    }
+
+    /// <summary>
+    /// Decode <paramref name="pngBytes"/> only enough to determine the image dimensions,
+    /// then return the decoded dimensions in pixels.
+    /// </summary>
+    public static (int Width, int Height)? DecodeSize(ReadOnlySpan<byte> pngBytes)
+    {
+        if (Decode(pngBytes, out _, out var size, true))
+            return size;
+        return null;
+    }
+
+    private static bool Decode(ReadOnlySpan<byte> pngBytes, out DecodedImage decodedImage, out (int Width, int Height) size, bool sizeOnly)
+    {
+        size = default;
+        decodedImage = default;
+
         if (pngBytes.Length < PngSignature.Length || !pngBytes[..PngSignature.Length].SequenceEqual(PngSignature))
+        {
+            if (sizeOnly) return false;
             throw new InvalidDataException("Input is not a PNG file (bad signature).");
+        }
 
         int offset = PngSignature.Length;
         int width = 0;
@@ -47,7 +72,8 @@ public static class PngDecoder
         int channelsPerPixel = 0;
         bool ihdrSeen = false;
         bool iendSeen = false;
-        using var compressedData = new MemoryStream();
+
+        using var compressedData = sizeOnly ? null : new MemoryStream();
 
         while (offset < pngBytes.Length)
         {
@@ -77,6 +103,11 @@ public static class PngDecoder
 
                     width = BinaryPrimitives.ReadInt32BigEndian(data[..4]);
                     height = BinaryPrimitives.ReadInt32BigEndian(data.Slice(4, 4));
+                    size = (width, height);
+
+                    if (sizeOnly)
+                        return true;
+
                     byte bitDepth = data[8];
                     byte colorType = data[9];
                     byte compression = data[10];
@@ -112,7 +143,7 @@ public static class PngDecoder
                 {
                     if (!ihdrSeen)
                         throw new InvalidDataException("IDAT before IHDR.");
-                    compressedData.Write(data);
+                    compressedData?.Write(data);
                     break;
                 }
 
@@ -143,12 +174,18 @@ public static class PngDecoder
             if (iendSeen) break;
         }
 
-        if (!ihdrSeen)
+        if (!ihdrSeen || compressedData is null /* we only reach here if sizeOnly = true */)
             throw new InvalidDataException("PNG is missing IHDR.");
         if (!iendSeen)
             throw new InvalidDataException("PNG is missing IEND.");
         if (compressedData.Length == 0)
             throw new InvalidDataException("PNG contains no IDAT data.");
+
+        if (sizeOnly)
+        {
+            // This should technically be unreachable.
+            return false;
+        }
 
         // Inflate the concatenated IDAT payload. The PNG spec wraps the deflate stream in a zlib
         // header (2 bytes) + Adler32 checksum (4 bytes at the end). ZLibStream handles both.
@@ -226,7 +263,10 @@ public static class PngDecoder
 
         // Expand RGB → RGBA if needed.
         if (bytesPerPixel == 4)
-            return new DecodedImage(width, height, rgb);
+        {
+            decodedImage = new DecodedImage(width, height, rgb);
+            return true;
+        }
 
         var rgba = new byte[width * height * 4];
         for (int p = 0; p < width * height; p++)
@@ -237,7 +277,8 @@ public static class PngDecoder
             rgba[p * 4 + 3] = 255;
         }
 
-        return new DecodedImage(width, height, rgba);
+        decodedImage = new DecodedImage(width, height, rgba);
+        return true;
     }
 
     private static int PaethPredictor(int a, int b, int c)

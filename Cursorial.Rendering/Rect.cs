@@ -122,6 +122,10 @@ public readonly record struct Rect
     public bool Intersects(Rect other)
         => Row < other.RowEnd && RowEnd > other.Row && Column < other.ColumnEnd && ColumnEnd > other.Column;
 
+    /// <summary>True when this rectangle fully contains <paramref name="other"/>.</summary>
+    public bool Contains(Rect other)
+        => Contains(other.Column, other.Row) && Contains(other.ColumnEnd - 1, other.RowEnd - 1);
+
     /// <summary>
     /// Deconstructs the rectangle into its top-left corner coordinates and dimensions.
     /// </summary>
@@ -136,6 +140,9 @@ public readonly record struct Rect
         columns = Columns;
         rows = Rows;
     }
+
+    /// <inheritdoc/>
+    public override string ToString() => $"Rect({Size} @ {Position})";
 
     /// <summary>
     /// Creates a rectangle positioned based on an anchor point, size, and optional margins.

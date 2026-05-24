@@ -422,7 +422,7 @@ public sealed class CellBuffer
         if (row >= rowEnd || col >= colEnd) return;
 
         var mode = CurrentBlendingMode;
-        bool fast = ReferenceEquals(mode, BlendingModes.Default);
+        bool fast = ReferenceEquals(mode, BlendingModes.Default) && cell.Style.Background.IsOpaque;
 
         for (int r = row; r < rowEnd; r++)
         {

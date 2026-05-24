@@ -275,14 +275,17 @@ public class ImageContentTests
     [Fact]
     public void Paint_WhenNoGraphicsSupported_PaintsPlaceholderRectangle()
     {
-        var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, new Size(10, 3)));
+        var expectedSize = new Size(10, 3);
+        var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, expectedSize));
         var buffer = new CellBuffer(20, 10);
+
+        content.Measure(expectedSize, OutputCapabilities.None);
 
         var painted = content.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
 
         // No fragment registered — placeholder painted as cells.
         Assert.Empty(buffer.Fragments);
-        Assert.Equal(new Size(10, 3), painted.Size);
+        Assert.Equal(expectedSize, painted.Size);
 
         // Center row should contain the "[image]" label.
         int centerRow = 0 + 3 / 2;

@@ -639,7 +639,7 @@ static async Task DemoFormatAsync()
     void Reformat()
     {
         var margins = new Margins(2, 1);
-        int viewWidth = Math.Max(20, Math.Min(80, screen.Columns) - margins.Horizontal);
+        int viewWidth = Math.Max(20, Math.Min(100, screen.Columns) - margins.Horizontal);
 
         viewportRows = Math.Max(4, screen.Rows - margins.Vertical);
 
@@ -828,8 +828,8 @@ static void PaintScrolledShowcase(
                                   .WithForeground(style.Background /*Color.FromRgb(20, 20, 30)*/)
                                   .WithBackground(style.Foreground.WithAlpha(191));
 
-        for (int i = 0; i < indicator.Length && x + i < screen.Columns; i++)
-            screen.Set(x + i, y, indicator[i] == ' ' ? "" : indicator[i].ToString(), indicatorStyle);
+        // for (int i = 0; i < indicator.Length && x + i < screen.Columns; i++)
+        //     screen.Set(x + i, y, indicator[i] == ' ' ? "" : indicator[i].ToString(), indicatorStyle);
     }
 }
 
@@ -941,7 +941,7 @@ static RichText BuildFormattingShowcase(in Style defaultStyle = default)
     TextMarkup.Parse(
         "[b][fg=brightyellow]Inline content.[/fg][/b]  Register an [i]IContent[/i] under a name " +
         "and reference it from markup with [fg=brightcyan]\\[content=name/\\][/fg]. The formatter " +
-        "places it atomically in the paragraph flow at its measured width:  " +
+        "places it atomically in the paragraph flow at its measured width: " +
         "[content=settings/] settings · " +
         "[content=download/] download · " +
         "[content=calendar/] calendar · " +
@@ -1208,27 +1208,37 @@ static async Task DemoImageAsync(string argument)
         return;
     }
 
+    byte[]? bytes = null;
+
     string path = argument.Trim('"', '\'');
     if (path.StartsWith("~/", StringComparison.Ordinal))
     {
         path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
     }
-
-    if (!File.Exists(path))
+    else if (path.StartsWith("embedded:") &&
+             Uri.TryCreate(path, UriKind.Absolute, out var uri) &&
+             ResourceLoader.Default.TryLoadBytes(uri) is {} embeddedBytes)
+    {
+        bytes = embeddedBytes;
+    }
+    
+    if (bytes is null && !File.Exists(path))
     {
         Console.WriteLine($"File not found: {path}");
         return;
     }
 
-    byte[] bytes;
-    try
+    if (bytes is null)
     {
-        bytes = await File.ReadAllBytesAsync(path);
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Failed to read {path}: {ex.Message}");
-        return;
+        try
+        {
+            bytes = await File.ReadAllBytesAsync(path);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to read {path}: {ex.Message}");
+            return;
+        }
     }
 
     var format = Path.GetExtension(path).ToLowerInvariant() switch
@@ -1254,6 +1264,10 @@ static async Task DemoImageAsync(string argument)
 
     var buffer = new CellBuffer(cols, rows, session.Capabilities);
     var renderer = new FrameRenderer(session.Capabilities.Output);
+    var defaultStyle = Style.Default;
+
+    if (session.Capabilities.Output.Color is { DefaultForeground: {} fg, DefaultBackground: {} bg })
+        defaultStyle = Style.Default with { Foreground = fg, Background = bg };
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
     using var stopCts = new CancellationTokenSource();
@@ -1300,7 +1314,7 @@ static async Task DemoImageAsync(string argument)
 
             if (needsRepaint)
             {
-                PaintImageShowcase(buffer, path, bytes, format, session.Capabilities.Output);
+                PaintImageShowcase(buffer, path, bytes, format, session.Capabilities.Output, defaultStyle);
 
                 var scratch = new ArrayBufferWriter<byte>();
                 renderer.Render(buffer, scratch);
@@ -1351,10 +1365,12 @@ static void PaintImageShowcase(
     string path,
     byte[] bytes,
     ImageFormat format,
-    OutputCapabilities outputCaps)
+    OutputCapabilities outputCaps,
+    in Style defaultStyle)
 {
     buf.CursorVisible = false;
     buf.Clear();
+    buf.Fill(Cell.Blank with { Style = defaultStyle });
 
     int cols = buf.Columns;
     int rows = buf.Rows;
@@ -1377,32 +1393,35 @@ static void PaintImageShowcase(
     string header = $"image: {path}";
     if (header.Length > cols - 2) header = "..." + header[^(cols - 5)..];
 
-    PaintLine(buf, 1, 0,
-              header, Style.Default
-                           .WithForeground(Color.FromRgb(220, 220, 255))
-                           .WithAttributes(TextAttributes.Bold));
+    PaintLine(buf, 
+              1,
+              0,
+              header,
+              defaultStyle.WithForeground(Color.FromRgb(220, 220, 255))
+                          .WithAttributes(TextAttributes.Bold));
 
     // Header line 2: chosen protocol + cell footprint.
     string protocol = ChooseProtocolLabel(outputCaps, format);
     string sub = $"  {bytes.Length:N0} bytes, {format} → {imageW}×{imageH} cells via {protocol}";
 
-    PaintLine(buf, 1, 1, sub, Style.Default.WithForeground(Color.FromRgb(160, 160, 200)));
+    PaintLine(buf, 1, 1, sub, defaultStyle.WithForeground(Color.FromRgb(160, 160, 200)));
 
     // Image (capability-aware — Image content picks Kitty / iTerm2 / placeholder at paint time).
     var data = new ImageData(bytes, format, new Size(imageW, imageH));
 
-    var placeholderStyle = Style.Default
-                                .WithBackground(Color.FromRgb(40, 40, 70))
-                                .WithForeground(Color.FromRgb(200, 200, 220));
+    var placeholderStyle = defaultStyle.WithBackground(Color.FromRgb(40, 40, 70))
+                                       .WithForeground(Color.FromRgb(200, 200, 220));
 
     var content = new Image(data, placeholderStyle);
 
-    content.Paint(buf, anchorCol, anchorRow, Style.Default, outputCaps);
+    content.Paint(buf, anchorCol, anchorRow, defaultStyle, outputCaps);
 
     // Footer.
     int footerRow = Math.Min(anchorRow + imageH + 1, rows - 1);
+
     PaintLine(buf, 1, footerRow,
-        "Press q or Ctrl+C to return.", Style.Default.WithForeground(Color.FromRgb(180, 180, 220)));
+              "Press q or Ctrl+C to return.",
+              defaultStyle.WithForeground(Color.FromRgb(180, 180, 220)));
 }
 
 static string ChooseProtocolLabel(OutputCapabilities caps, ImageFormat format)
@@ -1411,6 +1430,8 @@ static string ChooseProtocolLabel(OutputCapabilities caps, ImageFormat format)
         return "Kitty graphics protocol";
     if (caps.Graphics.ITerm2InlineImages)
         return "iTerm2 inline images";
+    if (caps.Graphics.Sixel)
+        return "Sixel graphics protocol";
     return "cell-grid placeholder (no graphics support)";
 }
 
@@ -1632,9 +1653,11 @@ static void PaintRenderShowcase(CellBufferView buf, OutputCapabilities outputCap
             assembly: Assembly.GetExecutingAssembly(),
             resourceName: $"Icons/{icons[i]}",
             fallbackGlyph: iconFallbacks[i],
-            fallbackStyle: iconStyle, renderSize: new Size(iconColumns, 0));
+            fallbackStyle: iconStyle,
+            renderSize: new Size(iconColumns, Math.Max(iconColumns / 2, 1)));
         buf.Set(x, iconY, " ", iconStyle);
         buf.Set(x + 1, iconY, " ", iconStyle);
+        icon.Measure(icon.RenderSize, outputCaps);
         icon.Paint(buf, column: x, row: iconY, style: iconStyle, capabilities: outputCaps);
         buf.Set(x, iconY + 2, icon.FallbackGlyph, iconStyle);
 
@@ -1932,7 +1955,7 @@ file static class RenderShowcaseFragments
     public static readonly Icon Icon = Icon.FromEmbedded(
         Assembly.GetExecutingAssembly(), 
         "Icons/cursorial_icon.png",
-        "[C >_]",
+        "\\[[b][fg=cyan]C[/fg] [fg=white][u]>[/u][/fg][/b]\\]",
         renderSize: new Size(6, 0));
 
     public static readonly ScaledText Title = new(

@@ -182,7 +182,7 @@ public sealed class FrameRenderer
         // fragments are anchored (fragments shouldn't scroll with cell content). When the
         // back buffer is the front shifted up/down by K rows, emit SU/SD and shift _frontCells
         // in place so the subsequent EmitDiff only repaints the K newly-uncovered rows.
-        if (!fullRedraw && back.Fragments.Count == 0)
+        if (!fullRedraw && back.FragmentsInternal.Any(o => o.Value.Fragment.Layer is FragmentLayer.Overlay) is false)
             TryDetectAndApplyScroll(back, output);
 
         EmitDiff(back, output);

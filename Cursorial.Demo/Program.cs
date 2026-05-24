@@ -491,11 +491,75 @@ static async Task WriteLineAsync(System.IO.Pipelines.PipeWriter writer, string t
     await writer.WriteAsync(Encoding.UTF8.GetBytes(text + "\r\n"));
 }
 
+static async Task<(TerminalSession session, CellBuffer buffer, FrameRenderer renderer, Style style, TerminalPalette palette)> PrepareDemo()
+{
+    var cts = new CancellationTokenSource();
+
+    cts.CancelAfter(TimeSpan.FromSeconds(5));
+
+    var session = await TerminalSession.OpenAsync();
+    
+    // Initial size from Console (TIOCGWINSZ-equivalent; safe for read-only queries even though
+    // we don't open the Console streams). The SIGWINCH-driven ResizeEvent will correct us once
+    // it fires, but starting with the right dimensions avoids a redraw on the first resize.
+    var size = await session.QueryTerminalSizeAsync();
+
+    var palette = new TerminalPalette(session.Output, session.Capabilities.Output);
+
+    Color[] colors =
+    [
+        Color.FromHex("#15161e"),
+        Color.FromHex("#f7768e"),
+        Color.FromHex("#9ece6a"),
+        Color.FromHex("#e0af68"),
+        Color.FromHex("#7aa2f7"),
+        Color.FromHex("#bb9af7"),
+        Color.FromHex("#7dcfff"),
+        Color.FromHex("#a9b1d6"),
+        Color.FromHex("#414868"),
+        Color.FromHex("#ff899d"),
+        Color.FromHex("#9fe044"),
+        Color.FromHex("#faba4a"),
+        Color.FromHex("#8db0ff"),
+        Color.FromHex("#c7a9ff"),
+        Color.FromHex("#a4daff"),
+        Color.FromHex("#c0caf5"),
+        Color.FromHex("#ff9e64"),
+        Color.FromHex("#db4b4b")
+    ];
+
+    for (var i = 0; i < colors.Length; i++)
+        palette.Set(i, colors[i]);
+
+    var style = Style.Default with
+                {
+                    Foreground = Color.FromHex("#c0caf5"),
+                    Background = Color.FromHex("#0d0f18")
+                };
+
+    var buffer = new CellBuffer(size?.Columns ?? Console.WindowWidth, size?.Rows ?? Console.WindowHeight, session.Capabilities);
+
+    buffer.Fill(Cell.Blank with { Style = style });
+
+    // Hand the renderer the negotiated capabilities so it can quantize cells before emission
+    // (RGB → palette where truecolor isn't available, extended underline → Single where the
+    // extended forms aren't supported, drop unsupported attributes, …). Without this, terminals
+    // like Apple Terminal that report Ansi256 receive raw truecolor SGR and render
+    // unpredictably.
+    var renderer = new FrameRenderer(session.Capabilities.Output);
+
+    return (session, buffer, renderer, style, palette);
+}
+
 static async Task DemoRenderAsync()
 {
     Console.WriteLine("Render demo. Opening alt screen — press q or Ctrl+C to exit.");
 
-    await using var session = await TerminalSession.OpenAsync();
+    var (session, buffer, renderer, style, palette) = await PrepareDemo();
+
+    await using var ds = session;
+    using var dp = palette;
+
     var writer = session.Output.Writer;
 
     // Enter alt screen and reset SGR. We leave the cursor decision to the cell buffer
@@ -503,20 +567,6 @@ static async Task DemoRenderAsync()
     ScreenWriter.WriteEnterAlternateScreen(writer);
     SgrEncoder.WriteReset(writer);
     await writer.FlushAsync();
-
-    // Initial size from Console (TIOCGWINSZ-equivalent; safe for read-only queries even though
-    // we don't open the Console streams). The SIGWINCH-driven ResizeEvent will correct us once
-    // it fires, but starting with the right dimensions avoids a redraw on the first resize.
-    int cols = Math.Max(20, Console.WindowWidth);
-    int rows = Math.Max(8, Console.WindowHeight);
-
-    var buffer = new CellBuffer(cols, rows, session.Capabilities);
-    // Hand the renderer the negotiated capabilities so it can quantize cells before emission
-    // (RGB → palette where truecolor isn't available, extended underline → Single where the
-    // extended forms aren't supported, drop unsupported attributes, …). Without this, terminals
-    // like Apple Terminal that report Ansi256 receive raw truecolor SGR and render
-    // unpredictably.
-    var renderer = new FrameRenderer(session.Capabilities.Output);
 
     // Background pump for input events — main loop polls the queue between renders.
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
@@ -558,7 +608,7 @@ static async Task DemoRenderAsync()
 
             if (stopCts.IsCancellationRequested) break;
 
-            PaintRenderShowcase(buffer, session.Capabilities.Output);
+            PaintRenderShowcase(buffer, style, session.Capabilities.Output);
 
             var scratch = new ArrayBufferWriter<byte>();
             renderer.Render(buffer, scratch);
@@ -610,8 +660,12 @@ static async Task DemoRenderAsync()
 static async Task DemoFormatAsync()
 {
     Console.WriteLine("Formatting demo. Opening alt screen — press q or Ctrl+C to exit; ↑/↓ + PgUp/PgDn + Home/End to scroll.");
+    
+    var (session, screen, renderer, style, palette) = await PrepareDemo();
+    
+    await using var ds = session;
+    using var dp = palette;
 
-    await using var session = await TerminalSession.OpenAsync();
     var writer = session.Output.Writer;
 
     ScreenWriter.WriteEnterAlternateScreen(writer);
@@ -620,11 +674,6 @@ static async Task DemoFormatAsync()
 
     int cols = Math.Max(20, Console.WindowWidth);
     int rows = Math.Max(8, Console.WindowHeight);
-
-    var style = ResolveDefaultStyle(session);
-
-    var screen = new CellBuffer(cols, rows, session.Capabilities);
-    var renderer = new FrameRenderer(session.Capabilities.Output);
 
     var doc = BuildFormattingShowcase(style);
     var formatter = new TextFormatter { Trim = TextTrimming.WordEllipsis };
@@ -648,6 +697,7 @@ static async Task DemoFormatAsync()
 
         docRows = Math.Max(1, ft.Size.Rows);
         offscreen = new CellBuffer(viewWidth, docRows, session.Capabilities);
+        offscreen.Clear(style);
 
         ft.Paint(offscreen,
                  offscreen.Bounds.LayoutContent(Anchor.Top, ft.Size), 
@@ -780,7 +830,7 @@ static void PaintScrolledShowcase(
     CellBufferView screen, CellBufferView offscreen, int scrollOffset, int viewportRows, int docRows, in Style style)
 {
     screen.CursorVisible = false;
-    screen.Clear();
+    screen.Clear(style);
 
     int innerCols = Math.Min(offscreen.Columns, screen.Columns);
     int innerRows = Math.Min(viewportRows, screen.Rows);
@@ -1409,7 +1459,8 @@ static void PaintImageShowcase(
     // Image (capability-aware — Image content picks Kitty / iTerm2 / placeholder at paint time).
     var data = new ImageData(bytes, format, new Size(imageW, imageH));
 
-    var placeholderStyle = defaultStyle.WithBackground(Color.FromRgb(40, 40, 70))
+    var placeholderStyle = defaultStyle.WithBackground(Color.FromRgb
+                                                           (40, 40, 70))
                                        .WithForeground(Color.FromRgb(200, 200, 220));
 
     var content = new Image(data, placeholderStyle);
@@ -1440,24 +1491,15 @@ static string ChooseProtocolLabel(OutputCapabilities caps, ImageFormat format)
 // wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
 // that changes once per second — the clock is how you tell the diff renderer is doing per-cell
 // deltas instead of repainting the whole screen each frame.
-static void PaintRenderShowcase(CellBufferView buf, OutputCapabilities outputCaps)
+static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabilities outputCaps)
 {
     // The sized title flows through a ScaledText content (Phase 3) — on terminals that honor
     // OSC 66 it attaches a SizedTextFragment; on the rest it falls back to a bundled FIGlet
     // face. The cell buffer + FrameRenderer take care of the rest (capability gating,
     // DECSC/DECRC bracketing, diff rendering).
     buf.CursorVisible = false;
-    buf.Clear();
+    buf.Clear(style);
 
-    var style = Style.Default;//.WithBackground(Color.FromRgb(40, 44, 52));
-    
-    if (outputCaps.Color.DefaultBackground is {} bgDefault)
-        style = style.WithBackground(bgDefault);
-    if (outputCaps.Color.DefaultForeground is {} fgDefault)
-        style = style.WithForeground(fgDefault);
-
-    buf.Fill(new Cell("", CellKind.Single, style));
-    
     int cols = buf.Columns;
     int rows = buf.Rows;
 

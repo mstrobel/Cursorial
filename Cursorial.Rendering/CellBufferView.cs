@@ -269,19 +269,22 @@ public readonly struct CellBufferView
         // up across frames because the previous frame's fragment anchors stay registered.
         var bufferBounds = BufferBounds;
         List<(int Column, int Row)>? toRemove = null;
-        foreach (var ((col, row), _) in _buffer.FragmentsInternal)
+
+        foreach (var ((col, row), e) in _buffer.FragmentsInternal)
         {
-            if (col >= bufferBounds.Column && col < bufferBounds.ColumnEnd &&
-                row >= bufferBounds.Row && row < bufferBounds.RowEnd)
-            {
-                (toRemove ??= new List<(int, int)>()).Add((col, row));
-            }
+            var fragmentRect = new Rect(col, row, e.Fragment.GetSize());
+            if (fragmentRect.Intersects(bufferBounds))
+                (toRemove ??= (List<(int, int)>) []).Add((col, row));
         }
+
         if (toRemove is not null)
+        {
             foreach (var (col, row) in toRemove)
                 _buffer.RemoveFragment(col, row);
+        }
 
         _buffer.ClearCells(bufferBounds);
+        _buffer.MarkDirty(bufferBounds);
     }
 
     // ---- Fragments ----------------------------------------------------------------------

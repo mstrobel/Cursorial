@@ -1,0 +1,73 @@
+<Project>
+
+  <!--
+    Shared metadata and packaging defaults for every project in the repo. Per-package fields
+    (PackageId, Version, Description, PackageTags) live in the individual csprojs. Anything
+    that applies uniformly — author, license, repo URL, deterministic-build flags, symbol
+    layout — lives here.
+
+    Projects that should ship as NuGet packages override <IsPackable>true</IsPackable> in
+    their own csproj. Everything else (tests, demos) stays non-packable by default.
+  -->
+
+  <PropertyGroup>
+    <!-- Identity. -->
+    <Authors>Mike Strobel</Authors>
+    <Copyright>Copyright © 2026 Mike Strobel</Copyright>
+    <PackageProjectUrl>https://github.com/mstrobel/Cursorial</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mstrobel/Cursorial.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+
+    <!-- Non-packable by default; packable projects opt in. -->
+    <IsPackable>false</IsPackable>
+
+    <!--
+      Documentation. GenerateDocumentationFile produces the XML alongside the DLL so consumers
+      get IntelliSense for our well-documented public surface. CS1591 (missing XML on public
+      member) is suppressed because not every public type is fully documented yet — when the
+      coverage gap closes, drop the NoWarn so future drift produces warnings.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+
+    <!--
+      Determinism + Source Link. The PDBs embedded in the symbol package will reference
+      the GitHub-hosted source so consumers can step into our code with a debugger.
+    -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!--
+      Path normalization in CI builds — strips local /home/runner/... prefixes from embedded
+      PDB paths so two CI runs of the same commit produce byte-identical packages.
+      ContinuousIntegrationBuild is set by the release workflow's env block.
+    -->
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!-- README + icon, included only in projects that actually pack. -->
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)README.md"
+          Pack="true"
+          PackagePath="\"
+          Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)cursorial_icon.png"
+          Pack="true"
+          PackagePath="icon.png"
+          Visible="false" />
+  </ItemGroup>
+
+  <!--
+    Source Link for GitHub. PrivateAssets="all" means this is a build-only dependency —
+    consumers of our package don't get it as a transitive reference.
+  -->
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

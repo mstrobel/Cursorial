@@ -1,0 +1,118 @@
+# Release workflow — fires on a `v*` tag push and publishes Cursorial.Core to nuget.org.
+#
+# Auth: NuGet.org Trusted Publishing (OIDC). No long-lived API key is stored in the repo.
+# The workflow exchanges a GitHub-issued OIDC token for a short-lived NuGet API key via the
+# `NuGet/login` action. The token is matched against the Trusted Publisher entry configured
+# on nuget.org under the package owner's account.
+#
+# GitHub Environment: `nuget`. Must exist in repo Settings → Environments. Use the environment
+# to gate releases on manual approval, restrict the eligible tag patterns, or pin to specific
+# protected branches. The environment name MUST match what's configured on the NuGet Trusted
+# Publisher entry — changing one without the other breaks the OIDC exchange.
+#
+# To cut a release locally:
+#   1. Update the <Version> in Cursorial.Core/Cursorial.Core.csproj (optional — the tag drives
+#      the published version; the csproj value is only for local `dotnet pack` runs).
+#   2. git tag v0.1.0 && git push origin v0.1.0
+#   3. Watch the Actions tab (approve the `nuget` environment if you've set required reviewers).
+#
+# The version baked into the .nupkg is derived from the tag (`v0.1.0` → `0.1.0`), so the tag
+# is the source of truth. Pre-release tags work too: `v0.2.0-preview.1` → `0.2.0-preview.1`.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  # Required so the workflow can request a federated identity token from GitHub Actions —
+  # the token NuGet/login swaps for a temporary NuGet API key.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: nuget
+
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      # Enables MSBuild's deterministic-source-paths behavior — strips machine-local prefixes
+      # from embedded PDB paths so two CI runs of the same commit produce identical packages.
+      ContinuousIntegrationBuild: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Source Link embeds the commit SHA + repo URL; fetch full history so the embedded
+          # references resolve cleanly on consumers' debuggers.
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # refs/tags/v0.1.0 → 0.1.0
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # Reads the pinned 10.x version + rollForward policy from global.json.
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: >-
+          dotnet build
+          --configuration Release
+          --no-restore
+          /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: >-
+          dotnet test
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+
+      - name: Pack
+        run: >-
+          dotnet pack
+          Cursorial.Core/Cursorial.Core.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --output nupkgs
+          /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Upload package artifact
+        # Keeps the .nupkg + .snupkg around on the workflow run for 90 days, useful when
+        # debugging a publish failure or wanting to inspect what was pushed.
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs
+          path: nupkgs/
+
+      - name: Authenticate with NuGet.org (Trusted Publishing)
+        # Exchanges the GitHub-issued OIDC token for a short-lived NuGet API key. The key is
+        # injected into the dotnet CLI's auth store for subsequent push calls in this job.
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: mstrobel
+
+      - name: Push to nuget.org
+        run: >-
+          dotnet nuget push "nupkgs/*.nupkg"
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

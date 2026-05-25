@@ -15,8 +15,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{
 		cursorial_banner.png = cursorial_banner.png
 		cursorial_banner.svg = cursorial_banner.svg
 		cursorial_icon.svg = cursorial_icon.svg
-		README.md = README.md
 		cursorial_icon.png = cursorial_icon.png
+		README.md = README.md
+		readme_title_banner.png = readme_title_banner.png		
 	EndProjectSection
 EndProject
 Global

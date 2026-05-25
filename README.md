@@ -1,4 +1,4 @@
-![Cursorial](https://raw.githubusercontent.com/mstrobel/Cursorial/master/readme_title_banner.png)
+![Cursorial](https://raw.githubusercontent.com/mstrobel/Cursorial/main/readme_title_banner.png)
 
 A cross-platform .NET library for building visually rich terminal applications with first-class mouse and keyboard support.
 

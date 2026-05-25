@@ -29,7 +29,7 @@ namespace Cursorial.Terminal.Stdio;
 /// owned and closed at disposal.
 /// </para>
 /// </remarks>
-internal sealed partial class PosixPollInputByteSource : IInputByteSource
+internal sealed partial class PosixPollInputByteSource : IInputByteSource, IPausableInputByteSource
 {
     private const short POLLIN = 0x0001;
     private const int EINTR = 4; // Same on Linux and macOS — a defensive check for syscall restart.
@@ -40,6 +40,17 @@ internal sealed partial class PosixPollInputByteSource : IInputByteSource
     private readonly int _wakeupWrite;
     private readonly Pipe _pipe;
     private readonly Task _pumpTask;
+
+    // Pause-state plumbing. _pauseRefCount tracks the number of outstanding PauseScope handles;
+    // the pump is parked iff the count is greater than zero. The pump enters user-space wait via
+    // _runEvent (a manual-reset event) so no libc syscall is left pending while paused.
+    // _pauseCompleted notifies callers of PauseAsync once the pump has definitively parked; it's
+    // recreated on each zero→one transition and cleared on each one→zero transition.
+    private readonly object _stateLock = new();
+    private readonly ManualResetEventSlim _runEvent = new(initialState: true);
+    private int _pauseRefCount;
+    private TaskCompletionSource? _pauseCompleted;
+
     private int _disposed;
 
     public PosixPollInputByteSource(int fd)
@@ -90,13 +101,42 @@ internal sealed partial class PosixPollInputByteSource : IInputByteSource
                     break;
                 }
 
-                // Wakeup pipe — disposal requested. Drain it (so a subsequent open of a new
-                // source doesn't see stale wakeup bytes; defensive — we close it momentarily
-                // anyway) and exit.
+                // Wakeup pipe — disposal or pause requested. Drain it and dispatch on state.
                 if ((pollFds[1].Revents & POLLIN) != 0)
                 {
                     DrainWakeup();
-                    break;
+
+                    if (Volatile.Read(ref _disposed) != 0) break;
+
+                    TaskCompletionSource? pauseTcs = null;
+                    bool shouldPark;
+                    lock (_stateLock)
+                    {
+                        shouldPark = _pauseRefCount > 0;
+                        if (shouldPark)
+                        {
+                            // Signal whichever caller(s) are waiting on the pause-completion
+                            // TCS. A null TCS is possible if every awaiter cancelled before we
+                            // got here; in that case we still park because the refcount remains
+                            // elevated — disposal of those callers' handles will release us.
+                            pauseTcs = _pauseCompleted;
+                        }
+                    }
+
+                    if (shouldPark)
+                    {
+                        pauseTcs?.TrySetResult();
+
+                        // Block this background thread in user space until the last pause
+                        // handle is disposed (and sets _runEvent) — or disposal arrives.
+                        // Crucially, no libc call is pending here: the kernel is free to
+                        // buffer incoming TTY bytes for us to pick up after resume.
+                        _runEvent.Wait();
+
+                        if (Volatile.Read(ref _disposed) != 0) break;
+                    }
+
+                    continue;
                 }
 
                 if ((pollFds[0].Revents & POLLIN) != 0)
@@ -137,16 +177,120 @@ internal sealed partial class PosixPollInputByteSource : IInputByteSource
     }
 
     /// <inheritdoc/>
+    public async ValueTask<IAsyncDisposable> PauseAsync(CancellationToken cancellationToken = default)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ObjectDisposedException(nameof(PosixPollInputByteSource));
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Task? completion;
+        bool wakeupNeeded;
+        lock (_stateLock)
+        {
+            // Tentative increment — we'll decrement on any failure between here and successful
+            // completion of the pause-await, so cancellation can't strand the refcount.
+            _pauseRefCount++;
+
+            if (_pauseRefCount == 1)
+            {
+                // Zero → one transition. The pump is currently running — reset the run event
+                // (so it'll block when it reaches the parked state) and create a fresh TCS for
+                // overlapping callers to await.
+                _runEvent.Reset();
+                _pauseCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                completion = _pauseCompleted.Task;
+                wakeupNeeded = true;
+            }
+            else if (_pauseCompleted is { Task.IsCompleted: false } pending)
+            {
+                // A pause is in flight — share its completion task.
+                completion = pending.Task;
+                wakeupNeeded = false;
+            }
+            else
+            {
+                // Already paused — nothing to await.
+                completion = null;
+                wakeupNeeded = false;
+            }
+        }
+
+        if (wakeupNeeded) WriteWakeup();
+
+        try
+        {
+            if (completion is not null)
+                await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Unwind the tentative increment. If we were the lone pauser the pump will resume
+            // naturally; if other pausers are still in flight they keep their share.
+            DecrementPause();
+            throw;
+        }
+
+        return new PauseScope(this);
+    }
+
+    private void DecrementPause()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
+        bool wake;
+        lock (_stateLock)
+        {
+            if (_pauseRefCount == 0) return; // defensive — shouldn't happen
+
+            _pauseRefCount--;
+            wake = _pauseRefCount == 0;
+
+            if (wake)
+            {
+                _pauseCompleted = null;
+            }
+        }
+
+        if (wake) _runEvent.Set();
+    }
+
+    private sealed class PauseScope : IAsyncDisposable
+    {
+        private PosixPollInputByteSource? _source;
+
+        public PauseScope(PosixPollInputByteSource source) => _source = source;
+
+        public ValueTask DisposeAsync()
+        {
+            // Interlocked.Exchange enforces single-effect dispose — accidental double dispose
+            // doesn't double-decrement the refcount and prematurely unpark the pump.
+            var source = Interlocked.Exchange(ref _source, null);
+            source?.DecrementPause();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         // @formatter:off
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        // Wake the pump out of its blocked poll() by writing one byte to the self-pipe.
+        // Unblock the pump regardless of whether it's parked on poll() or on the run event.
         WriteWakeup();
+        _runEvent.Set();
+
+        // If a caller is awaiting PauseAsync at this exact moment, fail their await so they
+        // don't hang forever — we'll never deliver the pause-completed signal post-dispose.
+        TaskCompletionSource? pendingPause;
+        lock (_stateLock) { pendingPause = _pauseCompleted; _pauseCompleted = null; }
+        pendingPause?.TrySetException(new ObjectDisposedException(nameof(PosixPollInputByteSource)));
 
         try { await _pumpTask.ConfigureAwait(false); }
         catch { /* best-effort */ }
+
+        _runEvent.Dispose();
 
         // Close the self-pipe FDs (we own these). Do NOT close _fd — it's process-global.
         Close(_wakeupRead);

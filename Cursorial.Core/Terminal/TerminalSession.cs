@@ -38,19 +38,23 @@ public sealed class TerminalSession : IAsyncDisposable
     private readonly ITerminalNegotiator _negotiator;
     private readonly IAsyncInputDevice _input;
     private readonly IOutputByteSink _output;
+    private readonly IInputByteSource _source;
     private readonly IStdioTransports? _ownedTransports;
     private readonly List<PosixSignalRegistration> _signalRegistrations = [];
+
     private EventHandler? _processExitHandler;
     private IResizeMonitor? _resizeMonitor;
     private int _disposed;
 
     private TerminalSession(TerminalCapabilities capabilities,
+                            IInputByteSource source,
                             IAsyncInputDevice input,
                             IOutputByteSink output,
                             ITerminalNegotiator negotiator,
                             IStdioTransports? ownedTransports)
     {
         Capabilities = capabilities;
+        _source = source;
         _input = input;
         _output = output;
         _negotiator = negotiator;
@@ -225,7 +229,7 @@ public sealed class TerminalSession : IAsyncDisposable
                 mode,
                 escapeAmbiguityTimeout: options.EscapeAmbiguityTimeout);
 
-            return new TerminalSession(capabilities, device, sink, negotiator, ownedTransports);
+            return new TerminalSession(capabilities, source, device, sink, negotiator, ownedTransports);
         }
         catch
         {
@@ -246,6 +250,91 @@ public sealed class TerminalSession : IAsyncDisposable
             throw;
 
             // @formatter:on
+        }
+    }
+
+    /// <summary>
+    /// Quiesce the session's I/O machinery so an external consumer — a child process, a
+    /// synchronous terminal operation, a custom raw-mode prompt — can take exclusive ownership
+    /// of the underlying TTY without racing the framework's pumps. The returned handle resumes
+    /// the pumps on disposal; use it with <c>await using</c> to guarantee resume on any exit
+    /// path.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// After this method returns:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// The input byte source's pump is parked entirely in user space — on POSIX, no
+    /// <c>read(2)</c> or <c>poll(2)</c> is left blocked in the kernel. Bytes the user types
+    /// accumulate in the kernel TTY buffer until resume; nothing is lost.
+    /// </description></item>
+    /// <item><description>
+    /// The output sink's <see cref="System.IO.Pipelines.PipeWriter"/> has been flushed —
+    /// every byte the session has written so far has reached the underlying transport.
+    /// </description></item>
+    /// <item><description>
+    /// Bytes already in the source's input pipe (read from the transport before pause)
+    /// remain in the pipe and are visible to consumers iterating <see cref="Input"/>. Pause
+    /// does not discard them.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// <b>Caller contract.</b> Between this call returning and the handle being disposed, the
+    /// caller must refrain from writing to <see cref="Output"/>; the framework does not enforce
+    /// quiescence on writers it doesn't own. Concurrent calls to <see cref="PauseIOAsync"/>
+    /// from multiple parts of the application compose via reference counting inside the
+    /// pausable source itself — the pump only resumes once every handle has been disposed.
+    /// </para>
+    /// <para>
+    /// <b>Platform support.</b> Full pause semantics on POSIX (the
+    /// <see cref="IPausableInputByteSource"/> path). On Windows — and on any
+    /// <see cref="IInputByteSource"/> that doesn't implement
+    /// <see cref="IPausableInputByteSource"/> — this method flushes output and returns, but
+    /// the input pump may still read from its transport until its next blocked syscall
+    /// returns. Callers requiring strict input quiescence on Windows should avoid initiating
+    /// their own console reads until after resume.
+    /// </para>
+    /// </remarks>
+    public async Task<IAsyncDisposable> PauseIOAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        IAsyncDisposable? sourceHandle = null;
+        if (_source is IPausableInputByteSource pausable)
+            sourceHandle = await pausable.PauseAsync(cancellationToken).ConfigureAwait(false);
+
+        // Flush output AFTER pausing input so any input-driven write the caller performed
+        // (e.g., a response to a query) is fully on the wire before we hand off the TTY.
+        // FlushAsync on a PipeWriter returns once buffered bytes have been pushed through
+        // to the underlying stream.
+        try
+        {
+            await _output.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Flush is best-effort during pause — the sink may already be closed or broken.
+            // Don't poison the pause path; the caller can still proceed and the resume path
+            // remains reachable via the source handle below.
+        }
+
+        return new SessionPauseHandle(sourceHandle);
+    }
+
+    private sealed class SessionPauseHandle : IAsyncDisposable
+    {
+        private IAsyncDisposable? _sourceHandle;
+
+        public SessionPauseHandle(IAsyncDisposable? sourceHandle) => _sourceHandle = sourceHandle;
+
+        public ValueTask DisposeAsync()
+        {
+            // Interlocked.Exchange enforces single-effect dispose so repeated `await using`
+            // unwinds don't double-decrement the source's pause refcount.
+            var handle = Interlocked.Exchange(ref _sourceHandle, null);
+            return handle?.DisposeAsync() ?? ValueTask.CompletedTask;
         }
     }
 
@@ -293,7 +382,7 @@ public sealed class TerminalSession : IAsyncDisposable
             try { await _ownedTransports.DisposeAsync().ConfigureAwait(false); }
             catch { /* best-effort */ }
         }
-        
+
         // @formatter:on
     }
 

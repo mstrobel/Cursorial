@@ -206,6 +206,178 @@ public class TerminalSessionTests
         }
     }
 
+    // ---- PauseIOAsync ----
+
+    [Fact]
+    public async Task PauseIOAsync_DelegatesToPausableSource_AndFlushesOutput()
+    {
+        var source = new PausableInMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            // Pre-write some buffered output that should be flushed by the pause.
+            await sink.Writer.WriteAsync(new byte[] { 0xAB, 0xCD });
+
+            await using (await session.PauseIOAsync())
+            {
+                Assert.Equal(1, source.PauseCount);
+                Assert.Equal(1, source.ActivePauseCount);
+                Assert.Equal(0, source.ResumeCount);
+
+                // The bytes we wrote pre-pause should be visible on the wire.
+                var written = await sink.ReadAllWrittenAsync();
+                Assert.Contains((byte) 0xAB, written);
+                Assert.Contains((byte) 0xCD, written);
+            }
+
+            Assert.Equal(0, source.ActivePauseCount);
+            Assert.Equal(1, source.ResumeCount);
+        }
+    }
+
+    [Fact]
+    public async Task PauseIOAsync_NonPausableSource_StillReturnsDisposable()
+    {
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            // No pause capability — should still complete and produce a usable handle.
+            await using var handle = await session.PauseIOAsync();
+            Assert.NotNull(handle);
+        }
+    }
+
+    [Fact]
+    public async Task PauseIOAsync_NestedScopes_DelegateOnceEachAndUnwindInOrder()
+    {
+        var source = new PausableInMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            await using (await session.PauseIOAsync())
+            {
+                Assert.Equal(1, source.ActivePauseCount);
+
+                await using (await session.PauseIOAsync())
+                {
+                    // Each session call forwards to the source; the source owns the ref count.
+                    Assert.Equal(2, source.PauseCount);
+                    Assert.Equal(2, source.ActivePauseCount);
+                }
+
+                // Inner scope released one share — outer scope still wants it paused.
+                Assert.Equal(1, source.ActivePauseCount);
+            }
+
+            // Both scopes released — source is fully resumed.
+            Assert.Equal(0, source.ActivePauseCount);
+            Assert.Equal(2, source.ResumeCount);
+        }
+    }
+
+    [Fact]
+    public async Task PauseIOAsync_ResumeIsIdempotent_DoubleDisposeOnHandleNoOps()
+    {
+        var source = new PausableInMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            var handle = await session.PauseIOAsync();
+            await handle.DisposeAsync();
+            await handle.DisposeAsync(); // second dispose — must not double-decrement on the source
+
+            Assert.Equal(1, source.PauseCount);
+            Assert.Equal(1, source.ResumeCount);
+            Assert.Equal(0, source.ActivePauseCount);
+        }
+    }
+
+    [Fact]
+    public async Task PauseIOAsync_AfterDisposedSession_Throws()
+    {
+        var source = new PausableInMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+            await session.DisposeAsync();
+
+            await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+                await session.PauseIOAsync());
+        }
+    }
+
+    [Fact]
+    public async Task PauseIOAsync_PauseFailure_LeavesNoOutstandingPause()
+    {
+        var source = new PausableInMemoryInputByteSource { ThrowOnPause = true };
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.PauseIOAsync());
+
+            // No partial pause state — a subsequent successful call behaves as a clean first pause.
+            source.ThrowOnPause = false;
+
+            await using (await session.PauseIOAsync())
+            {
+                Assert.Equal(1, source.PauseCount);
+                Assert.Equal(1, source.ActivePauseCount);
+            }
+
+            Assert.Equal(0, source.ActivePauseCount);
+        }
+    }
+
+    [Fact]
+    public async Task PauseIOAsync_DisposeAfterPauseWithoutResume_Cleans()
+    {
+        // A caller may forget to dispose the resume handle before disposing the session.
+        // Session disposal must still proceed cleanly — it tears down the source itself.
+        var source = new PausableInMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            _ = await session.PauseIOAsync();
+            await session.DisposeAsync(); // must not deadlock or throw
+        }
+    }
+
     // ---- Defaults ----
 
     [Fact]

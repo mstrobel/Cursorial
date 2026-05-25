@@ -35,13 +35,21 @@ namespace Cursorial.Terminal;
 /// </remarks>
 public sealed class TerminalSession : IAsyncDisposable
 {
-    private readonly ITerminalNegotiator _negotiator;
     private readonly IAsyncInputDevice _input;
     private readonly IOutputByteSink _output;
     private readonly IInputByteSource _source;
     private readonly IStdioTransports? _ownedTransports;
     private readonly List<PosixSignalRegistration> _signalRegistrations = [];
+    private readonly VtInputMode _mode;
+    private readonly TerminalSessionOptions _options;
 
+    // Serializes Renegotiate with itself and with DisposeAsync's negotiator-disposal step.
+    // EmergencyRestoreAndDispose (signal-handler path) is lock-free by design — it just reads
+    // _negotiator and trusts the single-reference write that Renegotiate performs to be atomic.
+    private readonly SemaphoreSlim _negotiatorLock = new(1, 1);
+
+    private ITerminalNegotiator _negotiator;
+    private TerminalCapabilities _capabilities;
     private EventHandler? _processExitHandler;
     private IResizeMonitor? _resizeMonitor;
     private int _disposed;
@@ -51,13 +59,17 @@ public sealed class TerminalSession : IAsyncDisposable
                             IAsyncInputDevice input,
                             IOutputByteSink output,
                             ITerminalNegotiator negotiator,
+                            VtInputMode mode,
+                            TerminalSessionOptions options,
                             IStdioTransports? ownedTransports)
     {
-        Capabilities = capabilities;
+        _capabilities = capabilities;
         _source = source;
         _input = input;
         _output = output;
         _negotiator = negotiator;
+        _mode = mode;
+        _options = options;
         _ownedTransports = ownedTransports;
 
         // Only attach safety-net handlers and the resize monitor when we own the transports —
@@ -70,8 +82,12 @@ public sealed class TerminalSession : IAsyncDisposable
         }
     }
 
-    /// <summary>The realized capabilities returned by the negotiator at session start.</summary>
-    public TerminalCapabilities Capabilities { get; }
+    /// <summary>
+    /// The realized capabilities returned by the most recent negotiation. Initially set at
+    /// session open; replaced atomically by <see cref="RenegotiateAsync"/> if a fresh negotiation
+    /// produces a different result.
+    /// </summary>
+    public TerminalCapabilities Capabilities => Volatile.Read(ref _capabilities);
 
     /// <summary>The input device — pull-based <see cref="InputEvent"/> stream.</summary>
     public IAsyncInputDevice Input => _input;
@@ -87,7 +103,8 @@ public sealed class TerminalSession : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// On happy-path sessions opened via the parameterless <see cref="OpenAsync(CancellationToken)"/>
+    /// On happy-path sessions opened via the parameterless
+    /// <see cref="OpenAsync(TerminalSessionOptions?, CancellationToken)">OpenAsync()</see>
     /// overload, the query uses the platform path: <c>stty size</c> on POSIX, the
     /// <c>GetConsoleScreenBufferInfo</c> Win32 API on Windows. Both are cheap (single
     /// subprocess or single API call) and reflect the current size at the moment of the call —
@@ -229,7 +246,7 @@ public sealed class TerminalSession : IAsyncDisposable
                 mode,
                 escapeAmbiguityTimeout: options.EscapeAmbiguityTimeout);
 
-            return new TerminalSession(capabilities, source, device, sink, negotiator, ownedTransports);
+            return new TerminalSession(capabilities, source, device, sink, negotiator, mode, options, ownedTransports);
         }
         catch
         {
@@ -251,6 +268,136 @@ public sealed class TerminalSession : IAsyncDisposable
 
             // @formatter:on
         }
+    }
+    
+    /// <summary>
+    /// Run the negotiation handshake again — re-probe the terminal, re-emit opt-in enable
+    /// sequences, and atomically replace the active negotiator. Intended for recovery when the
+    /// host process (a child program, a custom prompt, a stray <c>tput reset</c>) has clobbered
+    /// the opt-in state we applied at session open. The session's
+    /// <see cref="Capabilities"/> snapshot is updated atomically to reflect the new realization.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the probe / opt-in phase.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Concurrency contract.</b> Serialized with itself and with the negotiator-disposal step
+    /// of <see cref="DisposeAsync"/> via an internal lock. A signal-handler-driven
+    /// <c>EmergencyRestoreAndDispose</c> is lock-free and reads <see cref="_negotiator"/>
+    /// directly — see "EmergencyRestore window" below for the resulting trade-off.
+    /// </para>
+    /// <para>
+    /// <b>Input quiescence.</b> The device's background pump is parked for the duration of the
+    /// handshake so the new negotiator can take exclusive ownership of the input byte source's
+    /// <see cref="System.IO.Pipelines.PipeReader"/>. The pump's classifier is reset to ground
+    /// state at park time, so any post-resume bytes are parsed in a clean context. The source's
+    /// own pump (the POSIX poll loop) stays running — probe responses need to flow in.
+    /// </para>
+    /// <para>
+    /// <b>User input during the window.</b> Bytes the user types between
+    /// <c>PausePumpAsync</c> and <c>ResumePump</c> are consumed by the new negotiator's
+    /// ephemeral classifier instead of the device's, which means any non-probe-response keystrokes
+    /// arriving in that window are silently dropped. The window is bounded by the probe timeout
+    /// (default ~500&#x202f;ms). Don't call <see cref="RenegotiateAsync"/> while the user is actively
+    /// interacting.
+    /// </para>
+    /// <para>
+    /// <b>EmergencyRestore window.</b> Between <c>new.NegotiateAsync</c> writing opt-in enables
+    /// to the terminal and the atomic swap of <see cref="_negotiator"/>, a signal-driven
+    /// <c>EmergencyRestoreAndDispose</c> would observe the OLD negotiator and emit its tracked
+    /// disables. If the new negotiation enabled features the old one didn't (because the caller
+    /// passed different options), those extras would linger on the terminal after the emergency
+    /// exit. The default behavior — reusing the original options — avoids this entirely. Callers
+    /// passing custom options accept the (small) risk.
+    /// </para>
+    /// <para>
+    /// <b>Failure path.</b> If the new probe times out, the transport errors, or the host
+    /// process clobbers things mid-handshake, the new negotiator is disposed (rolling back any
+    /// opt-ins it managed to apply) and the old negotiator stays in place. The session is
+    /// indistinguishable from one where <see cref="RenegotiateAsync"/> was never called.
+    /// </para>
+    /// </remarks>
+    public async ValueTask RenegotiateAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        // Serialize with concurrent Renegotiate and with DisposeAsync's negotiator-disposal step.
+        await _negotiatorLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            // Re-check after acquiring the lock — DisposeAsync may have run while we waited.
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+            // Park the device pump (NOT the source pump). The new negotiator needs exclusive
+            // ownership of the source's PipeReader; the source pump must keep running so probe
+            // response bytes flow into the pipe.
+            await PausePumpForRenegotiationAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                // Build a fresh negotiator over the SAME source / sink / mode. The mode is a
+                // shared mutable bag that both the negotiator and the device's interpreter read
+                // — updates propagate to ongoing decoding once the device pump resumes.
+                var newNegotiator = new VtTerminalNegotiator(_source, _output, _mode);
+                TerminalCapabilities newCapabilities;
+                try
+                {
+                    newCapabilities = await newNegotiator.NegotiateAsync(_options.Negotiation, cancellationToken)
+                                                         .ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Roll back any opt-ins the failed negotiator managed to write. The old
+                    // negotiator and its tracked state are still in place; the session is
+                    // unchanged from the caller's perspective.
+                    try { await newNegotiator.DisposeAsync().ConfigureAwait(false); }
+                    catch { /* best-effort */ }
+                    throw;
+                }
+
+                // Atomic swap. After this line, EmergencyRestoreAndDispose sees the new
+                // negotiator and emits the new disables — fully covering the freshly-enabled
+                // opt-ins. Volatile.Write to _capabilities pairs with the Volatile.Read in the
+                // public Capabilities getter so external observers see a consistent snapshot.
+                var oldNegotiator = Interlocked.Exchange(ref _negotiator, newNegotiator);
+                Volatile.Write(ref _capabilities, newCapabilities);
+
+                // Neutralize the old negotiator: capture its disables and discard them. This
+                // marks old._restored=1 and clears old._applied, so its eventual DisposeAsync is
+                // a no-op, and EmergencyRestore (if it somehow still saw the old reference via
+                // a torn read or in-flight handler) would emit nothing. The terminal stays in
+                // the state the new negotiator just established.
+                _ = oldNegotiator.BuildRestoreSequence();
+
+                try { await oldNegotiator.DisposeAsync().ConfigureAwait(false); }
+                catch { /* best-effort — old is neutralized either way */ }
+            }
+            finally
+            {
+                // ALWAYS resume the device pump — even on failure — so the consumer's input
+                // stream comes back to life.
+                if (_input is VtInputDevice device) device.ResumePump();
+            }
+        }
+        finally
+        {
+            _negotiatorLock.Release();
+        }
+    }
+
+    private Task PausePumpForRenegotiationAsync(CancellationToken cancellationToken)
+    {
+        // VtInputDevice exposes the pause primitive internally; route through a helper so the
+        // Renegotiate body doesn't need to type-check / cast every time we touch the device.
+        if (_input is VtInputDevice device)
+            return device.PausePumpAsync(cancellationToken);
+
+        // Other IAsyncInputDevice implementations don't necessarily have a pump to pause — the
+        // session was constructed BYO with a different device type. Renegotiate is undefined in
+        // that case for now; the caller can still drive their own equivalent. Return completed
+        // so the rest of the flow proceeds (the negotiator just reads from the same source the
+        // caller wired up; if their device contends on it, that's their concern).
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -316,7 +463,7 @@ public sealed class TerminalSession : IAsyncDisposable
         catch
         {
             // Flush is best-effort during pause — the sink may already be closed or broken.
-            // Don't poison the pause path; the caller can still proceed and the resume path
+            // Don't poison the pause path; the caller can still proceed, and the resume path
             // remains reachable via the source handle below.
         }
 
@@ -355,13 +502,7 @@ public sealed class TerminalSession : IAsyncDisposable
 
         _resizeMonitor = null;
 
-        // Restore opt-ins FIRST, while the input pump is still running. The terminal may emit
-        // trailing reports in response to the disable sequences — most notably a Kitty key-release
-        // report for whatever key the user pressed to exit, plus any final mouse/focus reports.
-        // With the pump still draining fd 0, those bytes are consumed into the device's internal
-        // pipe (and dropped on pipe completion) rather than piling up in the TTY input queue for
-        // the next cooked-mode `Console.ReadLine` to splice into the user's next command.
-        try { await _negotiator.DisposeAsync().ConfigureAwait(false); }
+        try { await DisposeNegotiatorAsync(); }
         catch { /* best-effort */ }
 
         // Give the local round-trip (we write disable → terminal processes → terminal emits
@@ -384,6 +525,30 @@ public sealed class TerminalSession : IAsyncDisposable
         }
 
         // @formatter:on
+    }
+
+    private async ValueTask DisposeNegotiatorAsync()
+    {
+        // Take the negotiator lock so we don't race a concurrent Renegotiate's swap. The lock
+        // is held only across the negotiator's own DisposeAsync — DisposeNegotiatorAsync is just
+        // one phase of session disposal.
+        await _negotiatorLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            // Restore opt-ins FIRST, while the input pump is still running. The terminal may
+            // emit trailing reports in response to the disable sequences — most notably a Kitty
+            // key-release report for whatever key the user pressed to exit, plus any final
+            // mouse/focus reports. With the pump still draining fd 0, those bytes are consumed
+            // into the device's internal pipe (and dropped on pipe completion) rather than
+            // piling up in the TTY input queue for the next cooked-mode `Console.ReadLine` to
+            // splice into the user's next command.
+            try { await _negotiator.DisposeAsync().ConfigureAwait(false); }
+            catch { /* best-effort */ }
+        }
+        finally
+        {
+            _negotiatorLock.Release();
+        }
     }
 
     // ---- Signal-handler safety net ----

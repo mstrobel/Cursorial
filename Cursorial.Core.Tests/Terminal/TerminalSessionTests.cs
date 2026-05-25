@@ -1,6 +1,8 @@
 using Cursorial.Input.Events;
 using Cursorial.Terminal;
 
+// ReSharper disable AccessToDisposedClosure
+
 namespace Cursorial.Tests.Terminal;
 
 public class TerminalSessionTests
@@ -375,6 +377,180 @@ public class TerminalSessionTests
 
             _ = await session.PauseIOAsync();
             await session.DisposeAsync(); // must not deadlock or throw
+        }
+    }
+
+    // ---- Renegotiate ----
+
+    [Fact]
+    public async Task Renegotiate_ReprobesAndReappliesOptInsAndUpdatesCapabilities()
+    {
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            // Initial negotiation: bare DA1 (no XTVERSION response).
+            source.Enqueue("\x1b[?64c");
+
+            var options = new TerminalSessionOptions
+            {
+                Negotiation = new NegotiationOptions
+                {
+                    ProbeTimeout = TimeSpan.FromMilliseconds(150),
+                    EnableExtendedMouseTracking = false,
+                    EnableFocusEvents = true,
+                    EnableBracketedPaste = true,
+                    EnableKittyKeyboard = false,
+                    EnableWin32InputMode = false,
+                    EnableSynchronizedOutput = false,
+                },
+                EscapeAmbiguityTimeout = TimeSpan.FromMilliseconds(20),
+            };
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, options);
+
+            // Start consuming so the device pump is actually running — this is what makes the
+            // PausePumpAsync path interesting (the pump has a task issuing ReadAsync calls).
+            var consumed = new List<InputEvent>();
+            var consumerCts = new CancellationTokenSource();
+            var consumer = Task.Run(async () =>
+            {
+                try
+                {
+                    await foreach (var ev in session.Input.ReadAllAsync(consumerCts.Token))
+                        consumed.Add(ev);
+                }
+                catch (OperationCanceledException) { /* expected */ }
+            });
+
+            await Task.Delay(40); // let the pump enter its first ReadAsync
+            await sink.ReadAllWrittenAsync(); // drain initial enable sequences
+
+            var firstCapabilities = session.Capabilities;
+
+            // Pre-populate the renegotiation's DA1 response. The new probe will pick it up
+            // exclusively (pump is paused for the handshake).
+            source.Enqueue("\x1b[?64c");
+
+            await session.RenegotiateAsync();
+
+            // Second batch of enable sequences must have been written.
+            var rewritten = System.Text.Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+            Assert.Contains("\x1b[?1004h", rewritten); // focus enable
+            Assert.Contains("\x1b[?2004h", rewritten); // bracketed-paste enable
+
+            // Capabilities snapshot updated to a fresh instance.
+            Assert.NotSame(firstCapabilities, session.Capabilities);
+
+            // Device pump is back to live — consumer continues receiving subsequent events.
+            source.Enqueue("a");
+            await Task.Delay(60);
+            consumerCts.Cancel();
+            await consumer.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Contains(consumed, e => e is KeyEvent k && new string(k.Text.Span) == "a");
+        }
+    }
+
+    [Fact]
+    public async Task Renegotiate_AfterDisposedSession_Throws()
+    {
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+            await session.DisposeAsync();
+
+            await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+                await session.RenegotiateAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Renegotiate_PrecancelledToken_ThrowsAndLeavesSessionUnchanged()
+    {
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            await using var session = await TerminalSession.OpenAsync(source, sink, FastTimeout());
+
+            var capabilitiesBefore = session.Capabilities;
+
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            // Pre-cancelled token causes the lock-acquire step inside Renegotiate to throw.
+            // The new negotiator is never created; the session is unchanged.
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await session.RenegotiateAsync(cancellationToken: cts.Token));
+
+            Assert.Same(capabilitiesBefore, session.Capabilities);
+
+            // Session is still usable — try a clean renegotiate to prove the lock wasn't leaked.
+            source.Enqueue("\x1b[?64c");
+            await session.RenegotiateAsync();
+            Assert.NotSame(capabilitiesBefore, session.Capabilities);
+        }
+    }
+
+    [Fact]
+    public async Task Renegotiate_DisposeAfterRenegotiate_EmitsCurrentNegotiatorsRestores()
+    {
+        var source = new InMemoryInputByteSource();
+        var sink = new InMemoryOutputByteSink();
+        await using (source)
+        await using (sink)
+        {
+            source.Enqueue("\x1b[?64c");
+
+            var options = new TerminalSessionOptions
+            {
+                Negotiation = new NegotiationOptions
+                {
+                    ProbeTimeout = TimeSpan.FromMilliseconds(150),
+                    EnableFocusEvents = true,
+                    EnableBracketedPaste = true,
+                },
+                EscapeAmbiguityTimeout = TimeSpan.FromMilliseconds(20),
+            };
+
+            var session = await TerminalSession.OpenAsync(source, sink, options);
+
+            var consumerCts = new CancellationTokenSource();
+            var consumer = Task.Run(async () =>
+            {
+                try { await foreach (var _ in session.Input.ReadAllAsync(consumerCts.Token)) { } }
+                catch (OperationCanceledException) { }
+            });
+
+            await Task.Delay(40);
+            await sink.ReadAllWrittenAsync(); // drain initial enables
+
+            // Renegotiate.
+            source.Enqueue("\x1b[?64c");
+            await session.RenegotiateAsync();
+            await sink.ReadAllWrittenAsync(); // drain renegotiation enables
+
+            // Dispose. The disables emitted should correspond to the NEW negotiator's tracked
+            // opt-ins — the old one was neutralized inside Renegotiate.
+            await session.DisposeAsync();
+
+            var afterRestore = System.Text.Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+
+            Assert.Contains("\x1b[?1004l", afterRestore); // focus disable
+            Assert.Contains("\x1b[?2004l", afterRestore); // bracketed-paste disable
+
+            consumerCts.Cancel();
+            await consumer.WaitAsync(TimeSpan.FromSeconds(2));
         }
     }
 

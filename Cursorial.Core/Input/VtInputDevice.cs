@@ -60,6 +60,14 @@ public sealed class VtInputDevice : IAsyncInputDevice
     private Task? _pumpTask;
     private CancellationTokenSource? _pumpCts;
 
+    // Pump pause/resume plumbing. Used by TerminalSession.Renegotiate to clear the device's
+    // reader of contention so a fresh negotiator can read probe responses without colliding
+    // with the device pump's ReadAsync. The pump parks on _pumpResumeEvent in user space; no
+    // libc syscall is pending while paused.
+    private readonly ManualResetEventSlim _pumpResumeEvent = new(initialState: true);
+    private TaskCompletionSource? _pumpParkedTcs;
+    private int _pumpPaused;
+
     private int _enumerationStarted;
     private int _disposed;
 
@@ -134,6 +142,78 @@ public sealed class VtInputDevice : IAsyncInputDevice
             yield return inputEvent;
     }
 
+    /// <summary>
+    /// Park the device's background pump so a separate consumer (typically the renegotiation
+    /// handshake) can take exclusive ownership of the underlying <see cref="IInputByteSource.Reader"/>
+    /// without colliding with the pump's <c>ReadAsync</c>. The returned task completes once the
+    /// pump has parked entirely in user space — no read is pending on the source's pipe reader.
+    /// The classifier is reset to ground state at park time so post-resume byte stream is parsed
+    /// from a clean context.
+    /// </summary>
+    /// <remarks>
+    /// Internal — only callable from inside the assembly. The contract is paired with
+    /// <see cref="ResumePump"/>; callers must always re-balance pause/resume on every code path
+    /// or the channel consumer will starve indefinitely.
+    /// </remarks>
+    internal async Task PausePumpAsync(CancellationToken cancellationToken = default)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ObjectDisposedException(nameof(VtInputDevice));
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Task? parkedTask;
+        lock (_startLock)
+        {
+            if (_pumpTask is null)
+            {
+                // Pump hasn't started yet (no consumer has called ReadAllAsync). Just record
+                // the requested pause state — when the pump starts it will park immediately
+                // on its first iteration.
+                _pumpResumeEvent.Reset();
+                Volatile.Write(ref _pumpPaused, 1);
+                return;
+            }
+
+            if (Volatile.Read(ref _pumpPaused) != 0)
+            {
+                // Already paused or pausing — share the existing TCS.
+                parkedTask = _pumpParkedTcs?.Task ?? Task.CompletedTask;
+            }
+            else
+            {
+                _pumpResumeEvent.Reset();
+                _pumpParkedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                Volatile.Write(ref _pumpPaused, 1);
+                parkedTask = _pumpParkedTcs.Task;
+            }
+        }
+
+        // Wake the pump if it's currently blocked in PipeReader.ReadAsync. CancelPendingRead is
+        // safe even when no read is in flight — it stores the cancel for the next ReadAsync,
+        // which we don't issue while paused. The pump's first read after resume returns canceled
+        // with an empty buffer; the classifier no-ops on an empty span.
+        _source.Reader.CancelPendingRead();
+
+        await parkedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resume a previously paused pump. Safe to call when the pump isn't paused (no-op). The
+    /// pump task is already running; resume just signals the manual-reset event it's blocked on.
+    /// </summary>
+    internal void ResumePump()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
+        lock (_startLock)
+        {
+            Volatile.Write(ref _pumpPaused, 0);
+            _pumpParkedTcs = null;
+            _pumpResumeEvent.Set();
+        }
+    }
+
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
@@ -142,12 +222,20 @@ public sealed class VtInputDevice : IAsyncInputDevice
         // Stop the pump if it was started.
         Task? pumpTask;
         CancellationTokenSource? pumpCts;
+        TaskCompletionSource? parkedTcs;
 
         lock (_startLock)
         {
             pumpTask = _pumpTask;
             pumpCts = _pumpCts;
+            parkedTcs = _pumpParkedTcs;
         }
+
+        // Release a parked pump so it can observe cancellation and exit. The MRE doubles as
+        // wake-on-dispose since the pump's Wait(cancellationToken) honors the cancellation token
+        // too, but setting the event also covers the race where Cancel arrives just before Wait.
+        _pumpResumeEvent.Set();
+        parkedTcs?.TrySetException(new ObjectDisposedException(nameof(VtInputDevice)));
 
         try
         {
@@ -179,6 +267,7 @@ public sealed class VtInputDevice : IAsyncInputDevice
         }
 
         pumpCts?.Dispose();
+        _pumpResumeEvent.Dispose();
     }
 
     private void EnsurePumpStarted()
@@ -206,6 +295,41 @@ public sealed class VtInputDevice : IAsyncInputDevice
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                // Park at the top of each iteration when paused so we never hold an in-flight
+                // ReadAsync on _source.Reader. A separate consumer (renegotiation handshake)
+                // can then take exclusive ownership of the reader.
+                if (Volatile.Read(ref _pumpPaused) != 0)
+                {
+                    // Reset the classifier before parking. A separate reader is about to
+                    // consume bytes we won't see; if those bytes complete or invalidate a
+                    // sequence the device's classifier had partially parsed, leaving the
+                    // classifier in a non-Ground state would cause the post-resume byte
+                    // stream to be parsed in the wrong context. Losing a partial in-flight
+                    // sequence at this moment is acceptable (renegotiation is rare); producing
+                    // garbage events is not.
+                    _classifier.Reset();
+
+                    var parked = _pumpParkedTcs;
+                    parked?.TrySetResult();
+
+                    try
+                    {
+                        _pumpResumeEvent.Wait(cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    // The pending read (if any) was cancelled by the pauser via
+                    // CancelPendingRead; drop our reference so the next iteration issues a
+                    // fresh one.
+                    pendingRead = null;
+                    continue;
+                }
+
                 pendingRead ??= _source.Reader.ReadAsync(cancellationToken).AsTask();
 
                 var timeoutTask = Task.Delay(_escapeAmbiguityTimeout, _time, cancellationToken);

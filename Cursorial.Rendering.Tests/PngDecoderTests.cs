@@ -115,8 +115,7 @@ public class PngDecoderTests
     public void Decode_MultipleIdatChunks_ConcatenatesCorrectly()
     {
         // Build a 2x1 RGB PNG but split IDAT across two chunks.
-        byte[] rawPixels = { 1, 2, 3, 4, 5, 6 };
-        byte[] filtered = { 0, 1, 2, 3, 4, 5, 6 }; // filter=0 prefix
+        byte[] filtered = [0, 1, 2, 3, 4, 5, 6]; // filter=0 prefix
         var compressed = Compress(filtered);
 
         // Split the compressed stream roughly in half.

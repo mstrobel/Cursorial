@@ -14,6 +14,8 @@ namespace Cursorial.Output.Capabilities;
 /// <param name="SgrMouseEnable">
 /// DECSET 1006 — SGR mouse encoding (lossless coordinates, supports columns &gt; 223).
 /// </param>
+/// <param name="MouseButtonsEnable">DECSET 1000 - report mouse position and buttons when pressing and releasing.</param>
+/// <param name="MouseDragEnable">DECSET 1002 - everything in DECSET 1000, and reports motion events when button(s) held.</param>
 /// <param name="MouseMotionEnable">DECSET 1003 — report mouse motion regardless of button state.</param>
 /// <param name="KittyKeyboardPush">
 /// CSI &gt; … u — push the application's preferred Kitty keyboard protocol flags onto the

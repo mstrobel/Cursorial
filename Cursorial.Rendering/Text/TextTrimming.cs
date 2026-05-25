@@ -1,3 +1,5 @@
+using Cursorial.Output.Capabilities;
+
 namespace Cursorial.Rendering.Text;
 
 /// <summary>
@@ -6,7 +8,7 @@ namespace Cursorial.Rendering.Text;
 /// <see cref="TextParagraph.Trim"/> setting governs how an individual paragraph trims its content
 /// (most useful with <see cref="WrapMode.NoWrap"/> or <see cref="TextParagraph.MaxLines"/>);
 /// the formatter's global <see cref="TextFormatter.Trim"/> governs the last visible line when
-/// the document hits the <see cref="TextFormatter.Format(RichText, int, int?, Output.Capabilities.OutputCapabilities?)"/>
+/// the document hits the <see cref="TextFormatter.Format(RichText, int, int?, OutputCapabilities?, bool)"/>
 /// row budget.
 /// </summary>
 public enum TextTrimming

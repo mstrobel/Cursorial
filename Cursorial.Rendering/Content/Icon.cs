@@ -1,9 +1,7 @@
 using System.Reflection;
 
 using Cursorial.Output;
-using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
-using Cursorial.Text;
 
 namespace Cursorial.Rendering.Content;
 
@@ -51,11 +49,18 @@ public sealed class Icon : Image
 {
     /// <summary>Construct an icon from a resource URI.</summary>
     /// <param name="resourceUri">URI identifying the image payload. See class remarks for supported schemes.</param>
-    /// <param name="fallbackGlyph">Glyph (emoji / symbol / character) rendered when the image isn't available. Wide glyphs occupy the full <paramref name="renderSize"/>.</param>
-    /// <param name="fallbackStyle">Style applied to the glyph-fallback placeholder. <c>default</c> reuses the painter's style at <see cref="Paint"/>.</param>
-    /// <param name="renderSize">Cell footprint the icon occupies. <c>default</c> means 2×1 — the natural fit for emoji-shaped fallbacks. A row span of 0 is auto-derived from the column count.</param>
-    /// <param name="format">Image format. <see langword="null"/> infers from the URI's file extension.</param>
-    /// <param name="loader">Resource loader. <see langword="null"/> uses <see cref="ResourceLoader.Default"/>.</param>
+    /// <param name="fallbackGlyph">
+    /// Glyph (emoji / symbol / character) rendered when the image isn't available. Wide glyphs occupy the full
+    /// <paramref name="renderSize" />.
+    /// </param>
+    /// <param name="fallbackStyle">Style applied to the glyph-fallback placeholder. <c>default</c> reuses the painter's
+    /// style at <see cref="FragmentContent.Paint" />.</param>
+    /// <param name="renderSize">
+    /// Cell footprint the icon occupies. <c>default</c> means 2×1 — the natural fit for emoji-shaped fallbacks. A row
+    /// span of 0 is auto-derived from the column count.
+    /// </param>
+    /// <param name="format">Image format. <see langword="null" /> infers from the URI's file extension.</param>
+    /// <param name="loader">Resource loader. <see langword="null" /> uses <see cref="ResourceLoader.Default" />.</param>
     public Icon(Uri resourceUri,
                 string fallbackGlyph,
                 in Style fallbackStyle = default,

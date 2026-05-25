@@ -478,7 +478,7 @@ public class CellBufferViewTests
     private sealed class TestFragment : IBufferFragment
     {
         public Size GetSize() => new(0, 0);
-        public bool IsSupported(Cursorial.Output.Capabilities.OutputCapabilities capabilities) => true;
+        public bool IsSupported(OutputCapabilities capabilities) => true;
         public void Emit(int column, int row, IBufferWriter<byte> output,
                          OutputCapabilities capabilities)
         { }

@@ -29,6 +29,7 @@ namespace Cursorial.Terminal.Stdio;
 /// owned and closed at disposal.
 /// </para>
 /// </remarks>
+// ReSharper disable once RedundantExtendsListEntry
 internal sealed partial class PosixPollInputByteSource : IInputByteSource, IPausableInputByteSource
 {
     private const short POLLIN = 0x0001;
@@ -43,7 +44,7 @@ internal sealed partial class PosixPollInputByteSource : IInputByteSource, IPaus
 
     // Pause-state plumbing. _pauseRefCount tracks the number of outstanding PauseScope handles;
     // the pump is parked iff the count is greater than zero. The pump enters user-space wait via
-    // _runEvent (a manual-reset event) so no libc syscall is left pending while paused.
+    // _runEvent (a manual-reset event), so no libc syscall is left pending while paused.
     // _pauseCompleted notifies callers of PauseAsync once the pump has definitively parked; it's
     // recreated on each zero→one transition and cleared on each one→zero transition.
     private readonly object _stateLock = new();
@@ -116,7 +117,7 @@ internal sealed partial class PosixPollInputByteSource : IInputByteSource, IPaus
                         if (shouldPark)
                         {
                             // Signal whichever caller(s) are waiting on the pause-completion
-                            // TCS. A null TCS is possible if every awaiter cancelled before we
+                            // TCS. A null TCS is possible if every awaiter canceled before we
                             // got here; in that case we still park because the refcount remains
                             // elevated — disposal of those callers' handles will release us.
                             pauseTcs = _pauseCompleted;
@@ -225,8 +226,8 @@ internal sealed partial class PosixPollInputByteSource : IInputByteSource, IPaus
         }
         catch
         {
-            // Unwind the tentative increment. If we were the lone pauser the pump will resume
-            // naturally; if other pausers are still in flight they keep their share.
+            // Unwind the tentative increment. If we were the lone pauser, the pump will resume
+            // naturally; if other pausers are still in flight, they keep their share.
             DecrementPause();
             throw;
         }

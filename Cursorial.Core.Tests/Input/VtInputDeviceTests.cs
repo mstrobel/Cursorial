@@ -151,6 +151,7 @@ public class VtInputDeviceTests
 
         await using var device = BuildDevice(escTimeout: TimeSpan.FromMilliseconds(30));
 
+        // ReSharper disable once AccessToDisposedClosure
         var consumer = Task.Run(async () => await CollectAsync(device, count: 2, timeout: TimeSpan.FromSeconds(2)));
 
         // Give the timeout time to fire and the bare-ESC to flush.

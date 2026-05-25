@@ -1,5 +1,6 @@
 using System.Buffers;
 using Cursorial.Output.Capabilities;
+using Cursorial.Rendering.Content;
 
 namespace Cursorial.Rendering.Fragments;
 

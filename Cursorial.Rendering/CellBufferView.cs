@@ -149,7 +149,7 @@ public readonly struct CellBufferView
                 throw new ArgumentOutOfRangeException(
                     nameof(value), value,
                     $"Cursor row {value} is outside the view's rows [0, {Rows}). Use the underlying buffer if an out-of-view cursor position is intentional.");
-            _buffer!.CursorRow = value + OffsetRow;
+            _buffer.CursorRow = value + OffsetRow;
         }
     }
 
@@ -163,7 +163,7 @@ public readonly struct CellBufferView
                 throw new ArgumentOutOfRangeException(
                     nameof(value), value,
                     $"Cursor column {value} is outside the view's columns [0, {Columns}).");
-            _buffer!.CursorColumn = value + OffsetColumn;
+            _buffer.CursorColumn = value + OffsetColumn;
         }
     }
 
@@ -205,12 +205,12 @@ public readonly struct CellBufferView
         get
         {
             ValidateCoordinates(column, row);
-            return _buffer![column + OffsetColumn, row + OffsetRow];
+            return _buffer[column + OffsetColumn, row + OffsetRow];
         }
         set
         {
             ValidateCoordinates(column, row);
-            _buffer![column + OffsetColumn, row + OffsetRow] = value;
+            _buffer[column + OffsetColumn, row + OffsetRow] = value;
         }
     }
 

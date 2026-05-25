@@ -65,11 +65,11 @@ public readonly record struct Margins
     /// </returns>
     public override string ToString() => $"Margins(L:{Left}, T:{Top}, R:{Right}, B:{Bottom})";
 
-    public void Deconstruct(out int Left, out int Top, out int Right, out int Bottom)
+    public void Deconstruct(out int left, out int top, out int right, out int bottom)
     {
-        Left = this.Left;
-        Top = this.Top;
-        Right = this.Right;
-        Bottom = this.Bottom;
+        left = Left;
+        top = Top;
+        right = Right;
+        bottom = Bottom;
     }
 }

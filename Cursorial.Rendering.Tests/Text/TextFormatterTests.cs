@@ -154,7 +154,7 @@ public class TextFormatterTests
         var doc = new RichTextBuilder().Run(text).Build();
         var para = FirstParagraph(new TextFormatter().Format(doc, 6));
 
-        // Diagnostic on failure — surface what we actually got so debugging is straightforward.
+        // Diagnostic on failure — surface what we actually got, so debugging is straightforward.
         Assert.True(
             para.Lines.Length == 2,
             $"Expected 2 lines, got {para.Lines.Length}: " +
@@ -320,7 +320,7 @@ public class TextFormatterTests
     [Fact]
     public void Format_AppliesGlyphMap()
     {
-        var doc = new RichTextBuilder()
+        _ = new RichTextBuilder()
             .Run("abc")
             .Build();
 

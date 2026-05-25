@@ -234,6 +234,7 @@ public partial class PosixPollInputByteSourceTests
     [LibraryImport("libc", EntryPoint = "write", SetLastError = true)]
     private static partial nint Write(int fd, ref byte buf, nuint count);
 
+    // ReSharper disable once UnusedMethodReturnValue.Local
     [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
     private static partial int Close(int fd);
 }

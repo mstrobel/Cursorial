@@ -27,6 +27,7 @@ public sealed class FigletGlyph
     /// Construct a glyph from its <paramref name="codepoint"/> identity and <paramref name="lines"/>.
     /// The hardblank character is used only for whitespace classification — lines retain it.
     /// </summary>
+    // ReSharper disable once UnusedParameter.Local
     public FigletGlyph(uint codepoint, string[] lines, char hardblank)
     {
         ArgumentNullException.ThrowIfNull(lines);

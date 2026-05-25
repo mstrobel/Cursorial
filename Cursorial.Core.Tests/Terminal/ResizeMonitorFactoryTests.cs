@@ -1,4 +1,3 @@
-using Cursorial.Input.Events;
 using Cursorial.Terminal.Stdio;
 
 namespace Cursorial.Tests.Terminal;
@@ -17,7 +16,7 @@ public class ResizeMonitorFactoryTests
             OperatingSystem.IsWindows())
         {
             Assert.NotNull(monitor);
-            monitor?.Dispose();
+            monitor.Dispose();
         }
         else
         {

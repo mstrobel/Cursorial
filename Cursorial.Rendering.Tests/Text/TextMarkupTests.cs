@@ -286,12 +286,12 @@ public class TextMarkupTests
     private sealed class StubContent(int width) : Cursorial.Rendering.Content.IContent
     {
         public Cursorial.Rendering.Size Measure(Cursorial.Rendering.Size availableSpace,
-                                                Cursorial.Output.Capabilities.OutputCapabilities capabilities)
+                                                Output.Capabilities.OutputCapabilities capabilities)
             => new(width, 1);
 
         public Cursorial.Rendering.Rect Paint(
             in Cursorial.Rendering.CellBufferView buffer, in Cursorial.Rendering.Rect bounds,
-            in Style style, Cursorial.Output.Capabilities.OutputCapabilities capabilities)
+            in Style style, Output.Capabilities.OutputCapabilities capabilities)
             => bounds;
     }
 

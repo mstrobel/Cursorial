@@ -29,7 +29,8 @@ public static class ContentExtensions
     /// <summary>
     /// Paint <paramref name="content"/> with an implicit bounds rectangle running from
     /// <c>(column, row)</c> to the buffer's far edge — the simple "paint here, use whatever
-    /// space is left" call. For layout-aware sizing the <see cref="IContent.Paint(CellBuffer, Rect, in Style, OutputCapabilities)"/>
+    /// space is left" call. For layout-aware sizing the
+    /// <see cref="IContent.Paint(in CellBufferView, in Rect, in Style, OutputCapabilities)"/>
     /// overload should be called directly with an explicit <see cref="Rect"/>.
     /// </summary>
     public static Rect Paint(this IContent content,

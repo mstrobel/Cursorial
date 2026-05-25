@@ -5,6 +5,8 @@ using Cursorial.Input;
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.Input;
 
 public class KeyReleaseSynthesizerTests

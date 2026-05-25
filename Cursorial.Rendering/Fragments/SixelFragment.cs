@@ -53,6 +53,7 @@ public sealed class SixelFragment : IBufferFragment
     /// </summary>
     /// <param name="sixelPayload">Pre-encoded Sixel byte sequence including DCS framing.</param>
     /// <param name="cellSize">The cell footprint the rendered image will occupy on the terminal.</param>
+    /// <param name="imageData">The optional source image data, used to provide the source file name for debugging.</param>
     public SixelFragment(ReadOnlyMemory<byte> sixelPayload, Size cellSize, ImageData? imageData = null)
     {
         if (sixelPayload.IsEmpty)

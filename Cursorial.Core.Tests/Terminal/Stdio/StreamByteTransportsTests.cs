@@ -1,6 +1,10 @@
 using System.Buffers;
 
+using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Terminal.Stdio;
+
+// ReSharper disable DisposeOnUsingVariable
 
 namespace Cursorial.Tests.Terminal.Stdio;
 

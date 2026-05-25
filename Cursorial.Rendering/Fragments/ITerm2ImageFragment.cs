@@ -27,6 +27,7 @@ namespace Cursorial.Rendering.Fragments;
 public sealed class ITerm2ImageFragment : IBufferFragment
 {
     private readonly ImageData _data;
+    // ReSharper disable once NotAccessedField.Local
     private readonly (int Columns, int Rows)? _pixelSize;
     private readonly Size _displaySize;
 

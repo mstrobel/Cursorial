@@ -108,7 +108,7 @@ public class VtSequenceClassifierTests
 
         var esc = Assert.IsType<RecordedToken.EscDispatch>(Assert.Single(_sink.Tokens));
         Assert.Equal((byte)'B', esc.Final);
-        Assert.Equal(new byte[] { (byte)'(' }, esc.Intermediates);
+        Assert.Equal(new[] { (byte)'(' }, esc.Intermediates);
     }
 
     // ---- CSI ----
@@ -249,7 +249,7 @@ public class VtSequenceClassifierTests
         Feed("\x1bOA"); // SS3 Up arrow
 
         var esc = Assert.IsType<RecordedToken.EscDispatch>(Assert.Single(_sink.Tokens));
-        Assert.Equal(new byte[] { (byte)'O' }, esc.Intermediates);
+        Assert.Equal(new[] { (byte)'O' }, esc.Intermediates);
         Assert.Equal((byte)'A', esc.Final);
     }
 
@@ -282,7 +282,7 @@ public class VtSequenceClassifierTests
             t =>
             {
                 var print = Assert.IsType<RecordedToken.Print>(t);
-                Assert.Equal(new byte[] { (byte)'O' }, print.Bytes);
+                Assert.Equal(new[] { (byte)'O' }, print.Bytes);
             });
     }
 

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 namespace Cursorial.Output;
 
 /// <summary>
@@ -33,7 +31,7 @@ namespace Cursorial.Output;
 /// </param>
 /// <param name="Hyperlink">
 /// OSC 8 hyperlink anchor for this cell. <see cref="Hyperlink.None"/> (the default) means no
-/// hyperlink. The renderer emits hyperlink open/close brackets at run boundaries so adjacent
+/// hyperlink. The renderer emits hyperlink open/close brackets at run boundaries, so adjacent
 /// cells with the same hyperlink share one logical link target.
 /// </param>
 public readonly record struct Style(
@@ -81,20 +79,14 @@ public readonly record struct Style(
         => this with { Hyperlink = new Hyperlink(uri, id) };
 
     /// <summary>True when no foreground, background, attribute, or hyperlink carries any non-default value.</summary>
-    public bool IsDefault
-    {
-        get
-        {
-            return this == default;
-            // return Foreground.IsDefault &&
-            //        Background.IsDefault &&
-            //        Attributes == TextAttributes.None &&
-            //        UnderlineStyle == default &&
-            //        UnderlineColor.IsDefault &&
-            //        Hyperlink.IsEmpty;
-        }
-    }
+    public bool IsDefault => this == default;
 
+    // return Foreground.IsDefault &&
+    //        Background.IsDefault &&
+    //        Attributes == TextAttributes.None &&
+    //        UnderlineStyle == default &&
+    //        UnderlineColor.IsDefault &&
+    //        Hyperlink.IsEmpty;
     public Style BlendOver(in Style backdrop, IBlendingMode? blendingMode = null)
     {
         var mode = blendingMode ?? BlendingModes.Default;

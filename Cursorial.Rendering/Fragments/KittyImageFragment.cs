@@ -48,6 +48,7 @@ public sealed class KittyImageFragment : IBufferFragment
 
     private readonly ImageData _data;
     private readonly Size _displaySize;
+    // ReSharper disable once NotAccessedField.Local
     private readonly (int Columns, int Rows)? _pixelSize;
     private readonly uint _imageId;
 

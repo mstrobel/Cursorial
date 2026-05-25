@@ -100,7 +100,7 @@ public class FrameRendererDirtyRegionTests
 
         // Marking a region entirely outside the buffer is a no-op.
         buffer.MarkDirty(new Rect(50, 50, 5, 5));
-        Assert.Equal(0, buffer.DirtyRegions.Count); // auto-cleared from last render
+        Assert.Empty(buffer.DirtyRegions); // auto-cleared from last render
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class FrameRendererDirtyRegionTests
     [Fact]
     public void CellInsideRegion_StillDiffAgainstFront()
     {
-        // Inside a dirty region, the renderer still does back-vs-front comparison — a cell
+        // Inside a dirty region, the renderer still does back-vs.-front comparison — a cell
         // that's marked dirty but actually unchanged doesn't re-emit.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);

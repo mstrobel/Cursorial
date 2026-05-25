@@ -883,7 +883,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         else
         {
             // Functional key — the text payload, when present, is what the key would have
-            // produced as a character (rare: e.g. Kitty Enter with shifted form). Carry it
+            // produced as a character (rare: e.g., Kitty Enter with shifted form). Carry it
             // through if we got one; otherwise leave Text empty.
             text = data.TextCount > 0
                        ? CodepointsToUtf16(textCodepoints[..data.TextCount])
@@ -1345,12 +1345,12 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The R-final / F3 vs CPR ambiguity: a length-2 <c>CSI 1;X R</c> sequence is technically
+    /// The R-final / F3 vs. CPR ambiguity: a length-2 <c>CSI 1;X R</c> sequence is technically
     /// ambiguous between a Cursor Position Report (row=1, col=X) and a Kitty legacy F3 press
     /// with modifier X. We resolve it CPR-first at the dispatch site because Kitty 0.46.2
     /// routes F3 through the <c>CSI 13~</c> tilde encoding — not <c>CSI R</c> — so the
     /// ambiguity is theoretical for Kitty traffic. Other terminals that send F3 via
-    /// <c>CSI R</c> would clash here; if that becomes a real problem we can disambiguate by
+    /// <c>CSI R</c> would clash here; if that becomes a real problem, we can disambiguate by
     /// gating CPR on an outstanding DSR request.
     /// </para>
     /// </remarks>
@@ -1440,7 +1440,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         // OSC body shape: <code>;<value>. Identify recognized response codes and emit a
         // DeviceResponseEvent carrying the value portion (everything after the first ';').
         // Anything else — malformed, unrecognized code, parse failure — goes out as UnknownEvent
-        // so consumers can log/forward without us silently swallowing protocol surface.
+        // so consumers can log/forward without us silently swallowing the protocol surface.
         int separator = body.IndexOf((byte) ';');
 
         if (separator < 0)
@@ -1614,6 +1614,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         var ts = Now;
 
         // @formatter:off
+        // ReSharper disable once PatternIsRedundant
         KeyEvent? evt = controlChar switch
                         {
                             VtInputSequences.Tab                                         => Named(Key.Tab),
@@ -1708,6 +1709,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     /// sub-parameter) and the parsed event type. Defaults to event type = 1 (press) when there
     /// is no colon or the trailing sub-parameter doesn't parse cleanly.
     /// </summary>
+    // ReSharper disable once UnusedMethodReturnValue.Local
     private static bool ExtractTrailingEventSubparam(ReadOnlySpan<byte> raw,
                                                      out ReadOnlySpan<byte> trimmed,
                                                      out int eventType)
@@ -1776,10 +1778,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         int current = 0;
         bool started = false;
 
-        for (int i = 0; i < raw.Length; i++)
+        foreach (var b in raw)
         {
-            byte b = raw[i];
-
             if (b is >= (byte) '0' and <= (byte) '9')
             {
                 current = AccumulateDecimalSaturating(current, b - (byte) '0');
@@ -1793,7 +1793,6 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 current = 0;
                 started = false;
             }
-            // Other bytes are ignored — the classifier already filtered to valid CSI.
         }
 
         // Final parameter (CSI sequences end the param run before the final byte).

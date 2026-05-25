@@ -582,7 +582,7 @@ public class VtInputInterpreterTests
         Assert.Equal(KeyModifiers.Control, k.Modifiers);
         Assert.Equal(KeyEventKind.Down, k.Kind);
         Assert.Equal(";", TextOf(k));
-        Assert.Equal((uint)';', k.RawCode);
+        Assert.Equal(';', k.RawCode);
     }
 
     [Fact]

@@ -161,6 +161,7 @@ public static class PngDecoder
                     break;
                 }
 
+                // ReSharper disable once RedundantEmptySwitchSection
                 default:
                 {
                     // Ancillary chunks (lowercase first letter) — safe to ignore. Critical

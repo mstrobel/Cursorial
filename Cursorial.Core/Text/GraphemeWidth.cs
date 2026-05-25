@@ -10,7 +10,7 @@ namespace Cursorial.Text;
 /// <para>
 /// "Width" is the number of monospace cells the terminal allocates when rendering the text:
 /// 0 for combining marks and zero-width characters, 1 for ordinary printable characters, 2 for
-/// East Asian wide / fullwidth glyphs and most emoji. A <see cref="StringWidth(string)"/> call
+/// East Asian wide / fullwidth glyphs and most emoji. A <see cref="StringWidth(ReadOnlySpan{char})"/> call
 /// iterates grapheme clusters (via <see cref="StringInfo"/>) so emoji-with-modifiers and other
 /// multi-codepoint glyphs are measured as a single unit.
 /// </para>

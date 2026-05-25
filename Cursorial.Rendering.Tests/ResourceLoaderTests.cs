@@ -30,7 +30,7 @@ public class ResourceLoaderTests
 
         Assert.NotNull(bytes);
         // Every FLF file starts with the "flf2a" signature.
-        Assert.Equal((byte) 'f', bytes![0]);
+        Assert.Equal((byte) 'f', bytes[0]);
         Assert.Equal((byte) 'l', bytes[1]);
         Assert.Equal((byte) 'f', bytes[2]);
     }

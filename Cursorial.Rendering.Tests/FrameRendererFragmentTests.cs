@@ -77,9 +77,9 @@ public class FrameRendererFragmentTests
         var output = Render(r, buffer);
 
         // Note: \x1b7 is greedy and parses as one char (U+01B7). Use  for explicit ESC.
-        int saveIdx = output.IndexOf("7");
-        int fragIdx = output.IndexOf("FRAG");
-        int restoreIdx = output.IndexOf("8");
+        int saveIdx = output.IndexOf("7", StringComparison.Ordinal);
+        int fragIdx = output.IndexOf("FRAG", StringComparison.Ordinal);
+        int restoreIdx = output.IndexOf("8", StringComparison.Ordinal);
 
         Assert.True(saveIdx >= 0, "DECSC must appear before the fragment payload.");
         Assert.True(fragIdx > saveIdx, "Fragment body must appear between DECSC and DECRC.");

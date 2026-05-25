@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>

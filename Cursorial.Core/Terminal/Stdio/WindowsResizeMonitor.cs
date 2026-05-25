@@ -154,6 +154,8 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
     private static partial bool GetConsoleScreenBufferInfo(IntPtr hConsoleOutput,
                                                            out CONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
 
+    // ReSharper disable InconsistentNaming
+
     [StructLayout(LayoutKind.Sequential)]
     private struct COORD
     {
@@ -179,4 +181,6 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         public SMALL_RECT srWindow;
         public COORD dwMaximumWindowSize;
     }
+
+    // ReSharper restore InconsistentNaming
 }

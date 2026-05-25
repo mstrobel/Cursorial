@@ -391,7 +391,7 @@ static async Task DemoTextSizingAsync()
     Console.WriteLine("Text-sizing demo. Press Enter to return; Ctrl+C also works.");
     Console.WriteLine();
 
-    var (session, screen, renderer, style, palette, capabilities) = await PrepareDemo();
+    var (session, _, _, _, palette, capabilities) = await PrepareDemo();
     
     await using var ds = session;
     using var dp = palette;
@@ -473,8 +473,6 @@ static async Task WriteSizedAsync(
     var prefix = VtOutputSequences.KittyTextSizing.Prefix;
     var terminator = VtOutputSequences.KittyTextSizing.StringTerminator;
 
-    // ReSharper disable RedundantAssignment
-    
     int total = prefix.Length + metadataBytes.Length + 1 + textBytes.Length + terminator.Length;
     var dest = writer.GetSpan(total);
     int i = 0;
@@ -700,9 +698,6 @@ static async Task DemoFormatAsync()
     ScreenWriter.WriteEnterAlternateScreen(writer);
     SgrEncoder.WriteReset(writer);
     await writer.FlushAsync();
-
-    int cols = Math.Max(20, Console.WindowWidth);
-    int rows = Math.Max(8, Console.WindowHeight);
 
     var doc = BuildFormattingShowcase(style);
     var formatter = new TextFormatter { Trim = TextTrimming.WordEllipsis };
@@ -1043,7 +1038,7 @@ static async Task DemoPaletteAsync()
 {
     Console.WriteLine("Palette demo. Opening alt screen — press q or Ctrl+C to exit.");
 
-    var (session, buffer, renderer, style, palette, capabilities) = await PrepareDemo();
+    var (session, buffer, renderer, style, palette, _) = await PrepareDemo();
 
     await using var ds = session;
     using var dp = palette;
@@ -1053,9 +1048,6 @@ static async Task DemoPaletteAsync()
     ScreenWriter.WriteEnterAlternateScreen(writer);
     SgrEncoder.WriteReset(writer);
     await writer.FlushAsync();
-
-    int cols = Math.Max(20, Console.WindowWidth);
-    int rows = Math.Max(8, Console.WindowHeight);
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
     using var stopCts = new CancellationTokenSource();
@@ -1199,13 +1191,12 @@ static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, 
     int gridTop = 2;
 
     int rowsAvailable = Math.Max(0, buffer.Rows - gridTop - 1);
-    int maxGridRows = Math.Max(1, rowsAvailable / cellHeight);
     int gridRows = (palette.Count + colsAvailable - 1) / colsAvailable;
 
     if (gridRows * cellHeight > rowsAvailable)
     {
         cellHeight = 1;
-        maxGridRows = Math.Max(1, rowsAvailable);
+        var maxGridRows = Math.Max(1, rowsAvailable);
         gridRows = Math.Min((palette.Count + colsAvailable - 1) / colsAvailable, maxGridRows);
     }
 
@@ -1244,7 +1235,6 @@ static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, 
                     buffer.Set(hx + i, cellY, hex[i].ToString(), cellStyle);
             }
 
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
             if (cellHeight >= 2 && cellY + 1 < buffer.Rows)
             {
                 string label = idx.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -1340,9 +1330,6 @@ static async Task DemoImageAsync(string argument)
     ScreenWriter.WriteEnterAlternateScreen(writer);
     SgrEncoder.WriteReset(writer);
     await writer.FlushAsync();
-
-    int cols = Math.Max(20, Console.WindowWidth);
-    int rows = Math.Max(8, Console.WindowHeight);
 
     var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
     using var stopCts = new CancellationTokenSource();

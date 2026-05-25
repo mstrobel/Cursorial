@@ -15,11 +15,12 @@ namespace Cursorial.Output;
 /// protocol is honored by Kitty, Ghostty, and Foot; other terminals strip the OSC silently.
 /// </para>
 /// <para>
-/// <b>Stack semantics.</b> Kitty maintains a per-terminal pointer-shape stack. <see cref="WriteSet"/>
-/// replaces the current shape without touching the stack — the right primitive for cursor
-/// changes driven by hover state. <see cref="WritePush"/> / <see cref="WritePop"/> are the
-/// matched-pair form, useful when an application needs to temporarily override the shape and
-/// later restore whatever the surrounding code had set (e.g., a modal dialog that shows wait
+/// <b>Stack semantics.</b> Kitty maintains a per-terminal pointer-shape stack.
+/// <see cref="WriteSet(IBufferWriter&lt;byte&gt;, MouseCursorShape)"/> replaces the current
+/// shape without touching the stack — the right primitive for cursor changes driven by hover
+/// state. <see cref="WritePush(IBufferWriter&lt;byte&gt;, MouseCursorShape)"/> / <see cref="WritePop"/>
+/// are the matched-pair form, useful when an application needs to temporarily override the shape
+/// and later restore whatever the surrounding code had set (e.g., a modal dialog that shows wait
 /// during a long operation, then restores the prior shape on dismiss). Pushes and pops should
 /// be balanced.
 /// </para>

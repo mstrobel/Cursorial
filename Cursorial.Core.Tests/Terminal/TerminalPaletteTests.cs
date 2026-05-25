@@ -5,6 +5,8 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Terminal;
 
+// ReSharper disable AccessToDisposedClosure
+
 namespace Cursorial.Tests.Terminal;
 
 public class TerminalPaletteTests
@@ -192,7 +194,7 @@ public class TerminalPaletteTests
 
         var result = await queryTask;
         Assert.NotNull(result);
-        Assert.Equal(ColorKind.Rgb, result!.Value.Kind);
+        Assert.Equal(ColorKind.Rgb, result.Value.Kind);
         Assert.Equal(0xAB, result.Value.Red);
         Assert.Equal(0xCD, result.Value.Green);
         Assert.Equal(0xEF, result.Value.Blue);
@@ -235,7 +237,7 @@ public class TerminalPaletteTests
 
         var result = await queryTask;
         Assert.NotNull(result);
-        Assert.Equal(0xFF, result!.Value.Red);
+        Assert.Equal(0xFF, result.Value.Red);
         Assert.Equal(0x00, result.Value.Green);
         Assert.Equal(0x88, result.Value.Blue);
     }
@@ -364,11 +366,11 @@ public class TerminalPaletteTests
         var sink = new InMemoryOutputByteSink();
         using var palette = new TerminalPalette(sink, CapsWith(true, defaultColorReset: true));
 
-        Action callPalette = () => InvokeSetDefault(palette, method, Color.FromPalette(5));
-        Action callDefault = () => InvokeSetDefault(palette, method, Color.Default);
+        void CallPalette() => InvokeSetDefault(palette, method, Color.FromPalette(5));
+        void CallDefault() => InvokeSetDefault(palette, method, Color.Default);
 
-        Assert.Throws<ArgumentException>(callPalette);
-        Assert.Throws<ArgumentException>(callDefault);
+        Assert.Throws<ArgumentException>((Action) CallPalette);
+        Assert.Throws<ArgumentException>((Action) CallDefault);
     }
 
     [Theory]

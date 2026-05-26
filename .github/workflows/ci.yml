@@ -1,0 +1,81 @@
+# Continuous-integration workflow — runs build + test on every push to main and on every
+# pull request, across all three target operating systems.
+#
+# The matrix lets `[WindowsFact]` / `[UnixFact]`-gated tests execute on their actual platform:
+# each runner runs `dotnet test`; the attributes skip the wrong-OS tests and execute the rest.
+# Without the matrix, OS-specific tests would never run anywhere — they'd be skipped on
+# whichever single platform CI used.
+#
+# Failure isolation: fail-fast is OFF so a Windows-only regression doesn't mask
+# Linux / macOS results (or vice versa). Useful for diagnosing platform-specific bugs.
+#
+# Concurrency: a new push to a branch cancels any in-progress CI run on the same ref. Cuts
+# runner minutes on rapid push sequences without giving up the latest commit's verification.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      # Enables MSBuild's deterministic-source-paths behavior — strips machine-local prefixes
+      # from embedded PDB paths. Matters less for CI than for the publish workflow but cheap
+      # and keeps the two workflows behaviorally consistent.
+      ContinuousIntegrationBuild: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # Reads the pinned 10.x feature-band version + rollForward policy from global.json.
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: >-
+          dotnet test
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --logger "trx;LogFileName=test-results-${{ matrix.os }}.trx"
+          --results-directory TestResults
+
+      # Upload TRX results so a failing CI run leaves enough breadcrumbs to diagnose without
+      # re-running. The if: always() ensures upload happens even if the test step failed.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/
+          retention-days: 14

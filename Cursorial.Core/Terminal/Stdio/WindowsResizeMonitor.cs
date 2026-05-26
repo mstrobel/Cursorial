@@ -14,8 +14,8 @@ namespace Cursorial.Terminal.Stdio;
 /// <b>Why polling and not <c>ReadConsoleInput</c>.</b> Windows reports buffer-size changes as
 /// <c>WINDOW_BUFFER_SIZE_EVENT</c> records that <c>ReadConsoleInput</c> drains from the console
 /// input queue. But our happy-path session also reads the input stream via the
-/// <see cref="StreamInputByteSource"/> wrapper, and the two consumers can't both drain the
-/// same input queue without coordination (whoever reads first gets the event; the other
+/// <see cref="WindowsConsoleInputByteSource"/> wrapper, and the two consumers can't both drain
+/// the same input queue without coordination (whoever reads first gets the event; the other
 /// blocks indefinitely). Polling <c>GetConsoleScreenBufferInfo</c> on a background task is
 /// independent of the input pipeline, costs about one syscall every 100 ms (negligible), and
 /// has at-most-100-ms latency which is well below the perception threshold for a resize.

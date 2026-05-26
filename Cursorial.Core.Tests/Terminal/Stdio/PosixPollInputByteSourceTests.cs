@@ -11,7 +11,7 @@ namespace Cursorial.Tests.Terminal.Stdio;
 /// </summary>
 public partial class PosixPollInputByteSourceTests
 {
-    [Fact]
+    [UnixFact]
     public async Task PauseAsync_StopsBytesFromReachingReader_UntilHandleDisposed()
     {
         if (!IsPosix()) return;
@@ -62,7 +62,7 @@ public partial class PosixPollInputByteSourceTests
         }
     }
 
-    [Fact]
+    [UnixFact]
     public async Task PauseAsync_OverlappingHandles_PumpResumesOnlyAfterAllDisposed()
     {
         if (!IsPosix()) return;
@@ -105,7 +105,7 @@ public partial class PosixPollInputByteSourceTests
         }
     }
 
-    [Fact]
+    [UnixFact]
     public async Task PauseScope_DoubleDispose_DoesNotDoubleDecrement()
     {
         if (!IsPosix()) return;
@@ -144,7 +144,7 @@ public partial class PosixPollInputByteSourceTests
         }
     }
 
-    [Fact]
+    [UnixFact]
     public async Task DisposeAsync_WhilePaused_UnblocksPumpAndCompletes()
     {
         if (!IsPosix()) return;
@@ -167,7 +167,7 @@ public partial class PosixPollInputByteSourceTests
         }
     }
 
-    [Fact]
+    [UnixFact]
     public async Task PauseAsync_AfterDispose_Throws()
     {
         if (!IsPosix()) return;

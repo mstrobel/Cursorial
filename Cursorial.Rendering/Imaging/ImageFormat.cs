@@ -1,4 +1,4 @@
-namespace Cursorial.Rendering.Fragments;
+namespace Cursorial.Rendering.Imaging;
 
 /// <summary>
 /// Encoding of an <see cref="ImageData"/> payload. Used by image fragments to fill in the

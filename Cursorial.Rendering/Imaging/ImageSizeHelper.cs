@@ -1,4 +1,4 @@
-namespace Cursorial.Rendering.Fragments;
+namespace Cursorial.Rendering.Imaging;
 
 internal static class ImageSizeHelper
 {

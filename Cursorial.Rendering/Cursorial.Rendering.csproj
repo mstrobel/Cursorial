@@ -30,5 +30,4 @@
         <EmbeddedResource Include="Fonts\Embedded\roman.flf"            LogicalName="Fonts/Embedded/roman.flf" />
         <EmbeddedResource Include="Fonts\Embedded\small-slant.flf"      LogicalName="Fonts/Embedded/small-slant.flf" />
     </ItemGroup>
-
 </Project>

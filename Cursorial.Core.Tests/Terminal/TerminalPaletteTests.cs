@@ -88,7 +88,7 @@ public class TerminalPaletteTests
         palette.Set(7, Color.FromRgb(0x12, 0x34, 0x56));
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]4;7;rgb:1212/3434/5656\x1b\a", ascii);
+        Assert.Equal("\x1b]4;7;rgb:1212/3434/5656\x1b\\", ascii);
         Assert.Contains((byte) 7, palette.ModifiedIndices);
     }
 
@@ -113,7 +113,7 @@ public class TerminalPaletteTests
         palette.Reset(7);
 
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
-        Assert.Equal("\x1b]104;7\x1b\a", ascii);
+        Assert.Equal("\x1b]104;7\x1b\\", ascii);
         Assert.Empty(palette.ModifiedIndices);
     }
 
@@ -130,7 +130,7 @@ public class TerminalPaletteTests
         palette.ResetAll();
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]104\x1b\a\x1b]110\x1b\a\x1b]111\x1b\a\x1b]112\x1b\a", ascii);
+        Assert.Equal("\x1b]104\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\", ascii);
         Assert.Empty(palette.ModifiedIndices);
     }
 
@@ -153,7 +153,7 @@ public class TerminalPaletteTests
         // Expect a single OSC 104 with all indices listed (the order within HashSet isn't
         // guaranteed; verify each index appears).
         Assert.StartsWith("\x1b]104;", ascii);
-        Assert.EndsWith("\x1b\a", ascii);
+        Assert.EndsWith("\x1b\\", ascii);
         Assert.Contains(";1", ascii);
         Assert.Contains(";7", ascii);
         Assert.Contains(";42", ascii);
@@ -275,7 +275,7 @@ public class TerminalPaletteTests
         palette.SetForeground(Color.FromRgb(0x12, 0x34, 0x56));
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]10;rgb:1212/3434/5656\x1b\a", ascii);
+        Assert.Equal("\x1b]10;rgb:1212/3434/5656\x1b\\", ascii);
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class TerminalPaletteTests
         palette.SetBackground(Color.FromRgb(0xAA, 0xBB, 0xCC));
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]11;rgb:aaaa/bbbb/cccc\x1b\a", ascii);
+        Assert.Equal("\x1b]11;rgb:aaaa/bbbb/cccc\x1b\\", ascii);
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public class TerminalPaletteTests
         palette.SetCursor(Color.FromRgb(0xDE, 0xAD, 0xBE));
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Equal("\x1b]12;rgb:dede/adad/bebe\x1b\a", ascii);
+        Assert.Equal("\x1b]12;rgb:dede/adad/bebe\x1b\\", ascii);
     }
 
     [Fact]
@@ -313,7 +313,7 @@ public class TerminalPaletteTests
         palette.ResetForeground();
 
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
-        Assert.Equal("\x1b]110\x1b\a", ascii);
+        Assert.Equal("\x1b]110\x1b\\", ascii);
 
         // After explicit reset Dispose should not re-emit OSC 110.
         palette.Dispose();
@@ -332,7 +332,7 @@ public class TerminalPaletteTests
         palette.ResetBackground();
 
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
-        Assert.Equal("\x1b]111\x1b\a", ascii);
+        Assert.Equal("\x1b]111\x1b\\", ascii);
 
         palette.Dispose();
         var disposeBytes = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
@@ -350,7 +350,7 @@ public class TerminalPaletteTests
         palette.ResetCursor();
 
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
-        Assert.Equal("\x1b]112\x1b\a", ascii);
+        Assert.Equal("\x1b]112\x1b\\", ascii);
 
         palette.Dispose();
         var disposeBytes = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
@@ -407,9 +407,9 @@ public class TerminalPaletteTests
         palette.Dispose();
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Contains("\x1b]110\x1b\a", ascii);
-        Assert.Contains("\x1b]111\x1b\a", ascii);
-        Assert.Contains("\x1b]112\x1b\a", ascii);
+        Assert.Contains("\x1b]110\x1b\\", ascii);
+        Assert.Contains("\x1b]111\x1b\\", ascii);
+        Assert.Contains("\x1b]112\x1b\\", ascii);
     }
 
     [Fact]
@@ -424,7 +424,7 @@ public class TerminalPaletteTests
         palette.Dispose();
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
-        Assert.Contains("\x1b]111\x1b\a", ascii);
+        Assert.Contains("\x1b]111\x1b\\", ascii);
         Assert.DoesNotContain("\x1b]110", ascii);
         Assert.DoesNotContain("\x1b]112", ascii);
     }
@@ -443,7 +443,7 @@ public class TerminalPaletteTests
         // ResetAll itself emits the OSC 110 / 111 / 112 trio via WriteResetAll.
         palette.ResetAll();
         var resetAllAscii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
-        Assert.Equal("\x1b]104\x1b\a\x1b]110\x1b\a\x1b]111\x1b\a\x1b]112\x1b\a", resetAllAscii);
+        Assert.Equal("\x1b]104\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\", resetAllAscii);
 
         // Dispose should now write nothing — every modification flag was cleared.
         palette.Dispose();

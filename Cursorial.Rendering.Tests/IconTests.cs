@@ -3,6 +3,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Imaging;
 
 namespace Cursorial.Tests.Rendering;
 

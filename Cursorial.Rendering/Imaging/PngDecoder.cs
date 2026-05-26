@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 
-namespace Cursorial.Rendering.Fragments;
+namespace Cursorial.Rendering.Imaging;
 
 /// <summary>
 /// A decoded raster image — RGBA bytes laid out row-major (4 bytes per pixel).

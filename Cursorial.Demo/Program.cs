@@ -10,7 +10,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
-using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Imaging;
 using Cursorial.Rendering.Text;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
@@ -918,18 +918,17 @@ static RichText BuildFormattingShowcase(in Style defaultStyle = default)
     // [content=name/]. The PNG paths use embedded resources; Icon falls back to its glyph
     // when the negotiated terminal can't render images, so the markup is portable.
     var assembly = Assembly.GetExecutingAssembly();
-    var iconStyle = Style.Default.WithBackground(Color.FromRgb(40, 52, 87));
 
     var contentRegistry = new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase)
                           {
                               ["settings"] = Icon.FromEmbedded(assembly, "Icons/settings.png", "⚙️ ",
-                                                               fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+                                                               renderSize: new Size(2, 0)),
                               ["download"] = Icon.FromEmbedded(assembly, "Icons/download.png", "⬇️ ",
-                                                               fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
+                                                               renderSize: new Size(2, 0)),
                               ["calendar"] = Icon.FromEmbedded(assembly, "Icons/calendar.png", "📆 ",
-                                                               fallbackStyle: iconStyle, renderSize: new Size(2, 0)),
-                              ["power"] = Icon.FromEmbedded(assembly, "Icons/power.png", "⚡ ",
-                                                            fallbackStyle: iconStyle, renderSize: new Size(2, 0))
+                                                               renderSize: new Size(2, 0)),
+                              ["power"] = Icon.FromEmbedded(assembly, "Icons/power.png", "⚡️",
+                                                            renderSize: new Size(2, 0))
                           };
 
     var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = defaultStyle };

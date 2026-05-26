@@ -2,6 +2,7 @@ using System.Buffers;
 
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
+using Cursorial.Rendering.Imaging;
 
 namespace Cursorial.Rendering.Fragments;
 

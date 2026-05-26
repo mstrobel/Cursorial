@@ -60,7 +60,7 @@ public static class MedianCutQuantizer
         {
             var alpha = rgbaPixels[i * 4 + 3];
 
-            if (alpha is 0)
+            if (alpha <= 127)
             {
                 // Replace transparent pixels with the transparent color key.
                 rgb[i * 3 + 0] = tck.R;

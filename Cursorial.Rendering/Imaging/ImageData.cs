@@ -1,4 +1,4 @@
-namespace Cursorial.Rendering.Fragments;
+namespace Cursorial.Rendering.Imaging;
 
 /// <summary>
 /// An encoded image plus the cell footprint it should occupy on the terminal. Carries the raw

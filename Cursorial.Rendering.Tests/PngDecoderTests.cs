@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Buffers.Binary;
 
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Imaging;
 
 namespace Cursorial.Tests.Rendering;
 

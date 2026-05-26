@@ -194,6 +194,6 @@ public static class VtOutputSequences
         public static ReadOnlySpan<byte> ResetCursorPrefix => "\x1b]112"u8;
 
         /// <summary><c>ESC \a or \x7</c> — String Terminator (ST).</summary>
-        public static ReadOnlySpan<byte> StringTerminator => "\x1b\a"u8;
+        public static ReadOnlySpan<byte> StringTerminator => "\x1b\\"u8;
     }
 }

@@ -38,7 +38,7 @@ public readonly record struct Size(int Columns, int Rows)
     /// <returns>A string representing the dimensions of the Size instance in terms of columns and rows.</returns>
     public override string ToString()
     {
-        return $"({Columns}×{Rows})";
+        return $"Size({Columns}×{Rows})";
     }
 
     /// <summary>

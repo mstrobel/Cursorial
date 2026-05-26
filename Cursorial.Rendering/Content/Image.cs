@@ -1,6 +1,7 @@
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Imaging;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Rendering.Content;
@@ -35,6 +36,8 @@ namespace Cursorial.Rendering.Content;
 public class Image : FragmentContent
 {
     private readonly ImageData? _data;
+    private (int Width, int Height)? _resolvedSourcePixelSize;
+    private DecodedImage? _resampledImage;
 
     /// <summary>Construct an image content from the supplied data.</summary>
     public Image(ImageData? data, in Style placeholderStyle = default, string? placeholderText = null)
@@ -62,7 +65,7 @@ public class Image : FragmentContent
     /// <summary>The cell size the image paints into.</summary>
     public Size RenderSize { get; }
 
-    /// <summary>The image payload + cell footprint.</summary>
+    /// <summary>The image payload and cell footprint.</summary>
     public ImageData? Data => _data;
 
     /// <summary>Style applied to the placeholder rectangle when no graphics protocol is supported.</summary>
@@ -92,36 +95,16 @@ public class Image : FragmentContent
 
     protected Size MeasureImage(Size availableSpace, OutputCapabilities capabilities, out (int Width, int Height) pixelSize)
     {
-        var cellPixels = (Width: capabilities.Window.CellPixelWidth, Height: capabilities.Window.CellPixelHeight);
-        var cellRatio = (double?) capabilities.Window.CellPixelWidth / capabilities.Window.CellPixelHeight ?? 2.0;
+        // Every protocol — including Sixel — funnels through the same measurement path now that
+        // we own a resampler. Previously Sixel had its own branch that computed a "natural"
+        // footprint from source pixels ÷ cell pixels because we couldn't honor a requested
+        // cell footprint without scaling; CreateFragment now resamples the decoded RGBA to the
+        // target pixel dimensions, so the measurement can match the requested size like the
+        // Kitty / iTerm2 paths do.
+        pixelSize = _resolvedSourcePixelSize ?? ImageSizeHelper.DecodeSize(_data!.Bytes.Span, _data.Format);
+        _resolvedSourcePixelSize ??= pixelSize;
 
-        pixelSize = ImageSizeHelper.DecodeSize(_data!.Bytes.Span, _data.Format);
-        
-        //
-        // HACK: Special code path for Sixel graphics, for which we don't support scaling at the moment.
-        //
-        if (capabilities is { Graphics: { KittyGraphics: false, ITerm2InlineImages: false, Sixel: true } })
-        {
-            if (cellPixels is ({} cpWidth, _))
-            {
-                var columns = (int) Math.Round((double) pixelSize.Width / cpWidth);
-                var naturalSize = new Size(columns, (int) Math.Round(columns * cellRatio));
-
-                //
-                // TODO: We need to decide on a default behavior when an image doesn't fit in the provided bounds.
-                //       Do we scale it down, overpaint, or attempt to clip it?
-                //
-                
-                // if (naturalSize.Columns <= availableSpace.Columns && naturalSize.Rows <= availableSpace.Rows)
-                    return naturalSize;
-            }
-
-            // Sixel doesn't support scaling at the moment.
-            return Size.Empty;
-        }
- 
         var baseSize = ResolveBaseSize(_data?.RequestedSize, RenderSize);
-
         return ResolveRenderSize(baseSize, new Rect(0, 0, availableSpace), pixelSize, capabilities);
     }
 
@@ -131,40 +114,48 @@ public class Image : FragmentContent
         if (capabilities.Graphics is {KittyGraphics: false, ITerm2InlineImages: false, Sixel: false})
             return null;
 
-        var baseSize = ResolveBaseSize(_data?.RequestedSize, RenderSize);
+        var data = Data;
+        var baseSize = ResolveBaseSize(data?.RequestedSize, RenderSize);
 
         // No bytes → no transmittable payload, regardless of capability. This is the case
         // Icon hits when its resource URI didn't resolve: it constructs an Image with empty
         // bytes plus the configured fallback glyph, expecting the placeholder path. Without
         // this guard, a graphics-capable terminal would receive an empty fragment.
-        if (_data?.Bytes.IsEmpty is not false) return null;
+        if (data?.Bytes.IsEmpty is not false) return null;
 
-        var pixelSize = ImageSizeHelper.DecodeSize(_data.Bytes.Span, _data.Format);
-        var effectiveSize = ResolveRenderSize(baseSize, bounds, pixelSize, capabilities);
+        var effectiveSize = MeasureImage(bounds.Size, capabilities, out var pixelSize);
         
         // // Kitty first — supports PNG natively, has the most predictable cell-footprint semantics.
-        if (capabilities.Graphics.KittyGraphics && _data.Format == ImageFormat.Png)
-            return new KittyImageFragment(_data, effectiveSize);
+        if (capabilities.Graphics.KittyGraphics && data.Format == ImageFormat.Png)
+            return new KittyImageFragment(data, effectiveSize);
 
         // iTerm2 second — accepts PNG / JPEG / GIF; format hint passes through unchanged.
         if (capabilities.Graphics.ITerm2InlineImages)
-            return new ITerm2ImageFragment(_data, effectiveSize, pixelSize);
+            return new ITerm2ImageFragment(data, effectiveSize, pixelSize);
 
-        // Sixel third — PNG only (we don't decode JPEG / GIF). PNG path: decode to RGBA, quantize
-        // to a 256-color palette, encode the Sixel envelope. Heavier than Kitty / iTerm2 because
-        // we own the rasterizer, but it's the broadest fallback across legacy terminal emulators.
-        if (capabilities.Graphics.Sixel && _data.Format == ImageFormat.Png)
+        // Sixel third — PNG only (we don't decode JPEG / GIF). PNG path: decode to RGBA, scale
+        // to the target pixel dimensions, quantize to a 256-color palette, encode the Sixel
+        // envelope. Heavier than Kitty / iTerm2 because we own the rasterizer AND the scaler,
+        // but it's the broadest fallback across legacy terminal emulators.
+        if (capabilities.Graphics.Sixel && data.Format == ImageFormat.Png && !effectiveSize.IsEmpty)
         {
             try
             {
-                // TODO: Fix this shite once we implement scaling for Sixel.
-                effectiveSize = DesiredSize ?? /* HACK! Should not calling Measure() be an error? */ MeasureOverride(bounds.Size, capabilities, out _);
+                var decoded = _resampledImage ?? PngDecoder.Decode(data.Bytes.Span);
+                var (targetPxW, targetPxH) = ResolveTargetPixelSize(effectiveSize, capabilities);
 
-                if (effectiveSize.IsEmpty is false)
+                // Resample only when dimensions differ — source-matching targets get a direct
+                // pass-through. Lanczos-3 is the high-quality default; for icon / UI content
+                // the slight ringing it introduces is invisible at terminal scales, and detail
+                // preservation beats Mitchell or Triangle at 2× / 3× downscales (common when
+                // HiDPI source assets land on a SD terminal).
+                if (decoded.Width != targetPxW || decoded.Height != targetPxH)
                 {
-                    var decoded = PngDecoder.Decode(_data.Bytes.Span);
-                    return new SixelFragment(decoded.Rgba, pixelSize.Width, pixelSize.Height, effectiveSize, imageData: _data);
+                    decoded = ImageResampler.Resample(decoded, targetPxW, targetPxH);
+                    _resampledImage = decoded;
                 }
+
+                return new SixelFragment(decoded.Rgba, decoded.Width, decoded.Height, effectiveSize, imageData: data);
             }
             catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
             {
@@ -173,6 +164,23 @@ public class Image : FragmentContent
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Resolve the pixel dimensions a Sixel rendition should occupy from the resolved cell
+    /// footprint. When the terminal's negotiated cell-pixel size is unknown (older terminals or
+    /// transports that don't expose it), falls back to a typical-modern-terminal 10×20 cell —
+    /// the resampled image still has sane dimensions; the worst case is a slight aspect-ratio
+    /// mismatch versus the actual cell shape, which is recoverable by a re-render once the
+    /// cell-pixel info becomes available.
+    /// </summary>
+    private static (int Width, int Height) ResolveTargetPixelSize(Size cellSize, OutputCapabilities capabilities)
+    {
+        int cellPxW = capabilities.Window.CellPixelWidth ?? 10;
+        int cellPxH = capabilities.Window.CellPixelHeight ?? 20;
+        int w = Math.Max(1, cellSize.Columns * cellPxW);
+        int h = Math.Max(1, cellSize.Rows * cellPxH);
+        return (w, h);
     }
 
     private static Size ResolveBaseSize(Size? requestedSize, Size renderSize)

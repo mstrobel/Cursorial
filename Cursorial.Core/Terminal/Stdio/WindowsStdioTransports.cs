@@ -237,11 +237,11 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         // mode: in raw / VT input mode the handle signals when any byte is ready (microsecond
         // WFMO → ReadFile cycle); in cooked mode it signals only on a complete line. If the
         // pump enters ReadFile after the mode flip to cooked, ReadFile blocks for an Enter
-        // press and SetEvent on the cancel handle can't wake it — dispose hangs. Stopping the
+        // press, and SetEvent on the cancel handle can't wake it — dispose hangs. Stopping the
         // source pump while the mode is still raw keeps the pump in WFMO, where the cancel
         // event reliably breaks it out.
         //
-        // Sink dispose runs before the mode flip too so any pending output is flushed while
+        // Sink dispose runs before the mode flip too, so any pending output is flushed while
         // the terminal is still in VT-processing mode — protects against (in principle —
         // empty in practice) trailing SGR / cursor bytes being rendered literally.
         //
@@ -276,6 +276,7 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     /// console's input queue. The Windows analogue of POSIX <c>tcflush(fd, TCIFLUSH)</c>.</summary>
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    // ReSharper disable once UnusedMethodReturnValue.Local
     private static partial bool FlushConsoleInputBuffer(IntPtr hConsoleHandle);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

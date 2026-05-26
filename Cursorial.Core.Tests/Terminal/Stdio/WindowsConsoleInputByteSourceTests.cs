@@ -10,7 +10,7 @@ namespace Cursorial.Tests.Terminal.Stdio;
 /// because tests can't reliably acquire one in an automated environment.
 ///
 /// <para>
-/// <b>Pipe-vs-console semantics.</b> A synchronous pipe handle behaves differently from a
+/// <b>Pipe-vs.-console semantics.</b> A synchronous pipe handle behaves differently from a
 /// console handle under <c>WaitForMultipleObjects</c> — pipe handles are essentially
 /// "always-signaled" for WFMO, so the pump can end up blocked inside <c>ReadFile</c> waiting
 /// for data rather than parked in WFMO. On a real console handle, the pump is reliably parked
@@ -55,8 +55,8 @@ public partial class WindowsConsoleInputByteSourceTests
     [WindowsFact]
     public async Task DisposeAsync_AfterEofFromWriter_CompletesPromptly()
     {
-        // The pump enters ReadFile and blocks waiting for pipe data. Closing the write end
-        // signals EOF to the read end; the pump's ReadFile returns 0 bytes and the pump exits.
+        // The pump enters ReadFile and blocks waiting for pipe data. Closing the writer end
+        // signals EOF to the read end; the pump's ReadFile returns 0 bytes, and the pump exits.
         // Disposal completes without needing any cancellation primitive against the handle.
         var (readEnd, writeEnd) = CreatePipe();
         try
@@ -105,18 +105,25 @@ public partial class WindowsConsoleInputByteSourceTests
                 await source.DisposeAsync();
             }
 
-            // After dispose, a direct ReadFile on the read end should return EOF (0 bytes)
-            // — NOT ERROR_OPERATION_ABORTED. If dispose called CancelIoEx(handle, NULL) the
-            // cancel state could surface here as ABORTED instead of the clean EOF the closed
-            // write end should produce.
+            // After dispose, a direct ReadFile on the read end should either succeed with 0
+            // bytes (EOF-style clean close) or fail with ERROR_BROKEN_PIPE (109) — both are
+            // the documented "writer is gone, no data" outcomes for anonymous pipes. What it
+            // must NOT do is fail with ERROR_OPERATION_ABORTED (995). That code surfaces only
+            // when an earlier CancelIoEx(handle, NULL) has poisoned the handle for subsequent
+            // readers; observing it here would mean the source's dispose path silently re-
+            // introduced the keystroke-eating bug that motivated removing CancelIoEx in the
+            // first place.
             Span<byte> buf = stackalloc byte[1];
             bool ok = ReadFile(readEnd, ref buf[0], 1, out uint read, IntPtr.Zero);
             int err = ok ? 0 : Marshal.GetLastWin32Error();
 
-            Assert.True(ok,
-                $"ReadFile after dispose returned false (Win32 error {err}); expected clean EOF, not " +
-                "ERROR_OPERATION_ABORTED (995) which would indicate dispose poisoned the handle.");
-            Assert.Equal(0u, read);
+            const int errorBrokenPipe = 109;
+            const int errorOperationAborted = 995;
+
+            bool cleanClose = (ok && read == 0) || (!ok && err == errorBrokenPipe);
+            Assert.True(cleanClose,
+                $"Post-dispose ReadFile result was not a clean closure: ok={ok}, read={read}, " +
+                $"Win32 error {err}. {(err == errorOperationAborted ? "ERROR_OPERATION_ABORTED — handle was poisoned by CancelIoEx." : "Unexpected error code.")}");
         }
         finally
         {
@@ -141,7 +148,7 @@ public partial class WindowsConsoleInputByteSourceTests
                 var pause = await source.PauseAsync();
 
                 // During pause: the kernel pipe buffers the byte; the source's pump is parked
-                // (on the run event) so the byte never reaches the source's PipeReader.
+                // (on the run event), so the byte never reaches the source's PipeReader.
                 WriteByte(writeEnd, 0x42);
 
                 var raceTask = ReadOneByteAsync(source).AsTask();

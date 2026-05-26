@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 
@@ -5,22 +6,31 @@ using Cursorial.Input;
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 
+using Microsoft.Extensions.Time.Testing;
+
 // ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.Input;
 
 public class KeyReleaseSynthesizerTests
 {
-    // Real-time tests run with a 50 ms up-timeout, a 150 ms repeat-timeout, and a 400 ms
-    // collection window — short enough to keep test runtime in the hundreds-of-ms but long
-    // enough that scheduler jitter doesn't cause flakes. If these become flaky in CI we can
-    // swap to FakeTimeProvider from Microsoft.Extensions.TimeProvider.Testing.
+    // Timing constants used across the suite. The synthesizer's internal Task.Delay calls run
+    // against a FakeTimeProvider, so these are advanced manually via fakeTime.Advance(...) —
+    // no wall-clock dependency. The values are kept human-readable so the test assertions
+    // about "fire at upTimeout" / "release after repeatTimeout" still line up with the real
+    // production defaults.
     private static readonly TimeSpan UpTimeout = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan RepeatTimeout = TimeSpan.FromMilliseconds(150);
-    private static readonly TimeSpan CollectionWindow = TimeSpan.FromMilliseconds(400);
 
-    private static KeyReleaseSynthesizer NewSynth(IAsyncInputDevice inner) =>
-        new(inner, upTimeout: UpTimeout, repeatTimeout: RepeatTimeout);
+    // Wall-clock budget for the per-event synchronization in Collector.WaitForCountAtLeastAsync.
+    // The synthesizer's logical timing is all fake; this is just "how long do we wait for the
+    // pump's background task to consume an already-enqueued event and write to the channel."
+    // 5 seconds is huge compared to the real cost (microseconds) but covers any plausible CI
+    // pause without false-negative timeouts.
+    private static readonly TimeSpan PumpSyncTimeout = TimeSpan.FromSeconds(5);
+
+    private static KeyReleaseSynthesizer NewSynth(IAsyncInputDevice inner, TimeProvider timeProvider) =>
+        new(inner, upTimeout: UpTimeout, repeatTimeout: RepeatTimeout, timeProvider: timeProvider);
 
     private static KeyEvent KeyDown(Key key,
                                     KeyModifiers mods = KeyModifiers.None,
@@ -51,34 +61,27 @@ public class KeyReleaseSynthesizerTests
     private static KeyEvent CharDown(string ch) => KeyDown(Key.Character, text: ch);
     private static KeyEvent CharUp(string ch) => KeyUp(Key.Character, text: ch);
 
-    private static async Task<List<InputEvent>> CollectAsync(KeyReleaseSynthesizer sync,
-                                                             TimeSpan window,
-                                                             CancellationToken cancellationToken = default)
-    {
-        var collected = new List<InputEvent>();
-        using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        windowCts.CancelAfter(window);
-
-        try
-        {
-            await foreach (var evt in sync.ReadAllAsync(windowCts.Token).ConfigureAwait(false))
-                collected.Add(evt);
-        }
-        catch (OperationCanceledException) { /* expected when the window expires or caller cancels */ }
-
-        return collected;
-    }
+    // ---- Timing-driven tests (FakeTimeProvider) -------------------------------------
 
     [Fact]
     public async Task SingleKeyDown_AfterIdleTimeout_EmitsSynthesizedUp()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
         device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Fire the up timer.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(2);
 
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         Assert.Equal(2, collected.Count);
 
         var down = Assert.IsType<KeyEvent>(collected[0]);
@@ -94,24 +97,38 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task AutoRepeatPresses_ResetTimer_OnlyOneSynthesizedUp()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        // Three rapid down events; each should re-arm the timer. After they stop arriving,
-        // exactly one synthesized release fires (not three).
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            await Task.Delay(20);
-            device.Enqueue(KeyDown(Key.Character, isRepeat: true));
-            await Task.Delay(20);
-            device.Enqueue(KeyDown(Key.Character, isRepeat: true));
-        });
+        // Three rapid down events. Each must be observed by the pump (synchronously visible
+        // in collector.Snapshot()) before the next so the held-keys dictionary updates atop
+        // the prior entry — that's how the synthesizer recognizes them as continuations of
+        // the same hold rather than independent presses.
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // No wall-clock advance between presses — the synthesizer's logical clock is the
+        // FakeTimeProvider, which hasn't moved. The three downs all land while the synth
+        // believes they're at the same logical moment, which is fine because the held-keys
+        // dictionary disambiguates by version.
+        device.Enqueue(KeyDown(Key.Character, isRepeat: true));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        // 3 down events + 1 synthesized up = 4 total
-        Assert.Equal(4, collected.Count);
+        device.Enqueue(KeyDown(Key.Character, isRepeat: true));
+        await collector.WaitForCountAtLeastAsync(3);
+
+        // Advance past the up timeout — exactly one synth up should fire (for the latest
+        // armed timer; the prior two are superseded via version mismatch).
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(4);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
+        Assert.Equal(4, collected.Count); // 3 downs + 1 synthesized up
         var ups = collected.OfType<KeyEvent>().Where(k => k.Kind == KeyEventKind.Up).ToList();
         Assert.Single(ups);
         Assert.True(ups[0].Synthesized);
@@ -120,20 +137,26 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task RealUpFromInnerDevice_CancelsPendingSynthesis()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            // Real release from a terminal that does report key-up; should cancel the timer
-            // so we don't emit a duplicate synthesized release.
-            await Task.Delay(10);
-            device.Enqueue(KeyUp(Key.Character));
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Real release from a terminal that does report key-up — should cancel the synth
+        // timer so we don't double-emit.
+        device.Enqueue(KeyUp(Key.Character));
+        await collector.WaitForCountAtLeastAsync(2);
 
+        // Advance past the up timeout — the cancelled timer must NOT fire.
+        fakeTime.Advance(UpTimeout + TimeSpan.FromMilliseconds(10));
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         Assert.Equal(2, collected.Count);
         var down = Assert.IsType<KeyEvent>(collected[0]);
         Assert.Equal(KeyEventKind.Down, down.Kind);
@@ -146,18 +169,24 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task MultipleHeldKeys_EachGetsOwnSynthesizedUp()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(() =>
-        {
-            device.Enqueue(KeyDown(Key.LeftArrow));
-            device.Enqueue(KeyDown(Key.RightArrow));
-        });
+        device.Enqueue(KeyDown(Key.LeftArrow));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(KeyDown(Key.RightArrow));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Both keys' up timers fire on the same advance.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(4);
 
-        // 2 downs + 2 synthesized ups
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var ups = collected.OfType<KeyEvent>()
                            .Where(k => k.Kind == KeyEventKind.Up)
                            .ToList();
@@ -167,11 +196,14 @@ public class KeyReleaseSynthesizerTests
         Assert.All(ups, u => Assert.True(u.Synthesized));
     }
 
+    // ---- Functional tests (no timing dependency) ----------------------------------
+
     [Fact]
     public async Task NonKeyEvent_PassesThroughUntouched()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
 
         var paste = new PasteEvent
                     {
@@ -181,7 +213,10 @@ public class KeyReleaseSynthesizerTests
         device.Enqueue(paste);
         device.Complete();
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        var collected = new List<InputEvent>();
+        await foreach (var evt in sync.ReadAllAsync().ConfigureAwait(false))
+            collected.Add(evt);
+
         Assert.Single(collected);
         Assert.Same(paste, collected[0]);
     }
@@ -189,22 +224,19 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task InnerCompletes_StreamCompletesCleanly()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
 
         device.Enqueue(KeyDown(Key.Character));
         device.Complete();
 
-        // Don't pass a cancellation timeout — completion of the inner device must end our
-        // stream on its own.
+        // No time advance — the synth Up timer is armed but never fires, so the consumer sees
+        // exactly the inner's stream (one Down) before the channel completes.
         var collected = new List<InputEvent>();
         await foreach (var evt in sync.ReadAllAsync())
             collected.Add(evt);
 
-        // We saw the down. The synthesized up fires after the inner completes (the timer was
-        // armed before completion). Outer enumeration ends when the channel completes —
-        // which happens when the inner pump finishes AND any pending writes from the release
-        // timer are done.
         Assert.NotEmpty(collected);
         Assert.Equal(KeyEventKind.Down, ((KeyEvent) collected[0]).Kind);
     }
@@ -225,11 +257,8 @@ public class KeyReleaseSynthesizerTests
                      };
         using var sync_disposed_ignored = new SyncWrap(device);
 
-        // The synthesizer fills in both up/down distinction and repeat inference, so it
-        // reports both as true even when the inner doesn't.
         Assert.True(sync_disposed_ignored.Synthesizer.Capabilities.Keyboard.DistinguishesKeyUpDown);
         Assert.True(sync_disposed_ignored.Synthesizer.Capabilities.Keyboard.ReportsRepeats);
-        // Other keyboard caps pass through unchanged.
         Assert.True(sync_disposed_ignored.Synthesizer.Capabilities.Keyboard.TextInput);
         Assert.False(sync_disposed_ignored.Synthesizer.Capabilities.Keyboard.DetailedModifiers);
     }
@@ -264,22 +293,33 @@ public class KeyReleaseSynthesizerTests
     {
         // Down at t=0 → synth Up fires at t=upTimeout (50 ms). Between then and the repeat
         // timeout (150 ms) the key is "recently held": a fresh Down in that window still
-        // counts as a continuation rather than a new activation. Consumer sees Down(initial),
-        // synth Up, Down(IsRepeat=true) — the latter at t≈100 ms in this test.
+        // counts as a continuation rather than a new activation.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            // Wait long enough for synth Up to fire (> 50 ms), but stay inside the repeat
-            // window (< 150 ms).
-            await Task.Delay(90);
-            device.Enqueue(KeyDown(Key.Character));
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Fire the up timer.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(2);
 
+        // Half-way through the recently-held window — still tracked. Second Down lands as a
+        // continuation.
+        fakeTime.Advance(TimeSpan.FromMilliseconds(40));
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(3);
+
+        // Fire the second up timer.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(4);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
@@ -288,11 +328,6 @@ public class KeyReleaseSynthesizerTests
         Assert.True(downs[1].IsRepeat);
         Assert.Equal(2, downs[1].RepeatCount);
 
-        // Two synth Ups land in the collection window: one fires at upTimeout after the
-        // first Down, the other fires at upTimeout after the second Down. Their ordering
-        // relative to the Down stream is: Down(initial), synth Up #1, Down(repeat),
-        // synth Up #2. The mid-stream Up is the whole point of the recently-held window —
-        // we already told the consumer the key released, then a continuation arrived.
         var sequence = collected.OfType<KeyEvent>()
                                 .Select(k => (k.Kind, k.Synthesized, k.IsRepeat))
                                 .ToList();
@@ -310,18 +345,28 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task UpTimeoutShorterThanRepeatTimeout_BothFireOnLongIdle()
     {
-        // For a key held briefly then released (no further activity), the consumer sees
-        // exactly one synth Up — emitted at upTimeout. The repeat timer's only effect after
-        // upTimeout is to remove the key from internal tracking, which the consumer doesn't
-        // observe.
+        // For a key held briefly with no further activity, the consumer sees exactly one
+        // synth Up — emitted at upTimeout. The repeat timer's effect after upTimeout is
+        // internal (forgetting the key) and not observable.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
         device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(2);
 
-        Assert.Equal(2, collected.Count); // Down + synth Up
+        // Advance the rest of the way past the repeat timeout. No new observable event.
+        fakeTime.Advance(RepeatTimeout);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
+        Assert.Equal(2, collected.Count);
         var up = Assert.IsType<KeyEvent>(collected[1]);
         Assert.Equal(KeyEventKind.Up, up.Kind);
         Assert.True(up.Synthesized);
@@ -353,13 +398,17 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task FirstPress_IsNotMarkedAsRepeat()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
 
         device.Enqueue(KeyDown(Key.Character));
         device.Complete();
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        var collected = new List<InputEvent>();
+        await foreach (var evt in sync.ReadAllAsync())
+            collected.Add(evt);
+
         var firstDown = collected.OfType<KeyEvent>().First(k => k.Kind == KeyEventKind.Down);
         Assert.False(firstDown.IsRepeat);
     }
@@ -367,19 +416,23 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task SecondPress_WhileHeld_MarkedAsRepeat()
     {
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            // Second press arrives while the first is still considered held (within the idle
-            // timeout) — the synthesizer infers auto-repeat and flips IsRepeat.
-            await Task.Delay(20);
-            device.Enqueue(KeyDown(Key.Character));
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Second press arrives while the first is still "held" (no time advance, definitely
+        // within the up-timeout window). The synthesizer infers auto-repeat.
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(2);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
@@ -393,23 +446,24 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task SuccessiveRepeats_RepeatCountIncrementsPerHold()
     {
-        // For a single hold (no intervening release), each subsequent press carries an
-        // incrementing RepeatCount: 1, 2, 3, 4 …
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            await Task.Delay(15);
-            device.Enqueue(KeyDown(Key.Character));
-            await Task.Delay(15);
-            device.Enqueue(KeyDown(Key.Character));
-            await Task.Delay(15);
-            device.Enqueue(KeyDown(Key.Character));
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(2);
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(3);
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(4);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
@@ -421,86 +475,96 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task RepeatCount_ResetsAfterRepeatTimeout()
     {
-        // The running count is per-hold. After the synthesizer's repeat timeout fires (the
-        // key transitions from recently-held to forgotten), the next press starts a fresh
-        // hold with RepeatCount=1. Wait past the longer repeat timeout — waiting only past
-        // the up timeout would leave the key recently-held, and the next Down would still be
-        // marked as a repeat.
+        // After the synthesizer's repeat timeout fires (key transitions held → recently-held
+        // → forgotten), the next press starts fresh with RepeatCount=1.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            await Task.Delay(15);
-            device.Enqueue(KeyDown(Key.Character)); // RepeatCount=2
-            // Wait past the repeat timeout (150 ms) — synth Up fires at 50, forget at 150.
-            await Task.Delay(220);
-            device.Enqueue(KeyDown(Key.Character)); // fresh hold, RepeatCount=1
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(KeyDown(Key.Character)); // RepeatCount=2 while held
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, TimeSpan.FromMilliseconds(500));
+        // Fire both timers. Up at upTimeout, forget at repeatTimeout. After this, the key is
+        // fully untracked.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(3); // synth Up
+        fakeTime.Advance(RepeatTimeout - UpTimeout + TimeSpan.FromMilliseconds(10));
+
+        device.Enqueue(KeyDown(Key.Character)); // fresh hold, RepeatCount=1
+        await collector.WaitForCountAtLeastAsync(4);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
         Assert.Equal(3, downs.Count);
         Assert.Equal(1, downs[0].RepeatCount);
         Assert.Equal(2, downs[1].RepeatCount);
-        Assert.Equal(1, downs[2].RepeatCount); // reset after the release
+        Assert.Equal(1, downs[2].RepeatCount);
         Assert.False(downs[2].IsRepeat);
     }
 
     [Fact]
     public async Task PressAfterRepeatTimeout_NotMarkedAsRepeat()
     {
-        // Once the synthesized release fires AND the repeat-timeout window elapses, the key
-        // is fully forgotten. A subsequent press is a fresh activation, not a repeat. Waiting
-        // only past the up-timeout would leave the key in the "recently held" state, where a
-        // new Down would still count as a repeat — so wait past the longer repeat timeout.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(KeyDown(Key.Character));
-            // Wait past the repeat timeout (150 ms) — synth Up fires at 50 ms, key transitions
-            // to recently-held, then forget timer fires at 150 ms.
-            await Task.Delay(220);
-            device.Enqueue(KeyDown(Key.Character));
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Fire up timer, then forget timer — key fully untracked.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(2);
+        fakeTime.Advance(RepeatTimeout - UpTimeout + TimeSpan.FromMilliseconds(10));
+
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(3);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
         Assert.Equal(2, downs.Count);
         Assert.False(downs[0].IsRepeat);
-        Assert.False(downs[1].IsRepeat); // fresh activation
+        Assert.False(downs[1].IsRepeat);
     }
 
     [Fact]
     public async Task DifferentCharacters_NotMarkedAsRepeat()
     {
-        // Regression: every printable key shares Key.Character — 'a' and 'b' have the same
-        // Key enum value, distinguished only by Text. If the synthesizer keyed its held-keys
-        // dictionary on Key alone, pressing 'a' then 'b' would falsely treat 'b' as an auto-
-        // repeat of 'a' (and the synthesized release for 'a' would emit with Text="b").
+        // 'a' and 'b' share Key.Character; the held-keys dictionary discriminates by Text.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(() =>
-        {
-            device.Enqueue(CharDown("a"));
-            device.Enqueue(CharDown("b"));
-        });
+        device.Enqueue(CharDown("a"));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(CharDown("b"));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
         Assert.Equal(2, downs.Count);
         Assert.False(downs[0].IsRepeat);
-        Assert.False(downs[1].IsRepeat); // different character, fresh activation
+        Assert.False(downs[1].IsRepeat);
         Assert.Equal(1, downs[0].RepeatCount);
         Assert.Equal(1, downs[1].RepeatCount);
     }
@@ -508,18 +572,23 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task DifferentCharacters_EachGetOwnSynthesizedRelease()
     {
-        // Each character's hold should produce its own synthesized release carrying its own
-        // Text, not a release whose Text bleeds from another character's tracking entry.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
         device.Enqueue(CharDown("a"));
+        await collector.WaitForCountAtLeastAsync(1);
         device.Enqueue(CharDown("b"));
-        // Don't complete the device — completing it tears down the pump and the channel,
-        // which racing release timers can't write to. The CollectionWindow elapsing is what
-        // ends the test's enumeration.
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(4); // both Ups
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var ups = collected.OfType<KeyEvent>()
                            .Where(k => k.Kind == KeyEventKind.Up)
                            .ToList();
@@ -532,19 +601,20 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task SameCharacterPressedTwice_IsMarkedAsRepeat()
     {
-        // The flip side of DifferentCharacters: pressing 'a' twice in quick succession IS an
-        // auto-repeat. The discriminator must consider Text equality.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(CharDown("a"));
-            await Task.Delay(15);
-            device.Enqueue(CharDown("a"));
-        });
+        device.Enqueue(CharDown("a"));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(CharDown("a"));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var aDowns = collected.OfType<KeyEvent>()
                               .Where(k => k.Kind == KeyEventKind.Down && k.Text.Span.SequenceEqual("a"))
                               .ToList();
@@ -557,27 +627,32 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task RealUpFromInner_WithMatchingText_ClearsExactHold()
     {
-        // When the inner protocol carries Text on the up event (Kitty keyboard, Win32 input),
-        // the synthesizer should clear precisely that hold and leave other held characters
-        // alone.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(CharDown("a"));
-            device.Enqueue(CharDown("b"));
-            await Task.Delay(10);
-            device.Enqueue(CharUp("a")); // real release for 'a' only
-        });
+        device.Enqueue(CharDown("a"));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(CharDown("b"));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        // Real release for 'a' only.
+        device.Enqueue(CharUp("a"));
+        await collector.WaitForCountAtLeastAsync(3);
+
+        // Fire timers — 'a' is gone, only 'b' produces a synth Up.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(4);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var ups = collected.OfType<KeyEvent>()
                            .Where(k => k.Kind == KeyEventKind.Up)
                            .ToList();
 
-        // Expect: one real up for 'a' (not synthesized), plus one synthesized up for 'b'
-        // after its idle timeout (since 'b' was never released by the inner).
         var realA = ups.SingleOrDefault(u => !u.Synthesized && u.Text.Span.SequenceEqual("a"));
         Assert.NotNull(realA);
         var synthB = ups.SingleOrDefault(u => u.Synthesized && u.Text.Span.SequenceEqual("b"));
@@ -587,30 +662,34 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task RealUpFromInner_WithoutText_ClearsAllCharacterHolds()
     {
-        // Some protocols may report Key.Character up events without populating Text. In that
-        // case we can't tell which character was released — defensively clear every held
-        // character entry to avoid wedged tracking. Non-character holds are left untouched.
+        // Ambiguous release (Key.Character with empty Text) clears every character hold.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(async () =>
-        {
-            device.Enqueue(CharDown("a"));
-            device.Enqueue(CharDown("b"));
-            device.Enqueue(KeyDown(Key.LeftArrow));
-            await Task.Delay(10);
-            device.Enqueue(KeyUp(Key.Character)); // ambiguous release — clears 'a' and 'b'
-        });
+        device.Enqueue(CharDown("a"));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(CharDown("b"));
+        await collector.WaitForCountAtLeastAsync(2);
+        device.Enqueue(KeyDown(Key.LeftArrow));
+        await collector.WaitForCountAtLeastAsync(3);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        device.Enqueue(KeyUp(Key.Character)); // ambiguous — clears 'a' and 'b'
+        await collector.WaitForCountAtLeastAsync(4);
+
+        // Fire timers. LeftArrow still has a pending up; 'a' and 'b' don't.
+        fakeTime.Advance(UpTimeout);
+        await collector.WaitForCountAtLeastAsync(5);
+
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var ups = collected.OfType<KeyEvent>()
                            .Where(k => k.Kind == KeyEventKind.Up)
                            .ToList();
 
-        // The ambiguous release itself is forwarded (we don't drop inner events). LeftArrow
-        // is a non-character hold, so it gets its own synthesized release once the timeout
-        // fires. The 'a' and 'b' character holds are forgotten by the ambiguous release —
-        // no synthesized character ups should appear.
         Assert.Contains(ups, u => u.Key == Key.LeftArrow && u.Synthesized);
         Assert.DoesNotContain(ups, u => u.Key == Key.Character && u.Synthesized);
     }
@@ -618,17 +697,20 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task DifferentKey_NotMarkedAsRepeat()
     {
-        // Repeats are per-key. Pressing 'a' then 'b' while 'a' is held doesn't make 'b' a repeat.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice();
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(() =>
-        {
-            device.Enqueue(KeyDown(Key.LeftArrow));
-            device.Enqueue(KeyDown(Key.RightArrow));
-        });
+        device.Enqueue(KeyDown(Key.LeftArrow));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(KeyDown(Key.RightArrow));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var rightDown = collected.OfType<KeyEvent>()
                                  .First(k => k.Key == Key.RightArrow && k.Kind == KeyEventKind.Down);
         Assert.False(rightDown.IsRepeat);
@@ -637,9 +719,7 @@ public class KeyReleaseSynthesizerTests
     [Fact]
     public async Task InnerAlreadyReportsRepeats_NotOverridden()
     {
-        // When the inner device has KeyboardCapabilities.ReportsRepeats=true (Kitty keyboard,
-        // Win32 input mode), the synthesizer leaves IsRepeat alone — we never want to fight
-        // a protocol that's reporting the real state.
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice
                      {
                          Capabilities = InputCapabilities.None with
@@ -651,31 +731,30 @@ public class KeyReleaseSynthesizerTests
                                                 TextInput: true),
                                         },
                      };
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
+        var collector = new Collector(sync);
 
-        _ = Task.Run(() =>
-        {
-            // Inner sends two presses, neither marked as repeat. With ReportsRepeats=true on
-            // the inner caps, the synthesizer trusts the inner's classification — both arrive
-            // with IsRepeat=false even though the second is for the same held key.
-            device.Enqueue(KeyDown(Key.Character));
-            device.Enqueue(KeyDown(Key.Character));
-        });
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(1);
+        device.Enqueue(KeyDown(Key.Character));
+        await collector.WaitForCountAtLeastAsync(2);
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        device.Complete();
+        await collector.PumpTask;
+
+        var collected = collector.Snapshot();
         var downs = collected.OfType<KeyEvent>()
                              .Where(k => k.Kind == KeyEventKind.Down)
                              .ToList();
         Assert.Equal(2, downs.Count);
         Assert.False(downs[0].IsRepeat);
-        Assert.False(downs[1].IsRepeat); // synthesizer respected the inner's classification
+        Assert.False(downs[1].IsRepeat);
     }
 
     [Fact]
     public async Task InnerMarkedAsRepeat_PreservedThroughSynthesizer()
     {
-        // If the inner DOES set IsRepeat (e.g., Kitty keyboard repeat event), the synthesizer
-        // forwards it untouched even when its own held-key tracking would say "not held yet."
+        var fakeTime = new FakeTimeProvider();
         var device = new TestInputDevice
                      {
                          Capabilities = InputCapabilities.None with
@@ -687,17 +766,72 @@ public class KeyReleaseSynthesizerTests
                                                 TextInput: true),
                                         },
                      };
-        await using var sync = NewSynth(device);
+        await using var sync = NewSynth(device, fakeTime);
 
         device.Enqueue(KeyDown(Key.Character, isRepeat: true));
         device.Complete();
 
-        var collected = await CollectAsync(sync, CollectionWindow);
+        var collected = new List<InputEvent>();
+        await foreach (var evt in sync.ReadAllAsync())
+            collected.Add(evt);
+
         var down = Assert.IsType<KeyEvent>(collected[0]);
         Assert.True(down.IsRepeat);
     }
 
     // ---- Test helpers ----
+
+    /// <summary>
+    /// Background collector that drains the synthesizer's output into a list, exposing both
+    /// a snapshot of what's been observed so far and a "wait until at least N events have
+    /// arrived" primitive for synchronization between test steps. The wait is a bounded
+    /// poll — the synth's logical clock is fake, so the only thing we're waiting for is the
+    /// background pump task to commit an event to the channel and our collector loop to read
+    /// it. That's microseconds in practice; the timeout is generous to absorb CI scheduling
+    /// hiccups without false negatives.
+    /// </summary>
+    private sealed class Collector
+    {
+        private readonly List<InputEvent> _events = new();
+        private readonly object _lock = new();
+
+        public Task PumpTask { get; }
+
+        public Collector(KeyReleaseSynthesizer sync)
+        {
+            PumpTask = Task.Run(async () =>
+            {
+                await foreach (var evt in sync.ReadAllAsync().ConfigureAwait(false))
+                {
+                    lock (_lock) _events.Add(evt);
+                }
+            });
+        }
+
+        public IReadOnlyList<InputEvent> Snapshot()
+        {
+            lock (_lock) return _events.ToList();
+        }
+
+        public async Task WaitForCountAtLeastAsync(int count)
+        {
+            var sw = Stopwatch.StartNew();
+            while (sw.Elapsed < PumpSyncTimeout)
+            {
+                lock (_lock)
+                {
+                    if (_events.Count >= count) return;
+                }
+                await Task.Delay(2).ConfigureAwait(false);
+            }
+
+            int actual;
+            lock (_lock) actual = _events.Count;
+            throw new TimeoutException(
+                $"Expected at least {count} events from the synthesizer; only observed {actual} " +
+                $"within {PumpSyncTimeout}.");
+        }
+    }
 
     private sealed class TestInputDevice : IAsyncInputDevice
     {
@@ -723,7 +857,7 @@ public class KeyReleaseSynthesizerTests
         }
     }
 
-    /// <summary>RAII wrapper that uses synchronous disposal — useful in tests that don't need await.</summary>
+    /// <summary>RAII wrapper for tests that don't need await for disposal.</summary>
     private sealed class SyncWrap : IDisposable
     {
         public KeyReleaseSynthesizer Synthesizer { get; }

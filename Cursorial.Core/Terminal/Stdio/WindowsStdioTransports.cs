@@ -14,13 +14,25 @@ namespace Cursorial.Terminal.Stdio;
 /// stdin and stdout are byte streams that carry VT sequences in both directions.
 /// </summary>
 /// <remarks>
-/// We wrap stdin / stdout as <see cref="FileStream"/> over a non-owning
-/// <see cref="SafeFileHandle"/> rather than calling <see cref="Console.OpenStandardInput()"/> /
-/// <see cref="Console.OpenStandardOutput()"/>. The same .NET Console subsystem that manipulates
-/// termios on Unix similarly manages console-mode state on Windows — accessing those streams
-/// can re-enable line / echo modes behind our backs and revert the raw configuration we just
-/// applied via <c>SetConsoleMode</c>. The same fix applies on both platforms: bypass
-/// <see cref="Console"/> entirely.
+/// <para>
+/// <b>Bypassing the .NET Console subsystem.</b> We wrap stdout as <see cref="FileStream"/>
+/// over a non-owning <see cref="SafeFileHandle"/> rather than calling
+/// <see cref="Console.OpenStandardOutput()"/>. The .NET Console subsystem manages
+/// console-mode state on Windows — accessing it can re-enable line / echo modes behind our
+/// backs and revert the raw configuration we just applied via <c>SetConsoleMode</c>. The same
+/// fix applies on both platforms: bypass <see cref="Console"/> entirely.
+/// </para>
+/// <para>
+/// <b>Stdin source selection.</b> The stdin path is selected at <see cref="Open"/> time based
+/// on the handle's file type: a real console (<c>FILE_TYPE_CHAR</c>) goes through
+/// <see cref="WindowsConsoleInputByteSource"/>, which uses a <c>WaitForMultipleObjects</c>
+/// pattern that's cancellable on disposal. A non-console handle (pipe / disk / remote — seen
+/// under tmux, ssh, MSYS2, CI runners, or when stdin is otherwise redirected) falls back to
+/// the older <see cref="StreamInputByteSource"/> wrapping a <see cref="FileStream"/>. The
+/// fallback path retains the legacy "first keystroke after disposal can be swallowed" bug,
+/// because there's no console-style "input ready" signal to wait on for arbitrary
+/// pipes / streams.
+/// </para>
 /// </remarks>
 internal sealed partial class WindowsStdioTransports : IStdioTransports
 {
@@ -38,11 +50,14 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
     private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
 
+    // GetFileType return values used to pick the stdin source.
+    private const uint FILE_TYPE_CHAR = 0x0002;
+
     private readonly IntPtr _stdinHandle;
     private readonly IntPtr _stdoutHandle;
     private readonly uint _originalStdinMode;
     private readonly uint _originalStdoutMode;
-    private readonly StreamInputByteSource _source;
+    private readonly IInputByteSource _source;
     private readonly StreamOutputByteSink _sink;
     private int _terminalRestored;
     private int _disposed;
@@ -52,7 +67,7 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         IntPtr stdoutHandle,
         uint originalStdinMode,
         uint originalStdoutMode,
-        StreamInputByteSource source,
+        IInputByteSource source,
         StreamOutputByteSink sink)
     {
         _stdinHandle = stdinHandle;
@@ -111,21 +126,38 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
             throw new InvalidOperationException($"SetConsoleMode failed for the console output handle (Win32 error {err}).");
         }
 
-        // Wrap stdin / stdout via FileStream(SafeFileHandle) — see remarks on the class for
-        // why we deliberately do NOT use Console.OpenStandardInput / Console.OpenStandardOutput.
-        // ownsHandle: false because these are process-global handles owned by the OS.
-        FileStream? stdinStream = null;
+        // Wrap stdout via FileStream(SafeFileHandle) — see the class remarks for why we
+        // deliberately do NOT use Console.OpenStandardOutput. ownsHandle: false because the
+        // standard output handle is process-global and owned by the OS.
         FileStream? stdoutStream = null;
+        FileStream? stdinStreamFallback = null;
+        IInputByteSource? source = null;
 
         try
         {
-            var stdinSafeHandle = new SafeFileHandle(stdinHandle, ownsHandle: false);
             var stdoutSafeHandle = new SafeFileHandle(stdoutHandle, ownsHandle: false);
-            stdinStream = new FileStream(stdinSafeHandle, FileAccess.Read);
             stdoutStream = new FileStream(stdoutSafeHandle, FileAccess.Write);
-
-            var source = new StreamInputByteSource(stdinStream);
             var sink = new StreamOutputByteSink(stdoutStream);
+
+            // Stdin source selection. The console-handle path uses
+            // WaitForMultipleObjects + ReadFile so disposal can wake the pump cleanly
+            // without leaving a blocked ReadFile to consume the user's next keystroke.
+            // Anything that isn't a real console (FILE_TYPE_PIPE under tmux / ssh / MSYS2 /
+            // a CI pipe, FILE_TYPE_DISK if stdin was redirected from a file, etc.) falls
+            // back to the stream-based source — same behavior as today, including the
+            // legacy zombie-read bug; non-console transports don't expose an "input ready"
+            // signal we could wait on instead.
+            uint stdinType = GetFileType(stdinHandle);
+            if (stdinType == FILE_TYPE_CHAR)
+            {
+                source = new WindowsConsoleInputByteSource(stdinHandle);
+            }
+            else
+            {
+                var stdinSafeHandle = new SafeFileHandle(stdinHandle, ownsHandle: false);
+                stdinStreamFallback = new FileStream(stdinSafeHandle, FileAccess.Read);
+                source = new StreamInputByteSource(stdinStreamFallback);
+            }
 
             return new WindowsStdioTransports(stdinHandle,
                                               stdoutHandle,
@@ -140,8 +172,15 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
             // Revert the console mode changes we made above, then surface the failure.
             try { SetConsoleMode(stdinHandle, originalStdinMode); } catch { /* best-effort */ }
             try { SetConsoleMode(stdoutHandle, originalStdoutMode); } catch { /* best-effort */ }
-            stdinStream?.Dispose();
             stdoutStream?.Dispose();
+            stdinStreamFallback?.Dispose();
+            // Best-effort dispose of a partially constructed console source so its cancel
+            // event handle and pump task don't leak.
+            if (source is IAsyncDisposable asyncDisposable)
+            {
+                try { asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+                catch { /* best-effort */ }
+            }
             throw;
             // @formatter:on
         }
@@ -193,6 +232,9 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial IntPtr GetStdHandle(int nStdHandle);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial uint GetFileType(IntPtr hFile);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

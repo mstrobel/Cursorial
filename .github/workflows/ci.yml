@@ -43,18 +43,13 @@ jobs:
       # from embedded PDB paths. Matters less for CI than for the publish workflow but cheap
       # and keeps the two workflows behaviorally consistent.
       ContinuousIntegrationBuild: 'true'
-      # Opt into Node 24 for the JavaScript-based actions (checkout, setup-dotnet, upload-artifact).
-      # The v4 actions still ship Node 20 bundles; this flag tells the runner to execute them
-      # under Node 24 instead. Removable once we bump to v5 of each action — both work the same.
-      # See https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           # Reads the pinned 10.x feature-band version + rollForward policy from global.json.
           global-json-file: global.json
@@ -79,7 +74,7 @@ jobs:
       # re-running. The if: always() ensures upload happens even if the test step failed.
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results-${{ matrix.os }}
           path: TestResults/

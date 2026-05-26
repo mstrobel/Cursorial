@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Source Link embeds the commit SHA + repo URL; fetch full history so the embedded
           # references resolve cleanly on consumers' debuggers.
@@ -61,7 +61,7 @@ jobs:
           echo "Publishing version: $VERSION"
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           # Reads the pinned 10.x version + rollForward policy from global.json.
           global-json-file: global.json
@@ -97,7 +97,7 @@ jobs:
       - name: Upload package artifact
         # Keeps the .nupkg + .snupkg around on the workflow run for 90 days, useful when
         # debugging a publish failure or wanting to inspect what was pushed.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nupkgs
           path: nupkgs/

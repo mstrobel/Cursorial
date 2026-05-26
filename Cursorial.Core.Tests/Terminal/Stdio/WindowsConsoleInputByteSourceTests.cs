@@ -7,15 +7,23 @@ namespace Cursorial.Tests.Terminal.Stdio;
 /// <summary>
 /// Integration tests for <see cref="WindowsConsoleInputByteSource"/> using Win32 anonymous
 /// pipes as the input transport. The tests use pipe handles rather than real console handles
-/// because tests can't reliably acquire one in an automated environment; the production code
-/// paths are exercised structurally the same way on a pipe, with one Win32-specific quirk —
-/// <c>WaitForMultipleObjects</c> on a synchronous pipe handle isn't a real "wait for input
-/// ready" the way it is on a console handle, so the pump can end up briefly blocked inside
-/// <c>ReadFile</c> rather than <c>WaitForMultipleObjects</c>. The source's <c>CancelIoEx</c>
-/// belt-and-braces during pause and dispose covers that case, which these tests verify.
+/// because tests can't reliably acquire one in an automated environment.
 ///
+/// <para>
+/// <b>Pipe-vs-console semantics.</b> A synchronous pipe handle behaves differently from a
+/// console handle under <c>WaitForMultipleObjects</c> — pipe handles are essentially
+/// "always-signaled" for WFMO, so the pump can end up blocked inside <c>ReadFile</c> waiting
+/// for data rather than parked in WFMO. On a real console handle, the pump is reliably parked
+/// in WFMO because the handle only signals when input bytes are actually ready. The tests
+/// work around the pipe difference by closing the write end before disposing the source — the
+/// resulting EOF unblocks the pump's ReadFile, which then exits cleanly. Production console
+/// behavior is verified by manual testing against the demo loop on real Windows consoles.
+/// </para>
+///
+/// <para>
 /// Windows-only; every test is gated on <see cref="WindowsFactAttribute"/> so the class can
 /// live in the cross-platform test project without affecting non-Windows runs.
+/// </para>
 /// </summary>
 public partial class WindowsConsoleInputByteSourceTests
 {
@@ -34,30 +42,29 @@ public partial class WindowsConsoleInputByteSourceTests
             }
             finally
             {
+                CloseHandle(writeEnd); // EOF — unblocks pump's ReadFile so dispose can exit cleanly
                 await source.DisposeAsync();
             }
         }
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
     [WindowsFact]
-    public async Task DisposeAsync_AbortsBlockedReadFile_AndCompletesPromptly()
+    public async Task DisposeAsync_AfterEofFromWriter_CompletesPromptly()
     {
-        // Create source with no data in the pipe. The pump immediately enters ReadFile and
-        // blocks waiting for input. DisposeAsync must wake it via CancelIoEx (the cancel
-        // event alone won't help because the pump isn't in WaitForMultipleObjects).
+        // The pump enters ReadFile and blocks waiting for pipe data. Closing the write end
+        // signals EOF to the read end; the pump's ReadFile returns 0 bytes and the pump exits.
+        // Disposal completes without needing any cancellation primitive against the handle.
         var (readEnd, writeEnd) = CreatePipe();
         try
         {
             var source = new WindowsConsoleInputByteSource(readEnd);
+            await Task.Delay(50); // let the pump enter ReadFile
 
-            // Give the pump a moment to actually enter ReadFile so we're exercising the
-            // CancelIoEx path, not just the "dispose before pump runs" trivial path.
-            await Task.Delay(50);
+            CloseHandle(writeEnd); // EOF
 
             var disposeTask = source.DisposeAsync().AsTask();
             await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
@@ -65,36 +72,55 @@ public partial class WindowsConsoleInputByteSourceTests
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
     [WindowsFact]
-    public async Task DisposeAsync_DoesNotConsumeBytesWrittenAfterDispose()
+    public async Task DisposeAsync_DoesNotPoisonReadHandle()
     {
-        // The core "zombie-read fix" property: bytes written to the handle AFTER the source
-        // is disposed must remain available for the next reader. A pre-fix
-        // PipeReader.Create(FileStream) chain would have a thread-pool worker stuck inside
-        // ReadFile that would consume the post-dispose byte and drop it on the floor.
+        // Regression test for the "CancelIoEx leaks abort state to the next reader" bug. The
+        // earlier dispose path called CancelIoEx(handle, NULL) as a belt-and-braces against
+        // a pump stuck in ReadFile. On modern Windows console handles that cancel state can
+        // persist into the next reader's ReadFile — the user's first post-dispose keystroke
+        // arrives as the wakeup for the aborted read and is consumed in the resolution.
+        // .NET Console's StreamReader treats ERROR_OPERATION_ABORTED as a retry-able
+        // zero-byte read, so the byte vanishes between us and the next ReadLine.
+        //
+        // After the fix, dispose performs no cancellation against the handle. A subsequent
+        // ReadFile on the same handle should succeed cleanly with whatever the pipe / console
+        // surfaces — not ERROR_OPERATION_ABORTED.
         var (readEnd, writeEnd) = CreatePipe();
         try
         {
             var source = new WindowsConsoleInputByteSource(readEnd);
-            await Task.Delay(50); // let the pump enter ReadFile
-            await source.DisposeAsync();
+            try
+            {
+                WriteByte(writeEnd, 0x41);
+                var b = await ReadOneByteAsync(source);
+                Assert.Equal((byte) 0x41, b);
+            }
+            finally
+            {
+                CloseHandle(writeEnd); // EOF for the pump
+                await source.DisposeAsync();
+            }
 
-            WriteByte(writeEnd, 0x55);
+            // After dispose, a direct ReadFile on the read end should return EOF (0 bytes)
+            // — NOT ERROR_OPERATION_ABORTED. If dispose called CancelIoEx(handle, NULL) the
+            // cancel state could surface here as ABORTED instead of the clean EOF the closed
+            // write end should produce.
+            Span<byte> buf = stackalloc byte[1];
+            bool ok = ReadFile(readEnd, ref buf[0], 1, out uint read, IntPtr.Zero);
+            int err = ok ? 0 : Marshal.GetLastWin32Error();
 
-            // Read directly from the pipe handle — the source's pump shouldn't have stolen
-            // this byte. If the fix is broken, ReadFile here would either block (the pump's
-            // zombie read got the byte) or return EOF.
-            byte b = ReadOneByteFromHandle(readEnd);
-            Assert.Equal((byte) 0x55, b);
+            Assert.True(ok,
+                $"ReadFile after dispose returned false (Win32 error {err}); expected clean EOF, not " +
+                "ERROR_OPERATION_ABORTED (995) which would indicate dispose poisoned the handle.");
+            Assert.Equal(0u, read);
         }
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
@@ -135,13 +161,13 @@ public partial class WindowsConsoleInputByteSourceTests
             }
             finally
             {
+                CloseHandle(writeEnd); // EOF — unblocks pump's ReadFile so dispose can exit
                 await source.DisposeAsync();
             }
         }
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
@@ -173,13 +199,13 @@ public partial class WindowsConsoleInputByteSourceTests
             }
             finally
             {
+                CloseHandle(writeEnd);
                 await source.DisposeAsync();
             }
         }
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
@@ -210,13 +236,13 @@ public partial class WindowsConsoleInputByteSourceTests
             }
             finally
             {
+                CloseHandle(writeEnd);
                 await source.DisposeAsync();
             }
         }
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
@@ -229,9 +255,8 @@ public partial class WindowsConsoleInputByteSourceTests
             var source = new WindowsConsoleInputByteSource(readEnd);
             _ = await source.PauseAsync();
 
-            // The pump is parked on the run event. Dispose must wake it without leaving an
-            // unfinished syscall (no in-flight ReadFile to abort, since pause already aborted
-            // any in-progress read) and without deadlocking on the run event.
+            // The pump is parked on the run event — no syscall in flight. Dispose just needs
+            // to set the run event so the pump wakes, observes the disposed flag, and exits.
             var disposeTask = source.DisposeAsync().AsTask();
             await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
         }
@@ -249,6 +274,8 @@ public partial class WindowsConsoleInputByteSourceTests
         try
         {
             var source = new WindowsConsoleInputByteSource(readEnd);
+
+            CloseHandle(writeEnd); // EOF so the idle pump exits cleanly on dispose
             await source.DisposeAsync();
 
             await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
@@ -257,7 +284,6 @@ public partial class WindowsConsoleInputByteSourceTests
         finally
         {
             CloseHandle(readEnd);
-            CloseHandle(writeEnd);
         }
     }
 
@@ -277,14 +303,6 @@ public partial class WindowsConsoleInputByteSourceTests
         byte local = b;
         if (!WriteFile(handle, ref local, 1, out uint written, IntPtr.Zero) || written != 1)
             throw new InvalidOperationException($"WriteFile failed (Win32 error {Marshal.GetLastWin32Error()}).");
-    }
-
-    private static byte ReadOneByteFromHandle(IntPtr handle)
-    {
-        Span<byte> buf = stackalloc byte[1];
-        if (!ReadFile(handle, ref buf[0], 1, out uint read, IntPtr.Zero) || read != 1)
-            throw new InvalidOperationException($"ReadFile failed (Win32 error {Marshal.GetLastWin32Error()}).");
-        return buf[0];
     }
 
     private static async ValueTask<byte> ReadOneByteAsync(WindowsConsoleInputByteSource source)

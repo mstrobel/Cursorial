@@ -34,11 +34,20 @@ namespace Cursorial.Terminal.Stdio;
 /// don't signal the handle, so they can't cause a spurious wake.
 /// </para>
 /// <para>
-/// <b>Belt-and-braces dispose.</b> In the unlikely event that <c>ReadFile</c> blocks despite
-/// the handle having been signaled (older Windows revisions, an exotic input record that
-/// translates to zero bytes), <c>DisposeAsync</c> additionally calls
-/// <c>CancelIoEx(handle, NULL)</c> to abort the in-flight read. <c>CancelIoEx</c> has worked
-/// against synchronous console I/O since Windows Vista.
+/// <b>Why dispose does NOT call CancelIoEx on the console handle.</b> The defensive instinct
+/// is to call <c>CancelIoEx(handle, NULL)</c> against the stdin handle as a belt-and-braces in
+/// case the pump is somehow inside <c>ReadFile</c> at dispose time. That call cancels ALL
+/// pending I/O on the handle from any thread in the process — including operations that
+/// .NET's <see cref="System.Console"/> subsystem will issue against the same process-global
+/// stdin handle for the next <see cref="System.Console.ReadLine"/> after the session ends. On
+/// modern Windows console handles, the cancel state can leak forward: the user's first
+/// keystroke after exit arrives as the wakeup for that aborted read and is consumed in the
+/// resolution, while .NET's <see cref="System.IO.StreamReader"/> treats the
+/// <c>ERROR_OPERATION_ABORTED</c> result as a retry-able zero-byte read. The user sees their
+/// first keystroke "swallowed." The cancel-event-based wake is sufficient on a real console
+/// handle precisely because the pump's WFMO → ReadFile cycle is microseconds: the pump is
+/// reliably parked in <c>WaitForMultipleObjects</c> when dispose runs, and <c>SetEvent</c>
+/// alone is enough to break it out.
 /// </para>
 /// <para>
 /// <b>Handle ownership.</b> The supplied stdin handle is not closed at disposal — it's
@@ -319,15 +328,29 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     {
         // @formatter:off
 
-        // Ordering matters — see the class remarks. Set the disposed flag FIRST so the pump
-        // observes it on any wake; then wake the pump from WaitForMultipleObjects; then
-        // CancelIoEx as a belt-and-braces against the edge case where the pump is inside
-        // ReadFile; then release the user-space pause park; then fail any in-flight pause TCS
-        // so callers don't hang.
+        // Ordering matters — set the disposed flag FIRST so the pump observes it on any wake;
+        // then wake the pump from WaitForMultipleObjects; then release the user-space pause
+        // park; then fail any in-flight pause TCS so callers don't hang.
+        //
+        // NOTE: We deliberately do NOT call CancelIoEx(_stdinHandle, IntPtr.Zero) here. On a
+        // real console handle (the FILE_TYPE_CHAR path that puts this class into play in
+        // production) the pump is essentially always parked in WaitForMultipleObjects when
+        // dispose runs — WFMO only signals when bytes are ready, so the WFMO → ReadFile cycle
+        // takes microseconds. SetEvent on _cancelEvent reliably wakes the pump out of WFMO and
+        // it exits before issuing another ReadFile.
+        //
+        // CancelIoEx(handle, NULL) cancels ALL pending I/O on the handle from any thread in
+        // the process, including operations that .NET's Console subsystem will eventually
+        // issue against the same process-global stdin handle. On modern Windows console
+        // handles the cancel state can leak into the next reader's first ReadFile — the
+        // user's first post-dispose keystroke arrives as the wakeup for that abort and is
+        // consumed in resolving it. .NET Console's StreamReader treats
+        // ERROR_OPERATION_ABORTED as a transient zero-byte read and retries, but the byte
+        // that resolved the cancellation is already gone. That's the "first keystroke after
+        // exit is swallowed" symptom this class was supposed to fix.
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         SetEvent(_cancelEvent);
-        CancelIoEx(_stdinHandle, IntPtr.Zero);
         _runEvent.Set();
 
         TaskCompletionSource? pendingPause;

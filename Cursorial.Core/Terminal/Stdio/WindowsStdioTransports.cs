@@ -232,12 +232,29 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        // Restore prior console modes BEFORE closing transports.
-        RestoreTerminalState();
-
+        // Order is load-bearing on Windows. The source pump uses WaitForMultipleObjects on the
+        // stdin handle, and the handle's signaled-state semantics change with the console
+        // mode: in raw / VT input mode the handle signals when any byte is ready (microsecond
+        // WFMO → ReadFile cycle); in cooked mode it signals only on a complete line. If the
+        // pump enters ReadFile after the mode flip to cooked, ReadFile blocks for an Enter
+        // press and SetEvent on the cancel handle can't wake it — dispose hangs. Stopping the
+        // source pump while the mode is still raw keeps the pump in WFMO, where the cancel
+        // event reliably breaks it out.
+        //
+        // Sink dispose runs before the mode flip too so any pending output is flushed while
+        // the terminal is still in VT-processing mode — protects against (in principle —
+        // empty in practice) trailing SGR / cursor bytes being rendered literally.
+        //
+        // RestoreTerminalState runs last because that's where FlushConsoleInputBuffer drains
+        // any input records still sitting in the conhost queue. The pump is gone by then, so
+        // anything in the queue (trailing protocol reports from the negotiator's disable
+        // sequences, plus anything the user has typed during the dispose window) is safely
+        // discarded before cooked mode takes over.
         // @formatter:off
-        try { await _sink.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
         try { await _source.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
+        try { await _sink.DisposeAsync().ConfigureAwait(false); }   catch { /* best-effort */ }
+
+        RestoreTerminalState();
         // @formatter:on
     }
 

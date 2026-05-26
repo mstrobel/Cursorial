@@ -108,7 +108,7 @@ jobs:
         uses: NuGet/login@v1
         id: nuget-login
         with:
-          user: mstrobel
+          user: mike.strobel
 
       - name: Push to nuget.org
         run: >-

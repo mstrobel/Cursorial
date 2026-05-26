@@ -191,7 +191,18 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         // Idempotent — guarded so signal-handler invocations don't run multiple times.
         if (Interlocked.Exchange(ref _terminalRestored, 1) != 0) return;
 
+        // Discard any input records still sitting in the console's input queue BEFORE
+        // restoring cooked mode. This mirrors the POSIX tcflush(0, TCIFLUSH) call: trailing
+        // protocol reports the terminal emitted in response to our opt-in-disable sequences
+        // (most visibly a Kitty key-release for whatever key exited the application, plus
+        // any final mouse / focus disable responses) can otherwise survive the
+        // raw → cooked transition. The leading ESC of an orphaned sequence enters the
+        // console's CSI parser in cooked mode and silently consumes whatever character the
+        // user types next — the "first keystroke after exit is swallowed" symptom.
+        // FlushConsoleInputBuffer is a no-op when the queue is already empty.
         // @formatter:off
+        try { FlushConsoleInputBuffer(_stdinHandle); } catch { /* best-effort */ }
+
         try { SetConsoleMode(_stdinHandle, _originalStdinMode); } catch { /* best-effort */ }
         try { SetConsoleMode(_stdoutHandle, _originalStdoutMode); } catch { /* best-effort */ }
         // @formatter:on
@@ -243,6 +254,12 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    /// <summary><c>FlushConsoleInputBuffer</c> — discard every input record currently in the
+    /// console's input queue. The Windows analogue of POSIX <c>tcflush(fd, TCIFLUSH)</c>.</summary>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool FlushConsoleInputBuffer(IntPtr hConsoleHandle);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

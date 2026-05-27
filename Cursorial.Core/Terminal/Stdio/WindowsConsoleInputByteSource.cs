@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Runtime.InteropServices;
 
@@ -6,131 +7,97 @@ using Cursorial.Input;
 namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
-/// Windows <see cref="IInputByteSource"/> that pumps bytes from a console input handle into a
-/// <see cref="System.IO.Pipelines.Pipe"/> using <c>WaitForMultipleObjects</c> with an
-/// auto-reset wakeup event. This is the Win32 analogue of the POSIX self-pipe / <c>poll(2)</c>
-/// pattern in <see cref="PosixPollInputByteSource"/>: disposal signals the event, the blocked
-/// <c>WaitForMultipleObjects</c> wakes immediately, and the pump exits without leaving a
-/// pending <c>ReadFile</c> in the console subsystem.
+/// Windows <see cref="IInputByteSource"/> that reads <c>INPUT_RECORD</c>s from a console input
+/// handle via <c>ReadConsoleInputW</c> and translates them locally to the VT byte sequences
+/// the rest of the framework's parser expects (Win32 Input Mode <c>CSI Vk;Sc;Uc;Kd;Cs;Rc_</c>
+/// for keyboard events, SGR mouse for mouse events, <c>CSI I</c> / <c>CSI O</c> for focus
+/// events). This is the same pattern crossterm, Terminal.Gui, and Consolonia all use; it
+/// deliberately bypasses the conhost VT byte-stream view that
+/// <c>ENABLE_VIRTUAL_TERMINAL_INPUT</c> would otherwise populate.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this exists.</b> The natural alternative — wrapping the stdin handle in a
-/// <see cref="FileStream"/> and using <c>PipeReader.Create(stream)</c> — has the same fatal
-/// flaw on Windows as the equivalent path does on POSIX. A blocked <c>ReadFile</c> against a
-/// console handle ignores .NET cancellation tokens; on disposal the managed pump task
-/// completes, but the underlying syscall stays blocked in a thread-pool worker, and the next
-/// keystroke the user types gets consumed by that zombie read and dropped. With the
-/// wait-then-read pattern there's no zombie because the pump blocks in <c>WaitForMultipleObjects</c>
-/// (cancellable via our event handle), not inside <c>ReadFile</c>.
+/// <b>Why not <c>ReadFile + ENABLE_VIRTUAL_TERMINAL_INPUT</c>.</b> The conhost-translated VT
+/// byte stream lives in a buffer adjacent to (but not the same as) the input-record queue.
+/// <c>FlushConsoleInputBuffer</c> drains the record queue but doesn't fully drain the
+/// translated byte view — leftover bytes (e.g., a partly-consumed Win32 Input Mode sequence
+/// from the last key the user pressed during a session) can survive into cooked mode, where
+/// the orphan ESC + CSI parameters confuse <see cref="Console.ReadLine"/>'s reader into
+/// consuming the user's first post-session keystroke. That's the "first keystroke after
+/// exit is swallowed" symptom — and it's fundamental to the ReadFile-on-VT-input pattern.
 /// </para>
 /// <para>
-/// <b>Signaling semantics.</b> With <c>ENABLE_VIRTUAL_TERMINAL_INPUT</c> set and line / echo /
-/// processed-input cleared (the mode the happy-path session applies), a console handle is
-/// signaled when the input-record queue contains records that meet the current input mode —
-/// in practice, key events that translate to VT byte sequences. Those bytes are available to
-/// <c>ReadFile</c> immediately when the handle signals, so the read returns quickly. Records
-/// that don't translate (e.g., <c>WINDOW_BUFFER_SIZE_EVENT</c>) don't satisfy the mode and
-/// don't signal the handle, so they can't cause a spurious wake.
+/// <b>What changes when we read INPUT_RECORDs instead.</b> Conhost never creates a VT
+/// byte-stream view (we don't set <c>ENABLE_VIRTUAL_TERMINAL_INPUT</c>), so there's no
+/// orphan buffer to leak. Disposal flushes the record queue with
+/// <c>FlushConsoleInputBuffer</c> and that's the entire input state — fully drained, fully
+/// clean for the next reader. The keystroke-eating bug can't happen because the storage
+/// that would have held the orphan bytes never exists in the first place.
 /// </para>
 /// <para>
-/// <b>Handle isolation via DuplicateHandle.</b> The constructor duplicates the supplied
-/// stdin handle and uses the duplicate for every <c>ReadFile</c> and <c>CancelIoEx</c> call
-/// the class makes. The original handle is left alone for the rest of the process —
-/// crucially the .NET <see cref="System.Console"/> subsystem, which reads from the same
-/// process-global stdin via its own <see cref="System.IO.StreamReader"/>. <c>CancelIoEx</c>
-/// targets a specific file handle (not the underlying kernel object), so cancelling our
-/// duplicate's in-flight reads doesn't leak any cancel state onto the original. Without
-/// this isolation, a <c>CancelIoEx</c> against the global stdin would queue an abort that
-/// the next reader's <c>ReadFile</c> would surface as <c>ERROR_OPERATION_ABORTED</c>, and
-/// the byte that resolved the cancellation would be consumed in the resolution — the "first
-/// keystroke after exit is swallowed" symptom this class was built to fix.
+/// <b>The cancellation story is simpler too.</b> The pump blocks in
+/// <c>WaitForMultipleObjects([stdinHandle, cancelEvent])</c>; on wake, it calls
+/// <c>GetNumberOfConsoleInputEvents</c> to see if there's actually a record (handles spurious
+/// wakes), then <c>ReadConsoleInputW</c> to consume one. Both reads are non-blocking once
+/// we've confirmed events exist, so the pump can never get stuck inside a blocking syscall —
+/// <c>SetEvent</c> on the cancel handle reliably wakes it. No <c>CancelIoEx</c> needed.
 /// </para>
 /// <para>
-/// <b>Why CancelIoEx is still required on dispose.</b> SetEvent on the cancel event reliably
-/// wakes the pump when it's parked in <c>WaitForMultipleObjects</c>, which is most of the
-/// time. But a busy session disabling several opt-ins (Kitty keyboard, mouse, focus) emits a
-/// stream of trailing-report bytes during the negotiator-restore window — enough that the
-/// pump cycles <c>WFMO → ReadFile → loop</c> rapidly, and "happens to be inside ReadFile
-/// when dispose runs" stops being microsecond-rare. <c>SetEvent</c> doesn't wake a blocked
-/// <c>ReadFile</c>; <c>CancelIoEx</c> does. Because the call is against the duplicate it
-/// doesn't pollute the original handle for the next reader.
+/// <b>Handle ownership.</b> The supplied stdin handle is not closed at disposal — it's the
+/// process-global value returned by <c>GetStdHandle(STD_INPUT_HANDLE)</c>, and we mustn't
+/// close it. The auto-reset cancel event handle IS owned and closed.
 /// </para>
 /// <para>
-/// <b>Handle ownership.</b> The supplied stdin handle is not closed at disposal — it's
-/// process-global (the value returned by <c>GetStdHandle(STD_INPUT_HANDLE)</c>), and we
-/// mustn't close it. The auto-reset event handle IS owned and closed.
-/// </para>
-/// <para>
-/// <b>BYO transports.</b> Callers using <c>TerminalSession.OpenAsync(source, sink)</c> with a
-/// hand-built <c>StreamInputByteSource</c> over <see cref="Console.OpenStandardInput()"/> or a
-/// <see cref="FileStream"/> wrapping the stdin handle inherit the zombie-read bug — the
-/// caller chose that transport. The fix here applies only to the happy-path
-/// <c>TerminalSession.OpenAsync()</c> path that constructs this source itself.
+/// <b>BYO transports.</b> Callers using <c>TerminalSession.OpenAsync(source, sink)</c> with
+/// a hand-built <c>StreamInputByteSource</c> over <see cref="Console.OpenStandardInput()"/>
+/// inherit the legacy zombie-read behavior — the caller chose that transport. This class is
+/// only constructed by the happy-path <c>TerminalSession.OpenAsync()</c> on Windows when
+/// stdin is a real console handle.
 /// </para>
 /// </remarks>
-// ReSharper disable once RedundantExtendsListEntry
 internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, IPausableInputByteSource
 {
-    private const int ReadBufferSize = 4096;
-
     private const uint INFINITE = 0xFFFFFFFF;
     private const uint WAIT_OBJECT_0 = 0x00000000;
     private const uint WAIT_OBJECT_1 = WAIT_OBJECT_0 + 1;
     private const uint WAIT_FAILED = 0xFFFFFFFF;
-    private const int ERROR_OPERATION_ABORTED = 995;
-    private const uint DUPLICATE_SAME_ACCESS = 0x00000002;
+
+    // INPUT_RECORD event types.
+    private const ushort KEY_EVENT = 0x0001;
+    private const ushort MOUSE_EVENT = 0x0002;
+    private const ushort WINDOW_BUFFER_SIZE_EVENT = 0x0004;
+    private const ushort MENU_EVENT = 0x0008;
+    private const ushort FOCUS_EVENT = 0x0010;
+
+    // MOUSE_EVENT_RECORD.dwEventFlags.
+    private const uint MOUSE_MOVED = 0x0001;
+    private const uint DOUBLE_CLICK = 0x0002;
+    private const uint MOUSE_WHEELED = 0x0004;
+    private const uint MOUSE_HWHEELED = 0x0008;
+
+    // Read batch size — one syscall can drain up to this many records.
+    private const int ReadBufferRecords = 32;
 
     private readonly IntPtr _stdinHandle;
     private readonly IntPtr _cancelEvent;
     private readonly Pipe _pipe;
     private readonly Task _pumpTask;
-
-    // Pause-state plumbing — mirrors PosixPollInputByteSource exactly. _pauseRefCount tracks
-    // outstanding PauseScope handles; the pump is parked iff the count is greater than zero.
-    // The pump enters user-space wait via _runEvent (a managed manual-reset event), so no Win32
-    // syscall is left pending while paused. _pauseCompleted notifies callers of PauseAsync
-    // once the pump has definitively parked; it's recreated on each zero→one transition and
-    // cleared on each one→zero transition.
-    private readonly object _stateLock = new();
     private readonly ManualResetEventSlim _runEvent = new(initialState: true);
+
+    private readonly object _stateLock = new();
     private int _pauseRefCount;
     private TaskCompletionSource? _pauseCompleted;
+
+    // Mouse state — held across events because SGR mouse sequences encode the *currently
+    // pressed* button, and Windows' MOUSE_EVENT_RECORD doesn't tell us which button changed
+    // state; we have to diff against the previous button-state mask.
+    private uint _prevMouseButtonState;
 
     private int _disposed;
 
     public WindowsConsoleInputByteSource(IntPtr stdinHandle)
     {
-        // Duplicate the supplied handle for our exclusive use. Every read this class issues —
-        // and every CancelIoEx we may need to call to abort one of those reads — goes through
-        // the duplicate. The original handle (which is the process-global stdin for the
-        // happy-path session) keeps being usable by other consumers, most importantly the
-        // .NET Console subsystem's StreamReader, without any cancel state our dispose path
-        // might emit leaking onto it.
-        //
-        // CancelIoEx is documented as per-handle: it cancels operations issued against the
-        // specific handle, not against the underlying kernel object. Two handles referring to
-        // the same console connection have independent in-flight I/O. So `CancelIoEx(_stdinHandle,
-        // NULL)` against our duplicate aborts only the pump's blocked ReadFile and does not
-        // queue an abort for the next ReadFile that .NET Console will issue against the
-        // original handle. That's what avoids the "first keystroke after exit is swallowed"
-        // symptom — without isolation, CancelIoEx on the global handle could surface as
-        // ERROR_OPERATION_ABORTED on the next reader's ReadFile, and the byte that resolved
-        // the cancellation would be consumed in the resolution.
-        if (!DuplicateHandle(
-                hSourceProcessHandle: GetCurrentProcess(),
-                hSourceHandle:        stdinHandle,
-                hTargetProcessHandle: GetCurrentProcess(),
-                lpTargetHandle:       out IntPtr duplicate,
-                dwDesiredAccess:      0,
-                bInheritHandle:       false,
-                dwOptions:            DUPLICATE_SAME_ACCESS))
-        {
-            throw new InvalidOperationException(
-                $"DuplicateHandle failed for the stdin handle (Win32 error {Marshal.GetLastWin32Error()}).");
-        }
-
-        _stdinHandle = duplicate;
+        _stdinHandle = stdinHandle;
 
         // Auto-reset event. Initial state: non-signaled. SetEvent makes the next
         // WaitForMultipleObjects on this handle return; the wait itself implicitly resets the
@@ -138,10 +105,8 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         _cancelEvent = CreateEvent(IntPtr.Zero, bManualReset: false, bInitialState: false, lpName: null);
         if (_cancelEvent == IntPtr.Zero)
         {
-            int err = Marshal.GetLastWin32Error();
-            CloseHandle(_stdinHandle);
             throw new InvalidOperationException(
-                $"CreateEvent failed for the input-pump wakeup event (Win32 error {err}).");
+                $"CreateEvent failed for the input-pump wakeup event (Win32 error {Marshal.GetLastWin32Error()}).");
         }
 
         _pipe = new Pipe();
@@ -157,13 +122,12 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         try
         {
             var handles = new[] { _stdinHandle, _cancelEvent };
+            var records = new INPUT_RECORD[ReadBufferRecords];
+            var emit = new ArrayBufferWriter<byte>(initialCapacity: 256);
 
             while (true)
             {
-                // Pause check (runs unconditionally at the top of each iteration). If the
-                // refcount is non-zero, signal the pause-completion TCS and park on the
-                // managed run event until ResumeIO releases us — same user-space wait the
-                // POSIX source uses, no Win32 syscall in flight while parked.
+                // Pause check (runs unconditionally at the top of each iteration).
                 bool shouldPark;
                 TaskCompletionSource? pauseTcs = null;
                 lock (_stateLock)
@@ -180,11 +144,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
                     continue;
                 }
 
-                uint waitResult = WaitForMultipleObjects(
-                    nCount: 2,
-                    lpHandles: ref handles[0],
-                    bWaitAll: false,
-                    dwMilliseconds: INFINITE);
+                uint waitResult = WaitForMultipleObjects(2, ref handles[0], false, INFINITE);
 
                 if (Volatile.Read(ref _disposed) != 0) break;
 
@@ -197,62 +157,53 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
                 if (waitResult == WAIT_OBJECT_1)
                 {
-                    // Cancel/wakeup event — disposal or pause requested. The state checks at
-                    // the top of the next iteration figure out which.
+                    // Cancel/wakeup event signaled — top-of-loop state checks handle it.
                     continue;
                 }
 
                 if (waitResult != WAIT_OBJECT_0)
                 {
-                    // Should not happen — either WAIT_ABANDONED (we don't use mutexes) or an
-                    // unexpected return code. Bail rather than spin.
                     completion = new IOException($"WaitForMultipleObjects returned unexpected value 0x{waitResult:X8}.");
                     break;
                 }
 
-                // stdin is signaled — at least one input record meets the console mode, and
-                // bytes should be available to ReadFile immediately.
-                var memory = _pipe.Writer.GetMemory(ReadBufferSize);
-                bool readSucceeded = ReadFile(_stdinHandle,
-                                              ref MemoryMarshal.GetReference(memory.Span),
-                                              (uint) memory.Length,
-                                              out uint bytesRead,
-                                              IntPtr.Zero);
-                if (!readSucceeded)
+                // stdin handle signaled. Check how many records are available before reading —
+                // some signaling cases don't produce a readable record (rare, but the docs
+                // don't promise otherwise). If the count is 0 it was a spurious wake; loop
+                // back to wait without calling ReadConsoleInput (which would otherwise block
+                // until a record actually arrives, defeating the WFMO cancellability).
+                if (!GetNumberOfConsoleInputEvents(_stdinHandle, out uint available))
                 {
                     int err = Marshal.GetLastWin32Error();
-                    if (err == ERROR_OPERATION_ABORTED)
-                    {
-                        // CancelIoEx fired against this ReadFile. Two callers issue it:
-                        // DisposeAsync (exit immediately) and PauseAsync (loop back to the
-                        // top so the pause check parks). Preserve any partial bytes the read
-                        // managed to transfer before being aborted so pause doesn't drop
-                        // already-delivered data — the POSIX side has the equivalent property
-                        // by virtue of poll(2) returning bytes-ready before read(2) starts.
-                        if (bytesRead > 0)
-                        {
-                            _pipe.Writer.Advance((int) bytesRead);
-                            var partialFlush = await _pipe.Writer.FlushAsync().ConfigureAwait(false);
-                            if (partialFlush.IsCompleted || partialFlush.IsCanceled) break;
-                        }
-
-                        if (Volatile.Read(ref _disposed) != 0) break;
-                        continue;
-                    }
-                    completion = new IOException($"ReadFile failed on stdin (Win32 error {err}).");
+                    completion = new IOException($"GetNumberOfConsoleInputEvents failed (Win32 error {err}).");
                     break;
                 }
 
-                if (bytesRead == 0)
+                if (available == 0) continue;
+
+                uint toRead = Math.Min(available, (uint) records.Length);
+                if (!ReadConsoleInputW(_stdinHandle, records, toRead, out uint actuallyRead))
                 {
-                    // EOF — console handle closed, or the input stream was redirected and
-                    // EOF reached. Either way, we're done.
+                    int err = Marshal.GetLastWin32Error();
+                    completion = new IOException($"ReadConsoleInputW failed (Win32 error {err}).");
                     break;
                 }
 
-                _pipe.Writer.Advance((int) bytesRead);
-                var flush = await _pipe.Writer.FlushAsync().ConfigureAwait(false);
-                if (flush.IsCompleted || flush.IsCanceled) break;
+                if (actuallyRead == 0) continue;
+
+                emit.ResetWrittenCount();
+                for (uint i = 0; i < actuallyRead; i++)
+                    TranslateRecord(in records[i], emit);
+
+                if (emit.WrittenCount > 0)
+                {
+                    var dst = _pipe.Writer.GetSpan(emit.WrittenCount);
+                    emit.WrittenSpan.CopyTo(dst);
+                    _pipe.Writer.Advance(emit.WrittenCount);
+
+                    var flush = await _pipe.Writer.FlushAsync().ConfigureAwait(false);
+                    if (flush.IsCompleted || flush.IsCanceled) break;
+                }
             }
         }
         catch (Exception ex)
@@ -268,6 +219,216 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         }
     }
 
+    // ---- Record → VT translation ----
+
+    private void TranslateRecord(in INPUT_RECORD record, ArrayBufferWriter<byte> output)
+    {
+        switch (record.EventType)
+        {
+            case KEY_EVENT:
+                EmitKeyEvent(in record.KeyEvent, output);
+                break;
+            case MOUSE_EVENT:
+                EmitMouseEvent(in record.MouseEvent, output);
+                break;
+            case FOCUS_EVENT:
+                EmitFocusEvent(in record.FocusEvent, output);
+                break;
+            // WINDOW_BUFFER_SIZE_EVENT is handled by the separate resize monitor.
+            // MENU_EVENT is never useful to forward.
+        }
+    }
+
+    /// <summary>
+    /// Emit a Win32 Input Mode key event sequence: <c>CSI Vk;Sc;Uc;Kd;Cs;Rc _</c>. The
+    /// framework's <c>VtInputInterpreter</c> already decodes this format end-to-end (it's the
+    /// same sequence the terminal would emit if Win32 Input Mode were enabled via DECSET 9001),
+    /// so the byte stream this source produces is indistinguishable from a Win32-Input-Mode
+    /// terminal's native output.
+    /// </summary>
+    private static void EmitKeyEvent(in KEY_EVENT_RECORD evt, ArrayBufferWriter<byte> output)
+    {
+        // The framework will repeat events per RepeatCount; emit one sequence with the actual
+        // repeat count rather than RepeatCount copies of a Rc=1 sequence.
+        ushort repeats = evt.RepeatCount;
+        if (repeats == 0) repeats = 1;
+
+        Span<byte> scratch = stackalloc byte[64];
+        int written = 0;
+
+        // ESC [
+        scratch[written++] = 0x1b;
+        scratch[written++] = (byte) '[';
+
+        AppendUInt(evt.VirtualKeyCode, scratch, ref written);
+        scratch[written++] = (byte) ';';
+        AppendUInt(evt.VirtualScanCode, scratch, ref written);
+        scratch[written++] = (byte) ';';
+        AppendUInt(evt.UnicodeChar, scratch, ref written);
+        scratch[written++] = (byte) ';';
+        scratch[written++] = (byte) (evt.KeyDown != 0 ? '1' : '0');
+        scratch[written++] = (byte) ';';
+        AppendUInt(evt.ControlKeyState, scratch, ref written);
+        scratch[written++] = (byte) ';';
+        AppendUInt(repeats, scratch, ref written);
+        scratch[written++] = (byte) '_';
+
+        var dst = output.GetSpan(written);
+        scratch[..written].CopyTo(dst);
+        output.Advance(written);
+    }
+
+    /// <summary>
+    /// Translate a Windows mouse event to an SGR mouse sequence (<c>CSI &lt; b;x;y M|m</c>),
+    /// the encoding the rest of the framework already speaks. The interpreter side accepts
+    /// SGR coordinates as 1-based; we provide them that way.
+    /// </summary>
+    private void EmitMouseEvent(in MOUSE_EVENT_RECORD evt, ArrayBufferWriter<byte> output)
+    {
+        uint flags = evt.EventFlags;
+        uint buttonState = evt.ButtonState;
+        uint changed = buttonState ^ _prevMouseButtonState;
+        _prevMouseButtonState = buttonState;
+
+        // SGR mouse coordinates are 1-based; Windows reports 0-based.
+        int x = evt.MousePositionX + 1;
+        int y = evt.MousePositionY + 1;
+
+        // The "b" parameter encodes button index + motion / wheel flags + modifiers.
+        // See the xterm SGR mouse specification for the bit layout we reuse.
+        int modifiers = 0;
+        const uint shiftPressed = 0x0010;
+        const uint leftAltPressed = 0x0002;
+        const uint rightAltPressed = 0x0001;
+        const uint leftCtrlPressed = 0x0008;
+        const uint rightCtrlPressed = 0x0004;
+
+        if ((evt.ControlKeyState & shiftPressed) != 0) modifiers |= 4;
+        if ((evt.ControlKeyState & (leftAltPressed | rightAltPressed)) != 0) modifiers |= 8;
+        if ((evt.ControlKeyState & (leftCtrlPressed | rightCtrlPressed)) != 0) modifiers |= 16;
+
+        if ((flags & MOUSE_WHEELED) != 0)
+        {
+            // High-word of dwButtonState is the wheel delta, signed.
+            int delta = unchecked((int) buttonState) >> 16;
+            int wheelButton = delta > 0 ? 64 : 65;
+            EmitSgrMouse(output, wheelButton | modifiers, x, y, press: true);
+            return;
+        }
+
+        if ((flags & MOUSE_HWHEELED) != 0)
+        {
+            int delta = unchecked((int) buttonState) >> 16;
+            int wheelButton = delta > 0 ? 66 : 67;
+            EmitSgrMouse(output, wheelButton | modifiers, x, y, press: true);
+            return;
+        }
+
+        if ((flags & MOUSE_MOVED) != 0)
+        {
+            // Motion event. Encode as button + 32 (motion bit). Pick the lowest currently-
+            // pressed button, or 3 (no button) if none are down.
+            int button = LowestButtonIndex(buttonState);
+            EmitSgrMouse(output, button | 32 | modifiers, x, y, press: true);
+            return;
+        }
+
+        // Button press / release. "changed" tells us which button(s) flipped; we typically
+        // only get one change per event.
+        if (changed != 0)
+        {
+            int button = LowestButtonIndex(changed);
+            bool pressed = (buttonState & changed) != 0;
+            EmitSgrMouse(output, button | modifiers, x, y, pressed);
+            return;
+        }
+
+        // Double-click without state change: emit as a press for the lowest down button.
+        if ((flags & DOUBLE_CLICK) != 0 && buttonState != 0)
+        {
+            int button = LowestButtonIndex(buttonState);
+            EmitSgrMouse(output, button | modifiers, x, y, press: true);
+        }
+    }
+
+    private static int LowestButtonIndex(uint buttonState)
+    {
+        // Windows FROM_LEFT_*_BUTTON_PRESSED layout maps to xterm SGR button numbers:
+        //   bit 0 → left   (xterm 0)
+        //   bit 1 → right  (xterm 2)
+        //   bit 2 → middle (xterm 1)
+        //   bit 3 → X1     (xterm 128)
+        //   bit 4 → X2     (xterm 129)
+        if ((buttonState & 0x0001) != 0) return 0;
+        if ((buttonState & 0x0004) != 0) return 1;
+        if ((buttonState & 0x0002) != 0) return 2;
+        if ((buttonState & 0x0008) != 0) return 128;
+        if ((buttonState & 0x0010) != 0) return 129;
+        return 3; // no button
+    }
+
+    private static void EmitSgrMouse(ArrayBufferWriter<byte> output, int button, int x, int y, bool press)
+    {
+        Span<byte> scratch = stackalloc byte[48];
+        int written = 0;
+        scratch[written++] = 0x1b;
+        scratch[written++] = (byte) '[';
+        scratch[written++] = (byte) '<';
+        AppendInt(button, scratch, ref written);
+        scratch[written++] = (byte) ';';
+        AppendInt(x, scratch, ref written);
+        scratch[written++] = (byte) ';';
+        AppendInt(y, scratch, ref written);
+        scratch[written++] = (byte) (press ? 'M' : 'm');
+
+        var dst = output.GetSpan(written);
+        scratch[..written].CopyTo(dst);
+        output.Advance(written);
+    }
+
+    private static void EmitFocusEvent(in FOCUS_EVENT_RECORD evt, ArrayBufferWriter<byte> output)
+    {
+        // CSI I (focus gained) / CSI O (focus lost).
+        var dst = output.GetSpan(3);
+        dst[0] = 0x1b;
+        dst[1] = (byte) '[';
+        dst[2] = (byte) (evt.SetFocus != 0 ? 'I' : 'O');
+        output.Advance(3);
+    }
+
+    // ---- Decimal-ASCII helpers ----
+
+    private static void AppendUInt(uint value, Span<byte> dest, ref int written)
+    {
+        if (value == 0)
+        {
+            dest[written++] = (byte) '0';
+            return;
+        }
+
+        Span<byte> tmp = stackalloc byte[10];
+        int len = 0;
+        while (value > 0)
+        {
+            tmp[len++] = (byte) ('0' + (value % 10));
+            value /= 10;
+        }
+        for (int i = len - 1; i >= 0; i--)
+            dest[written++] = tmp[i];
+    }
+
+    private static void AppendInt(int value, Span<byte> dest, ref int written)
+    {
+        if (value < 0)
+        {
+            dest[written++] = (byte) '-';
+            value = -value;
+        }
+        AppendUInt((uint) value, dest, ref written);
+    }
+
+    // ---- Pause / resume ----
+
     /// <inheritdoc/>
     public async ValueTask<IAsyncDisposable> PauseAsync(CancellationToken cancellationToken = default)
     {
@@ -280,8 +441,6 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         bool wakeupNeeded;
         lock (_stateLock)
         {
-            // Tentative increment — we'll decrement on any failure between here and successful
-            // completion of the pause-await, so cancellation can't strand the refcount.
             _pauseRefCount++;
 
             if (_pauseRefCount == 1)
@@ -303,17 +462,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
             }
         }
 
-        if (wakeupNeeded)
-        {
-            // SetEvent wakes the pump if it's parked in WaitForMultipleObjects (the common case
-            // on a real console handle, where WFMO blocks until input records meet the mode).
-            // CancelIoEx wakes it if it happens to be inside ReadFile — a microsecond window on
-            // a console handle, but a wide-open window on non-console handles where WFMO returns
-            // immediately. Without CancelIoEx, PauseAsync could deadlock on the latter; with it,
-            // pause is reliable regardless of which syscall the pump is currently blocked in.
-            SetEvent(_cancelEvent);
-            CancelIoEx(_stdinHandle, IntPtr.Zero);
-        }
+        if (wakeupNeeded) SetEvent(_cancelEvent);
 
         try
         {
@@ -337,12 +486,9 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         lock (_stateLock)
         {
             if (_pauseRefCount == 0) return;
-
             _pauseRefCount--;
             wake = _pauseRefCount == 0;
-
-            if (wake)
-                _pauseCompleted = null;
+            if (wake) _pauseCompleted = null;
         }
 
         if (wake) _runEvent.Set();
@@ -351,9 +497,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     private sealed class PauseScope : IAsyncDisposable
     {
         private WindowsConsoleInputByteSource? _source;
-
         public PauseScope(WindowsConsoleInputByteSource source) => _source = source;
-
         public ValueTask DisposeAsync()
         {
             var source = Interlocked.Exchange(ref _source, null);
@@ -366,32 +510,9 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     public async ValueTask DisposeAsync()
     {
         // @formatter:off
-
-        // Ordering matters — set the disposed flag FIRST so the pump observes it on any wake;
-        // then wake the pump from WaitForMultipleObjects; then abort any in-flight ReadFile;
-        // then release the user-space pause park; then fail any in-flight pause TCS so callers
-        // don't hang.
-        //
-        // CancelIoEx targets our DUPLICATED handle, not the process-global stdin. The cancel
-        // affects only operations issued against this handle, so .NET Console's
-        // StreamReader (which reads against the original stdin handle) keeps its next
-        // ReadFile clean — no cancel state leaks into the next reader. That handle isolation
-        // is the whole point of duplicating the handle in the constructor; without it,
-        // CancelIoEx against the global stdin would queue an abort that the next reader's
-        // ReadFile would surface as ERROR_OPERATION_ABORTED, and the byte that resolved the
-        // cancellation would be consumed in the resolution — the "first keystroke after exit
-        // is swallowed" symptom.
-        //
-        // CancelIoEx is necessary because in practice the pump CAN be inside ReadFile when
-        // dispose runs: a busy session disabling several opt-ins (mouse, focus, Kitty
-        // keyboard) generates a stream of trailing-report bytes during the negotiator-restore
-        // window, and the pump cycles WFMO → ReadFile rapidly enough that "in ReadFile at the
-        // dispose moment" stops being microsecond-rare. SetEvent alone doesn't wake a blocked
-        // ReadFile; CancelIoEx does.
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         SetEvent(_cancelEvent);
-        CancelIoEx(_stdinHandle, IntPtr.Zero);
         _runEvent.Set();
 
         TaskCompletionSource? pendingPause;
@@ -403,21 +524,57 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
         _runEvent.Dispose();
 
-        // Close the cancel event AND the duplicated stdin handle (the constructor took
-        // ownership of the duplicate; closing it doesn't affect the original handle the
-        // caller supplied).
+        // Close the cancel event we created. Do NOT close _stdinHandle — it's process-global.
         if (_cancelEvent != IntPtr.Zero)
             CloseHandle(_cancelEvent);
-        if (_stdinHandle != IntPtr.Zero)
-            CloseHandle(_stdinHandle);
         // @formatter:on
+    }
+
+    // ---- INPUT_RECORD layout ----
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUT_RECORD
+    {
+        [FieldOffset(0)] public ushort EventType;
+        // 2 bytes of padding follow EventType so the union begins on a 4-byte boundary.
+        [FieldOffset(4)] public KEY_EVENT_RECORD KeyEvent;
+        [FieldOffset(4)] public MOUSE_EVENT_RECORD MouseEvent;
+        [FieldOffset(4)] public FOCUS_EVENT_RECORD FocusEvent;
+        // WINDOW_BUFFER_SIZE_EVENT / MENU_EVENT records are smaller; their fields overlay the
+        // start of the union but we don't translate them so we don't model the structs here.
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEY_EVENT_RECORD
+    {
+        public int KeyDown;                    // BOOL
+        public ushort RepeatCount;
+        public ushort VirtualKeyCode;
+        public ushort VirtualScanCode;
+        public ushort UnicodeChar;             // union with AsciiChar — we treat as WCHAR
+        public uint ControlKeyState;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSE_EVENT_RECORD
+    {
+        public short MousePositionX;
+        public short MousePositionY;
+        public uint ButtonState;
+        public uint ControlKeyState;
+        public uint EventFlags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FOCUS_EVENT_RECORD
+    {
+        public int SetFocus;                   // BOOL
     }
 
     // ---- P/Invokes ----
 
     // ReSharper disable UnusedMethodReturnValue.Local
 
-    /// <summary><c>CreateEventW</c> — create a Win32 event object.</summary>
     [LibraryImport("kernel32.dll", EntryPoint = "CreateEventW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial IntPtr CreateEvent(
         IntPtr lpEventAttributes,
@@ -425,12 +582,10 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         [MarshalAs(UnmanagedType.Bool)] bool bInitialState,
         string? lpName);
 
-    /// <summary><c>SetEvent</c> — transition an event object to the signaled state.</summary>
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetEvent(IntPtr hEvent);
 
-    /// <summary><c>WaitForMultipleObjects</c> — wait until any (bWaitAll=false) handle is signaled.</summary>
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint WaitForMultipleObjects(
         uint nCount,
@@ -438,45 +593,21 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         [MarshalAs(UnmanagedType.Bool)] bool bWaitAll,
         uint dwMilliseconds);
 
-    /// <summary><c>ReadFile</c> — read bytes from a file or console handle.</summary>
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ReadFile(
-        IntPtr hFile,
-        ref byte lpBuffer,
-        uint nNumberOfBytesToRead,
-        out uint lpNumberOfBytesRead,
-        IntPtr lpOverlapped);
+    private static partial bool GetNumberOfConsoleInputEvents(IntPtr hConsoleInput, out uint lpcNumberOfEvents);
 
-    /// <summary><c>CancelIoEx</c> — abort outstanding I/O operations on a handle. Works on
-    /// synchronous I/O issued from any thread in the current process since Windows Vista.</summary>
-    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [LibraryImport("kernel32.dll", EntryPoint = "ReadConsoleInputW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CancelIoEx(IntPtr hFile, IntPtr lpOverlapped);
+    private static partial bool ReadConsoleInputW(
+        IntPtr hConsoleInput,
+        [Out] INPUT_RECORD[] lpBuffer,
+        uint nLength,
+        out uint lpNumberOfEventsRead);
 
-    /// <summary><c>CloseHandle</c> — release a Win32 handle.</summary>
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(IntPtr hObject);
-
-    /// <summary><c>DuplicateHandle</c> — create an independent handle referring to the same
-    /// underlying kernel object. Used to isolate this class's CancelIoEx cancellations from
-    /// the original process-global stdin handle.</summary>
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DuplicateHandle(
-        IntPtr hSourceProcessHandle,
-        IntPtr hSourceHandle,
-        IntPtr hTargetProcessHandle,
-        out IntPtr lpTargetHandle,
-        uint dwDesiredAccess,
-        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
-        uint dwOptions);
-
-    /// <summary><c>GetCurrentProcess</c> — pseudo-handle for the current process, suitable as
-    /// the source / target process arguments to <see cref="DuplicateHandle"/>.</summary>
-    [LibraryImport("kernel32.dll")]
-    private static partial IntPtr GetCurrentProcess();
 
     // ReSharper restore UnusedMethodReturnValue.Local
 }

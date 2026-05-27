@@ -367,7 +367,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         EmitUnknownCsi(privatePrefix, parameters, intermediates, final);
     }
 
-    private bool TryEmitModifyOtherKeysCharacter(int codepoint, KeyModifiers modifiers)
+    private bool TryEmitModifyOtherKeysCharacter(int codepoint, KeyModifiers extendedModifiers)
     {
         if (codepoint <= 0 || !Rune.IsValid(codepoint)) return false;
 
@@ -381,7 +381,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                 {
                                     Timestamp = Now,
                                     Key = Key.Character,
-                                    Modifiers = modifiers,
+                                    Modifiers = extendedModifiers & KeyModifiers.ModifierMask,
+                                    ExtendedModifiers = extendedModifiers,
                                     Kind = KeyEventKind.Down,
                                     Text = text,
                                     RawCode = (uint) codepoint,
@@ -598,19 +599,42 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         int controlState = p[4];
         int repeatCount = n >= 6 ? Math.Max(1, p[5]) : 1;
 
-        KeyModifiers modifiers = MapWin32ControlState(controlState);
+        KeyModifiers extendedModifiers = MapWin32ControlState(controlState);
+        KeyModifiers modifiers = extendedModifiers & KeyModifiers.ModifierMask;
         Key key = MapWin32VirtualKey(vk, unicode, out bool isCharacterKey);
 
         ReadOnlyMemory<char> text = ReadOnlyMemory<char>.Empty;
 
-        if (isCharacterKey && unicode > 0 && Rune.IsValid(unicode))
+        if (isCharacterKey)
         {
-            var rune = new Rune(unicode);
-            Span<char> buf = stackalloc char[2];
-            int written = rune.EncodeToUtf16(buf);
-            var heap = new char[written];
-            buf[..written].CopyTo(heap);
-            text = heap;
+            int effectiveUnicode = unicode;
+
+            // Ctrl+letter case: Windows' KEY_EVENT_RECORD reports UnicodeChar as the C0 control
+            // codepoint (Ctrl ⊕ 0x40) — e.g., 0x03 for Ctrl+C, 0x1A for Ctrl+Z. Translating the
+            // Text to that control char would make Ctrl+C indistinguishable from a literal
+            // ETX byte and breaks consumers checking `k.Modifiers.HasFlag(Control) && k.Text ==
+            // "c"`. Recover the base letter from the virtual-key code instead so callers see
+            // `Key=Character, Text="c", Modifiers=Control` — the same shape they'd see if the
+            // Ctrl were stripped, just with the modifier still flagged.
+            if (modifiers.HasFlag(KeyModifiers.Control) &&
+                unicode is > 0 and < 0x20 &&
+                vk is >= 'A' and <= 'Z')
+            {
+                // Shift held → uppercase, otherwise lowercase. Convention matches what the
+                // Kitty / xterm parsers below produce for the equivalent CSI u sequences, so
+                // a key event's shape is the same across protocols.
+                effectiveUnicode = modifiers.HasFlag(KeyModifiers.Shift) ? vk : vk | 0x20;
+            }
+
+            if (effectiveUnicode > 0 && Rune.IsValid(effectiveUnicode))
+            {
+                var rune = new Rune(effectiveUnicode);
+                Span<char> buf = stackalloc char[2];
+                int written = rune.EncodeToUtf16(buf);
+                var heap = new char[written];
+                buf[..written].CopyTo(heap);
+                text = heap;
+            }
         }
 
         _eventSink.OnInputEvent(new KeyEvent
@@ -618,6 +642,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                     Timestamp = Now,
                                     Key = key,
                                     Modifiers = modifiers,
+                                    ExtendedModifiers = extendedModifiers,
                                     Kind = keyDown != 0 ? KeyEventKind.Down : KeyEventKind.Up,
                                     IsRepeat = keyDown != 0 && repeatCount > 1,
                                     RepeatCount = repeatCount,
@@ -860,7 +885,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         if (data.KeyCode <= 0) return false; // Malformed — no key code.
 
-        KeyModifiers modifiers = ParseModifiersParam(data.Modifiers);
+        KeyModifiers extendedModifiers = ParseModifiersParam(data.Modifiers);
+        KeyModifiers modifiers = extendedModifiers & KeyModifiers.ModifierMask;
 
         KeyEventKind kind = data.EventType == VtInputSequences.Kitty.ReleaseEvent
                                 ? KeyEventKind.Up
@@ -895,6 +921,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                     Timestamp = Now,
                                     Key = key,
                                     Modifiers = modifiers,
+                                    ExtendedModifiers = extendedModifiers,
                                     Kind = kind,
                                     IsRepeat = isRepeat,
                                     Text = text,
@@ -1662,13 +1689,14 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
     }
 
-    private void EmitNamedKey(Key key, KeyModifiers modifiers = KeyModifiers.None)
+    private void EmitNamedKey(Key key, KeyModifiers extendedModifiers = KeyModifiers.None)
     {
         _eventSink.OnInputEvent(new KeyEvent
                                 {
                                     Timestamp = Now,
                                     Key = key,
-                                    Modifiers = modifiers,
+                                    Modifiers = extendedModifiers & KeyModifiers.ModifierMask,
+                                    ExtendedModifiers = extendedModifiers,
                                     Kind = KeyEventKind.Down,
                                 });
     }
@@ -1676,14 +1704,18 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
     /// <summary>
     /// Emit a named key event with an explicit <see cref="KeyEventKind"/> and repeat flag — for
     /// Kitty-protocol sequences that carry an event sub-parameter encoding release / repeat.
+    /// The <paramref name="extendedModifiers"/> argument is the full combined bitmask
+    /// (modifiers + lock state); the function splits it into the narrow <c>Modifiers</c> and
+    /// the full <c>ExtendedModifiers</c> internally.
     /// </summary>
-    private void EmitNamedKey(Key key, KeyModifiers modifiers, KeyEventKind kind, bool isRepeat)
+    private void EmitNamedKey(Key key, KeyModifiers extendedModifiers, KeyEventKind kind, bool isRepeat)
     {
         _eventSink.OnInputEvent(new KeyEvent
                                 {
                                     Timestamp = Now,
                                     Key = key,
-                                    Modifiers = modifiers,
+                                    Modifiers = extendedModifiers & KeyModifiers.ModifierMask,
+                                    ExtendedModifiers = extendedModifiers,
                                     Kind = kind,
                                     IsRepeat = isRepeat,
                                 });

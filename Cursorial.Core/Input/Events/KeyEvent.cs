@@ -13,8 +13,32 @@ public sealed record KeyEvent : InputEvent
     /// <summary>The named key. <see cref="Key.Character"/> indicates a printable key; see <see cref="Text"/>.</summary>
     public required Key Key { get; init; }
 
-    /// <summary>Modifier keys held when the event occurred.</summary>
+    /// <summary>
+    /// Input modifier keys held when the event occurred — <see cref="KeyModifiers.Shift"/>,
+    /// <see cref="KeyModifiers.Control"/>, <see cref="KeyModifiers.Alt"/>,
+    /// <see cref="KeyModifiers.Super"/>, <see cref="KeyModifiers.Hyper"/>,
+    /// <see cref="KeyModifiers.Meta"/>. CapsLock / NumLock / ScrollLock toggle state is NOT
+    /// included here, so patterns like <c>KeyEvent { .., Modifiers: KeyModifiers.Control }</c>
+    /// match <c>Ctrl+[Key]</c> regardless of the user's lock-key state. Lock state is surfaced
+    /// through <see cref="ExtendedModifiers"/>.
+    /// </summary>
     public required KeyModifiers Modifiers { get; init; }
+
+    /// <summary>
+    /// Full modifier state including CapsLock / NumLock / ScrollLock toggle bits. Equal to
+    /// <see cref="Modifiers"/> OR'd with any active lock-state bits the producer supplied —
+    /// always a superset of <see cref="Modifiers"/>. Consumers that need the user's lock-key
+    /// state read from here; consumers matching on a specific modifier combination should use
+    /// <see cref="Modifiers"/> instead so lock state doesn't break their pattern.
+    /// </summary>
+    public KeyModifiers ExtendedModifiers
+    {
+        // The OR with Modifiers ensures the returned value is always a superset of Modifiers
+        // even when the producer set ExtendedModifiers before Modifiers (or didn't set
+        // ExtendedModifiers at all). Storage holds just the additional lock bits.
+        get => field | Modifiers;
+        init;
+    }
 
     /// <summary>Whether this event is a key-down or key-up.</summary>
     public required KeyEventKind Kind { get; init; }

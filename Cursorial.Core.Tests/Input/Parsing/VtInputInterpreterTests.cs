@@ -966,6 +966,34 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
+    public void Win32InputMode_CtrlLetter_TextIsBaseLetterNotControlChar()
+    {
+        // Ctrl+C: VK=0x43 'C', scancode=46, UnicodeChar=0x03 (Windows reports the C0 control
+        // codepoint for Ctrl XOR 0x40), keyDown=1, ControlState=LEFT_CTRL_PRESSED (0x08).
+        Feed("\x1b[67;46;3;1;8;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal(KeyModifiers.Control, k.Modifiers);
+        // Text must be the base letter, not the C0 control codepoint. Consumers (incl. the
+        // demo) check `Modifiers.HasFlag(Control) && Text == "c"` to recognize Ctrl+C; the
+        // raw control char would never match.
+        Assert.Equal("c", TextOf(k));
+    }
+
+    [Fact]
+    public void Win32InputMode_CtrlShiftLetter_TextIsUppercase()
+    {
+        // Ctrl+Shift+Z: VK=0x5A 'Z', UnicodeChar=0x1A, ControlState=Shift|LeftCtrl (0x18).
+        Feed("\x1b[90;44;26;1;24;1_");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.Control | KeyModifiers.Shift, k.Modifiers);
+        Assert.Equal("Z", TextOf(k));
+    }
+
+    [Fact]
     public void Win32InputMode_RepeatCount_SurfacesAsIsRepeatAndCount()
     {
         // VK_A held, repeat count 3.
@@ -1284,14 +1312,31 @@ public class VtInputInterpreterTests
     [InlineData(9, KeyModifiers.Super)]
     [InlineData(17, KeyModifiers.Hyper)]
     [InlineData(33, KeyModifiers.Meta)]
-    [InlineData(65, KeyModifiers.CapsLock)]
-    [InlineData(129, KeyModifiers.NumLock)]
-    public void KittyExtendedModifiers_DecodeCorrectly(int modifierParam, KeyModifiers expected)
+    public void KittyExtendedModifiers_DecodeIntoModifiers(int modifierParam, KeyModifiers expected)
     {
         Feed($"\x1b[97;{modifierParam}u");
 
         var k = _sink.Single<KeyEvent>();
         Assert.Equal(expected, k.Modifiers);
+        // ExtendedModifiers is always a superset of Modifiers; for these inputs there's no
+        // lock-state, so the two are equal.
+        Assert.Equal(expected, k.ExtendedModifiers);
+    }
+
+    [Theory]
+    [InlineData(65, KeyModifiers.CapsLock)]
+    [InlineData(129, KeyModifiers.NumLock)]
+    public void KittyLockState_DecodesIntoExtendedModifiers_NotIntoModifiers(int modifierParam, KeyModifiers expected)
+    {
+        Feed($"\x1b[97;{modifierParam}u");
+
+        var k = _sink.Single<KeyEvent>();
+        // Lock bits NEVER appear in Modifiers — that's the whole point of the split. Consumers
+        // pattern-matching `KeyEvent { Modifiers: Control }` for Ctrl+C still match when
+        // NumLock happens to be on; the lock state is visible to consumers that explicitly
+        // look at ExtendedModifiers.
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+        Assert.Equal(expected, k.ExtendedModifiers);
     }
 
     [Fact]

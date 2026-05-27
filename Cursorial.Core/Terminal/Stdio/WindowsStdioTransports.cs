@@ -44,6 +44,10 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     private const uint ENABLE_PROCESSED_INPUT = 0x0001;
     private const uint ENABLE_LINE_INPUT = 0x0002;
     private const uint ENABLE_ECHO_INPUT = 0x0004;
+    private const uint ENABLE_WINDOW_INPUT = 0x0008;
+    private const uint ENABLE_MOUSE_INPUT = 0x0010;
+    private const uint ENABLE_EXTENDED_FLAGS = 0x0080;
+    private const uint ENABLE_QUICK_EDIT_MODE = 0x0040;
     private const uint ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200;
 
     // Console output mode flags we set.
@@ -53,10 +57,14 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     // GetFileType return values used to pick the stdin source.
     private const uint FILE_TYPE_CHAR = 0x0002;
 
+    private const uint CP_UTF8 = 65001;
+
     private readonly IntPtr _stdinHandle;
     private readonly IntPtr _stdoutHandle;
     private readonly uint _originalStdinMode;
     private readonly uint _originalStdoutMode;
+    private readonly uint _originalOutputCodePage;
+    private readonly uint _originalInputCodePage;
     private readonly IInputByteSource _source;
     private readonly StreamOutputByteSink _sink;
     private int _terminalRestored;
@@ -67,6 +75,8 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         IntPtr stdoutHandle,
         uint originalStdinMode,
         uint originalStdoutMode,
+        uint originalOutputCodePage,
+        uint originalInputCodePage,
         IInputByteSource source,
         StreamOutputByteSink sink)
     {
@@ -74,6 +84,8 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         _stdoutHandle = stdoutHandle;
         _originalStdinMode = originalStdinMode;
         _originalStdoutMode = originalStdoutMode;
+        _originalOutputCodePage = originalOutputCodePage;
+        _originalInputCodePage = originalInputCodePage;
         _source = source;
         _sink = sink;
     }
@@ -99,12 +111,21 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
                 "Standard output is not connected to a console.");
         }
 
-        // Raw input: clear processed / line / echo. Enable VT input so modern terminals
-        // (Windows Terminal, ConPTY-backed conhost) deliver VT sequences instead of console
-        // input records.
+        // Raw input — clear processed / line / echo / quick-edit; enable extended flags (so
+        // quick-edit can actually be turned off), mouse input, and window-buffer-size events.
+        // We DELIBERATELY DO NOT enable ENABLE_VIRTUAL_TERMINAL_INPUT — the conhost-translated
+        // VT byte view it would populate leaks orphan bytes across the raw → cooked transition
+        // at session end, which is what eats the user's first post-exit keystroke. Instead the
+        // input source reads raw INPUT_RECORDs via ReadConsoleInputW and translates them to
+        // VT sequences locally (Win32 Input Mode for keys, SGR for mouse, CSI I/O for focus).
+        // This matches the pattern Terminal.Gui, Consolonia, and crossterm all use on Windows.
         uint stdinMode = originalStdinMode;
-        stdinMode &= ~(ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
-        stdinMode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+        stdinMode &= ~(ENABLE_PROCESSED_INPUT
+                       | ENABLE_LINE_INPUT
+                       | ENABLE_ECHO_INPUT
+                       | ENABLE_QUICK_EDIT_MODE
+                       | ENABLE_VIRTUAL_TERMINAL_INPUT);
+        stdinMode |= ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT;
 
         if (!SetConsoleMode(stdinHandle, stdinMode))
         {
@@ -125,6 +146,18 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
             SetConsoleMode(stdinHandle, originalStdinMode);
             throw new InvalidOperationException($"SetConsoleMode failed for the console output handle (Win32 error {err}).");
         }
+
+        // Snapshot and switch the console codepages to UTF-8. Without this, multi-byte UTF-8
+        // sequences emitted by the renderer (box-drawing characters, accented Latin letters,
+        // CJK, emoji, …) get reinterpreted through whatever OEM codepage the console was
+        // launched with (typically CP437 / CP850 on conhost), and the result is mojibake. The
+        // old ENABLE_VIRTUAL_TERMINAL_INPUT path nudged conhost into a UTF-8-aware state as a
+        // side effect; with VT_INPUT_MODE disabled we have to do the codepage switch
+        // explicitly. RestoreTerminalState reverts both to whatever the original values were.
+        uint originalOutputCodePage = GetConsoleOutputCP();
+        uint originalInputCodePage = GetConsoleCP();
+        SetConsoleOutputCP(CP_UTF8);
+        SetConsoleCP(CP_UTF8);
 
         // Wrap stdout via FileStream(SafeFileHandle) — see the class remarks for why we
         // deliberately do NOT use Console.OpenStandardOutput. ownsHandle: false because the
@@ -163,15 +196,19 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
                                               stdoutHandle,
                                               originalStdinMode,
                                               originalStdoutMode,
+                                              originalOutputCodePage,
+                                              originalInputCodePage,
                                               source,
                                               sink);
         }
         catch
         {
             // @formatter:off
-            // Revert the console mode changes we made above, then surface the failure.
+            // Revert every change we made above, then surface the failure.
             try { SetConsoleMode(stdinHandle, originalStdinMode); } catch { /* best-effort */ }
             try { SetConsoleMode(stdoutHandle, originalStdoutMode); } catch { /* best-effort */ }
+            try { SetConsoleOutputCP(originalOutputCodePage); } catch { /* best-effort */ }
+            try { SetConsoleCP(originalInputCodePage); } catch { /* best-effort */ }
             stdoutStream?.Dispose();
             stdinStreamFallback?.Dispose();
             // Best-effort dispose of a partially constructed console source so its cancel
@@ -205,6 +242,10 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
 
         try { SetConsoleMode(_stdinHandle, _originalStdinMode); } catch { /* best-effort */ }
         try { SetConsoleMode(_stdoutHandle, _originalStdoutMode); } catch { /* best-effort */ }
+
+        // Restore the codepages we replaced with UTF-8 at session open.
+        try { SetConsoleOutputCP(_originalOutputCodePage); } catch { /* best-effort */ }
+        try { SetConsoleCP(_originalInputCodePage); } catch { /* best-effort */ }
         // @formatter:on
     }
 
@@ -278,6 +319,29 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     [return: MarshalAs(UnmanagedType.Bool)]
     // ReSharper disable once UnusedMethodReturnValue.Local
     private static partial bool FlushConsoleInputBuffer(IntPtr hConsoleHandle);
+
+    /// <summary><c>GetConsoleOutputCP</c> — current codepage the console uses to interpret bytes
+    /// written via <c>WriteFile</c> / <c>WriteConsole</c>.</summary>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial uint GetConsoleOutputCP();
+
+    /// <summary><c>SetConsoleOutputCP</c> — switch the console's output codepage.</summary>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    // ReSharper disable once UnusedMethodReturnValue.Local
+    private static partial bool SetConsoleOutputCP(uint wCodePageID);
+
+    /// <summary><c>GetConsoleCP</c> — current codepage the console uses for input via
+    /// <c>ReadFile</c> / <c>ReadConsoleA</c>. (<c>ReadConsoleW</c> / <c>ReadConsoleInputW</c>
+    /// bypass it, but other readers may not.)</summary>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial uint GetConsoleCP();
+
+    /// <summary><c>SetConsoleCP</c> — switch the console's input codepage.</summary>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    // ReSharper disable once UnusedMethodReturnValue.Local
+    private static partial bool SetConsoleCP(uint wCodePageID);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

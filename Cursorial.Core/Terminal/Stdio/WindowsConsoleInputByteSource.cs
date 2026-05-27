@@ -34,20 +34,27 @@ namespace Cursorial.Terminal.Stdio;
 /// don't signal the handle, so they can't cause a spurious wake.
 /// </para>
 /// <para>
-/// <b>Why dispose does NOT call CancelIoEx on the console handle.</b> The defensive instinct
-/// is to call <c>CancelIoEx(handle, NULL)</c> against the stdin handle as a belt-and-braces in
-/// case the pump is somehow inside <c>ReadFile</c> at dispose time. That call cancels ALL
-/// pending I/O on the handle from any thread in the process — including operations that
-/// .NET's <see cref="System.Console"/> subsystem will issue against the same process-global
-/// stdin handle for the next <see cref="System.Console.ReadLine"/> after the session ends. On
-/// modern Windows console handles, the cancel state can leak forward: the user's first
-/// keystroke after exit arrives as the wakeup for that aborted read and is consumed in the
-/// resolution, while .NET's <see cref="System.IO.StreamReader"/> treats the
-/// <c>ERROR_OPERATION_ABORTED</c> result as a retry-able zero-byte read. The user sees their
-/// first keystroke "swallowed." The cancel-event-based wake is sufficient on a real console
-/// handle precisely because the pump's WFMO → ReadFile cycle is microseconds: the pump is
-/// reliably parked in <c>WaitForMultipleObjects</c> when dispose runs, and <c>SetEvent</c>
-/// alone is enough to break it out.
+/// <b>Handle isolation via DuplicateHandle.</b> The constructor duplicates the supplied
+/// stdin handle and uses the duplicate for every <c>ReadFile</c> and <c>CancelIoEx</c> call
+/// the class makes. The original handle is left alone for the rest of the process —
+/// crucially the .NET <see cref="System.Console"/> subsystem, which reads from the same
+/// process-global stdin via its own <see cref="System.IO.StreamReader"/>. <c>CancelIoEx</c>
+/// targets a specific file handle (not the underlying kernel object), so cancelling our
+/// duplicate's in-flight reads doesn't leak any cancel state onto the original. Without
+/// this isolation, a <c>CancelIoEx</c> against the global stdin would queue an abort that
+/// the next reader's <c>ReadFile</c> would surface as <c>ERROR_OPERATION_ABORTED</c>, and
+/// the byte that resolved the cancellation would be consumed in the resolution — the "first
+/// keystroke after exit is swallowed" symptom this class was built to fix.
+/// </para>
+/// <para>
+/// <b>Why CancelIoEx is still required on dispose.</b> SetEvent on the cancel event reliably
+/// wakes the pump when it's parked in <c>WaitForMultipleObjects</c>, which is most of the
+/// time. But a busy session disabling several opt-ins (Kitty keyboard, mouse, focus) emits a
+/// stream of trailing-report bytes during the negotiator-restore window — enough that the
+/// pump cycles <c>WFMO → ReadFile → loop</c> rapidly, and "happens to be inside ReadFile
+/// when dispose runs" stops being microsecond-rare. <c>SetEvent</c> doesn't wake a blocked
+/// <c>ReadFile</c>; <c>CancelIoEx</c> does. Because the call is against the duplicate it
+/// doesn't pollute the original handle for the next reader.
 /// </para>
 /// <para>
 /// <b>Handle ownership.</b> The supplied stdin handle is not closed at disposal — it's
@@ -72,6 +79,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     private const uint WAIT_OBJECT_1 = WAIT_OBJECT_0 + 1;
     private const uint WAIT_FAILED = 0xFFFFFFFF;
     private const int ERROR_OPERATION_ABORTED = 995;
+    private const uint DUPLICATE_SAME_ACCESS = 0x00000002;
 
     private readonly IntPtr _stdinHandle;
     private readonly IntPtr _cancelEvent;
@@ -93,7 +101,36 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
     public WindowsConsoleInputByteSource(IntPtr stdinHandle)
     {
-        _stdinHandle = stdinHandle;
+        // Duplicate the supplied handle for our exclusive use. Every read this class issues —
+        // and every CancelIoEx we may need to call to abort one of those reads — goes through
+        // the duplicate. The original handle (which is the process-global stdin for the
+        // happy-path session) keeps being usable by other consumers, most importantly the
+        // .NET Console subsystem's StreamReader, without any cancel state our dispose path
+        // might emit leaking onto it.
+        //
+        // CancelIoEx is documented as per-handle: it cancels operations issued against the
+        // specific handle, not against the underlying kernel object. Two handles referring to
+        // the same console connection have independent in-flight I/O. So `CancelIoEx(_stdinHandle,
+        // NULL)` against our duplicate aborts only the pump's blocked ReadFile and does not
+        // queue an abort for the next ReadFile that .NET Console will issue against the
+        // original handle. That's what avoids the "first keystroke after exit is swallowed"
+        // symptom — without isolation, CancelIoEx on the global handle could surface as
+        // ERROR_OPERATION_ABORTED on the next reader's ReadFile, and the byte that resolved
+        // the cancellation would be consumed in the resolution.
+        if (!DuplicateHandle(
+                hSourceProcessHandle: GetCurrentProcess(),
+                hSourceHandle:        stdinHandle,
+                hTargetProcessHandle: GetCurrentProcess(),
+                lpTargetHandle:       out IntPtr duplicate,
+                dwDesiredAccess:      0,
+                bInheritHandle:       false,
+                dwOptions:            DUPLICATE_SAME_ACCESS))
+        {
+            throw new InvalidOperationException(
+                $"DuplicateHandle failed for the stdin handle (Win32 error {Marshal.GetLastWin32Error()}).");
+        }
+
+        _stdinHandle = duplicate;
 
         // Auto-reset event. Initial state: non-signaled. SetEvent makes the next
         // WaitForMultipleObjects on this handle return; the wait itself implicitly resets the
@@ -101,8 +138,10 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         _cancelEvent = CreateEvent(IntPtr.Zero, bManualReset: false, bInitialState: false, lpName: null);
         if (_cancelEvent == IntPtr.Zero)
         {
+            int err = Marshal.GetLastWin32Error();
+            CloseHandle(_stdinHandle);
             throw new InvalidOperationException(
-                $"CreateEvent failed for the input-pump wakeup event (Win32 error {Marshal.GetLastWin32Error()}).");
+                $"CreateEvent failed for the input-pump wakeup event (Win32 error {err}).");
         }
 
         _pipe = new Pipe();
@@ -329,28 +368,30 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         // @formatter:off
 
         // Ordering matters — set the disposed flag FIRST so the pump observes it on any wake;
-        // then wake the pump from WaitForMultipleObjects; then release the user-space pause
-        // park; then fail any in-flight pause TCS so callers don't hang.
+        // then wake the pump from WaitForMultipleObjects; then abort any in-flight ReadFile;
+        // then release the user-space pause park; then fail any in-flight pause TCS so callers
+        // don't hang.
         //
-        // NOTE: We deliberately do NOT call CancelIoEx(_stdinHandle, IntPtr.Zero) here. On a
-        // real console handle (the FILE_TYPE_CHAR path that puts this class into play in
-        // production) the pump is essentially always parked in WaitForMultipleObjects when
-        // dispose runs — WFMO only signals when bytes are ready, so the WFMO → ReadFile cycle
-        // takes microseconds. SetEvent on _cancelEvent reliably wakes the pump out of WFMO and
-        // it exits before issuing another ReadFile.
+        // CancelIoEx targets our DUPLICATED handle, not the process-global stdin. The cancel
+        // affects only operations issued against this handle, so .NET Console's
+        // StreamReader (which reads against the original stdin handle) keeps its next
+        // ReadFile clean — no cancel state leaks into the next reader. That handle isolation
+        // is the whole point of duplicating the handle in the constructor; without it,
+        // CancelIoEx against the global stdin would queue an abort that the next reader's
+        // ReadFile would surface as ERROR_OPERATION_ABORTED, and the byte that resolved the
+        // cancellation would be consumed in the resolution — the "first keystroke after exit
+        // is swallowed" symptom.
         //
-        // CancelIoEx(handle, NULL) cancels ALL pending I/O on the handle from any thread in
-        // the process, including operations that .NET's Console subsystem will eventually
-        // issue against the same process-global stdin handle. On modern Windows console
-        // handles the cancel state can leak into the next reader's first ReadFile — the
-        // user's first post-dispose keystroke arrives as the wakeup for that abort and is
-        // consumed in resolving it. .NET Console's StreamReader treats
-        // ERROR_OPERATION_ABORTED as a transient zero-byte read and retries, but the byte
-        // that resolved the cancellation is already gone. That's the "first keystroke after
-        // exit is swallowed" symptom this class was supposed to fix.
+        // CancelIoEx is necessary because in practice the pump CAN be inside ReadFile when
+        // dispose runs: a busy session disabling several opt-ins (mouse, focus, Kitty
+        // keyboard) generates a stream of trailing-report bytes during the negotiator-restore
+        // window, and the pump cycles WFMO → ReadFile rapidly enough that "in ReadFile at the
+        // dispose moment" stops being microsecond-rare. SetEvent alone doesn't wake a blocked
+        // ReadFile; CancelIoEx does.
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         SetEvent(_cancelEvent);
+        CancelIoEx(_stdinHandle, IntPtr.Zero);
         _runEvent.Set();
 
         TaskCompletionSource? pendingPause;
@@ -362,9 +403,13 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
         _runEvent.Dispose();
 
-        // Close the cancel event we created. Do NOT close _stdinHandle — it's process-global.
+        // Close the cancel event AND the duplicated stdin handle (the constructor took
+        // ownership of the duplicate; closing it doesn't affect the original handle the
+        // caller supplied).
         if (_cancelEvent != IntPtr.Zero)
             CloseHandle(_cancelEvent);
+        if (_stdinHandle != IntPtr.Zero)
+            CloseHandle(_stdinHandle);
         // @formatter:on
     }
 
@@ -413,6 +458,25 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(IntPtr hObject);
+
+    /// <summary><c>DuplicateHandle</c> — create an independent handle referring to the same
+    /// underlying kernel object. Used to isolate this class's CancelIoEx cancellations from
+    /// the original process-global stdin handle.</summary>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DuplicateHandle(
+        IntPtr hSourceProcessHandle,
+        IntPtr hSourceHandle,
+        IntPtr hTargetProcessHandle,
+        out IntPtr lpTargetHandle,
+        uint dwDesiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
+        uint dwOptions);
+
+    /// <summary><c>GetCurrentProcess</c> — pseudo-handle for the current process, suitable as
+    /// the source / target process arguments to <see cref="DuplicateHandle"/>.</summary>
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GetCurrentProcess();
 
     // ReSharper restore UnusedMethodReturnValue.Local
 }

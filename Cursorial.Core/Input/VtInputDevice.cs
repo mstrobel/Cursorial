@@ -105,6 +105,15 @@ public sealed class VtInputDevice : IAsyncInputDevice
     public VtInputMode Mode => _mode;
 
     /// <summary>
+    /// Returns a string representation of the <see cref="VtInputDevice"/> instance,
+    /// including the source type.
+    /// </summary>
+    /// <returns>
+    /// A string that represents the current <see cref="VtInputDevice"/> object.
+    /// </returns>
+    public override string ToString() => $"{nameof(VtInputDevice)}({_source.GetType().Name})";
+
+    /// <summary>
     /// Push an externally-observed <see cref="InputEvent"/> into the device's event stream.
     /// Intended for sources that aren't part of the byte pump — terminal resize via SIGWINCH,
     /// out-of-band IME composition, application-fabricated events for testing. After disposal

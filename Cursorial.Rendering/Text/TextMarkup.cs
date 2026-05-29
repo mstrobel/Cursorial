@@ -263,7 +263,7 @@ public static class TextMarkup
                 case "bg":
                     Push(token.Name, builder.Push(options.DefaultStyle.WithBackground(ParseColor(token.Value, token.Position))));
                     break;
-                case "link":
+                case "link" or "url":
                     if (string.IsNullOrEmpty(token.Value))
                         throw Error(token.Position, "[link] requires a URI: [link=https://example.com].");
                     Push(token.Name, builder.PushHyperlink(token.Value));

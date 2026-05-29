@@ -22,11 +22,55 @@ namespace Cursorial.Output;
 /// </remarks>
 public sealed class StyleQuantizer
 {
+    [Flags]
+    private enum CachedCapabilities
+    {
+        None = 0,
+        ExtendedUnderline = 1 << 0,
+        ColoredUnderline = 1 << 1,
+        Hyperlinks = 1 << 2,
+        Ansi16 = 1 << 3,
+        Ansi256 = 1 << 4,
+        Truecolor = 1 << 5,
+        Italic = 1 << 6,
+        Underline = 1 << 7,
+        Strikethrough = 1 << 8,
+        Overline = 1 << 9
+        
+    }
+
     private readonly OutputCapabilities _capabilities;
+    private readonly CachedCapabilities _cachedCapabilities;
 
     public StyleQuantizer(OutputCapabilities capabilities)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
+        _cachedCapabilities = CachedCapabilities.None;
+
+        var styling = _capabilities.Styling;
+        var color = _capabilities.Color;
+
+        if (styling.ExtendedUnderline)
+            _cachedCapabilities |= CachedCapabilities.ExtendedUnderline;
+        if (styling.ColoredUnderline)
+            _cachedCapabilities |= CachedCapabilities.ColoredUnderline;
+        if (styling.Hyperlinks)
+            _cachedCapabilities |= CachedCapabilities.Hyperlinks;
+        if (styling.Italic)
+            _cachedCapabilities |= CachedCapabilities.Italic;
+        if (styling.Underline)
+            _cachedCapabilities |= CachedCapabilities.Underline;
+        if (styling.Strikethrough)
+            _cachedCapabilities |= CachedCapabilities.Strikethrough;
+        if (styling.Overline)
+            _cachedCapabilities |= CachedCapabilities.Overline;
+
+        if (color.Depth >= ColorDepth.Ansi16)
+            _cachedCapabilities |= CachedCapabilities.Ansi16;
+        if (color.Depth >= ColorDepth.Ansi256)
+            _cachedCapabilities |= CachedCapabilities.Ansi256;
+        if (color.Depth >= ColorDepth.Truecolor)
+            _cachedCapabilities |= CachedCapabilities.Truecolor;
     }
 
     /// <summary>The capability set this quantizer was constructed with.</summary>
@@ -42,22 +86,33 @@ public sealed class StyleQuantizer
 
         UnderlineStyle underlineStyle = style.UnderlineStyle;
 
-        if (!_capabilities.Styling.ExtendedUnderline && underlineStyle != UnderlineStyle.Single)
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ExtendedUnderline) && underlineStyle != UnderlineStyle.Single)
             underlineStyle = UnderlineStyle.Single;
 
         Color underlineColor = style.UnderlineColor;
 
-        if (!_capabilities.Styling.ColoredUnderline && !underlineColor.IsDefault)
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ColoredUnderline) && !underlineColor.IsDefault)
             underlineColor = Color.Default;
         else if (!underlineColor.IsDefault)
             underlineColor = QuantizeColor(underlineColor);
 
-        return new Style(fg, bg, attrs, underlineStyle, underlineColor);
+        var link = Hyperlink.None;
+
+        if (_cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
+            link = hyperlink;
+
+        return new Style(fg, bg, attrs, underlineStyle, underlineColor, link);
     }
 
     private Color QuantizeColor(Color color)
     {
-        var depth = _capabilities.Color.Depth;
+        var depth = _cachedCapabilities.HasFlag(CachedCapabilities.Truecolor)
+                        ? ColorDepth.Truecolor
+                        : _cachedCapabilities.HasFlag(CachedCapabilities.Ansi256)
+                            ? ColorDepth.Ansi256
+                            : _cachedCapabilities.HasFlag(CachedCapabilities.Ansi16)
+                                ? ColorDepth.Ansi16
+                                : ColorDepth.NoColor;
 
         if (color == Color.Transparent)
             return depth == ColorDepth.Truecolor ? color : Color.Default;
@@ -81,15 +136,13 @@ public sealed class StyleQuantizer
 
     private TextAttributes QuantizeAttributes(TextAttributes attributes)
     {
-        var s = _capabilities.Styling;
-
         // Drop attributes the terminal doesn't honor. Bold/Faint/Blink/Inverse/Hidden are
         // assumed present on anything with SGR support at all — we surface only the attributes
         // whose capability is reported separately.
-        if (!s.Italic) attributes &= ~TextAttributes.Italic;
-        if (!s.Underline) attributes &= ~TextAttributes.Underline;
-        if (!s.Strikethrough) attributes &= ~TextAttributes.Strikethrough;
-        if (!s.Overline) attributes &= ~TextAttributes.Overline;
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Italic)) attributes &= ~TextAttributes.Italic;
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Underline)) attributes &= ~TextAttributes.Underline;
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Strikethrough)) attributes &= ~TextAttributes.Strikethrough;
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.Overline)) attributes &= ~TextAttributes.Overline;
 
         return attributes;
     }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
@@ -263,10 +264,38 @@ public abstract record FormattedRun
 /// hyperlink target. The painter walks graphemes and writes cells through
 /// <see cref="CellBufferView.Set"/>.
 /// </summary>
-public sealed record FormattedTextRun(string Text, Style Style, string? Hyperlink = null) : FormattedRun
+public sealed record FormattedTextRun : FormattedRun
 {
+    /// <summary>
+    /// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
+    /// hyperlink target. The painter walks graphemes and writes cells through
+    /// <see cref="CellBufferView.Set"/>.
+    /// </summary>
+    [SetsRequiredMembers]
+    public FormattedTextRun(string Text, Style Style, string? Hyperlink = null)
+    {
+        this.Text = Text;
+        this.Style = Style;
+        this.Hyperlink = Hyperlink;
+        
+        if (this.Hyperlink is {} link)
+            this.Style = this.Style.WithHyperlink(link);
+    }
+
     /// <inheritdoc/>
     public override int CellWidth => GraphemeWidth.StringWidth(Text);
+
+    public required string Text { get; init; }
+    public required Style Style { get; init; }
+
+    public string? Hyperlink { get; init; }
+
+    public void Deconstruct(out string Text, out Style Style, out string? Hyperlink)
+    {
+        Text = this.Text;
+        Style = this.Style;
+        Hyperlink = this.Hyperlink;
+    }
 }
 
 /// <summary>

@@ -1,5 +1,7 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 
 using Cursorial.Input;
@@ -22,6 +24,11 @@ using Cursorial.Terminal.Stdio;
 // mode), does its work, and disposes the session — restoring cooked mode before the next prompt.
 
 PrintBanner();
+
+// Trace.Listeners.Add(new TextWriterTraceListener(File.Open("cursorial.log", FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
+//                                                 "Cursorial"));
+// Trace.AutoFlush = true;
+// Trace.WriteLine($"Starting at {DateTime.Now:yyyy-MM-dd HH:mm:ss}...");
 
 while (true)
 {
@@ -99,6 +106,10 @@ return 0;
 static void PrintBanner()
 {
     Console.WriteLine("Cursorial demo — interactive runner");
+    #if DEBUG
+    Console.WriteLine($"Runtime: {RuntimeInformation.RuntimeIdentifier}; OS: {RuntimeInformation.OSDescription}; " +
+                      $"Framework: {RuntimeInformation.FrameworkDescription}");
+    #endif
     Console.WriteLine("Type 'help' for commands, 'quit' to exit.");
     Console.WriteLine();
 }
@@ -176,6 +187,11 @@ static async Task ReadEventsAsync()
 
         try
         {
+            var message = $"Your input device is {session.Input}.\n\n";
+
+            await session.Output.Writer.WriteAsync(Encoding.UTF8.GetBytes(message), stopCts.Token);
+            await session.Output.Writer.FlushAsync(stopCts.Token);
+
             await foreach (var inputEvent in session.Input.ReadAllAsync(stopCts.Token))
             {
                 eventCount++;
@@ -361,9 +377,6 @@ static async Task TraceAsync()
     {
         await negotiator.DisposeAsync();
     }
-
-    Console.WriteLine();
-    Console.WriteLine("Trace stopped.");
 }
 
 static async Task DrainEventsAsync(
@@ -566,7 +579,24 @@ static async Task<(TerminalSession session,
     }
 
     var style = Style.Default with { Foreground = fg, Background = bg }; // Use rgb colors to enable alpha blending.
-    var buffer = new CellBuffer(size?.Columns ?? Console.WindowWidth, size?.Rows ?? Console.WindowHeight, capabilities);
+
+    // Falling back to Console.WindowWidth/Height as a last resort, but on non-console stdout
+    // (MSYS2 / Cygwin / MobaXterm bash) those throw IOException("The handle is invalid").
+    // Default to 80x24 in that case so the demo at least starts; a SIGWINCH-equivalent resize
+    // will correct the dimensions once one fires.
+    int cols, rows;
+    if (size is { } s)
+    {
+        cols = s.Columns;
+        rows = s.Rows;
+    }
+    else
+    {
+        try { cols = Console.WindowWidth;  } catch { cols = 80; }
+        try { rows = Console.WindowHeight; } catch { rows = 24; }
+    }
+
+    var buffer = new CellBuffer(cols, rows, capabilities);
 
     // Hand the renderer the negotiated capabilities so it can quantize cells before emission
     // (RGB → palette where truecolor isn't available, extended underline → Single where the
@@ -1659,6 +1689,13 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
         }
     }
 
+    row += 5;
+    
+    var tf = new TextFormatter { Trim = TextTrimming.CharacterEllipsis };
+    var ft = tf.Format(RenderShowcaseFragments.GithubLink, cols, capabilities: outputCaps);
+    
+    ft.Paint(buf, buf.Bounds.Translate(1, row).WithSize(ft.Size), outputCaps);
+
     // ---- Sized Text below Title Bar ----
     // ScaledText is the capability-aware entry point: when the terminal honors OSC 66, it
     // attaches a SizedTextFragment (Kitty / Ghostty / etc.); otherwise it falls back to a
@@ -2008,4 +2045,7 @@ file static class RenderShowcaseFragments
         "Cursorial Rendering Demo",
         new TextSizing(Scale: 2),
         fallbackFont: DecoratedFont.QuarterBlockUnderline);
+
+    public static readonly RichText GithubLink =
+        TextMarkup.Parse("[i]Cursorial[/i] is hosted at [link=https://github.com/mstrobel/cursorial][fg=blue]GitHub[/fg][/link].");
 }

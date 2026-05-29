@@ -20,7 +20,7 @@ namespace Cursorial.Terminal.Stdio;
 /// <b>Why not <c>ReadFile + ENABLE_VIRTUAL_TERMINAL_INPUT</c>.</b> The conhost-translated VT
 /// byte stream lives in a buffer adjacent to (but not the same as) the input-record queue.
 /// <c>FlushConsoleInputBuffer</c> drains the record queue but doesn't fully drain the
-/// translated byte view — leftover bytes (e.g., a partly-consumed Win32 Input Mode sequence
+/// translated byte view — leftover bytes (e.g., a partly consumed Win32 Input Mode sequence
 /// from the last key the user pressed during a session) can survive into cooked mode, where
 /// the orphan ESC + CSI parameters confuse <see cref="Console.ReadLine"/>'s reader into
 /// consuming the user's first post-session keystroke. That's the "first keystroke after
@@ -55,8 +55,11 @@ namespace Cursorial.Terminal.Stdio;
 /// stdin is a real console handle.
 /// </para>
 /// </remarks>
+// ReSharper disable once RedundantExtendsListEntry
 internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, IPausableInputByteSource
 {
+    // ReSharper disable UnusedMember.Local
+
     private const uint INFINITE = 0xFFFFFFFF;
     private const uint WAIT_OBJECT_0 = 0x00000000;
     private const uint WAIT_OBJECT_1 = WAIT_OBJECT_0 + 1;
@@ -78,11 +81,14 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     // Read batch size — one syscall can drain up to this many records.
     private const int ReadBufferRecords = 32;
 
+    // ReSharper restore UnusedMember.Local
+
     private readonly IntPtr _stdinHandle;
     private readonly IntPtr _cancelEvent;
     private readonly Pipe _pipe;
     private readonly Task _pumpTask;
     private readonly ManualResetEventSlim _runEvent = new(initialState: true);
+    private readonly bool _passThroughVtBytes;
 
     private readonly object _stateLock = new();
     private int _pauseRefCount;
@@ -95,14 +101,29 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
     private int _disposed;
 
-    public WindowsConsoleInputByteSource(IntPtr stdinHandle)
+    /// <param name="stdinHandle">Standard input console handle from <c>GetStdHandle</c>.</param>
+    /// <param name="passThroughVtBytes">
+    /// When true, <c>KEY_EVENT</c> records that carry an ASCII <c>UnicodeChar</c> with no
+    /// <c>VirtualKeyCode</c> set (the byte-per-record shape ConPTY uses for VT sequences it
+    /// can't classify as a key — DA1 / XTVERSION / OSC color responses, Kitty keyboard
+    /// reports from third-party emulators, etc.) are emitted as the raw byte instead of
+    /// being wrapped in a Win32 Input Mode envelope. This is the path third-party emulators
+    /// running atop ConPTY (Alacritty, WezTerm, Ghostty on Windows, MinTTY, …) take so the
+    /// negotiator's classifier sees their device responses verbatim. The default of false
+    /// preserves the lossless conhost / Windows Terminal behavior — under those families
+    /// every key, even one with <c>vk=0</c> (notably IME composition results), gets the
+    /// Win32 Input Mode envelope.
+    /// </param>
+    public WindowsConsoleInputByteSource(IntPtr stdinHandle, bool passThroughVtBytes = false)
     {
         _stdinHandle = stdinHandle;
+        _passThroughVtBytes = passThroughVtBytes;
 
         // Auto-reset event. Initial state: non-signaled. SetEvent makes the next
         // WaitForMultipleObjects on this handle return; the wait itself implicitly resets the
         // event back to non-signaled, so subsequent waits block again until the next SetEvent.
         _cancelEvent = CreateEvent(IntPtr.Zero, bManualReset: false, bInitialState: false, lpName: null);
+
         if (_cancelEvent == IntPtr.Zero)
         {
             throw new InvalidOperationException(
@@ -115,6 +136,13 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
     /// <inheritdoc/>
     public PipeReader Reader => _pipe.Reader;
+
+    /// <summary>
+    /// Whether the translator emits raw ASCII bytes for ConPTY-passed-through VT sequences in
+    /// addition to the Win32 Input Mode envelopes it produces for real key events. See the
+    /// <c>passThroughVtBytes</c> constructor parameter.
+    /// </summary>
+    public bool PassThroughVtBytes => _passThroughVtBytes;
 
     private async Task PumpAsync()
     {
@@ -169,7 +197,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
                 // stdin handle signaled. Check how many records are available before reading —
                 // some signaling cases don't produce a readable record (rare, but the docs
-                // don't promise otherwise). If the count is 0 it was a spurious wake; loop
+                // don't promise otherwise). If the count is 0, it was a spurious wake; loop
                 // back to wait without calling ReadConsoleInput (which would otherwise block
                 // until a record actually arrives, defeating the WFMO cancellability).
                 if (!GetNumberOfConsoleInputEvents(_stdinHandle, out uint available))
@@ -246,8 +274,37 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     /// so the byte stream this source produces is indistinguishable from a Win32-Input-Mode
     /// terminal's native output.
     /// </summary>
-    private static void EmitKeyEvent(in KEY_EVENT_RECORD evt, ArrayBufferWriter<byte> output)
+    /// <remarks>
+    /// When <see cref="PassThroughVtBytes"/> is set and the record carries an ASCII
+    /// <c>UnicodeChar</c> with <c>VirtualKeyCode == 0</c> on a key-down (the byte-per-record
+    /// shape ConPTY produces for VT bytes it can't classify as a key — DA1 / XTVERSION /
+    /// Kitty keyboard / etc.), the raw ASCII byte is emitted instead, repeated
+    /// <c>RepeatCount</c> times. Key-up events for the same shape are dropped to avoid
+    /// echoing each VT byte twice. Anything else (real keys, including IME composition with
+    /// <c>vk=0</c> and non-ASCII <c>uc</c>) still rides the Win32 Input Mode envelope so the
+    /// interpreter can route through its full key-translation path.
+    /// </remarks>
+    private void EmitKeyEvent(in KEY_EVENT_RECORD evt, ArrayBufferWriter<byte> output)
     {
+        // ASCII byte-per-record from ConPTY → emit verbatim, skip the envelope. ASCII-only
+        // because IME composition can drop a single non-ASCII char as a vk=0 KEY_EVENT and
+        // the consumer expects to see Win32 Input Mode for it (text routing depends on the
+        // envelope's KeyDown / repeat / modifier fields).
+        if (_passThroughVtBytes &&
+            evt.VirtualKeyCode == 0 &&
+            evt.UnicodeChar is > 0 and < 0x80)
+        {
+            if (evt.KeyDown == 0) return;
+
+            ushort copies = evt.RepeatCount;
+            if (copies == 0) copies = 1;
+
+            var dst = output.GetSpan(copies);
+            dst[..copies].Fill((byte) evt.UnicodeChar);
+            output.Advance(copies);
+            return;
+        }
+
         // The framework will repeat events per RepeatCount; emit one sequence with the actual
         // repeat count rather than RepeatCount copies of a Rc=1 sequence.
         ushort repeats = evt.RepeatCount;
@@ -273,8 +330,8 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         AppendUInt(repeats, scratch, ref written);
         scratch[written++] = (byte) '_';
 
-        var dst = output.GetSpan(written);
-        scratch[..written].CopyTo(dst);
+        var dst2 = output.GetSpan(written);
+        scratch[..written].CopyTo(dst2);
         output.Advance(written);
     }
 
@@ -532,6 +589,8 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
     // ---- INPUT_RECORD layout ----
 
+    // ReSharper disable InconsistentNaming
+    
     [StructLayout(LayoutKind.Explicit)]
     private struct INPUT_RECORD
     {
@@ -541,7 +600,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         [FieldOffset(4)] public MOUSE_EVENT_RECORD MouseEvent;
         [FieldOffset(4)] public FOCUS_EVENT_RECORD FocusEvent;
         // WINDOW_BUFFER_SIZE_EVENT / MENU_EVENT records are smaller; their fields overlay the
-        // start of the union but we don't translate them so we don't model the structs here.
+        // start of the union, but we don't translate them, so we don't model the structs here.
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -571,6 +630,8 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         public int SetFocus;                   // BOOL
     }
 
+    // ReSharper restore InconsistentNaming
+    
     // ---- P/Invokes ----
 
     // ReSharper disable UnusedMethodReturnValue.Local

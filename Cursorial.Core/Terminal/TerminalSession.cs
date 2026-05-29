@@ -1,10 +1,15 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 using Cursorial.Input;
+using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Terminal.Stdio;
+
+using WCV = Cursorial.Terminal.WindowsCapabilityVersions;
 
 namespace Cursorial.Terminal;
 
@@ -134,7 +139,7 @@ public sealed class TerminalSession : IAsyncDisposable
 
     /// <summary>
     /// Opens a session over caller-supplied transports. Useful for embedding inside a tool that
-    /// already manages the terminal state or for driving the input pipeline from a recorded trace.
+    /// already manages the terminal state or for driving the input pipeline from a recorded .
     /// </summary>
     /// <remarks>
     /// <para>
@@ -237,8 +242,31 @@ public sealed class TerminalSession : IAsyncDisposable
 
         try
         {
-            var capabilities = await negotiator.NegotiateAsync(options.Negotiation, cancellationToken)
+            TerminalCapabilities capabilities;
+
+            if (source is WindowsConsoleInputByteSource { PassThroughVtBytes: false })
+            {
+                // WindowsTerminal / WindowsConsoleHost only. That translator wraps every
+                // conhost INPUT_RECORD — including the bytes the terminal sends back to our
+                // probes — in a Win32 Input Mode envelope, which the negotiator's classifier
+                // would never recognize as DA1 / XTVERSION / OSC responses. Probing would
+                // just block until ProbeTimeout while quietly injecting fake key events for
+                // whatever the terminal happened to send back. The substitute capability
+                // snapshot mirrors what NegotiateAsync would produce for a known Windows
+                // console transport — Win32 Input Mode for input, truecolor on Windows
+                // Terminal, fewer colors on classic conhost (detected via WT_SESSION).
+                //
+                // Third-party emulators atop ConPTY (Alacritty / WezTerm / Ghostty on Windows
+                // / MinTTY / …) take the negotiator path even when stdin is a console
+                // handle: with PassThroughVtBytes=true the source emits their device
+                // responses verbatim, so DA1 / XTVERSION / OSC color queries all work.
+                capabilities = BuildWindowsConsoleCapabilities();
+            }
+            else
+            {
+                capabilities = await negotiator.NegotiateAsync(options.Negotiation, cancellationToken)
                                                .ConfigureAwait(false);
+            }
 
             device = new VtInputDevice(
                 source,
@@ -268,6 +296,85 @@ public sealed class TerminalSession : IAsyncDisposable
 
             // @formatter:on
         }
+    }
+
+    /// <summary>
+    /// Build a capability snapshot for the Windows-console transport without running the
+    /// negotiator's probe handshake. The input source already produces Win32-Input-Mode key
+    /// sequences, SGR mouse events, and focus events locally from conhost INPUT_RECORDs, so
+    /// the input model is fully usable regardless of family. Output color depth is inferred
+    /// from the WT_SESSION environment variable (set by Windows Terminal) — present means
+    /// truecolor, absent means we conservatively fall back to a 256-color ceiling that even
+    /// classic conhost honors.
+    /// </summary>
+    private static TerminalCapabilities BuildWindowsConsoleCapabilities()
+    {
+        var environment = EnvironmentReader.Instance;
+        var identification = VtTerminalNegotiator.ResolveIdentification(environment);
+        var isWindowsTerminal = identification.Family is TerminalFamily.WindowsTerminal;
+        var osVersion = Environment.OSVersion.Version;
+
+        var family = isWindowsTerminal
+                         ? TerminalFamily.WindowsTerminal
+                         : TerminalFamily.WindowsConsoleHost;
+
+        identification = identification with { Name = family.ToString() };
+
+        // Input — describes what our source actually delivers, not what the negotiator would
+        // have probed. The translation layer in WindowsConsoleInputByteSource emits Win32
+        // Input Mode for keys (full up/down + repeats + modifiers), SGR mouse for clicks /
+        // drags / wheel, and CSI I/O for focus changes; KittyKeyboard isn't on the Windows
+        // console path, so leave that bit false.
+        var input = new InputCapabilities(
+            Mouse: new MouseCapabilities(
+                ButtonPress: true,
+                ButtonRelease: true,
+                Drag: true,
+                Motion: osVersion >= WCV.SgrMouseConsoleHost,
+                Wheel: osVersion >= WCV.SgrMouseConsoleHost,
+                PixelCoordinates: false,
+                ExtendedButtonCount: 2),
+            Keyboard: new KeyboardCapabilities(
+                DistinguishesKeyUpDown: true,
+                ReportsRepeats: true,
+                DetailedModifiers: true,
+                TextInput: true),
+            Pointer: PointerCapabilities.None,
+            Protocol: new ProtocolCapabilities(
+                BracketedPaste: false,
+                FocusEvents: true,
+                KittyKeyboardProtocol: false,
+                Win32InputMode: true));
+
+        // Output — conservative defaults. Truecolor on Windows Terminal (confirmed by
+        // empirical use of 24-bit SGR in modern WT builds), Ansi256 elsewhere. The renderer's
+        // StyleQuantizer downsamples gracefully if a consumer asks for colors outside the
+        // depth the snapshot reports.
+
+        var color = isWindowsTerminal
+                        ? new ColorCapabilities(
+                            Depth: ColorDepth.Truecolor,
+                            TruecolorVerified: false,
+                            DefaultColorReset: true,
+                            OscPaletteSet: true)
+                        : new ColorCapabilities(
+                            Depth: osVersion >= WCV.TrueColorConsoleHost
+                                       ? ColorDepth.Truecolor
+                                       : osVersion >= WCV.BasicAnsiConsoleHost
+                                           ? ColorDepth.Ansi16
+                                           : ColorDepth.NoColor,
+                            TruecolorVerified: false,
+                            DefaultColorReset: true,
+                            OscPaletteSet: false);
+
+        var output = OutputCapabilities.None with { Color = color };
+
+        if (isWindowsTerminal) output = output with { Graphics = output.Graphics with { Sixel = true } };
+
+        return new TerminalCapabilities(
+            Terminal: identification,
+            Input: input,
+            Output: output);
     }
     
     /// <summary>
@@ -681,4 +788,12 @@ public sealed class TerminalSession : IAsyncDisposable
 
         // @formatter:on
     }
+}
+
+internal static class WindowsCapabilityVersions
+{
+    public static readonly Version TrueColorConsoleHost = new(10, 0, 14393, 0);
+    public static readonly Version BasicAnsiConsoleHost = new(10, 0, 10240, 0);
+    public static readonly Version PseudoConsoleSupport = new(10, 0, 17763, 0);
+    public static readonly Version SgrMouseConsoleHost = PseudoConsoleSupport;
 }

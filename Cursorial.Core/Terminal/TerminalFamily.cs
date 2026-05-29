@@ -25,9 +25,11 @@ public enum TerminalFamily
     ITerm2,
     WezTerm,
     Alacritty,
+    Tabby,
     Foot,
     Konsole,
     GnomeTerminal,
+    Terminus,
     XfceTerminal,
     Rxvt,
     Mlterm,
@@ -41,11 +43,23 @@ public enum TerminalFamily
     /// <summary>The legacy Windows console host (conhost.exe).</summary>
     WindowsConsoleHost,
 
+    /// <summary>The original third-party Unix PTY-compatible console for Windows.</summary>
+    ConEmu,
+
+    /// <summary>An all-in-one terminal and remote computing tool for Windows.</summary>
+    MobaXTerm,
+
     /// <summary>tmux, acting as a terminal multiplexer between the real terminal and the application.</summary>
     Tmux,
 
     /// <summary>GNU Screen.</summary>
     GnuScreen,
+
+    /// <summary>A generic ANSI terminal that did not identify itself further.</summary>
+    GenericAnsi,
+    
+    /// <summary>WSL terminal that did not identify itself further. Assume advanced ANSI capabilities.</summary>
+    GenericWsl,
 
     /// <summary>A VT-conforming terminal that did not identify itself further.</summary>
     GenericVt

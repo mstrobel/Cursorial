@@ -125,9 +125,16 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
     }
 
     /// <summary>
-    /// Query the current visible-window cell dimensions via the Windows console API. The
-    /// "window" size (<c>srWindow</c>) is what users see; <c>dwSize</c> is the buffer size,
-    /// which on legacy conhost is larger than the window to support scrollback.
+    /// Query the current visible-window cell dimensions. Primary source is the Windows console
+    /// API (<c>GetConsoleScreenBufferInfo</c>); <c>srWindow</c> is what users see (the visible
+    /// region), <c>dwSize</c> is the buffer size which on legacy conhost is larger to support
+    /// scrollback. When the primary source fails — typically because stdout isn't connected to
+    /// a real console (an MSYS2 / Cygwin / MobaXterm bash session, a CI pipe, …) — fall back
+    /// to the <c>COLUMNS</c> / <c>LINES</c> environment variables that POSIX-style shells set
+    /// when launching child processes. The env-var fallback gives an accurate initial size but
+    /// becomes stale after resizes (shells don't re-export on SIGWINCH unless a hook does it);
+    /// callers needing live resize on non-console stdout will need to query the terminal
+    /// itself (<c>CSI 18 t</c>) rather than rely on this monitor.
     /// </summary>
     private static bool TryReadSize(out int cols, out int rows)
     {
@@ -137,13 +144,24 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         if (!OperatingSystem.IsWindows()) return false;
 
         var handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return false;
+        if (handle != IntPtr.Zero && handle != new IntPtr(-1) &&
+            GetConsoleScreenBufferInfo(handle, out var info))
+        {
+            cols = info.srWindow.Right - info.srWindow.Left + 1;
+            rows = info.srWindow.Bottom - info.srWindow.Top + 1;
+            if (cols > 0 && rows > 0) return true;
+        }
 
-        if (!GetConsoleScreenBufferInfo(handle, out var info)) return false;
+        if (int.TryParse(Environment.GetEnvironmentVariable("COLUMNS"), out int envCols) &&
+            int.TryParse(Environment.GetEnvironmentVariable("LINES"), out int envRows) &&
+            envCols > 0 && envRows > 0)
+        {
+            cols = envCols;
+            rows = envRows;
+            return true;
+        }
 
-        cols = info.srWindow.Right - info.srWindow.Left + 1;
-        rows = info.srWindow.Bottom - info.srWindow.Top + 1;
-        return cols > 0 && rows > 0;
+        return false;
     }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

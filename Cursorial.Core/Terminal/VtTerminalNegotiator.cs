@@ -113,7 +113,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         try
         {
             var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
-            var identification = ResolveIdentification(responses);
+            var identification = ResolveIdentification(responses, _environment);
 
             if (options.OptIns == OptInPolicy.Allowed)
             {
@@ -138,7 +138,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             {
                 await ProbeColorsAsync(options, cancellationToken).ConfigureAwait(false);
             }
-
+            
             // _negotiated is now durably 1 even if anything above threw — restore still runs.
             var inputCapabilities = ResolveInputCapabilities(identification, _applied);
             var outputCapabilities = ResolveOutputCapabilities(identification, _applied);
@@ -239,14 +239,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     public ReadOnlyMemory<byte> BuildRestoreSequence()
     {
         // Idempotent: once we hand bytes out for synchronous emission, RestoreAsync becomes a
-        // no-op so the same disable sequences aren't written twice (once via the sync path here,
+        // no-op so the same 'disable' sequences aren't written twice (once via the sync path here,
         // once via the async sink during DisposeAsync). Matches RestoreAsync's _restored gate.
         if (Interlocked.Exchange(ref _restored, 1) != 0) return ReadOnlyMemory<byte>.Empty;
         if (Volatile.Read(ref _negotiated) == 0) return ReadOnlyMemory<byte>.Empty;
 
         var writer = new System.Buffers.ArrayBufferWriter<byte>();
 
-        // Mirror RestoreAsync's LIFO order. ClearKittyExtraCursors is emitted unconditionally
+        // Mirror RestoreAsync's LIFO order. 'ClearKittyExtraCursors' is emitted unconditionally
         // (Kitty-only no-op elsewhere) just like the async path.
         if (_applied.Win32InputMode)        AppendBytes(writer, VtInputSequences.OptInSequences.DisableWin32InputMode);
         if (_applied.KittyKeyboard)         AppendBytes(writer, VtInputSequences.OptInSequences.PopKittyKeyboard);
@@ -374,8 +374,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
 
         // Synchronized output (DECSET 2026): record support so per-frame consumers (FrameRenderer)
-        // can wrap each redraw, but DO NOT issue DECSET 2026 here. DECSET 2026 begins a sync block
-        // that buffers output until DECRST 2026 ends it; issuing it once at session open and
+        // can wrap each redraw operation, but DO NOT issue DECSET 2026 here. DECSET 2026 begins a sync
+        // block that buffers output until DECRST 2026 ends it; issuing it once at session open and
         // pairing it with DECRST at disposal makes the whole session a single sync block. Terminals
         // that honor the protocol strictly (WezTerm, Kitty, …) buffer every byte we emit until
         // session shutdown — interactive output stalls completely. Other terminals either don't
@@ -458,6 +458,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.WezTerm or
                   TerminalFamily.Alacritty or
                   TerminalFamily.WindowsTerminal or
+                  TerminalFamily.GenericWsl or
                   TerminalFamily.Konsole or
                   TerminalFamily.Foot;
 
@@ -503,6 +504,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.Xterm or
                   TerminalFamily.Konsole or
                   TerminalFamily.WindowsTerminal or
+                  TerminalFamily.GenericWsl or
                   TerminalFamily.Tmux;
 
     // ---- Probe orchestration ----
@@ -1013,26 +1015,36 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     // ---- Identification resolution ----
 
-    private TerminalIdentification ResolveIdentification(ProbeResponses responses)
+    public static TerminalIdentification ResolveIdentification(IEnvironmentReader? environment = null, TerminalFamily? familyOverride = null)
     {
-        string? rawTerm = _environment.GetVariable("TERM");
-        string? rawTermProgram = _environment.GetVariable("TERM_PROGRAM");
-        string? termVersion = _environment.GetVariable("TERM_PROGRAM_VERSION");
-        bool insideMultiplexer = DetectMultiplexer(rawTerm);
+        environment ??= IEnvironmentReader.Default;
+        return ResolveIdentification(null, environment);
+    }
 
-        string? xtVersionPayload = responses.XtVersion is {} x ? AsciiPayloadOrNull(x.Payload) : null;
+    private static TerminalIdentification ResolveIdentification(ProbeResponses? responses,
+                                                                IEnvironmentReader? environment = null,
+                                                                TerminalFamily? familyOverride = null)
+    {
+        environment ??= IEnvironmentReader.Default;
+        
+        string? rawTerm = environment.GetVariable("TERM");
+        string? rawTermProgram = environment.GetVariable("TERM_PROGRAM");
+        string? termVersion = environment.GetVariable("TERM_PROGRAM_VERSION");
+        bool insideMultiplexer = DetectMultiplexer(rawTerm, environment);
+
+        string? xtVersionPayload = responses?.XtVersion is {} x ? AsciiPayloadOrNull(x.Payload) : null;
         var (familyFromXt, nameFromXt, versionFromXt) = ParseXtVersionPayload(xtVersionPayload);
 
-        var family = familyFromXt;
+        var family = familyOverride ?? familyFromXt;
 
         if (family == TerminalFamily.Unknown)
-            family = ClassifyFromEnvironment(rawTerm, rawTermProgram);
+            family = ClassifyFromEnvironment(rawTerm, rawTermProgram, environment);
 
         // DA1 response carries DEC private feature codes. Parameter 4 is "Sixel graphics
         // support." Parsing it lets us detect Sixel on terminals the family list misses
         // (xterm-with-sixel, modern Kitty, modern Konsole, …) without maintaining a
         // perpetually-out-of-date family allow-list.
-        bool advertisesSixel = responses.PrimaryDeviceAttributes is { } da1 &&
+        bool advertisesSixel = responses?.PrimaryDeviceAttributes is { } da1 &&
                                Da1Advertises(da1.Payload.Span, parameter: 4);
 
         return new TerminalIdentification(
@@ -1067,10 +1079,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         return false;
     }
 
-    private bool DetectMultiplexer(string? rawTerm)
+    private static bool DetectMultiplexer(string? rawTerm, IEnvironmentReader? environment = null)
     {
-        if (_environment.GetVariable("TMUX") is { Length: > 0 }) return true;
-        if (_environment.GetVariable("STY") is { Length: > 0 }) return true; // GNU Screen
+        environment ??= IEnvironmentReader.Default;
+        
+        if (environment.GetVariable("TMUX") is { Length: > 0 }) return true;
+        if (environment.GetVariable("STY") is { Length: > 0 }) return true; // GNU Screen
 
         if (rawTerm is null) return false;
 
@@ -1121,10 +1135,14 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (MatchIdentifier(name, "iTerm[2]?")) return TerminalFamily.ITerm2;
         if (MatchIdentifier(name, "WezTerm")) return TerminalFamily.WezTerm;
         if (MatchIdentifier(name, "Alacritty")) return TerminalFamily.Alacritty;
+        if (MatchIdentifier(name, "Tabby")) return TerminalFamily.Tabby;
         if (MatchIdentifier(name, "foot")) return TerminalFamily.Foot;
         if (MatchIdentifier(name, "Konsole")) return TerminalFamily.Konsole;
         if (MatchIdentifier(name, "VTE\\(7600\\)")) return TerminalFamily.GnomeTerminal;
+        if (MatchIdentifier(name, "Terminus.*")) return TerminalFamily.Terminus;
         if (MatchIdentifier(name, "xterm")) return TerminalFamily.Xterm;
+        
+        if (MatchIdentifier(name, "Apple_Terminal")) return TerminalFamily.AppleTerminal;
 
         if (MatchIdentifier(name, "WindowsTerminal") ||
             MatchIdentifier(name, "Windows Terminal"))
@@ -1140,38 +1158,52 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         return Regex.IsMatch(input, @$"\b{identifier}", RegexOptions.IgnoreCase);
     }
 
-    private TerminalFamily ClassifyFromEnvironment(string? rawTerm, string? rawTermProgram)
+    private static TerminalFamily ClassifyFromEnvironment(string? rawTerm, string? rawTermProgram, IEnvironmentReader? environment = null)
     {
-        if (rawTermProgram is { Length: > 0 })
-        {
-            var byName = ClassifyByName(rawTermProgram);
-            if (byName != TerminalFamily.Unknown) return byName;
+        environment ??= IEnvironmentReader.Default;
 
-            if (MatchIdentifier(rawTermProgram, "Apple_Terminal"))
-                return TerminalFamily.AppleTerminal;
+        if (rawTermProgram is { Length: > 0 } && ClassifyByName(rawTermProgram) is var family and not TerminalFamily.Unknown)
+            return family;
 
-            if (MatchIdentifier(rawTermProgram, "ghostty"))
-                return TerminalFamily.Ghostty; // No enum entry yet for Ghostty.
-        }
-
+        // First chance rawTerm match (ignore common values like xterm, vt100, etc.)
         if (rawTerm is { Length: > 0 })
         {
+            // GNU screen tends t
+            if (MatchIdentifier(rawTerm, "screen\\[.].*")) return TerminalFamily.GnuScreen;
+
             if (MatchIdentifier(rawTerm, "kitty")) return TerminalFamily.Kitty;
             if (MatchIdentifier(rawTerm, "ghostty")) return TerminalFamily.Ghostty;
             if (MatchIdentifier(rawTerm, "rio")) return TerminalFamily.Rio;
             if (MatchIdentifier(rawTerm, "iTerm[2]")) return TerminalFamily.Rio;
             if (MatchIdentifier(rawTerm, "alacritty")) return TerminalFamily.Alacritty;
+            if (MatchIdentifier(rawTerm, "tabby")) return TerminalFamily.Tabby;
             if (MatchIdentifier(rawTerm, "foot")) return TerminalFamily.Foot;
             if (MatchIdentifier(rawTerm, "tmux")) return TerminalFamily.Tmux;
-            if (MatchIdentifier(rawTerm, "VTE\\(7600\\)")) return TerminalFamily.Xterm;
+            if (MatchIdentifier(rawTerm, "VTE\\(7600\\)")) return TerminalFamily.GnomeTerminal;
+            if (MatchIdentifier(rawTerm, "Terminus.*")) return TerminalFamily.Terminus;
             if (MatchIdentifier(rawTerm, "screen")) return TerminalFamily.GnuScreen;
-            if (MatchIdentifier(rawTerm, "xterm")) return TerminalFamily.Xterm;
             if (MatchIdentifier(rawTerm, "rxvt")) return TerminalFamily.Rxvt;
         }
 
-        if (_environment.GetVariable("KITTY_PID") is { Length: > 0 }) return TerminalFamily.Kitty;
-        if (_environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
-        if (_environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
+        if (environment.GetVariable("MOBANOACL") is { Length: > 0 }) return TerminalFamily.MobaXTerm;
+        if (environment.GetVariable("ConEmuPID") is { Length: > 0 }) return TerminalFamily.ConEmu;
+
+        if (environment.GetVariable("KITTY_PID") is { Length: > 0 }) return TerminalFamily.Kitty;
+        if (environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
+        if (environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
+
+        if (environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
+
+        if (environment.IsWSL()) return TerminalFamily.GenericWsl;
+        if (environment.IsCygwin() || environment.IsMinGW()) return TerminalFamily.GenericAnsi;
+
+        // Second chance rawTerm match
+        if (rawTerm is { Length: > 0 })
+        {
+            if (MatchIdentifier(rawTerm, "xterm")) return TerminalFamily.Xterm;
+            if (MatchIdentifier(rawTerm, "ansi")) return TerminalFamily.GenericAnsi;
+            if (MatchIdentifier(rawTerm, "vt100")) return TerminalFamily.GenericVt;
+        }
 
         // On Windows, if we got here without a more specific identification AND we're attached
         // to a real console (conhost.exe — stdin is a console handle, not a pipe/file), classify
@@ -1179,7 +1211,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // conhost-aware capability gates. Windows Terminal already returned above via
         // WT_SESSION; remaining cases are conhost-backed (cmd.exe, PowerShell launched without
         // Windows Terminal, etc.) or ConPTY-backed hosts that didn't set WT_SESSION.
-        if (_environment.IsAttachedToWindowsConsole())
+        if (environment.IsAttachedToWindowsConsole())
             return TerminalFamily.WindowsConsoleHost;
 
         if (rawTerm is { Length: > 0 })
@@ -1323,14 +1355,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                               TerminalFamily.Alacritty       => false,
                               TerminalFamily.Konsole         => true,
                               TerminalFamily.GnomeTerminal   => true,
+                              TerminalFamily.Terminus        => true,
                               TerminalFamily.Foot            => true,
                               TerminalFamily.WindowsTerminal => true,
+                              TerminalFamily.GenericWsl      => true,
+                              TerminalFamily.MobaXTerm       => false,
                               // Multiplexers pass wide-glyph rendering through to the host terminal; trust them
                               // when the user is running one (the worst case is the host itself is unreliable,
                               // which is the same as not running through a multiplexer at all).
                               TerminalFamily.Tmux      => true,
                               TerminalFamily.GnuScreen => true,
-                              _                        => false,
+                              _                        => false
                           };
 
         bool textSizing = identification.Family == TerminalFamily.Kitty &&
@@ -1402,10 +1437,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private ColorDepth ResolveColorDepth(TerminalIdentification identification)
     {
-        var colorTerm = _environment.GetVariable("COLORTERM");
+        // NO_COLOR convention: https://no-color.org/
+        if (_environment.GetVariable("NO_COLOR") is { Length: > 0 }) return ColorDepth.NoColor;
 
-        if (colorTerm is not null && (MatchIdentifier(colorTerm, "truecolor") ||
-                                      MatchIdentifier(colorTerm, "24bit")))
+        if (_environment.GetVariable("COLORTERM") is { Length: > 0 } colorTerm &&
+            (MatchIdentifier(colorTerm, "truecolor") ||
+             MatchIdentifier(colorTerm, "24bit")))
         {
             return ColorDepth.Truecolor;
         }
@@ -1417,22 +1454,29 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                      TerminalFamily.WezTerm or
                                      TerminalFamily.Alacritty or
                                      TerminalFamily.WindowsTerminal or
+                                     TerminalFamily.GenericWsl or
                                      TerminalFamily.WindowsConsoleHost or
                                      TerminalFamily.Foot or
                                      TerminalFamily.Konsole or
-                                     TerminalFamily.GnomeTerminal)
+                                     TerminalFamily.GnomeTerminal or
+                                     TerminalFamily.Terminus or
+                                     TerminalFamily.ConEmu or
+                                     TerminalFamily.MobaXTerm)
         {
             return ColorDepth.Truecolor;
         }
+
+        if (identification.Family == TerminalFamily.AppleTerminal)
+            return ColorDepth.Ansi256;
+
+        if (identification.Family is TerminalFamily.GenericAnsi)
+            return ColorDepth.Ansi16;
 
         var term = identification.RawTermEnv;
         if (term is null) return ColorDepth.NoColor;
 
         if (term.Contains("256color", StringComparison.OrdinalIgnoreCase)) return ColorDepth.Ansi256;
         if (term.Contains("color", StringComparison.OrdinalIgnoreCase)) return ColorDepth.Ansi16;
-
-        if (identification.Family == TerminalFamily.AppleTerminal)
-            return ColorDepth.Ansi256;
 
         return ColorDepth.NoColor;
     }
@@ -1448,6 +1492,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                                  TerminalFamily.WezTerm or
                                                  TerminalFamily.Alacritty or
                                                  TerminalFamily.WindowsTerminal or
+                                                 TerminalFamily.GenericWsl or
                                                  TerminalFamily.Foot or
                                                  TerminalFamily.Konsole;
 
@@ -1509,6 +1554,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                                   TerminalFamily.Foot or
                                                   TerminalFamily.Alacritty or
                                                   TerminalFamily.WindowsTerminal or
+                                                  TerminalFamily.GenericWsl or
                                                   TerminalFamily.Konsole;
 
         return new WindowCapabilities(

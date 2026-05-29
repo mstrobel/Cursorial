@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 using Cursorial.Input;
@@ -23,15 +25,37 @@ namespace Cursorial.Terminal.Stdio;
 /// fix applies on both platforms: bypass <see cref="Console"/> entirely.
 /// </para>
 /// <para>
-/// <b>Stdin source selection.</b> The stdin path is selected at <see cref="Open"/> time based
-/// on the handle's file type: a real console (<c>FILE_TYPE_CHAR</c>) goes through
-/// <see cref="WindowsConsoleInputByteSource"/>, which uses a <c>WaitForMultipleObjects</c>
-/// pattern that's cancellable on disposal. A non-console handle (pipe / disk / remote — seen
-/// under tmux, ssh, MSYS2, CI runners, or when stdin is otherwise redirected) falls back to
-/// the older <see cref="StreamInputByteSource"/> wrapping a <see cref="FileStream"/>. The
-/// fallback path retains the legacy "first keystroke after disposal can be swallowed" bug,
-/// because there's no console-style "input ready" signal to wait on for arbitrary
-/// pipes / streams.
+/// <b>Stdin source selection.</b> A console-typed stdin (where <c>GetConsoleMode</c> succeeds)
+/// always goes through <see cref="WindowsConsoleInputByteSource"/> — the WFMO + ReadConsoleInputW
+/// pump that sidesteps the "first keystroke after disposal can be swallowed" bug that any
+/// <c>ENABLE_VIRTUAL_TERMINAL_INPUT</c>-based byte-stream view of conhost exhibits in the
+/// raw → cooked transition. The console mode leaves <c>ENABLE_VIRTUAL_TERMINAL_INPUT</c> off
+/// and turns on <c>ENABLE_MOUSE_INPUT</c> + <c>ENABLE_WINDOW_INPUT</c> so records carry mouse
+/// and resize events directly.
+/// </para>
+/// <para>
+/// The resolved <see cref="TerminalFamily"/> (via
+/// <see cref="VtTerminalNegotiator.ResolveIdentification(IEnvironmentReader?, TerminalFamily?)"/>)
+/// only changes
+/// the translator's behavior, not the read path:
+/// <see cref="TerminalFamily.WindowsTerminal"/> / <see cref="TerminalFamily.WindowsConsoleHost"/>
+/// get the lossless conhost translation (every key, including IME composition with
+/// <c>vk=0</c>, becomes a Win32 Input Mode envelope); any other family — third-party emulator
+/// running atop ConPTY (Alacritty, WezTerm, Ghostty on Windows, MinTTY, …) — gets the
+/// <c>passThroughVtBytes</c> path, where the byte-per-record shape ConPTY uses for VT
+/// sequences it can't classify as a key is emitted as the raw ASCII byte. That lets the
+/// negotiator's classifier read DA1 / XTVERSION / OSC color responses / Kitty keyboard
+/// reports verbatim while real keys still ride the Win32 Input Mode envelope.
+/// </para>
+/// <para>
+/// Non-console stdin (<c>GetConsoleMode</c> fails — a pipe / disk / remote handle seen under
+/// MSYS2, native Git Bash without ConPTY, tmux over SSH, CI runners, or any redirection)
+/// falls through to <see cref="StreamInputByteSource"/> over a <see cref="FileStream"/>.
+/// There's no conhost in the middle on that path, so the pipe carries the emulator's VT
+/// bytes directly. The same console-vs-pipe distinction applies to stdout. The
+/// <see cref="TerminalFamily.WindowsTerminal"/> / <see cref="TerminalFamily.WindowsConsoleHost"/>
+/// families REQUIRE a console handle (by definition); attempting the parameterless open under
+/// those families against a pipe throws so callers reach for the BYO overload instead.
 /// </para>
 /// </remarks>
 internal sealed partial class WindowsStdioTransports : IStdioTransports
@@ -53,9 +77,6 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     // Console output mode flags we set.
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
     private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
-
-    // GetFileType return values used to pick the stdin source.
-    private const uint FILE_TYPE_CHAR = 0x0002;
 
     private const uint CP_UTF8 = 65001;
 
@@ -95,101 +116,126 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
 
     public static WindowsStdioTransports Open()
     {
+        var family = VtTerminalNegotiator.ResolveIdentification().Family;
+
+        bool isNativeConsole = family is TerminalFamily.WindowsTerminal
+                                      or TerminalFamily.WindowsConsoleHost;
+
         var stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
         var stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
 
-        if (!GetConsoleMode(stdinHandle, out uint originalStdinMode))
+        // GetConsoleMode succeeds iff the handle is a real console (conhost / ConPTY). For
+        // pipe-backed stdin (MSYS2 / native Git Bash / tmux over SSH / CI redirection) it
+        // fails — we treat that as "not a console, no mode setup needed" and fall through to
+        // a pure FileStream-based transport. The native console families REQUIRE a real
+        // console — throw early so callers reach for the BYO overload instead.
+        bool stdinIsConsole = GetConsoleMode(stdinHandle, out uint originalStdinMode);
+        bool stdoutIsConsole = GetConsoleMode(stdoutHandle, out uint originalStdoutMode);
+
+        if (isNativeConsole && !stdinIsConsole)
         {
             throw new InvalidOperationException(
                 "Standard input is not connected to a console. Use the BYO " +
                 "TerminalSession.OpenAsync(source, sink) overload for non-console scenarios.");
         }
 
-        if (!GetConsoleMode(stdoutHandle, out uint originalStdoutMode))
-        {
-            throw new InvalidOperationException(
-                "Standard output is not connected to a console.");
-        }
+        if (isNativeConsole && !stdoutIsConsole)
+            throw new InvalidOperationException("Standard output is not connected to a console.");
 
-        // Raw input — clear processed / line / echo / quick-edit; enable extended flags (so
-        // quick-edit can actually be turned off), mouse input, and window-buffer-size events.
-        // We DELIBERATELY DO NOT enable ENABLE_VIRTUAL_TERMINAL_INPUT — the conhost-translated
-        // VT byte view it would populate leaks orphan bytes across the raw → cooked transition
-        // at session end, which is what eats the user's first post-exit keystroke. Instead the
-        // input source reads raw INPUT_RECORDs via ReadConsoleInputW and translates them to
-        // VT sequences locally (Win32 Input Mode for keys, SGR for mouse, CSI I/O for focus).
-        // This matches the pattern Terminal.Gui, Consolonia, and crossterm all use on Windows.
-        uint stdinMode = originalStdinMode;
-        stdinMode &= ~(ENABLE_PROCESSED_INPUT
-                       | ENABLE_LINE_INPUT
-                       | ENABLE_ECHO_INPUT
-                       | ENABLE_QUICK_EDIT_MODE
-                       | ENABLE_VIRTUAL_TERMINAL_INPUT);
-        stdinMode |= ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT;
+        uint originalOutputCodePage = 0;
+        uint originalInputCodePage = 0;
+        bool codepagesSwitched = false;
+        bool stdinModeSet = false;
+        bool stdoutModeSet = false;
 
-        if (!SetConsoleMode(stdinHandle, stdinMode))
-        {
-            throw new InvalidOperationException(
-                $"SetConsoleMode failed for the console input handle (Win32 error {Marshal.GetLastWin32Error()}).");
-        }
-
-        // Output: enable VT processing so SGR / cursor / OSC sequences are interpreted
-        // rather than printed literally. DISABLE_NEWLINE_AUTO_RETURN keeps the terminal
-        // from auto-converting LF to CRLF on our behalf.
-        uint stdoutMode = originalStdoutMode;
-        stdoutMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
-
-        if (!SetConsoleMode(stdoutHandle, stdoutMode))
-        {
-            // Revert input mode if output couldn't be configured.
-            int err = Marshal.GetLastWin32Error();
-            SetConsoleMode(stdinHandle, originalStdinMode);
-            throw new InvalidOperationException($"SetConsoleMode failed for the console output handle (Win32 error {err}).");
-        }
-
-        // Snapshot and switch the console codepages to UTF-8. Without this, multi-byte UTF-8
-        // sequences emitted by the renderer (box-drawing characters, accented Latin letters,
-        // CJK, emoji, …) get reinterpreted through whatever OEM codepage the console was
-        // launched with (typically CP437 / CP850 on conhost), and the result is mojibake. The
-        // old ENABLE_VIRTUAL_TERMINAL_INPUT path nudged conhost into a UTF-8-aware state as a
-        // side effect; with VT_INPUT_MODE disabled we have to do the codepage switch
-        // explicitly. RestoreTerminalState reverts both to whatever the original values were.
-        uint originalOutputCodePage = GetConsoleOutputCP();
-        uint originalInputCodePage = GetConsoleCP();
-        SetConsoleOutputCP(CP_UTF8);
-        SetConsoleCP(CP_UTF8);
-
-        // Wrap stdout via FileStream(SafeFileHandle) — see the class remarks for why we
-        // deliberately do NOT use Console.OpenStandardOutput. ownsHandle: false because the
-        // standard output handle is process-global and owned by the OS.
         FileStream? stdoutStream = null;
-        FileStream? stdinStreamFallback = null;
         IInputByteSource? source = null;
 
         try
         {
-            var stdoutSafeHandle = new SafeFileHandle(stdoutHandle, ownsHandle: false);
-            stdoutStream = new FileStream(stdoutSafeHandle, FileAccess.Write);
+            // Console-input mode setup. Disabled flags: line / echo / processed / quick-edit
+            // / VT_INPUT (we deliberately avoid the VT byte-stream view — see the class
+            // remarks for why). Enabled flags: extended flags (so quick-edit can actually be
+            // turned off), mouse input, and window-buffer-size events.
+            if (stdinIsConsole)
+            {
+                uint stdinMode = originalStdinMode;
+                stdinMode &= ~(ENABLE_PROCESSED_INPUT
+                               | ENABLE_LINE_INPUT
+                               | ENABLE_ECHO_INPUT
+                               | ENABLE_QUICK_EDIT_MODE
+                               | ENABLE_VIRTUAL_TERMINAL_INPUT);
+                stdinMode |= ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT;
+
+                if (!SetConsoleMode(stdinHandle, stdinMode))
+                {
+                    throw new InvalidOperationException(
+                        $"SetConsoleMode failed for the console input handle (Win32 error {Marshal.GetLastWin32Error()}).");
+                }
+                stdinModeSet = true;
+            }
+
+            // Console-output mode setup. ENABLE_VIRTUAL_TERMINAL_PROCESSING so SGR / cursor /
+            // OSC sequences are interpreted rather than printed literally;
+            // DISABLE_NEWLINE_AUTO_RETURN keeps the terminal from auto-converting LF to CRLF.
+            if (stdoutIsConsole)
+            {
+                uint stdoutMode = originalStdoutMode;
+                stdoutMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+
+                if (!SetConsoleMode(stdoutHandle, stdoutMode))
+                {
+                    throw new InvalidOperationException(
+                        $"SetConsoleMode failed for the console output handle (Win32 error {Marshal.GetLastWin32Error()}).");
+                }
+                stdoutModeSet = true;
+            }
+
+            // Snapshot and switch the console codepages to UTF-8. Without this, multi-byte
+            // UTF-8 sequences emitted by the renderer (box-drawing characters, accented Latin
+            // letters, CJK, emoji, …) get reinterpreted through whatever OEM codepage the
+            // console was launched with (typically CP437 / CP850 on conhost), and the result
+            // is mojibake. Codepage is a process-global setting on Windows — switching it
+            // affects all consoles attached to the process — so we only touch it when we have
+            // at least one console-typed handle. RestoreTerminalState reverts to the original
+            // values.
+            if (stdinIsConsole || stdoutIsConsole)
+            {
+                originalOutputCodePage = GetConsoleOutputCP();
+                originalInputCodePage = GetConsoleCP();
+                SetConsoleOutputCP(CP_UTF8);
+                SetConsoleCP(CP_UTF8);
+                codepagesSwitched = true;
+            }
+
+            // Wrap stdout. See the class remarks for why we deliberately do NOT use
+            // Console.OpenStandardOutput, and see OpenStdHandleAsSyncStream for the
+            // _fileOptions-override gymnastics required to make this work across the full
+            // matrix of Windows console / pipe / MSYS2 ptys.
+            stdoutStream = OpenStdHandleAsSyncStream(stdoutHandle, FileAccess.Write);
             var sink = new StreamOutputByteSink(stdoutStream);
 
-            // Stdin source selection. The console-handle path uses
-            // WaitForMultipleObjects + ReadFile so disposal can wake the pump cleanly
-            // without leaving a blocked ReadFile to consume the user's next keystroke.
-            // Anything that isn't a real console (FILE_TYPE_PIPE under tmux / ssh / MSYS2 /
-            // a CI pipe, FILE_TYPE_DISK if stdin was redirected from a file, etc.) falls
-            // back to the stream-based source — same behavior as today, including the
-            // legacy zombie-read bug; non-console transports don't expose an "input ready"
-            // signal we could wait on instead.
-            uint stdinType = GetFileType(stdinHandle);
-            if (stdinType == FILE_TYPE_CHAR)
+            // Stdin source selection. Console handles always get the WFMO-based
+            // WindowsConsoleInputByteSource — that pump is non-blocking and cancellable, so it
+            // never sits in a zombie ReadFile that would consume the user's next keystroke
+            // after disposal. The family controls only the translator's behavior:
+            // pass-through ASCII bytes from vk=0 records under third-party emulators,
+            // Win32-Input-Mode envelopes everywhere under conhost / WT. Pipe-backed stdin
+            // takes the plain stream-based path — no conhost in the middle, the emulator's
+            // bytes already arrive verbatim.
+            if (stdinIsConsole)
             {
-                source = new WindowsConsoleInputByteSource(stdinHandle);
+                source = new WindowsConsoleInputByteSource(stdinHandle, passThroughVtBytes: !isNativeConsole);
             }
             else
             {
-                var stdinSafeHandle = new SafeFileHandle(stdinHandle, ownsHandle: false);
-                stdinStreamFallback = new FileStream(stdinSafeHandle, FileAccess.Read);
-                source = new StreamInputByteSource(stdinStreamFallback);
+                // Non-console stdin (pipe / disk / remote). The handle's kernel-level async-ness
+                // is whatever the parent process inherited to us — we can't predict it, and
+                // FileStream's pipeline traps every combination of overlapped/sync handle vs.
+                // explicit/implicit isAsync. WindowsHandleByteSource sidesteps the trap by
+                // always reading via OVERLAPPED ReadFile + manual-reset event, which works
+                // uniformly across sync and overlapped handles.
+                source = new WindowsHandleByteSource(stdinHandle);
             }
 
             return new WindowsStdioTransports(stdinHandle,
@@ -205,12 +251,17 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         {
             // @formatter:off
             // Revert every change we made above, then surface the failure.
-            try { SetConsoleMode(stdinHandle, originalStdinMode); } catch { /* best-effort */ }
-            try { SetConsoleMode(stdoutHandle, originalStdoutMode); } catch { /* best-effort */ }
-            try { SetConsoleOutputCP(originalOutputCodePage); } catch { /* best-effort */ }
-            try { SetConsoleCP(originalInputCodePage); } catch { /* best-effort */ }
+            if (stdinModeSet)  { try { SetConsoleMode(stdinHandle, originalStdinMode); }   catch { /* best-effort */ } }
+            if (stdoutModeSet) { try { SetConsoleMode(stdoutHandle, originalStdoutMode); } catch { /* best-effort */ } }
+
+            if (codepagesSwitched)
+            {
+                try { SetConsoleOutputCP(originalOutputCodePage); } catch { /* best-effort */ }
+                try { SetConsoleCP(originalInputCodePage); }        catch { /* best-effort */ }
+            }
+
             stdoutStream?.Dispose();
-            stdinStreamFallback?.Dispose();
+
             // Best-effort dispose of a partially constructed console source so its cancel
             // event handle and pump task don't leak.
             if (source is IAsyncDisposable asyncDisposable)
@@ -218,6 +269,7 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
                 try { asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
                 catch { /* best-effort */ }
             }
+            
             throw;
             // @formatter:on
         }
@@ -299,11 +351,63 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         // @formatter:on
     }
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial IntPtr GetStdHandle(int nStdHandle);
+    /// <summary>
+    /// Reflection handle for <c>SafeFileHandle._fileOptions</c>. Set once at type-init; if the
+    /// field is ever renamed in a future SDK, this becomes null and
+    /// <see cref="OpenStdHandleAsSyncStream"/> falls back to the default ctor's behavior (which
+    /// re-surfaces the original BindHandle / sync-validation error so the fix is obviously
+    /// needed again).
+    /// </summary>
+    private static readonly FieldInfo? SafeFileHandleFileOptionsField =
+        typeof(SafeFileHandle).GetField("_fileOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    /// <summary>
+    /// Wrap a process standard handle as a synchronous <see cref="FileStream"/>, suppressing
+    /// .NET's automatic async-handle detection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="SafeFileHandle.IsAsync"/> is a one-time kernel probe via
+    /// <c>NtQueryInformationFile(FileModeInformation)</c>; .NET treats "neither
+    /// <c>FILE_SYNCHRONOUS_IO_NONALERT</c> nor <c>FILE_SYNCHRONOUS_IO_ALERT</c> set" as
+    /// async-capable. For most Windows console handles that classification is accurate and
+    /// <c>ThreadPoolBoundHandle.BindHandle</c> happily attaches them to an I/O completion
+    /// port. For inherited MSYS2 / Cygwin pty handles (notably MobaXterm's bash session, but
+    /// also other ConPTY-less third-party emulators that bring their own pty layer) the kernel
+    /// reports the same async-capable shape but <c>BindHandle</c> rejects them because they
+    /// weren't created with <c>FILE_FLAG_OVERLAPPED</c> — the <c>FileStream</c> default ctor
+    /// blows up with <c>"BindHandle for ThreadPool failed on this handle."</c> Passing
+    /// <c>isAsync: false</c> doesn't help either: the explicit-mode validation rejects with
+    /// <c>"Handle does not support synchronous operations"</c> when the handle's
+    /// <see cref="SafeFileHandle.IsAsync"/> says true.
+    /// </para>
+    /// <para>
+    /// The fix is to short-circuit <see cref="SafeFileHandle.IsAsync"/> before
+    /// <see cref="FileStream"/> reads it. <c>IsAsync</c> resolves to
+    /// <c>(GetFileOptions() &amp; FileOptions.Asynchronous) != 0</c>, and
+    /// <c>GetFileOptions</c> returns the cached <c>_fileOptions</c> field if it's been set —
+    /// the kernel probe only runs when <c>_fileOptions</c> is the sentinel
+    /// <c>(FileOptions)(-1)</c>. Writing <see cref="FileOptions.None"/> directly into
+    /// <c>_fileOptions</c> via reflection makes <see cref="SafeFileHandle.IsAsync"/> return
+    /// false, the threadpool binding is skipped, and the sync-mode validation passes.
+    /// </para>
+    /// <para>
+    /// At the OS level, sync <c>ReadFile</c> / <c>WriteFile</c> works on any handle regardless
+    /// of how it was opened — Windows accepts a null <c>OVERLAPPED</c> on overlapped handles
+    /// too, just serializing internally — so the forced sync-mode FileStream is functionally
+    /// fine for both shapes. PipeReader / PipeWriter (which sit above this FileStream) handle
+    /// async on top of sync streams without trouble.
+    /// </para>
+    /// </remarks>
+    private static FileStream OpenStdHandleAsSyncStream(IntPtr handle, FileAccess access)
+    {
+        var safeHandle = new SafeFileHandle(handle, ownsHandle: false);
+        SafeFileHandleFileOptionsField?.SetValue(safeHandle, FileOptions.None);
+        return new FileStream(safeHandle, access, bufferSize: 4096, isAsync: false);
+    }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial uint GetFileType(IntPtr hFile);
+    private static partial IntPtr GetStdHandle(int nStdHandle);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

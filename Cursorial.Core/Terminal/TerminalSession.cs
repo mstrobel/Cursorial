@@ -132,9 +132,20 @@ public sealed class TerminalSession : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var monitor = _resizeMonitor;
-        var size = monitor?.QueryCurrentSize();
-        return ValueTask.FromResult(size);
+        var size = _resizeMonitor?.QueryCurrentSize();
+        if (size is not null) return ValueTask.FromResult(size);
+
+        // Resize monitor couldn't answer (no host-platform API available — typical for
+        // non-console stdout on Windows under MSYS2 / Cygwin / MobaXterm bash, or BYO
+        // sessions). Fall back to whatever the negotiator captured via
+        // CSI 18 t → CSI 8 ; rows ; cols t at session open. That value is the terminal's
+        // own answer; it doesn't update on resize, but it's better than null for callers
+        // sizing an initial frame.
+        var window = Capabilities.Output.Window;
+        if (window is { TextAreaColumns: int cols, TextAreaRows: int rows })
+            return ValueTask.FromResult<(int, int)?>((cols, rows));
+
+        return ValueTask.FromResult<(int, int)?>(null);
     }
 
     /// <summary>
@@ -684,7 +695,10 @@ public sealed class TerminalSession : IAsyncDisposable
 
         try
         {
-            _resizeMonitor = ResizeMonitor.Create(device.EnqueueExternalEvent);
+            _resizeMonitor = ResizeMonitor.Create(
+                device.EnqueueExternalEvent,
+                sink: _output,
+                device: device);
             _resizeMonitor?.Start();
         }
         catch

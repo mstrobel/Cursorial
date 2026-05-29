@@ -63,6 +63,15 @@ public enum DeviceResponseKind
     CellSizeInPixels,
 
     /// <summary>
+    /// Response to <c>CSI 18 t</c> — text area size in characters (rows and columns). The
+    /// wire form is <c>CSI 8 ; rows ; cols t</c>. Useful when the host platform can't tell us
+    /// the terminal size synchronously (notably non-console stdout on Windows under MSYS2 /
+    /// Cygwin / MobaXterm bash, or any setup where the host shell doesn't expose a
+    /// <c>SIGWINCH</c>-equivalent and the framework has no console API to call).
+    /// </summary>
+    TextAreaSizeInChars,
+
+    /// <summary>
     /// Response to a DECRQSS (Request Status String) query — <c>DCS &lt;valid&gt; $ r &lt;data&gt; ST</c>.
     /// The interpreter does not surface the leading <c>valid</c> parameter directly; an empty
     /// <see cref="DeviceResponseEvent.Payload"/> indicates the terminal rejected the request

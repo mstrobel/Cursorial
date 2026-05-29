@@ -513,10 +513,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         NegotiationOptions options,
         CancellationToken cancellationToken)
     {
-        // Send XTVERSION, CSI 16 t (cell size in pixels), then DA1 (the sentinel). We wait
-        // for DA1's response; whatever arrived before it is taken as the response set.
+        // Send XTVERSION, CSI 16 t (cell size in pixels), CSI 18 t (text area size in
+        // characters), then DA1 (the sentinel). We wait for DA1's response; whatever
+        // arrived before it is taken as the response set.
         await WriteAsync(XtVersionRequest, cancellationToken).ConfigureAwait(false);
         await WriteAsync(CellSizeRequest, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(TextAreaSizeRequest, cancellationToken).ConfigureAwait(false);
         await WriteAsync(Da1Request, cancellationToken).ConfigureAwait(false);
 
         // Initialize the shared probe pipeline. This collector accumulates every response
@@ -540,6 +542,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         {
             _mode.CellPixelHeight = h;
             _mode.CellPixelWidth = w;
+        }
+
+        var textArea = collector.FindFirst(DeviceResponseKind.TextAreaSizeInChars);
+
+        // Payload shape is identical to CellSize ("8;rows;cols" vs. "6;h;w"); TryParseCellSize
+        // peels the leading sentinel and yields the two numeric tail parameters in payload
+        // order, which here means (rows, cols).
+        if (textArea is not null && TryParseCellSize(textArea.Payload.Span, out int rows, out int cols))
+        {
+            _mode.TextAreaRows = rows;
+            _mode.TextAreaColumns = cols;
         }
 
         return new ProbeResponses(
@@ -1351,11 +1364,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                               TerminalFamily.Ghostty         => true,
                               TerminalFamily.Rio             => true,
                               TerminalFamily.ITerm2          => false,
-                              TerminalFamily.WezTerm         => true,
+                              TerminalFamily.WezTerm         => false,
                               TerminalFamily.Alacritty       => false,
                               TerminalFamily.Konsole         => true,
-                              TerminalFamily.GnomeTerminal   => true,
-                              TerminalFamily.Terminus        => true,
+                              TerminalFamily.GnomeTerminal   => false,
+                              TerminalFamily.Terminus        => false,
                               TerminalFamily.Foot            => true,
                               TerminalFamily.WindowsTerminal => true,
                               TerminalFamily.GenericWsl      => true,
@@ -1564,7 +1577,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             AlternateScreenBuffer: identification.Family != TerminalFamily.Unknown,
             ScrollRegion: identification.Family != TerminalFamily.Unknown,
             CellPixelWidth: _mode.CellPixelWidth,
-            CellPixelHeight: _mode.CellPixelHeight);
+            CellPixelHeight: _mode.CellPixelHeight,
+            TextAreaColumns: _mode.TextAreaColumns,
+            TextAreaRows: _mode.TextAreaRows);
     }
 
     // ---- Helpers ----
@@ -1579,6 +1594,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     /// <summary><c>CSI 16 t</c> — request single character-cell size in pixels.</summary>
     private static ReadOnlyMemory<byte> CellSizeRequest { get; } = new byte[] { 0x1B, (byte) '[', (byte) '1', (byte) '6', (byte) 't' };
+
+    /// <summary><c>CSI 18 t</c> — request text area size in characters (rows / columns).</summary>
+    private static ReadOnlyMemory<byte> TextAreaSizeRequest { get; } = new byte[] { 0x1B, (byte) '[', (byte) '1', (byte) '8', (byte) 't' };
 
     /// <summary><c>CSI c</c> — Primary Device Attributes (DA1) request, used as the sentinel.</summary>
     private static ReadOnlyMemory<byte> Da1Request { get; } = new byte[] { 0x1B, (byte) '[', (byte) 'c' };

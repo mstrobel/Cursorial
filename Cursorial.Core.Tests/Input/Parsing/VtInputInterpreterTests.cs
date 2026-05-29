@@ -908,6 +908,17 @@ public class VtInputInterpreterTests
         Assert.Equal(DeviceResponseKind.WindowSizeInPixels, r.Kind);
     }
 
+    [Fact]
+    public void CsiWindowManipResponse_TextAreaSize_EmitsDeviceResponse()
+    {
+        // CSI 8;24;80 t — terminal reports text area 24 rows × 80 columns.
+        Feed("\x1b[8;24;80t");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.TextAreaSizeInChars, r.Kind);
+        Assert.Equal("8;24;80", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
     // ---- Win32 Input Mode (DECSET 9001) ----
 
     [Fact]

@@ -287,7 +287,8 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
         // Window manipulation responses — CSI <code> ; <height> ; <width> t. Code 4 is the
         // reply to `CSI 14 t` (window size in pixels); code 6 is the reply to `CSI 16 t`
-        // (single-cell size in pixels). Other codes in this family aren't yet decoded.
+        // (single-cell size in pixels); code 8 is the reply to `CSI 18 t` (text area size
+        // in characters — rows then columns).
         if (p.Length == 3 && final == (byte) 't')
         {
             if (p[0] == 4)
@@ -299,6 +300,12 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             if (p[0] == 6)
             {
                 EmitDeviceResponse(DeviceResponseKind.CellSizeInPixels, parameters);
+                return;
+            }
+
+            if (p[0] == 8)
+            {
+                EmitDeviceResponse(DeviceResponseKind.TextAreaSizeInChars, parameters);
                 return;
             }
         }

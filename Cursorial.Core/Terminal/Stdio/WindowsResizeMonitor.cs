@@ -1,48 +1,88 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
+using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 
 namespace Cursorial.Terminal.Stdio;
 
 /// <summary>
-/// Watches the Windows console for window-resize notifications by polling
-/// <c>GetConsoleScreenBufferInfo</c> at a small interval and emitting a
-/// <see cref="ResizeEvent"/> whenever the visible window dimensions change.
+/// Watches the Windows console for window-resize notifications. Two paths are wired:
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why polling and not <c>ReadConsoleInput</c>.</b> Windows reports buffer-size changes as
-/// <c>WINDOW_BUFFER_SIZE_EVENT</c> records that <c>ReadConsoleInput</c> drains from the console
-/// input queue. But our happy-path session also reads the input stream via the
-/// <see cref="WindowsConsoleInputByteSource"/> wrapper, and the two consumers can't both drain
-/// the same input queue without coordination (whoever reads first gets the event; the other
-/// blocks indefinitely). Polling <c>GetConsoleScreenBufferInfo</c> on a background task is
-/// independent of the input pipeline, costs about one syscall every 100 ms (negligible), and
-/// has at-most-100-ms latency which is well below the perception threshold for a resize.
+/// <b>Console-API polling (primary).</b> When stdout is a real console
+/// (<c>GetConsoleScreenBufferInfo</c> answers), <see cref="WindowsResizeMonitor"/> polls the
+/// console buffer at <see cref="ConsoleApiPollInterval"/> and emits a <see cref="ResizeEvent"/>
+/// whenever the visible dimensions change. Windows reports resizes as
+/// <c>WINDOW_BUFFER_SIZE_EVENT</c> records on <c>ReadConsoleInput</c>, but our happy-path
+/// session also reads input via the <see cref="WindowsConsoleInputByteSource"/> wrapper, and
+/// the two consumers can't both drain the same record queue without coordination — polling on
+/// a background task is independent of the input pipeline, costs one syscall every 100 ms,
+/// and has at-most-100-ms latency which is well below the perception threshold for a resize.
+/// </para>
+/// <para>
+/// <b>Wire-protocol polling (fallback).</b> When stdout isn't a console — MSYS2 / Cygwin /
+/// MobaXterm bash, BYO sessions on non-TTY streams — the monitor falls back to issuing
+/// <c>CSI 18 t</c> (XTWINOPS report-text-area) on a slower cadence and observes the
+/// <c>CSI 8 ; rows ; cols t</c> responses via <see cref="VtInputDevice.DeviceResponseEmitted"/>.
+/// Cadence is <see cref="LocalProbeInterval"/> for local sessions and
+/// <see cref="SshProbeInterval"/> when <see cref="IEnvironmentReader.IsSSH"/> reports a
+/// remote session (mirrors Terminal.GUI's 500 ms throttle, slowed for SSH to keep the round-
+/// trip traffic reasonable on high-latency links). This path requires both an
+/// <see cref="IOutputByteSink"/> (to send the probe) and a <see cref="VtInputDevice"/>
+/// (to observe the response); BYO sessions that don't provide one or the other silently
+/// no-op.
 /// </para>
 /// <para>
 /// <b>Initial size.</b> Like <see cref="PosixResizeMonitor"/>, one <see cref="ResizeEvent"/>
-/// is delivered synchronously at <see cref="Start"/> so consumers see the starting
-/// dimensions.
+/// is delivered as soon as a size is known. On the console-API path that's synchronous at
+/// <see cref="Start"/>; on the wire-probe path it follows the first round-trip.
 /// </para>
 /// </remarks>
 internal sealed partial class WindowsResizeMonitor : IResizeMonitor
 {
-    /// <summary>Poll interval. Trade-off between latency on resize and idle wakeups.</summary>
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
+    /// <summary>Console-API poll interval. Trade-off between resize latency and idle wakeups.</summary>
+    private static readonly TimeSpan ConsoleApiPollInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>Wire-probe interval for local sessions — matches Terminal.GUI's 500 ms throttle.</summary>
+    private static readonly TimeSpan LocalProbeInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Wire-probe interval for SSH sessions — slowed to avoid spamming high-latency links.</summary>
+    private static readonly TimeSpan SshProbeInterval = TimeSpan.FromSeconds(2);
 
     private const int STD_OUTPUT_HANDLE = -11;
 
+    /// <summary><c>CSI 18 t</c> — request text-area size in characters.</summary>
+    private static readonly ReadOnlyMemory<byte> TextAreaSizeRequest =
+        new byte[] { 0x1B, (byte) '[', (byte) '1', (byte) '8', (byte) 't' };
+
     private readonly Action<ResizeEvent> _onResize;
     private readonly TimeProvider _time;
+    private readonly IOutputByteSink? _sink;
+    private readonly VtInputDevice? _device;
+    private readonly TimeSpan _probeInterval;
     private CancellationTokenSource? _cts;
     private Task? _pollTask;
+    private int _lastProbedCols;
+    private int _lastProbedRows;
     private int _disposed;
 
-    public WindowsResizeMonitor(Action<ResizeEvent> onResize, TimeProvider? timeProvider = null)
+    public WindowsResizeMonitor(
+        Action<ResizeEvent> onResize,
+        TimeProvider? timeProvider = null,
+        IOutputByteSink? sink = null,
+        VtInputDevice? device = null,
+        IEnvironmentReader? environmentReader = null)
     {
         _onResize = onResize ?? throw new ArgumentNullException(nameof(onResize));
         _time = timeProvider ?? TimeProvider.System;
+        _sink = sink;
+        _device = device;
+
+        var env = environmentReader ?? IEnvironmentReader.Default;
+        _probeInterval = env.IsSSH() ? SshProbeInterval : LocalProbeInterval;
     }
 
     /// <inheritdoc/>
@@ -53,19 +93,35 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
 
         if (!OperatingSystem.IsWindows()) return;
 
-        // If we can't even query the initial size, there's no console attached and polling
-        // will never produce a useful result — silently no-op.
-        if (!TryReadSize(out int cols, out int rows)) return;
+        if (TryReadSize(out int cols, out int rows))
+        {
+            // Console-API path: emit initial size and start the cheap poll loop.
+            EmitResize(cols, rows);
 
-        EmitResize(cols, rows);
+            _cts = new CancellationTokenSource();
+            _pollTask = Task.Run(() => ConsoleApiPollLoopAsync(cols, rows, _cts.Token));
+            return;
+        }
 
-        _cts = new CancellationTokenSource();
-        _pollTask = Task.Run(() => PollLoopAsync(cols, rows, _cts.Token));
+        if (_sink is not null && _device is not null)
+        {
+            // Wire-probe path: subscribe to device responses (the first CSI 8 t reply will
+            // drive the initial EmitResize) and start the probe pump.
+            _device.DeviceResponseEmitted += OnDeviceResponse;
+            _cts = new CancellationTokenSource();
+            _pollTask = Task.Run(() => WireProbePollLoopAsync(_cts.Token));
+            return;
+        }
+
+        // Nothing to watch — silently no-op.
     }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        if (_device is not null)
+            _device.DeviceResponseEmitted -= OnDeviceResponse;
 
         try { _cts?.Cancel(); } catch { /* best-effort */ }
         try { _pollTask?.Wait(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
@@ -74,7 +130,7 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         _pollTask = null;
     }
 
-    private async Task PollLoopAsync(int initialCols, int initialRows, CancellationToken ct)
+    private async Task ConsoleApiPollLoopAsync(int initialCols, int initialRows, CancellationToken ct)
     {
         int lastCols = initialCols;
         int lastRows = initialRows;
@@ -83,7 +139,7 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
         {
             while (!ct.IsCancellationRequested)
             {
-                try { await Task.Delay(PollInterval, _time, ct).ConfigureAwait(false); }
+                try { await Task.Delay(ConsoleApiPollInterval, _time, ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
 
                 if (!TryReadSize(out int cols, out int rows)) continue;
@@ -99,6 +155,83 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
             // The poll loop is best-effort; any unexpected failure stops resize delivery but
             // mustn't bubble up to crash the session.
         }
+    }
+
+    private async Task WireProbePollLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            // Issue an immediate probe so consumers see a size as soon as the round-trip
+            // completes, instead of waiting one interval.
+            await SendProbeAsync(ct).ConfigureAwait(false);
+
+            while (!ct.IsCancellationRequested)
+            {
+                try { await Task.Delay(_probeInterval, _time, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+
+                await SendProbeAsync(ct).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Wire-probe loop is best-effort; failures stop resize delivery but mustn't bubble.
+        }
+    }
+
+    private async Task SendProbeAsync(CancellationToken ct)
+    {
+        if (_sink is null) return;
+        try
+        {
+            await _sink.Writer.WriteAsync(TextAreaSizeRequest, ct).ConfigureAwait(false);
+            await _sink.Writer.FlushAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Sink can have gone away mid-session (terminal closed, pipe broken).
+        }
+    }
+
+    /// <summary>
+    /// Observer for <see cref="VtInputDevice.DeviceResponseEmitted"/>. Filters for
+    /// <see cref="DeviceResponseKind.TextAreaSizeInChars"/>, parses the
+    /// <c>8 ; rows ; cols</c> payload, and emits a <see cref="ResizeEvent"/> when the size
+    /// changes from the previously observed value.
+    /// </summary>
+    private void OnDeviceResponse(DeviceResponseEvent e)
+    {
+        if (e.Kind != DeviceResponseKind.TextAreaSizeInChars) return;
+        if (!TryParseTextAreaSize(e.Payload.Span, out int cols, out int rows)) return;
+
+        if (cols == _lastProbedCols && rows == _lastProbedRows) return;
+
+        _lastProbedCols = cols;
+        _lastProbedRows = rows;
+        EmitResize(cols, rows);
+    }
+
+    /// <summary>
+    /// Parse a "<c>8;rows;cols</c>" payload — the leading "8;" sentinel is included in the
+    /// classifier-emitted parameter run, so we re-parse rather than treat it as just
+    /// "<c>rows;cols</c>".
+    /// </summary>
+    private static bool TryParseTextAreaSize(ReadOnlySpan<byte> payload, out int cols, out int rows)
+    {
+        cols = 0;
+        rows = 0;
+
+        int firstSep = payload.IndexOf((byte) ';');
+        if (firstSep < 0) return false;
+        var afterFirst = payload[(firstSep + 1)..];
+
+        int secondSep = afterFirst.IndexOf((byte) ';');
+        if (secondSep < 0) return false;
+
+        if (!int.TryParse(Encoding.ASCII.GetString(afterFirst[..secondSep]), out rows)) return false;
+        if (!int.TryParse(Encoding.ASCII.GetString(afterFirst[(secondSep + 1)..]), out cols)) return false;
+
+        return cols > 0 && rows > 0;
     }
 
     private void EmitResize(int cols, int rows)
@@ -121,7 +254,16 @@ internal sealed partial class WindowsResizeMonitor : IResizeMonitor
     /// <inheritdoc/>
     public (int Columns, int Rows)? QueryCurrentSize()
     {
-        return TryReadSize(out int cols, out int rows) ? (cols, rows) : null;
+        if (TryReadSize(out int cols, out int rows)) return (cols, rows);
+
+        // Wire-probe path: the most recently observed CSI 8 t response is our authoritative
+        // value. May be (0, 0) before the first round-trip completes — treat that as "not yet
+        // known" and return null so callers can fall back further (Capabilities snapshot,
+        // 80×24 default).
+        if (_lastProbedCols > 0 && _lastProbedRows > 0)
+            return (_lastProbedCols, _lastProbedRows);
+
+        return null;
     }
 
     /// <summary>

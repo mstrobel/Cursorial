@@ -55,6 +55,18 @@ public sealed class VtInputMode
 
     /// <summary>Single-cell height in pixels reported by the terminal via <c>CSI 16 t</c>, when known.</summary>
     public int? CellPixelHeight { get; set; }
+
+    /// <summary>
+    /// Visible text-area width in character cells reported by the terminal via the
+    /// <c>CSI 18 t</c> → <c>CSI 8 ; rows ; cols t</c> exchange, when known. The negotiator
+    /// probes for this during identification and stores the result here so callers can
+    /// retrieve a terminal-authoritative size on hosts where the platform API can't answer
+    /// (notably non-console stdout on Windows under MSYS2 / Cygwin / MobaXterm bash).
+    /// </summary>
+    public int? TextAreaColumns { get; set; }
+
+    /// <summary>Visible text-area height in character cells reported by the terminal via <c>CSI 18 t</c>, when known.</summary>
+    public int? TextAreaRows { get; set; }
 }
 
 /// <summary>The xterm <c>modifyOtherKeys</c> levels.</summary>

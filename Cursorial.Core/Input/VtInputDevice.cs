@@ -92,7 +92,25 @@ public sealed class VtInputDevice : IAsyncInputDevice
                 "Escape-ambiguity timeout must be positive.");
         }
 
-        _interpreter = new VtInputInterpreter(_mode, new ChannelEventSink(_channel.Writer), _time);
+        _interpreter = new VtInputInterpreter(_mode, new ChannelEventSink(_channel.Writer, this), _time);
+    }
+
+    /// <summary>
+    /// Side-channel hook fired whenever a <see cref="DeviceResponseEvent"/> reaches the device.
+    /// Subscribers see a *copy* of the event before consumers iterate the main event stream;
+    /// the event is also written to the consumer-facing channel as usual. Used by the Windows
+    /// non-console resize monitor to observe <c>CSI 18 t</c> responses without competing with
+    /// the consumer for the input channel. Internal because it bypasses the public
+    /// pull-based contract.
+    /// </summary>
+    internal event Action<DeviceResponseEvent>? DeviceResponseEmitted;
+
+    private void RaiseDeviceResponse(DeviceResponseEvent inputEvent)
+    {
+        var handler = DeviceResponseEmitted;
+        if (handler is null) return;
+        try { handler(inputEvent); }
+        catch { /* subscriber faults must not poison the input pump */ }
     }
 
     /// <inheritdoc/>
@@ -412,13 +430,21 @@ public sealed class VtInputDevice : IAsyncInputDevice
     private sealed class ChannelEventSink : IInputEventSink
     {
         private readonly ChannelWriter<InputEvent> _writer;
+        private readonly VtInputDevice _owner;
 
-        public ChannelEventSink(ChannelWriter<InputEvent> writer) => _writer = writer;
+        public ChannelEventSink(ChannelWriter<InputEvent> writer, VtInputDevice owner)
+        {
+            _writer = writer;
+            _owner = owner;
+        }
 
         public void OnInputEvent(InputEvent inputEvent)
         {
             // Unbounded channel — TryWrite never returns false except after Complete.
             _writer.TryWrite(inputEvent);
+
+            if (inputEvent is DeviceResponseEvent r)
+                _owner.RaiseDeviceResponse(r);
         }
     }
 }

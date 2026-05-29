@@ -115,6 +115,33 @@ public class VtTerminalNegotiatorTests
     }
 
     [Fact]
+    public async Task TextAreaSizeResponse_PopulatesWindowCapabilities()
+    {
+        // CSI 8;24;80 t (response to CSI 18 t) followed by DA1 sentinel.
+        _source.Enqueue("\x1b[8;24;80t");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Equal(80, caps.Output.Window.TextAreaColumns);
+        Assert.Equal(24, caps.Output.Window.TextAreaRows);
+    }
+
+    [Fact]
+    public async Task NoTextAreaSizeResponse_LeavesWindowCapabilitiesNull()
+    {
+        // DA1 sentinel only — no CSI 18 t response.
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(FastTimeout());
+
+        Assert.Null(caps.Output.Window.TextAreaColumns);
+        Assert.Null(caps.Output.Window.TextAreaRows);
+    }
+
+    [Fact]
     public async Task Da1WithParameter44_DoesNotMatchSixel()
     {
         // Parameter 44 is PCTerm — must not match a substring search on "4". The parser

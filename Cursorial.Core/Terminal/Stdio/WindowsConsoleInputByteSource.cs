@@ -83,7 +83,14 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
 
     // ReSharper restore UnusedMember.Local
 
+    // Standard handle index for GetStdHandle — used to look up stdout when translating
+    // MOUSE_EVENT_RECORD coordinates (the kernel reports them in the screen buffer's
+    // coordinate space, which we then re-anchor to the visible window via
+    // GetConsoleScreenBufferInfo).
+    private const int STD_OUTPUT_HANDLE = -11;
+
     private readonly IntPtr _stdinHandle;
+    private readonly IntPtr _stdoutHandle;
     private readonly IntPtr _cancelEvent;
     private readonly Pipe _pipe;
     private readonly Task _pumpTask;
@@ -117,6 +124,7 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     public WindowsConsoleInputByteSource(IntPtr stdinHandle, bool passThroughVtBytes = false)
     {
         _stdinHandle = stdinHandle;
+        _stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
         _passThroughVtBytes = passThroughVtBytes;
 
         // Auto-reset event. Initial state: non-signaled. SetEvent makes the next
@@ -340,6 +348,24 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     /// the encoding the rest of the framework already speaks. The interpreter side accepts
     /// SGR coordinates as 1-based; we provide them that way.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Coordinate re-anchoring.</b> <c>MOUSE_EVENT_RECORD.MousePositionX/Y</c> are reported
+    /// in the screen buffer's coordinate system, which on conhost includes the scrollback above
+    /// the visible viewport — a console at 80×24 with a few hundred lines of scrollback might
+    /// report <c>Y=2019</c> when the cursor is two rows into the visible window. Any output the
+    /// program emits shifts that offset (scrollback grows row-by-row), so caching can't
+    /// substitute for a per-event read. We call <c>GetConsoleScreenBufferInfo</c> on each
+    /// mouse event and subtract <c>srWindow.Top</c> / <c>srWindow.Left</c> to get
+    /// viewport-relative coordinates. Windows Terminal anchors its viewport to (0,0) so the
+    /// adjustment is a no-op there; the API call itself is on the order of microseconds and
+    /// mouse-event volume — even with motion tracking on — is well below where that matters.
+    /// </para>
+    /// <para>
+    /// If the API call fails (handle gone, redirected stdout, race against shutdown), we fall
+    /// back to the unadjusted coordinates rather than dropping the event.
+    /// </para>
+    /// </remarks>
     private void EmitMouseEvent(in MOUSE_EVENT_RECORD evt, ArrayBufferWriter<byte> output)
     {
         uint flags = evt.EventFlags;
@@ -347,9 +373,22 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         uint changed = buttonState ^ _prevMouseButtonState;
         _prevMouseButtonState = buttonState;
 
-        // SGR mouse coordinates are 1-based; Windows reports 0-based.
-        int x = evt.MousePositionX + 1;
-        int y = evt.MousePositionY + 1;
+        // Re-anchor buffer-relative coords to the visible viewport. Failure leaves the
+        // origin at (0,0), matching the pre-fix behavior — preferable to dropping the event.
+        int viewportLeft = 0;
+        int viewportTop = 0;
+        if (GetConsoleScreenBufferInfo(_stdoutHandle, out var info))
+        {
+            viewportLeft = info.srWindow.Left;
+            viewportTop = info.srWindow.Top;
+        }
+
+        // SGR mouse coordinates are 1-based; Windows reports 0-based buffer coords. Clamp
+        // to 1 defensively in case the viewport-relative result goes negative (shouldn't
+        // happen in practice — the OS clamps mouse events to the visible window — but a
+        // 0/negative SGR coord would confuse downstream consumers).
+        int x = Math.Max(1, evt.MousePositionX - viewportLeft + 1);
+        int y = Math.Max(1, evt.MousePositionY - viewportTop + 1);
 
         // The "b" parameter encodes button index + motion / wheel flags + modifiers.
         // See the xterm SGR mouse specification for the bit layout we reuse.
@@ -630,6 +669,32 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
         public int SetFocus;                   // BOOL
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct COORD
+    {
+        public short X;
+        public short Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SMALL_RECT
+    {
+        public short Left;
+        public short Top;
+        public short Right;
+        public short Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CONSOLE_SCREEN_BUFFER_INFO
+    {
+        public COORD dwSize;
+        public COORD dwCursorPosition;
+        public ushort wAttributes;
+        public SMALL_RECT srWindow;
+        public COORD dwMaximumWindowSize;
+    }
+
     // ReSharper restore InconsistentNaming
     
     // ---- P/Invokes ----
@@ -669,6 +734,15 @@ internal sealed partial class WindowsConsoleInputByteSource : IInputByteSource, 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(IntPtr hObject);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial IntPtr GetStdHandle(int nStdHandle);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetConsoleScreenBufferInfo(
+        IntPtr hConsoleOutput,
+        out CONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
 
     // ReSharper restore UnusedMethodReturnValue.Local
 }

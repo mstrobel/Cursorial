@@ -164,9 +164,40 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
             return;
         }
 
+        // xterm Alt+key convention (a.k.a. "Meta-sends-Escape" / metaSendsEscape): the terminal
+        // prepends ESC to the character produced by the key when Alt / Meta is held. ESC + 'g'
+        // → Alt+g, ESC + 'A' → Alt+Shift+a (the case carries the Shift signal), ESC + '!' →
+        // Alt+Shift+1, etc. Emit a Character KeyEvent with the literal byte as text payload
+        // and KeyModifiers.Alt set; the classifier already routed CSI / OSC / DCS / SS3
+        // introducers ('[', ']', 'P', 'O') into their own states so they never reach this
+        // branch as bare-final dispatches.
+        //
+        // Shift recovery is the protocol's known limitation — uppercase letters and shifted
+        // symbols come through with Alt only (no Shift bit), and consumers wanting precise
+        // modifiers should ask the terminal for Kitty keyboard or modifyOtherKeys instead.
+        if (intermediates.IsEmpty && final is >= 0x20 and <= 0x7E)
+        {
+            EmitAltCharacter(final);
+            return;
+        }
+
         // Charset designators (ESC ( B, ESC ) 0, ESC * <c>, ESC + <c>) and other ESC sequences
         // we don't decode go out as UnknownEvent — the consumer can log/forward/parse.
         EmitUnknownEsc(intermediates, final);
+    }
+
+    private void EmitAltCharacter(byte ch)
+    {
+        // The classifier guarantees `ch` is a printable ASCII byte (0x20-0x7E), so the
+        // single-char Text payload is just the byte cast.
+        _eventSink.OnInputEvent(new KeyEvent
+                                {
+                                    Timestamp = Now,
+                                    Key = Key.Character,
+                                    Modifiers = KeyModifiers.Alt,
+                                    Kind = KeyEventKind.Down,
+                                    Text = new[] { (char) ch },
+                                });
     }
 
     public void OnCsiDispatch(

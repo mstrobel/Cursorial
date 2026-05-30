@@ -160,6 +160,81 @@ public class VtInputInterpreterTests
         Assert.Equal(Key.Escape, k.Key);
     }
 
+    // ---- xterm Alt+key (metaSendsEscape) ----
+    // Note: ESC is spelled `` here, not `\x1b`. The latter is a *variable-length* hex
+    // escape that greedily consumes up to 4 hex digits, so `"\x1bA"` parses as the single
+    // char U+01BA rather than ESC + 'A' — which would silently route the test through the
+    // UTF-8 printable-rune path and leave Modifiers = None.
+
+    [Fact]
+    public void EscPlusLowercaseLetter_EmitsCharacterWithAltModifier()
+    {
+        // Terminal sends ESC 'g' when the user presses Alt+g — the xterm
+        // metaSendsEscape convention.
+        Feed("g");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal("g", new string(k.Text.Span));
+    }
+
+    [Fact]
+    public void EscPlusUppercaseLetter_EmitsCharacterWithAltModifier()
+    {
+        // Alt+Shift+a is reported as ESC 'A'; the case carries the Shift signal but no
+        // separate Shift bit is recoverable from the wire form (a known protocol limitation).
+        Feed("A");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("A", new string(k.Text.Span));
+    }
+
+    [Fact]
+    public void EscPlusDigit_EmitsCharacterWithAltModifier()
+    {
+        Feed("5");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("5", new string(k.Text.Span));
+    }
+
+    [Fact]
+    public void EscPlusSymbol_EmitsCharacterWithAltModifier()
+    {
+        // '?' is 0x3F — in the ESC-dispatch final range (0x30-0x7E). The intermediate
+        // range (0x20-0x2F: space, !"#$%&'()*+,-./) currently routes through
+        // EscapeIntermediate and is held pending a final byte; Alt+symbol coverage there
+        // is a separate parser extension.
+        Feed("?");
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("?", new string(k.Text.Span));
+    }
+
+    [Fact]
+    public void TwoEscLetterSequencesBackToBack_EachEmitsAltCharacter()
+    {
+        // \e g \e a — the specific shape the user observed in the wild.
+        Feed("ga");
+
+        var keys = _sink.Events.OfType<KeyEvent>().ToList();
+        Assert.Equal(2, keys.Count);
+
+        Assert.Equal(KeyModifiers.Alt, keys[0].Modifiers);
+        Assert.Equal("g", new string(keys[0].Text.Span));
+
+        Assert.Equal(KeyModifiers.Alt, keys[1].Modifiers);
+        Assert.Equal("a", new string(keys[1].Text.Span));
+    }
+
     // ---- Focus events ----
 
     [Fact]

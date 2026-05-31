@@ -103,4 +103,122 @@ public class FrameRendererWideGlyphTests
         Assert.True(idx > 0);
         Assert.NotEqual(' ', output[idx - 1]);
     }
+
+    // ---- Ambiguous-width defense (box-drawing rules, geometric shapes, …) ----
+    //
+    // On a terminal flagged WideGlyphs=false, a single-width East-Asian-Ambiguous glyph is
+    // treated like a wide glyph: its right neighbor is painted FIRST, the glyph is emitted at c,
+    // then c+1 is SKIPPED so we never write into the glyph's (potential) second half — a write
+    // there blanks the whole glyph on a terminal rendering ambiguous-as-wide.
+
+    [Fact]
+    public void AmbiguousGlyph_WhenUntrusted_PaintsNeighborBeforeGlyphThenSkips()
+    {
+        // col 0 = ambiguous rule glyph (─), col 1 = a distinct narrow glyph (X). The neighbor X
+        // must be emitted BEFORE the glyph ─, with a CUP back to col 0 between them, and X must
+        // appear exactly once (col 1 is skipped on its own iteration, not repainted).
+        var r = new FrameRenderer(CapsWithWideGlyphs(false));
+        var buf = new CellBuffer(2, 1);
+        buf.Set(0, 0, "─", Style.Default);
+        buf.Set(1, 0, "X", Style.Default);
+
+        var output = Render(r, buf);
+
+        int xIdx = output.IndexOf('X');
+        int ruleIdx = output.IndexOf('─');
+        Assert.True(xIdx >= 0 && ruleIdx >= 0);
+        Assert.True(xIdx < ruleIdx, "neighbor must be painted before the ambiguous glyph");
+        Assert.Contains("\x1b[1;1H", output[xIdx..]);          // CUP back to col 0 before the glyph
+        Assert.Equal(xIdx, output.LastIndexOf('X'));            // neighbor emitted exactly once
+    }
+
+    [Fact]
+    public void AmbiguousGlyph_WhenTrusted_EmitsInNaturalOrder()
+    {
+        // Trusted terminal: no defense. The cells emit left-to-right in a contiguous run, so the
+        // rule glyph comes before its neighbor and there's no CUP-back.
+        var r = new FrameRenderer(CapsWithWideGlyphs(true));
+        var buf = new CellBuffer(2, 1);
+        buf.Set(0, 0, "─", Style.Default);
+        buf.Set(1, 0, "X", Style.Default);
+
+        var output = Render(r, buf);
+
+        Assert.True(output.IndexOf('─') < output.IndexOf('X'));
+    }
+
+    [Fact]
+    public void AmbiguousRule_WhenUntrusted_EmitsEveryRuleCell()
+    {
+        // A full run of rule glyphs must still paint a glyph for every column — the defense
+        // pre-paints neighbors and skips them, but a neighbor that is itself a rule glyph is
+        // painted as the pre-paint, so no column is left blank (the "rule has gaps" failure).
+        var r = new FrameRenderer(CapsWithWideGlyphs(false));
+        var buf = new CellBuffer(4, 1);
+        for (int c = 0; c < 4; c++) buf.Set(c, 0, "─", Style.Default);
+
+        var output = Render(r, buf);
+
+        Assert.Equal(4, output.Count(ch => ch == '─'));
+    }
+
+    [Fact]
+    public void AsciiRun_WhenUntrusted_StaysContiguous()
+    {
+        // The defense must NOT fire for plain ASCII — it's unambiguously narrow everywhere, so
+        // prose keeps the fast contiguous-run path (no per-cell CUPs) even on an untrusted
+        // terminal.
+        var r = new FrameRenderer(CapsWithWideGlyphs(false));
+        var buf = new CellBuffer(4, 1);
+        foreach (var (c, ch) in new[] { (0, "a"), (1, "b"), (2, "c"), (3, "d") })
+            buf.Set(c, 0, ch, Style.Default);
+
+        var output = Render(r, buf);
+
+        Assert.DoesNotContain("\x1b[1;2H", output);
+        Assert.DoesNotContain("\x1b[1;3H", output);
+    }
+
+    [Fact]
+    public void AmbiguousGlyph_NeighborRepaintedWithGlyph_AcrossDiffFrames()
+    {
+        // Cross-frame: when a later frame re-emits the ambiguous glyph (changed) but its neighbor
+        // is model-unchanged, the neighbor must still be repainted as part of the pair — its
+        // content may have been clobbered by the glyph's wide render on the prior frame. The
+        // full-redraw frame would mask this, so the assertion is on the second (diff) frame.
+        var r = new FrameRenderer(CapsWithWideGlyphs(false));
+        var gutter = Style.Default.WithBackground(Color.FromRgb(10, 20, 30));
+
+        var buf1 = new CellBuffer(3, 1);
+        buf1.Set(0, 0, "─", Style.Default);
+        buf1.Set(1, 0, " ", gutter);
+        Render(r, buf1); // establishes the front buffer
+
+        var buf2 = new CellBuffer(3, 1);
+        buf2.Set(0, 0, "═", Style.Default); // col 0 changed (light → double rule)
+        buf2.Set(1, 0, " ", gutter);        // col 1 model-unchanged
+        var output = Render(r, buf2);
+
+        // The changed glyph is re-emitted, and the pair-emit repositions to the neighbor (col 2,
+        // 1-based) and back to the glyph (col 1) — so both CUPs appear in the diff frame.
+        Assert.Contains("═", output);
+        Assert.Contains("\x1b[1;2H", output); // neighbor pre-paint
+        Assert.Contains("\x1b[1;1H", output); // CUP back to the glyph
+    }
+
+    [Fact]
+    public void AmbiguousGlyph_InLastColumn_EmitsNormallyWithoutDefense()
+    {
+        // An ambiguous glyph in the final column has no in-bounds right neighbor, so the defense
+        // doesn't engage — it emits as a plain cell. Must not throw or address a column past the
+        // edge.
+        var r = new FrameRenderer(CapsWithWideGlyphs(false));
+        var buf = new CellBuffer(2, 1);
+        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(1, 0, "─", Style.Default); // ambiguous glyph in the last column
+
+        var output = Render(r, buf);
+        Assert.Contains("─", output);
+        Assert.DoesNotContain("\x1b[1;3H", output);
+    }
 }

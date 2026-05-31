@@ -271,4 +271,37 @@ public class GraphemeWidthTests
         // 'a' followed by a zero-width joiner.
         Assert.Equal(1, GraphemeWidth.ClusterWidth("a‍"));
     }
+
+    // ---- IsAmbiguousWidth ----
+
+    [Theory]
+    [InlineData(0x2500)] // ─ box drawing light horizontal (the horizontal-rule glyph)
+    [InlineData(0x2550)] // ═ box drawing double horizontal
+    [InlineData(0x2502)] // │ box drawing light vertical
+    [InlineData(0x2580)] // ▀ upper half block
+    [InlineData(0x25B2)] // ▲ black up-pointing triangle (scroll indicator)
+    [InlineData(0x25BC)] // ▼ black down-pointing triangle
+    [InlineData(0x2190)] // ← leftwards arrow
+    [InlineData(0x00B7)] // · middle dot
+    [InlineData(0x03B1)] // α greek small alpha
+    [InlineData(0x2070)] // ⁰ superscript zero
+    [InlineData(0x2075)] // ⁵ superscript five
+    [InlineData(0x2080)] // ₀ subscript zero
+    [InlineData(0x2085)] // ₅ subscript five
+    [InlineData(0x207F)] // ⁿ superscript latin n
+    public void IsAmbiguousWidth_AmbiguousCodepoints_ReturnTrue(int cp)
+    {
+        Assert.True(GraphemeWidth.IsAmbiguousWidth(cp));
+    }
+
+    [Theory]
+    [InlineData('a')]     // ASCII letter
+    [InlineData('1')]     // ASCII digit
+    [InlineData(' ')]     // ASCII space
+    [InlineData(0x4E2D)]  // 中 — unambiguously WIDE, not ambiguous
+    [InlineData(0x1F600)] // 😀 — emoji, unambiguously wide
+    public void IsAmbiguousWidth_NonAmbiguousCodepoints_ReturnFalse(int cp)
+    {
+        Assert.False(GraphemeWidth.IsAmbiguousWidth(cp));
+    }
 }

@@ -805,6 +805,16 @@ static async Task DemoFormatAsync()
         catch (OperationCanceledException) { }
     });
 
+    // Optional diagnostic: CURSORIAL_TRACE_OUTPUT=<path> mirrors each rendered frame's emitted
+    // bytes to a file, preceded by a marker, for protocol-level debugging.
+    FileStream? traceStream = null;
+    int traceFrame = 0;
+    if (Environment.GetEnvironmentVariable("CURSORIAL_TRACE_OUTPUT") is { Length: > 0 } tracePath)
+    {
+        try { traceStream = File.Create(tracePath); }
+        catch { /* best-effort */ }
+    }
+
     try
     {
         bool needsRepaint = true;
@@ -850,6 +860,15 @@ static async Task DemoFormatAsync()
                 await writer.WriteAsync(scratch.WrittenMemory);
                 await writer.FlushAsync();
 
+                if (traceStream is not null)
+                {
+                    var marker = System.Text.Encoding.ASCII.GetBytes(
+                        $"\n===== FRAME {traceFrame++:D4} scroll={scrollOffset} cols={screen.Columns} rows={screen.Rows} ({scratch.WrittenCount} bytes) =====\n");
+                    traceStream.Write(marker);
+                    traceStream.Write(scratch.WrittenSpan);
+                    traceStream.Flush();
+                }
+
                 needsRepaint = false;
             }
 
@@ -860,6 +879,7 @@ static async Task DemoFormatAsync()
     finally
     {
         stopCts.Cancel();
+        traceStream?.Dispose();
 
         try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
         try { renderer.Close(writer); } catch { /* best-effort */ }

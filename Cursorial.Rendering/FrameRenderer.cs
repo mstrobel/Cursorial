@@ -4,6 +4,7 @@ using System.Text;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering;
 
@@ -415,14 +416,57 @@ public sealed class FrameRenderer
         SgrEncoder.WriteReset(output);
     }
 
+    // Re-position the cursor to (r, c) if our tracked position differs.
+    private void SyncCursor(IBufferWriter<byte> output, int r, int c)
+    {
+        if (_cursorRow == r && _cursorCol == c) return;
+        CursorWriter.WriteMoveTo(output, c, r);
+        _cursorRow = r;
+        _cursorCol = c;
+    }
+
+    // Emit the OSC 8 close/open needed to move from the current hyperlink to <paramref name="target"/>.
+    private void SyncHyperlink(IBufferWriter<byte> output, in Hyperlink target)
+    {
+        if (target == _currentHyperlink) return;
+        if (!_currentHyperlink.IsEmpty)
+            HyperlinkWriter.WriteClose(output);
+        if (!target.IsEmpty)
+            HyperlinkWriter.WriteOpen(output, target.Uri.AsSpan(), target.Id.AsSpan());
+        _currentHyperlink = target;
+    }
+
+    // Emit the SGR delta needed to move from the current style to <paramref name="target"/>.
+    private void SyncStyle(IBufferWriter<byte> output, in Style target)
+    {
+        if (target == _currentStyle) return;
+        SgrEncoder.WriteDelta(output, _currentStyle, target);
+        _currentStyle = target;
+    }
+
     private void EmitDiff(CellBuffer back, IBufferWriter<byte> output)
     {
         for (int r = 0; r < back.Rows; r++)
         {
             ReadOnlySpan<Cell> row = back.GetRowSpan(r);
 
+            // When an ambiguous-width glyph fires its defense it paints its right neighbor as
+            // part of the same operation and then skips it (see below). Reset per row so a value
+            // armed by the previous row's last column can't bleed across the row boundary.
+            int skipColumn = -1;
+
             for (int c = 0; c < back.Columns; c++)
             {
+                if (c == skipColumn)
+                {
+                    // Already painted by the preceding ambiguous-width glyph's defense, and we
+                    // must NOT write into this cell again — on a terminal rendering the glyph as
+                    // two cells, this is the glyph's second half, and any write here blanks the
+                    // whole glyph. The front buffer was updated when the pair was emitted.
+                    skipColumn = -1;
+                    continue;
+                }
+
                 int frontIdx = r * _frontCols + c;
 
                 // Dirty-region opt-in: cells outside any marked region are skipped entirely.
@@ -455,35 +499,6 @@ public sealed class FrameRenderer
 
                 if (cell == _frontCells![frontIdx]) continue;
 
-                // Re-position the cursor if our tracked position isn't (r, c). After writing a cell
-                // at the right edge, the cursor's "next" position would equal Columns — we mark
-                // ourselves as out-of-position so the next emit triggers an explicit move.
-                if (_cursorRow != r || _cursorCol != c)
-                {
-                    CursorWriter.WriteMoveTo(output, c, r);
-                    _cursorRow = r;
-                    _cursorCol = c;
-                }
-
-                // Hyperlink state is a separate OSC 8 channel — emit close then open at
-                // boundaries, independent of the SGR delta. The hyperlink is part of Style, so
-                // the inequality check above already covers the case where only the link
-                // changed (in which case SgrEncoder.WriteDelta below produces no bytes).
-                if (cell.Style.Hyperlink != _currentHyperlink)
-                {
-                    if (!_currentHyperlink.IsEmpty)
-                        HyperlinkWriter.WriteClose(output);
-                    if (!cell.Style.Hyperlink.IsEmpty)
-                        HyperlinkWriter.WriteOpen(output, cell.Style.Hyperlink.Uri.AsSpan(), cell.Style.Hyperlink.Id.AsSpan());
-                    _currentHyperlink = cell.Style.Hyperlink;
-                }
-
-                if (cell.Style != _currentStyle)
-                {
-                    SgrEncoder.WriteDelta(output, _currentStyle, cell.Style);
-                    _currentStyle = cell.Style;
-                }
-
                 // Wide-glyph defense for terminals that don't reliably render two-cell glyphs:
                 // pre-paint cells c and c+1 with the wide-left's style by emitting two spaces,
                 // then CUP back to c so the wide glyph emits at the right column. On an
@@ -495,6 +510,69 @@ public sealed class FrameRenderer
                 bool wideDefense = cell.Kind == CellKind.WideLeft &&
                                    _capabilities?.TextSizing.WideGlyphs is false &&
                                    c + 1 < back.Columns;
+
+                // Ambiguous-width defense: a glyph we count as a single cell (CellKind.Single,
+                // Width 1) but whose codepoint is East-Asian-Ambiguous (box-drawing rules, block
+                // elements, geometric shapes, arrows, sub/superscripts, …) may be rendered TWO
+                // cells wide by a terminal configured to treat ambiguous width as wide. On such a
+                // terminal we must treat it exactly like a wide glyph: paint its right neighbor's
+                // real content FIRST, emit the glyph at c, then SKIP c+1 — never writing into the
+                // glyph's second half, because that write blanks the whole glyph (the cause of
+                // the "horizontal rules vanish on GNOME Terminal with ambiguous=wide" symptom).
+                // Painting the neighbor first means a narrow-rendering terminal keeps c+1's
+                // content, while a wide-rendering one has it covered by the glyph. Gated on the
+                // same WideGlyphs capability as the wide-glyph defense.
+                //
+                // KNOWN LIMITATION — distinct ambiguous neighbors on an ambiguous-wide terminal.
+                // This is correct when the neighbor is identical to or coverable by the glyph (a
+                // run of identical rule glyphs renders as a continuous line). When neighbors are
+                // DISTINCT (e.g. the "012345" of [font=superscript]), it can't be: N distinct
+                // glyphs each rendered two-wide need 2N columns, but the content was measured and
+                // laid out at width 1, so it only has N. The glyph at c covers c+1, eating the
+                // neighbor — every other distinct glyph disappears. There is no emission strategy
+                // that fits N distinct double-width glyphs into N cells; the only complete fix is
+                // to MEASURE ambiguous glyphs as width 2 (so layout allocates 2N cells), which
+                // requires detecting the terminal's ambiguous-width preference (a CPR probe) and
+                // is deliberately out of scope — it's a non-default terminal setting, and this
+                // defense at least contains the damage (no overflow, no drift, no erased
+                // neighbors outside the run) and renders half the run rather than none. The
+                // behavior is identical whether the cells came from the text formatter or a
+                // direct CellBuffer write, which is the property we want.
+                bool ambiguousDefense = !wideDefense &&
+                                        cell.Kind == CellKind.Single &&
+                                        cell.Width == 1 &&
+                                        c + 1 < back.Columns &&
+                                        _capabilities?.TextSizing.WideGlyphs is false &&
+                                        IsAmbiguousWidthGrapheme(cell.Grapheme);
+
+                if (ambiguousDefense)
+                {
+                    // Paint the right neighbor with its own content first (so a narrow render
+                    // keeps it), then the ambiguous glyph at c (so a wide render covers it).
+                    var neighbor = Adapt(IntendedCellFor(c + 1, r, row[c + 1], back));
+
+                    SyncCursor(output, r, c + 1);
+                    SyncHyperlink(output, neighbor.Style.Hyperlink);
+                    SyncStyle(output, neighbor.Style);
+                    WriteGraphemeUtf8(output, neighbor);
+                    _frontCells![frontIdx + 1] = neighbor;
+
+                    SyncCursor(output, r, c);
+                    SyncHyperlink(output, cell.Style.Hyperlink);
+                    SyncStyle(output, cell.Style);
+                    WriteGraphemeUtf8(output, cell);
+                    _frontCells![frontIdx] = cell;
+
+                    // We can't trust the post-glyph cursor column (terminal advanced 1 or 2),
+                    // and c+1 is already painted — skip it and force a CUP for whatever follows.
+                    _cursorCol = -1;
+                    skipColumn = c + 1;
+                    continue;
+                }
+
+                SyncCursor(output, r, c);
+                SyncHyperlink(output, cell.Style.Hyperlink);
+                SyncStyle(output, cell.Style);
 
                 if (wideDefense)
                 {
@@ -509,13 +587,13 @@ public sealed class FrameRenderer
                 }
 
                 WriteGraphemeUtf8(output, cell);
-                _frontCells[frontIdx] = cell;
+                _frontCells![frontIdx] = cell;
 
                 if (wideDefense)
                 {
-                    // We don't know if the terminal actually advanced 1 or 2 cells after the
-                    // wide-glyph emission, so force CUP before the next emit instead of
-                    // trusting cell.Width.
+                    // We don't know if the terminal advanced 1 or 2 cells after the wide-glyph
+                    // emission, so force a CUP before the next emit instead of trusting
+                    // cell.Width.
                     _cursorCol = -1;
                 }
                 else
@@ -664,6 +742,18 @@ public sealed class FrameRenderer
         int written = Encoding.UTF8.GetBytes(grapheme, dest);
 
         output.Advance(written);
+    }
+
+    /// <summary>
+    /// True when <paramref name="grapheme"/>'s leading codepoint is East-Asian-Ambiguous width —
+    /// a single cell in our model that an ambiguous-as-wide terminal may render across two. Used
+    /// to gate the ambiguous-width cursor defense in <see cref="EmitDiff"/>. An empty grapheme
+    /// (blank cell rendered as a space) is unambiguously narrow.
+    /// </summary>
+    private static bool IsAmbiguousWidthGrapheme(string? grapheme)
+    {
+        if (string.IsNullOrEmpty(grapheme)) return false;
+        return GraphemeWidth.IsAmbiguousWidth(char.ConvertToUtf32(grapheme, 0));
     }
 
     private void EmitCursor(CellBuffer back, IBufferWriter<byte> output)

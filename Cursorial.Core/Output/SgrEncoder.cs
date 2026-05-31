@@ -322,12 +322,25 @@ public static class SgrEncoder
                 WriteParam(59, buffer, ref written, ref needSeparator);
                 return;
 
+            // SGR 58 (underline color) is emitted in the ITU-T T.416 / ISO 8613-6 colon
+            // sub-parameter form (58:5:idx, 58:2::r:g:b) rather than the legacy semicolon form
+            // (58;5;idx, 58;2;r;g;b). Both are accepted by terminals that implement SGR 58
+            // natively (xterm, kitty, WezTerm, foot, …), but the colon form is critical for
+            // robustness behind a parser that does NOT implement 58 — notably ConPTY, which
+            // mediates every Windows session under a third-party terminal. With the semicolon
+            // form, an unknowing parser drops the `58` token but then applies each remaining
+            // sub-value (2, r, g, b — or 5, idx) as an independent top-level SGR code; values
+            // like 2 (faint) and 5 (blink) leak as real attributes and persist on every cell
+            // painted afterward (the renderer never models blink, so it never emits SGR 25 to
+            // clear it). The colon form packs the whole spec into a single logical parameter,
+            // so a parser that doesn't recognize 58 skips the entire group cleanly. The RGB
+            // form uses the spec's empty color-space-id field (the `::` after the `2`).
             case ColorKind.Palette:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
                 WriteAsciiInt(58, buffer, ref written);
-                buffer[written++] = CsiSeparator;
+                buffer[written++] = SubParamSeparator;
                 WriteAsciiInt(5, buffer, ref written);
-                buffer[written++] = CsiSeparator;
+                buffer[written++] = SubParamSeparator;
                 WriteAsciiInt(color.PaletteIndex, buffer, ref written);
                 needSeparator = true;
                 return;
@@ -335,13 +348,14 @@ public static class SgrEncoder
             case ColorKind.Rgb:
                 WriteSeparatorIfNeeded(buffer, ref written, ref needSeparator);
                 WriteAsciiInt(58, buffer, ref written);
-                buffer[written++] = CsiSeparator;
+                buffer[written++] = SubParamSeparator;
                 WriteAsciiInt(2, buffer, ref written);
-                buffer[written++] = CsiSeparator;
+                buffer[written++] = SubParamSeparator; // empty color-space-id field …
+                buffer[written++] = SubParamSeparator; // … (T.416 `58:2::r:g:b`).
                 WriteAsciiInt(color.Red, buffer, ref written);
-                buffer[written++] = CsiSeparator;
+                buffer[written++] = SubParamSeparator;
                 WriteAsciiInt(color.Green, buffer, ref written);
-                buffer[written++] = CsiSeparator;
+                buffer[written++] = SubParamSeparator;
                 WriteAsciiInt(color.Blue, buffer, ref written);
                 needSeparator = true;
                 return;

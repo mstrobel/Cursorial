@@ -131,8 +131,23 @@ public class SgrEncoderTests
                       .WithAttributes(TextAttributes.Underline)
                       .WithUnderlineColor(Color.FromRgb(255, 0, 128));
 
+        // Underline color uses the ITU-T T.416 colon sub-parameter form (58:2::r:g:b, with the
+        // empty color-space-id field) rather than the legacy semicolon form — see
+        // SgrEncoder.WriteUnderlineColor for why (ConPTY leaks the semicolon sub-values as
+        // standalone SGR codes, surfacing as a spurious screen-wide blink/faint).
         var s = Encode(w => SgrEncoder.WriteAbsolute(w, style));
-        Assert.Equal("\x1b[0;4;58;2;255;0;128m", s);
+        Assert.Equal("\x1b[0;4;58:2::255:0:128m", s);
+    }
+
+    [Fact]
+    public void WriteAbsolute_UnderlineColorPalette_EmitsSgr585idx()
+    {
+        Style style = DS
+                      .WithAttributes(TextAttributes.Underline)
+                      .WithUnderlineColor(Color.FromPalette(5));
+
+        var s = Encode(w => SgrEncoder.WriteAbsolute(w, style));
+        Assert.Equal("\x1b[0;4;58:5:5m", s);
     }
 
     // ---- WriteDelta ----

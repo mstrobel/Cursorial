@@ -130,6 +130,18 @@ public sealed class FrameRenderer
             output.Advance(begin.Length);
         }
 
+        // Disable autowrap for the duration of the frame. The renderer emits exactly
+        // `back.Columns` cells per row and uses absolute CUP for positioning — autowrap is
+        // never beneficial, and on conhost / ConEmu families the deferred-wrap state that
+        // builds up at the right margin doesn't always clear cleanly on the next CUP,
+        // producing the symptom where the first few characters of subsequent rows shift to
+        // the right edge ("Wide glyphs" rendering as "e glyphs" with "Wid" at the right
+        // margin) or the clock's last digit wrapping to the next line after several ticks.
+        // Re-emit every frame because some terminals silently toggle DECAWM back on as a
+        // side effect of other commands; the cost is ~5 bytes per frame and the alternative
+        // is silent failure on those terminals. DECSET 7 is restored in Close().
+        ScreenWriter.WriteDisableAutowrap(output);
+
         bool fullRedraw = _firstFrame ||
                           _frontCols != back.Columns ||
                           _frontRows != back.Rows ||
@@ -155,6 +167,7 @@ public sealed class FrameRenderer
 
             ScreenWriter.WriteClearScreen(output);
             SgrEncoder.WriteReset(output);
+
             CursorWriter.WriteMoveTo(output, 0, 0);
             _currentStyle = Style.Default;
             _currentHyperlink = Hyperlink.None;
@@ -592,6 +605,16 @@ public sealed class FrameRenderer
         // emulators don't). Explicitly resync our SGR tracking by writing an SGR reset.
         SgrEncoder.WriteReset(output);
         _currentStyle = Style.Default;
+
+        // DECRC's *cursor*-restore behavior is also implementation-defined when the saved-state
+        // stack has been disturbed in between (some conhost versions, ConEmu/Cmder, …).
+        // Invalidate the tracked position so the next emission issues an explicit CUP rather
+        // than trusting DECRC to have landed us where DECSC saved. Symptom of getting this
+        // wrong: rows downstream of fragment emissions shift left by N (where N is roughly the
+        // count of fragments emitted this frame), producing the "first few characters of each
+        // labeled row are missing" wrap that conhost / WT exhibit.
+        _cursorRow = -1;
+        _cursorCol = -1;
     }
 
     /// <summary>
@@ -611,6 +634,13 @@ public sealed class FrameRenderer
 
         SgrEncoder.WriteReset(output);
         _currentStyle = Style.Default;
+
+        // See EmitFragmentBytes for why we invalidate the tracked cursor after DECRC: the
+        // restore is implementation-defined when the SC/RC stack has been disturbed, and
+        // trusting DECRC to land us at the pre-DECSC position produces silent drift across
+        // frames on conhost / ConEmu.
+        _cursorRow = -1;
+        _cursorCol = -1;
     }
 
     private Cell Adapt(in Cell cell)
@@ -665,11 +695,16 @@ public sealed class FrameRenderer
     public void Close(IBufferWriter<byte> output)
     {
         var fragments = _frontFragments.ToList();
-        
+
         _frontFragments.Clear();
 
         foreach (var f in fragments)
             f.Value.Fragment.EmitErase(f.Key.Column, f.Key.Row, output, _capabilities ?? OutputCapabilities.None);
+
+        // Restore autowrap to the terminal's default-on state. Pairs with the WriteDisableAutowrap
+        // call in the first-frame full-redraw branch — without this the next program to use the
+        // shell would inherit a no-wrap terminal, which is wrong outside a cell-grid renderer.
+        ScreenWriter.WriteEnableAutowrap(output);
     }
 }
 

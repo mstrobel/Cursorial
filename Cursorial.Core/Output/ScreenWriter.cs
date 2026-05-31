@@ -62,6 +62,28 @@ public static class ScreenWriter
         => WriteDecMode(writer, 1049, enable: false);
 
     /// <summary>
+    /// Disable autowrap (DECRST 7 — DECAWM off). Writing past the rightmost column overwrites
+    /// the rightmost cell instead of wrapping to the next row. Pair with
+    /// <see cref="WriteEnableAutowrap"/> on shutdown so the user's prior shell behavior is
+    /// restored.
+    /// </summary>
+    /// <remarks>
+    /// Cell-grid renderers should disable autowrap during a session: with it on, writing the
+    /// last column of a row puts the cursor into "deferred wrap" pending state. Most terminals
+    /// clear that state cleanly on a CUP to the next row, but a few conhost / ConEmu families
+    /// don't, and the resulting drift presents as the first few characters of subsequent rows
+    /// silently shifting to the right edge ("Wide glyphs" rendering as "e glyphs" with "Wid"
+    /// appearing at the right margin). Since cell-grid renderers always position via CUP and
+    /// never rely on autowrap, turning it off costs nothing and eliminates the bug surface.
+    /// </remarks>
+    public static void WriteDisableAutowrap(IBufferWriter<byte> writer)
+        => WriteDecMode(writer, 7, enable: false);
+
+    /// <summary>Re-enable autowrap (DECSET 7 — DECAWM on). Restores the terminal default.</summary>
+    public static void WriteEnableAutowrap(IBufferWriter<byte> writer)
+        => WriteDecMode(writer, 7, enable: true);
+
+    /// <summary>
     /// Configure the scroll region to the inclusive range [<paramref name="topRow"/>,
     /// <paramref name="bottomRow"/>] (0-based) via DECSTBM. After setting the region, the cursor
     /// is moved to row 0, column 0 of the new region per the standard's contract.

@@ -642,6 +642,19 @@ static async Task DemoRenderAsync()
         catch (OperationCanceledException) { }
     });
 
+    // Optional diagnostic: when CURSORIAL_TRACE_OUTPUT is set, mirror every frame's emitted
+    // bytes to a file. Each frame is preceded by a short ASCII marker so the resulting
+    // capture is grep-able / easy to split by frame. Use when you suspect the renderer is
+    // emitting bad bytes (cursor shifts, wrap surprises, SGR drift, …) and want ground truth
+    // for the wire form before guessing.
+    FileStream? traceStream = null;
+    int traceFrame = 0;
+    if (Environment.GetEnvironmentVariable("CURSORIAL_TRACE_OUTPUT") is { Length: > 0 } tracePath)
+    {
+        try { traceStream = File.Create(tracePath); }
+        catch { /* best-effort — if we can't open the trace, run without it */ }
+    }
+
     try
     {
         while (!stopCts.IsCancellationRequested)
@@ -672,6 +685,14 @@ static async Task DemoRenderAsync()
             await writer.WriteAsync(scratch.WrittenMemory);
             await writer.FlushAsync();
 
+            if (traceStream is not null)
+            {
+                var marker = System.Text.Encoding.ASCII.GetBytes($"\n===== FRAME {traceFrame++:D4} ({scratch.WrittenCount} bytes) =====\n");
+                traceStream.Write(marker);
+                traceStream.Write(scratch.WrittenSpan);
+                traceStream.Flush();
+            }
+
             try { await Task.Delay(333, stopCts.Token); } // ~30fps
             catch (OperationCanceledException) { break; }
         }
@@ -679,6 +700,7 @@ static async Task DemoRenderAsync()
     finally
     {
         stopCts.Cancel();
+        traceStream?.Dispose();
 
         try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
 
@@ -1761,15 +1783,20 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
     }
 
     // ---- Clock in top-right corner ----
+    // The right margin pad (` ` after the clock plus a single empty cell at the rightmost
+    // column) is a deliberate workaround for ConEmu / Cmder, whose DECAWM-off behavior isn't
+    // honored across frames — writing the last clock digit at the rightmost column lets a
+    // residual deferred-wrap state trip later ticks and the digit wraps to the next line.
+    // Backing off one cell keeps the digit on-screen on every terminal we test.
     string clock = DateTime.Now.ToString("HH:mm:ss");
-    if (clock.Length + 1 < cols)
+    if (clock.Length + 2 < cols)
     {
         var clockStyle = style
             .WithForeground(Colors.TrueWhite)
             .WithBackground(Colors.Extended1)
             .WithAttributes(TextAttributes.Bold);
-        int x = cols - clock.Length - 1;
-        PaintLine(buf, x, 0, " " + clock, clockStyle);
+        int x = cols - clock.Length - 2;
+        PaintLine(buf, x, 0, " " + clock + " ", clockStyle);
     }
 }
 

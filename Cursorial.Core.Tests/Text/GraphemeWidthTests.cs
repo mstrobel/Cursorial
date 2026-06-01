@@ -304,4 +304,24 @@ public class GraphemeWidthTests
     {
         Assert.False(GraphemeWidth.IsAmbiguousWidth(cp));
     }
+
+    [Fact]
+    public void WideAndAmbiguousSets_AreDisjoint()
+    {
+        // A codepoint must never be BOTH width-2 (wide) and flagged ambiguous: the renderer
+        // would then apply the ambiguous-width defense to a glyph it already treats as wide,
+        // which is contradictory. Guards against a future range edit overlapping the two
+        // tables. CodepointWidth == 2 is the observable "wide" (it's the only path that
+        // returns 2); IsAmbiguousWidth is the defense-eligibility predicate.
+        for (int cp = 0; cp <= 0x10FFFF; cp++)
+        {
+            if (cp is >= 0xD800 and <= 0xDFFF) continue; // surrogate halves aren't scalar values
+
+            bool wide = GraphemeWidth.CodepointWidth(cp) == 2;
+            bool ambiguous = GraphemeWidth.IsAmbiguousWidth(cp);
+
+            Assert.False(wide && ambiguous,
+                         $"U+{cp:X4} is reported as BOTH wide and ambiguous — the width tables overlap.");
+        }
+    }
 }

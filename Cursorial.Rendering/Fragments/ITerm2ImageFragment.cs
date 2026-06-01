@@ -42,7 +42,17 @@ public sealed class ITerm2ImageFragment : IBufferFragment
     }
 
     /// <inheritdoc/>
-    public FragmentLayer Layer => FragmentLayer.Overlay;
+    /// <remarks>
+    /// iTerm2 inline images live in the <b>cell stream</b>, not on a separate overlay plane:
+    /// the image is placed at the cursor, occupies its footprint cells, scrolls with the buffer,
+    /// and is erased by overwriting those cells — there is no protocol-level delete command (the
+    /// inherited <see cref="EmitErase"/> no-op is correct). This MUST be <see cref="FragmentLayer.Cells"/>:
+    /// marking it <see cref="FragmentLayer.Overlay"/> (as a refactor briefly did) breaks removal,
+    /// because Overlay cells aren't repainted AND there's no delete command — so a moved/scrolled
+    /// image leaves a duplicate behind. Kitty is Overlay only because it has a real <c>a=d</c>
+    /// delete; iTerm2 and Sixel are both cell-stream images.
+    /// </remarks>
+    public FragmentLayer Layer => FragmentLayer.Cells;
 
     /// <summary>The image being transmitted.</summary>
     public ImageData Image => _data;

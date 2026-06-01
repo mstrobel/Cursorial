@@ -852,12 +852,12 @@ public class VtTerminalNegotiatorTests
     // ---- Restore ----
 
     [Fact]
-    public async Task RestoreAsync_EmitsKittyMultiCursorClear_Unconditionally()
+    public async Task RestoreAsync_EmitsKittyMultiCursorClear_OnKittyFamily()
     {
-        // Even when no opt-ins were applied, restore must emit the Kitty multi-cursor clear
-        // as a defensive cleanup — the protocol is fire-and-forget (no enable tracked), and
-        // the clear is a no-op on terminals that don't implement it.
-        _source.Enqueue("\x1b[?64c"); // DA1 only — no XTVERSION → no family-gated opt-ins
+        // On Kitty the multi-cursor clear is a defensive cleanup (fire-and-forget, no enable
+        // tracked) emitted even when no opt-ins were applied.
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\"); // XTVERSION → Kitty family
+        _source.Enqueue("\x1b[?64;1;9c");             // DA1 sentinel
         var negotiator = BuildNegotiator();
 
         await negotiator.NegotiateAsync(new NegotiationOptions
@@ -877,6 +877,37 @@ public class VtTerminalNegotiatorTests
         var restored = await AllWrittenAsync();
 
         Assert.Contains("\x1b[>0;4 q", restored);
+
+        await negotiator.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task RestoreAsync_OmitsKittyMultiCursorClear_OnNonKittyFamily()
+    {
+        // CSI > 0 ; 4 SP q is a Kitty-only sequence. Non-Kitty terminals (Apple Terminal) mis-
+        // parse the `> … SP q` form and print the literal 'q', so restore must NOT emit it for
+        // them — even though the cleanup is otherwise unconditional.
+        _env.Set("TERM_PROGRAM", "Apple_Terminal");
+        _source.Enqueue("\x1b[?64c"); // DA1 only — env identifies Apple Terminal
+        var negotiator = BuildNegotiator();
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = false,
+                                            EnableFocusEvents = false,
+                                            EnableBracketedPaste = false,
+                                            EnableKittyKeyboard = false,
+                                            EnableWin32InputMode = false,
+                                            EnableSynchronizedOutput = false,
+                                        });
+
+        await _sink.ReadAllWrittenAsync();
+
+        await negotiator.RestoreAsync();
+        var restored = await AllWrittenAsync();
+
+        Assert.DoesNotContain("\x1b[>0;4 q", restored);
 
         await negotiator.DisposeAsync();
     }

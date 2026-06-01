@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 
 namespace Cursorial.Tests.Rendering;
@@ -223,6 +224,44 @@ public class FrameRendererTests
         Render(r, buf);
 
         buf.CursorShape = CursorShape.SteadyBar;
+        var output = Render(r, buf);
+
+        Assert.Contains("\x1b[6 q", output);
+    }
+
+    [Fact]
+    public void CursorShape_NotEmittedWhenShapeControlUnsupported()
+    {
+        // DECSCUSR (CSI Ps SP q) must be suppressed when the negotiated capabilities report no
+        // cursor ShapeControl — e.g. Apple Terminal, which mis-parses the space-intermediate
+        // form and prints the literal 'q'. Verify across a first frame AND a subsequent shape
+        // change that no DECSCUSR (no 'q' final, no ' q' tail) is emitted.
+        var caps = OutputCapabilities.None with
+                   {
+                       Cursor = OutputCapabilities.None.Cursor with { ShapeControl = false },
+                   };
+        var r = new FrameRenderer(caps);
+        var buf = new CellBuffer(3, 1);
+
+        var first = Render(r, buf);                 // first frame would normally force DECSCUSR
+        buf.CursorShape = CursorShape.SteadyBar;
+        var second = Render(r, buf);                // explicit shape change
+
+        Assert.DoesNotContain(" q", first);
+        Assert.DoesNotContain(" q", second);
+    }
+
+    [Fact]
+    public void CursorShape_EmittedWhenShapeControlSupported()
+    {
+        var caps = OutputCapabilities.None with
+                   {
+                       Cursor = OutputCapabilities.None.Cursor with { ShapeControl = true },
+                   };
+        var r = new FrameRenderer(caps);
+        var buf = new CellBuffer(3, 1);
+        buf.CursorShape = CursorShape.SteadyBar;
+
         var output = Render(r, buf);
 
         Assert.Contains("\x1b[6 q", output);

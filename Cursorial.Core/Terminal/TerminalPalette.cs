@@ -64,9 +64,19 @@ public sealed class TerminalPalette : IDisposable
         _sink = sink;
         _supported = capabilities.Color.OscPaletteSet;
 
-        _supportedDefaults = capabilities.Color.DefaultColorReset
-                                 ? ModifiedDefaults.Foreground | ModifiedDefaults.Background | ModifiedDefaults.Cursor
-                                 : ModifiedDefaults.None;
+        // Default-color control. Foreground / background (OSC 10/11 set, OSC 110/111 reset) ride
+        // on DefaultColorReset. CURSOR color (OSC 12 set, OSC 112 reset) is a SEPARATE capability
+        // — Cursor.ColorControl — and must be gated on it, not lumped under DefaultColorReset:
+        // some terminals reset default fg/bg fine but don't implement cursor color at all (Apple
+        // Terminal), and emitting an unsupported OSC 12 / 112 there is mishandled (it surfaces as
+        // a stray glyph in the output). Gate each independently so we never send a sequence the
+        // negotiated capabilities say the terminal can't handle.
+        var defaults = ModifiedDefaults.None;
+        if (capabilities.Color.DefaultColorReset)
+            defaults |= ModifiedDefaults.Foreground | ModifiedDefaults.Background;
+        if (capabilities.Cursor.ColorControl)
+            defaults |= ModifiedDefaults.Cursor;
+        _supportedDefaults = defaults;
     }
 
     /// <summary>

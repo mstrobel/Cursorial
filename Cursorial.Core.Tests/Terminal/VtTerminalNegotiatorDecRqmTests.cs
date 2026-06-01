@@ -9,6 +9,14 @@ public class VtTerminalNegotiatorDecRqmTests
     private readonly InMemoryOutputByteSink _sink = new();
     private readonly StubEnvironmentReader _env = new();
 
+    public VtTerminalNegotiatorDecRqmTests()
+    {
+        // DECRQM verification is family-gated to terminals known to support it (see
+        // TerminalSupportsDecRqm). Identify as xterm so the verification phase runs for these
+        // tests; a blank environment resolves to Unknown, which deliberately skips DECRQM.
+        _env.Set("TERM", "xterm-256color");
+    }
+
     private VtTerminalNegotiator BuildNegotiator(VtInputMode? mode = null) =>
         new(_source, _sink, mode, timeProvider: null, environmentReader: _env);
 
@@ -248,6 +256,33 @@ public class VtTerminalNegotiatorDecRqmTests
                                         {
                                             ProbeTimeout = TimeSpan.FromMilliseconds(100),
                                             OptIns = OptInPolicy.Ignored
+                                        });
+
+        var written = await AllWrittenAsync();
+        Assert.DoesNotContain("$p", written);
+    }
+
+    [Fact]
+    public async Task DecRqmVerification_SkippedOnNonSupportingFamily()
+    {
+        // Apple Terminal mis-parses the DECRQM `$ p` form and prints the literal terminator
+        // (one stray 'p' per query — the "ppppp" smear seen after restoring from the alt screen).
+        // The negotiator must NOT send DECRQM queries to families not known to support it, even
+        // when opt-ins were applied. Only the identification DA1 is enqueued; verification, if it
+        // ran, would emit `$p` queries — their absence proves the phase was skipped.
+        var env = new StubEnvironmentReader();
+        env.Set("TERM_PROGRAM", "Apple_Terminal");
+        _source.Enqueue("\x1b[?64c"); // identification DA1
+
+        await using var negotiator =
+            new VtTerminalNegotiator(_source, _sink, null, timeProvider: null, environmentReader: env);
+
+        await negotiator.NegotiateAsync(new NegotiationOptions
+                                        {
+                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                            EnableExtendedMouseTracking = true,
+                                            EnableFocusEvents = true,
+                                            EnableBracketedPaste = true
                                         });
 
         var written = await AllWrittenAsync();

@@ -57,6 +57,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private int _restored;
     private AppliedOptIns _applied;
 
+    // Whether to emit the Kitty multi-cursor-clear sequence (CSI > 0 ; 4 SP q) at restore. Set
+    // from the identified family during negotiation — only Kitty-family terminals understand it.
+    // Other terminals (notably Apple Terminal) mis-parse the `> … SP q` form and print the
+    // literal 'q', so it must NOT be emitted unconditionally.
+    private bool _emitKittyExtraCursorClear;
+
     // Probe-phase pending read, persisted across DrainResponsesUntilSentinelAsync calls so a
     // second drain phase (DECRQM verification, future truecolor / default-color probes) can
     // reuse a still-in-flight read instead of starting a concurrent one on the same
@@ -115,6 +121,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             var responses = await ProbeIdentificationAsync(options, cancellationToken).ConfigureAwait(false);
             var identification = ResolveIdentification(responses, _environment);
 
+            // The Kitty multi-cursor-clear restore sequence is only understood by Kitty-family
+            // terminals (Kitty + Ghostty, which implements the same protocols). Everything else
+            // mis-parses it; gate emission so we never send it elsewhere.
+            _emitKittyExtraCursorClear = identification.Family is TerminalFamily.Kitty or TerminalFamily.Ghostty;
+
             if (options.OptIns == OptInPolicy.Allowed)
             {
                 await ApplyOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
@@ -125,7 +136,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                 // capabilities reflect what the terminal *actually* supports, not what we asked
                 // for. Modes the terminal doesn't acknowledge with a DECRQM response at all leave
                 // their bit alone (absent evidence is not evidence of absence).
-                await VerifyAppliedOptInsAsync(options, cancellationToken).ConfigureAwait(false);
+                await VerifyAppliedOptInsAsync(options, identification, cancellationToken).ConfigureAwait(false);
 
                 ApplyToInputMode(_applied);
             }
@@ -221,8 +232,11 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // is holding onto. The spec says alt-screen-toggle clears these implicitly, but a
             // timing-dependent Kitty bug leaves ghost cursors after quit-during-resize; this
             // sequence is silently ignored by non-supporting terminals. Emit independent of
-            // _applied because the protocol isn't gated on an enable we'd have tracked.
-            QueueWrite(VtInputSequences.OptInSequences.ClearKittyExtraCursors);
+            // _applied because the protocol isn't gated on an enable we'd have tracked. Family-
+            // gated, though: non-Kitty terminals (Apple Terminal) mis-parse `CSI > 0 ; 4 SP q`
+            // and print the literal 'q'.
+            if (_emitKittyExtraCursorClear)
+                QueueWrite(VtInputSequences.OptInSequences.ClearKittyExtraCursors);
 
             await _sink.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -246,8 +260,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         var writer = new System.Buffers.ArrayBufferWriter<byte>();
 
-        // Mirror RestoreAsync's LIFO order. 'ClearKittyExtraCursors' is emitted unconditionally
-        // (Kitty-only no-op elsewhere) just like the async path.
+        // Mirror RestoreAsync's LIFO order. 'ClearKittyExtraCursors' is family-gated to Kitty —
+        // non-Kitty terminals mis-parse it (see RestoreAsync / _emitKittyExtraCursorClear).
         if (_applied.Win32InputMode)        AppendBytes(writer, VtInputSequences.OptInSequences.DisableWin32InputMode);
         if (_applied.KittyKeyboard)         AppendBytes(writer, VtInputSequences.OptInSequences.PopKittyKeyboard);
         if (_applied.BracketedPaste)        AppendBytes(writer, VtInputSequences.OptInSequences.DisableBracketedPaste);
@@ -257,7 +271,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (_applied.MouseButtonTracking)   AppendBytes(writer, VtInputSequences.OptInSequences.DisableButtonMotionMouse);
         if (_applied.ExtendedMouseTracking) AppendBytes(writer, VtInputSequences.OptInSequences.DisableSgrMouse);
         if (_applied.MouseButtons)          AppendBytes(writer, VtInputSequences.OptInSequences.DisableMouseButtons);
-        AppendBytes(writer, VtInputSequences.OptInSequences.ClearKittyExtraCursors);
+        if (_emitKittyExtraCursorClear)     AppendBytes(writer, VtInputSequences.OptInSequences.ClearKittyExtraCursors);
 
         ResetAppliedToReflectRestore();
         return writer.WrittenMemory;
@@ -451,6 +465,33 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         family is TerminalFamily.WindowsTerminal or
                   TerminalFamily.WindowsConsoleHost;
 
+    /// <summary>
+    /// DECRQM (<c>CSI ? &lt;mode&gt; $ p</c>) request-mode support, used to verify that opt-in
+    /// DEC private modes actually took effect. Allow-listed to the xterm-derived families known
+    /// to implement it. Notably EXCLUDES <see cref="TerminalFamily.AppleTerminal"/>, which
+    /// mis-parses the <c>$ p</c> form and prints the literal final byte, plus
+    /// <see cref="TerminalFamily.GenericVt"/> / <see cref="TerminalFamily.Unknown"/> where the
+    /// behavior is unproven — sending DECRQM there risks the same stray-output leak for no gain,
+    /// since verification is only a refinement (its absence falls back to trusting the opt-in's
+    /// own family gating).
+    /// </summary>
+    private static bool TerminalSupportsDecRqm(TerminalFamily family) =>
+        family is TerminalFamily.Xterm or
+                  TerminalFamily.Kitty or
+                  TerminalFamily.Ghostty or
+                  TerminalFamily.Rio or
+                  TerminalFamily.WezTerm or
+                  TerminalFamily.Foot or
+                  TerminalFamily.ITerm2 or
+                  TerminalFamily.Alacritty or
+                  TerminalFamily.Konsole or
+                  TerminalFamily.GnomeTerminal or
+                  TerminalFamily.WindowsTerminal or
+                  TerminalFamily.WindowsConsoleHost or
+                  TerminalFamily.GenericWsl or
+                  TerminalFamily.Tmux or
+                  TerminalFamily.GnuScreen;
+
     private static bool TerminalSupportsSynchronizedOutput(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
@@ -580,8 +621,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// because some legacy terminals respond to DA1 but not to DECRQM.
     /// </remarks>
     private async Task VerifyAppliedOptInsAsync(
-        NegotiationOptions options, CancellationToken cancellationToken)
+        NegotiationOptions options, TerminalIdentification identification, CancellationToken cancellationToken)
     {
+        // Family gate: only probe DECRQM on terminals known to implement it. DECRQM
+        // (CSI ? <mode> $ p) is an xterm-family feature; terminals that don't implement it should
+        // ignore the sequence, but some — notably Apple Terminal — mis-parse the `$ p` form and
+        // PRINT the final 'p' to the screen (one stray 'p' per query, surfacing as a "ppppp"
+        // smear after the session restores). Verification is only a refinement — it downgrades
+        // capabilities the terminal silently didn't honor — so skipping it on unknown/non-DECRQM
+        // families just falls back to trusting the opt-in's own family gating, which is safe.
+        if (!TerminalSupportsDecRqm(identification.Family)) return;
+
         // Build the (mode, applied-bit) pairs we want to verify. Kitty keyboard and Win32 input
         // mode don't have DECRQM responses (Kitty uses its own keyboard-stack query, Win32
         // input mode is an MS extension with no documented verification path) — skip those.
@@ -1554,7 +1604,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                                     TerminalFamily.Mlterm);
 
         return new CursorCapabilities(
-            ShapeControl: modern,
+            // Apple Terminal does not implement DECSCUSR (CSI Ps SP q) — it mis-parses the
+            // space-intermediate form and prints the literal 'q' terminator. Exclude it so the
+            // renderer doesn't emit cursor-shape sequences there (same rationale as ColorControl).
+            ShapeControl: modern && identification.Family is not TerminalFamily.AppleTerminal,
             VisibilityControl: identification.Family != TerminalFamily.Unknown,
             BlinkControl: modern,
             ColorControl: modern && identification.Family is not TerminalFamily.AppleTerminal);

@@ -24,7 +24,12 @@ public class TerminalPaletteTests
             {
                 OscPaletteSet = oscPaletteSet,
                 DefaultColorReset = defaultColorReset,
-            }
+            },
+            // Cursor color (OSC 12 / 112) is gated separately on Cursor.ColorControl. These tests
+            // treat default-color support as a unit, so tie it to defaultColorReset; the
+            // Apple-Terminal split (DefaultColorReset true, ColorControl false) is covered by its
+            // own test below.
+            Cursor = OutputCapabilities.None.Cursor with { ColorControl = defaultColorReset },
         };
 
     private static DeviceResponseEvent PaletteResponse(int index, string rgbHex)
@@ -300,6 +305,36 @@ public class TerminalPaletteTests
         var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
 
         Assert.Equal("\x1b]12;rgb:dede/adad/bebe\x1b\\", ascii);
+    }
+
+    [Fact]
+    public async Task CursorColorOps_NoOp_WhenColorControlUnsupportedButDefaultResetIsSupported()
+    {
+        // The Apple Terminal case: it can reset default fg/bg (DefaultColorReset true) but does
+        // NOT implement cursor color (ColorControl false). SetCursor / ResetCursor must be
+        // no-ops — emitting OSC 12 / 112 there is mishandled (it surfaced as a stray 'q' in the
+        // output). Foreground/background ops must still work, so this isn't an over-broad gate.
+        var caps = OutputCapabilities.None with
+                   {
+                       Color = OutputCapabilities.None.Color with
+                               {
+                                   OscPaletteSet = true,
+                                   DefaultColorReset = true,
+                               },
+                       Cursor = OutputCapabilities.None.Cursor with { ColorControl = false },
+                   };
+
+        var sink = new InMemoryOutputByteSink();
+        using var palette = new TerminalPalette(sink, caps);
+
+        palette.SetForeground(Color.FromRgb(0x10, 0x20, 0x30)); // supported → emits
+        palette.SetCursor(Color.FromRgb(0xDE, 0xAD, 0xBE));     // unsupported → no-op
+        palette.ResetCursor();                                  // unsupported → no-op
+
+        var ascii = Encoding.ASCII.GetString(await sink.ReadAllWrittenAsync());
+        Assert.Contains("\x1b]10;", ascii);          // foreground still works
+        Assert.DoesNotContain("\x1b]12;", ascii);    // no cursor-color set (OSC 12)
+        Assert.DoesNotContain("\x1b]112", ascii);    // no cursor-color reset (OSC 112)
     }
 
     [Fact]

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -22,6 +21,9 @@ using Cursorial.Terminal.Stdio;
 // Two-phase model: the prompt itself runs in cooked mode (Console.ReadLine for command entry).
 // Each command that needs raw input opens a TerminalSession (which puts the terminal into raw
 // mode), does its work, and disposes the session — restoring cooked mode before the next prompt.
+
+// ReSharper disable DisposeOnUsingVariable
+// ReSharper disable RedundantAssignment
 
 PrintBanner();
 
@@ -582,7 +584,7 @@ static async Task<(TerminalSession session,
 
     // Falling back to Console.WindowWidth/Height as a last resort, but on non-console stdout
     // (MSYS2 / Cygwin / MobaXterm bash) those throw IOException("The handle is invalid").
-    // Default to 80x24 in that case so the demo at least starts; a SIGWINCH-equivalent resize
+    // Default to 80x24 in that case, so the demo at least starts; a SIGWINCH-equivalent resize
     // will correct the dimensions once one fires.
     int cols, rows;
     if (size is { } s)
@@ -643,7 +645,7 @@ static async Task DemoRenderAsync()
     });
 
     // Optional diagnostic: when CURSORIAL_TRACE_OUTPUT is set, mirror every frame's emitted
-    // bytes to a file. Each frame is preceded by a short ASCII marker so the resulting
+    // bytes to a file. Each frame is preceded by a short ASCII marker, so the resulting
     // capture is grep-able / easy to split by frame. Use when you suspect the renderer is
     // emitting bad bytes (cursor shifts, wrap surprises, SGR drift, …) and want ground truth
     // for the wire form before guessing.
@@ -687,7 +689,7 @@ static async Task DemoRenderAsync()
 
             if (traceStream is not null)
             {
-                var marker = System.Text.Encoding.ASCII.GetBytes($"\n===== FRAME {traceFrame++:D4} ({scratch.WrittenCount} bytes) =====\n");
+                var marker = Encoding.ASCII.GetBytes($"\n===== FRAME {traceFrame++:D4} ({scratch.WrittenCount} bytes) =====\n");
                 traceStream.Write(marker);
                 traceStream.Write(scratch.WrittenSpan);
                 traceStream.Flush();
@@ -712,6 +714,13 @@ static async Task DemoRenderAsync()
 
         try { await writer.FlushAsync(); } catch { /* best-effort */ }
     }
+
+    // Tear down BEFORE printing the exit message — see DemoFormatAsync for the rationale (raw
+    // mode '\n' has no carriage return, so the message must print after cooked mode is restored).
+    // Palette first (writes its resets to the still-open sink), then session. Idempotent, so the
+    // `using` / `await using` declarations no-op at method end.
+    dp.Dispose();
+    await ds.DisposeAsync();
 
     Console.WriteLine("Render demo exited.");
 
@@ -862,7 +871,7 @@ static async Task DemoFormatAsync()
 
                 if (traceStream is not null)
                 {
-                    var marker = System.Text.Encoding.ASCII.GetBytes(
+                    var marker = Encoding.ASCII.GetBytes(
                         $"\n===== FRAME {traceFrame++:D4} scroll={scrollOffset} cols={screen.Columns} rows={screen.Rows} ({scratch.WrittenCount} bytes) =====\n");
                     traceStream.Write(marker);
                     traceStream.Write(scratch.WrittenSpan);
@@ -890,6 +899,16 @@ static async Task DemoFormatAsync()
 
         try { await writer.FlushAsync(); } catch { /* best-effort */ }
     }
+
+    // Tear down BEFORE printing the exit message. The session is still in raw mode here (the
+    // `await using` would otherwise dispose it only at method end, after this WriteLine), and in
+    // POSIX raw mode Console.WriteLine's '\n' is a bare line-feed with no carriage return — so
+    // the message lands mid-line and the next REPL prompt is mispositioned. Dispose the palette
+    // first (it writes OSC palette-reset sequences to the still-open sink), then the session
+    // (negotiator restore + tcflush + cooked-mode restore). Both are idempotent, so the
+    // `using` / `await using` declarations safely no-op at method end.
+    dp.Dispose();
+    await ds.DisposeAsync();
 
     Console.WriteLine("Format demo exited.");
 

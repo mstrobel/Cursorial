@@ -760,7 +760,16 @@ public sealed class FrameRenderer
     {
         // Shape first, then visibility, then position — the canonical order keeps the cursor
         // glyph from being drawn momentarily at the old position with the new shape.
-        if (_firstFrame || back.CursorShape != _cursorShape)
+        //
+        // Gate DECSCUSR on the negotiated ShapeControl capability. DECSCUSR is `CSI Ps SP q` —
+        // the only sequence in our output vocabulary ending in 'q', and on terminals that don't
+        // implement it (Apple Terminal) the `SP q` form is mis-parsed and the literal 'q' is
+        // printed. Since the renderer otherwise emits this on every first frame (even to set the
+        // default shape, which is a no-op on a fresh session), an unsupporting terminal shows a
+        // stray 'q'. When capabilities are unknown (no-caps constructor — tests / upstream
+        // quantizers) we keep emitting, preserving the prior behavior.
+        bool shapeControl = _capabilities?.Cursor.ShapeControl ?? true;
+        if (shapeControl && (_firstFrame || back.CursorShape != _cursorShape))
         {
             CursorWriter.WriteShape(output, back.CursorShape);
             _cursorShape = back.CursorShape;

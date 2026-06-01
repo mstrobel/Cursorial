@@ -186,6 +186,17 @@ public class ITerm2ImageFragmentTests
     }
 
     [Fact]
+    public void Layer_IsCells_NotOverlay()
+    {
+        // iTerm2 inline images live in the cell stream and are erased by repainting their
+        // footprint cells — there is no protocol delete command. Marking this Overlay (a refactor
+        // once did, accidentally) breaks removal: Overlay cells aren't repainted and EmitErase is
+        // a no-op, so a moved/scrolled image leaves a duplicate behind. Guard against regressing.
+        var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(2, 1));
+        Assert.Equal(FragmentLayer.Cells, new ITerm2ImageFragment(data).Layer);
+    }
+
+    [Fact]
     public void IsSupported_GatedOnITerm2Caps()
     {
         var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 5));

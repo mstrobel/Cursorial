@@ -1435,7 +1435,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private ColorCapabilities ResolveColor(TerminalIdentification identification)
     {
-        var depth = _truecolorVerified ? ColorDepth.Truecolor : ResolveColorDepth(identification);
+        var depth = _truecolorVerified && identification.Family is not TerminalFamily.AppleTerminal
+                        ? ColorDepth.Truecolor
+                        : ResolveColorDepth(identification);
 
         return new ColorCapabilities(
             Depth: depth,

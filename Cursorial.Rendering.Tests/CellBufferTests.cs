@@ -198,4 +198,78 @@ public class CellBufferTests
         Assert.True(buf.CursorVisible);
         Assert.Equal(CursorShape.Default, buf.CursorShape);
     }
+
+    [Fact]
+    public void Write_PlacesEachClusterAndAdvances()
+    {
+        var buf = new CellBuffer(10, 1);
+
+        int advanced = buf.Write(0, 0, "abc", Style.Default);
+
+        Assert.Equal(3, advanced);
+        Assert.Equal("a", buf[0, 0].Grapheme);
+        Assert.Equal("b", buf[1, 0].Grapheme);
+        Assert.Equal("c", buf[2, 0].Grapheme);
+    }
+
+    [Fact]
+    public void Write_AdvancesByTwoForWideClusters()
+    {
+        var buf = new CellBuffer(10, 1);
+
+        // "a中b": single + wide (2 cells) + single = 4 columns.
+        int advanced = buf.Write(0, 0, "a中b", Style.Default);
+
+        Assert.Equal(4, advanced);
+        Assert.Equal(CellKind.Single, buf[0, 0].Kind);
+        Assert.Equal(CellKind.WideLeft, buf[1, 0].Kind);
+        Assert.Equal("中", buf[1, 0].Grapheme);
+        Assert.Equal(CellKind.WideContinuation, buf[2, 0].Kind);
+        Assert.Equal("b", buf[3, 0].Grapheme);
+    }
+
+    [Fact]
+    public void Write_TreatsMultiCodepointEmojiAsOneCluster()
+    {
+        var buf = new CellBuffer(10, 1);
+
+        // A ZWJ family sequence is a single (wide) grapheme cluster, not its component runes.
+        int advanced = buf.Write(0, 0, "👨‍👩‍👧!", Style.Default);
+
+        Assert.Equal(3, advanced);                       // wide cluster (2) + "!" (1)
+        Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
+        Assert.Equal("👨‍👩‍👧", buf[0, 0].Grapheme);
+        Assert.Equal("!", buf[2, 0].Grapheme);
+    }
+
+    [Fact]
+    public void Write_StopsAtRightEdge_WithoutClippingWideGlyph()
+    {
+        var buf = new CellBuffer(3, 1);
+
+        // "ab中": a, b fit at columns 0,1; the wide 中 can't fit in the single remaining column.
+        int advanced = buf.Write(0, 0, "ab中", Style.Default);
+
+        Assert.Equal(2, advanced);
+        Assert.Equal("a", buf[0, 0].Grapheme);
+        Assert.Equal("b", buf[1, 0].Grapheme);
+        Assert.Equal(default(Cell), buf[2, 0]);          // wide glyph dropped, not degraded
+    }
+
+    [Fact]
+    public void Write_EmptyOrNull_IsNoOp()
+    {
+        var buf = new CellBuffer(5, 1);
+
+        Assert.Equal(0, buf.Write(0, 0, "", Style.Default));
+        Assert.Equal(0, buf.Write(0, 0, (string?)null, Style.Default));
+        Assert.Equal(default(Cell), buf[0, 0]);
+    }
+
+    [Fact]
+    public void Write_InvalidStart_Throws()
+    {
+        var buf = new CellBuffer(5, 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Write(5, 0, "x", Style.Default));
+    }
 }

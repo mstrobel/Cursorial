@@ -1,3 +1,4 @@
+using System.Collections;
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
@@ -17,12 +18,12 @@ namespace Cursorial.Rendering;
 /// <b>Coordinate translation.</b> The view's <c>(0, 0)</c> maps to
 /// <c>(<see cref="OffsetRow"/>, <see cref="OffsetColumn"/>)</c> on the backing buffer. All
 /// coordinate-bearing operations on the view — <see cref="Set"/>, the indexer,
-/// <see cref="Fill"/>, <see cref="Clear"/>, fragment / dirty-region calls — accept view-local
+/// <see cref="Fill(in Cell)"/>, <see cref="Clear"/>, fragment / dirty-region calls — accept view-local
 /// coordinates and translate them to backing-buffer coordinates internally.
 /// </para>
 /// <para>
 /// <b>Clipping.</b> Writes outside <c>[0, Columns) × [0, Rows)</c> are silently dropped by
-/// <see cref="Set"/>, <see cref="Fill"/>, <see cref="Clear"/>, and the fragment / dirty-region
+/// <see cref="Set"/>, <see cref="Fill(in Cell)"/>, <see cref="Clear"/>, and the fragment / dirty-region
 /// methods. The indexer (<c>view[r, c]</c>) instead <em>validates</em> coordinates and throws on
 /// out-of-bounds access — it is the explicit form for when the caller has already proven the
 /// write is in range. The semantic split matches <see cref="CellBuffer"/>'s indexer-vs-Set
@@ -54,7 +55,7 @@ namespace Cursorial.Rendering;
 /// integers plus the <see cref="CellBuffer"/> reference.
 /// </para>
 /// </remarks>
-public readonly struct CellBufferView
+public readonly struct CellBufferView : ICellSurface
 {
     private readonly CellBuffer _buffer;
 
@@ -242,6 +243,37 @@ public readonly struct CellBufferView
     }
 
     /// <summary>
+    /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at the
+    /// view-local <c>(column, row)</c>, advancing the column by each cluster's width (1 or 2) and
+    /// applying the active blending mode per cell — see <see cref="Set(int, int, string?, in Style)"/>.
+    /// A start outside the view is dropped (returns 0); a cluster that would not fit in the
+    /// remaining columns stops the write rather than being clipped. Control characters (including
+    /// newlines) are not interpreted. Returns the number of columns written.
+    /// </summary>
+    public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
+    {
+        if (_buffer is null || text.IsEmpty) return 0;
+        if ((uint) row >= (uint) Rows || (uint) column >= (uint) Columns) return 0;
+
+        int start = column;
+        var clusters = text.GetGraphemeEnumerator();
+
+        while (clusters.MoveNext())
+        {
+            var cluster = clusters.Current;
+            int width = GraphemeWidth.ClusterWidth(cluster);
+            if (width < 1) width = 1;
+
+            // Stop at the view's right edge rather than placing a degraded glyph.
+            if (column + width > Columns) break;
+
+            column += Set(column, row, cluster.ToString(), style);
+        }
+
+        return column - start;
+    }
+
+    /// <summary>
     /// Replace every cell in the view with <paramref name="cell"/>, blending against existing
     /// contents through <see cref="CurrentBlendingMode"/>. Scoped to the view rect — cells
     /// outside are untouched.
@@ -250,6 +282,27 @@ public readonly struct CellBufferView
     {
         if (IsEmpty) return;
         _buffer.Fill(BufferBounds, cell);
+    }
+
+    /// <summary>
+    /// Replace every cell inside <paramref name="region"/> (view-local coordinates) with
+    /// <paramref name="cell"/>, blending against existing contents through the active blending
+    /// mode. The rect is clipped to the view's bounds and translated to backing-buffer
+    /// coordinates; an out-of-view or empty rect is a no-op.
+    /// </summary>
+    public void Fill(in Rect region, in Cell cell)
+    {
+        if (_buffer is null || region.IsEmpty || IsEmpty) return;
+
+        // Clip the rect against the view's bounds in view-local space, then translate to backing
+        // coordinates — the same projection MarkDirty uses.
+        int row = Math.Max(0, region.Row);
+        int col = Math.Max(0, region.Column);
+        int rowEnd = Math.Min(Rows, region.RowEnd);
+        int colEnd = Math.Min(Columns, region.ColumnEnd);
+        if (row >= rowEnd || col >= colEnd) return;
+
+        _buffer.Fill(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row), cell);
     }
 
     /// <summary>
@@ -364,6 +417,28 @@ public readonly struct CellBufferView
     // ---- Dirty-region tracking ----------------------------------------------------------
 
     /// <summary>
+    /// The backing buffer's dirty regions projected into this view's coordinate space: each region
+    /// is intersected with the view's bounds and translated to view-local coordinates, and regions
+    /// that don't overlap the view are dropped. Unlike <see cref="CellBuffer.DirtyRegions"/> — which
+    /// exposes its live backing list — this is a lightweight lazy projection: it applies the
+    /// intersect-and-translate transform on demand as elements are read or enumerated, rather than
+    /// materializing a new list per access. The common "no dirty regions" case returns an empty
+    /// list with no allocation at all.
+    /// </summary>
+    public IReadOnlyList<Rect> DirtyRegions
+    {
+        get
+        {
+            if (_buffer is null) return [];
+
+            var source = _buffer.DirtyRegions;
+            if (source.Count == 0) return [];
+
+            return new ProjectedDirtyRegions(source, OffsetColumn, OffsetRow, Columns, Rows);
+        }
+    }
+
+    /// <summary>
     /// Mark a rectangular region of the view as dirty. The rect is translated to backing-buffer
     /// coordinates and clipped against the view's bounds before being recorded.
     /// </summary>
@@ -453,4 +528,79 @@ public readonly struct CellBufferView
     internal CellPosition TranslateFromParent(in CellPosition position) => new(position.Column - OffsetColumn, position.Row - OffsetRow);
     
     internal Rect TranslateFromParent(in Rect bounds) => bounds.Translate(-OffsetColumn, -OffsetRow);
+
+    /// <summary>
+    /// A lazy <see cref="IReadOnlyList{T}"/> over a backing buffer's dirty regions, projected into a
+    /// view's coordinate space. Each region is intersected with the view's backing rect and
+    /// translated to view-local coordinates as it is read; regions that don't overlap the view are
+    /// skipped. The transform runs per element access / enumeration — no list is materialized.
+    /// </summary>
+    /// <remarks>
+    /// Because non-overlapping regions are filtered out, <see cref="Count"/> and the indexer scan
+    /// the source list (O(n)); the projected count rarely differs from the source count and the
+    /// list is small, so this is fine for the occasional read. Enumeration is the natural access
+    /// pattern and is single-pass.
+    /// </remarks>
+    private sealed class ProjectedDirtyRegions(
+        IReadOnlyList<Rect> source, int offsetColumn, int offsetRow, int columns, int rows)
+        : IReadOnlyList<Rect>
+    {
+        public int Count
+        {
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < source.Count; i++)
+                    if (TryProject(source[i], out _)) count++;
+                return count;
+            }
+        }
+
+        public Rect this[int index]
+        {
+            get
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(index);
+
+                int seen = 0;
+                for (int i = 0; i < source.Count; i++)
+                {
+                    if (!TryProject(source[i], out var projected)) continue;
+                    if (seen == index) return projected;
+                    seen++;
+                }
+
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+        }
+
+        public IEnumerator<Rect> GetEnumerator()
+        {
+            for (int i = 0; i < source.Count; i++)
+                if (TryProject(source[i], out var projected))
+                    yield return projected;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private bool TryProject(Rect region, out Rect projected)
+        {
+            // Intersect the backing-buffer region with the view's backing rect, then translate the
+            // overlap into view-local coordinates.
+            int colStart = Math.Max(region.Column, offsetColumn);
+            int rowStart = Math.Max(region.Row, offsetRow);
+            int colEnd = Math.Min(region.ColumnEnd, offsetColumn + columns);
+            int rowEnd = Math.Min(region.RowEnd, offsetRow + rows);
+
+            if (colStart >= colEnd || rowStart >= rowEnd)
+            {
+                projected = default;
+                return false;
+            }
+
+            projected = new Rect(colStart - offsetColumn, rowStart - offsetRow,
+                                 colEnd - colStart, rowEnd - rowStart);
+            return true;
+        }
+    }
 }

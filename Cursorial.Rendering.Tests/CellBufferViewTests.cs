@@ -473,6 +473,159 @@ public class CellBufferViewTests
         Assert.Equal(".", buf[9, 9].Grapheme);
     }
 
+    // ---- Write (parity with CellBuffer.Write) ----
+
+    [Fact]
+    public void Write_TranslatesByOffsetAndAdvances()
+    {
+        var buf = new CellBuffer(10, 10);
+        var view = buf.View(4, 3, 5, 5);
+
+        int advanced = view.Write(1, 2, "ab", Style.Default);
+
+        Assert.Equal(2, advanced);
+        Assert.Equal("a", buf[5, 5].Grapheme);   // (4+1, 3+2)
+        Assert.Equal("b", buf[6, 5].Grapheme);
+    }
+
+    [Fact]
+    public void Write_AdvancesByTwoForWideClusters()
+    {
+        var buf = new CellBuffer(10, 10);
+        var view = buf.View(4, 3, 6, 5);
+
+        int advanced = view.Write(0, 0, "中b", Style.Default);
+
+        Assert.Equal(3, advanced);
+        Assert.Equal(CellKind.WideLeft, buf[4, 3].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[5, 3].Kind);
+        Assert.Equal("b", buf[6, 3].Grapheme);
+    }
+
+    [Fact]
+    public void Write_StopsAtViewRightEdge()
+    {
+        var buf = new CellBuffer(10, 10);
+        var view = buf.View(0, 0, 3, 1);   // 3 columns wide
+
+        int advanced = view.Write(0, 0, "ab中", Style.Default);
+
+        Assert.Equal(2, advanced);          // wide 中 can't fit the single remaining column
+        Assert.Equal("a", buf[0, 0].Grapheme);
+        Assert.Equal("b", buf[1, 0].Grapheme);
+        Assert.Equal(default(Cell), buf[2, 0]);
+    }
+
+    [Fact]
+    public void Write_StartOutsideView_SilentlyDropped()
+    {
+        var buf = new CellBuffer(10, 10);
+        var view = buf.View(4, 3, 5, 5);
+
+        Assert.Equal(0, view.Write(5, 0, "X", default));   // past the right edge of the view
+        Assert.Equal(0, view.Write(0, 5, "X", default));   // past the bottom edge
+    }
+
+    // ---- Fill(in Rect, in Cell) ----
+
+    [Fact]
+    public void FillRegion_TranslatesAndClipsToView()
+    {
+        var buf = new CellBuffer(10, 5);
+        var view = buf.View(2, 1, 5, 3);   // backing rect cols [2,7) rows [1,4)
+        var cell = new Cell(".", CellKind.Single, Style.Default);
+
+        // View-local rect cols [1,4) rows [0,2) → backing cols [3,6) rows [1,3).
+        view.Fill(new Rect(1, 0, 3, 2), cell);
+
+        Assert.Equal(".", buf[3, 1].Grapheme);
+        Assert.Equal(".", buf[5, 2].Grapheme);
+        // Just outside the filled rect (still inside the view) — untouched.
+        Assert.Null(buf[2, 1].Grapheme);
+        Assert.Null(buf[6, 1].Grapheme);
+    }
+
+    [Fact]
+    public void FillRegion_ClipsRectExtendingPastView()
+    {
+        var buf = new CellBuffer(10, 5);
+        var view = buf.View(2, 1, 3, 2);   // backing rect cols [2,5) rows [1,3)
+        var cell = new Cell("#", CellKind.Single, Style.Default);
+
+        // Oversized view-local rect — only the in-view slice fills.
+        view.Fill(new Rect(0, 0, 100, 100), cell);
+
+        Assert.Equal("#", buf[2, 1].Grapheme);
+        Assert.Equal("#", buf[4, 2].Grapheme);
+        Assert.Null(buf[5, 1].Grapheme);   // past the view's right edge
+        Assert.Null(buf[2, 3].Grapheme);   // past the view's bottom edge
+    }
+
+    // ---- DirtyRegions (transformed projection) ----
+
+    [Fact]
+    public void DirtyRegions_ProjectAndClipToViewLocalCoordinates()
+    {
+        var buf = new CellBuffer(10, 4);
+        var view = buf.View(2, 1, 5, 2);   // backing rect cols [2,7) rows [1,3)
+
+        // Backing region cols [3,7) rows [1,3) — fully inside the view's backing rect.
+        buf.MarkDirty(new Rect(3, 1, 4, 2));
+
+        var regions = view.DirtyRegions;
+
+        Assert.Single(regions);
+        // Translated to view-local: subtract the (2, 1) offset → cols [1,5) rows [0,2).
+        Assert.Equal(new Rect(1, 0, 4, 2), regions[0]);
+    }
+
+    [Fact]
+    public void DirtyRegions_ClipRegionExtendingPastView()
+    {
+        var buf = new CellBuffer(10, 4);
+        var view = buf.View(2, 1, 3, 2);   // backing rect cols [2,5) rows [1,3)
+
+        // Region spans the whole buffer width; only the [2,5) slice overlaps the view.
+        buf.MarkDirty(new Rect(0, 1, 10, 2));
+
+        var regions = view.DirtyRegions;
+
+        Assert.Single(regions);
+        Assert.Equal(new Rect(0, 0, 3, 2), regions[0]);   // clipped to the 3-wide view, view-local
+    }
+
+    [Fact]
+    public void DirtyRegions_DropRegionOutsideView()
+    {
+        var buf = new CellBuffer(10, 4);
+        var view = buf.View(0, 0, 3, 2);
+
+        buf.MarkDirty(new Rect(5, 2, 2, 1));   // entirely outside the view
+
+        Assert.Empty(view.DirtyRegions);
+    }
+
+    [Fact]
+    public void DirtyRegions_EmptyWhenNoneMarked()
+    {
+        var buf = new CellBuffer(10, 4);
+        var view = buf.View(2, 1, 5, 2);
+
+        Assert.Empty(view.DirtyRegions);
+    }
+
+    [Fact]
+    public void MarkDirty_OnView_RecordsTranslatedRegionOnBuffer()
+    {
+        var buf = new CellBuffer(10, 4);
+        var view = buf.View(2, 1, 5, 2);
+
+        view.MarkDirty(new Rect(1, 0, 2, 1));   // view-local
+
+        Assert.Single(buf.DirtyRegions);
+        Assert.Equal(new Rect(3, 1, 2, 1), buf.DirtyRegions[0]);   // translated to backing coords
+    }
+
     // ---- Test helpers ----
 
     private sealed class TestFragment : IBufferFragment

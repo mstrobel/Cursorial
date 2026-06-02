@@ -34,7 +34,7 @@ namespace Cursorial.Rendering;
 /// state to do its job efficiently.
 /// </para>
 /// </remarks>
-public sealed class CellBuffer
+public sealed class CellBuffer : ICellSurface
 {
     private Cell[] _cells;
     private int _columns;
@@ -215,6 +215,38 @@ public sealed class CellBuffer
     }
 
     /// <summary>
+    /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at
+    /// <c>(column, row)</c>, advancing the column by each cluster's width (1 for normal, 2 for
+    /// wide) and applying the active blending mode per cell — exactly as
+    /// <see cref="Set(int, int, string?, in Style)"/> does for a single cluster. A cluster that
+    /// would not fit in the remaining columns stops the write rather than being clipped to a
+    /// partial glyph. Control characters (including newlines) are <b>not</b> interpreted; split
+    /// the text into lines yourself for multi-row layout. Returns the number of columns written.
+    /// </summary>
+    public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
+    {
+        ValidateCoordinates(column, row);
+        if (text.IsEmpty) return 0;
+
+        int start = column;
+        var clusters = text.GetGraphemeEnumerator();
+
+        while (clusters.MoveNext())
+        {
+            var cluster = clusters.Current;
+            int width = GraphemeWidth.ClusterWidth(cluster);
+            if (width < 1) width = 1;
+
+            // Stop at the right edge rather than placing a degraded glyph.
+            if (column + width > _columns) break;
+
+            column += Set(column, row, cluster.ToString(), style);
+        }
+
+        return column - start;
+    }
+
+    /// <summary>
     /// Reset every cell to <see cref="Cell.Blank"/>. Does NOT apply the active blending mode —
     /// clear is an explicit reset. Also removes every registered fragment.
     /// </summary>
@@ -260,8 +292,14 @@ public sealed class CellBuffer
     /// fragment was added remains. Callers who want a clean state when removing a fragment
     /// should explicitly repaint the region afterward.
     /// </para>
+    /// <para>
+    /// Returns <see langword="true"/> when the fragment was registered. The buffer always
+    /// registers within its bounds (an out-of-range anchor throws); the <see langword="bool"/>
+    /// return exists for parity with <see cref="CellBufferView.AddFragment"/>, which returns
+    /// <see langword="false"/> when the anchor falls outside the view.
+    /// </para>
     /// </remarks>
-    public void AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
+    public bool AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
     {
         ArgumentNullException.ThrowIfNull(fragment);
         ValidateCoordinates(column, row);
@@ -276,6 +314,7 @@ public sealed class CellBuffer
 
         _fragments[anchor] = new FragmentEntry(fragment, anchorStyle);
         _fragmentsByKey[fragment.Key] = anchor;
+        return true;
     }
 
     /// <summary>

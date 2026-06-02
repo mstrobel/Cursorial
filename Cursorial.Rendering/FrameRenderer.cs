@@ -69,9 +69,9 @@ public sealed class FrameRenderer
     private bool[]? _coveredCells;
 
     // Reusable scratch buffer for the per-render "is this cell inside a dirty region?"
-    // lookup. Only built when CellBuffer.DirtyRegions is non-empty; sized parallel to
-    // _coveredCells. When the back buffer doesn't supply dirty regions, this field stays
-    // logically inactive — the cell loop falls back to the full-buffer diff.
+    // lookup. Only populated when FrameRendererOptions.RestrictToDirtyRegions is opted in AND
+    // CellBuffer.DirtyRegions is non-empty; sized parallel to _coveredCells. Otherwise this field
+    // stays logically inactive — the cell loop falls back to the full-buffer diff (the default).
     private bool[]? _dirtyCells;
     private bool _hasDirtyRegions;
 
@@ -273,14 +273,20 @@ public sealed class FrameRenderer
 
     /// <summary>
     /// Recompute the dirty-cells bitmask for the current frame from
-    /// <see cref="CellBuffer.DirtyRegions"/>. When the back buffer has no dirty regions, this
-    /// is a no-op and <see cref="_hasDirtyRegions"/> remains false — the cell loop falls back
-    /// to a full-buffer diff (the safe default). When regions are present, only cells inside
-    /// the union of those regions are eligible for emission.
+    /// <see cref="CellBuffer.DirtyRegions"/>. This only takes effect when
+    /// <see cref="FrameRendererOptions.RestrictToDirtyRegions"/> is opted in; otherwise (and when
+    /// the back buffer has no dirty regions) it is a no-op and <see cref="_hasDirtyRegions"/>
+    /// remains false — the cell loop falls back to a full-buffer diff (the safe default). When
+    /// the opt-in is on and regions are present, only cells inside the union of those regions are
+    /// eligible for emission.
     /// </summary>
     private void ComputeDirtyCells(CellBuffer back)
     {
-        _hasDirtyRegions = back.DirtyRegions.Count > 0;
+        // Dirty-region-exclusive emission is opt-in (FrameRendererOptions.RestrictToDirtyRegions).
+        // When it's off we leave _hasDirtyRegions false so EmitDiff falls back to a full-buffer
+        // diff — a stray MarkDirty (e.g. from RemoveFragment) then can't silently restrict the
+        // frame's repaint and drop unrelated changed cells. The caller still clears the regions.
+        _hasDirtyRegions = _options.RestrictToDirtyRegions && back.DirtyRegions.Count > 0;
         if (!_hasDirtyRegions) return;
 
         var dirty = _dirtyCells!;
@@ -830,4 +836,14 @@ public sealed class FrameRenderer
 /// than a diff. Intended for debugging / profiling — disables the renderer's diff optimization
 /// without changing the API surface.
 /// </param>
-public readonly record struct FrameRendererOptions(bool ForceFullRedraw = false);
+/// <param name="RestrictToDirtyRegions">
+/// Opt-in for dirty-region-exclusive rendering. When true and the back buffer has marked dirty
+/// regions (<see cref="CellBuffer.DirtyRegions"/>), the diff only emits cells inside the union of
+/// those regions — the consumer takes on the contract that it has marked <i>every</i> cell it
+/// changed. When false (the default), <see cref="CellBuffer.DirtyRegions"/> are ignored for
+/// emission and the renderer always diffs the full buffer. This default keeps the renderer robust
+/// against stray dirty marks (e.g. an internal <see cref="CellBuffer.RemoveFragment(int, int)"/>,
+/// which marks the removed footprint dirty): without the opt-in, such a mark can't silently drop
+/// unrelated changed cells. The dirty regions are still cleared each frame regardless of this flag.
+/// </param>
+public readonly record struct FrameRendererOptions(bool ForceFullRedraw = false, bool RestrictToDirtyRegions = false);

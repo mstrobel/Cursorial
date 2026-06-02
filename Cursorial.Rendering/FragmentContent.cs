@@ -15,23 +15,7 @@ namespace Cursorial.Rendering;
 /// </remarks>
 public abstract class FragmentContent : IContent
 {
-    /// <summary>Construct content from the supplied data.</summary>
-    protected FragmentContent(object? fragmentKey = null)
-    {
-        FragmentKey = fragmentKey ?? this;
-    }
-
     protected internal IContent? RealizedPlaceholder { get; protected set; }
-
-    /// <summary>
-    /// Gets the fragment key associated with the content, used to identify and manage buffer fragments.
-    /// </summary>
-    /// <remarks>
-    /// The <c>FragmentKey</c> uniquely identifies a buffer fragment associated with the content.
-    /// It is used by the rendering system to reuse existing fragments and optimize rendering performance.
-    /// If no specific key is provided during initialization, the content instance itself is used as the key.
-    /// </remarks>
-    protected internal object FragmentKey { get; private init; }
 
     /// <summary>
     /// Gets the desired size of the content after the measurement process.
@@ -86,7 +70,7 @@ public abstract class FragmentContent : IContent
         // not null` was inverted — it reported "needed" whenever a fragment was cached; (2) the size
         // test compared `s.Columns` against `availableSpace.Rows` (a dimension mismatch) using `<`,
         // re-creating whenever the bounds were larger than the rendered fragment; and (3) the buffer
-        // lookup keyed on the *content's* FragmentKey, but fragments are registered (CellBuffer.
+        // lookup keyed on a separate content-level key, but fragments are registered (CellBuffer.
         // AddFragment) and removed (Paint) under the *fragment's* Key — so the lookup never found the
         // entry and always reported "missing". Any one of these drives a per-frame RemoveFragment,
         // which marks the footprint dirty (CellBuffer.RemoveFragment), silently flipping the renderer

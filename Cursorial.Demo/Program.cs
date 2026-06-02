@@ -1600,6 +1600,11 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
     // face. The cell buffer + FrameRenderer take care of the rest (capability gating,
     // DECSC/DECRC bracketing, diff rendering).
     buf.CursorVisible = false;
+    // Immediate-mode clear, intentionally disabled to exercise retained-mode rendering: the
+    // showcase re-Sets every cell each frame, so the diff renderer needs no blank-first pass and
+    // the FrameRenderer's delta is identical either way for all-cell content. Re-enable if
+    // investigating retained-mode artifacts. See FragmentContent.IsFragmentNeeded (fragment
+    // caching) and FrameRendererOptions.RestrictToDirtyRegions (dirty-region opt-in).
     // buf.Clear(style);
 
     int cols = buf.Columns;

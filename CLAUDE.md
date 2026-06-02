@@ -308,10 +308,21 @@ byte writers with a TUI abstraction, and for higher-level frameworks to build on
   the API doesn't preclude it. (2) Multi-row spans for OSC 66 sized text — kept as a separate `TextSizingWriter`
   primitive in `Cursorial.Core.Output` that bypasses the cell grid; rendering sized text alongside the cell
   buffer means drawing it at a fixed position with `TextSizingWriter.Write` rather than encoding it as cell
-  contents. (3) Dirty-region tracking — a TUI framework above us is the right place for it. (4) Consumer-set
-  scroll regions for partial-screen rendering — the cell buffer assumes ownership of its full drawing area.
+  contents. (3) Automatic dirty-region tracking — a TUI framework above us is the right place to decide *what*
+  is dirty; the renderer only consumes `CellBuffer.DirtyRegions` when explicitly opted in (see
+  `RestrictToDirtyRegions` below). (4) Consumer-set scroll regions for partial-screen rendering — the cell
+  buffer assumes ownership of its full drawing area.
 - **`FrameRendererOptions.ForceFullRedraw`** — debug / profiling knob that disables the renderer's diff
   optimization without changing the API. Treat every `Render` call as a full redraw.
+- **`FrameRendererOptions.RestrictToDirtyRegions`** — opt-in (default `false`) for dirty-region-exclusive
+  emission. **Off by default the renderer ignores `CellBuffer.DirtyRegions` entirely and always diffs the full
+  buffer**, so a stray `MarkDirty` — including the internal one `CellBuffer.RemoveFragment` emits over a removed
+  fragment's footprint — can't silently restrict a frame's repaint and drop unrelated changed cells. When opted
+  in, only cells inside the union of the marked regions are eligible for emission, and the consumer owns the
+  contract that it marked *every* cell it changed (cells still diff against the front buffer inside the region,
+  so a marked-but-unchanged cell isn't re-emitted). Regions are cleared every frame regardless of the flag. The
+  default exists because dirty marks arise as side effects (fragment removal), and a renderer that silently
+  trusts them is a footgun; consumers wanting the partial-repaint optimization turn it on deliberately.
 
 ## Toolchain
 

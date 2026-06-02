@@ -29,10 +29,34 @@ public class FrameRendererDirtyRegionTests
         Assert.Contains("z", output);
     }
 
+    // Dirty-region-exclusive emission is opt-in via FrameRendererOptions.RestrictToDirtyRegions.
+    private static FrameRenderer RestrictedRenderer()
+        => new(new FrameRendererOptions(RestrictToDirtyRegions: true));
+
+    [Fact]
+    public void DirtyRegionsIgnored_ByDefault_FullDiff()
+    {
+        // Default renderer (RestrictToDirtyRegions off): dirty marks are ignored for emission, so
+        // a changed cell OUTSIDE any marked region is still emitted. This is what keeps a stray
+        // MarkDirty (e.g. from RemoveFragment) from silently dropping unrelated changed cells.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(10, 3);
+        Render(r, buffer);
+
+        buffer.Set(1, 0, "I", Style.Default);
+        buffer.Set(8, 0, "O", Style.Default);
+        buffer.MarkDirty(new Rect(column: 0, row: 0, columns: 3, rows: 1));
+
+        var output = Render(r, buffer);
+
+        Assert.Contains("I", output);
+        Assert.Contains("O", output); // outside the region, but full diff emits it anyway
+    }
+
     [Fact]
     public void DirtyRegion_OnlyAffectsCellsInsideRegion()
     {
-        var r = new FrameRenderer();
+        var r = RestrictedRenderer();
         var buffer = new CellBuffer(10, 3);
         // Initial state — all blank.
         Render(r, buffer);
@@ -53,7 +77,7 @@ public class FrameRendererDirtyRegionTests
     [Fact]
     public void OverlappingRegions_HandledCorrectly()
     {
-        var r = new FrameRenderer();
+        var r = RestrictedRenderer();
         var buffer = new CellBuffer(10, 2);
         Render(r, buffer);
 
@@ -126,7 +150,7 @@ public class FrameRendererDirtyRegionTests
     {
         // Inside a dirty region, the renderer still does back-vs.-front comparison — a cell
         // that's marked dirty but actually unchanged doesn't re-emit.
-        var r = new FrameRenderer();
+        var r = RestrictedRenderer();
         var buffer = new CellBuffer(5, 1);
         buffer.Set(0, 0, "S", Style.Default);
         Render(r, buffer);

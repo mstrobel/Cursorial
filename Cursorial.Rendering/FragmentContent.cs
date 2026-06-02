@@ -56,6 +56,13 @@ public abstract class FragmentContent : IContent
     /// </summary>
     protected internal IBufferFragment? ExistingFragment { get; protected set; }
 
+    /// <summary>
+    /// The available space the cached <see cref="ExistingFragment"/> was built for. A fragment is
+    /// re-created when the available space changes (e.g. a layout-driven resize) so its content
+    /// is re-measured against the new bounds; an unchanged size lets it be reused as-is.
+    /// </summary>
+    private Size? _fragmentAvailableSpace;
+
     // ReSharper disable once UnusedParameter.Global
 
     /// <summary>
@@ -72,11 +79,25 @@ public abstract class FragmentContent : IContent
     // ReSharper disable once VirtualMemberNeverOverridden.Global
     protected internal virtual bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, OutputCapabilities? capabilities = null)
     {
-        return ExistingFragment is not null ||
-               FragmentKey is not {} key ||
-               buffer.TryGetFragmentAnchor(key, out var p) is false ||
-               buffer.Fragments.TryGetValue(p, out var f) is false ||
-               f.Fragment.GetSize() is var s && (s.Columns < availableSpace.Rows || s.Rows < availableSpace.Rows);
+        // A (re)create is needed when we don't already have a usable fragment registered in the
+        // buffer, OR when the available space differs from what the cached fragment was built for.
+        //
+        // Three prior bugs conspired to re-create the fragment EVERY frame: (1) `ExistingFragment is
+        // not null` was inverted — it reported "needed" whenever a fragment was cached; (2) the size
+        // test compared `s.Columns` against `availableSpace.Rows` (a dimension mismatch) using `<`,
+        // re-creating whenever the bounds were larger than the rendered fragment; and (3) the buffer
+        // lookup keyed on the *content's* FragmentKey, but fragments are registered (CellBuffer.
+        // AddFragment) and removed (Paint) under the *fragment's* Key — so the lookup never found the
+        // entry and always reported "missing". Any one of these drives a per-frame RemoveFragment,
+        // which marks the footprint dirty (CellBuffer.RemoveFragment), silently flipping the renderer
+        // into dirty-region-only mode and dropping unrelated changed cells (e.g. a ticking clock) —
+        // and churns a fresh Kitty image ID per frame. The key now matches the registration key, and
+        // the size test is an equality check against the cached available space (the real recreation
+        // trigger: a layout/resize).
+        return ExistingFragment is not {} existing ||
+               buffer.TryGetFragmentAnchor(existing.Key, out var p) is false ||
+               buffer.Fragments.TryGetValue(p, out _) is false ||
+               _fragmentAvailableSpace != availableSpace;
     }
 
     /// <summary>Determines the required size to render the content within the specified constraints.</summary>
@@ -137,6 +158,7 @@ public abstract class FragmentContent : IContent
         if (ExistingFragment is {} existingFragment)
         {
             ExistingFragment = null;
+            _fragmentAvailableSpace = null;
 
             if (buffer.TryGetFragmentAnchor(existingFragment.Key, out var anchor))
                 buffer.RemoveFragment(anchor);
@@ -149,6 +171,7 @@ public abstract class FragmentContent : IContent
         {
             buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
             ExistingFragment = fragment;
+            _fragmentAvailableSpace = bounds.Size;
 
             var size = fragment.GetSize();
 

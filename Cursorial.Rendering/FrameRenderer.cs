@@ -616,54 +616,68 @@ public sealed class FrameRenderer
         // the right answer when we have no information.
         var caps = _capabilities ?? OutputCapabilities.None;
 
-        // Pass 1 — erase any front fragment whose instance is no longer registered at the same
-        // anchor in the back buffer. Identity comparison on <see cref="IBufferFragment"/> covers
-        // three cases in one check:
-        //   * removed entirely      — front had F at A, back has nothing at A.
-        //   * replaced at anchor    — front had F1 at A, back has F2 at A (different instance).
-        //   * moved to a different  — front had F at A, back has F at B (anchor empty at A).
-        //     anchor
-        // The cells pass above already repainted glyphs under removed Cell-layer fragments;
-        // EmitErase is the only way to remove overlay-layer protocols (Kitty graphics, iTerm2
-        // inline images) since they live on a separate display plane. Cell-layer's default
-        // no-op EmitErase makes the iteration safe regardless of layer.
+        // Pass 1 — erase any front fragment not still present at the same anchor with the same
+        // identity. Identity is Key + AnchorStyle (NOT reference equality): a consumer that
+        // reconstructs an identical fragment every frame produces a new instance but the same
+        // content-derived Key, and we must recognize it as unchanged. Otherwise we'd erase and
+        // re-transmit it every frame — which for an overlay protocol like Kitty graphics churns
+        // a fresh image ID per frame and exhausts the terminal's image store on a long session.
+        // Cases covered: removed entirely, replaced (different Key at anchor), moved (anchor now
+        // empty). Cell-layer's default no-op EmitErase makes iterating all layers safe.
         foreach (var (anchor, frontEntry) in _frontFragments)
         {
             if (back.Fragments.TryGetValue(anchor, out var backEntry) &&
-                ReferenceEquals(backEntry.Fragment, frontEntry.Fragment))
+                FragmentsMatch(frontEntry, backEntry))
                 continue;
 
             if (!frontEntry.Fragment.IsSupported(caps)) continue;
             EmitFragmentEraseBytes(anchor.Column, anchor.Row, frontEntry, output, caps);
         }
 
-        // Pass 2 — emit new or changed fragments. The Pass-1 identity check already issued
-        // erases for everything that needed one; this pass only writes the new payloads. The
-        // diff skip uses <see cref="IBufferFragment.Key"/> + AnchorStyle so callers that
-        // reconstruct fragments per frame can still participate via content-derived keys.
+        // Pass 2 — emit new or changed fragments (those with no matching front entry at the
+        // anchor). Pass 1 already erased everything that needed it.
         foreach (var ((col, row), entry) in back.Fragments)
         {
             if (!entry.Fragment.IsSupported(caps)) continue;
             if (col < 0 || col >= back.Columns || row < 0 || row >= back.Rows) continue;
 
             if (_frontFragments.TryGetValue((col, row), out var frontEntry) &&
-                Equals(frontEntry.Fragment.Key, entry.Fragment.Key) &&
-                frontEntry.AnchorStyle == entry.AnchorStyle)
+                FragmentsMatch(frontEntry, entry))
             {
-                // Same key + same anchor style — terminal already shows the current payload.
+                // Same Key + anchor style — terminal already shows the current payload.
                 continue;
             }
 
             EmitFragmentBytes(col, row, entry, output, caps);
         }
 
-        // Snapshot for next render's diff. Copy keys/values rather than aliasing back. Fragments
-        // — if the caller mutates the buffer between renders, we still want the comparison to
-        // be against what we last emitted.
+        // Snapshot for next render's diff. On a Key match we keep the FRONT entry, not the back
+        // one: the matched back fragment (same content Key, fresh instance) was never
+        // transmitted, so the wire identity actually on the terminal is the front fragment's
+        // (e.g. its Kitty image ID). Preserving it means a future erase targets the id we really
+        // sent. New/changed fragments snapshot the back entry we just emitted.
+        var refreshed = new Dictionary<(int Column, int Row), CellBuffer.FragmentEntry>(back.Fragments.Count);
+        foreach (var (anchor, entry) in back.Fragments)
+        {
+            refreshed[anchor] = _frontFragments.TryGetValue(anchor, out var frontEntry) && FragmentsMatch(frontEntry, entry)
+                                    ? frontEntry
+                                    : entry;
+        }
+
         _frontFragments.Clear();
-        foreach (var (key, entry) in back.Fragments)
-            _frontFragments[key] = entry;
+        foreach (var (anchor, entry) in refreshed)
+            _frontFragments[anchor] = entry;
     }
+
+    /// <summary>
+    /// Two fragment registrations are "the same" for diff purposes when their content-derived
+    /// <see cref="IBufferFragment.Key"/> and anchor style match. Key defaults to reference
+    /// identity, so reference-keyed fragments compare exactly as before; content-keyed fragments
+    /// (e.g. <see cref="KittyImageFragment"/>) additionally let an identical per-frame
+    /// reconstruction diff-skip instead of churning a re-transmit.
+    /// </summary>
+    private static bool FragmentsMatch(in CellBuffer.FragmentEntry a, in CellBuffer.FragmentEntry b)
+        => Equals(a.Fragment.Key, b.Fragment.Key) && a.AnchorStyle == b.AnchorStyle;
 
     /// <summary>Bracket-emit a fragment's payload with DECSC / DECRC + cursor + SGR backdrop.</summary>
     private void EmitFragmentBytes(int col, int row, CellBuffer.FragmentEntry entry,

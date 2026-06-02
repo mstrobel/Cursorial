@@ -52,6 +52,7 @@ public sealed class KittyImageFragment : IBufferFragment
     // ReSharper disable once NotAccessedField.Local
     private readonly (int Columns, int Rows)? _pixelSize;
     private readonly uint _imageId;
+    private readonly object _contentKey;
 
     /// <summary>Construct a Kitty image fragment for the supplied image data.</summary>
     public KittyImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null)
@@ -61,6 +62,17 @@ public sealed class KittyImageFragment : IBufferFragment
         _displaySize = displaySize ?? data.RequestedSize ?? throw new InvalidOperationException("ImageData.CellSize or displaySize must be provided.");
         _pixelSize = pixelSize;
         _imageId = (uint) Interlocked.Increment(ref _nextImageId);
+
+        // Content-derived diff key (see Key). Computed once; combines a hash of the encoded bytes
+        // with the byte length, format, and target sizes so two distinct images are extremely
+        // unlikely to collide. Boxed once to avoid per-access boxing during diffing.
+        var hash = new HashCode();
+        hash.AddBytes(data.Bytes.Span);
+        hash.Add(data.Bytes.Length);
+        hash.Add(data.Format);
+        hash.Add(_displaySize);
+        hash.Add(_pixelSize);
+        _contentKey = (data.Bytes.Length, hash.ToHashCode(), _displaySize, _pixelSize);
     }
 
     /// <summary>The image being transmitted.</summary>
@@ -74,11 +86,17 @@ public sealed class KittyImageFragment : IBufferFragment
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Each fragment instance owns a unique image ID, so two fragments wrapping identical
-    /// bytes still diff distinctly — the wire identity matters more than content identity for
-    /// the renderer's erase / re-emit decision.
+    /// <b>Content-derived</b>, not the per-instance image ID. Two fragments wrapping the same
+    /// image (same bytes, format, and target sizes) compare equal, so the renderer's fragment
+    /// diff treats an identical per-frame reconstruction as unchanged and skips it — instead of
+    /// deleting and re-transmitting a fresh image every frame. That churn would burn a new Kitty
+    /// image ID per frame and, over a long session, exhaust the terminal's image-storage quota
+    /// (Rio, Kitty, …), degrading to "one image at a time". The wire identity used for transmit
+    /// and delete is still the unique <see cref="ImageId"/>; the renderer preserves the
+    /// originally-transmitted id across a diff-skip (see <c>FrameRenderer.EmitFragments</c>), so
+    /// erases target the image actually on screen.
     /// </remarks>
-    public object Key => _imageId;
+    public object Key => _contentKey;
 
     /// <inheritdoc/>
     public Size GetSize() => _displaySize;

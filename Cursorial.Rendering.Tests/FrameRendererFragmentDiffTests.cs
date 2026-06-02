@@ -176,7 +176,75 @@ public class FrameRendererFragmentDiffTests
         Assert.Contains("F", output);
     }
 
+    // ---- Content-keyed diff (per-frame reconstruction without churn) -------------
+
+    [Fact]
+    public void ContentKeyedFragment_IdenticalReconstruction_NotReEmittedOrErased()
+    {
+        // A fragment whose Key is content-derived (like KittyImageFragment): reconstructing an
+        // identical one each frame (new instance, same Key) must diff-skip — NOT erase the old
+        // and re-emit the new. That churn is what exhausts a terminal's Kitty image store.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+
+        buffer.AddFragment(0, 0, new KeyedOverlayFragment("K", wireId: 1));
+        Render(r, buffer); // first render emits the fragment
+
+        buffer.AddFragment(0, 0, new KeyedOverlayFragment("K", wireId: 2)); // new instance, same Key
+        var output = Render(r, buffer);
+
+        Assert.DoesNotContain("EMIT", output);  // not re-transmitted
+        Assert.DoesNotContain("ERASE", output); // not deleted
+    }
+
+    [Fact]
+    public void ContentKeyedFragment_PreservesTransmittedIdentity_OnLaterErase()
+    {
+        // When a diff-skip happens, the snapshot must keep the FRONT fragment (the one actually
+        // transmitted) so a later erase targets the wire identity really on the terminal — not
+        // the never-sent reconstruction. Here the first instance has wireId 1; the second
+        // (skipped) has wireId 2; on removal the erase must reference 1, not 2.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+
+        buffer.AddFragment(0, 0, new KeyedOverlayFragment("K", wireId: 1));
+        Render(r, buffer);
+
+        buffer.AddFragment(0, 0, new KeyedOverlayFragment("K", wireId: 2)); // diff-skips
+        Render(r, buffer);
+
+        buffer.RemoveFragment(0, 0); // now removed → erase must fire for the transmitted id
+        var output = Render(r, buffer);
+
+        Assert.Contains("ERASE1", output);     // erases the id actually transmitted
+        Assert.DoesNotContain("ERASE2", output);
+    }
+
     // ---- Test helpers ------------------------------------------------------------
+
+    // Overlay fragment with an explicit content-style Key and a distinct wire id encoded into
+    // its emit/erase output, so tests can assert which instance's identity reached the wire.
+    private sealed class KeyedOverlayFragment(object key, int wireId) : IBufferFragment
+    {
+        public object Key => key;
+        public FragmentLayer Layer => FragmentLayer.Overlay;
+        public Size GetSize() => new(2, 1);
+        public bool IsSupported(OutputCapabilities capabilities) => true;
+
+        public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
+            => Write(output, $"EMIT{wireId}");
+
+        public void EmitErase(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
+            => Write(output, $"ERASE{wireId}");
+
+        private static void Write(IBufferWriter<byte> output, string s)
+        {
+            var bytes = Encoding.UTF8.GetBytes(s);
+            var dest = output.GetSpan(bytes.Length);
+            bytes.CopyTo(dest);
+            output.Advance(bytes.Length);
+        }
+    }
 
     private sealed class SentinelFragment(Size size, string sentinel) : IBufferFragment
     {

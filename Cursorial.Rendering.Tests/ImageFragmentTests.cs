@@ -163,16 +163,30 @@ public class KittyImageFragmentTests
     }
 
     [Fact]
-    public void Key_UsesImageIdSoTwoInstancesWithSameContentDiffDistinctly()
+    public void Key_IsContentDerived_SoIdenticalReconstructionsDiffSkip()
     {
-        // The renderer uses fragment.Key for diff. Two fragments wrapping identical bytes get
-        // different image IDs (different wire identities), so their Keys must differ — otherwise
-        // the renderer would skip emit on a swap, leaving the old image on screen.
+        // The renderer uses fragment.Key for its diff. Two fragments wrapping the SAME image
+        // (bytes + format + sizes) must compare EQUAL by Key so a per-frame reconstruction is
+        // recognized as unchanged and skipped — not deleted and re-transmitted, which would
+        // churn Kitty image IDs and exhaust the terminal's image store. Their wire identities
+        // (ImageId) remain distinct; the renderer preserves the transmitted id across a skip.
         var data = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
         var a = new KittyImageFragment(data);
         var b = new KittyImageFragment(data);
 
-        Assert.NotEqual(a.Key, b.Key);
+        Assert.Equal(a.Key, b.Key);          // same content → equal diff key (diff-skip)
+        Assert.NotEqual(a.ImageId, b.ImageId); // distinct wire identities
+    }
+
+    [Fact]
+    public void Key_DiffersForDifferentContentOrSize()
+    {
+        var bytes = new ImageData([1, 2, 3], ImageFormat.Png, new Size(5, 3));
+        var differentBytes = new ImageData([9, 9, 9], ImageFormat.Png, new Size(5, 3));
+        var differentSize = new ImageData([1, 2, 3], ImageFormat.Png, new Size(6, 3));
+
+        Assert.NotEqual(new KittyImageFragment(bytes).Key, new KittyImageFragment(differentBytes).Key);
+        Assert.NotEqual(new KittyImageFragment(bytes).Key, new KittyImageFragment(differentSize).Key);
     }
 }
 

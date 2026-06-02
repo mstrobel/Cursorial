@@ -598,7 +598,7 @@ static async Task<(TerminalSession session,
         try { rows = Console.WindowHeight; } catch { rows = 24; }
     }
 
-    var buffer = new CellBuffer(cols, rows, capabilities);
+    var buffer = new CellBuffer(cols, rows, capabilities) { CursorVisible = false };
 
     // Hand the renderer the negotiated capabilities so it can quantize cells before emission
     // (RGB → palette where truecolor isn't available, extended underline → Single where the
@@ -1600,7 +1600,7 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
     // face. The cell buffer + FrameRenderer take care of the rest (capability gating,
     // DECSC/DECRC bracketing, diff rendering).
     buf.CursorVisible = false;
-    buf.Clear(style);
+    // buf.Clear(style);
 
     int cols = buf.Columns;
     int rows = buf.Rows;
@@ -1791,21 +1791,16 @@ static void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabi
 
     var iconStyle = style.WithBackground(Color.FromRgb(40, 52, 87));
 
-    string[] icons = ["settings.png", "download.png", "calendar.png", "power.png"];
-    string[] iconFallbacks = ["⚙️", "⬇️", "📆", "⚡️"];
+    // Reuse the four icon instances (see RenderShowcaseFragments.Icons) so their Kitty image
+    // fragments stay stable across frames and the renderer diff-skips them — recreating them
+    // per frame would churn image IDs and exhaust the terminal's image store on a long session.
+    var icons = RenderShowcaseFragments.Icons;
 
     for (int i = 0; i < iconCount; i++)
     {
         var d = icons.Length - i;
         var x = buf.Columns - ((d + 1) * (iconColumns + 1) + 1) - 8;
-        // Resolve each PNG to an embedded resource under Cursorial.Rendering.Icons.<name>.
-        // When the resource isn't shipped (or can't be loaded), Icon falls back to the glyph.
-        var icon = Icon.FromEmbedded(
-            assembly: Assembly.GetExecutingAssembly(),
-            resourceName: $"Icons/{icons[i]}",
-            fallbackGlyph: iconFallbacks[i],
-            fallbackStyle: iconStyle,
-            renderSize: new Size(iconColumns, Math.Max(iconColumns / 2, 1)));
+        var icon = icons[i];
         buf.Set(x, iconY, " ", iconStyle);
         buf.Set(x + 1, iconY, " ", iconStyle);
         icon.Measure(icon.RenderSize, outputCaps);
@@ -2102,10 +2097,41 @@ file sealed class TraceEventSink(List<InputEvent> events) : IInputEventSink
 file static class RenderShowcaseFragments
 {
     public static readonly Icon Icon = Icon.FromEmbedded(
-        Assembly.GetExecutingAssembly(), 
+        Assembly.GetExecutingAssembly(),
         "Icons/cursorial_icon.png",
         "\\[[b][fg=cyan]C[/fg] [fg=white][u]>[/u][/fg][/b]\\]",
         renderSize: new Size(6, 0));
+
+    // The four top-right PNG icons, built ONCE and reused across every frame. Creating fresh
+    // Icon instances per frame (as the render loop previously did) gives each a new
+    // KittyImageFragment with a new image ID, so the renderer's fragment diff can't recognize
+    // them as unchanged — it deletes and re-transmits all four every frame. Over a long-lived
+    // session that churns thousands of Kitty image IDs through the terminal's image store, which
+    // (on Rio and others) thrashes its quota and degrades to "one image at a time". Reusing the
+    // instances lets the diff skip them: each transmits exactly once.
+    public static readonly (string Resource, string Fallback)[] IconSpecs =
+    [
+        ("Icons/settings.png", "⚙️"),
+        ("Icons/download.png", "⬇️"),
+        ("Icons/calendar.png", "📆"),
+        ("Icons/power.png", "⚡️"),
+    ];
+
+    public static readonly Icon[] Icons = BuildIcons();
+
+    private static Icon[] BuildIcons()
+    {
+        var iconStyle = new Style(Color.Default, Color.FromRgb(40, 52, 87), default, default, default);
+        var result = new Icon[IconSpecs.Length];
+        for (int i = 0; i < IconSpecs.Length; i++)
+            result[i] = Icon.FromEmbedded(
+                Assembly.GetExecutingAssembly(),
+                IconSpecs[i].Resource,
+                IconSpecs[i].Fallback,
+                fallbackStyle: iconStyle,
+                renderSize: new Size(2, Math.Max(2 / 2, 1)));
+        return result;
+    }
 
     public static readonly ScaledText Title = new(
         "Cursorial Rendering Demo",

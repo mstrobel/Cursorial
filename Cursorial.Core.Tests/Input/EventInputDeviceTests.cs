@@ -115,4 +115,69 @@ public class EventInputDeviceTests
     {
         Assert.Throws<ArgumentNullException>(() => new EventInputDevice(null!));
     }
+
+    [Fact]
+    public async Task EventContext_MarshalsRaisesThroughSynchronizationContext()
+    {
+        var ctx = new RecordingSynchronizationContext();
+        await using var device = new EventInputDevice(BuildInnerDevice(), ctx);
+
+        var observed = new List<SynchronizationContext?>();
+        var completed = new TaskCompletionSource();
+        device.Input += (_, _) => observed.Add(SynchronizationContext.Current);
+        device.Completed += (_, _) => { observed.Add(SynchronizationContext.Current); completed.TrySetResult(); };
+
+        await device.StartAsync();
+        _source.Enqueue("ab");
+        _source.CompleteWriter();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(3, ctx.PostCount);                  // two Input raises + Completed
+        Assert.Equal(3, observed.Count);
+        Assert.All(observed, c => Assert.Same(ctx, c));  // each handler ran with the context current
+    }
+
+    [Fact]
+    public async Task CapturingCurrentContext_CapturesAtConstruction()
+    {
+        var ctx = new RecordingSynchronizationContext();
+        var prior = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(ctx);
+
+        EventInputDevice device;
+        try { device = EventInputDevice.CapturingCurrentContext(BuildInnerDevice()); }
+        finally { SynchronizationContext.SetSynchronizationContext(prior); }
+
+        await using (device)
+        {
+            var completed = new TaskCompletionSource();
+            device.Input += (_, _) => { };   // a subscriber so the Input raise actually posts
+            device.Completed += (_, _) => completed.TrySetResult();
+
+            await device.StartAsync();
+            _source.Enqueue("a");
+            _source.CompleteWriter();
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Equal(2, ctx.PostCount);   // one Input raise + Completed, routed to the captured context
+        }
+    }
+
+    /// <summary>Runs posted callbacks inline with itself installed as the current context, and counts posts.</summary>
+    private sealed class RecordingSynchronizationContext : SynchronizationContext
+    {
+        private int _postCount;
+        public int PostCount => Volatile.Read(ref _postCount);
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            Interlocked.Increment(ref _postCount);
+            var prior = Current;
+            SetSynchronizationContext(this);
+            // @formatter:off
+            try { d(state); }
+            finally { SetSynchronizationContext(prior); }
+            // @formatter:on
+        }
+    }
 }

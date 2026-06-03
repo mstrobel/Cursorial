@@ -31,4 +31,16 @@ public sealed record MouseEvent : InputEvent
     /// not a <see cref="MouseEventKind.Wheel"/> event.
     /// </summary>
     public int WheelDeltaX { get; init; }
+
+    /// <summary>
+    /// Click multiplicity for rapid repeated clicks on the same cell: 1 for a single click, 2 for
+    /// a double-click, 3 for a triple-click, and so on. Defaults to <c>1</c> — terminals don't
+    /// report multi-click natively, so detection is the job of a click recognizer (see the
+    /// mouse-click synthesizer); without one in the pipeline every button event is, correctly, a
+    /// single click. Only meaningful for the button kinds (<see cref="MouseEventKind.ButtonDown"/>,
+    /// <see cref="MouseEventKind.ButtonUp"/>) and synthesized <see cref="MouseEventKind.Click"/>
+    /// events; <see cref="MouseEventKind.Move"/> / <see cref="MouseEventKind.Wheel"/> carry the
+    /// default and should ignore it.
+    /// </summary>
+    public int ClickCount { get; init; } = 1;
 }

@@ -96,6 +96,8 @@ await foreach (var evt in session.Input.ReadAllAsync(ct))
 }
 
 // Push (event-driven): wrap any device for classic EventHandler<> events.
+// On a UI thread, EventInputDevice.CapturingCurrentContext(session.Input) instead marshals
+// raises onto the captured dispatcher; the default raises them on a background pump thread.
 await using var events = new EventInputDevice(session.Input);
 events.Input     += (_, e)  => HandleEvent(e);
 events.Error     += (_, ex) => Log(ex);
@@ -104,7 +106,30 @@ events.Completed += (_, _)  => Log("input pipeline closed");
 
 Both `IAsyncInputDevice` and `IEventInputDevice` extend `IInputDevice`, which carries the realized
 `InputCapabilities` and the `IAsyncDisposable` contract. Devices chain via decoration (`IInputDeviceDecorator`);
-the `InputEvent.Synthesized` flag distinguishes fabricated events from device-reported truth.
+the `InputEvent.Synthesized` flag distinguishes fabricated events from device-reported truth. With the pull surface,
+your `await foreach` loop body resumes on whatever context you awaited from (e.g. a UI thread), so the input layer
+plays nice without configuration.
+
+### Transforms and synthesis
+
+Stages that rewrite the event stream are `IInputTransformer`s; `device.Transform(transformer)` applies one
+(`TransformingInputDevice` folds the transformer's capabilities into the device it returns).
+
+- **Mouse clicks** — `device.WithClickSynthesis(options)` counts rapid same-cell clicks into
+  `MouseEvent.ClickCount` (1 / 2 / 3 …, WPF-style press-determined timing) and can emit synthesized
+  `MouseEventKind.Click` events. Configure the multi-click window, whether to emit `Click` events, and which event
+  surfaces the count (`ButtonDown` / `ButtonUp` / `Click`).
+- **Key releases & repeat** — `KeyReleaseSynthesizer` fabricates `KeyEventKind.Up` and `IsRepeat` for terminals that
+  report neither (a timer-driven device decorator rather than a pure transform).
+
+```csharp
+var input = session.Input.WithClickSynthesis(
+    new MouseClickOptions { SynthesizeClickEvents = true, ClickCount = ClickCountTarget.Click });
+
+await foreach (var evt in input.ReadAllAsync(ct))
+    if (evt is MouseEvent { Kind: MouseEventKind.Click, ClickCount: 2 } m)
+        OnDoubleClick(m.Position);
+```
 
 ## Capability negotiation
 

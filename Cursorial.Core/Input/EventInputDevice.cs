@@ -24,17 +24,23 @@ namespace Cursorial.Input;
 /// throws <see cref="InvalidOperationException"/>.
 /// </para>
 /// <para>
-/// <b>Threading.</b> <see cref="Input"/> handlers are invoked on the pump thread (a
-/// <see cref="Task.Run(Action)"/> worker) in the order events arrive from the inner device.
-/// Long-running handler work should be marshaled off the pump so it does not stall delivery.
-/// Capability-flow follows the inner device's <see cref="IInputDevice.Capabilities"/>;
-/// decorators that change capabilities are expected to do so at the
-/// <see cref="IAsyncInputDevice"/> layer beneath this wrapper.
+/// <b>Threading.</b> By default <see cref="Input"/> handlers are invoked on the pump thread (a
+/// <see cref="Task.Run(Action)"/> worker) in the order events arrive from the inner device — so a
+/// UI consumer must marshal back to its dispatcher itself. Pass a
+/// <see cref="SynchronizationContext"/> (or use <see cref="CapturingCurrentContext"/>) to have
+/// <see cref="Input"/> / <see cref="Error"/> / <see cref="Completed"/> instead
+/// <see cref="SynchronizationContext.Post"/>ed onto that context — typically a UI dispatcher's —
+/// so handlers run there. Posting is asynchronous (it never blocks the pump) and preserves event
+/// order. Long-running handler work should still be moved off the delivery thread so it does not
+/// stall the queue. Capability-flow follows the inner device's
+/// <see cref="IInputDevice.Capabilities"/>; decorators that change capabilities are expected to do
+/// so at the <see cref="IAsyncInputDevice"/> layer beneath this wrapper.
 /// </para>
 /// </remarks>
 public sealed class EventInputDevice : IEventInputDevice
 {
     private readonly IAsyncInputDevice _inner;
+    private readonly SynchronizationContext? _eventContext;
     private readonly object _stateLock = new();
 
     private Task? _pumpTask;
@@ -42,10 +48,27 @@ public sealed class EventInputDevice : IEventInputDevice
     private int _disposed;
     private int _startAttempted;
 
-    public EventInputDevice(IAsyncInputDevice inner)
+    /// <summary>
+    /// Create a push-style device over <paramref name="inner"/>. When
+    /// <paramref name="eventContext"/> is supplied, raised events are
+    /// <see cref="SynchronizationContext.Post"/>ed onto it (e.g. a UI dispatcher); otherwise they
+    /// are raised synchronously on the background pump thread.
+    /// </summary>
+    public EventInputDevice(IAsyncInputDevice inner, SynchronizationContext? eventContext = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _eventContext = eventContext;
     }
+
+    /// <summary>
+    /// Create a push-style device that marshals its events onto the
+    /// <see cref="SynchronizationContext.Current"/> captured at the call site — the convenient form
+    /// when constructing on a UI thread. Equivalent to passing
+    /// <c>SynchronizationContext.Current</c> to the constructor; if there is no current context
+    /// (e.g. a plain thread-pool thread), events are raised on the pump thread as usual.
+    /// </summary>
+    public static EventInputDevice CapturingCurrentContext(IAsyncInputDevice inner)
+        => new(inner, SynchronizationContext.Current);
 
     /// <inheritdoc/>
     public InputCapabilities Capabilities => _inner.Capabilities;
@@ -164,24 +187,35 @@ public sealed class EventInputDevice : IEventInputDevice
         var handler = Input;
         if (handler is null) return;
 
-        try
-        {
-            handler(this, inputEvent);
-        }
-        catch
-        {
-            // A faulty handler must not break the pump. Errors from handlers are swallowed;
-            // applications wanting visibility should add their own try/catch inside the handler.
-        }
+        if (_eventContext is null)
+            InvokeInput(handler, inputEvent);
+        else
+            _eventContext.Post(_ => InvokeInput(handler, inputEvent), null);
+    }
+
+    private void InvokeInput(EventHandler<InputEvent> handler, InputEvent inputEvent)
+    {
+        // @formatter:off
+        // A faulty handler must not break the pump. Errors from handlers are swallowed;
+        // applications wanting visibility should add their own try/catch inside the handler.
+        try { handler(this, inputEvent); }
+        catch { /* swallow */ }
+        // @formatter:on
     }
 
     private void RaiseError(Exception ex)
     {
         var handler = Error;
+        if (handler is null) return;
 
-        if (handler is null)
-            return;
-        
+        if (_eventContext is null)
+            InvokeError(handler, ex);
+        else
+            _eventContext.Post(_ => InvokeError(handler, ex), null);
+    }
+
+    private void InvokeError(EventHandler<Exception> handler, Exception ex)
+    {
         // @formatter:off
         try { handler(this, ex); }
         catch { /* swallow */ }
@@ -191,10 +225,16 @@ public sealed class EventInputDevice : IEventInputDevice
     private void RaiseCompleted()
     {
         var handler = Completed;
+        if (handler is null) return;
 
-        if (handler is null)
-            return;
+        if (_eventContext is null)
+            InvokeCompleted(handler);
+        else
+            _eventContext.Post(_ => InvokeCompleted(handler), null);
+    }
 
+    private void InvokeCompleted(EventHandler handler)
+    {
         // @formatter:off
         try { handler(this, EventArgs.Empty); }
         catch { /* swallow */ }

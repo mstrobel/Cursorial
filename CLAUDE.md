@@ -125,7 +125,25 @@ are expected to manage their own signal-handling strategy.
 `EventInputDevice` (`Cursorial.Core.Input.EventInputDevice`) is the push-style `IEventInputDevice` facade — wraps an
 inner `IAsyncInputDevice`, runs a background pump that iterates it, and raises `Input` / `Error` / `Completed` events.
 Single-shot per instance because the inner `IAsyncInputDevice` is single-shot. Takes ownership of the inner device on
-disposal.
+disposal. By default events fire on the pump (thread-pool) thread; pass a `SynchronizationContext` to the constructor
+(or use `EventInputDevice.CapturingCurrentContext(inner)`) to have raises `Post`ed onto it — e.g. a UI dispatcher —
+which is order-preserving and never blocks the pump. The pull surface (`IAsyncInputDevice.ReadAllAsync`) needs none of
+this: a consumer's `await foreach` resumes on its own captured context, so internal `ConfigureAwait(false)` (used
+throughout the input layer) keeps our plumbing off the UI thread without denying the consumer theirs.
+
+`MouseClickSynthesizer` (`Cursorial.Core.Input.MouseClickSynthesizer`) is an `IInputTransformer` that recognizes click
+gestures. It counts rapid repeated presses on the same cell (single / double / triple …) using WPF-style timing — the
+count is determined at the `ButtonDown` (same button + same cell within `MouseClickOptions.MultiClickThreshold`, default
+500 ms; anything else resets to 1) and carried to the matching `ButtonUp` and synthesized `Click`. `ClickCountTarget`
+selects which event surfaces the count on `MouseEvent.ClickCount` (default `ButtonDown`; the others stay at the baseline
+1). It is purely synchronous — no timers, no channel, no `TimeProvider`; it reads each event's `Timestamp` (the
+interpreter stamps every event from `TimeProvider.GetUtcNow()`), so it is deterministic and its gesture state is local
+to each `TransformAsync` call (reusable instance). Optionally (`SynthesizeClickEvents`) it emits a `MouseEventKind.Click`
+event after a same-cell release with no intervening drag. `ClickCountTarget.Click` requires `SynthesizeClickEvents` or
+the constructor throws. Unlike `KeyReleaseSynthesizer` (a device decorator that fabricates events on a timer), click
+recognition fits the lighter `IInputTransformer` shape; `TransformingInputDevice` is the reusable adapter that applies
+any `IInputTransformer` over an inner device (capability flow via `TransformCapabilities`, single-shot, disposes inner),
+with `device.Transform(transformer)` / `device.WithClickSynthesis(options?)` extension sugar.
 
 Resize events: `PosixResizeMonitor` (in `Cursorial.Core.Terminal.Stdio`) registers a SIGWINCH handler and pushes a
 `ResizeEvent` into the input device's stream on each signal (plus one at startup with the initial size, via
@@ -150,8 +168,15 @@ better terminal input. Key shape:
   byte stream (e.g. Win32 console input records) bypass it.
 - Devices chain via decoration — a wrapper takes another `IInputDevice` and produces a new one whose
   `InputCapabilities` may differ. Decorators that want to expose their inner device implement
-  `IInputDeviceDecorator`. The motivating example is a key-up/repeat synthesizer that fabricates events for terminals
-  that don't natively report key release.
+  `IInputDeviceDecorator`. `KeyReleaseSynthesizer` is the canonical example: it fabricates key-up / repeat events on a
+  timer for terminals that don't natively report them, so it owns a background pump + channel.
+- Stream stages that only rewrite the event sequence (filter, reorder, fabricate) without owning the source are
+  `IInputTransformer`s — `IAsyncEnumerable<InputEvent>` → `IAsyncEnumerable<InputEvent>` plus a `TransformCapabilities`
+  projection. `TransformingInputDevice` is the one reusable adapter that applies any transformer over an inner device
+  (use the `device.Transform(...)` / `device.WithClickSynthesis(...)` extensions). Prefer this lighter shape over a
+  full device decorator when the transform is synchronous and source-agnostic (e.g. `MouseClickSynthesizer`); reach for
+  a device decorator only when you must fabricate events independently of input arrival (timers), as
+  `KeyReleaseSynthesizer` does.
 - Events are a sealed `record class` hierarchy rooted at `InputEvent`; consumers pattern-match on type.
   `InputEvent.Synthesized` flags fabricated events so consumers can distinguish them from device-reported truth.
 - Capabilities are categorized records (`MouseCapabilities`, `KeyboardCapabilities`, `PointerCapabilities`,

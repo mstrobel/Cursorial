@@ -21,6 +21,19 @@ public sealed record MouseCapabilities(bool ButtonPress,
                                        bool PixelCoordinates,
                                        int ExtendedButtonCount)
 {
+    /// <summary>
+    /// True when a click recognizer in the pipeline populates <see cref="Events.MouseEvent.ClickCount"/>
+    /// with multi-click multiplicity (set by the mouse-click synthesizer). When false, click counts
+    /// are always the default single-click value of 1.
+    /// </summary>
+    public bool SynthesizesClickCounts { get; init; }
+
+    /// <summary>
+    /// True when a click recognizer in the pipeline emits synthesized
+    /// <see cref="MouseEventKind.Click"/> events in addition to the raw press / release stream.
+    /// </summary>
+    public bool SynthesizesClicks { get; init; }
+
     public static MouseCapabilities None { get; } = new(ButtonPress: false,
                                                         ButtonRelease: false,
                                                         Drag: false,

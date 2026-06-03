@@ -23,5 +23,13 @@ public enum MouseEventKind
     /// The wheel rotated; consult <see cref="MouseEvent.WheelDeltaY"/> and
     /// <see cref="MouseEvent.WheelDeltaX"/>.
     /// </summary>
-    Wheel
+    Wheel,
+
+    /// <summary>
+    /// A completed click — a press followed by a release on the same cell. Never reported by a
+    /// terminal directly; synthesized by a click recognizer (see the mouse-click synthesizer) and
+    /// always carries <see cref="InputEvent.Synthesized"/> = true. Its
+    /// <see cref="MouseEvent.ClickCount"/> distinguishes single / double / triple clicks.
+    /// </summary>
+    Click
 }

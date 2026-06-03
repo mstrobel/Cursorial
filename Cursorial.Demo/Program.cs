@@ -124,10 +124,11 @@ static void PrintHelp()
     Console.WriteLine("  read, report     Open a session and stream input events to stdout");
     Console.WriteLine("                   (Press Ctrl+C inside read mode to return to the prompt)");
     Console.WriteLine("  read-synth       Like 'read', but wraps the input device in a");
-    Console.WriteLine("                   KeyReleaseSynthesizer — terminals that don't natively");
-    Console.WriteLine("                   report key-up events get synthesized releases after a");
-    Console.WriteLine("                   short idle window. Synthesized events appear with");
-    Console.WriteLine("                   '(synth)' next to the kind so you can tell them apart.");
+    Console.WriteLine("                   KeyReleaseSynthesizer + mouse-click synthesizer —");
+    Console.WriteLine("                   terminals that don't natively report key-up events get");
+    Console.WriteLine("                   synthesized releases, and rapid same-cell clicks gain a");
+    Console.WriteLine("                   ClickCount plus synthesized Click events. Synthesized");
+    Console.WriteLine("                   events appear with '(synth)' next to the kind.");
     Console.WriteLine("                   (Press Ctrl+C to stop)");
     Console.WriteLine("  raw              Dump raw bytes from stdin verbatim — no parsing.");
     Console.WriteLine("                   Useful for seeing exactly what the terminal sends.");
@@ -220,27 +221,32 @@ static async Task ReadEventsAsync()
 
 static async Task ReadEventsWithSynthesisAsync()
 {
-    Console.WriteLine("Reading input events with key-up synthesis. Press Ctrl+C to return.");
+    Console.WriteLine("Reading input events with key-up + mouse-click synthesis. Press Ctrl+C to return.");
     Console.WriteLine(
         $"Synthesized releases appear after the up timeout ({KeyReleaseSynthesizer.DefaultUpTimeout.TotalMilliseconds:0} ms); " +
         $"subsequent Downs within the repeat timeout ({KeyReleaseSynthesizer.DefaultRepeatTimeout.TotalMilliseconds:0} ms) " +
         $"are marked IsRepeat.");
+    Console.WriteLine("Click the same cell rapidly to see ClickCount climb and synthesized Click events appear.");
     Console.WriteLine();
 
     int eventCount = 0;
     await using (var session = await TerminalSession.OpenAsync())
     {
-        // KeyReleaseSynthesizer is a decorator — it takes the session's IAsyncInputDevice and
-        // exposes a wrapped one. Per the decorator contract, disposing the synthesizer also
-        // disposes the inner. We dispose it explicitly so the synthesizer's pump task stops
-        // when this command returns; the outer `await using` on the session handles transport
-        // restoration.
-        await using var synth = new KeyReleaseSynthesizer(session.Input);
+        // Compose two transforms over the session's input: key-up/repeat synthesis (a device
+        // decorator) and mouse-click synthesis (an IInputTransformer applied via WithClickSynthesis).
+        // Disposing the outer device cascades through the chain to the session's input device; the
+        // outer `await using` on the session handles transport restoration.
+        await using var device = new KeyReleaseSynthesizer(session.Input)
+            .WithClickSynthesis(new MouseClickOptions
+                                {
+                                    SynthesizeClickEvents = true,
+                                    ClickCount = ClickCountTarget.Click,
+                                });
         using var stopCts = new CancellationTokenSource();
 
         try
         {
-            await foreach (var inputEvent in synth.ReadAllAsync(stopCts.Token))
+            await foreach (var inputEvent in device.ReadAllAsync(stopCts.Token))
             {
                 eventCount++;
 
@@ -1958,6 +1964,8 @@ static string FormatMouseEvent(MouseEvent m)
     if (m.ButtonsHeld != MouseButtons.None) sb.Append(" held=").Append(m.ButtonsHeld);
     if (m.Modifiers != KeyModifiers.None) sb.Append(' ').Append(m.Modifiers);
     if (m.Kind == MouseEventKind.Wheel) sb.Append(" wheel=(").Append(m.WheelDeltaX).Append(',').Append(m.WheelDeltaY).Append(')');
+    if (m.Kind is MouseEventKind.Click || (m.Kind is MouseEventKind.ButtonDown or MouseEventKind.ButtonUp && m.ClickCount > 1))
+        sb.Append(" clicks=").Append(m.ClickCount);
     return sb.ToString();
 }
 

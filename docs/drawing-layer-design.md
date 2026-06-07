@@ -1,7 +1,7 @@
 # Cursorial.Drawing — intermediate drawing layer design
 
-> Status: **living design doc.** Phases 0–1 are implemented (`feature/drawing-layer-foundation`);
-> Phases 2–6 are designed here and not yet built. This is the document we implement from; update it
+> Status: **living design doc.** Phases 0–2 are implemented (`feature/drawing-layer-foundation`);
+> Phases 3–6 are designed here and not yet built. This is the document we implement from; update it
 > as phases land or decisions change.
 
 `Cursorial.Drawing` is an intermediate layer between the cell-buffer renderer (`Cursorial.Rendering`)
@@ -134,7 +134,7 @@ refinement.
 
 ---
 
-## 4. Brush + premultiplied gradients (Phase 2 — designed)
+## 4. Brush + premultiplied gradients (Phase 2 — done)
 
 `Brush` is a closed value-type discriminated union (`readonly record struct`), kinds Solid + Linear +
 Radial + Conic, mirroring `Color`. Zero-alloc implicit `Color → Brush` is the back-compat keystone.
@@ -153,7 +153,9 @@ small and the solid path is alloc-free. `default(Brush)` is an opaque solid over
   Consolonia `feature/gradient-improvements`): linear `t = dot(p−start, v)/dot(v,v)`; radial SVG
   focal/two-point unit-ellipse quadratic `t = 1/s`; conic `frac((atan2(dx,−dy)·180/π − Angle)/360)`.
   Spread maps raw `t` into range before a nearest-enclosing-stop scan; out-of-coverage pads to end
-  colors. Aspect-corrected via `WindowCapabilities.CellPixelWidth/Height` (fallback ~10×20).
+  colors. **As-built:** gradients are box-relative (a radial fills the extent as an ellipse);
+  cell-pixel aspect correction (true on-screen circles via `WindowCapabilities.CellPixelWidth/Height`)
+  is **deferred** as a refinement.
 - **Premultiplied-alpha interpolation** (sRGB channels): premultiply each stop's RGB by alpha, lerp,
   un-premultiply to a **straight** `Color`. This flows through the existing straight-alpha
   `Color.Composite` correctly and removes fade-to-transparent fringing (so `Color.Transparent` =
@@ -267,7 +269,7 @@ Drawing (`Brush` never goes inside `Style`). Markup keeps returning `Color` (`[f
 |---|---|---|
 | **0** | `Style.Transparent` (Core, additive). | **Done** |
 | **1** | `Cursorial.Drawing` project; `Brush`(solid) + implicit `Color→Brush` + `BrushExtent`; `Scene` (cached raster) + `DrawingContext` (`Set`, solid `FillRectangle`) + `SceneCompositor` (invariant + dirty-union + both base overloads) + `CompositeParameters`/`SceneLayer`/`ScenePool`. | **Done** |
-| **2** | `GradientData`/`GradientStop`/`GradientSpread` + `GradientSampler` (LUT, premultiplied, verified math) + gradient `Brush` factories; gradient `FillRectangle`; single-line `DrawText`. | Designed |
+| **2** | `GradientData`/`GradientStop`/`GradientSpread`/`GradientKind` + `GradientSampler` (LUT, premultiplied, verified math) + gradient `Brush` factories; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
 | **3** | Shared accumulator + `BoxEdgeLayout`; `Pen`/`BorderPen`; `DrawLine`/`DrawBox`/`DrawBorder`/`DrawRectangle`; wide-glyph eviction. | Designed |
 | **4** | `BrailleDotLayout` + `BlockFractionLayout`; `Chart`/`BarChart`/`ScatterChart`/`LineChart` + curve interpolation; multi-series scenes. | Designed |
 | **5** (gated) | `Cursorial.Animation` + `BrushInterpolator`. | Designed |

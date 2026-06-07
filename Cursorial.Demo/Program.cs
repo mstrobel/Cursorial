@@ -2385,21 +2385,24 @@ file sealed class DrawingDemoScene
         var scene = Scene.Create(cols, rows);
         scene.Draw(ctx =>
         {
+            // Body: a subtle vertical gradient (top → bottom) — a Phase-2 gradient fill, sampled
+            // per cell and cached once.
+            if (rows > 1)
+                ctx.FillRectangle(
+                    new Rect(0, 1, cols, rows - 1),
+                    Brush.LinearGradient([new(0.0, Color.FromRgb(24, 28, 48)), new(1.0, Color.FromRgb(6, 8, 14))],
+                                         startColumn: 0, startRow: 0, endColumn: 0, endRow: 1));   // vertical
+
             // Opaque title bar across the top row.
             var barColor = Color.FromRgb(40, 52, 87);
             ctx.FillRectangle(new Rect(0, 0, cols, 1), Brush.Solid(barColor));
 
-            var barStyle = Style.Default.WithForeground(Color.FromRgb(192, 202, 245)).WithBackground(barColor);
-            const string title = " Cursorial.Drawing — scenes - brushes - opacity - z-order - clip - cached raster ";
-            for (int i = 0; i < title.Length && i < cols; i++)
-                ctx.Set(i, 0, title[i].ToString(), barStyle);
-
-            // Faint column ruler (foreground-only, transparent bg so the base shows through) — a
-            // static cached detail the panels slide over.
-            var dotStyle = Style.Default.WithForeground(Color.FromRgb(48, 52, 66)).WithBackground(Color.Transparent);
-            for (int c = 0; c < cols; c += 8)
-            for (int r = 2; r < rows; r += 2)
-                ctx.Set(c, r, "·", dotStyle);   // middle dot
+            // Title text with a horizontal gradient foreground (teal → violet) over the bar — each
+            // glyph cell samples its own color.
+            const string title = " Cursorial.Drawing — gradients - scenes - opacity - z-order - clip - cached raster ";
+            var clipped = title.Length < cols ? title : (cols > 1 ? title[..(cols - 1)] : "");
+            var titleFg = Brush.LinearGradient([new(0.0, Color.FromRgb(120, 220, 232)), new(1.0, Color.FromRgb(196, 150, 255))]);
+            ctx.DrawText(0, 0, clipped, titleFg, Brush.Solid(barColor));
         });
         return scene;
     }

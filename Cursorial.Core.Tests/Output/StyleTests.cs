@@ -5,6 +5,32 @@ namespace Cursorial.Tests.Output;
 public class StyleTests
 {
     [Fact]
+    public void Transparent_IsTheCompositingIdentity()
+    {
+        var s = Style.Transparent;
+
+        Assert.True(s.Foreground.IsTransparent);
+        Assert.True(s.Background.IsTransparent);
+        Assert.True(s.UnderlineColor.IsTransparent);
+
+        // Distinct from Default (which paints terminal-default colors opaquely).
+        Assert.NotEqual(Style.Default, s);
+
+        // Hyperlink left at the default (None) so a transparent cell carries no link.
+        Assert.Equal(default(Hyperlink), s.Hyperlink);
+    }
+
+    [Fact]
+    public void Transparent_ContributesNothingWhenCompositedAsSource()
+    {
+        // The whole point: a Transparent-styled cell's colors composite to the backdrop verbatim.
+        var backdrop = Color.FromRgb(10, 20, 30);
+
+        Assert.Equal(backdrop, Color.Composite(Style.Transparent.Background, backdrop, BlendingModes.Default));
+        Assert.Equal(backdrop, Color.Composite(Style.Transparent.Foreground, backdrop, BlendingModes.Default));
+    }
+
+    [Fact]
     public void Default_IsTrulyDefault()
     {
         Style s = Style.Default;

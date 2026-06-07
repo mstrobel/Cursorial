@@ -45,6 +45,19 @@ public readonly record struct Style(
     /// <summary>The "no styling" sentinel — default colors and no attributes.</summary>
     public static Style Default => default;
 
+    /// <summary>
+    /// The compositing identity: foreground, background, and underline color are all
+    /// <see cref="Color.Transparent"/>. A cell carrying this style contributes no color when
+    /// composited via <see cref="Color.Composite"/> (which short-circuits a transparent source to
+    /// the backdrop), so it is the value a drawing-layer scene buffer is cleared to — unpainted
+    /// cells then leave the composite target untouched. Distinct from <see cref="Default"/>, which
+    /// paints the terminal's default colors <em>opaquely</em>. <see cref="Hyperlink"/> is left at
+    /// its default (<see cref="Output.Hyperlink.None"/>).
+    /// </summary>
+    public static Style Transparent { get; } = Default.WithForeground(Color.Transparent)
+                                                      .WithBackground(Color.Transparent)
+                                                      .WithUnderlineColor(Color.Transparent);
+
     /// <summary>The default style for text shadows.</summary>
     public static Style DefaultShadow { get; } = Default.WithForeground(Color.FromRgba(0, 0, 0, 127))
                                                         .WithUnderlineColor(Color.FromRgba(0, 0, 0, 127))

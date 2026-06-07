@@ -74,6 +74,26 @@ public class DrawingContextGradientTests
     }
 
     [Fact]
+    public void DrawText_OverFill_PreservesFillBackground()
+    {
+        // Intra-scene compose: DrawText's default transparent background lets a prior FillRectangle's
+        // background show under the glyph (Set blends the transparent text-bg over the fill).
+        var fill = Color.FromRgb(50, 60, 70);
+        var scene = Scene.Create(2, 1);
+        scene.Draw(ctx =>
+        {
+            ctx.FillRectangle(scene.Bounds, fill);
+            ctx.DrawText(0, 0, "A", Color.FromRgb(255, 255, 255));
+        });
+
+        var buffer = Composite(scene, 2, 1);
+
+        Assert.Equal("A", buffer[0, 0].Grapheme);
+        Assert.Equal(fill, buffer[0, 0].Style.Background);   // fill preserved under the glyph
+        Assert.Equal(fill, buffer[1, 0].Style.Background);   // and where there's no glyph
+    }
+
+    [Fact]
     public void DrawText_AdvancesPastWideClusters()
     {
         var scene = Scene.Create(6, 1);

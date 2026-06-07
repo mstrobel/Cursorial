@@ -32,6 +32,7 @@ public sealed class SceneCompositor
     private readonly Style _baseStyle;
     private readonly CellBuffer? _baseLayer;
 
+    private Scene?[] _lastScenes = [];
     private long[] _lastVersions = [];
     private CompositeParameters[] _lastParams = [];
 
@@ -71,7 +72,11 @@ public sealed class SceneCompositor
         {
             for (int i = 0; i < n; i++)
             {
-                bool changed = layers[i].Scene.RasterVersion != _lastVersions[i] ||
+                // Identity check first: a different Scene swapped into this slot (e.g. a fresh pooled
+                // scene that happens to share RasterVersion) must recomposite, or we'd silently keep
+                // the previous scene's pixels.
+                bool changed = !ReferenceEquals(layers[i].Scene, _lastScenes[i]) ||
+                               layers[i].Scene.RasterVersion != _lastVersions[i] ||
                                layers[i].Parameters != _lastParams[i];
                 if (!changed) continue;
 
@@ -128,7 +133,10 @@ public sealed class SceneCompositor
     }
 
     private void ResetCellToBase(in CellBufferView target, int column, int row) =>
-        target[column, row] = _baseLayer is { } baseLayer
+        // A stored backdrop may be smaller than the target (e.g. the target was resized larger after
+        // construction). Read the backdrop only where it covers; fall back to the uniform base style
+        // beyond its bounds, so reset stays in-bounds rather than throwing.
+        target[column, row] = _baseLayer is { } baseLayer && column < baseLayer.Columns && row < baseLayer.Rows
                                   ? baseLayer[column, row]
                                   : new Cell(null, CellKind.Single, _baseStyle);
 
@@ -201,12 +209,14 @@ public sealed class SceneCompositor
         int n = layers.Length;
         if (_lastVersions.Length != n)
         {
+            _lastScenes = new Scene?[n];
             _lastVersions = new long[n];
             _lastParams = new CompositeParameters[n];
         }
 
         for (int i = 0; i < n; i++)
         {
+            _lastScenes[i] = layers[i].Scene;
             _lastVersions[i] = layers[i].Scene.RasterVersion;
             _lastParams[i] = layers[i].Parameters;
         }

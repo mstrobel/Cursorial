@@ -291,4 +291,78 @@ public class SceneCompositorTests
         Assert.Equal(Blue, buffer[0, 0].Style.Background);
         Assert.Equal(Blue, buffer[1, 0].Style.Background);
     }
+
+    // ---- Review regressions ----
+
+    [Fact]
+    public void SceneSwap_SameVersionAndParams_StillRecomposites()
+    {
+        // P0-1: a different Scene swapped into the same slot, with the same RasterVersion (both drawn
+        // once → version 1) and same params, must recomposite — not silently keep the old pixels.
+        var buffer = new CellBuffer(2, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var a = Scene.Create(2, 1);
+        Fill(a, Brush.Solid(Red));
+        var b = Scene.Create(2, 1);
+        var green = Color.FromRgb(0, 255, 0);
+        Fill(b, Brush.Solid(green));
+
+        compositor.Composite(new[] { new SceneLayer(a) }, view);
+        Assert.Equal(Color.Composite(Red, Blue, BlendingModes.Default), buffer[0, 0].Style.Background);
+
+        Assert.True(compositor.Composite(new[] { new SceneLayer(b) }, view));
+        Assert.Equal(Color.Composite(green, Blue, BlendingModes.Default), buffer[0, 0].Style.Background);
+    }
+
+    [Fact]
+    public void BaseLayer_Backdrop_CompositesOverStoredCells()
+    {
+        var backdrop = new CellBuffer(2, 1);
+        backdrop[0, 0] = new Cell(null, CellKind.Single, Style.Default.WithBackground(Red));
+        backdrop[1, 0] = new Cell(null, CellKind.Single, Style.Default.WithBackground(Blue));
+        var compositor = new SceneCompositor(backdrop);
+
+        var buffer = new CellBuffer(2, 1);
+        var scene = Scene.Create(2, 1);
+        var greenHalf = Color.FromRgba(0, 255, 0, 128);
+        Fill(scene, Brush.Solid(greenHalf));
+
+        compositor.Composite(new[] { new SceneLayer(scene) }, buffer.AsView());
+
+        Assert.Equal(Color.Composite(greenHalf, Red, BlendingModes.Default), buffer[0, 0].Style.Background);
+        Assert.Equal(Color.Composite(greenHalf, Blue, BlendingModes.Default), buffer[1, 0].Style.Background);
+    }
+
+    [Fact]
+    public void BaseLayer_SmallerThanTarget_DoesNotThrow()
+    {
+        // P0-2: a stored backdrop smaller than a (later-resized) larger target must not throw when
+        // reset reaches cells beyond the backdrop — it falls back to the base style there.
+        var compositor = new SceneCompositor(new CellBuffer(2, 1));   // small backdrop, default base style
+        var buffer = new CellBuffer(4, 2);                            // larger target
+        var scene = Scene.Create(1, 1);
+        Fill(scene, Brush.Solid(Red));
+
+        Assert.True(compositor.Composite(new[] { new SceneLayer(scene) }, buffer.AsView()));
+        Assert.Equal(default(Cell), buffer[3, 1]);   // beyond the backdrop → base-style fallback
+    }
+
+    [Fact]
+    public void GradientScene_CompositeOpacityZero_ContributesNothing()
+    {
+        // Exercises ScaleSourceAlpha on a gradient-sourced cell (all prior opacity tests used solids).
+        var buffer = new CellBuffer(4, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var scene = Scene.Create(4, 1);
+        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds,
+            Brush.LinearGradient([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))])));
+
+        Assert.True(compositor.Composite(new[] { new SceneLayer(scene, new CompositeParameters(opacity: 0)) }, view));
+        Assert.Equal(Blue, buffer[0, 0].Style.Background);
+        Assert.Equal(Blue, buffer[3, 0].Style.Background);
+    }
 }

@@ -82,8 +82,28 @@ public class GradientSamplerTests
     }
 
     [Fact]
+    public void LowAlphaPremultiplied_PreservesHue()
+    {
+        // The promised low-alpha precision case: a near-zero-alpha red faded to transparent must keep
+        // its hue (Red == 255), not collapse toward black, even with alpha in the 1–4 range.
+        var stops = new GradientStop[] { new(0.0, Color.FromRgba(255, 0, 0, 3)), new(1.0, Color.Transparent) };
+        var s = new GradientSampler(new GradientData(GradientKind.Linear, stops), new BrushExtent(0, 0, 1, 1));
+
+        var c = s.Sample(0, 0);   // mid-gradient
+        Assert.Equal(255, c.Red);
+        Assert.InRange(c.Alpha, 1, 3);
+    }
+
+    [Fact]
     public void EmptyStops_Throws()
     {
         Assert.Throws<ArgumentException>(() => new GradientData(GradientKind.Linear, Array.Empty<GradientStop>()));
+    }
+
+    [Fact]
+    public void NonFiniteOpacity_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new GradientData(GradientKind.Linear, [new(0.0, Black), new(1.0, White)], opacity: double.NaN));
     }
 }

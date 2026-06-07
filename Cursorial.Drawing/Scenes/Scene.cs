@@ -22,6 +22,7 @@ public sealed class Scene : IDisposable
     private readonly CellBuffer _buffer;
     private readonly ScenePool? _pool;
     private bool _dirty = true;
+    private bool _disposed;
     private long _rasterVersion;
 
     internal Scene(CellBuffer buffer, ScenePool? pool)
@@ -66,6 +67,7 @@ public sealed class Scene : IDisposable
     public void Draw(Action<DrawingContext> draw)
     {
         ArgumentNullException.ThrowIfNull(draw);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_dirty) return;
 
         ClearToTransparent();
@@ -80,6 +82,15 @@ public sealed class Scene : IDisposable
         // Array.Fill fast path. Grapheme stays null = "no glyph contribution" for the compositor.
         _buffer.Fill(new Cell(null, CellKind.Single, Style.Transparent));
 
-    /// <summary>Return a pooled scene's buffer to its pool (no-op for a standalone scene).</summary>
-    public void Dispose() => _pool?.Return(this);
+    /// <summary>
+    /// Return a pooled scene's buffer to its pool (no-op for a standalone scene). Idempotent — a
+    /// double dispose does not return the buffer twice (which would alias it across two future
+    /// <see cref="ScenePool.Rent"/> callers).
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _pool?.Return(this);
+    }
 }

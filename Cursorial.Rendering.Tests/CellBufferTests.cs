@@ -272,4 +272,18 @@ public class CellBufferTests
         var buf = new CellBuffer(5, 1);
         Assert.Throws<ArgumentOutOfRangeException>(() => buf.Write(5, 0, "x", Style.Default));
     }
+
+    [Fact]
+    public void FillRegion_TransparentCell_ClearsUnderDefaultMode()
+    {
+        // Default mode is a verbatim replace (consistent with the whole-buffer Fill), so a
+        // transparent fill actually clears the region rather than blending to a no-op.
+        var buf = new CellBuffer(4, 2);
+        buf.Fill(new Rect(0, 0, 4, 2), new Cell("X", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(10, 20, 30))));
+        Assert.Equal(Color.FromRgb(10, 20, 30), buf[0, 0].Style.Background);
+
+        buf.Fill(new Rect(0, 0, 4, 2), new Cell(null, CellKind.Single, Style.Transparent));
+        Assert.True(buf[0, 0].Style.Background.IsTransparent);
+        Assert.Null(buf[0, 0].Grapheme);
+    }
 }

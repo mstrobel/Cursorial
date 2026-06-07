@@ -40,4 +40,37 @@ public class ScenePoolTests
         Assert.Equal(5, second.Columns);
         Assert.Equal(3, second.Rows);
     }
+
+    [Fact]
+    public void DoubleDispose_DoesNotAliasBufferAcrossRents()
+    {
+        // P1-3: a double dispose must not push the buffer twice, or two later rents would hand the
+        // same backing buffer to two callers (silent aliasing).
+        var pool = new ScenePool();
+
+        var a = pool.Rent(1, 1);
+        a.Dispose();
+        a.Dispose();   // idempotent
+
+        var b = pool.Rent(1, 1);
+        b.Draw(ctx => ctx.FillRectangle(b.Bounds, Brush.Solid(Color.FromRgb(255, 0, 0))));
+        var c = pool.Rent(1, 1);
+        c.Draw(ctx => ctx.FillRectangle(c.Bounds, Brush.Solid(Color.FromRgb(0, 0, 255))));
+
+        // If b and c aliased one buffer, c's blue would have overwritten b. Composite b → still red.
+        var buffer = new CellBuffer(1, 1);
+        new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(0, 0, 0)))
+            .Composite(new[] { new SceneLayer(b) }, buffer.AsView());
+        Assert.Equal(Color.FromRgb(255, 0, 0), buffer[0, 0].Style.Background);
+    }
+
+    [Fact]
+    public void Draw_AfterDispose_Throws()
+    {
+        var pool = new ScenePool();
+        var scene = pool.Rent(1, 1);
+        scene.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => scene.Draw(_ => { }));
+    }
 }

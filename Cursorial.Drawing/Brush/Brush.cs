@@ -77,10 +77,12 @@ public readonly record struct Brush
                                        double opacity = 1.0)
         => FromGradient(new GradientData(GradientKind.Radial, stops, spread, opacity));
 
-    /// <summary>A conic gradient (sweeping around the center by default).</summary>
-    public static Brush ConicGradient(IReadOnlyList<GradientStop> stops, GradientSpread spread = GradientSpread.Pad,
-                                      double opacity = 1.0, double angleDegrees = 0.0)
-        => FromGradient(new GradientData(GradientKind.Conic, stops, spread, opacity, angleDegrees: angleDegrees));
+    /// <summary>
+    /// A conic gradient (a full 360° sweep around the center). Conic gradients always wrap, so
+    /// <see cref="GradientSpread"/> does not apply to them.
+    /// </summary>
+    public static Brush ConicGradient(IReadOnlyList<GradientStop> stops, double opacity = 1.0, double angleDegrees = 0.0)
+        => FromGradient(new GradientData(GradientKind.Conic, stops, GradientSpread.Pad, opacity, angleDegrees: angleDegrees));
 
     /// <summary>Allocation-free implicit conversion — any <see cref="Color"/> is a solid brush.</summary>
     public static implicit operator Brush(Color color) => new(BrushKind.Solid, color, null);

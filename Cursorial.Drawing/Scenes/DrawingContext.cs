@@ -84,6 +84,13 @@ public sealed class DrawingContext
     /// only). Grapheme-aware (wide clusters occupy two cells); does not wrap or interpret newlines.
     /// Returns the number of columns written.
     /// </summary>
+    /// <remarks>
+    /// Glyphs are written through <see cref="CellBuffer.Set"/>, which composites against the
+    /// transparent scene backdrop and stores opaque — so per-cell <em>translucent</em> foreground /
+    /// background alpha is consumed here, not preserved for the compositor. For scene-level
+    /// translucency use a composite opacity instead. A transparent background correctly lets a prior
+    /// fill (or the composite target) show through under the glyph.
+    /// </remarks>
     public int DrawText(int column, int row, ReadOnlySpan<char> text,
                         in Brush foreground, Brush? background = null, in Style baseStyle = default)
     {

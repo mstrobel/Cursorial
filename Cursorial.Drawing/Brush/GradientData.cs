@@ -29,6 +29,8 @@ public sealed record GradientData
         ArgumentNullException.ThrowIfNull(stops);
         if (stops.Count == 0)
             throw new ArgumentException("A gradient requires at least one stop.", nameof(stops));
+        if (!double.IsFinite(opacity))
+            throw new ArgumentOutOfRangeException(nameof(opacity), opacity, "Opacity must be a finite value.");
 
         var sorted = stops.ToArray();
         Array.Sort(sorted, static (a, b) => a.Offset.CompareTo(b.Offset));

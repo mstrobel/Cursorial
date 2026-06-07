@@ -282,11 +282,26 @@ the additive `Style.Transparent`.
 
 ## 11. Known deferrals / hardening (carry forward)
 
-- Wide-glyph right-edge/clip clobber guard (a `Set` at a clip's left edge can blank a continuation
-  outside the clip) — Phase 3 hardening.
+- **Wide glyph at the composite union's *right* edge** — when a `WideLeft` source lands at the union
+  edge, `CompositeCell`'s `target.Set` writes the continuation one column past the reset range and the
+  `MarkDirty` union, leaving a stale `WideContinuation` a `RestrictToDirtyRegions` renderer never
+  revisits (a dirty-region hole, not just a visual glitch). The left edge is fine (continuation falls
+  inside the reset range). Phase 3 hardening: in `CompositeCell`, degrade a `WideLeft` to a blank
+  single cell when `column + 1 >= colEnd` (the same trick `CellBuffer.Set` uses at the buffer edge).
 - Box vs image/sized-text **fragment** overdraw: v1 scenes are **cell-only**; fragments stay on the
   main buffer and emit after the cell pass. Offscreen fragment compositing is deferred.
 - Animated/large-area gradient emit cost is mitigated by cached raster + per-scene invalidation; a
   scroll-false-positive probe (a sliding scene over patterned rows must not trip `FrameRenderer`'s
   scroll detection) is a Phase 5 test.
-- Low-alpha premultiplied precision test (α 1–4) — Phase 2.
+- **`FillRectangle` cannot occlude** lower-layer glyphs (background-only by design). An additive
+  `FillBlock`/`occlude` primitive (space-bearing cells) is a UI-layer need, not a Phase-3 blocker.
+- Deferred guardrails from the adversarial review (P2s, non-blocking): radial focal-point outside the
+  unit ellipse; normalizing `null` vs explicit `BlendingModes.Default` in `CompositeParameters`;
+  `Scene.Create` size cap vs `ushort` `Rect`. Verified solid and left as-is otherwise.
+
+> **Adversarial review (Phases 0–2):** passed — foundations (the compositing invariant, premultiplied
+> gradient math, transparency model, one-way dependency) independently confirmed correct. Two P0
+> silent-failure bugs fixed (compositor scene-identity miss; stored-backdrop out-of-bounds) plus
+> P1s (rect `Fill` transparent-clear consistency; conic `spread` dropped as a no-op; `ScenePool`
+> double-dispose idempotency; `CompositeParameters.WithMode`) — all with regression tests. The
+> low-alpha premultiplied precision test (α 1–4) is now in the suite.

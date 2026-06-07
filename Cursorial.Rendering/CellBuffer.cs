@@ -446,9 +446,11 @@ public sealed class CellBuffer : ICellSurface
     }
 
     /// <summary>
-    /// Replace every cell inside <paramref name="region"/> with <paramref name="cell"/>, blending
-    /// against the existing contents through <see cref="CurrentBlendingMode"/>. The rect is
-    /// clamped to the buffer bounds — an out-of-buffer or empty rect is a no-op.
+    /// Replace every cell inside <paramref name="region"/> with <paramref name="cell"/>. Under the
+    /// default blending mode the cell is written verbatim (a replace — matching the whole-buffer
+    /// <see cref="Fill(in Cell)"/>, so a transparent cell clears the region); under any other mode the
+    /// cell's style is blended against each existing cell through <see cref="CurrentBlendingMode"/>.
+    /// The rect is clamped to the buffer bounds — an out-of-buffer or empty rect is a no-op.
     /// </summary>
     public void Fill(in Rect region, in Cell cell)
     {
@@ -461,7 +463,9 @@ public sealed class CellBuffer : ICellSurface
         if (row >= rowEnd || col >= colEnd) return;
 
         var mode = CurrentBlendingMode;
-        bool fast = ReferenceEquals(mode, BlendingModes.Default) && cell.Style.Background.IsOpaque;
+        // Default mode is a verbatim replace (consistent with Fill(in Cell)'s Array.Fill fast path),
+        // so a transparent fill actually clears; non-default modes blend per cell.
+        bool fast = ReferenceEquals(mode, BlendingModes.Default);
 
         for (int r = row; r < rowEnd; r++)
         {

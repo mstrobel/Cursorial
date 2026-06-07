@@ -61,4 +61,8 @@ public readonly record struct CompositeParameters
     /// <summary>Return a copy with the given clip rectangle.</summary>
     public CompositeParameters WithClip(Rect? clip) =>
         new(OffsetColumn, OffsetRow, Opacity, clip, Mode);
+
+    /// <summary>Return a copy with the given blend mode (<see langword="null"/> = <see cref="BlendingModes.Default"/>).</summary>
+    public CompositeParameters WithMode(IBlendingMode? mode) =>
+        new(OffsetColumn, OffsetRow, Opacity, Clip, mode);
 }

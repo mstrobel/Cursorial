@@ -14,7 +14,7 @@ public class SceneCompositorTests
 
     private static SceneCompositor OverBlueBase() => new(Style.Default.WithBackground(Blue));
 
-    private static void Fill(Scene scene, Brush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, brush));
+    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, brush));
 
     // ---- P0: the compositing invariant ----
 
@@ -34,7 +34,7 @@ public class SceneCompositorTests
         for (int frame = 0; frame < 4; frame++)
         {
             scene.Invalidate();                 // force a re-raster + recomposite every frame
-            Fill(scene, Brush.Solid(RedHalf));
+            Fill(scene, new SolidColorBrush(RedHalf));
             Assert.True(compositor.Composite(layers, view));
 
             Assert.Equal(expected, buffer[0, 0].Style.Background);   // identical every frame — no drift
@@ -53,7 +53,7 @@ public class SceneCompositorTests
         var scene = Scene.Create(6, 2);
         var layers = new[] { new SceneLayer(scene) };
 
-        Fill(scene, Brush.Solid(RedHalf));
+        Fill(scene, new SolidColorBrush(RedHalf));
         Assert.True(compositor.Composite(layers, view));   // first frame paints
         Assert.Equal(expected, buffer[0, 0].Style.Background);
 
@@ -73,7 +73,7 @@ public class SceneCompositorTests
 
         // A 2-wide scene covering only columns [2,4) of a 6-wide target.
         var scene = Scene.Create(2, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(offsetColumn: 2)) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -92,7 +92,7 @@ public class SceneCompositorTests
 
         // Scene paints only column 0; columns 1..3 stay transparent (cleared default).
         var scene = Scene.Create(4, 1);
-        scene.Draw(ctx => ctx.FillRectangle(new Rect(0, 0, 1, 1), Brush.Solid(Red)));
+        scene.Draw(ctx => ctx.FillRectangle(new Rect(0, 0, 1, 1), new SolidColorBrush(Red)));
         var layers = new[] { new SceneLayer(scene) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -112,7 +112,7 @@ public class SceneCompositorTests
 
         // Opaque red scene composited at 50% opacity == red@128 composited opaque.
         var scene = Scene.Create(2, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(opacity: 128)) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -127,7 +127,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var scene = Scene.Create(1, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(offsetColumn: 3, offsetRow: 1)) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -144,7 +144,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var scene = Scene.Create(4, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         // Clip to columns [1,3).
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(clip: new Rect(1, 0, 2, 1))) };
 
@@ -163,7 +163,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var scene = Scene.Create(1, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var composite = Color.Composite(Red, Blue, BlendingModes.Default);
 
         // Frame 1 at column 1.
@@ -184,7 +184,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var scene = Scene.Create(2, 2);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(offsetColumn: 5, offsetRow: 1)) };
 
         // Frame 1 establishes the stack (full-target union). The bounded union appears on a later
@@ -193,7 +193,7 @@ public class SceneCompositorTests
         buffer.ClearDirty();
 
         scene.Invalidate();
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         Assert.True(compositor.Composite(layers, view));
 
         Assert.Single(buffer.DirtyRegions);
@@ -211,7 +211,7 @@ public class SceneCompositorTests
         var renderer = new FrameRenderer();
 
         var scene = Scene.Create(8, 3);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var layers = new[] { new SceneLayer(scene) };
 
         // Frame 1: composite + render (non-empty).
@@ -239,10 +239,10 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var bottom = Scene.Create(3, 1);
-        Fill(bottom, Brush.Solid(Red));                 // opaque red, full width
+        Fill(bottom, new SolidColorBrush(Red));                 // opaque red, full width
 
         var top = Scene.Create(1, 1);
-        Fill(top, Brush.Solid(Color.FromRgba(0, 255, 0, 128)));   // green@50%, column 0 only
+        Fill(top, new SolidColorBrush(Color.FromRgba(0, 255, 0, 128)));   // green@50%, column 0 only
 
         var layers = new[]
                      {
@@ -268,7 +268,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var scene = Scene.Create(2, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(opacity: 0)) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -283,7 +283,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var scene = Scene.Create(2, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
         // Clip lies entirely beyond the scene's footprint → empty footprint → no contribution.
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(clip: new Rect(5, 0, 2, 1))) };
 
@@ -304,10 +304,10 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var a = Scene.Create(2, 1);
-        Fill(a, Brush.Solid(Red));
+        Fill(a, new SolidColorBrush(Red));
         var b = Scene.Create(2, 1);
         var green = Color.FromRgb(0, 255, 0);
-        Fill(b, Brush.Solid(green));
+        Fill(b, new SolidColorBrush(green));
 
         compositor.Composite(new[] { new SceneLayer(a) }, view);
         Assert.Equal(Color.Composite(Red, Blue, BlendingModes.Default), buffer[0, 0].Style.Background);
@@ -327,7 +327,7 @@ public class SceneCompositorTests
         var buffer = new CellBuffer(2, 1);
         var scene = Scene.Create(2, 1);
         var greenHalf = Color.FromRgba(0, 255, 0, 128);
-        Fill(scene, Brush.Solid(greenHalf));
+        Fill(scene, new SolidColorBrush(greenHalf));
 
         compositor.Composite(new[] { new SceneLayer(scene) }, buffer.AsView());
 
@@ -343,7 +343,7 @@ public class SceneCompositorTests
         var compositor = new SceneCompositor(new CellBuffer(2, 1));   // small backdrop, default base style
         var buffer = new CellBuffer(4, 2);                            // larger target
         var scene = Scene.Create(1, 1);
-        Fill(scene, Brush.Solid(Red));
+        Fill(scene, new SolidColorBrush(Red));
 
         Assert.True(compositor.Composite(new[] { new SceneLayer(scene) }, buffer.AsView()));
         Assert.Equal(default(Cell), buffer[3, 1]);   // beyond the backdrop → base-style fallback
@@ -359,7 +359,7 @@ public class SceneCompositorTests
 
         var scene = Scene.Create(4, 1);
         scene.Draw(ctx => ctx.FillRectangle(scene.Bounds,
-            Brush.LinearGradient([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))])));
+            new LinearGradientBrush([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))])));
 
         Assert.True(compositor.Composite(new[] { new SceneLayer(scene, new CompositeParameters(opacity: 0)) }, view));
         Assert.Equal(Blue, buffer[0, 0].Style.Background);

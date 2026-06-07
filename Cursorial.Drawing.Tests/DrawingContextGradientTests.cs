@@ -23,7 +23,7 @@ public class DrawingContextGradientTests
     public void FillRectangle_Gradient_SamplesPerCellBackground()
     {
         var scene = Scene.Create(4, 1);
-        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, Brush.LinearGradient(BlackToWhite)));
+        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new LinearGradientBrush(BlackToWhite)));
 
         var buffer = Composite(scene, 4, 1);
 
@@ -48,7 +48,7 @@ public class DrawingContextGradientTests
     public void DrawText_SamplesForegroundGradientPerGlyph()
     {
         var scene = Scene.Create(2, 1);
-        scene.Draw(ctx => ctx.DrawText(0, 0, "AB", Brush.LinearGradient(BlackToWhite)));
+        scene.Draw(ctx => ctx.DrawText(0, 0, "AB", new LinearGradientBrush(BlackToWhite)));
 
         var buffer = Composite(scene, 2, 1);
 

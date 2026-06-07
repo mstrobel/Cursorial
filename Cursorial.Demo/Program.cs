@@ -844,7 +844,7 @@ static async Task DemoDrawingAsync()
             }
 
             frame++;
-            try { await Task.Delay(50, stopCts.Token); }   // ~20 fps for a smooth slide
+            try { await Task.Delay(20, stopCts.Token); }   // ~20 fps for a smooth slide
             catch (OperationCanceledException) { break; }
         }
     }
@@ -2390,19 +2390,19 @@ file sealed class DrawingDemoScene
             if (rows > 1)
                 ctx.FillRectangle(
                     new Rect(0, 1, cols, rows - 1),
-                    Brush.LinearGradient([new(0.0, Color.FromRgb(24, 28, 48)), new(1.0, Color.FromRgb(6, 8, 14))],
-                                         startColumn: 0, startRow: 0, endColumn: 0, endRow: 1));   // vertical
+                    new LinearGradientBrush([new(0.0, Color.FromRgb(24, 28, 48)), new(1.0, Color.FromRgb(6, 8, 14))],
+                                         startPoint: RelativePoint.Top, endPoint: RelativePoint.Bottom));   // vertical
 
             // Opaque title bar across the top row.
             var barColor = Color.FromRgb(40, 52, 87);
-            ctx.FillRectangle(new Rect(0, 0, cols, 1), Brush.Solid(barColor));
+            ctx.FillRectangle(new Rect(0, 0, cols, 1), new SolidColorBrush(barColor));
 
             // Title text with a horizontal gradient foreground (teal → violet) over the bar — each
             // glyph cell samples its own color.
             const string title = " Cursorial.Drawing — gradients - scenes - opacity - z-order - clip - cached raster ";
             var clipped = title.Length < cols ? title : (cols > 1 ? title[..(cols - 1)] : "");
-            var titleFg = Brush.LinearGradient([new(0.0, Color.FromRgb(120, 220, 232)), new(1.0, Color.FromRgb(196, 150, 255))]);
-            ctx.DrawText(0, 0, clipped, titleFg, Brush.Solid(barColor));
+            var titleFg = new LinearGradientBrush([new(0.0, Color.FromRgb(120, 220, 232)), new(1.0, Color.FromRgb(196, 150, 255))]);
+            ctx.DrawText(0, 0, clipped, titleFg, new SolidColorBrush(barColor));
         });
         return scene;
     }
@@ -2413,7 +2413,7 @@ file sealed class DrawingDemoScene
         scene.Draw(ctx =>
         {
             // Translucent fill — its alpha is preserved for the compositor to blend.
-            ctx.FillRectangle(scene.Bounds, Brush.Solid(fill));
+            ctx.FillRectangle(scene.Bounds, new SolidColorBrush(fill));
 
             // A small opaque label tab so panels are identifiable while they overlap.
             var labelStyle = Style.Default.WithForeground(Color.FromRgb(245, 245, 250)).WithBackground(labelBackground);

@@ -17,4 +17,10 @@ public readonly record struct GradientStop
 
     /// <summary>The color at this offset.</summary>
     public Color Color { get; }
+
+    /// <summary>
+    /// Convenience conversion from an <c>(offset, color)</c> tuple, so a stop list can be written as
+    /// <c>[(0.0, Colors.Red), (1.0, Colors.Blue)]</c> without spelling <c>new GradientStop(...)</c>.
+    /// </summary>
+    public static implicit operator GradientStop((double Offset, Color Color) stop) => new(stop.Offset, stop.Color);
 }

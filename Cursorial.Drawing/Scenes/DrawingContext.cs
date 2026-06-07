@@ -6,10 +6,12 @@ namespace Cursorial.Drawing;
 
 /// <summary>
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
-/// buffer — the one place a <see cref="Brush"/> is resolved to a scalar <see cref="Style"/> before
-/// reaching a cell. It exposes a scalar <see cref="Set"/>, a brush <see cref="FillRectangle(in Rect, in Brush)"/>
-/// (solid or gradient), and a single-line brush <see cref="DrawText"/>; pen/box drawing and charts
-/// extend this in later phases.
+/// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="Style"/> before
+/// reaching a cell. It exposes a scalar <see cref="Set"/>, a brush
+/// <see cref="FillRectangle(in Rect, IBrush)"/> (solid or gradient), and a single-line brush
+/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>; pen/box drawing
+/// and charts extend this in later phases. <see cref="Color"/> overloads wrap a
+/// <see cref="SolidColorBrush"/> for the common solid case.
 /// </summary>
 public sealed class DrawingContext
 {
@@ -33,48 +35,43 @@ public sealed class DrawingContext
     public void Set(int column, int row, string? grapheme, in Style style) =>
         _surface.Set(column, row, grapheme, in style);
 
+    /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
+    public void FillRectangle(in Rect region, Color color) => FillRectangle(region, new SolidColorBrush(color));
+
     /// <summary>
-    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="fill"/> — solid or gradient.
-    /// Each cell is painted background-only (no glyph), so on composite the fill tints the target
-    /// background and leaves any glyph beneath showing through — the scene's transparency model. A
-    /// gradient is sampled per cell against <paramref name="region"/> as its extent (relative-to-
-    /// bounding-box); to span a gradient across a larger logical area, use the overload taking an
-    /// explicit <see cref="BrushExtent"/>.
+    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
+    /// sampled per cell with <paramref name="region"/> as the brush bounds. Each cell is painted
+    /// background-only (no glyph), so on composite the fill tints the target background and leaves any
+    /// glyph beneath showing through — the scene's transparency model.
     /// </summary>
     /// <remarks>
-    /// Writes via the raw indexer rather than <see cref="CellBuffer.Set"/> so a translucent source
+    /// Writes via the raw indexer rather than <see cref="CellBuffer.Set"/> so a translucent sampled
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </remarks>
-    public void FillRectangle(in Rect region, in Brush fill) => FillRectangle(region, fill, BrushExtent.FromRect(region));
-
-    /// <summary>
-    /// Fill <paramref name="region"/> with <paramref name="fill"/>, mapping a gradient onto the
-    /// explicit <paramref name="extent"/> (which may extend beyond <paramref name="region"/>).
-    /// </summary>
-    public void FillRectangle(in Rect region, in Brush fill, in BrushExtent extent)
+    public void FillRectangle(in Rect region, IBrush brush)
     {
-        int colEnd = Math.Min(region.ColumnEnd, _surface.Columns);
-        int rowEnd = Math.Min(region.RowEnd, _surface.Rows);
+        ArgumentNullException.ThrowIfNull(brush);
+
         int colStart = Math.Max(0, region.Column);
         int rowStart = Math.Max(0, region.Row);
+        int colEnd = Math.Min(region.ColumnEnd, _surface.Columns);
+        int rowEnd = Math.Min(region.RowEnd, _surface.Rows);
         if (colStart >= colEnd || rowStart >= rowEnd) return;
 
-        if (fill.IsSolid)
-        {
-            var color = fill.SolidColor;
-            for (int row = rowStart; row < rowEnd; row++)
-            for (int col = colStart; col < colEnd; col++)
-                _surface[col, row] = new Cell(null, CellKind.Single, Style.Default.WithBackground(color));
-            return;
-        }
-
-        // Gradient: build the sampler once for the whole fill, then sample per cell.
-        var sampler = new GradientSampler(fill.Gradient!, extent);
         for (int row = rowStart; row < rowEnd; row++)
         for (int col = colStart; col < colEnd; col++)
-            _surface[col, row] = new Cell(null, CellKind.Single, Style.Default.WithBackground(sampler.Sample(col, row)));
+        {
+            var color = brush.ColorAt(col, row, region);
+            _surface[col, row] = new Cell(null, CellKind.Single, Style.Default.WithBackground(color));
+        }
     }
+
+    /// <summary>Draw a single line of text with a solid foreground (and optional background) color.</summary>
+    public int DrawText(int column, int row, ReadOnlySpan<char> text,
+                        Color foreground, Color? background = null, in Style baseStyle = default)
+        => DrawText(column, row, text, new SolidColorBrush(foreground),
+                    background is { } bg ? new SolidColorBrush(bg) : null, baseStyle);
 
     /// <summary>
     /// Draw a single line of <paramref name="text"/> starting at <paramref name="column"/>,
@@ -92,19 +89,16 @@ public sealed class DrawingContext
     /// fill (or the composite target) show through under the glyph.
     /// </remarks>
     public int DrawText(int column, int row, ReadOnlySpan<char> text,
-                        in Brush foreground, Brush? background = null, in Style baseStyle = default)
+                        IBrush foreground, IBrush? background = null, in Style baseStyle = default)
     {
+        ArgumentNullException.ThrowIfNull(foreground);
         if (text.IsEmpty || (uint) row >= (uint) _surface.Rows) return 0;
 
-        var fg = foreground;
-        var bg = background ?? Brush.Solid(Color.Transparent);
+        var bg = background ?? Brushes.Transparent;
 
-        // The run's extent (its cells on this row) is the gradient's bounding box.
+        // The run's extent (its cells on this row) is the brush bounds.
         int runWidth = GraphemeWidth.StringWidth(text);
-        var extent = new BrushExtent(column, row, runWidth, 1);
-
-        var fgSampler = fg.IsSolid ? null : new GradientSampler(fg.Gradient!, extent);
-        var bgSampler = bg.IsSolid ? null : new GradientSampler(bg.Gradient!, extent);
+        var bounds = new Rect(column, row, runWidth, 1);
 
         int start = column;
         var clusters = text.GetGraphemeEnumerator();
@@ -115,9 +109,8 @@ public sealed class DrawingContext
             if (width < 1) width = 1;
             if (column + width > _surface.Columns) break;
 
-            var fgColor = fgSampler?.Sample(column, row) ?? fg.SolidColor;
-            var bgColor = bgSampler?.Sample(column, row) ?? bg.SolidColor;
-            var style = baseStyle.WithForeground(fgColor).WithBackground(bgColor);
+            var style = baseStyle.WithForeground(foreground.ColorAt(column, row, bounds))
+                                 .WithBackground(bg.ColorAt(column, row, bounds));
 
             column += _surface.Set(column, row, cluster.ToString(), style);
         }

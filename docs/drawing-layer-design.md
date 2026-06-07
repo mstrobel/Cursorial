@@ -38,11 +38,11 @@ Cursorial.Rendering        Cell, CellBuffer, CellBufferView, FrameRenderer, Curs
 Cursorial.Core             Color, Style (ns Cursorial.Output), IBlendingMode, GraphemeWidth, OutputCapabilities
 ```
 
-A terminal cell shows **one solid color**. `Cell`/`Style`/`CellBuffer` carry scalar `Color`, never a
-`Brush`. Because there is no `Rendering → Drawing` edge, the `Brush` type cannot be named in
-Rendering/Core — so `CellBuffer.Set` cannot grow a `Brush` overload and `Cell` cannot gain a `Brush`
+A terminal cell shows **one solid color**. `Cell`/`Style`/`CellBuffer` carry scalar `Color`, never an
+`IBrush`. Because there is no `Rendering → Drawing` edge, the `IBrush` type cannot be named in
+Rendering/Core — so `CellBuffer.Set` cannot grow an `IBrush` overload and `Cell` cannot gain a brush
 field. **Brushes resolve to a scalar `Color` strictly inside `Cursorial.Drawing`, at draw time**
-(`GradientSampler → Color → Style → CellBufferView.Set`). This also makes *sample-before-quantize*
+(`IBrush.ColorAt → Color → Style → CellBufferView.Set`). This also makes *sample-before-quantize*
 hold structurally: sampling happens at write time in Drawing; `StyleQuantizer` runs at emit time in
 `FrameRenderer` — different layers, crossed in that order.
 
@@ -119,8 +119,9 @@ parent scene's view can later be the target with no API change.
 
 ### 3.3 Drawing
 
-`DrawingContext` (Phase 1): scalar `Set(col,row,grapheme,style)` and `FillRectangle(in Rect, in
-Brush)`. `FillRectangle` writes background-only cells via the **raw indexer** so a translucent source
+`DrawingContext` (Phase 1): scalar `Set(col,row,grapheme,style)` and `FillRectangle(in Rect,
+IBrush)` (plus a `Color` overload wrapping `SolidColorBrush`). `FillRectangle` writes background-only
+cells via the **raw indexer** so a translucent source
 color is preserved verbatim (its alpha kept for the compositor); going through `Set` would consume
 the alpha by pre-compositing over the transparent backdrop. Per-cell *translucent source* via `Set`
 therefore isn't available in Phase 1 — use composite opacity, or `FillRectangle`'s path.
@@ -136,34 +137,69 @@ refinement.
 
 ## 4. Brush + premultiplied gradients (Phase 2 — done)
 
-`Brush` is a closed value-type discriminated union (`readonly record struct`), kinds Solid + Linear +
-Radial + Conic, mirroring `Color`. Zero-alloc implicit `Color → Brush` is the back-compat keystone.
-The gradient payload sits behind one reference (`GradientData` sealed record) so the struct stays
-small and the solid path is alloc-free. `default(Brush)` is an opaque solid over `Color.Default`
-(not invisible).
+`IBrush` is an **open interface** — one method, `Color ColorAt(int column, int row, Rect bounds)`.
+A brush maps a cell (given the painted element's bounds) to a scalar `Color`; that's the entire
+contract, so `ImageBrush` / `TileBrush` / a custom procedural brush drop in later without touching the
+core. (Earlier draft used a closed `readonly record struct` discriminated union; it was replaced with
+the interface for extensibility — the allocation argument that motivated the struct is weak because
+brushes are created once and reused, not per-cell.) `ColorAt` takes bare `int column, int row` rather
+than the input-layer `CellPosition` (flagged by the API review) — that type's `PixelX`/`PixelY` were
+always null here and pulled input-domain semantics into the brush contract; aspect-correct sub-cell
+sampling, when it lands, gets a purpose-built parameter. The doc commits `ColorAt` to pure /
+allocation-free / safe-for-concurrent-invocation and warns that `bounds` may be empty (guard before
+dividing by its extent).
 
-- **`GradientData`** uses **nullable** geometry params (so `(0,0)` is never a magic sentinel); stops
-  are sorted in the ctor. `GradientSpread` = Pad/Repeat/Reflect.
-- **`BrushExtent`** (already added) is a signed/fractional extent — `Rect` is `ushort` and throws on
-  a negative origin, so a gradient anchored off-screen or larger than its clip needs this. The brush
-  is **bounds-agnostic**; the paint site supplies the extent = the painted element's bounds (run /
-  paragraph / fragment / shape / scene), i.e. relative-to-bounding-box.
-- **`GradientSampler`** (per-fill object, **not** in the struct) holds a 256-entry LUT, samples at
-  the **cell center** (`+0.5`), in **cells**, relative to the extent. Math (verified against
-  Consolonia `feature/gradient-improvements`): linear `t = dot(p−start, v)/dot(v,v)`; radial SVG
-  focal/two-point unit-ellipse quadratic `t = 1/s`; conic `frac((atan2(dx,−dy)·180/π − Angle)/360)`.
-  Spread maps raw `t` into range before a nearest-enclosing-stop scan; out-of-coverage pads to end
-  colors. **As-built:** gradients are box-relative (a radial fills the extent as an ellipse);
-  cell-pixel aspect correction (true on-screen circles via `WindowCapabilities.CellPixelWidth/Height`)
-  is **deferred** as a refinement.
+- **`SolidColorBrush`** — `ColorAt` returns its color regardless of position. Ctor takes an optional
+  `opacity` (0–1) folded into the color's alpha (RGB only — palette/default carry no alpha). The
+  implicit `Color → SolidColorBrush` operator keeps `Color`-as-brush ergonomic, and `FillRectangle`/
+  `DrawText` expose `Color` overloads so the solid case never names a brush type.
+- **`Brushes`** — static cache mirroring `Colors` (`Brushes.Transparent`, `Brushes.Red`, …). Since a
+  `SolidColorBrush` is immutable it's safe to share; reach for these instead of allocating a fresh
+  `new SolidColorBrush(Color.Xxx)`. `DrawingContext.DrawText`'s default background is
+  `Brushes.Transparent`.
+- **`GradientBrush`** (abstract base) holds the sorted stops, `GradientSpread` (Pad/Repeat/Reflect),
+  and opacity, and owns the shared per-cell resolution: subclasses map a cell to a parameter `t`
+  (`ComputeOffset`), the base applies spread (`ApplySpread`) and interpolates the stops. Concrete:
+  `LinearGradientBrush` (`StartPoint`/`EndPoint`), `RadialGradientBrush`
+  (`Center`/`RadiusX`/`RadiusY`/`GradientOrigin`), `ConicGradientBrush` (`Center`/`AngleDegrees`).
+- **`RelativePoint`** (`readonly record struct (double X, double Y)`, WPF/Avalonia-style) expresses
+  gradient geometry as a **fraction of the paint bounds**: `(0,0)` = top-left, `(1,1)` = bottom-right;
+  `X` runs left→right across the width, `Y` top→bottom down the height. Values outside `[0,1]` are
+  valid (the point lies outside the box) — this is what lets an animated gradient scroll its endpoints
+  past the box (see §7). Named compass constants (`TopLeft`, `Center`, `BottomRight`, …) and an implicit
+  `(double,double)` tuple conversion keep call sites readable. **This replaced the earlier
+  `startColumn`/`startRow`/… `double` params**, which borrowed the integer-cell `Column`/`Row`
+  vocabulary the rest of the codebase reserves for discrete cell addresses and hid the fractional
+  `[0,1]` contract (flagged by the API review). Radii stay scalar `double` fractions (`RadiusX`/
+  `RadiusY`). Defaults: horizontal sweep (`TopLeft`→`TopRight`) / centered ellipse / centered sweep, so
+  the brush is **bounds-agnostic** — the paint site supplies the bounds = the painted element's bounds
+  (run / paragraph / fragment / shape / scene), i.e. relative-to-bounding-box.
+- **Sampling**: `ColorAt` samples the **cell center** (`+0.5`), in **cells**, relative to the bounds
+  origin — sampled **directly per cell, no LUT**. (The earlier 256-entry lookup table was dropped:
+  terminal cell counts are small, so full-precision per-cell math is cheap and avoids the banding a
+  256-step ramp introduces.) Math (verified against Consolonia `feature/gradient-improvements`):
+  linear `t = dot(p−start, v)/dot(v,v)`; radial SVG focal/two-point unit-ellipse quadratic `t = 1/s`;
+  conic `frac((atan2(dx,−dy)·180/π − Angle)/360)`. Spread maps raw `t` into range before a
+  nearest-enclosing-stop scan; out-of-coverage pads to end colors (conic always wraps, so it overrides
+  `ApplySpread` to the identity). **As-built:** gradients are box-relative (a radial fills the bounds
+  as an ellipse); cell-pixel aspect correction (true on-screen circles via
+  `WindowCapabilities.CellPixelWidth/Height`) is **deferred** as a refinement.
 - **Premultiplied-alpha interpolation** (sRGB channels): premultiply each stop's RGB by alpha, lerp,
   un-premultiply to a **straight** `Color`. This flows through the existing straight-alpha
   `Color.Composite` correctly and removes fade-to-transparent fringing (so `Color.Transparent` =
-  `0x00000000` stays fine). Brush opacity folds uniformly into every LUT entry (solid **and**
-  gradient — fixing Consolonia's solid-vs-gradient asymmetry). Keep LUT math in floats; quantize only
-  the final straight `Color`. Add a low-alpha (α 1–4) precision test.
+  `0x00000000` stays fine). Brush opacity folds uniformly into every sampled color (solid **and**
+  gradient — fixing Consolonia's solid-vs-gradient asymmetry). Keep sampling math in floats; quantize
+  only the final straight `Color`. A low-alpha (α 1–4) precision test guards hue preservation.
 - Banding on low-color terminals is accepted for v1 (nearest palette per cell); ordered dither is
   deferred.
+- **Convenience (post-review):** each gradient brush has a **two-color** ctor
+  (`new LinearGradientBrush(start, end)` / `RadialGradientBrush(centerColor, edgeColor)` /
+  `ConicGradientBrush(start, end)`) delegating to the `IReadOnlyList<GradientStop>` ctor, restoring
+  parity with `SolidColorBrush`'s implicit-conversion + `Brushes`-cache ergonomics. An implicit
+  `(double offset, Color)` → `GradientStop` conversion lets multi-stop lists drop the
+  `new GradientStop(...)` noise (`[(0.0, Colors.Red), (1.0, Colors.Blue)]`). Gradient geometry is
+  validated **finite** (NaN/Inf throws, mirroring the opacity guard) — but **not** range-clamped, since
+  out-of-`[0,1]` points are legal (animation).
 
 Phase 2 also delivers `DrawingContext.DrawText` — **single-line, unlaid-out** brush text: walk
 grapheme clusters, sample fg/bg per cell across the run, build a scalar `Style`, `Set`.
@@ -172,7 +208,7 @@ grapheme clusters, sample fg/bg per cell across the run, build a scalar `Style`,
 
 ## 5. Pen + line/box/junction engine (Phase 3 — designed)
 
-`Pen` = `Brush` + `StrokeWeight {Light, Heavy, Double}` + `CornerStyle {Sharp, Rounded}` + `LineDash`
+`Pen` = `IBrush` + `StrokeWeight {Light, Heavy, Double}` + `CornerStyle {Sharp, Rounded}` + `LineDash`
 + `EndCap {None, Stub}` + `JunctionMode {Merge, Break, Overlay}`. `BorderPen` for per-side/per-corner
 asymmetry. **Weight selects a glyph family, never pixel thickness** (a stroke is one cell wide).
 Consolonia (`feature/even-better-boxes`) is the **capability bar**, not a template — design clean;
@@ -201,9 +237,9 @@ glyph on flush, with pluggable layouts:
 | `BrailleDotLayout` | 8 dots (`U+2800 \| mask`) | OR | scatter / line / curve |
 | `BlockFractionLayout(axis)` | fill level 0–8 | MAX | bars |
 
-The accumulator stores the source `Brush` per cell and samples at flush (so the per-fill
-`GradientSampler` applies; sample-before-quantize preserved). `BlockFractionLayout` carries an axis,
-so it's instance-keyed (not a singleton).
+The accumulator stores the source `IBrush` per cell and samples (`ColorAt`) at flush (so a gradient
+brush resolves against the element bounds; sample-before-quantize preserved). `BlockFractionLayout`
+carries an axis, so it's instance-keyed (not a singleton).
 
 **Charts are scenes** (inheriting the cached-raster tier):
 - **Bars** — eighth-block fractional heights, brush fill.
@@ -222,11 +258,17 @@ so it's instance-keyed (not a singleton).
 Split mechanism vs orchestration:
 - **Mechanism** (pure, `elapsed → immutable snapshot`): `Animation<T>` / easing / keyframe timeline,
   no clock/thread/timer, no drawing/UI dependency. Lives in its own lean **`Cursorial.Animation`**
-  project (depends on `Cursorial.Core` only); the `Brush` interpolator lives in `Cursorial.Drawing`
-  (keeping the arrow `Drawing → Animation → Core` acyclic). The `Color`/`Brush` interpolators are
+  project (depends on `Cursorial.Core` only); the `IBrush` interpolator lives in `Cursorial.Drawing`
+  (keeping the arrow `Drawing → Animation → Core` acyclic). The `Color`/`IBrush` interpolators are
   premultiplied (consistent with §4).
-- **Targets:** an animated brush yields a fresh immutable `Brush` per frame; composite params
+- **Targets:** an animated brush yields a fresh immutable `IBrush` per frame; composite params
   (opacity, integer offset).
+  - *Validated against Consolonia* (`feature/gradient-improvements`, `GalleryBorders.axaml`): a
+    scrolling border gradient keyframes a `LinearGradientBrush`'s endpoints `0→1`, `1→2`, `2→3` (in
+    bounds fractions) with `SpreadMethod=Reflect`. Cursorial supports this **today, no API change**:
+    `RelativePoint` is unbounded (endpoints past 1 are valid), `GradientSpread.Reflect` mirrors the
+    out-of-box vector back into the box, and a fresh immutable `LinearGradientBrush` per frame is the
+    per-frame target. Covered by `LinearEndpointsBeyondUnit_WithReflect_TileTheRamp`.
 - **Orchestration** (clock, render loop, invalidation, triggers/storyboards, element lifecycle) lives
   in the future `Cursorial.UI`. **The drawing layer stays time-free** (the consumer/UI advances the
   clock).
@@ -241,15 +283,25 @@ Additive, not a rename or move. `FormattedText`/`RichText`/`TextFormatter`/`Text
 `Cursorial.Rendering`** (their color coupling is to Core `Style`, not `Brush`). Phase 2's `DrawText`
 covers single-line brush text. A laid-out brush-aware formatter (continuous gradients across wrapped,
 aligned text) reuses `TextFormatter`'s color-free measurement and a parallel **`BrushedStyle`** in
-Drawing (`Brush` never goes inside `Style`). Markup keeps returning `Color` (`[fg=…]` → implicit
-`Color → Brush`); gradient markup grammar is deferred.
+Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[fg=…]` → implicit
+`Color → SolidColorBrush`); gradient markup grammar is deferred.
 
 ---
 
 ## 9. Resolved decisions
 
-- **Brush representation:** closed value-type struct-DU (zero-alloc `Color → Brush`; `BrushKind`
-  fixed; a future `Custom`/`IBrushSource` escape hatch is the only allocating case).
+- **Brush representation:** open `IBrush` interface — `Color ColorAt(int column, int row, Rect bounds)`.
+  (Superseded the earlier closed struct-DU; the interface is extensible — `ImageBrush`/`TileBrush`/
+  custom brushes drop in — and the struct's zero-alloc argument was weak since brushes are reused, not
+  per-cell.) `SolidColorBrush` keeps `Color → brush` ergonomic via an implicit operator; `Brushes`
+  caches the common solids; gradients carry two-color ctors + an implicit `(double, Color)` →
+  `GradientStop`.
+- **`IBrush` value-passing convention:** because an interface can't be an implicit-conversion target,
+  there is no `Color → IBrush`. So every `IBrush`-typed public parameter ships a sibling `Color`
+  overload (as `FillRectangle`/`DrawText` do); Phase 3's `Pen` and later brush-taking APIs follow suit.
+- **`IBrush` evolution:** future additive members ship as **default interface methods** (C# 13) with
+  sensible defaults, so external implementers don't break — the open-interface contract is forward-
+  compatible by policy, not frozen.
 - **Gradient color space:** straight **sRGB** channels, **premultiplied** alpha; linear-light is an
   opt-in note only.
 - **Text brush coordinate space:** physical paint bounds (verbatim run copy); logical-span anchoring
@@ -268,8 +320,8 @@ Drawing (`Brush` never goes inside `Style`). Markup keeps returning `Color` (`[f
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | `Style.Transparent` (Core, additive). | **Done** |
-| **1** | `Cursorial.Drawing` project; `Brush`(solid) + implicit `Color→Brush` + `BrushExtent`; `Scene` (cached raster) + `DrawingContext` (`Set`, solid `FillRectangle`) + `SceneCompositor` (invariant + dirty-union + both base overloads) + `CompositeParameters`/`SceneLayer`/`ScenePool`. | **Done** |
-| **2** | `GradientData`/`GradientStop`/`GradientSpread`/`GradientKind` + `GradientSampler` (LUT, premultiplied, verified math) + gradient `Brush` factories; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
+| **1** | `Cursorial.Drawing` project; `IBrush` + `SolidColorBrush` + implicit `Color→SolidColorBrush`; `Scene` (cached raster) + `DrawingContext` (`Set`, solid `FillRectangle`) + `SceneCompositor` (invariant + dirty-union + both base overloads) + `CompositeParameters`/`SceneLayer`/`ScenePool`. | **Done** |
+| **2** | `GradientStop`/`GradientSpread` + `GradientBrush` base (premultiplied, verified math, per-cell no-LUT) + `Linear`/`Radial`/`ConicGradientBrush` + `Brushes` cache; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
 | **3** | Shared accumulator + `BoxEdgeLayout`; `Pen`/`BorderPen`; `DrawLine`/`DrawBox`/`DrawBorder`/`DrawRectangle`; wide-glyph eviction. | Designed |
 | **4** | `BrailleDotLayout` + `BlockFractionLayout`; `Chart`/`BarChart`/`ScatterChart`/`LineChart` + curve interpolation; multi-series scenes. | Designed |
 | **5** (gated) | `Cursorial.Animation` + `BrushInterpolator`. | Designed |

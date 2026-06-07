@@ -8,6 +8,7 @@ using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
+using Cursorial.Drawing;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
@@ -78,6 +79,9 @@ while (true)
             case "render" or "showcase":
                 await DemoRenderAsync();
                 break;
+            case "draw" or "scenes" or "compose":
+                await DemoDrawingAsync();
+                break;
             case "image":
                 await DemoImageAsync(argument);
                 break;
@@ -144,6 +148,11 @@ static void PrintHelp()
     Console.WriteLine("  render           Cursorial.Rendering showcase — opens the alternate screen,");
     Console.WriteLine("                   draws a panel of colors, wide glyphs, attributes, and an");
     Console.WriteLine("                   alpha-blended overlay, with a clock ticking in the corner.");
+    Console.WriteLine("                   (Press q or Ctrl+C to exit)");
+    Console.WriteLine("  draw             Cursorial.Drawing showcase — translucent panels (scenes) slide");
+    Console.WriteLine("                   and blend over a static background, demonstrating brushes, scene");
+    Console.WriteLine("                   compositing (opacity, z-order, clip), and the cached raster");
+    Console.WriteLine("                   (panels drawn once, only re-composited each frame).");
     Console.WriteLine("                   (Press q or Ctrl+C to exit)");
     Console.WriteLine("  image <path>     Load and render the file at <path> via the negotiated graphics");
     Console.WriteLine("                   protocol (Kitty graphics → iTerm2 inline → cell placeholder).");
@@ -739,6 +748,136 @@ static async Task DemoRenderAsync()
             return true;
 
         // Ctrl+C as a Kitty/Win32 character key.
+        if (k.Key == Key.Character &&
+            k.Modifiers.HasFlag(KeyModifiers.Control) &&
+            k.Text.Length > 0 &&
+            (k.Text.Span[0] == 'c' || k.Text.Span[0] == 'C'))
+        {
+            return true;
+        }
+
+        return false;
+    }
+}
+
+static async Task DemoDrawingAsync()
+{
+    Console.WriteLine("Drawing demo (scene compositing). Translucent panels slide and blend over a static background — press q or Ctrl+C to exit.");
+
+    var (session, buffer, renderer, _, palette, capabilities) = await PrepareDemo();
+
+    await using var ds = session;
+    using var dp = palette;
+
+    var writer = session.Output.Writer;
+
+    ScreenWriter.WriteEnterAlternateScreen(writer);
+    SgrEncoder.WriteReset(writer);
+    await writer.FlushAsync();
+
+    var events = new System.Collections.Concurrent.ConcurrentQueue<InputEvent>();
+    using var stopCts = new CancellationTokenSource();
+    var inputPump = Task.Run(async () =>
+    {
+        try
+        {
+            // ReSharper disable once AccessToDisposedClosure
+            await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+                events.Enqueue(evt);
+        }
+        catch (OperationCanceledException) { }
+    });
+
+    FileStream? traceStream = null;
+    int traceFrame = 0;
+    if (Environment.GetEnvironmentVariable("CURSORIAL_TRACE_OUTPUT") is { Length: > 0 } tracePath)
+    {
+        try { traceStream = File.Create(tracePath); }
+        catch { /* best-effort */ }
+    }
+
+    // The drawing-layer scene graph: a static wallpaper + translucent panels, all rasterized once.
+    // Each frame only re-composites them at moving offsets — the cached-raster payoff.
+    var scene = new DrawingDemoScene(buffer.Columns, buffer.Rows);
+
+    try
+    {
+        long frame = 0;
+        while (!stopCts.IsCancellationRequested)
+        {
+            bool resized = false;
+
+            while (events.TryDequeue(out var evt))
+            {
+                switch (evt)
+                {
+                    case ResizeEvent { Columns: > 0, Rows: > 0 } r:
+                        buffer.Resize(r.Columns, r.Rows);
+                        resized = true;
+                        break;
+
+                    case KeyEvent k when IsExit(k):
+                        stopCts.Cancel();
+                        break;
+                }
+            }
+
+            if (stopCts.IsCancellationRequested) break;
+
+            // Resize reallocates + clears the buffer; rebuild the scene graph (a fresh compositor)
+            // so the whole frame is recomposited at the new size.
+            if (resized) scene = new DrawingDemoScene(buffer.Columns, buffer.Rows);
+
+            scene.Composite(buffer, frame);
+
+            var scratch = new ArrayBufferWriter<byte>();
+            renderer.Render(buffer, scratch);
+            await writer.WriteAsync(scratch.WrittenMemory);
+            await writer.FlushAsync();
+
+            if (traceStream is not null)
+            {
+                var marker = Encoding.ASCII.GetBytes($"\n===== FRAME {traceFrame++:D4} ({scratch.WrittenCount} bytes) =====\n");
+                traceStream.Write(marker);
+                traceStream.Write(scratch.WrittenSpan);
+                traceStream.Flush();
+            }
+
+            frame++;
+            try { await Task.Delay(50, stopCts.Token); }   // ~20 fps for a smooth slide
+            catch (OperationCanceledException) { break; }
+        }
+    }
+    finally
+    {
+        stopCts.Cancel();
+        traceStream?.Dispose();
+
+        try { await inputPump.WaitAsync(TimeSpan.FromSeconds(1)); } catch { /* best-effort */ }
+
+        try { renderer.Close(writer); } catch { /* best-effort */ }
+
+        CursorWriter.WriteShow(writer);
+        SgrEncoder.WriteReset(writer);
+        ScreenWriter.WriteLeaveAlternateScreen(writer);
+
+        try { await writer.FlushAsync(); } catch { /* best-effort */ }
+    }
+
+    // Tear down before printing (raw-mode '\n' has no CR — see DemoRenderAsync).
+    dp.Dispose();
+    await ds.DisposeAsync();
+
+    Console.WriteLine("Drawing demo exited.");
+
+    static bool IsExit(KeyEvent k)
+    {
+        if (k.Kind != KeyEventKind.Down) return false;
+        if (k.Key == Key.Escape) return true;
+
+        if (k is { Key: Key.Character, Text.Length: > 0 } && (k.Text.Span[0] == 'q' || k.Text.Span[0] == 'Q'))
+            return true;
+
         if (k.Key == Key.Character &&
             k.Modifiers.HasFlag(KeyModifiers.Control) &&
             k.Text.Length > 0 &&
@@ -2153,4 +2292,130 @@ file static class RenderShowcaseFragments
 
     public static readonly RichText GithubLink =
         TextMarkup.Parse("[i]Cursorial[/i] is hosted at [link=https://github.com/mstrobel/cursorial][fg=blue]GitHub[/fg][/link].");
+}
+
+/// <summary>
+/// The drawing-layer showcase: a static wallpaper scene plus three translucent panel scenes that
+/// slide and overlap, composited each frame by a <see cref="SceneCompositor"/>. Every scene is
+/// rasterized once; only the per-frame composite parameters (offset / clip) change — exercising
+/// brushes, scene compositing (opacity via source alpha, z-order, clip), and the cached raster.
+/// </summary>
+file sealed class DrawingDemoScene
+{
+    private readonly int _cols;
+    private readonly int _rows;
+    private readonly SceneCompositor _compositor;
+    private readonly Scene _wallpaper;
+    private readonly Panel[] _panels;
+    private readonly SceneLayer[] _layers;
+
+    private readonly record struct Panel(
+        Scene Scene, int Width, int Height, double SpeedX, double SpeedY, double PhaseX, double PhaseY,
+        int BaseRow, Rect? Clip);
+
+    public DrawingDemoScene(int columns, int rows)
+    {
+        _cols = Math.Max(1, columns);
+        _rows = Math.Max(1, rows);
+
+        // Dark base; the compositor resets each dirty region to it before compositing the z-stack.
+        _compositor = new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(16, 18, 24)));
+
+        _wallpaper = BuildWallpaper(_cols, _rows);
+
+        int w = Math.Min(Math.Clamp(_cols / 4, 6, 22), _cols);
+        int h = Math.Min(Math.Clamp(_rows / 3, 3, 8), Math.Max(1, _rows - 1));
+        int midRow = Math.Max(1, (_rows - h) / 2);
+
+        var red   = BuildPanel(w, h, Color.FromRgba(235, 70, 70, 150),  'R', Color.FromRgb(70, 16, 16));
+        var green = BuildPanel(w, h, Color.FromRgba(70, 200, 95, 150),  'G', Color.FromRgb(16, 56, 26));
+        var blue  = BuildPanel(w, h, Color.FromRgba(80, 130, 235, 150), 'B', Color.FromRgb(18, 30, 70));
+
+        // Blue is clipped to a fixed window over the right half, so it is visibly cut as it slides
+        // into the clip's left edge — demonstrating composite clipping.
+        int clipCol = Math.Clamp(_cols / 2, 0, Math.Max(0, _cols - 1));
+        Rect? blueClip = _cols > clipCol && _rows > 1
+                             ? new Rect(clipCol, 1, _cols - clipCol, _rows - 1)
+                             : null;
+
+        _panels =
+        [
+            new Panel(red,   w, h, 0.9, 0.0, 0.0,             0.0, midRow,                       Clip: null),
+            new Panel(green, w, h, 0.9, 0.0, Math.PI,         0.0, midRow,                       Clip: null),
+            new Panel(blue,  w, h, 0.6, 0.7, Math.PI / 2.0,   0.5, Math.Max(1, midRow - h / 2),  Clip: blueClip),
+        ];
+
+        _layers = new SceneLayer[1 + _panels.Length];
+    }
+
+    /// <summary>Composite the wallpaper + panels onto <paramref name="target"/> for the given frame.</summary>
+    public void Composite(CellBuffer target, long frame)
+    {
+        double t = frame * 0.05;
+
+        _layers[0] = new SceneLayer(_wallpaper);   // static background (z = 0)
+
+        for (int i = 0; i < _panels.Length; i++)
+        {
+            var p = _panels[i];
+
+            int travelX = Math.Max(0, _cols - p.Width);
+            int offX = Math.Clamp((int) Math.Round(travelX * 0.5 * (1 + Math.Sin(t * p.SpeedX + p.PhaseX))), 0, travelX);
+
+            int maxRow = Math.Max(1, _rows - p.Height);
+            int offY;
+            if (p.SpeedY == 0.0)
+            {
+                offY = Math.Clamp(p.BaseRow, 1, maxRow);
+            }
+            else
+            {
+                int amp = Math.Max(0, Math.Min(p.Height + 2, (_rows - 1) - p.Height));
+                offY = Math.Clamp(p.BaseRow + (int) Math.Round(amp * 0.5 * Math.Sin(t * p.SpeedY + p.PhaseY)), 1, maxRow);
+            }
+
+            _layers[i + 1] = new SceneLayer(p.Scene, new CompositeParameters(offX, offY, clip: p.Clip));
+        }
+
+        _compositor.Composite(_layers, target.AsView());
+    }
+
+    private static Scene BuildWallpaper(int cols, int rows)
+    {
+        var scene = Scene.Create(cols, rows);
+        scene.Draw(ctx =>
+        {
+            // Opaque title bar across the top row.
+            var barColor = Color.FromRgb(40, 52, 87);
+            ctx.FillRectangle(new Rect(0, 0, cols, 1), Brush.Solid(barColor));
+
+            var barStyle = Style.Default.WithForeground(Color.FromRgb(192, 202, 245)).WithBackground(barColor);
+            const string title = " Cursorial.Drawing — scenes - brushes - opacity - z-order - clip - cached raster ";
+            for (int i = 0; i < title.Length && i < cols; i++)
+                ctx.Set(i, 0, title[i].ToString(), barStyle);
+
+            // Faint column ruler (foreground-only, transparent bg so the base shows through) — a
+            // static cached detail the panels slide over.
+            var dotStyle = Style.Default.WithForeground(Color.FromRgb(48, 52, 66)).WithBackground(Color.Transparent);
+            for (int c = 0; c < cols; c += 8)
+            for (int r = 2; r < rows; r += 2)
+                ctx.Set(c, r, "·", dotStyle);   // middle dot
+        });
+        return scene;
+    }
+
+    private static Scene BuildPanel(int width, int height, Color fill, char label, Color labelBackground)
+    {
+        var scene = Scene.Create(width, height);
+        scene.Draw(ctx =>
+        {
+            // Translucent fill — its alpha is preserved for the compositor to blend.
+            ctx.FillRectangle(scene.Bounds, Brush.Solid(fill));
+
+            // A small opaque label tab so panels are identifiable while they overlap.
+            var labelStyle = Style.Default.WithForeground(Color.FromRgb(245, 245, 250)).WithBackground(labelBackground);
+            ctx.Set(1, 0, label.ToString(), labelStyle);
+        });
+        return scene;
+    }
 }

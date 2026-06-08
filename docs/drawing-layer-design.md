@@ -463,14 +463,74 @@ Split mechanism vs orchestration:
 
 ---
 
-## 8. FormattedText brush story (Phase 6 — designed, gated)
+## 8. Brush-aware text & images in Drawing (Phase 6 — designed)
 
-Additive, not a rename or move. `FormattedText`/`RichText`/`TextFormatter`/`TextMarkup` **stay in
-`Cursorial.Rendering`** (their color coupling is to Core `Style`, not `Brush`). Phase 2's `DrawText`
-covers single-line brush text. A laid-out brush-aware formatter (continuous gradients across wrapped,
-aligned text) reuses `TextFormatter`'s color-free measurement and a parallel **`BrushedStyle`** in
-Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[fg=…]` → implicit
-`Color → SolidColorBrush`); gradient markup grammar is deferred.
+**Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
+**Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
+`Cursorial.Rendering` (it's the cell+fragment *production / emission* layer — `TextFormatter`,
+`IContent`/`Image`/`Icon`/`ScaledText`, the image codecs, glyph fonts, `IBufferFragment`, and `FrameRenderer`
+emission are deeply interdependent and coupled to `CellBufferView` / `OutputCapabilities`). Drawing already
+references Rendering, so it consumes these directly. The cut: **Rendering *produces* cells + fragments; Drawing
+*authors & composites* them with brushes / scenes.** (Relocating the engine would drag the codecs/fonts and
+still depend on `FrameRenderer` for emission — large churn, no gain. Revisit only if bridging proves worse.)
+
+**Two paint paths today** (both → `FrameRenderer.Render` → bytes): **cells** (`CellBuffer.Set`, diffed) and
+**fragments** (`IBufferFragment` escape payloads on the `CellBuffer.Fragments` sidecar, emitted *after* the
+cell pass). Fragments come in two layers (`FragmentLayer`): **Cells** (Sixel / iTerm2 / OSC-66 sized-text —
+anchored to cells, scroll with the grid; covered cells paint background-only) and **Overlay** (Kitty graphics —
+independent plane, placement IDs, real delete). `CellBuffer` already *stores* fragments; the gap is that
+`SceneCompositor` is cell-only and ignores `Scene.Buffer.Fragments`.
+
+### 6a — brush-aware rich text (cells; no compositor change)
+- **`IBrush` stays out of Rendering** (the §9 invariant). The formatter is brush-blind: colors with Core
+  `Style`, measures **color-free**. Brushes ride a separate channel: an **opaque `object? Tag`** on
+  `FormattedTextRun` / `FormattedBlock`, preserved through layout/wrap (Rendering treats it opaquely — no
+  `IBrush` dependency, `Style` unchanged); `TextFormatter.EmitRun` copies the tag when it splits a run.
+- Drawing boxes a **`BrushedStyle`** (fg / bg / underline `IBrush` + a `DeclarationScope`) into that tag via a
+  **Drawing-side authoring surface** (a `BrushedRichText` builder / attach step — the Rendering
+  `RichTextBuilder` / `TextMarkup` only speak `Color`).
+- **`DrawingContext.DrawFormattedText(ft, bounds[, brush])`** reads the tag and samples per cell.
+  **Declaration-scoped sampling — sample in the declaring element's natural geometry:**
+  - **Block / document → 2-D box** (the laid-out region; vertical/radial fills span it; its extent grows with
+    wrapping — natural paragraph fill).
+  - **Inline (run) → 1-D reading-order strip, wrap-invariant:** sample `ColorAt(logicalX, 0, Rect(0,0,W,1))`
+    where `logicalX` is the grapheme's cumulative logical offset in the scope and `W` the scope's total logical
+    width. `TextFormatter` records each wrapped piece's logical start + `W` (both known at split), so a
+    grapheme's color is independent of where it wraps. (Consequence: vertical/radial/conic on an inline
+    degenerate to ~constant — correct for a 1-D strip.)
+  - **Inline content (icons / images) are logical constituents:** they reserve gradient space (advance
+    `logicalX` by their width) but the *image itself* isn't tinted — `Content.Paint` renders it opaquely;
+    surrounding text flows continuously across them. (This is the *natural* offset accounting — excluding
+    content would be extra work. Tinting image payloads is a future image-brush.)
+  - **Graceful degradation (free):** when content lacks its graphics protocol and falls back to a *glyph*
+    (Icon's configured fallback glyph, Image's placeholder, ScaledText's FIGlet), that glyph is an ordinary
+    cell — routing the fallback through the same brush sampling makes it **pick up the gradient**, integrating
+    the fallback with the surrounding text. Caveat: only **text-presentation** glyphs honor SGR foreground;
+    **emoji-presentation** glyphs (color emoji / VS16) are painted by the terminal in their own colors
+    regardless, so an emoji fallback won't tint (inherent to terminals — we can't override an emoji palette).
+    Policy: content with an *explicit* fallback color keeps it; otherwise it inherits the scope's brush.
+    Per-cell caveat: `IContent.Paint` takes a single `Style`, so a multi-cell fallback samples one color (at
+    its span), not a per-cell gradient across its footprint — a fine approximation for small fallbacks.
+- Markup keeps returning `Color`; a `[brush=…]` / gradient markup grammar is deferred.
+
+### 6b — images in scenes (fragment-passthrough)
+- **`SceneCompositor` fragment-passthrough** (the new mechanism): carry `Scene.Buffer.Fragments` through
+  compositing — translate anchors by the layer offset, intersect the clip, re-register on the target buffer,
+  respecting `FragmentLayer` (Cells → also mark covered cells; Overlay → leave cells). Drawing already
+  references Rendering, so consuming `IBufferFragment` is legal (no cycle).
+- **`DrawingContext.DrawImage(rect, Image)` / `DrawScaledText(...)`** — call `IContent.Paint` into the scene's
+  `CellBufferView`, which registers the fragment on the scene buffer.
+- **Per-protocol image capabilities (honest limits; documented degradation):**
+
+  | protocol (layer) | slide | clip | opacity | fit |
+  |---|---|---|---|---|
+  | Sixel (cell) | ✓ | ✓ pixel-crop the RGBA before encode | ✗ | resample |
+  | Kitty (overlay) | ✓ | ✓ native source-rect `x,y,w,h` (+ `z`) | image-alpha only | — |
+  | iTerm2 (cell) | ✓ | all-or-nothing (suppress on spill) | ✗ | ✓ `preserveAspectRatio` |
+
+  `preserveAspectRatio` letterboxes (scale-to-fit-within, never crops) — a *fit* knob, orthogonal to clipping.
+- **Diff-churn caveat:** a scene that moves every frame re-anchors its fragments → loses Key-based diff-skip →
+  re-emits (cheap for Kitty via image-ID reuse; expensive for Sixel — decode / quantize / encode).
 
 ---
 
@@ -513,7 +573,7 @@ Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** (gated) | Laid-out brush formatter (`BrushedStyle`). | Designed |
+| **6** (gated) | Brush-aware text + images in Drawing (bridge): 6a `BrushedStyle` + `DrawFormattedText` (declaration-scoped, wrap-invariant); 6b `SceneCompositor` fragment-passthrough + `DrawImage`. | Designed (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's

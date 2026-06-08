@@ -25,7 +25,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// the document anchors flush to the bounds). Content is clipped to the rect; returns the
     /// rectangle actually painted.
     /// </summary>
-    public Rect Paint(in CellBufferView buffer, in Rect bounds, OutputCapabilities capabilities)
+    public Rect Paint(in CellBufferView buffer, in Rect bounds, OutputCapabilities capabilities,
+                      BrushedTextResolver? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -58,7 +59,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             if (blockHeight > 0)
             {
                 int anchorColumn = ComputeAnchorColumn(bounds, block);
-                PaintBlock(block, buffer, anchorColumn, row, blockHeight, bounds.Columns, capabilities);
+                PaintBlock(block, buffer, anchorColumn, row, blockHeight, bounds.Columns, capabilities, resolver);
                 paintedWidth = Math.Max(paintedWidth, block.Size.Columns);
             }
 
@@ -100,12 +101,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
     private static void PaintBlock(
         FormattedBlock block, in CellBufferView buffer, int column, int row, int maxRows, int boundsColumns,
-        OutputCapabilities capabilities)
+        OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
         switch (block)
         {
             case FormattedParagraph paragraph:
-                PaintParagraph(paragraph, buffer, column, row, maxRows, capabilities);
+                PaintParagraph(paragraph, buffer, column, row, maxRows, capabilities, resolver);
                 break;
             case FormattedHorizontalRule rule:
                 PaintHorizontalRule(rule, buffer, column, row, boundsColumns);
@@ -125,9 +126,14 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
     private static void PaintParagraph(
         FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
-        OutputCapabilities capabilities)
+        OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
         int linesToPaint = Math.Min(paragraph.Lines.Length, maxRows);
+
+        // The block's 2-D rect — the sampling bounds for a block/document-scoped brush (6a.1). Built once
+        // per paragraph; clamped to ≥1 so a degenerate (zero-width/height) paragraph can't throw.
+        var blockRect = new Rect(column, row, Math.Max(1, paragraph.Size.Columns), Math.Max(1, linesToPaint));
+
         for (int i = 0; i < linesToPaint; i++)
         {
             var line = paragraph.Lines[i];
@@ -142,7 +148,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         while (enumerator.MoveNext())
                         {
                             var grapheme = enumerator.Current;
-                            int width = buffer.Set(cursor, row + i, grapheme.ToString(), text.Style);
+                            // 6a.1: resolver (when present) recolors text cells — block-scoped 2-D sampling.
+                            // Rules / figlet / inline content keep their flat styles until 6a.2 routes them
+                            // through the resolver too. Width is grapheme-driven, so the style swap is layout-safe.
+                            var style = resolver is null
+                                ? text.Style
+                                : resolver(new BrushedTextContext(text.Style, cursor, row + i, blockRect));
+                            int width = buffer.Set(cursor, row + i, grapheme.ToString(), style);
                             cursor += width;
                         }
                         break;

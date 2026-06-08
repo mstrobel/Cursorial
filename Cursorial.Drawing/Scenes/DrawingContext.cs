@@ -1,5 +1,7 @@
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
 namespace Cursorial.Drawing;
@@ -130,6 +132,29 @@ public sealed class DrawingContext
         }
 
         return column - start;
+    }
+
+    /// <summary>
+    /// Paint a laid-out <paramref name="text"/> document at <paramref name="bounds"/>, coloring its text with
+    /// <paramref name="brush"/> sampled per cell against <b>each block's rect</b> (block-scoped, 2-D — a gradient
+    /// spans each paragraph and resets between blocks). The brush replaces the foreground only; other style
+    /// (attributes, background, the text's own colors elsewhere) comes from the formatted runs.
+    /// </summary>
+    /// <remarks>
+    /// 6a.1 scope: only text runs are brush-colored. Horizontal rules, FIGlet headlines, sized text, and inline
+    /// content (icons / images) render with their flat formatted styles until 6a.2 extends the resolver to them
+    /// (and adds per-run <c>BrushedStyle</c> / inline 1-D wrap-invariant sampling). <paramref name="capabilities"/>
+    /// drives protocol selection for any embedded content; pass the session's negotiated capabilities.
+    /// </remarks>
+    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(brush);
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        text.Paint(_surface, bounds, capabilities,
+                   resolver: (in BrushedTextContext ctx) =>
+                       ctx.BaseStyle.WithForeground(brush.ColorAt(ctx.Column, ctx.Row, ctx.Block)));
     }
 
     // ---- Figures -------------------------------------------------------------------------------

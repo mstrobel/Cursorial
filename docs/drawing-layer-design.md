@@ -430,10 +430,16 @@ green — a ≤1/255 alpha rounding difference on `opacity<1` is imperceptible a
 adds `ColorInterpolator` (delegates to `Color.Lerp`) + a `ColorAnimation` convenience + the `Interpolators.Color`
 shortcut. `Color.Lerp` numerically oracle-pinned (Core tests).
 
-**5c (brush + composite) — placement:** the `BrushInterpolator` (gradient endpoint/stop/opacity interpolation)
-**and** the `RelativePoint` interpolator live in **`Cursorial.Drawing`** — `RelativePoint` is a Drawing type and
-the arrow `Drawing → Animation → Core` must stay acyclic, so neither can sit in Animation. Plus composite-param
-(opacity / integer offset) animation; the demo owns the only clock (the library stays time-free).
+**5c (brush + composite) — implemented + tested. Phase 5 complete.** In **`Cursorial.Drawing`** (so the
+`Drawing → Animation → Core` arrow stays acyclic — these value types are Drawing's): `RelativePointInterpolator`;
+`BrushInterpolator` (same-shape gradient/solid blend — endpoints/center/radii/angle, opacity, pairwise stops via
+`Color.Lerp`; discrete `GradientSpread` + disparate/mismatched-stop pairs **snap** at the midpoint); and
+`CompositeParametersInterpolator` (offset + opacity blend; clip/mode snap) for sliding/fading a **cached** scene
+with no re-raster. Conveniences `BrushAnimation` / `CompositeParametersAnimation`. The Consolonia
+scrolling-gradient case (endpoints swept past 1 + `Reflect`, looped) is validated by an animation test. New
+`animate` demo (the demo owns the only clock — frame × `FrameInterval`): an `AutoReverse` gradient sweep, an
+easing progress bar with a live curve plot and `←`/`→` keystroke cycling of the catalog, and a
+`CompositeParametersAnimation` slide+fade of a cached scene.
 
 Split mechanism vs orchestration:
 - **Mechanism** (pure, `elapsed → immutable snapshot`): `Animation<T>` / easing / keyframe timeline,
@@ -506,11 +512,12 @@ Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[
 | **2** | `GradientStop`/`GradientSpread` + `GradientBrush` base (premultiplied, verified math, per-cell no-LUT) + `Linear`/`Radial`/`ConicGradientBrush` + `Brushes` cache; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
-| **5** (gated) | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **5a + 5b done**; 5c pending |
+| **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
 | **6** (gated) | Laid-out brush formatter (`BrushedStyle`). | Designed |
 
-Phases 0–4 are the v1 spine (all **Done**); 5–6 are gated (5a + 5b landed). The only Core/Rendering public-surface
-additions beyond `Style.Transparent` are additive: 5b's `Color.Lerp` helper (see §7).
+Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
+remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's
+`Color.Lerp` helper (see §7).
 
 ---
 

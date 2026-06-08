@@ -220,9 +220,12 @@ public class PenStrokeTests
     }
 
     [Fact]
-    public void DiagonalLine_Throws()
+    public void DiagonalLine_NoLongerThrows_RoutesToBraille()
     {
-        Assert.Throws<ArgumentException>(() =>
-            DrawHarness.Render(3, 3, ctx => ctx.DrawLine(0, 0, 2, 2, Pens.Light)));
+        // Phase 4b: a diagonal DrawLine rasterizes into braille (it used to throw). Detailed braille
+        // behavior is covered by BrailleTests; here we just confirm it no longer throws and isn't a box.
+        var b = DrawHarness.Render(3, 3, ctx => ctx.DrawLine(0, 0, 2, 2, Pens.Light));
+        Assert.False(string.IsNullOrEmpty(b[0, 0].Grapheme));
+        Assert.NotEqual("─", b[0, 0].Grapheme);
     }
 }

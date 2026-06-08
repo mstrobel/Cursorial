@@ -27,6 +27,7 @@ public sealed class DrawingContext
 {
     private readonly CellBufferView _surface;   // the scene buffer's view — the public seam
     private readonly StrokeAccumulator _strokes;
+    private BrailleRaster? _braille;            // lazy — only allocated when a diagonal/braille line is drawn
     private int _openFigureId = -1;             // -1 = no explicit figure open
 
     internal DrawingContext(Scene scene)
@@ -176,21 +177,30 @@ public sealed class DrawingContext
 
     // ---- Pen strokes ---------------------------------------------------------------------------
 
-    /// <summary>Stroke an axis-aligned line from (<paramref name="x0"/>, <paramref name="y0"/>) to
-    /// (<paramref name="x1"/>, <paramref name="y1"/>), inclusive, with <paramref name="pen"/>.</summary>
-    /// <exception cref="ArgumentException">The endpoints are not axis-aligned (diagonals are not supported).</exception>
+    /// <summary>
+    /// Stroke a line from (<paramref name="x0"/>, <paramref name="y0"/>) to (<paramref name="x1"/>,
+    /// <paramref name="y1"/>), inclusive, with <paramref name="pen"/>. An <b>axis-aligned</b> line uses
+    /// box-drawing glyphs (and junctions with other strokes); a <b>diagonal</b> line rasterizes into
+    /// braille dots (sub-cell resolution), for which the pen's weight / corners / dash / cap don't apply
+    /// (only its brush, attributes, and glyph set do).
+    /// </summary>
     public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false)
     {
-        if (x0 != x1 && y0 != y1)
-            throw new ArgumentException("DrawLine requires an axis-aligned segment; diagonal lines are not supported.");
         if (x0 == x1 && y0 == y1)
             return;   // zero-length — nothing to draw
 
-        int recordId = AddStrokeRecord(pen, LineBounds(x0, y0, x1, y1), overwrite);
-        DepositSegment(x0, y0, x1, y1, pen.Weight, recordId, pen.Junction);
+        if (x0 == x1 || y0 == y1)   // axis-aligned → box accumulator (exact, with junctions)
+        {
+            int recordId = AddStrokeRecord(pen, LineBounds(x0, y0, x1, y1), overwrite);
+            DepositSegment(x0, y0, x1, y1, pen.Weight, recordId, pen.Junction);
+        }
+        else                        // diagonal → braille raster (Bresenham at sub-cell resolution)
+        {
+            DepositBrailleLine(x0, y0, x1, y1, pen, overwrite);
+        }
     }
 
-    /// <summary>Stroke an axis-aligned line with a solid <paramref name="color"/>.</summary>
+    /// <summary>Stroke a line (axis-aligned box, or diagonal braille) with a solid <paramref name="color"/>.</summary>
     public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false) =>
         DrawLine(x0, y0, x1, y1, new Pen(color), overwrite);
 
@@ -236,31 +246,44 @@ public sealed class DrawingContext
     public void DrawRectangle(in Rect rect, Color color, Color fill, bool overwrite = false) =>
         DrawRectangle(rect, new Pen(color), new SolidColorBrush(fill), overwrite);
 
-    // Resolve all deferred strokes to cells. Called by Scene.Draw after the draw delegate returns.
-    internal void FlushDeferredStrokes()
+    // Resolve all deferred sub-cell layers to cells. Called by Scene.Draw after the draw delegate
+    // returns. Order is priority high→low (each later layer yields to a glyph already in the buffer):
+    // immediate writes (text/fills/bars) → braille data → box strokes/axes.
+    internal void FlushDeferred()
     {
         if (_openFigureId >= 0)
             EndFigure();   // close a leaked figure (back-patch bounds) before sampling
-        if (_strokes.IsEmpty)
-            return;
 
-        _strokes.Flush(EmitStrokeCell);
+        if (_braille is { IsEmpty: false })
+            _braille.Flush(EmitBrailleCell);
+        if (!_strokes.IsEmpty)
+            _strokes.Flush(EmitStrokeCell);
     }
 
-    private void EmitStrokeCell(int column, int row, byte arms, StrokeRecord record)
+    private void EmitStrokeCell(int column, int row, byte arms, StrokeRecord record) =>
+        EmitDecorationCell(column, row, BoxGlyphs.Resolve(arms, record.Decoration, record.GlyphSet),
+                           record.Brush, record.Bounds, record.Attributes, record.Overwrite);
+
+    private void EmitBrailleCell(int column, int row, byte dots, BrailleRecord record) =>
+        EmitDecorationCell(column, row, BrailleGlyphs.Glyph(dots, record.GlyphSet),
+                           record.Brush, record.Bounds, record.Attributes, record.Overwrite);
+
+    // The shared emit tail for every deferred layer: text-beats-decoration eviction, deferred brush
+    // sample against the layer's bounds, write through Set with a transparent background.
+    private void EmitDecorationCell(int column, int row, string glyph, IBrush brush, in Rect bounds,
+                                    TextAttributes attributes, bool overwrite)
     {
         var current = _surface[column, row];
 
-        // text-beats-decoration: a glyph (or a wide glyph's continuation) already here survives.
-        if (!record.Overwrite && (current.Kind == CellKind.WideContinuation || !string.IsNullOrEmpty(current.Grapheme)))
+        // A glyph (or a wide glyph's continuation) already here survives unless this layer overwrites.
+        if (!overwrite && (current.Kind == CellKind.WideContinuation || !string.IsNullOrEmpty(current.Grapheme)))
             return;
 
-        string glyph = BoxGlyphs.Resolve(arms, record.Decoration, record.GlyphSet);
-        var color = record.Brush.ColorAt(column, row, record.Bounds);
+        var color = brush.ColorAt(column, row, bounds);
         var style = Style.Default
             .WithForeground(color)
             .WithBackground(Colors.Transparent)   // let any fill / target under the glyph show through
-            .WithAttributes(record.Attributes);
+            .WithAttributes(attributes);
 
         _surface.Set(column, row, glyph, in style);
     }
@@ -307,5 +330,34 @@ public sealed class DrawingContext
     {
         int left = Math.Min(x0, x1), top = Math.Min(y0, y1);
         return new Rect(left, top, Math.Abs(x1 - x0) + 1, Math.Abs(y1 - y0) + 1);
+    }
+
+    // Rasterize a diagonal line into braille dots at sub-cell resolution (2 sub-cols × 4 sub-rows per
+    // cell). Endpoints map to the cell's top-left dot (x·2, y·4); a Bresenham walk plots one dot per step.
+    private void DepositBrailleLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite)
+    {
+        _braille ??= new BrailleRaster(_surface.Columns, _surface.Rows);
+        int recordId = _braille.AddRecord(new BrailleRecord
+        {
+            Brush = pen.ResolveBrush(),
+            Bounds = LineBounds(x0, y0, x1, y1),
+            Attributes = pen.Attributes,
+            GlyphSet = pen.GlyphSet,
+            Overwrite = overwrite,
+        });
+
+        int sx0 = x0 * 2, sy0 = y0 * 4, sx1 = x1 * 2, sy1 = y1 * 4;
+        int dx = Math.Abs(sx1 - sx0), dy = -Math.Abs(sy1 - sy0);
+        int stepX = sx0 < sx1 ? 1 : -1, stepY = sy0 < sy1 ? 1 : -1;
+        int err = dx + dy;
+
+        while (true)
+        {
+            _braille.Plot(sx0, sy0, recordId);
+            if (sx0 == sx1 && sy0 == sy1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; sx0 += stepX; }
+            if (e2 <= dx) { err += dx; sy0 += stepY; }
+        }
     }
 }

@@ -349,8 +349,13 @@ families — pure added state. **Decision: keep `StrokeAccumulator` untouched; a
 - **Charts are draw-ops, not scenes:** `IChart.Render(ctx, in Rect area)`. "A chart is a scene" = the
   consumer wraps it (`scene.Draw(ctx => chart.Render(ctx, area))`); `ToScene`/`ToLayers` (4d) layer
   caching + true per-series color on top — **no `SceneCompositor` change**.
-- **Cross-layer flush order** (4b+, priority = order + the existing grapheme-eviction, no new field):
-  immediate text → braille data → block bars → box axes.
+- **Cross-layer flush order** (priority = write order + the existing grapheme-eviction, no new field).
+  **As built:** immediate writes (text, fills, **and block bars** — bars are write-once `ctx.Set`, not a
+  deferred stage) land first; then `FlushDeferred` runs **braille, then box**. So realized priority is
+  `text/fill/block → braille → box` — i.e. **block sits *above* braille** (a block cell evicts braille).
+  Harmless until **4c**, where `LineChart.FillArea` puts block fill + a braille curve in the same cells
+  and wants line-*over*-fill: resolve there by making the area-fill **deferred** (so flush order governs)
+  *or* giving the curve's `BrailleRecord` an **`Overwrite`** against the fill — decide at 4c.
 - **Curves (4c):** Linear / **centripetal** Catmull-Rom (α=0.5 — uniform overshoots/cusps) /
   **Fritsch–Carlson monotone-cubic**. Correction to the old text: FC's precondition is **strictly-
   increasing X** (a line-graph tool), not "monotonic data"; on unsorted X it sorts / falls back, never
@@ -366,9 +371,12 @@ families — pure added state. **Decision: keep `StrokeAccumulator` untouched; a
 `BarChart`, `Sparkline`, `ChartDrawingExtensions`) — **shipping, no braille/curves**; **4b** =
 `BrailleRaster` + diagonal `DrawLine` + the `EmitDecorationCell` seam + four-stage flush; **4c** =
 `ScatterChart`/`LineChart` + curve interpolation + area-fill; **4d** = axes/ticks/labels (box strokes →
-junctions) + multi-series `ToLayers`. **4a status: implemented + tested** (26 chart tests; ramps
-oracle-pinned). Bars are non-negative bottom/left-anchored in 4a (signed bars need the sparse ramps —
-deferred).
+junctions) + multi-series `ToLayers`. **4a + 4b: implemented + tested.** 4a = block charts (ramps
+oracle-pinned; bars non-negative bottom/left-anchored — signed bars deferred). 4b = `BrailleGlyphs`
+(dot→bit `dy<3?dx*3+dy:6+dx`, oracle-pinned) + `BrailleRaster` (OR-merge, deferred brush, last-writer
+color) + diagonal `DrawLine` (Bresenham at 2×4 sub-cell res; weight/corners/dash/cap N/A for diagonals)
++ the `EmitDecorationCell` seam shared by box & braille; `Scene.Draw` flush renamed `FlushDeferred`,
+order braille-then-box (data over axes). **4c/4d remain.**
 
 ---
 

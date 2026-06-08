@@ -406,7 +406,28 @@ area/heatmap overlaps), NaN-gap-as-break, signed bars, bar-chart category axes.
 
 ---
 
-## 7. Animation (Phase 5 — designed, gated)
+## 7. Animation (Phase 5 — 5a implemented + tested; 5b/5c pending)
+
+**Status — 5a (mechanism) implemented + tested.** The `Cursorial.Animation` project (Core-only, non-packable
+like its siblings) ships `IAnimation<T>` (pure `elapsed → value`, clamped to `[0, Duration]`), the `Easing`
+delegate + `Easings` catalog (Penner / easings.net curves, **oracle-pinned**), `IInterpolator<T>` +
+`Double`/`Int32` interpolators, `Animation<T>` + `KeyframeAnimation<T>` (each keyframe's easing shapes the
+segment *leading into* it; stable `OrderBy` so coincident keyframes give deterministic step semantics), the
+repeat combinators as a 2×2 over direction × length — `Repeat(n)`/`PingPong(n)` (finite forward / bounce) and
+`Loop()`/`AutoReverse()` (perpetual forward / bounce; perpetual reports `Duration = TimeSpan.MaxValue` and
+wraps), and `DoubleAnimation`/`Int32Animation` conveniences (thin
+subclasses over the generic engine — WPF ergonomics, one implementation). 70 tests; edge cases (huge repeat
+counts, auto-reverse final-frame parity, turn-point continuity, NaN propagation, zero-duration inner) probed.
+
+**5b (Color) — decided:** lift the premultiplied-sRGB `Color` lerp out of `GradientBrush` (currently private)
+into **`Cursorial.Core`** as the single source of truth, and add a `ColorInterpolator` that reuses it, so
+gradients and animation interpolate identically (§4 convention stays authoritative in one place;
+`GradientBrush` refactors to call it, its tests stay green).
+
+**5c (brush + composite) — placement:** the `BrushInterpolator` (gradient endpoint/stop/opacity interpolation)
+**and** the `RelativePoint` interpolator live in **`Cursorial.Drawing`** — `RelativePoint` is a Drawing type and
+the arrow `Drawing → Animation → Core` must stay acyclic, so neither can sit in Animation. Plus composite-param
+(opacity / integer offset) animation; the demo owns the only clock (the library stays time-free).
 
 Split mechanism vs orchestration:
 - **Mechanism** (pure, `elapsed → immutable snapshot`): `Animation<T>` / easing / keyframe timeline,
@@ -477,13 +498,14 @@ Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[
 | **0** | `Style.Transparent` (Core, additive). | **Done** |
 | **1** | `Cursorial.Drawing` project; `IBrush` + `SolidColorBrush` + implicit `Color→SolidColorBrush`; `Scene` (cached raster) + `DrawingContext` (`Set`, solid `FillRectangle`) + `SceneCompositor` (invariant + dirty-union + both base overloads) + `CompositeParameters`/`SceneLayer`/`ScenePool`. | **Done** |
 | **2** | `GradientStop`/`GradientSpread` + `GradientBrush` base (premultiplied, verified math, per-cell no-LUT) + `Linear`/`Radial`/`ConicGradientBrush` + `Brushes` cache; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
-| **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | Finalized (impl) |
-| **4** | `BrailleDotLayout` + `BlockFractionLayout`; `Chart`/`BarChart`/`ScatterChart`/`LineChart` + curve interpolation; multi-series scenes. | Designed |
-| **5** (gated) | `Cursorial.Animation` + `BrushInterpolator`. | Designed |
+| **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
+| **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
+| **5** (gated) | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **5a done**; 5b/5c pending |
 | **6** (gated) | Laid-out brush formatter (`BrushedStyle`). | Designed |
 
-Phases 0–4 are the v1 spine; 5–6 are gated. No phase changes a Core/Rendering public signature beyond
-the additive `Style.Transparent`.
+Phases 0–4 are the v1 spine (all **Done**); 5–6 are gated (5a landed). No phase changes a Core/Rendering public
+signature beyond the additive `Style.Transparent` — except 5b's planned lift of the premultiplied `Color` lerp
+into Core (additive helper, see §7).
 
 ---
 

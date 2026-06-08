@@ -71,7 +71,9 @@ public sealed class Scene : IDisposable
         if (!_dirty) return;
 
         ClearToTransparent();
-        draw(new DrawingContext(this));
+        var context = new DrawingContext(this);
+        draw(context);
+        context.FlushDeferredStrokes();   // resolve deferred pen strokes (junctions, glyphs) to cells
         _dirty = false;
         _rasterVersion++;
     }

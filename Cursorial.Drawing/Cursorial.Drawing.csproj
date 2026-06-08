@@ -10,4 +10,8 @@
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.Drawing.Tests" />
+    </ItemGroup>
+
 </Project>

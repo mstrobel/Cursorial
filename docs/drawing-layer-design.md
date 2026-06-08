@@ -206,23 +206,122 @@ grapheme clusters, sample fg/bg per cell across the run, build a scalar `Style`,
 
 ---
 
-## 5. Pen + line/box/junction engine (Phase 3 — designed)
+## 5. Pen + line/box/junction engine (Phase 3 — finalized; design-panel + review)
 
-`Pen` = `IBrush` + `StrokeWeight {Light, Heavy, Double}` + `CornerStyle {Sharp, Rounded}` + `LineDash`
-+ `EndCap {None, Stub}` + `JunctionMode {Merge, Break, Overlay}`. `BorderPen` for per-side/per-corner
-asymmetry. **Weight selects a glyph family, never pixel thickness** (a stroke is one cell wide).
-Consolonia (`feature/even-better-boxes`) is the **capability bar**, not a template — design clean;
-don't inherit its decoration-byte split or `LineBrush` color/style coupling.
+**Weight selects a glyph family, never pixel thickness** (a stroke is one cell wide). Consolonia
+(`feature/even-better-boxes`) is the **capability bar**, not a template — Cursorial separates color
+(`IBrush`) from stroke attributes (`Pen`), avoiding Consolonia's `LineBrush` color/style coupling and
+its pattern-byte + decoration-byte split.
 
-The engine rides the **shared per-cell accumulator** (§6), **scoped to the scene**, so junctions form
-across separate draw calls *within a scene* but never between unrelated scenes (separate
-accumulators). A stroke contributes per-direction half-edges; junctions resolve automatically at
-flush (no separate corner code). The glyph table (light/heavy/double + mixed, rounded, dashed,
-capped) becomes data with a **fallback ladder** that never throws (exact → per-arm weight downgrade →
-collapse to Light → drop decoration → built-in). Dashes are per-cell glyph density (dropped at
-junctions); caps are lone-direction stubs; box glyphs are interned (no per-cell string alloc).
-**Wide-glyph collision:** a box write on/adjacent to a wide cell **evicts** the affected edge entries
-(wide glyph survives, one-cell gap), with an opt-in `Overwrite` policy.
+### 5.1 Public surface
+
+`Pen` is a **`readonly record struct`** (mirrors `Style`); `default(Pen)` is a usable light/sharp/solid
+pen because a null `Brush` resolves to `Colors.Default` at flush:
+
+```csharp
+public readonly record struct Pen {
+    public Pen(Color color);                          // sibling ctor → SolidColorBrush
+    public Pen(IBrush? brush);                        // null = default foreground
+    public IBrush?       Brush      { get; init; }    // gradient samples vs the shape's bounds at flush
+    public StrokeWeight  Weight     { get; init; }    // Light(default)/Heavy/Double
+    public CornerStyle   Corners    { get; init; }    // Sharp(default)/Rounded
+    public LineDash      Dash       { get; init; }    // None(default)/Double/Triple/Quadruple
+    public EndCap        EndCap     { get; init; }    // None(default)/Stub
+    public JunctionMode  Junction   { get; init; }    // Merge(default)/Break/Overlay
+    public GlyphSet      GlyphSet   { get; init; }    // Unicode(default)/Ascii
+    public TextAttributes Attributes { get; init; }   // bold/dim/blink edges (color still from Brush)
+    // With* helpers (WithColor/WithWeight/…) echo Style's density; internal ResolveBrush() => Brush ?? Brushes.Default
+}
+public static class Pens { Light, Heavy, Double, Rounded, Dashed, Ascii }  // presets at default fg, color via call
+```
+
+Enums: `StrokeWeight {Light, Heavy, Double}`, `CornerStyle {Sharp, Rounded}`,
+`LineDash {None, Double=2, Triple=3, Quadruple=4}` (named by dash count), `EndCap {None, Stub}`,
+`JunctionMode {Merge, Break, Overlay}`, `GlyphSet {Unicode, Ascii}` (a *consumer* choice — Drawing
+can't see terminal caps; those resolve at `FrameRenderer` emit).
+
+**No implicit `Color → Pen`** (a design-panel empirical test showed it misbinds `Draw…(color)` to the
+wrong overload). Every `Pen`-typed draw method ships a sibling `Color` overload — the IBrush/Color
+convention.
+
+**No `BorderPen`** (dropped after review). Corners auto-merge across separate `DrawLine` calls (each
+deposits per-direction arms; a top edge's `right` arm + a left edge's `down` arm merge to `┌` via the
+accumulator), so an asymmetric / partial border is just composed `DrawLine`s — `BorderPen` was sugar
+that fragmented the API into a non-convertible second pen type. Re-addable later (additive) if one-call
+asymmetric borders are demanded.
+
+### 5.2 Engine
+
+Rides a **per-`DrawingContext` accumulator** (`StrokeAccumulator`, internal), **scoped to the scene**,
+so junctions form across separate draw calls *within a scene* but never across scenes.
+
+- **Per-cell arms**: a `byte`, 2 bits/direction (Up/Right/Down/Left), code `None=0 / Light=1 / Heavy=2
+  / Double=3`. Plus a **record-id per cell** (`0` = untouched, else index+1 into the call's
+  `StrokeRecord{ IBrush Brush, Rect Bounds, StrokeDecoration{Corners,Dash,Cap} }`). Brush is **sampled
+  at flush** (deferred — keeps blended-junction color open; v1 junction color is last-writer-wins).
+- **Merge is per-direction MAX, NOT bitwise-OR.** (Resolves the old §5/§6 contradiction: on a 2-bit
+  ordinal, `Light(01) | Heavy(10) = 11 = Double` would fabricate a weight nobody drew. Unpack each
+  2-bit field, `Math.Max`, repack.)
+- **Record-id-per-call** makes a cell touched twice by the *same* call (a box's own corner) self-merge
+  **unconditionally** — corners always close regardless of `JunctionMode`. `JunctionMode` governs only
+  *cross-call* conflicts (Merge = MAX-union; Break = incoming yields, *incoming* shows the gap; Overlay
+  = incoming replaces, *prior* shows the gap).
+- **Glyph ladder** (data, never throws): `Ascii` short-circuit → decoration overlay (**drop-decoration-
+  to-sharp KEEPING weight** *before* weight-collapse: a heavy rounded corner → sharp-heavy `┏`, never
+  light-rounded) → exact lookup (single-weight + the ~46 mixed light/heavy + light/double glyphs) →
+  per-arm weight downgrade (Double→Heavy→Light, for heavy+double mixes Unicode has no glyph for) →
+  collapse-all-to-Light (always hits — the light box set is topologically complete) → ASCII (`-`/`|`/`+`
+  /space). Glyphs are interned string literals (zero per-cell alloc). Dashes on straight 2-arm runs
+  only; caps on 1-arm cells only; rounded on the 4 all-light corners only.
+
+### 5.3 Flush + eviction
+
+`Scene.Draw` calls `ctx.FlushDeferredStrokes()` **after** the draw delegate. `Set`/`FillRectangle`/
+`DrawText` keep writing **immediately**; the box accumulator flushes **last** — so **text-beats-
+decoration is ordering**, not a priority field. One eviction predicate at flush: **skip the box glyph
+where `current.Grapheme` is non-empty OR `current.Kind == WideContinuation`** (a background-only fill
+has a null grapheme → the box correctly outlines a filled panel; a wide glyph's both halves are
+protected → one-cell gap, glyph survives). A per-call **`bool overwrite = false`** (a *placement*
+decision, on the call not the `Pen`) bypasses eviction. Box glyphs are written **through `Set`** with a
+transparent background (so a translucent fill underneath survives for the compositor), single-width
+(no continuation bookkeeping). This scene-local eviction is **distinct** from the §11 compositor
+right-edge wide-glyph hardening.
+
+### 5.4 Draw methods (each `Pen`-typed method ships a `Color` sibling + `bool overwrite = false`)
+
+- `DrawLine(int x0,y0,x1,y1, in Pen)` — one **axis-aligned** run; a diagonal request **throws**
+  `ArgumentException` (diagonal/Braille is Phase 4).
+- `DrawBox(in Rect, in Pen)` — uniform outline (one call → corners always close).
+- `DrawRectangle(in Rect, in Pen, IBrush? fill = null)` — outline **+ optional interior fill**
+  (distinct from `DrawBox`; fill is the immediate background-only path, outline flushes over it).
+
+### 5.5 Figures (`BeginFigure` / `EndFigure`)
+
+A **figure** is a discrete group of strokes. `using (ctx.BeginFigure()) { … }` returns a disposable
+`FigureScope` (flat — nested `BeginFigure` throws; the id-token makes double-dispose / manual
+`EndFigure` safe). A figure does two things, **strokes-only** (immediate `Fill`/`DrawText` are
+unaffected):
+
+- **Junction partition** — strokes merge within a figure, never across. Cross-figure conflict at a cell
+  is **structural last-writer-wins** (the later figure resets the cell, bypassing `JunctionMode`), so a
+  cross-figure crossing shows no junction glyph (later wins the cell, a one-cell gap in the earlier).
+  Set at *deposit* time, so a forgotten scope still isolates correctly.
+- **Brush bounds** — `BeginFigure()` samples each member's gradient against the **union** of the
+  figure's stroke rects (lazy back-patch at scope close); `BeginFigure(in Rect)` pins an **explicit**
+  rect. The **implicit root (figure 0) keeps per-call bounds** — it junctions everything as one unit but
+  does *not* union bounds (so a lone gradient `DrawBox` spans itself; independent shapes don't bleed).
+  `FlushDeferredStrokes` closes any leaked figure before sampling (degrades to a union figure, never
+  throws).
+
+Hierarchy: **figure** (cross-figure later-wins) **> record** (`JunctionMode`) **> same record**
+(unconditional self-merge).
+
+Files: `Pen/{Pen,Pens,StrokeWeight,CornerStyle,LineDash,EndCap,JunctionMode,GlyphSet}.cs`;
+`Strokes/{StrokeRecord,StrokeDecoration,StrokeAccumulator,BoxGlyphs}.cs`;
+`Scenes/FigureScope.cs`. The `BoxGlyphs` table is **generated from the Unicode block via the
+`unicodedata` oracle** (offline), guarding the mixed light/heavy codepoints against recall error.
+
+**Status: implemented + tested** (90 `Cursorial.Drawing.Tests`, full suite green).
 
 ---
 
@@ -322,7 +421,7 @@ Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[
 | **0** | `Style.Transparent` (Core, additive). | **Done** |
 | **1** | `Cursorial.Drawing` project; `IBrush` + `SolidColorBrush` + implicit `Color→SolidColorBrush`; `Scene` (cached raster) + `DrawingContext` (`Set`, solid `FillRectangle`) + `SceneCompositor` (invariant + dirty-union + both base overloads) + `CompositeParameters`/`SceneLayer`/`ScenePool`. | **Done** |
 | **2** | `GradientStop`/`GradientSpread` + `GradientBrush` base (premultiplied, verified math, per-cell no-LUT) + `Linear`/`Radial`/`ConicGradientBrush` + `Brushes` cache; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
-| **3** | Shared accumulator + `BoxEdgeLayout`; `Pen`/`BorderPen`; `DrawLine`/`DrawBox`/`DrawBorder`/`DrawRectangle`; wide-glyph eviction. | Designed |
+| **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | Finalized (impl) |
 | **4** | `BrailleDotLayout` + `BlockFractionLayout`; `Chart`/`BarChart`/`ScatterChart`/`LineChart` + curve interpolation; multi-series scenes. | Designed |
 | **5** (gated) | `Cursorial.Animation` + `BrushInterpolator`. | Designed |
 | **6** (gated) | Laid-out brush formatter (`BrushedStyle`). | Designed |

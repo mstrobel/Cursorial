@@ -90,7 +90,8 @@ public sealed class LineChart : IChart
 
         if (ShowMarkers || finite.Count == 1)
         {
-            var cells = new PlotProjector(area, xRange, yRange, 1, 1);
+            // Markers project through the same 2×4 grid (via ToCell) as the curve, so they sit on it.
+            var cells = new PlotProjector(area, xRange, yRange, 2, 4);
             string glyph = string.IsNullOrEmpty(MarkerGlyph) ? ChartMath.MarkerGlyph(Marker) : MarkerGlyph;
             foreach (var p in finite)
             {

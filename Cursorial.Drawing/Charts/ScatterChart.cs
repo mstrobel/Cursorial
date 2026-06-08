@@ -66,7 +66,9 @@ public sealed class ScatterChart : IChart
             return;
         }
 
-        var cells = new PlotProjector(area, xRange, yRange, 1, 1);
+        // Whole-cell markers project through the same 2×4 grid as braille (via ToCell), so a marker
+        // lands in the same cell a braille dot for that point would — keeping markers aligned to curves.
+        var cells = new PlotProjector(area, xRange, yRange, 2, 4);
         string glyph = custom ?? ChartMath.MarkerGlyph(Marker);
         foreach (var p in _points)
         {

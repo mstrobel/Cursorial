@@ -45,7 +45,7 @@ internal sealed class ChartsDemo : InteractiveDemo
         var amber = Color.FromRgb(235, 195, 90);
         var cyan = Color.FromRgb(120, 220, 232);
 
-        ctx.DrawText(1, 0, "Cursorial Charts — bars · sparklines · lines · scatter (Phase 4a–4c)", heading);
+        ctx.DrawText(1, 0, "Cursorial Charts — bars · sparklines · lines · scatter · axes (Phase 4a–4d)", heading);
 
         // Vertical bar chart (eighth-block fractional heights), with a one-cell gap between bars.
         ctx.DrawText(1, 2, "Vertical bars:", label);
@@ -61,17 +61,28 @@ internal sealed class ChartsDemo : InteractiveDemo
                                                startPoint: RelativePoint.Bottom, endPoint: RelativePoint.Top);
         new BarChart(Bars, gradient) { Gap = 1 }.Render(ctx, new Rect(1, 14, 26, 6));
 
-        // Right column: a braille line chart (monotone-cubic, no overshoot) + a scatter plot.
+        // Right column: an axed braille line chart (monotone-cubic, gridlines) + a scatter plot.
         if (ctx.Bounds.Columns > 44)
         {
-            int w = Math.Min(36, ctx.Bounds.Columns - 41);
+            int w = Math.Min(38, ctx.Bounds.Columns - 41);
 
-            ctx.DrawText(40, 2, "Line (monotone cubic):", label);
-            new LineChart(LineData, cyan) { Interpolation = CurveInterpolation.MonotoneCubic, ShowMarkers = true }
-                .Render(ctx, new Rect(40, 3, w, 7));
+            ctx.DrawText(40, 2, "Line (monotone cubic) + axes:", label);
+            var axes = new Axes(AxisRange.FromValues(Array.ConvertAll(LineData, p => p.X)),
+                                AxisRange.FromValues(Array.ConvertAll(LineData, p => p.Y)))
+            {
+                XAxis = new Axis { Gridlines = true },
+                YAxis = new Axis { Gridlines = true },
+                LabelColor = label,
+            };
+            var layout = axes.Render(ctx, new Rect(40, 3, w, 8));
+            new LineChart(LineData, cyan)
+            {
+                Interpolation = CurveInterpolation.MonotoneCubic, ShowMarkers = true,
+                XRange = layout.X, YRange = layout.Y,
+            }.Render(ctx, layout.Plot);
 
-            ctx.DrawText(40, 11, "Scatter:", label);
-            ctx.ScatterChart(new Rect(40, 12, w, 7), Scatter, amber);
+            ctx.DrawText(40, 12, "Scatter:", label);
+            ctx.ScatterChart(new Rect(40, 13, w, 6), Scatter, amber);
         }
     }
 

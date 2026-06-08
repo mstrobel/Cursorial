@@ -103,6 +103,30 @@ public class CurveTests
     }
 
     [Fact]
+    public void LineChart_Markers_AlignWithTheBrailleRow()
+    {
+        // Regression: markers must project through the same 2×4 grid as the braille (they used a 1×1
+        // grid that rounded a cell off). A flat line at y=1 in a tall plot → markers on the braille row.
+        var b = DrawHarness.Render(8, 6, ctx =>
+            new LineChart([new(0, 1), new(7, 1)], Color.FromRgb(0, 200, 0))
+            { XRange = new AxisRange(0, 7), YRange = new AxisRange(0, 10), ShowMarkers = true }
+            .Render(ctx, new Rect(0, 0, 8, 6)));
+
+        var brailleRows = new HashSet<int>();
+        var markerRows = new HashSet<int>();
+        for (int r = 0; r < 6; r++)
+            for (int c = 0; c < 8; c++)
+            {
+                string? g = b[c, r].Grapheme;
+                if (string.IsNullOrEmpty(g)) continue;
+                if (g[0] is >= '⠀' and <= '⣿') brailleRows.Add(r);
+                else if (g == "●") markerRows.Add(r);
+            }
+        Assert.NotEmpty(markerRows);
+        Assert.Subset(brailleRows, markerRows);   // every marker sits on a braille row
+    }
+
+    [Fact]
     public void LineChart_SinglePoint_DrawsAMarker()
     {
         var b = DrawHarness.Render(3, 3, ctx =>

@@ -41,4 +41,36 @@ public readonly record struct AxisRange(double Min, double Max)
 
     /// <summary>Map <paramref name="value"/> into [0, 1] across the range (0.5 for a degenerate range; unclamped).</summary>
     public double Normalize(double value) => IsDegenerate ? 0.5 : (value - Min) / Span;
+
+    /// <summary>
+    /// A "nice" version of this range plus its tick values, using Heckbert's nice-numbers (steps of
+    /// 1/2/5·10ⁿ) for at most <paramref name="maxTicks"/> ticks. The returned range is rounded outward to
+    /// the tick step so labels land on round numbers; pass it to the chart so axis and data align.
+    /// </summary>
+    public (AxisRange Range, double Step, IReadOnlyList<double> Ticks) Nice(int maxTicks = 5)
+    {
+        if (IsDegenerate || maxTicks < 2)
+            return (this, Span, [Min, Max]);
+
+        double step = NiceNum(NiceNum(Span, round: false) / (maxTicks - 1), round: true);
+        double niceMin = Math.Floor(Min / step) * step;
+        double niceMax = Math.Ceiling(Max / step) * step;
+
+        var ticks = new List<double>();
+        for (double t = niceMin; t <= niceMax + step * 0.5; t += step)
+            ticks.Add(Math.Round(t, 10));   // tame fp drift so labels read cleanly
+
+        return (new AxisRange(niceMin, niceMax), step, ticks);
+    }
+
+    // Heckbert "nice number": round (or take the ceiling of) a span to a 1/2/5·10ⁿ value.
+    private static double NiceNum(double range, bool round)
+    {
+        double exponent = Math.Floor(Math.Log10(range));
+        double fraction = range / Math.Pow(10, exponent);
+        double nice = round
+            ? (fraction < 1.5 ? 1.0 : fraction < 3.0 ? 2.0 : fraction < 7.0 ? 5.0 : 10.0)
+            : (fraction <= 1.0 ? 1.0 : fraction <= 2.0 ? 2.0 : fraction <= 5.0 ? 5.0 : 10.0);
+        return nice * Math.Pow(10, exponent);
+    }
 }

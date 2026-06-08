@@ -383,8 +383,10 @@ oracle-pinned**), `PlotProjector` (Y-flip isolated), `ScatterChart` (markers / b
 internal braille seam (`AddBrailleRecord` + `PlotBrailleSegment`/`PlotBrailleDot`). **4a + 4b + 4c:
 implemented + tested.** **Deferred:** `LineChart.FillArea` (block fill under the curve — needs the
 line-over-fill resolution: deferred fill or braille `Overwrite`); NaN-gap-as-break (4c skips non-finite
-points for now). **4d remains:** axes / ticks / labels (box strokes → junctions) + multi-series
-`ToLayers`.
+points for now). **4d.1 (axes): implemented + tested.** `AxisRange.Nice()` (Heckbert nice-number ticks),
+`Axis` config, `Axes` (Y-left + X-bottom box-strokes meeting at `└`, numeric tick labels, optional
+gridlines → junctions; returns the inset `PlotLayout` { Plot, nice X, nice Y } so axis + data align).
+**4d.2 remains:** multi-series `ToLayers` (per-series scenes composited for true per-series color).
 
 ---
 

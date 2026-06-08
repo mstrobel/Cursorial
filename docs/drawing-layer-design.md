@@ -325,30 +325,50 @@ Files: `Pen/{Pen,Pens,StrokeWeight,CornerStyle,LineDash,EndCap,JunctionMode,Glyp
 
 ---
 
-## 6. Shared accumulator + charts (Phase 4 — designed)
+## 6. Charts + sub-cell rasters (Phase 4 — design-panel finalized; 4a shipping)
 
-One generalized mechanism: a per-cell `uint` mask accumulated during a scene draw pass, resolved to a
-glyph on flush, with pluggable layouts:
+**Rejected §6's original "one generalized `uint` mask with pluggable layouts."** A design panel
+(+ judges) showed it conflates two things: *merge + glyph-resolve* (genuinely varies per family —
+MAX/dir, OR, MAX-level — and is trivial) with *deposit-conflict policy* (`StrokeAccumulator`'s
+figure → record → junction hierarchy, which is **box-only** and is the bulk of its complexity).
+Charts have **no junctions** (a line ORs dots, a bar MAXes a level). So a unified mask would drag
+box-only complexity everywhere and need a per-cell layout tag while *still* not merging across
+families — pure added state. **Decision: keep `StrokeAccumulator` untouched; add a `BrailleRaster`
+(OR-merge) and a stateless `BlockGlyphs` resolver; share only the emit/eviction tail.**
 
-| Layout | Mask | Merge | Used by |
+| Family | Mechanism | Merge | Glyphs |
 |---|---|---|---|
-| `BoxEdgeLayout` | 2 bits/dir × 4 dirs | MAX/dir | pen/junctions (§5) |
-| `BrailleDotLayout` | 8 dots (`U+2800 \| mask`) | OR | scatter / line / curve |
-| `BlockFractionLayout(axis)` | fill level 0–8 | MAX | bars |
+| Box (§5) | `StrokeAccumulator` (unchanged) | MAX/dir + junctions | U+2500–257F |
+| Braille (4b) | `BrailleRaster` (OR mask, deferred) | `dots \|=` | `0x2800 \| mask`, `bit(dx,dy)=dy<3?dx*3+dy:6+dx` |
+| Block (4a) | `BlockGlyphs` (stateless, write-once) | MAX level | lower `0x2580+L` / left `0x2590−L` |
 
-The accumulator stores the source `IBrush` per cell and samples (`ColorAt`) at flush (so a gradient
-brush resolves against the element bounds; sample-before-quantize preserved). `BlockFractionLayout`
-carries an axis, so it's instance-keyed (not a singleton).
+- **`BlockGlyphs`** — only the **lower** (vertical bars) and **left** (horizontal bars) ramps are
+  complete 8-step block families in Unicode, so `BlockAxis` is `{Vertical, Horizontal}` only (up/right
+  eighths are sparse). Codepoints oracle-verified + test-pinned. Block cells are written once per cell,
+  so no accumulator — bars/sparklines just `ctx.Set` the glyph (fg = sampled brush, transparent bg).
+- **Charts are draw-ops, not scenes:** `IChart.Render(ctx, in Rect area)`. "A chart is a scene" = the
+  consumer wraps it (`scene.Draw(ctx => chart.Render(ctx, area))`); `ToScene`/`ToLayers` (4d) layer
+  caching + true per-series color on top — **no `SceneCompositor` change**.
+- **Cross-layer flush order** (4b+, priority = order + the existing grapheme-eviction, no new field):
+  immediate text → braille data → block bars → box axes.
+- **Curves (4c):** Linear / **centripetal** Catmull-Rom (α=0.5 — uniform overshoots/cusps) /
+  **Fritsch–Carlson monotone-cubic**. Correction to the old text: FC's precondition is **strictly-
+  increasing X** (a line-graph tool), not "monotonic data"; on unsorted X it sorts / falls back, never
+  throws. Diagonal `DrawLine` (currently throws) routes into the braille raster (Bresenham, no AA).
+- **`Rect` is `ushort`/non-negative** (throws), but sub-cell projection goes transiently negative → a
+  plain-`int` `SubCell`/`PointD` value type + a single clamp chokepoint, and a `PlotProjector` that
+  isolates the Y-flip in one place.
+- **Multi-series (4d):** single-surface last-writer-wins color (cheap default) vs `ToLayers` →
+  per-series scenes composited by the existing `SceneCompositor` (true per-series color, no compositor
+  change).
 
-**Charts are scenes** (inheriting the cached-raster tier):
-- **Bars** — eighth-block fractional heights, brush fill.
-- **Scatter** — markers / Braille dots, per-series brush.
-- **Line/curve** — rasterized into the Braille 2×4 grid; interpolation linear / Catmull-Rom /
-  **monotone-cubic (Fritsch–Carlson)** preferred for monotonic data (no overshoot).
-- **Axes** are ordinary `Pen` strokes through the same box accumulator (ticks/corners resolve as
-  junctions).
-- **Multi-series color:** a Braille cell has one foreground, so **per-series scenes composited** is
-  the default (true per-series color); last-writer-wins single accumulator is the cheaper opt-in.
+**Sub-phasing:** **4a** = bars + sparklines + the chart model (`BlockGlyphs`, `AxisRange`, `IChart`,
+`BarChart`, `Sparkline`, `ChartDrawingExtensions`) — **shipping, no braille/curves**; **4b** =
+`BrailleRaster` + diagonal `DrawLine` + the `EmitDecorationCell` seam + four-stage flush; **4c** =
+`ScatterChart`/`LineChart` + curve interpolation + area-fill; **4d** = axes/ticks/labels (box strokes →
+junctions) + multi-series `ToLayers`. **4a status: implemented + tested** (26 chart tests; ramps
+oracle-pinned). Bars are non-negative bottom/left-anchored in 4a (signed bars need the sparse ramps —
+deferred).
 
 ---
 

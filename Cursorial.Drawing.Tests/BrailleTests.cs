@@ -43,7 +43,7 @@ public class BrailleTests
         raster.Flush((_, _, d, r) => { dots = d; record = r; });
 
         Assert.Equal(0b0000_1001, dots);   // bit0 | bit3
-        Assert.Equal(Brushes.Blue.Color, ((SolidColorBrush) record.Brush).Color);   // last writer wins color
+        Assert.Equal(Brushes.Blue.Color, Assert.IsType<SolidColorBrush>(record.Brush).Color);   // last writer wins color
     }
 
     [Fact]

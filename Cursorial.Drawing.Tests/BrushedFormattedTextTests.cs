@@ -109,6 +109,27 @@ public class BrushedFormattedTextTests
     }
 
     [Fact]
+    public void Brush_AppliesOverADocumentDefaultForeground()
+    {
+        // Regression: a document whose DefaultStyle sets a foreground must still receive the brush on its
+        // inherited text — the brush overrides the document default; only a run's OWN explicit color wins.
+        var gray = Color.FromRgb(180, 180, 180);
+        var doc = new RichTextBuilder(Style.Default.WithForeground(gray)).Run("aaaa bbbb").Build();
+        var ft = new TextFormatter().Format(doc, 9);
+
+        var b = DrawHarness.Render(12, 3, ctx =>
+            ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 3),
+                new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right),
+                OutputCapabilities.None));
+
+        var left = b[0, 0].Style.Foreground;
+        var right = b[8, 0].Style.Foreground;
+        Assert.NotEqual(gray, left);                       // the brush applied — NOT the document default
+        Assert.True(left.Red > left.Blue, $"left {left}");
+        Assert.True(right.Blue > right.Red, $"right {right}");
+    }
+
+    [Fact]
     public void ExplicitForeground_WinsOverTheBrush()
     {
         var green = Color.FromRgb(0, 200, 0);

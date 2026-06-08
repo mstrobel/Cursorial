@@ -142,8 +142,11 @@ public sealed class DrawingContext
     /// image / icon that <em>degrades to a glyph</em> picks up the gradient too.
     /// </summary>
     /// <remarks>
-    /// The brush colors only cells whose foreground is <b>unset</b> (<see cref="Color.Default"/>); an explicit
-    /// foreground — a markup color, a content's own fallback color — <b>wins</b> over the document brush.
+    /// The brush colors cells that <b>inherited</b> the document foreground — i.e. whose foreground is unset
+    /// (<see cref="Color.Default"/>) or equals the document's <see cref="FormattedText.DefaultStyle"/>
+    /// foreground. A run's <em>own</em> explicit foreground (a markup color, a content's fallback color — one
+    /// that differs from the document default) <b>wins</b> over the brush. So a document that sets a default
+    /// text color still receives the gradient, while individually-colored runs keep their color.
     /// <paramref name="capabilities"/> drives protocol selection for embedded content; pass the session's
     /// negotiated capabilities. (Per-run <c>BrushedStyle</c> and inline 1-D wrap-invariant sampling arrive in a
     /// later slice; this is the single document/block brush.)
@@ -154,11 +157,17 @@ public sealed class DrawingContext
         ArgumentNullException.ThrowIfNull(brush);
         ArgumentNullException.ThrowIfNull(capabilities);
 
+        var documentForeground = text.DefaultStyle.Foreground;
+
         text.Paint(_surface, bounds, capabilities,
                    resolver: (in BrushedTextContext ctx) =>
-                       ctx.BaseStyle.Foreground.IsDefault
+                   {
+                       var fg = ctx.BaseStyle.Foreground;
+                       bool inherited = fg.IsDefault || fg == documentForeground;
+                       return inherited
                            ? ctx.BaseStyle.WithForeground(brush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
-                           : ctx.BaseStyle);
+                           : ctx.BaseStyle;
+                   });
     }
 
     // ---- Figures -------------------------------------------------------------------------------

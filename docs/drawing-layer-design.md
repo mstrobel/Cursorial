@@ -469,7 +469,9 @@ Split mechanism vs orchestration:
 `DrawingContext.DrawFormattedText(ft, bounds, brush, caps)`, a single document brush sampled per block (2-D),
 routed through **every** block/run type: text + rules per cell, FIGlet / sized text / inline content one color
 at their center — so a glyph an image/icon **degrades to** picks up the gradient. Precedence: the brush colors
-only cells whose foreground is unset; an explicit foreground wins. **Pending:** per-run `BrushedStyle` (B) ·
+cells that inherited the document default foreground (unset, or equal to `FormattedText.DefaultStyle`'s
+foreground); a run's own *differing* color wins — so a document that sets a default text color still receives
+the gradient. A `brushtext` demo shows it. **Pending:** per-run `BrushedStyle` (B) ·
 true inline 1-D wrap-invariant sampling (A) · images in scenes (6b).
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).

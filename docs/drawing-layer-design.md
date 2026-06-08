@@ -347,8 +347,9 @@ families — pure added state. **Decision: keep `StrokeAccumulator` untouched; a
   eighths are sparse). Codepoints oracle-verified + test-pinned. Block cells are written once per cell,
   so no accumulator — bars/sparklines just `ctx.Set` the glyph (fg = sampled brush, transparent bg).
 - **Charts are draw-ops, not scenes:** `IChart.Render(ctx, in Rect area)`. "A chart is a scene" = the
-  consumer wraps it (`scene.Draw(ctx => chart.Render(ctx, area))`); `ToScene`/`ToLayers` (4d) layer
-  caching + true per-series color on top — **no `SceneCompositor` change**.
+  consumer wraps it (`scene.Draw(ctx => chart.Render(ctx, area))`). A `ToLayers` layer-caching path was
+  explored for multi-series and **cut** — it gave no per-series-color benefit over single-surface `Render`
+  (see §6); it returns with `LineChart.FillArea`, where per-layer *background* compositing pays off.
 - **Cross-layer flush order** (priority = write order + the existing grapheme-eviction, no new field).
   **As built:** immediate writes (text, fills, **and block bars** — bars are write-once `ctx.Set`, not a
   deferred stage) land first; then `FlushDeferred` runs **braille, then box**. So realized priority is
@@ -363,15 +364,16 @@ families — pure added state. **Decision: keep `StrokeAccumulator` untouched; a
 - **`Rect` is `ushort`/non-negative** (throws), but sub-cell projection goes transiently negative → a
   plain-`int` `SubCell`/`PointD` value type + a single clamp chokepoint, and a `PlotProjector` that
   isolates the Y-flip in one place.
-- **Multi-series (4d):** single-surface last-writer-wins color (cheap default) vs `ToLayers` →
-  per-series scenes composited by the existing `SceneCompositor` (true per-series color, no compositor
-  change).
+- **Multi-series (4d):** single-surface, last-writer-wins color at crossings (each series otherwise keeps
+  its own color). A per-series `ToLayers` path was prototyped and **cut**: opaque single-width braille means
+  the top glyph *replaces* the lower one, so crossings matched single-surface `Render` (no color mix —
+  blending can't change that) while losing the lower series' dots (see §6).
 
 **Sub-phasing:** **4a** = bars + sparklines + the chart model (`BlockGlyphs`, `AxisRange`, `IChart`,
 `BarChart`, `Sparkline`, `ChartDrawingExtensions`) — **shipping, no braille/curves**; **4b** =
 `BrailleRaster` + diagonal `DrawLine` + the `EmitDecorationCell` seam + four-stage flush; **4c** =
 `ScatterChart`/`LineChart` + curve interpolation + area-fill; **4d** = axes/ticks/labels (box strokes →
-junctions) + multi-series `ToLayers`. **4a + 4b: implemented + tested.** 4a = block charts (ramps
+junctions) + multi-series line charts (`MultiLineChart`). **4a + 4b: implemented + tested.** 4a = block charts (ramps
 oracle-pinned; bars non-negative bottom/left-anchored — signed bars deferred). 4b = `BrailleGlyphs`
 (dot→bit `dy<3?dx*3+dy:6+dx`, oracle-pinned) + `BrailleRaster` (OR-merge, deferred brush, last-writer
 color) + diagonal `DrawLine` (Bresenham at 2×4 sub-cell res; weight/corners/dash/cap N/A for diagonals)
@@ -386,7 +388,21 @@ line-over-fill resolution: deferred fill or braille `Overwrite`); NaN-gap-as-bre
 points for now). **4d.1 (axes): implemented + tested.** `AxisRange.Nice()` (Heckbert nice-number ticks),
 `Axis` config, `Axes` (Y-left + X-bottom box-strokes meeting at `└`, numeric tick labels, optional
 gridlines → junctions; returns the inset `PlotLayout` { Plot, nice X, nice Y } so axis + data align).
-**4d.2 remains:** multi-series `ToLayers` (per-series scenes composited for true per-series color).
+4d.2 = `ChartSeries` + `MultiLineChart`: single-surface `Render` — each series keeps its own color; where two
+series cross a cell their dots OR-merge into one glyph painted in the later series' color (a terminal cell has
+one foreground). A per-series-scene `ToLayers` path was prototyped and **cut** (re-add it with `FillArea`,
+below). Empirical finding (probe, code-cited): with opaque single-width braille, `SceneCompositor.CompositeCell`'s
+single-width-glyph branch *replaces* the lower glyph and its color with the top layer's via a raw-indexer write
+that **bypasses the blend stack**, so crossings resolve to the top series' color **identically to `Render`** — no
+color benefit, and `ToLayers` is in fact *worse* at crossings (it drops the lower series' dots). Blending/alpha
+can't rescue it: that branch composites the top foreground only against the merged *background*, never the lower
+series' *foreground* — alpha just darkens the top color toward the backdrop. Per-layer compositing earns its keep
+only for translucent **filled** regions: backgrounds *do* alpha-blend across layers (the same method's
+background-composite step, RGB-on-RGB), so red-fill ∩ blue-fill → genuine purple. That is the real future home for `ToLayers`, gated on
+`FillArea`. **Phase 4 (a–d) complete + tested** (186 `Cursorial.Drawing.Tests`; curve + glyph tables
+oracle-pinned; axes/markers/gridlines share the 2×4 projector so everything aligns). **Remaining enhancements
+(deferred, not blocking):** `LineChart.FillArea` (+ its per-layer `ToLayers` compositing for translucent
+area/heatmap overlaps), NaN-gap-as-break, signed bars, bar-chart category axes.
 
 ---
 
@@ -445,7 +461,9 @@ Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[
   is a deferred opt-in.
 - **Markup gradients:** deferred (solid-only markup in v1).
 - **Wide-glyph collision:** **evict** by default (text beats decoration), opt-in overwrite.
-- **Multi-series Braille color:** **per-series scenes** by default, last-writer-wins opt-in.
+- **Multi-series Braille color:** **single-surface, last-writer-wins** at crossings. (A per-series-scene
+  `ToLayers` path was prototyped and cut — opaque single-width braille gives it no per-series-color benefit;
+  it returns with `LineChart.FillArea`, where per-layer background compositing pays off. See §6.)
 - **Base-layer form:** ship **both** (uniform `Style` + stored `CellBuffer`); default the loop to
   uniform-fill.
 - **Animation packaging:** a separate `Cursorial.Animation` project, decided at Phase 5.

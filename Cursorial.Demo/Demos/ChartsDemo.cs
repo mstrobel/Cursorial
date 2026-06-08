@@ -66,16 +66,18 @@ internal sealed class ChartsDemo : InteractiveDemo
         {
             int w = Math.Min(38, ctx.Bounds.Columns - 41);
 
-            ctx.DrawText(40, 2, "Line (monotone cubic) + axes:", label);
-            var axes = new Axes(AxisRange.FromValues(Array.ConvertAll(LineData, p => p.X)),
-                                AxisRange.FromValues(Array.ConvertAll(LineData, p => p.Y)))
+            ctx.DrawText(40, 2, "Lines (multi-series) + axes:", label);
+            var magenta = Color.FromRgb(230, 120, 200);
+            ChartSeries[] series = [new ChartSeries(LineData, cyan), new ChartSeries(LineData2, magenta)];
+            var (ux, uy) = new MultiLineChart(series).ResolveRange();
+            var axes = new Axes(ux, uy)
             {
                 XAxis = new Axis { Gridlines = true },
                 YAxis = new Axis { Gridlines = true },
                 LabelColor = label,
             };
             var layout = axes.Render(ctx, new Rect(40, 3, w, 8));
-            new LineChart(LineData, cyan)
+            new MultiLineChart(series)
             {
                 Interpolation = CurveInterpolation.MonotoneCubic, ShowMarkers = true,
                 XRange = layout.X, YRange = layout.Y,
@@ -88,6 +90,9 @@ internal sealed class ChartsDemo : InteractiveDemo
 
     private static readonly PointD[] LineData =
         [new(0, 1), new(1, 1), new(2, 4), new(3, 6), new(4, 6), new(5, 9), new(6, 9), new(7, 10)];
+
+    private static readonly PointD[] LineData2 =
+        [new(0, 8), new(1, 6), new(2, 7), new(3, 3), new(4, 5), new(5, 2), new(6, 3), new(7, 1)];
 
     private static readonly PointD[] Scatter =
     [

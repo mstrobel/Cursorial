@@ -1,6 +1,7 @@
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -198,6 +199,26 @@ public sealed class DrawingContext
                            ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
                            : ctx.BaseStyle;
                    });
+    }
+
+    /// <summary>
+    /// Paint <paramref name="content"/> (an image, icon, sized text, or any <see cref="IContent"/>) into the
+    /// scene at <paramref name="bounds"/>. Content that renders via a graphics protocol registers an
+    /// out-of-band fragment on the scene buffer; <see cref="SceneCompositor"/> carries that fragment onto the
+    /// composite target (offset-translated) so it renders. Content that falls back to glyphs (no protocol)
+    /// paints cells like any other draw. <paramref name="capabilities"/> selects the protocol — pass the
+    /// session's negotiated capabilities.
+    /// </summary>
+    /// <remarks>
+    /// Fragments are positioned in cell units, so an integer composite offset slides them with the scene.
+    /// Per-protocol clipping and opacity have hard terminal limits (see design doc §8): cell-layer images
+    /// (Sixel / iTerm2) can't be made translucent, and clipping is a later refinement.
+    /// </remarks>
+    public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(capabilities);
+        content.Paint(_surface, bounds, style: default, capabilities);
     }
 
     // ---- Figures -------------------------------------------------------------------------------

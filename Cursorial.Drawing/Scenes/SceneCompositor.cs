@@ -36,6 +36,10 @@ public sealed class SceneCompositor
     private long[] _lastVersions = [];
     private CompositeParameters[] _lastParams = [];
 
+    // Target anchors of the fragments this compositor registered last work-frame — removed and rebuilt each
+    // work-frame so a scene's fragments (images, sized text) ride the cell pass and move/disappear correctly.
+    private readonly List<(int Column, int Row)> _fragmentAnchors = [];
+
     /// <summary>Composite over a uniform base fill (default: <see cref="Style.Default"/>).</summary>
     public SceneCompositor(Style baseStyle = default) => _baseStyle = baseStyle;
 
@@ -127,9 +131,44 @@ public sealed class SceneCompositor
                 CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode);
         }
 
+        PassThroughFragments(layers, target);
+
         target.MarkDirty(new Rect(colStart, rowStart, colEnd - colStart, rowEnd - rowStart));
         StashState(layers);
         return true;
+    }
+
+    /// <summary>
+    /// Carry each scene's out-of-band fragments (images, sized text) onto the target so the frame renderer
+    /// emits them. Removes the fragments we registered last work-frame, then re-registers each layer's
+    /// fragments at the offset-translated anchor (skipping any outside the layer's clip). Fragments are sparse
+    /// and the renderer diffs them by Key + anchor, so a stable image doesn't re-emit; a moved one (offset
+    /// change) erases at the old anchor and emits at the new. Layer semantics (cell-cover vs overlay) are the
+    /// renderer's concern, driven off the target buffer — the compositor just relocates the anchor. (Per-image
+    /// clipping at sub-cell granularity is a later refinement; here a fragment is all-or-nothing vs the clip.)
+    /// </summary>
+    private void PassThroughFragments(ReadOnlySpan<SceneLayer> layers, in CellBufferView target)
+    {
+        foreach (var (column, row) in _fragmentAnchors)
+            target.RemoveFragment(column, row);
+        _fragmentAnchors.Clear();
+
+        for (int li = 0; li < layers.Length; li++)
+        {
+            var p = layers[li].Parameters;
+            var sceneBuffer = layers[li].Scene.Buffer;
+            if (sceneBuffer.Fragments.Count == 0) continue;
+
+            foreach (var (anchor, entry) in sceneBuffer.Fragments)
+            {
+                int tc = anchor.Column + p.OffsetColumn;
+                int tr = anchor.Row + p.OffsetRow;
+                if (p.Clip is { } clip && (tc < clip.Column || tc >= clip.ColumnEnd || tr < clip.Row || tr >= clip.RowEnd))
+                    continue;
+                if (target.AddFragment(tc, tr, entry.Fragment, entry.AnchorStyle))
+                    _fragmentAnchors.Add((tc, tr));
+            }
+        }
     }
 
     private void ResetCellToBase(in CellBufferView target, int column, int row) =>

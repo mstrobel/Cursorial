@@ -476,8 +476,13 @@ the gradient. A `brushtext` demo shows it. **B done** — per-run brushes: a `Br
 wrap-splits onto each `FormattedTextRun`); `RichTextBuilder.BrushedRun(text, brushedStyle)` authors it;
 `DrawFormattedText` samples a run's brush at its scope (Inline = the run's piece rect / Block / Document) and it
 **wins over** the document brush, with a per-run-only `DrawFormattedText(ft, bounds, caps)` overload.
-**Pending:** true inline 1-D wrap-invariant sampling (A — a wrapped run currently samples per line-piece) ·
-images in scenes (6b).
+**6b.1 done** — images in scenes: `SceneCompositor` now carries each scene's out-of-band fragments onto the
+target (offset-translated anchors; tracked + rebuilt each work-frame so they move/disappear correctly; the
+renderer's Key+anchor diff keeps stable ones from re-emitting; layer semantics handled by the renderer off the
+target). `DrawingContext.DrawContent(rect, IContent, caps)` authors an image / icon / sized text into a scene.
+Verified across **Kitty / iTerm2 / Sixel** (an `imagescene` demo). **Pending:** true inline 1-D wrap-invariant
+sampling (A — a wrapped run currently samples per line-piece) · per-protocol image clipping (6b.2 — Sixel
+pixel-crop / Kitty source-rect / iTerm2 all-or-nothing; a fragment is all-or-nothing vs the clip today).
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
 **Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
@@ -587,7 +592,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawImage`. | **6a + per-run (B) done**; wrap-invariance (A) / images (6b) pending (see §8) |
+| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawContent`. | **6a + per-run (B) + 6b.1 images done**; wrap-invariance (A) / image clipping (6b.2) pending (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's

@@ -134,9 +134,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         }
     }
 
-    /// <summary>Resolve one cell's style via the optional brush resolver (or the flat <paramref name="baseStyle"/>).</summary>
+    /// <summary>
+    /// Resolve one cell's style via the optional brush resolver (or the flat <paramref name="baseStyle"/>).
+    /// Used by the single-Style elements (rule / figlet / sized / content), which carry no per-run tag — so the
+    /// run rect equals the block and the tag is null.
+    /// </summary>
     private static Style ResolveStyle(BrushedTextResolver? resolver, in Style baseStyle, int column, int row, in Rect block)
-        => resolver is null ? baseStyle : resolver(new BrushedTextContext(baseStyle, column, row, block));
+        => resolver is null ? baseStyle : resolver(new BrushedTextContext(baseStyle, column, row, block, block, tag: null));
 
     private static void PaintParagraph(
         FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
@@ -158,13 +162,18 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 {
                     case FormattedTextRun text:
                     {
+                        // The run's piece rect on this line — the inline-scoped sampling bounds; its Tag selects
+                        // a per-run brush. Both are constant within the run, so compute once.
+                        var runRect = new Rect(cursor, row + i, Math.Max(1, text.CellWidth), 1);
                         var enumerator = text.Text.GetGraphemeEnumerator();
                         while (enumerator.MoveNext())
                         {
                             var grapheme = enumerator.Current;
-                            // Resolver (when present) recolors per cell — block-scoped 2-D sampling. Width is
-                            // grapheme-driven, so a substituted style is layout-safe.
-                            var style = ResolveStyle(resolver, text.Style, cursor, row + i, blockRect);
+                            // Resolver (when present) recolors per cell. Width is grapheme-driven, so a
+                            // substituted style is layout-safe.
+                            var style = resolver is null
+                                ? text.Style
+                                : resolver(new BrushedTextContext(text.Style, cursor, row + i, blockRect, runRect, text.Tag));
                             int width = buffer.Set(cursor, row + i, grapheme.ToString(), style);
                             cursor += width;
                         }
@@ -320,6 +329,13 @@ public sealed record FormattedTextRun : FormattedRun
     public required Style Style { get; init; }
 
     public string? Hyperlink { get; init; }
+
+    /// <summary>
+    /// Opaque metadata carried over from the source <see cref="TextRun.Tag"/> (preserved across wrap-splits).
+    /// Rendering never interprets it; a higher layer (Drawing) reads it to brush-color the run. Null for
+    /// ordinary runs.
+    /// </summary>
+    public object? Tag { get; init; }
 
     public void Deconstruct(out string Text, out Style Style, out string? Hyperlink)
     {

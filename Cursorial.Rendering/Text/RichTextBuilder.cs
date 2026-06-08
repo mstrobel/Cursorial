@@ -110,6 +110,19 @@ public sealed class RichTextBuilder
         return this;
     }
 
+    /// <summary>
+    /// Append a text run with an explicit style and an opaque <paramref name="tag"/> — preserved through
+    /// layout onto every derived <see cref="FormattedTextRun"/>. A higher layer (Drawing) uses it to attach a
+    /// brush to the run; Rendering never interprets it.
+    /// </summary>
+    public RichTextBuilder Run(string text, in Style style, object? tag)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length == 0) return this;
+        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, tag));
+        return this;
+    }
+
     /// <summary>Append a hard line break inside the current paragraph.</summary>
     public RichTextBuilder LineBreak()
     {

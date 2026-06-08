@@ -471,8 +471,13 @@ routed through **every** block/run type: text + rules per cell, FIGlet / sized t
 at their center — so a glyph an image/icon **degrades to** picks up the gradient. Precedence: the brush colors
 cells that inherited the document default foreground (unset, or equal to `FormattedText.DefaultStyle`'s
 foreground); a run's own *differing* color wins — so a document that sets a default text color still receives
-the gradient. A `brushtext` demo shows it. **Pending:** per-run `BrushedStyle` (B) ·
-true inline 1-D wrap-invariant sampling (A) · images in scenes (6b).
+the gradient. A `brushtext` demo shows it. **B done** — per-run brushes: a `BrushedStyle` (`IBrush` +
+`DeclarationScope` Inline/Block/Document) rides the source `TextRun`'s opaque `Tag` (propagated through
+wrap-splits onto each `FormattedTextRun`); `RichTextBuilder.BrushedRun(text, brushedStyle)` authors it;
+`DrawFormattedText` samples a run's brush at its scope (Inline = the run's piece rect / Block / Document) and it
+**wins over** the document brush, with a per-run-only `DrawFormattedText(ft, bounds, caps)` overload.
+**Pending:** true inline 1-D wrap-invariant sampling (A — a wrapped run currently samples per line-piece) ·
+images in scenes (6b).
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
 **Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
@@ -582,7 +587,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawImage`. | **6a.1 + 6a.2 done**; per-run / wrap / images pending (see §8) |
+| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawImage`. | **6a + per-run (B) done**; wrap-invariance (A) / images (6b) pending (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's

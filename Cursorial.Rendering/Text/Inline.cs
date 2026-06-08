@@ -32,12 +32,19 @@ public abstract record Inline;
 /// closing once at the end of the original run causes the link target to be lost on the second
 /// line.
 /// </para>
+/// <para>
+/// <c>Tag</c> is opaque per-run metadata, preserved through layout (including wrap-splits) onto every
+/// <see cref="FormattedTextRun"/> derived from this run. Rendering treats it as an opaque passenger; a higher
+/// layer (e.g. <c>Cursorial.Drawing</c>) uses it to attach a brush to the run without <c>IBrush</c> entering
+/// <see cref="Style"/>. Null for ordinary runs.
+/// </para>
 /// </remarks>
 public sealed record TextRun(
     string Text,
     Style Style = default,
     IGlyphMap? Map = null,
-    string? Hyperlink = null) : Inline;
+    string? Hyperlink = null,
+    object? Tag = null) : Inline;
 
 /// <summary>
 /// A hard line break inside a paragraph. Ends the current line; subsequent inlines flow onto

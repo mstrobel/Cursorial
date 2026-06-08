@@ -240,7 +240,7 @@ public sealed class TextFormatter
             void EmitFragment()
             {
                 if (fragmentBuilder.Length == 0) return;
-                _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink));
+                _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink) { Tag = run.Tag });
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
                 fragmentWidth = 0;
@@ -294,7 +294,7 @@ public sealed class TextFormatter
                         EmitFragment();
                         FlushWord();
                         _atoms.Add(new SpaceAtom(
-                            new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink),
+                            new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink) { Tag = run.Tag },
                             outer.TabWidth));
                         continue;
                     }
@@ -305,7 +305,7 @@ public sealed class TextFormatter
                         FlushWord();
                         int spaceWidth = GraphemeWidth.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
-                            new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink),
+                            new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink) { Tag = run.Tag },
                             spaceWidth));
                         continue;
                     }
@@ -622,12 +622,12 @@ public sealed class TextFormatter
 
             if (headFragment.Length > 0)
             {
-                headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink));
+                headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink) { Tag = text.Tag });
                 headWidth += headFragmentWidth;
             }
 
             if (tailFragment.Length > 0)
-                tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink));
+                tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink) { Tag = text.Tag });
         }
 
         var head = new WordAtom(headRuns.ToImmutable(), headWidth, ImmutableArray<SoftBreakPoint>.Empty);

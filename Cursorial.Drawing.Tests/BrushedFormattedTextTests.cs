@@ -142,6 +142,59 @@ public class BrushedFormattedTextTests
         Assert.Equal(green, b[0, 0].Style.Foreground);   // explicit green is kept; the red brush does NOT override
     }
 
+    // ---- B (per-run BrushedStyle) ----------------------------------------------------------------
+
+    private static LinearGradientBrush LeftToRight() =>
+        new(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right);
+
+    [Fact]
+    public void PerRunBrush_InlineScope_SamplesTheRunNotTheBlock()
+    {
+        // "xxxxxxxxxxAB" on one line; "AB" carries an Inline-scoped L→R gradient. Inline scope sweeps AB's own
+        // 2-cell rect (A red, B blue); block scope would put A near the right of the block (blue). Per-run-only
+        // overload, so the leading x's stay flat.
+        var bs = new BrushedStyle(LeftToRight());   // default Inline
+        var doc = new RichTextBuilder().Run("xxxxxxxxxx").BrushedRun("AB", bs).Build();
+        var ft = new TextFormatter().Format(doc, 14);
+
+        var b = DrawHarness.Render(14, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 14, 2), OutputCapabilities.None));
+
+        Assert.Equal("A", b[10, 0].Grapheme);
+        Assert.Equal("B", b[11, 0].Grapheme);
+        var a = b[10, 0].Style.Foreground;
+        var bb = b[11, 0].Style.Foreground;
+        Assert.True(a.Red > a.Blue, $"A should be red (inline scope), was {a}");
+        Assert.True(bb.Blue > bb.Red, $"B should be blue, was {bb}");
+    }
+
+    [Fact]
+    public void PerRunBrush_BlockScope_SamplesTheWholeBlock()
+    {
+        // Same layout, but Block scope: "AB" sits near the right of the ~12-wide block, so it reads blue.
+        var bs = new BrushedStyle(LeftToRight(), DeclarationScope.Block);
+        var doc = new RichTextBuilder().Run("xxxxxxxxxx").BrushedRun("AB", bs).Build();
+        var ft = new TextFormatter().Format(doc, 14);
+
+        var b = DrawHarness.Render(14, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 14, 2), OutputCapabilities.None));
+
+        var a = b[10, 0].Style.Foreground;
+        Assert.True(a.Blue > a.Red, $"A should be blue (block scope, right side), was {a}");
+    }
+
+    [Fact]
+    public void PerRunBrush_WinsOverTheDocumentBrush()
+    {
+        var green = Color.FromRgb(0, 200, 0);
+        var doc = new RichTextBuilder().Run("gg ").BrushedRun("RR", new BrushedStyle(new SolidColorBrush(Red))).Build();
+        var ft = new TextFormatter().Format(doc, 14);
+
+        var b = DrawHarness.Render(14, 2, ctx =>
+            ctx.DrawFormattedText(ft, new Rect(0, 0, 14, 2), new SolidColorBrush(green), OutputCapabilities.None));
+
+        Assert.Equal(green, b[0, 0].Style.Foreground);   // 'g' — untagged → document brush
+        Assert.Equal(Red, b[3, 0].Style.Foreground);     // 'R' — per-run brush wins over the document brush
+    }
+
     // A minimal IContent that paints a single glyph with whatever style it's given — stands in for an
     // image/icon's glyph fallback so we can verify it inherits the document brush.
     private sealed class GlyphContent(string glyph) : IContent

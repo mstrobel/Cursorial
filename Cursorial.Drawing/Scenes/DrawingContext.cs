@@ -153,19 +153,49 @@ public sealed class DrawingContext
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities)
     {
-        ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(brush);
+        DrawFormattedCore(text, bounds, capabilities, brush);
+    }
+
+    /// <summary>
+    /// Paint <paramref name="text"/> coloring only its <b>per-run</b> brushes (declared via
+    /// <c>BrushedRun</c>) — runs without a brush keep their formatted style. Use the
+    /// <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/> overload to add a
+    /// document-wide brush underneath the per-run ones.
+    /// </summary>
+    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities)
+        => DrawFormattedCore(text, bounds, capabilities, documentBrush: null);
+
+    private void DrawFormattedCore(FormattedText text, in Rect bounds, OutputCapabilities capabilities, IBrush? documentBrush)
+    {
+        ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(capabilities);
 
         var documentForeground = text.DefaultStyle.Foreground;
+        Rect docBounds = bounds;   // can't capture an `in` parameter in the resolver closure
 
         text.Paint(_surface, bounds, capabilities,
                    resolver: (in BrushedTextContext ctx) =>
                    {
+                       // A run that declares its own brush wins, sampled at its declaration scope.
+                       if (ctx.Tag is BrushedStyle bs)
+                       {
+                           var scope = bs.Scope switch
+                           {
+                               DeclarationScope.Block    => ctx.Block,
+                               DeclarationScope.Document => docBounds,
+                               _                         => ctx.Run,   // Inline (default)
+                           };
+                           return ctx.BaseStyle.WithForeground(bs.Foreground.ColorAt(ctx.Column, ctx.Row, scope));
+                       }
+
+                       // Otherwise the document brush (if any) colors cells that inherited the document
+                       // foreground; an explicit run color (differing from the default) wins.
+                       if (documentBrush is null) return ctx.BaseStyle;
                        var fg = ctx.BaseStyle.Foreground;
                        bool inherited = fg.IsDefault || fg == documentForeground;
                        return inherited
-                           ? ctx.BaseStyle.WithForeground(brush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
+                           ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
                            : ctx.BaseStyle;
                    });
     }

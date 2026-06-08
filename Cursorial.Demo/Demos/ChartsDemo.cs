@@ -43,8 +43,9 @@ internal sealed class ChartsDemo : InteractiveDemo
         var label = Color.FromRgb(150, 160, 200);
         var green = Color.FromRgb(80, 210, 110);
         var amber = Color.FromRgb(235, 195, 90);
+        var cyan = Color.FromRgb(120, 220, 232);
 
-        ctx.DrawText(1, 0, "Cursorial Charts — bars · sparklines (Phase 4a)", heading);
+        ctx.DrawText(1, 0, "Cursorial Charts — bars · sparklines · lines · scatter (Phase 4a–4c)", heading);
 
         // Vertical bar chart (eighth-block fractional heights), with a one-cell gap between bars.
         ctx.DrawText(1, 2, "Vertical bars:", label);
@@ -60,14 +61,28 @@ internal sealed class ChartsDemo : InteractiveDemo
                                                startPoint: RelativePoint.Bottom, endPoint: RelativePoint.Top);
         new BarChart(Bars, gradient) { Gap = 1 }.Render(ctx, new Rect(1, 14, 26, 6));
 
-        // Horizontal bars on the right (left-anchored, left-eighth blocks).
-        if (ctx.Bounds.Columns > 34)
+        // Right column: a braille line chart (monotone-cubic, no overshoot) + a scatter plot.
+        if (ctx.Bounds.Columns > 44)
         {
-            ctx.DrawText(31, 2, "Horizontal bars:", label);
-            new BarChart(Bars, green) { Orientation = BarOrientation.Horizontal, Gap = 1 }
-                .Render(ctx, new Rect(31, 3, Math.Min(24, ctx.Bounds.Columns - 32), 16));
+            int w = Math.Min(36, ctx.Bounds.Columns - 41);
+
+            ctx.DrawText(40, 2, "Line (monotone cubic):", label);
+            new LineChart(LineData, cyan) { Interpolation = CurveInterpolation.MonotoneCubic, ShowMarkers = true }
+                .Render(ctx, new Rect(40, 3, w, 7));
+
+            ctx.DrawText(40, 11, "Scatter:", label);
+            ctx.ScatterChart(new Rect(40, 12, w, 7), Scatter, amber);
         }
     }
+
+    private static readonly PointD[] LineData =
+        [new(0, 1), new(1, 1), new(2, 4), new(3, 6), new(4, 6), new(5, 9), new(6, 9), new(7, 10)];
+
+    private static readonly PointD[] Scatter =
+    [
+        new(0, 2), new(1, 5), new(2, 3), new(3, 8), new(4, 6), new(5, 9),
+        new(6, 4), new(7, 7), new(2, 7), new(5, 2), new(6, 8), new(3, 1),
+    ];
 
     protected override void RenderFrame(long frame) =>
         _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());

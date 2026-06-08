@@ -376,7 +376,15 @@ oracle-pinned; bars non-negative bottom/left-anchored — signed bars deferred).
 (dot→bit `dy<3?dx*3+dy:6+dx`, oracle-pinned) + `BrailleRaster` (OR-merge, deferred brush, last-writer
 color) + diagonal `DrawLine` (Bresenham at 2×4 sub-cell res; weight/corners/dash/cap N/A for diagonals)
 + the `EmitDecorationCell` seam shared by box & braille; `Scene.Draw` flush renamed `FlushDeferred`,
-order braille-then-box (data over axes). **4c/4d remain.**
+order braille-then-box (data over axes). 4c = `PointD`/`CurveInterpolation`/`MarkerStyle`,
+`Curves` (Linear / centripetal Catmull-Rom α=0.5 / Fritsch-Carlson monotone-cubic — **numerically
+oracle-pinned**), `PlotProjector` (Y-flip isolated), `ScatterChart` (markers / braille dots), `LineChart`
+(braille curve + optional markers), `ctx.LineChart`/`ctx.ScatterChart` sugar; charts plot via the
+internal braille seam (`AddBrailleRecord` + `PlotBrailleSegment`/`PlotBrailleDot`). **4a + 4b + 4c:
+implemented + tested.** **Deferred:** `LineChart.FillArea` (block fill under the curve — needs the
+line-over-fill resolution: deferred fill or braille `Overwrite`); NaN-gap-as-break (4c skips non-finite
+points for now). **4d remains:** axes / ticks / labels (box strokes → junctions) + multi-series
+`ToLayers`.
 
 ---
 

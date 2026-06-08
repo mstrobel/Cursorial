@@ -332,32 +332,48 @@ public sealed class DrawingContext
         return new Rect(left, top, Math.Abs(x1 - x0) + 1, Math.Abs(y1 - y0) + 1);
     }
 
-    // Rasterize a diagonal line into braille dots at sub-cell resolution (2 sub-cols × 4 sub-rows per
-    // cell). Endpoints map to the cell's top-left dot (x·2, y·4); a Bresenham walk plots one dot per step.
+    // Rasterize a diagonal line into braille dots. Endpoints map to the cell's top-left dot (x·2, y·4).
     private void DepositBrailleLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite)
     {
+        int recordId = AddBrailleRecord(pen, LineBounds(x0, y0, x1, y1), overwrite);
+        PlotBrailleSegment(x0 * 2, y0 * 4, x1 * 2, y1 * 4, recordId);
+    }
+
+    // Braille sub-cell seam (used by DrawLine's diagonal path and by the chart layer). The sub-cell grid
+    // is 2 sub-columns × 4 sub-rows per cell; coordinates are absolute (scene) sub-cell units.
+
+    /// <summary>Begin a braille stroke (its brush is sampled at flush against <paramref name="bounds"/>); returns its record id.</summary>
+    internal int AddBrailleRecord(in Pen pen, in Rect bounds, bool overwrite)
+    {
         _braille ??= new BrailleRaster(_surface.Columns, _surface.Rows);
-        int recordId = _braille.AddRecord(new BrailleRecord
+        return _braille.AddRecord(new BrailleRecord
         {
             Brush = pen.ResolveBrush(),
-            Bounds = LineBounds(x0, y0, x1, y1),
+            Bounds = bounds,
             Attributes = pen.Attributes,
             GlyphSet = pen.GlyphSet,
             Overwrite = overwrite,
         });
+    }
 
-        int sx0 = x0 * 2, sy0 = y0 * 4, sx1 = x1 * 2, sy1 = y1 * 4;
-        int dx = Math.Abs(sx1 - sx0), dy = -Math.Abs(sy1 - sy0);
-        int stepX = sx0 < sx1 ? 1 : -1, stepY = sy0 < sy1 ? 1 : -1;
+    /// <summary>Plot a single braille dot at an absolute sub-cell coordinate for <paramref name="recordId"/>.</summary>
+    internal void PlotBrailleDot(int subColumn, int subRow, int recordId) =>
+        _braille!.Plot(subColumn, subRow, recordId);
+
+    /// <summary>Bresenham a braille segment between two absolute sub-cell coordinates for <paramref name="recordId"/>.</summary>
+    internal void PlotBrailleSegment(int subX0, int subY0, int subX1, int subY1, int recordId)
+    {
+        int dx = Math.Abs(subX1 - subX0), dy = -Math.Abs(subY1 - subY0);
+        int stepX = subX0 < subX1 ? 1 : -1, stepY = subY0 < subY1 ? 1 : -1;
         int err = dx + dy;
 
         while (true)
         {
-            _braille.Plot(sx0, sy0, recordId);
-            if (sx0 == sx1 && sy0 == sy1) break;
+            _braille!.Plot(subX0, subY0, recordId);
+            if (subX0 == subX1 && subY0 == subY1) break;
             int e2 = 2 * err;
-            if (e2 >= dy) { err += dy; sx0 += stepX; }
-            if (e2 <= dx) { err += dx; sy0 += stepY; }
+            if (e2 >= dy) { err += dy; subX0 += stepX; }
+            if (e2 <= dx) { err += dx; subY0 += stepY; }
         }
     }
 }

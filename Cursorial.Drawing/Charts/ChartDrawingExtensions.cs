@@ -28,4 +28,20 @@ public static class ChartDrawingExtensions
         ArgumentNullException.ThrowIfNull(context);
         new Sparkline(values, color).Render(context, column, row, width);
     }
+
+    /// <summary>Render a braille line chart of <paramref name="points"/> into <paramref name="area"/>.</summary>
+    public static void LineChart(this DrawingContext context, in Rect area, ReadOnlySpan<PointD> points,
+                                 Color color, CurveInterpolation interpolation = CurveInterpolation.Linear)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        new LineChart(points, color) { Interpolation = interpolation }.Render(context, area);
+    }
+
+    /// <summary>Render a scatter chart of <paramref name="points"/> into <paramref name="area"/>.</summary>
+    public static void ScatterChart(this DrawingContext context, in Rect area, ReadOnlySpan<PointD> points,
+                                    Color color, MarkerStyle marker = MarkerStyle.Dot)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        new ScatterChart(points, color) { Marker = marker }.Render(context, area);
+    }
 }

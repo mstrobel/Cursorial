@@ -463,7 +463,14 @@ Split mechanism vs orchestration:
 
 ---
 
-## 8. Brush-aware text & images in Drawing (Phase 6 — designed)
+## 8. Brush-aware text & images in Drawing (Phase 6 — in progress)
+
+**Status:** **6a.1 + 6a.2 done** — the brush-free `BrushedTextResolver` seam in `FormattedText.Paint` +
+`DrawingContext.DrawFormattedText(ft, bounds, brush, caps)`, a single document brush sampled per block (2-D),
+routed through **every** block/run type: text + rules per cell, FIGlet / sized text / inline content one color
+at their center — so a glyph an image/icon **degrades to** picks up the gradient. Precedence: the brush colors
+only cells whose foreground is unset; an explicit foreground wins. **Pending:** per-run `BrushedStyle` (B) ·
+true inline 1-D wrap-invariant sampling (A) · images in scenes (6b).
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
 **Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
@@ -573,7 +580,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** (gated) | Brush-aware text + images in Drawing (bridge): 6a `BrushedStyle` + `DrawFormattedText` (declaration-scoped, wrap-invariant); 6b `SceneCompositor` fragment-passthrough + `DrawImage`. | Designed (see §8) |
+| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawImage`. | **6a.1 + 6a.2 done**; per-run / wrap / images pending (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's

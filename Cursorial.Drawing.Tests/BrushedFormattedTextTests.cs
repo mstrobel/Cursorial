@@ -2,6 +2,7 @@ using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Drawing;
@@ -73,5 +74,63 @@ public class BrushedFormattedTextTests
             Assert.Throws<ArgumentNullException>(() =>
                 ctx.DrawFormattedText(Wrapped(), new Rect(0, 0, 4, 2), null!, OutputCapabilities.None));
         });
+    }
+
+    // ---- 6a.2 (C): all block/run types routed through the resolver --------------------------------
+
+    [Fact]
+    public void HorizontalRule_IsColoredPerCell()
+    {
+        var ft = new TextFormatter().Format(new RichTextBuilder().HorizontalRule().Build(), 10);
+        var b = DrawHarness.Render(10, 2, ctx =>
+            ctx.DrawFormattedText(ft, new Rect(0, 0, 10, 2),
+                new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right),
+                OutputCapabilities.None));
+
+        Assert.False(string.IsNullOrEmpty(b[0, 0].Grapheme));   // the rule glyph is present
+        var left = b[0, 0].Style.Foreground;
+        var right = b[9, 0].Style.Foreground;
+        Assert.True(left.Red > left.Blue, $"rule left should be red-dominant, was {left}");
+        Assert.True(right.Blue > right.Red, $"rule right should be blue-dominant, was {right}");
+    }
+
+    [Fact]
+    public void InlineContentFallbackGlyph_PicksUpTheBrush()
+    {
+        // A content whose Paint writes a glyph with the style it's handed — i.e. a "fallback glyph".
+        var ft = new TextFormatter().Format(
+            new RichTextBuilder().InlineContent(new GlyphContent("█")).Build(), 8);
+        var green = Color.FromRgb(0, 200, 0);
+        var b = DrawHarness.Render(8, 2, ctx =>
+            ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), new SolidColorBrush(green), OutputCapabilities.None));
+
+        Assert.Equal("█", b[0, 0].Grapheme);
+        Assert.Equal(green, b[0, 0].Style.Foreground);   // the fallback glyph inherited the document brush
+    }
+
+    [Fact]
+    public void ExplicitForeground_WinsOverTheBrush()
+    {
+        var green = Color.FromRgb(0, 200, 0);
+        var ft = new TextFormatter().Format(
+            new RichTextBuilder().Run("X", Style.Default.WithForeground(green)).Build(), 8);
+        var b = DrawHarness.Render(8, 2, ctx =>
+            ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), new SolidColorBrush(Red), OutputCapabilities.None));
+
+        Assert.Equal("X", b[0, 0].Grapheme);
+        Assert.Equal(green, b[0, 0].Style.Foreground);   // explicit green is kept; the red brush does NOT override
+    }
+
+    // A minimal IContent that paints a single glyph with whatever style it's given — stands in for an
+    // image/icon's glyph fallback so we can verify it inherits the document brush.
+    private sealed class GlyphContent(string glyph) : IContent
+    {
+        public Size Measure(Size availableSpace, OutputCapabilities capabilities) => new(1, 1);
+
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        {
+            buffer.Set(bounds.Column, bounds.Row, glyph, style);
+            return new Rect(bounds.Column, bounds.Row, 1, 1);
+        }
     }
 }

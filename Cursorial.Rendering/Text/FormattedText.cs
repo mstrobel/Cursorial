@@ -103,26 +103,40 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         FormattedBlock block, in CellBufferView buffer, int column, int row, int maxRows, int boundsColumns,
         OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
+        // The block's 2-D rect — the sampling bounds for a block/document-scoped brush. Text and rules sample
+        // the resolver per cell; single-Style elements (figlet, sized text, block content) sample one color at
+        // the block's center and hand it to their own painter (so a glyph an image/icon degrades to picks up
+        // the brush — the fallback-glyph gradient). Clamped to ≥1 so a degenerate block can't throw.
+        var blockRect = new Rect(column, row, Math.Max(1, block.Size.Columns), Math.Max(1, maxRows));
+        int centerColumn = column + block.Size.Columns / 2;
+        int centerRow = row + maxRows / 2;
+
         switch (block)
         {
             case FormattedParagraph paragraph:
                 PaintParagraph(paragraph, buffer, column, row, maxRows, capabilities, resolver);
                 break;
             case FormattedHorizontalRule rule:
-                PaintHorizontalRule(rule, buffer, column, row, boundsColumns);
+                PaintHorizontalRule(rule, buffer, column, row, boundsColumns, resolver);
                 break;
             case FormattedFigletBlock figlet:
-                figlet.Face.Paint(buffer, column, row, figlet.Text, figlet.Style);
+                figlet.Face.Paint(buffer, column, row, figlet.Text,
+                                  ResolveStyle(resolver, figlet.Style, centerColumn, centerRow, blockRect));
                 break;
             case FormattedSizedTextBlock sized:
-                PaintSizedText(sized, buffer, column, row, capabilities);
+                PaintSizedText(sized, buffer, column, row, capabilities,
+                               ResolveStyle(resolver, sized.Style, centerColumn, centerRow, blockRect));
                 break;
             case FormattedContentBlock content:
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
-                                      style: default, capabilities);
+                                      ResolveStyle(resolver, default, centerColumn, centerRow, blockRect), capabilities);
                 break;
         }
     }
+
+    /// <summary>Resolve one cell's style via the optional brush resolver (or the flat <paramref name="baseStyle"/>).</summary>
+    private static Style ResolveStyle(BrushedTextResolver? resolver, in Style baseStyle, int column, int row, in Rect block)
+        => resolver is null ? baseStyle : resolver(new BrushedTextContext(baseStyle, column, row, block));
 
     private static void PaintParagraph(
         FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
@@ -148,12 +162,9 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         while (enumerator.MoveNext())
                         {
                             var grapheme = enumerator.Current;
-                            // 6a.1: resolver (when present) recolors text cells — block-scoped 2-D sampling.
-                            // Rules / figlet / inline content keep their flat styles until 6a.2 routes them
-                            // through the resolver too. Width is grapheme-driven, so the style swap is layout-safe.
-                            var style = resolver is null
-                                ? text.Style
-                                : resolver(new BrushedTextContext(text.Style, cursor, row + i, blockRect));
+                            // Resolver (when present) recolors per cell — block-scoped 2-D sampling. Width is
+                            // grapheme-driven, so a substituted style is layout-safe.
+                            var style = ResolveStyle(resolver, text.Style, cursor, row + i, blockRect);
                             int width = buffer.Set(cursor, row + i, grapheme.ToString(), style);
                             cursor += width;
                         }
@@ -162,7 +173,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                     case FormattedContentRun content:
                     {
                         var bounds = new Rect(cursor, row + i, content.Width, 1);
-                        content.Content.Paint(buffer, bounds, content.Style, capabilities);
+                        // Inline content samples one color at its center against the block rect — so a fallback
+                        // glyph (when no graphics protocol) is brush-colored; a real image ignores the style.
+                        var style = ResolveStyle(resolver, content.Style, cursor + content.Width / 2, row + i, blockRect);
+                        content.Content.Paint(buffer, bounds, style, capabilities);
                         cursor += content.Width;
                         break;
                     }
@@ -171,29 +185,34 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         }
     }
 
-    private static void PaintHorizontalRule(FormattedHorizontalRule rule, in CellBufferView buffer, int column, int row, int width)
+    private static void PaintHorizontalRule(
+        FormattedHorizontalRule rule, in CellBufferView buffer, int column, int row, int width,
+        BrushedTextResolver? resolver)
     {
         int glyphWidth = GraphemeWidth.StringWidth(rule.Glyph);
         if (glyphWidth <= 0) return;
 
+        var ruleRect = new Rect(column, row, Math.Max(1, width), 1);   // gradient spans the rule's painted extent
         int cursor = column;
         int end = column + width;
         while (cursor + glyphWidth <= end)
         {
-            buffer.Set(cursor, row, rule.Glyph, rule.Style);
+            buffer.Set(cursor, row, rule.Glyph, ResolveStyle(resolver, rule.Style, cursor, row, ruleRect));
             cursor += glyphWidth;
         }
     }
 
     private static void PaintSizedText(
-        FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row, OutputCapabilities capabilities)
+        FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row,
+        OutputCapabilities capabilities, in Style style)
     {
         // Mirror ScaledText's protocol: try OSC 66 fragment when supported, else fall back to
         // the configured glyph font. ScaledText itself encapsulates the decision tree, so we
-        // delegate to a transient instance.
+        // delegate to a transient instance. The style (already brush-resolved by the caller) colors the
+        // OSC-66 backdrop / the FIGlet fallback glyphs.
         var scaled = new ScaledText(sized.Text, sized.Sizing, sized.Fallback);
         scaled.Paint(buffer, new Rect(column, row, sized.Size.Columns, sized.Size.Rows),
-                     sized.Style, capabilities);
+                     style, capabilities);
     }
 
     Size IContent.Measure(Size availableSpace, OutputCapabilities capabilities)

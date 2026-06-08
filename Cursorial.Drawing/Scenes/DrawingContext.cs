@@ -135,16 +135,18 @@ public sealed class DrawingContext
     }
 
     /// <summary>
-    /// Paint a laid-out <paramref name="text"/> document at <paramref name="bounds"/>, coloring its text with
-    /// <paramref name="brush"/> sampled per cell against <b>each block's rect</b> (block-scoped, 2-D — a gradient
-    /// spans each paragraph and resets between blocks). The brush replaces the foreground only; other style
-    /// (attributes, background, the text's own colors elsewhere) comes from the formatted runs.
+    /// Paint a laid-out <paramref name="text"/> document at <paramref name="bounds"/>, coloring it with
+    /// <paramref name="brush"/> sampled against <b>each block's rect</b> (block-scoped, 2-D — a gradient spans
+    /// each block and resets between them). Text and horizontal rules are colored per cell; FIGlet, sized text,
+    /// and inline content take one sampled color at their center (their painters take a single style) — so an
+    /// image / icon that <em>degrades to a glyph</em> picks up the gradient too.
     /// </summary>
     /// <remarks>
-    /// 6a.1 scope: only text runs are brush-colored. Horizontal rules, FIGlet headlines, sized text, and inline
-    /// content (icons / images) render with their flat formatted styles until 6a.2 extends the resolver to them
-    /// (and adds per-run <c>BrushedStyle</c> / inline 1-D wrap-invariant sampling). <paramref name="capabilities"/>
-    /// drives protocol selection for any embedded content; pass the session's negotiated capabilities.
+    /// The brush colors only cells whose foreground is <b>unset</b> (<see cref="Color.Default"/>); an explicit
+    /// foreground — a markup color, a content's own fallback color — <b>wins</b> over the document brush.
+    /// <paramref name="capabilities"/> drives protocol selection for embedded content; pass the session's
+    /// negotiated capabilities. (Per-run <c>BrushedStyle</c> and inline 1-D wrap-invariant sampling arrive in a
+    /// later slice; this is the single document/block brush.)
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities)
     {
@@ -154,7 +156,9 @@ public sealed class DrawingContext
 
         text.Paint(_surface, bounds, capabilities,
                    resolver: (in BrushedTextContext ctx) =>
-                       ctx.BaseStyle.WithForeground(brush.ColorAt(ctx.Column, ctx.Row, ctx.Block)));
+                       ctx.BaseStyle.Foreground.IsDefault
+                           ? ctx.BaseStyle.WithForeground(brush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
+                           : ctx.BaseStyle);
     }
 
     // ---- Figures -------------------------------------------------------------------------------

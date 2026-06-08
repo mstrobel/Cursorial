@@ -91,14 +91,10 @@ public abstract class GradientBrush : IBrush
         double span = hi.Offset - lo.Offset;
         if (span <= Epsilon) return ApplyOpacity(lo.Color, Opacity);
 
-        // Channel interpolation is only meaningful for RGB; otherwise snap to the nearer stop.
-        if (lo.Color.Kind != ColorKind.Rgb || hi.Color.Kind != ColorKind.Rgb)
-        {
-            double mid = lo.Offset + span * 0.5;
-            return ApplyOpacity(position < mid ? lo.Color : hi.Color, Opacity);
-        }
-
-        return LerpPremultiplied(lo.Color, hi.Color, (position - lo.Offset) / span, Opacity);
+        // Premultiplied-sRGB interpolation (with the non-RGB snap) lives in Core's Color.Lerp — the single
+        // source of truth shared with the animation layer's ColorInterpolator. The whole-gradient Opacity
+        // is the brush's own concern, applied here (same as the single-stop branches above).
+        return ApplyOpacity(Color.Lerp(lo.Color, hi.Color, (position - lo.Offset) / span), Opacity);
     }
 
     /// <summary>Validate a geometry scalar is finite (mirrors the opacity guard), returning it for chaining.</summary>
@@ -119,30 +115,11 @@ public abstract class GradientBrush : IBrush
         return m > 1.0 ? 2.0 - m : m;
     }
 
-    private static Color LerpPremultiplied(Color from, Color to, double ratio, double opacity)
-    {
-        double a0 = from.Alpha / 255.0;
-        double a1 = to.Alpha / 255.0;
-
-        double pr = Lerp(from.Red * a0, to.Red * a1, ratio);
-        double pg = Lerp(from.Green * a0, to.Green * a1, ratio);
-        double pb = Lerp(from.Blue * a0, to.Blue * a1, ratio);
-        double a = Lerp(a0, a1, ratio);
-        double finalAlpha = a * opacity;
-
-        if (a <= Epsilon)
-            return Color.FromRgba(0, 0, 0, ToByte(finalAlpha * 255.0));
-
-        return Color.FromRgba(ToByte(pr / a), ToByte(pg / a), ToByte(pb / a), ToByte(finalAlpha * 255.0));
-    }
-
     private static Color ApplyOpacity(Color color, double opacity)
     {
         if (opacity >= 1.0 || color.Kind != ColorKind.Rgb) return color;
         return color.WithAlpha(ToByte(color.Alpha * opacity));
     }
-
-    private static double Lerp(double a, double b, double t) => a + (b - a) * t;
 
     private static byte ToByte(double value) => (byte) Math.Clamp(Math.Round(value), 0, 255);
 }

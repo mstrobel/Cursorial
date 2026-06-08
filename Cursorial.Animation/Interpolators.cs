@@ -1,8 +1,10 @@
+using Cursorial.Output;
+
 namespace Cursorial.Animation;
 
 /// <summary>
-/// Discoverability shortcuts for the built-in interpolators. (The <c>Color</c> and gradient/brush
-/// interpolators live in <c>Cursorial.Drawing</c>, since their value types do.)
+/// Discoverability shortcuts for the built-in interpolators. (The gradient/brush and
+/// <c>RelativePoint</c> interpolators live in <c>Cursorial.Drawing</c>, since those value types do.)
 /// </summary>
 public static class Interpolators
 {
@@ -11,4 +13,7 @@ public static class Interpolators
 
     /// <summary>Rounded linear <see cref="int"/> interpolation.</summary>
     public static IInterpolator<int> Int32 => Int32Interpolator.Instance;
+
+    /// <summary>Premultiplied-sRGB <see cref="Output.Color"/> interpolation.</summary>
+    public static IInterpolator<Color> Color => ColorInterpolator.Instance;
 }

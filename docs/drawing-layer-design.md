@@ -190,6 +190,8 @@ dividing by its extent).
   `0x00000000` stays fine). Brush opacity folds uniformly into every sampled color (solid **and**
   gradient — fixing Consolonia's solid-vs-gradient asymmetry). Keep sampling math in floats; quantize
   only the final straight `Color`. A low-alpha (α 1–4) precision test guards hue preservation.
+  **As of 5b this interpolation lives in Core's `Color.Lerp`** (single source of truth, shared with the
+  animation `ColorInterpolator`); `GradientBrush` calls it and applies its whole-gradient opacity itself.
 - Banding on low-color terminals is accepted for v1 (nearest palette per cell); ordered dither is
   deferred.
 - **Convenience (post-review):** each gradient brush has a **two-color** ctor
@@ -419,10 +421,14 @@ wraps), and `DoubleAnimation`/`Int32Animation` conveniences (thin
 subclasses over the generic engine — WPF ergonomics, one implementation). 70 tests; edge cases (huge repeat
 counts, auto-reverse final-frame parity, turn-point continuity, NaN propagation, zero-duration inner) probed.
 
-**5b (Color) — decided:** lift the premultiplied-sRGB `Color` lerp out of `GradientBrush` (currently private)
-into **`Cursorial.Core`** as the single source of truth, and add a `ColorInterpolator` that reuses it, so
-gradients and animation interpolate identically (§4 convention stays authoritative in one place;
-`GradientBrush` refactors to call it, its tests stay green).
+**5b (Color) — implemented + tested.** The premultiplied-sRGB lerp now lives in **`Cursorial.Core`** as the
+clean 3-arg `Color.Lerp(from, to, t)` (premultiplied channels, non-RGB snap to the nearer endpoint) — the
+single source of truth. `GradientBrush` calls it then applies its own whole-gradient `Opacity` via the existing
+`ApplyOpacity` (its private `LerpPremultiplied` + non-RGB branch are gone; all 186 Drawing/gradient tests stay
+green — a ≤1/255 alpha rounding difference on `opacity<1` is imperceptible and consumed at composite). Keeping
+`opacity` off the foundational `Color.Lerp` keeps it idiomatic on the one packable assembly. `Cursorial.Animation`
+adds `ColorInterpolator` (delegates to `Color.Lerp`) + a `ColorAnimation` convenience + the `Interpolators.Color`
+shortcut. `Color.Lerp` numerically oracle-pinned (Core tests).
 
 **5c (brush + composite) — placement:** the `BrushInterpolator` (gradient endpoint/stop/opacity interpolation)
 **and** the `RelativePoint` interpolator live in **`Cursorial.Drawing`** — `RelativePoint` is a Drawing type and
@@ -500,12 +506,11 @@ Drawing (`IBrush` never goes inside `Style`). Markup keeps returning `Color` (`[
 | **2** | `GradientStop`/`GradientSpread` + `GradientBrush` base (premultiplied, verified math, per-cell no-LUT) + `Linear`/`Radial`/`ConicGradientBrush` + `Brushes` cache; gradient `FillRectangle`; single-line `DrawText`. | **Done** |
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
-| **5** (gated) | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **5a done**; 5b/5c pending |
+| **5** (gated) | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **5a + 5b done**; 5c pending |
 | **6** (gated) | Laid-out brush formatter (`BrushedStyle`). | Designed |
 
-Phases 0–4 are the v1 spine (all **Done**); 5–6 are gated (5a landed). No phase changes a Core/Rendering public
-signature beyond the additive `Style.Transparent` — except 5b's planned lift of the premultiplied `Color` lerp
-into Core (additive helper, see §7).
+Phases 0–4 are the v1 spine (all **Done**); 5–6 are gated (5a + 5b landed). The only Core/Rendering public-surface
+additions beyond `Style.Transparent` are additive: 5b's `Color.Lerp` helper (see §7).
 
 ---
 

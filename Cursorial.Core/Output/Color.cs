@@ -206,6 +206,44 @@ public readonly record struct Color
             (byte) ((blended.Green * a + backdrop.Green * inv) / 255),
             (byte) ((blended.Blue * a + backdrop.Blue * inv) / 255));
     }
+
+    /// <summary>
+    /// Interpolate from <paramref name="from"/> to <paramref name="to"/> at <paramref name="t"/> in
+    /// <b>premultiplied sRGB</b> — the project-wide gradient/animation convention. RGB channels are
+    /// premultiplied by alpha before blending and un-premultiplied afterward, so a fade toward a
+    /// transparent endpoint keeps the opaque neighbor's hue and composes correctly through straight-alpha
+    /// compositing. <paramref name="t"/> outside <c>[0, 1]</c> extrapolates (channels clamp to 0–255).
+    /// </summary>
+    /// <remarks>
+    /// Channel blending is only meaningful for <see cref="ColorKind.Rgb"/>; if either endpoint is palette
+    /// or default, this snaps to the nearer endpoint (<paramref name="from"/> when <paramref name="t"/>
+    /// &lt; 0.5, else <paramref name="to"/>) — quantizing into RGB to blend would be lossy and surprising,
+    /// matching <see cref="Composite"/>.
+    /// </remarks>
+    public static Color Lerp(Color from, Color to, double t)
+    {
+        if (from.Kind != ColorKind.Rgb || to.Kind != ColorKind.Rgb)
+            return t < 0.5 ? from : to;
+
+        double a0 = from.Alpha / 255.0;
+        double a1 = to.Alpha / 255.0;
+
+        double pr = LerpScalar(from.Red * a0, to.Red * a1, t);
+        double pg = LerpScalar(from.Green * a0, to.Green * a1, t);
+        double pb = LerpScalar(from.Blue * a0, to.Blue * a1, t);
+        double a = LerpScalar(a0, a1, t);
+
+        if (a <= LerpEpsilon)
+            return FromRgba(0, 0, 0, ToByteClamped(a * 255.0));
+
+        return FromRgba(ToByteClamped(pr / a), ToByteClamped(pg / a), ToByteClamped(pb / a), ToByteClamped(a * 255.0));
+    }
+
+    private const double LerpEpsilon = 1e-9;
+
+    private static double LerpScalar(double a, double b, double t) => a + (b - a) * t;
+
+    private static byte ToByteClamped(double value) => (byte) Math.Clamp(Math.Round(value), 0, 255);
 }
 
 /// <summary>The representation a <see cref="Color"/> carries.</summary>

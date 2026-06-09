@@ -21,4 +21,12 @@ public sealed record ChartSeries
 
     /// <summary>The series' brush (never null).</summary>
     public IBrush Brush { get; }
+
+    /// <summary>Fill the area under this series (see <c>LineChart.FillArea</c>). Most useful via
+    /// <c>MultiLineChart.ToLayers</c>, where translucent per-series fills alpha-blend across layers.</summary>
+    public bool FillArea { get; init; }
+
+    /// <summary>The brush for this series' filled area; null → the series <see cref="Brush"/>. Use a
+    /// translucent brush so overlapping fills compose rather than occlude.</summary>
+    public IBrush? AreaBrush { get; init; }
 }

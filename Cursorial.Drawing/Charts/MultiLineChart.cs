@@ -58,6 +58,30 @@ public sealed class MultiLineChart : IChart
             LineFor(s, x, y).Render(context, area);
     }
 
+    /// <summary>
+    /// Render each series into its OWN scene (a layer) sharing the resolved range, for the caller to
+    /// composite with a <see cref="SceneCompositor"/>. Unlike <see cref="Render"/> (one surface, last-writer
+    /// color at crossings), per-layer compositing lets <b>translucent area fills</b> alpha-blend where series
+    /// overlap (red∩blue → purple — see §6), so this pays off when series set <see cref="ChartSeries.FillArea"/>
+    /// with a translucent <see cref="ChartSeries.AreaBrush"/>. Each scene is sized to <paramref name="area"/>
+    /// and drawn at its own origin; the caller offsets/clips via <c>CompositeParameters</c> and owns disposal.
+    /// </summary>
+    public IReadOnlyList<Scene> ToLayers(in Rect area)
+    {
+        if (area.Columns <= 0 || area.Rows <= 0) return [];   // degenerate area → nothing to lay out (matches Render)
+        var (x, y) = ResolveRange();
+        var layers = new List<Scene>(_series.Length);
+        var local = new Rect(0, 0, Math.Max(1, area.Columns), Math.Max(1, area.Rows));
+        foreach (var s in _series)
+        {
+            var scene = Scene.Create(local.Columns, local.Rows);
+            var line = LineFor(s, x, y);
+            scene.Draw(ctx => line.Render(ctx, local));
+            layers.Add(scene);
+        }
+        return layers;
+    }
+
     private LineChart LineFor(ChartSeries series, AxisRange x, AxisRange y) =>
         new([.. series.Points], series.Brush)
         {
@@ -65,5 +89,7 @@ public sealed class MultiLineChart : IChart
             ShowMarkers = ShowMarkers,
             XRange = x,
             YRange = y,
+            FillArea = series.FillArea,
+            AreaBrush = series.AreaBrush,
         };
 }

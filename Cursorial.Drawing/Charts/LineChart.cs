@@ -62,6 +62,17 @@ public sealed class LineChart : IChart
     /// <summary>Explicit Y range; null (default) auto-ranges from the data.</summary>
     public AxisRange? YRange { get; init; }
 
+    /// <summary>
+    /// Fill the area between the curve and the zero baseline. The fill is a cell <b>background</b>, so the
+    /// foreground braille curve still draws over it and a translucent <see cref="AreaBrush"/> alpha-blends
+    /// with lower layers (e.g. overlapping <c>MultiLineChart.ToLayers</c> fills compose, red∩blue → purple).
+    /// </summary>
+    public bool FillArea { get; init; }
+
+    /// <summary>The brush for the filled area (when <see cref="FillArea"/>); null → the line <see cref="Brush"/>.
+    /// Pass a translucent brush for readable overlapping fills.</summary>
+    public IBrush? AreaBrush { get; init; }
+
     /// <inheritdoc/>
     public void Render(DrawingContext context, in Rect area)
     {
@@ -74,17 +85,26 @@ public sealed class LineChart : IChart
         var (xRange, yRange) = ChartMath.AutoRange(_points, XRange, YRange);
         var projector = new PlotProjector(area, xRange, yRange, 2, 4);
 
+        // Area fill first (cell backgrounds), so the foreground braille curve draws over it.
+        if (FillArea) PaintArea(context, area, xRange, yRange);
+
+        // Plot the curve in maximal runs of consecutive finite points, so a non-finite point (NaN / ±∞ —
+        // "missing data") BREAKS the line into a gap rather than the curve jumping straight across it. Each
+        // run is sampled independently; a run shorter than 2 points has no segment (a marker shows it).
         if (finite.Count >= 2)
         {
-            int per = Math.Max(2, area.Columns * 2 / Math.Max(1, finite.Count - 1));
-            var samples = Curves.Sample(Interpolation, finite, per);
-
             int recordId = context.AddBrailleRecord(new Pen(Brush), area, overwrite: false);
-            for (int i = 0; i + 1 < samples.Count; i++)
+            foreach (var run in FiniteRuns(_points))
             {
-                var (sx0, sy0) = projector.ToSub(samples[i].X, samples[i].Y);
-                var (sx1, sy1) = projector.ToSub(samples[i + 1].X, samples[i + 1].Y);
-                context.PlotBrailleSegment(sx0, sy0, sx1, sy1, recordId);
+                if (run.Count < 2) continue;
+                int per = Math.Max(2, area.Columns * 2 / Math.Max(1, run.Count - 1));
+                var samples = Curves.Sample(Interpolation, run, per);
+                for (int i = 0; i + 1 < samples.Count; i++)
+                {
+                    var (sx0, sy0) = projector.ToSub(samples[i].X, samples[i].Y);
+                    var (sx1, sy1) = projector.ToSub(samples[i + 1].X, samples[i + 1].Y);
+                    context.PlotBrailleSegment(sx0, sy0, sx1, sy1, recordId);
+                }
             }
         }
 
@@ -102,5 +122,82 @@ public sealed class LineChart : IChart
                 context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));
             }
         }
+    }
+
+    // Fill the cell backgrounds between the curve and the zero baseline (clamped into the Y range). The
+    // curve's height is tracked at CONTINUOUS (sub-cell) resolution, and a boundary cell is shaded only when
+    // the curve covers at least MinCellCoverage of it — so a cell the curve only clips isn't fully colored.
+    private void PaintArea(DrawingContext context, in Rect area, AxisRange xRange, AxisRange yRange)
+    {
+        var fillBrush = AreaBrush ?? Brush;
+        var proj = new PlotProjector(area, xRange, yRange, 2, 4);   // columns align with the braille curve
+        double baseFrac = RowFraction(Math.Clamp(0.0, yRange.Min, yRange.Max), yRange, area.Rows);
+
+        var curveFrac = new double[area.Columns];
+        var hasCurve = new bool[area.Columns];
+        foreach (var run in FiniteRuns(_points))
+        {
+            if (run.Count == 0) continue;
+            int per = Math.Max(2, area.Columns * 2 / Math.Max(1, run.Count - 1));
+            IReadOnlyList<PointD> samples = run.Count >= 2 ? Curves.Sample(Interpolation, run, per) : run;
+            foreach (var s in samples)
+            {
+                int idx = proj.ToCell(s.X, s.Y).Column - area.Column;
+                if ((uint) idx >= (uint) area.Columns) continue;
+                double f = RowFraction(s.Y, yRange, area.Rows);
+                // Keep the row furthest from the baseline — the curve's peak in this column.
+                if (!hasCurve[idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
+                    curveFrac[idx] = f;
+                hasCurve[idx] = true;
+            }
+        }
+
+        for (int idx = 0; idx < area.Columns; idx++)
+        {
+            if (!hasCurve[idx]) continue;   // gap column (missing data) → no fill
+            double lo = Math.Min(curveFrac[idx], baseFrac);
+            double hi = Math.Max(curveFrac[idx], baseFrac);
+
+            // Shade the contiguous run of cells whose under-curve coverage clears the threshold. Only the two
+            // boundary cells can fall short (interior cells are fully covered), so the kept run stays contiguous.
+            int first = int.MaxValue, last = int.MinValue;
+            for (int r = (int) Math.Floor(lo); r < (int) Math.Ceiling(hi); r++)
+            {
+                if ((uint) r >= (uint) area.Rows) continue;
+                double coverage = Math.Min(hi, r + 1) - Math.Max(lo, r);   // fraction of cell r under the curve
+                if (coverage >= MinCellCoverage) { first = Math.Min(first, r); last = Math.Max(last, r); }
+            }
+            if (first <= last)
+                // Sample the brush against the whole chart area (not the 1-column paint rect) so a gradient
+                // area-fill flows across the chart rather than restarting per column.
+                context.FillRectangle(new Rect(area.Column + idx, area.Row + first, 1, last - first + 1), fillBrush, area);
+        }
+    }
+
+    // The curve must cover at least this fraction (0–1) of a boundary cell before it's shaded — moderate
+    // rounding so a cell the curve only clips isn't colored, while a clearly-covered cell still is.
+    private const double MinCellCoverage = 0.35;
+
+    // Continuous fractional cell row for a value (0 = top of the area, rows = bottom), matching the projector's
+    // Y-flip so the fill tracks the curve's true height rather than a cell-quantized one.
+    private static double RowFraction(double y, AxisRange yRange, int rows) =>
+        (1.0 - Math.Clamp(yRange.Normalize(y), 0.0, 1.0)) * rows;
+
+    // Split the points into maximal runs of consecutive finite points; non-finite points (NaN / ±∞) are the
+    // gap boundaries. Used so the curve breaks at missing data instead of interpolating across it.
+    private static IEnumerable<List<PointD>> FiniteRuns(IReadOnlyList<PointD> points)
+    {
+        var run = new List<PointD>();
+        foreach (var p in points)
+        {
+            if (ChartMath.Finite(p))
+                run.Add(p);
+            else if (run.Count > 0)
+            {
+                yield return run;
+                run = [];
+            }
+        }
+        if (run.Count > 0) yield return run;
     }
 }

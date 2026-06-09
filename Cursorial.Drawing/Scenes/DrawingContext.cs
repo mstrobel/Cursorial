@@ -66,7 +66,15 @@ public sealed class DrawingContext
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </remarks>
-    public void FillRectangle(in Rect region, IBrush brush)
+    public void FillRectangle(in Rect region, IBrush brush) => FillRectangle(region, brush, region);
+
+    /// <summary>
+    /// As <see cref="FillRectangle(in Rect, IBrush)"/>, but the brush is sampled against
+    /// <paramref name="brushBounds"/> — which may be larger than the painted <paramref name="region"/> — so a
+    /// gradient spans the full bounds while only the region's cells are painted. Used by area-fill charts that
+    /// paint one column at a time yet want the gradient to flow across the whole chart, not restart per column.
+    /// </summary>
+    public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(brush);
 
@@ -79,7 +87,7 @@ public sealed class DrawingContext
         for (int row = rowStart; row < rowEnd; row++)
         for (int col = colStart; col < colEnd; col++)
         {
-            var color = brush.ColorAt(col, row, region);
+            var color = brush.ColorAt(col, row, brushBounds);
             _surface[col, row] = new Cell(null, CellKind.Single, Style.Default.WithBackground(color));
         }
     }

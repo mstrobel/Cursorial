@@ -30,6 +30,15 @@ public sealed class TextMarkupOptions
 
     /// <summary>The default style applied to all text.</summary>
     public Style DefaultStyle { get; init; }
+
+    /// <summary>
+    /// Resolves a <c>[brush=VALUE]</c> markup value to an <b>opaque tag</b> attached to the runs it wraps — the
+    /// tag a higher layer reads to brush-color them (see <see cref="FormattedTextRun.Tag"/>). The resolver
+    /// returns <see cref="object"/>, so this parser stays brush-agnostic (no <c>IBrush</c> dependency); the
+    /// Drawing layer supplies a resolver that parses inline gradient syntax or looks up a named brush. Returns
+    /// null to reject the value. Null (the default) means <c>[brush]</c> is unsupported and raises a parse error.
+    /// </summary>
+    public Func<string, object?>? BrushResolver { get; init; }
 }
 
 /// <summary>
@@ -271,6 +280,9 @@ public static class TextMarkup
                 case "font":
                     Push(token.Name, builder.PushMap(ResolveGlyphMap(token.Value, token.Position)));
                     break;
+                case "brush":
+                    Push(token.Name, builder.PushTag(ResolveBrush(token.Value, token.Position)));
+                    break;
                 case "p":
                     OpenParagraph(token);
                     break;
@@ -452,71 +464,27 @@ public static class TextMarkup
                                     $"smallcaps (smcap), superscript (super), subscript (sub).")
                };
 
+        // Resolve a [brush=VALUE] tag to an opaque tag via the caller-supplied resolver. Kept brush-agnostic:
+        // the parser never sees a brush type — it just attaches whatever object the resolver returns.
+        private object? ResolveBrush(string value, int position)
+        {
+            if (string.IsNullOrEmpty(value))
+                throw Error(position, "[brush] requires a value: [brush=name] or [brush=linear:colorA,colorB].");
+            if (options.BrushResolver is not { } resolver)
+                throw Error(position, "[brush] is not supported here — supply TextMarkupOptions.BrushResolver (the Drawing layer wires one up).");
+            return resolver(value) ?? throw Error(position, $"Unrecognized brush '{value}'.");
+        }
+
         // ---- Color parsing ----
 
         private static Color ParseColor(string raw, int position)
         {
             if (string.IsNullOrEmpty(raw))
                 throw Error(position, "Color tag requires a value (named, palette index, or #hex).");
-
-            // Hex: #rgb or #rrggbb.
-            if (raw.StartsWith('#'))
-                return ParseHexColor(raw, position);
-
-            // Palette index?
-            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
-            {
-                if (index is < 0 or > 255)
-                    throw Error(position, $"Palette index must be 0–255, got {index}.");
-                return Color.FromPalette((byte) index);
-            }
-
-            // Named?
-            if (NamedColors.TryGetValue(raw.ToLowerInvariant(), out byte palette))
-                return Color.FromPalette(palette);
-
-            throw Error(position, $"Unrecognized color '{raw}'. Use a name, palette index 0–255, or #hex.");
+            return MarkupColor.TryParse(raw, out var color)
+                       ? color
+                       : throw Error(position, $"Unrecognized color '{raw}'. Use a name, palette index 0–255, or #hex.");
         }
-
-        private static Color ParseHexColor(string raw, int position)
-        {
-            string hex = raw[1..];
-            byte r, g, b;
-            switch (hex.Length)
-            {
-                case 3:
-                    r = (byte) (ParseHexDigit(hex[0], position) * 17);
-                    g = (byte) (ParseHexDigit(hex[1], position) * 17);
-                    b = (byte) (ParseHexDigit(hex[2], position) * 17);
-                    return Color.FromRgb(r, g, b);
-                case 6:
-                    r = (byte) ((ParseHexDigit(hex[0], position) << 4) | ParseHexDigit(hex[1], position));
-                    g = (byte) ((ParseHexDigit(hex[2], position) << 4) | ParseHexDigit(hex[3], position));
-                    b = (byte) ((ParseHexDigit(hex[4], position) << 4) | ParseHexDigit(hex[5], position));
-                    return Color.FromRgb(r, g, b);
-                default:
-                    throw Error(position, $"Hex color must be #rgb or #rrggbb, got '{raw}'.");
-            }
-        }
-
-        private static int ParseHexDigit(char c, int position)
-            => c switch
-               {
-                   >= '0' and <= '9' => c - '0',
-                   >= 'a' and <= 'f' => c - 'a' + 10,
-                   >= 'A' and <= 'F' => c - 'A' + 10,
-                   _                 => throw Error(position, $"Invalid hex digit '{c}'.")
-               };
-
-        private static readonly Dictionary<string, byte> NamedColors = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["black"] = 0, ["red"] = 1, ["green"] = 2, ["yellow"] = 3,
-            ["blue"] = 4, ["magenta"] = 5, ["cyan"] = 6, ["white"] = 7,
-            ["brightblack"] = 8, ["gray"] = 8, ["grey"] = 8,
-            ["brightred"] = 9, ["brightgreen"] = 10, ["brightyellow"] = 11,
-            ["brightblue"] = 12, ["brightmagenta"] = 13, ["brightcyan"] = 14,
-            ["brightwhite"] = 15
-        };
 
         private static FormatException Error(int position, string message) =>
             new($"Markup parse error at position {position}: {message}");

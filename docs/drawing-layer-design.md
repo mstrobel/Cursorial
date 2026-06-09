@@ -558,7 +558,11 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
     Policy: content with an *explicit* fallback color keeps it; otherwise it inherits the scope's brush.
     Per-cell caveat: `IContent.Paint` takes a single `Style`, so a multi-cell fallback samples one color (at
     its span), not a per-cell gradient across its footprint — a fine approximation for small fallbacks.
-- Markup keeps returning `Color`; a `[brush=…]` / gradient markup grammar is deferred.
+- Markup gradients **landed**: a `[brush=VALUE]…[/brush]` tag. Rendering's `TextMarkup` calls an opaque
+  `TextMarkupOptions.BrushResolver` (`Func<string, object?>` — no `IBrush` type, §9 intact) and stamps the run
+  `Tag` via a new `RichTextBuilder.PushTag` scope; the shared `MarkupColor` parses the color tokens. Drawing's
+  `BrushMarkup.Resolver`/`Options` parse **inline** gradient syntax (`linear:`/`radial:`/`conic:` + a color list,
+  hex / palette / named) *or* look up a name in a `BrushedStyle` registry — both authoring styles, one tag.
 
 ### 6b — images in scenes (fragment-passthrough)
 - **`SceneCompositor` fragment-passthrough** (the new mechanism): carry `Scene.Buffer.Fragments` through
@@ -599,7 +603,8 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
   opt-in note only.
 - **Text brush coordinate space:** physical paint bounds (verbatim run copy); logical-span anchoring
   is a deferred opt-in.
-- **Markup gradients:** deferred (solid-only markup in v1).
+- **Markup gradients:** done — `[brush=linear:#f92672,#66d9ef]…[/brush]` inline or `[brush=name]` registry, via
+  `BrushMarkup` + the opaque-tag channel (the `[fg=…]`/`[bg=…]` solid-color tags are unchanged).
 - **Wide-glyph collision:** **evict** by default (text beats decoration), opt-in overwrite.
 - **Multi-series Braille color:** **single-surface, last-writer-wins** at crossings. (A per-series-scene
   `ToLayers` path was prototyped and cut — opaque single-width braille gives it no per-series-color benefit;

@@ -49,6 +49,7 @@ public sealed class RichTextBuilder
     private readonly Stack<Style> _styles = new();
     private readonly Stack<IGlyphMap?> _maps = new();
     private readonly Stack<string?> _hyperlinks = new();
+    private readonly Stack<object?> _tags = new();
 
     public RichTextBuilder(Style defaultStyle = default)
     {
@@ -90,23 +91,34 @@ public sealed class RichTextBuilder
         return new StyleScope(this, StyleScope.Layer.Hyperlink);
     }
 
+    /// <summary>
+    /// Push an opaque <paramref name="tag"/> onto the tag stack. Subsequent <see cref="Run(string)"/> calls
+    /// inherit it (preserved through layout onto every derived <see cref="FormattedTextRun"/>); a higher layer
+    /// (Drawing) reads it to brush-color the runs, e.g. for a <c>[brush=…]</c> markup tag. Dispose to pop.
+    /// </summary>
+    public StyleScope PushTag(object? tag)
+    {
+        _tags.Push(tag);
+        return new StyleScope(this, StyleScope.Layer.Tag);
+    }
+
     // ---- Inline appends ----
 
-    /// <summary>Append a text run inheriting the current style / map / hyperlink stacks.</summary>
+    /// <summary>Append a text run inheriting the current style / map / hyperlink / tag stacks.</summary>
     public RichTextBuilder Run(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, CurrentStyle, CurrentMap, CurrentHyperlink));
+        AppendInline(new TextRun(text, CurrentStyle, CurrentMap, CurrentHyperlink, CurrentTag));
         return this;
     }
 
-    /// <summary>Append a text run with an explicit style, ignoring the style stack.</summary>
+    /// <summary>Append a text run with an explicit style, ignoring the style stack (but inheriting the tag).</summary>
     public RichTextBuilder Run(string text, in Style style)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink));
+        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, CurrentTag));
         return this;
     }
 
@@ -286,6 +298,7 @@ public sealed class RichTextBuilder
     private Style CurrentStyle => _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
     private IGlyphMap? CurrentMap => _maps.Count > 0 ? _maps.Peek() : null;
     private string? CurrentHyperlink => _hyperlinks.Count > 0 ? _hyperlinks.Peek() : null;
+    private object? CurrentTag => _tags.Count > 0 ? _tags.Peek() : null;
 
     private void AppendInline(Inline inline)
     {
@@ -320,9 +333,10 @@ public sealed class RichTextBuilder
     {
         switch (layer)
         {
-            case StyleScope.Layer.Style when _styles.Count > 0:       _styles.Pop(); break;
-            case StyleScope.Layer.Map when _maps.Count > 0:           _maps.Pop(); break;
+            case StyleScope.Layer.Style when _styles.Count > 0:        _styles.Pop(); break;
+            case StyleScope.Layer.Map when _maps.Count > 0:            _maps.Pop(); break;
             case StyleScope.Layer.Hyperlink when _hyperlinks.Count > 0: _hyperlinks.Pop(); break;
+            case StyleScope.Layer.Tag when _tags.Count > 0:            _tags.Pop(); break;
         }
     }
 }
@@ -335,7 +349,7 @@ public sealed class RichTextBuilder
 /// </summary>
 public readonly struct StyleScope : IDisposable
 {
-    internal enum Layer { Style, Map, Hyperlink }
+    internal enum Layer { Style, Map, Hyperlink, Tag }
 
     private readonly RichTextBuilder? _builder;
     private readonly Layer _layer;

@@ -128,7 +128,7 @@ public sealed class SceneCompositor
 
             for (int tr = frS; tr < frE; tr++)
             for (int tc = fcS; tc < fcE; tc++)
-                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode);
+                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, colEnd);
         }
 
         PassThroughFragments(layers, target);
@@ -200,7 +200,7 @@ public sealed class SceneCompositor
                                   : new Cell(null, CellKind.Single, _baseStyle);
 
     private static void CompositeCell(in CellBufferView target, int column, int row,
-                                      in Cell source, byte opacity, IBlendingMode mode)
+                                      in Cell source, byte opacity, IBlendingMode mode, int unionColEnd)
     {
         if (source.Kind == CellKind.WideContinuation) return;   // the WideLeft paints both columns
 
@@ -222,7 +222,16 @@ public sealed class SceneCompositor
         var style = sourceStyle with { Foreground = mergedForeground, Background = mergedBackground };
 
         if (source.Kind == CellKind.WideLeft)
-            target.Set(column, row, source.Grapheme, in style);   // Set cleans up the orphaned neighbor
+        {
+            // A WideLeft at the composite union's right edge would write its WideContinuation one column
+            // past the reset + MarkDirty range, stranding a stale continuation a RestrictToDirtyRegions
+            // renderer never revisits (a dirty-region hole, not just a glitch). Degrade to a blank single
+            // cell at the edge — the same trick CellBuffer.Set uses at the buffer edge.
+            if (column + 1 >= unionColEnd)
+                target[column, row] = new Cell(null, CellKind.Single, style);
+            else
+                target.Set(column, row, source.Grapheme, in style);   // Set cleans up the orphaned neighbor
+        }
         else
             target[column, row] = new Cell(source.Grapheme, source.Kind, style);
     }

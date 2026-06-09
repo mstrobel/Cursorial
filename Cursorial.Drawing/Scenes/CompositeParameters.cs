@@ -29,7 +29,10 @@ public readonly record struct CompositeParameters
         OffsetRow = offsetRow;
         _opacityComplement = (byte) (255 - opacity);
         Clip = clip;
-        Mode = mode;
+        // Normalize the explicit default mode to null so two parameter sets differing only by
+        // null-vs-BlendingModes.Default compare equal (both mean source-over). Default is a stable
+        // singleton, so reference equality is the right test; this keeps record equality meaningful.
+        Mode = ReferenceEquals(mode, BlendingModes.Default) ? null : mode;
     }
 
     /// <summary>The opaque identity (offset 0, opacity 255, no clip, default blend).</summary>

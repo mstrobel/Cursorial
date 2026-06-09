@@ -152,6 +152,25 @@ public class FrameRendererScrollDetectionTests
         Assert.DoesNotContain("\x1b[1S", output);
     }
 
+    [Fact]
+    public void HorizontalSlideOverIdenticalRows_IsNotMisdetectedAsScroll()
+    {
+        // A scene sliding HORIZONTALLY over identical, horizontally-patterned rows is not a vertical scroll:
+        // every row shifts left, so no row equals a front row shifted up/down. The detector must not fire a
+        // false-positive SU/SD (which would emit a scroll command instead of the correct cell diff).
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(6, 4);
+        for (int row = 0; row < 4; row++) FillRow(buffer, row, "ABABAB");
+        Render(r, buffer);
+
+        buffer.Clear();
+        for (int row = 0; row < 4; row++) FillRow(buffer, row, "BABABA");   // slid left by 1 — rows still identical
+        var output = Render(r, buffer);
+
+        Assert.DoesNotContain("\x1b[1S", output);   // no false scroll-up
+        Assert.DoesNotContain("\x1b[1T", output);   // no false scroll-down
+    }
+
     private sealed class StubFragment : IBufferFragment
     {
         public Size GetSize() => new(1, 1);

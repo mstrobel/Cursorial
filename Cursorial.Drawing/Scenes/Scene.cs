@@ -33,7 +33,17 @@ public sealed class Scene : IDisposable
     }
 
     /// <summary>Create a standalone scene of the given cell dimensions (not pooled).</summary>
-    public static Scene Create(int columns, int rows) => new(new CellBuffer(columns, rows), null);
+    public static Scene Create(int columns, int rows)
+    {
+        // Bounds, dirty regions, and fragment footprints all flow through Rect, whose coordinates are
+        // ushort — a scene wider/taller than ushort.MaxValue would silently truncate and corrupt layout.
+        // Cap it explicitly rather than fail subtly downstream.
+        ArgumentOutOfRangeException.ThrowIfLessThan(columns, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rows, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, ushort.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rows, ushort.MaxValue);
+        return new(new CellBuffer(columns, rows), null);
+    }
 
     /// <summary>Width of the scene in cells.</summary>
     public int Columns => _buffer.Columns;

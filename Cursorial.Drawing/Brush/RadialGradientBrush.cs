@@ -62,6 +62,17 @@ public sealed class RadialGradientBrush : GradientBrush
         // space); the gradient value is 1/s.
         double fx = (GradientOrigin.X * width - cx) / rx;
         double fy = (GradientOrigin.Y * height - cy) / ry;
+        // A focal point outside the unit ellipse makes the ray cast degenerate — it can miss the circle
+        // (disc < 0 everywhere → flat outer color) or yield a negative solution. Project it just inside,
+        // per the SVG radial-gradient rule, so the gradient stays well-defined for any focal placement.
+        double focalDist2 = fx * fx + fy * fy;
+        const double focalLimit = 0.999;
+        if (focalDist2 > focalLimit * focalLimit)
+        {
+            double scale = focalLimit / Math.Sqrt(focalDist2);
+            fx *= scale;
+            fy *= scale;
+        }
         double pnx = (px - cx) / rx;
         double pny = (py - cy) / ry;
         double dx = pnx - fx, dy = pny - fy;

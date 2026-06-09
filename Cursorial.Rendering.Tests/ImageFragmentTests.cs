@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Text;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
@@ -330,5 +331,64 @@ public class ImageContentTests
 
         // Every painted cell should carry the PlaceholderStyle's background, not the caller's.
         Assert.Equal(Color.FromRgb(50, 50, 50), buffer[0, 0].Style.Background);
+    }
+
+    // ---- aspect-free derivation (deferred finding 7): CreateFragment maps the SPECIFIED dimension to an
+    //      omitted (aspect-free) OTHER dimension on the wire. The fragment-level wire behavior given the
+    //      enum is covered elsewhere; this pins the counterintuitive present-dim→omitted-dim mapping. ----
+
+    [Fact]
+    public void Paint_ColumnsOnlySize_DerivesRowsAspectFree_OmitsRowQualifier()
+    {
+        var content = new Image(new ImageData(MinimalPng(40, 20), ImageFormat.Png, new Size(4, 0)));
+        var buffer = new CellBuffer(20, 10);
+        var caps = OutputCapabilities.None with
+                   { Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false) };
+        content.Paint(buffer, 0, 0, Style.Default, caps);
+
+        string header = EmitFragmentHeader(buffer, caps);
+        Assert.Contains("c=", header);         // columns pinned (the specified dimension)
+        Assert.DoesNotContain("r=", header);   // rows derived from aspect → omitted
+    }
+
+    [Fact]
+    public void Paint_RowsOnlySize_DerivesColumnsAspectFree_OmitsColumnQualifier()
+    {
+        var content = new Image(new ImageData(MinimalPng(40, 20), ImageFormat.Png, new Size(0, 3)));
+        var buffer = new CellBuffer(20, 10);
+        var caps = OutputCapabilities.None with
+                   { Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false) };
+        content.Paint(buffer, 0, 0, Style.Default, caps);
+
+        string header = EmitFragmentHeader(buffer, caps);
+        Assert.DoesNotContain("c=", header);   // columns derived from aspect → omitted
+        Assert.Contains("r=", header);         // rows pinned (the specified dimension)
+    }
+
+    // Emit the single registered fragment and return its APC control-data header (before the payload).
+    private static string EmitFragmentHeader(CellBuffer buffer, OutputCapabilities caps)
+    {
+        var fragment = buffer.Fragments[(0, 0)].Fragment;
+        var output = new ArrayBufferWriter<byte>();
+        fragment.Emit(0, 0, output, caps);
+        string emitted = Encoding.ASCII.GetString(output.WrittenSpan);
+        return emitted[..emitted.IndexOf(';')];
+    }
+
+    // A minimal valid PNG: the 8-byte signature + a 13-byte IHDR chunk. PngDecoder.DecodeSize reads the
+    // width/height and returns (sizeOnly) without decoding pixels or validating the CRC — enough for the
+    // Kitty path, which transmits the encoded bytes without decoding them.
+    private static byte[] MinimalPng(int width, int height)
+    {
+        var bytes = new byte[33];
+        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        signature.CopyTo(bytes);
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(8, 4), 13);   // IHDR data length
+        "IHDR"u8.CopyTo(bytes.AsSpan(12, 4));
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(16, 4), width);
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(20, 4), height);
+        bytes[24] = 8;   // bit depth
+        bytes[25] = 2;   // color type (truecolor); DecodeSize(sizeOnly) returns before reading this anyway
+        return bytes;
     }
 }

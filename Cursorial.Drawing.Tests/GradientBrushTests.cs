@@ -148,4 +148,17 @@ public class GradientBrushTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new LinearGradientBrush([new(0.0, Black), new(1.0, White)], opacity: double.NaN));
     }
+
+    [Fact]
+    public void RadialGradient_CellAspectRatio_CompressesTheVerticalRadiusForScreenCircles()
+    {
+        // Over a 20×20 region a point 4.5 rows above the center is at fractional radius ~0.9 once the vertical
+        // radius is aspect-compressed (×0.5 → 5 rows), so it reads nearer the edge (whiter) than the uncorrected
+        // ellipse (×1.0 → 10 rows, ~0.45). A true on-screen circle is shorter (in rows) than it is wide (in cols).
+        var bounds = new Rect(0, 0, 20, 20);
+        int corrected = new RadialGradientBrush(Black, White) { CellAspectRatio = 0.5 }.ColorAt(10, 5, bounds).Red;
+        int plain = new RadialGradientBrush(Black, White).ColorAt(10, 5, bounds).Red;   // default 1.0 → box ellipse
+        Assert.True(corrected > plain, $"aspect-corrected radial should be nearer the edge (whiter): {corrected} vs {plain}");
+        Assert.True(plain < 200, $"the uncorrected box ellipse hasn't reached the edge color at this point ({plain})");
+    }
 }

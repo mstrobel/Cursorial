@@ -52,10 +52,22 @@ public sealed class RadialGradientBrush : GradientBrush
     /// <summary>The focal point the gradient emanates from, relative to the bounds (default: the center).</summary>
     public RelativePoint GradientOrigin { get; }
 
+    /// <summary>
+    /// Width-to-height pixel ratio of a terminal cell (e.g. ~0.5, a cell being about half as wide as it is
+    /// tall), used to render a true on-screen <b>circle</b> instead of a box-relative ellipse. The vertical
+    /// radius is scaled by this factor, so a gradient with equal <see cref="RadiusX"/>/<see cref="RadiusY"/>
+    /// fills a screen circle. Default <c>1.0</c> = no correction (the box-relative ellipse). Set it from
+    /// <c>WindowCapabilities.CellPixelWidth / (double) CellPixelHeight</c> when those are negotiated.
+    /// </summary>
+    public double CellAspectRatio { get; init; } = 1.0;
+
     protected override double ComputeOffset(double px, double py, double width, double height)
     {
         double cx = Center.X * width, cy = Center.Y * height;
-        double rx = RadiusX * width, ry = RadiusY * height;
+        // Aspect-correct the vertical radius so an equal-radius gradient reads as a screen circle: each row is
+        // ~1/CellAspectRatio times taller than a column is wide, so the row radius must shrink to match in px.
+        double rx = RadiusX * width;
+        double ry = RadiusY * height * (CellAspectRatio > 0.0 ? CellAspectRatio : 1.0);
         if (rx <= Epsilon || ry <= Epsilon) return 0.0;
 
         // Cast a ray from the focal point through the sample point to the unit circle (unit-ellipse

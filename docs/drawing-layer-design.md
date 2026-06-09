@@ -182,8 +182,12 @@ dividing by its extent).
   conic `frac((atan2(dx,−dy)·180/π − Angle)/360)`. Spread maps raw `t` into range before a
   nearest-enclosing-stop scan; out-of-coverage pads to end colors (conic always wraps, so it overrides
   `ApplySpread` to the identity). **As-built:** gradients are box-relative (a radial fills the bounds
-  as an ellipse); cell-pixel aspect correction (true on-screen circles via
-  `WindowCapabilities.CellPixelWidth/Height`) is **deferred** as a refinement.
+  as an ellipse) by default; **cell-pixel aspect correction is now available** via
+  `RadialGradientBrush.CellAspectRatio` (opt-in, default `1.0` = the box ellipse) — set it to
+  `WindowCapabilities.CellPixelWidth / CellPixelHeight` (≈0.5) and an equal-radius radial fills a true
+  on-screen *circle* (the vertical radius is scaled so it's shorter in rows than wide in columns). The brush
+  stays capability-free (no `ColorAt` caps param); the consumer plumbs the ratio. The `draw` demo shows
+  ellipse-vs-circle side by side.
 - **Premultiplied-alpha interpolation** (sRGB channels): premultiply each stop's RGB by alpha, lerp,
   un-premultiply to a **straight** `Color`. This flows through the existing straight-alpha
   `Color.Composite` correctly and removes fade-to-transparent fringing (so `Color.Transparent` =

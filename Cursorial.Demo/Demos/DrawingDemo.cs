@@ -27,7 +27,7 @@ internal sealed class DrawingDemo : InteractiveDemo
 
     protected override void Initialize()
     {
-        _scene = new DrawingDemoScene(Buffer.Columns, Buffer.Rows);
+        _scene = new DrawingDemoScene(Buffer.Columns, Buffer.Rows, CellAspect());
     }
 
     protected override void OnResize(int columns, int rows)
@@ -35,7 +35,15 @@ internal sealed class DrawingDemo : InteractiveDemo
         // Resize reallocates + clears the buffer; rebuild the scene graph (a fresh compositor)
         // so the whole frame is recomposited at the new size.
         base.OnResize(columns, rows);
-        _scene = new DrawingDemoScene(Buffer.Columns, Buffer.Rows);
+        _scene = new DrawingDemoScene(Buffer.Columns, Buffer.Rows, CellAspect());
+    }
+
+    // Cell width:height pixel ratio (≈0.5) for aspect-correcting a radial gradient into a true on-screen
+    // circle; falls back to a typical 1:2 cell when the terminal didn't report its cell-pixel size.
+    private double CellAspect()
+    {
+        var win = Capabilities.Output.Window;
+        return win.CellPixelWidth is { } w && win.CellPixelHeight is { } h && h > 0 ? w / (double) h : 0.5;
     }
 
     protected override void RenderFrame(long frame) => _scene.Composite(Buffer, frame);
@@ -44,6 +52,7 @@ internal sealed class DrawingDemo : InteractiveDemo
     {
         private readonly int _cols;
         private readonly int _rows;
+        private readonly double _cellAspect;
         private readonly SceneCompositor _compositor;
         private readonly Scene _wallpaper;
         private readonly Panel[] _panels;
@@ -53,15 +62,16 @@ internal sealed class DrawingDemo : InteractiveDemo
             Scene Scene, int Width, int Height, double SpeedX, double SpeedY, double PhaseX, double PhaseY,
             int BaseRow, Rect? Clip);
 
-        public DrawingDemoScene(int columns, int rows)
+        public DrawingDemoScene(int columns, int rows, double cellAspect)
         {
             _cols = Math.Max(1, columns);
             _rows = Math.Max(1, rows);
+            _cellAspect = cellAspect;
 
             // Dark base; the compositor resets each dirty region to it before compositing the z-stack.
             _compositor = new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(16, 18, 24)));
 
-            _wallpaper = BuildWallpaper(_cols, _rows);
+            _wallpaper = BuildWallpaper(_cols, _rows, _cellAspect);
 
             int w = Math.Min(Math.Clamp(_cols / 4, 6, 22), _cols);
             int h = Math.Min(Math.Clamp(_rows / 3, 3, 8), Math.Max(1, _rows - 1));
@@ -120,7 +130,7 @@ internal sealed class DrawingDemo : InteractiveDemo
             _compositor.Composite(_layers, target.AsView());
         }
 
-        private static Scene BuildWallpaper(int cols, int rows)
+        private static Scene BuildWallpaper(int cols, int rows, double cellAspect)
         {
             var scene = Scene.Create(cols, rows);
             scene.Draw(ctx =>
@@ -143,6 +153,20 @@ internal sealed class DrawingDemo : InteractiveDemo
                 var clipped = title.Length < cols ? title : (cols > 1 ? title[..(cols - 1)] : "");
                 var titleFg = new LinearGradientBrush([new(0.0, Color.FromRgb(120, 220, 232)), new(1.0, Color.FromRgb(196, 150, 255))]);
                 ctx.DrawText(0, 0, clipped, titleFg, new SolidColorBrush(barColor));
+
+                // Aspect-correction showcase: two radial gradients over square-in-CELLS regions (which are tall
+                // on screen). The left uses no correction → a vertical ellipse; the right is aspect-corrected →
+                // a true on-screen circle (shorter in rows than it is wide in columns).
+                const int sw = 9;
+                if (rows >= sw + 3 && cols >= 2 * sw + 6)
+                {
+                    int top = rows - sw - 1;
+                    ctx.DrawText(1, top - 1, "radial:  ellipse (raw)    circle (aspect-corrected) →", Color.FromRgb(150, 160, 200));
+                    var deep = Color.FromRgb(16, 18, 30);
+                    ctx.FillRectangle(new Rect(1, top, sw, sw), new RadialGradientBrush(Color.FromRgb(120, 220, 232), deep));
+                    ctx.FillRectangle(new Rect(sw + 4, top, sw, sw),
+                        new RadialGradientBrush(Color.FromRgb(196, 150, 255), deep) { CellAspectRatio = cellAspect });
+                }
             });
             return scene;
         }

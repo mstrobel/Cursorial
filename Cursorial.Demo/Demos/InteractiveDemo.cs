@@ -39,6 +39,14 @@ internal abstract class InteractiveDemo : IDemo
     protected virtual bool OnEvent(InputEvent evt) => false;  // return true if state changed (request a redraw)
     protected virtual void OnResize(int columns, int rows) => Buffer.Resize(columns, rows);
 
+    // Request a redraw from OUTSIDE the input-event flow — e.g. a Task continuation when async work
+    // (a palette query, a network fetch) completes off the last input event. Thread-safe: sets a flag
+    // the render loop consumes on its next tick (≤ FrameInterval later). Without this, a non-animated
+    // demo only repaints on input/resize, so an async result that lands after the final input event
+    // sits unpainted until the next keypress. Safe to call from any thread (continuation/timer/pump).
+    private int _invalidated;
+    protected void Invalidate() => Interlocked.Exchange(ref _invalidated, 1);
+
     public async Task RunAsync(string argument)
     {
         Argument = argument;
@@ -125,7 +133,11 @@ internal abstract class InteractiveDemo : IDemo
 
                 if (stopCts.IsCancellationRequested) break;
 
-                if (Animated || dirty)
+                // Consume any external redraw request (a Task continuation calling Invalidate, etc.)
+                // atomically, so a request that arrives mid-render still triggers the next frame.
+                bool invalidated = Interlocked.Exchange(ref _invalidated, 0) == 1;
+
+                if (Animated || dirty || invalidated)
                 {
                     RenderFrame(frame);
 

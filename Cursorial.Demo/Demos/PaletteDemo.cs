@@ -46,11 +46,19 @@ internal sealed class PaletteDemo : InteractiveDemo
         // The query awaits OSC 4 responses; those flow through the harness pump and are routed to the
         // palette via OnEvent → Palette.OnInputEvent, which completes the per-index query tasks.
         _queryTask = Palette.QueryExtendedPaletteAsync(TimeSpan.FromSeconds(3));
+
+        // The aggregate query completes on an async continuation AFTER the OnEvent that fed the final
+        // response — so OnEvent can't observe IsCompleted in time, and no further input arrives to
+        // trigger a repaint. Request one when the task actually completes (or times out); the next
+        // render-loop tick harvests the result and paints the grid. Runs on the thread pool — Invalidate
+        // is thread-safe.
+        _queryTask.ContinueWith(_ => Invalidate(), TaskScheduler.Default);
     }
 
-    // Tee every observed event to the palette so OSC 4 color replies resolve the pending query, and
-    // request a repaint at the moment the query completes (it completes off any input event, so the
-    // resolving response is our only signal to repaint the now-populated grid).
+    // Tee every observed event to the palette so OSC 4 color replies resolve the pending query. The
+    // repaint on completion is driven by the Invalidate continuation wired in Initialize (the aggregate
+    // task completes on an async hop AFTER this OnEvent, so observing IsCompleted here is unreliable).
+    // The IsCompleted check below is a harmless safety net for a late event arriving after completion.
     protected override bool OnEvent(InputEvent evt)
     {
         Palette.OnInputEvent(evt);
@@ -70,8 +78,8 @@ internal sealed class PaletteDemo : InteractiveDemo
                 if (_colors is null || _colors.Count == 0)
                 {
                     _status = """
-                              No palette response within the timeout.
-                              Press [b][fg=brightcyan]q[/fg][/b] or [b][fg=brightcyan]Esc[/fg][/b] to exit.
+                              [p align=center]No palette response within the timeout.
+                              Press [b][fg=brightcyan]q[/fg][/b] or [b][fg=brightcyan]Esc[/fg][/b] to exit.[/p]
                               """;
                 }
                 _queryHarvested = true;
@@ -94,9 +102,10 @@ internal sealed class PaletteDemo : InteractiveDemo
 
         if (palette is null || palette.Count == 0)
         {
-            var msg = statusMessage ?? "[fg=#dcdcff]No palette data.[/]";
-            var rtb = new RichTextBuilder(style).Paragraph(alignment: TextAlignment.Center).Run(msg).EndParagraph().Build();
-            var msgFormatted = new TextFormatter().Format(rtb, buffer.Columns, buffer.Rows);
+            var msg = statusMessage ?? "[p align=center][fg=#dcdcff]No palette data.[/fg][/p]";
+            var rtb = new RichTextBuilder(style).Paragraph(alignment: TextAlignment.Center);
+            TextMarkup.Parse(msg, rtb);
+            var msgFormatted = new TextFormatter().Format(rtb.Build(), buffer.Columns, buffer.Rows);
 
             msgFormatted.Paint(buffer, buffer.Bounds, OutputCapabilities.None);
 

@@ -236,11 +236,18 @@ public sealed class TextFormatter
         {
             var fragmentBuilder = new StringBuilder();
             int fragmentWidth = 0;
+            // Wrap-invariant 1-D brush sampling: track each piece's cumulative logical offset within this
+            // source run, sharing a carrier whose total width is back-filled below (W isn't known until the
+            // run is fully emitted). Only when the run carries a brush tag — untagged runs skip the accounting.
+            var scope = run.Tag is not null ? new InlineRunScope() : null;
+            int runOffset = 0;
 
             void EmitFragment()
             {
                 if (fragmentBuilder.Length == 0) return;
-                _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink) { Tag = run.Tag });
+                _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
+                                  { Tag = run.Tag, LogicalStart = runOffset, Scope = scope });
+                runOffset += fragmentWidth;
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
                 fragmentWidth = 0;
@@ -280,6 +287,9 @@ public sealed class TextFormatter
             }
 
             EmitFragment();
+            // The run is fully emitted — record its total logical width so every wrapped piece samples a
+            // brush over the same 1-D strip regardless of where it landed.
+            if (scope is not null) scope.TotalWidth = runOffset;
 
             void ProcessChunk(string source, int start, int endExclusive)
             {
@@ -294,8 +304,10 @@ public sealed class TextFormatter
                         EmitFragment();
                         FlushWord();
                         _atoms.Add(new SpaceAtom(
-                            new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink) { Tag = run.Tag },
+                            new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink)
+                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope },
                             outer.TabWidth));
+                        runOffset += outer.TabWidth;
                         continue;
                     }
 
@@ -305,8 +317,10 @@ public sealed class TextFormatter
                         FlushWord();
                         int spaceWidth = GraphemeWidth.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
-                            new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink) { Tag = run.Tag },
+                            new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink)
+                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope },
                             spaceWidth));
+                        runOffset += spaceWidth;
                         continue;
                     }
 
@@ -622,12 +636,16 @@ public sealed class TextFormatter
 
             if (headFragment.Length > 0)
             {
-                headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink) { Tag = text.Tag });
+                // The head keeps this piece's logical start; the tail begins headFragmentWidth further along
+                // the source run. Both share the run's scope, so a char-wrapped brushed run stays continuous.
+                headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink)
+                                 { Tag = text.Tag, LogicalStart = text.LogicalStart, Scope = text.Scope });
                 headWidth += headFragmentWidth;
             }
 
             if (tailFragment.Length > 0)
-                tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink) { Tag = text.Tag });
+                tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink)
+                                 { Tag = text.Tag, LogicalStart = text.LogicalStart + headFragmentWidth, Scope = text.Scope });
         }
 
         var head = new WordAtom(headRuns.ToImmutable(), headWidth, ImmutableArray<SoftBreakPoint>.Empty);

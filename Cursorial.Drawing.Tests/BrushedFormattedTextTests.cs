@@ -195,6 +195,53 @@ public class BrushedFormattedTextTests
         Assert.Equal(Red, b[3, 0].Style.Foreground);     // 'R' — per-run brush wins over the document brush
     }
 
+    // ---- A (inline 1-D wrap-invariant sampling) --------------------------------------------------
+
+    [Fact]
+    public void PerRunBrush_InlineScope_IsWrapInvariant()
+    {
+        // The same Inline-scoped run, laid out unwrapped vs wrapped, colors each grapheme identically — the
+        // gradient flows across the wrap as ONE reading-order strip, not restarting per line-piece.
+        var bs = new BrushedStyle(LeftToRight());   // Inline L→R, Red→Blue
+        FormattedText Build(int width) =>
+            new TextFormatter().Format(new RichTextBuilder().BrushedRun("aaaa bbbb cccc", bs).Build(), width);
+
+        var unwrapped = DrawHarness.Render(20, 2, ctx => ctx.DrawFormattedText(Build(20), new Rect(0, 0, 20, 2), OutputCapabilities.None));
+        var wrapped = DrawHarness.Render(12, 3, ctx => ctx.DrawFormattedText(Build(9), new Rect(0, 0, 12, 3), OutputCapabilities.None));
+
+        // "cccc" wraps to line 1. Its FIRST 'c' sits at logical offset 10 of 14 → blue-dominant under the 1-D
+        // strip; per-line-piece sampling (the old behavior) would restart it at red. This is the discriminator.
+        Assert.Equal("c", wrapped[0, 1].Grapheme);
+        var firstC = wrapped[0, 1].Style.Foreground;
+        Assert.True(firstC.Blue > firstC.Red, $"first wrapped 'c' should be blue (logical 10/14), not red (per-piece), was {firstC}");
+
+        // Identity: a grapheme's color is independent of where it wrapped — the last 'c' (logical 13) matches
+        // between the unwrapped (col 13, row 0) and wrapped (col 3, row 1) layouts.
+        Assert.Equal("c", unwrapped[13, 0].Grapheme);
+        Assert.Equal("c", wrapped[3, 1].Grapheme);
+        Assert.Equal(unwrapped[13, 0].Style.Foreground, wrapped[3, 1].Style.Foreground);
+    }
+
+    [Fact]
+    public void PerRunBrush_InlineScope_IsWrapInvariant_WithWideGlyphs()
+    {
+        // Pins the width hinge: the run's logical-offset accounting (GraphemeWidth) must match the painter's
+        // cursor advance for WIDE glyphs (CJK 字 = 2 cells). If they drift, the strip slides past the wrap and
+        // a wide glyph's wrapped color won't match its unwrapped color.
+        var bs = new BrushedStyle(LeftToRight());
+        FormattedText Build(int width) =>
+            new TextFormatter().Format(new RichTextBuilder().BrushedRun("字字字 字字字", bs).Build(), width);
+
+        var unwrapped = DrawHarness.Render(20, 2, ctx => ctx.DrawFormattedText(Build(20), new Rect(0, 0, 20, 2), OutputCapabilities.None));
+        var wrapped = DrawHarness.Render(10, 3, ctx => ctx.DrawFormattedText(Build(7), new Rect(0, 0, 10, 3), OutputCapabilities.None));
+
+        // The second group's first 字 — unwrapped at screen col 7 (past 3 wide glyphs + a space), wrapped at
+        // (0,1) on the second line. Both are logical offset 7, so the colors must match.
+        Assert.Equal("字", unwrapped[7, 0].Grapheme);
+        Assert.Equal("字", wrapped[0, 1].Grapheme);
+        Assert.Equal(unwrapped[7, 0].Style.Foreground, wrapped[0, 1].Style.Foreground);
+    }
+
     // A minimal IContent that paints a single glyph with whatever style it's given — stands in for an
     // image/icon's glyph fallback so we can verify it inherits the document brush.
     private sealed class GlyphContent(string glyph) : IContent

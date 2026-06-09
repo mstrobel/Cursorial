@@ -497,9 +497,16 @@ pinned (clamped ≥1) so a degenerate 0 can't drop both qualifiers into an unsiz
 inherently cell-quantized (it resamples to the whole-cell pixel box), so aspect-free doesn't apply to it.
 **Hardened (post-review):** both `Clip` paths clamp the source rectangle to the image edge (origin → last valid
 pixel, extent → remaining pixels) so a fractional px/cell ratio can't emit `x+w > width` (Kitty) or throw a
-`min>max` `Math.Clamp` (Sixel, sub-1-px/cell). **Pending:** true inline 1-D wrap-invariant sampling (A — a wrapped
-run currently samples per line-piece) · an end-to-end test of the `Image.CreateFragment` aspect-free derivation
-(the wire behavior given the enum is covered; the baseSize→enum mapping is not yet).
+`min>max` `Math.Clamp` (Sixel, sub-1-px/cell).
+**A done — true inline 1-D wrap-invariant sampling:** the tokenizer stamps each wrapped piece with its cumulative
+logical offset within the source run (`FormattedTextRun.LogicalStart`) plus a shared, back-filled total width
+(`InlineRunScope` — both pure column geometry, so Rendering stays brush-blind); `BrushedTextContext` carries
+`LogicalColumn`/`ScopeWidth` and the inline resolver samples `ColorAt(LogicalColumn, 0, Rect(0,0,ScopeWidth,1))`, so
+a wrapped run's gradient flows continuously across the wrap — identical to the unwrapped layout (pinned by
+wrapped-vs-unwrapped color-equality tests, including wide CJK glyphs to fix the width-metric hinge). Synthetic
+glyphs (soft-hyphen at a wrap, ellipsis, alignment padding) carry no brush tag and stay flat — acceptable
+degradation. **Phase 6 complete.** (Deferred follow-up: an end-to-end test of the `Image.CreateFragment` aspect-free
+derivation — the wire behavior given the enum is covered; the baseSize→enum mapping is not yet.)
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
 **Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
@@ -609,7 +616,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawContent` + per-protocol clip. | **6a + per-run (B) + 6b.1 images + 6b.2 clip (Sixel pixel-crop / Kitty source-rect / iTerm2 suppress) + Kitty & iTerm2 no-distortion aspect scaling done (adversarially reviewed: source-rect edge-clamping hardened)**; wrap-invariance (A) pending (see §8) |
+| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawContent` + per-protocol clip; A inline wrap-invariant sampling. | **COMPLETE** — 6a + per-run (B) + 6b.1 images + 6b.2 clip (Sixel pixel-crop / Kitty source-rect / iTerm2 suppress) + Kitty & iTerm2 no-distortion aspect scaling (adversarially reviewed) + A inline 1-D wrap-invariant sampling, all done (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's

@@ -181,13 +181,15 @@ public sealed class DrawingContext
                        // A run that declares its own brush wins, sampled at its declaration scope.
                        if (ctx.Tag is BrushedStyle bs)
                        {
-                           var scope = bs.Scope switch
-                           {
-                               DeclarationScope.Block    => ctx.Block,
-                               DeclarationScope.Document => docBounds,
-                               _                         => ctx.Run,   // Inline (default)
-                           };
-                           return ctx.BaseStyle.WithForeground(bs.Foreground.ColorAt(ctx.Column, ctx.Row, scope));
+                           // Inline → wrap-invariant 1-D reading-order strip: sample at the cell's cumulative
+                           // logical offset within the source run, over the run's total width, so the gradient
+                           // flows continuously across a wrap instead of restarting per line-piece. Block /
+                           // Document → the 2-D laid-out box.
+                           Color foreground = bs.Scope == DeclarationScope.Inline
+                               ? bs.Foreground.ColorAt(ctx.LogicalColumn, 0, new Rect(0, 0, Math.Max(1, ctx.ScopeWidth), 1))
+                               : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
+                                                       bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
+                           return ctx.BaseStyle.WithForeground(foreground);
                        }
 
                        // Otherwise the document brush (if any) colors cells that inherited the document

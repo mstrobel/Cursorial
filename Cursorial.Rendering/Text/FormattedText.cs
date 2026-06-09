@@ -140,7 +140,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// run rect equals the block and the tag is null.
     /// </summary>
     private static Style ResolveStyle(BrushedTextResolver? resolver, in Style baseStyle, int column, int row, in Rect block)
-        => resolver is null ? baseStyle : resolver(new BrushedTextContext(baseStyle, column, row, block, block, tag: null));
+        => resolver is null ? baseStyle : resolver(new BrushedTextContext(baseStyle, column, row, block, logicalColumn: 0, scopeWidth: 0, tag: null));
 
     private static void PaintParagraph(
         FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
@@ -162,9 +162,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 {
                     case FormattedTextRun text:
                     {
-                        // The run's piece rect on this line — the inline-scoped sampling bounds; its Tag selects
-                        // a per-run brush. Both are constant within the run, so compute once.
-                        var runRect = new Rect(cursor, row + i, Math.Max(1, text.CellWidth), 1);
+                        // Wrap-invariant inline sampling: a grapheme's logical offset within its source run is
+                        // the run's logical start (constant per piece) + its column advance within this piece,
+                        // and W is the run's total width — so an inline brush samples the same 1-D strip no
+                        // matter where the run wrapped. Constant-per-piece values are hoisted out of the loop.
+                        int pieceStartColumn = cursor;
+                        int scopeWidth = text.Scope?.TotalWidth ?? Math.Max(1, text.CellWidth);
                         var enumerator = text.Text.GetGraphemeEnumerator();
                         while (enumerator.MoveNext())
                         {
@@ -173,7 +176,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // substituted style is layout-safe.
                             var style = resolver is null
                                 ? text.Style
-                                : resolver(new BrushedTextContext(text.Style, cursor, row + i, blockRect, runRect, text.Tag));
+                                : resolver(new BrushedTextContext(text.Style, cursor, row + i, blockRect,
+                                                                  text.LogicalStart + (cursor - pieceStartColumn), scopeWidth, text.Tag));
                             int width = buffer.Set(cursor, row + i, grapheme.ToString(), style);
                             cursor += width;
                         }
@@ -337,12 +341,37 @@ public sealed record FormattedTextRun : FormattedRun
     /// </summary>
     public object? Tag { get; init; }
 
+    /// <summary>
+    /// The cumulative logical (column) offset of this piece's first grapheme within its source inline run.
+    /// A higher layer (Drawing) uses it for wrap-invariant 1-D brush sampling, so a grapheme's color is
+    /// independent of where the run wrapped. 0 for the first piece / standalone runs. Brush-agnostic geometry.
+    /// </summary>
+    public int LogicalStart { get; init; }
+
+    /// <summary>
+    /// Shared metrics for the source inline run this piece was split from — carries the run's total logical
+    /// width, back-filled by the tokenizer once the whole run is emitted (W isn't known until then). All
+    /// wrapped pieces of one run reference the same instance. Internal: Drawing reads the width via
+    /// <c>BrushedTextContext.ScopeWidth</c>, not this carrier. Null for runs without a brush tag.
+    /// </summary>
+    internal InlineRunScope? Scope { get; init; }
+
     public void Deconstruct(out string Text, out Style Style, out string? Hyperlink)
     {
         Text = this.Text;
         Style = this.Style;
         Hyperlink = this.Hyperlink;
     }
+}
+
+/// <summary>
+/// Shared, mutable carrier for an inline source run's total logical width. All wrapped pieces of one run
+/// reference the same instance; the tokenizer fills <see cref="TotalWidth"/> once the run is fully emitted
+/// (the width isn't known until then). Pure column geometry — no brush concept — so Rendering stays brush-blind.
+/// </summary>
+internal sealed class InlineRunScope
+{
+    public int TotalWidth { get; set; }
 }
 
 /// <summary>

@@ -9,7 +9,8 @@ namespace Cursorial.Rendering.Text;
 /// resolver should sample against. Keeping it brush-free is what lets the formatter stay in Rendering while
 /// brushes live in Drawing (the §8 invariant: <c>IBrush</c> never enters <c>Style</c>).
 /// </summary>
-public readonly struct BrushedTextContext(Style baseStyle, int column, int row, Rect block, Rect run, object? tag)
+public readonly struct BrushedTextContext(
+    Style baseStyle, int column, int row, Rect block, int logicalColumn, int scopeWidth, object? tag)
 {
     /// <summary>The cell's flat style — a resolver typically returns this with its colors swapped for brushed ones.</summary>
     public Style BaseStyle { get; } = baseStyle;
@@ -24,11 +25,18 @@ public readonly struct BrushedTextContext(Style baseStyle, int column, int row, 
     public Rect Block { get; } = block;
 
     /// <summary>
-    /// The run's own rect on its line (its piece extent, 1 row) — the sampling bounds for an inline-scoped
-    /// brush. For non-text elements the resolver isn't given a distinct run, so this equals <see cref="Block"/>.
-    /// (A run that wraps is a per-line piece here; true reading-order wrap-invariance is a later refinement.)
+    /// The cell's cumulative logical (column) offset within its inline scope — the source run's reading-order
+    /// strip, independent of where the run wrapped. Paired with <see cref="ScopeWidth"/> it gives an
+    /// inline-scoped brush a wrap-invariant 1-D position: sample <c>ColorAt(LogicalColumn, 0, Rect(0,0,ScopeWidth,1))</c>.
+    /// 0 for non-text elements (which have no inline scope).
     /// </summary>
-    public Rect Run { get; } = run;
+    public int LogicalColumn { get; } = logicalColumn;
+
+    /// <summary>
+    /// The total logical width of the cell's inline scope (the source run's full reading-order extent), the
+    /// denominator for inline-scoped 1-D sampling. 0 for non-text elements.
+    /// </summary>
+    public int ScopeWidth { get; } = scopeWidth;
 
     /// <summary>
     /// The run's opaque <see cref="FormattedTextRun.Tag"/> (e.g. a Drawing <c>BrushedStyle</c>), or null. A

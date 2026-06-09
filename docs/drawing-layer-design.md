@@ -480,9 +480,26 @@ wrap-splits onto each `FormattedTextRun`); `RichTextBuilder.BrushedRun(text, bru
 target (offset-translated anchors; tracked + rebuilt each work-frame so they move/disappear correctly; the
 renderer's Key+anchor diff keeps stable ones from re-emitting; layer semantics handled by the renderer off the
 target). `DrawingContext.DrawContent(rect, IContent, caps)` authors an image / icon / sized text into a scene.
-Verified across **Kitty / iTerm2 / Sixel** (an `imagescene` demo). **Pending:** true inline 1-D wrap-invariant
-sampling (A — a wrapped run currently samples per line-piece) · per-protocol image clipping (6b.2 — Sixel
-pixel-crop / Kitty source-rect / iTerm2 all-or-nothing; a fragment is all-or-nothing vs the clip today).
+Verified across **Kitty / iTerm2 / Sixel** (an `imagescene` demo).
+**6b.2 done** — per-protocol image clipping via `IBufferFragment.Clip(in Rect visible)` (default null = suppress).
+`SceneCompositor` computes a partially-clipped fragment's visible cell footprint and calls `Clip`: a returned
+fragment re-anchors at the visible origin; null suppresses it. **Sixel** re-crops its retained RGBA to the visible
+cells (pixels-per-cell) and re-encodes. **Kitty** re-places the same image with a source rectangle (`x,y,w,h` in
+image pixels, mapped from the visible cells via the native pixel size) — *not* all-or-nothing; only **iTerm2**
+suppresses (pre-encoded passthrough). The Kitty source-rect needs the native pixel dims, now plumbed
+(`Image.CreateFragment` → `KittyImageFragment(pixelSize)`). Demo: `imageclip` (image straddling a scene clip edge).
+**Also (no-distortion aspect scaling):** when an image is sized in exactly one dimension (`renderSize (cols,0)` /
+`(0,rows)`), the present dimension marks the *other* as aspect-free (`AspectFreeDimension`), and the placement omits
+it on the wire so the protocol scales to native aspect instead of stretching into the rounded whole-cell box —
+**Kitty** omits `c=`/`r=`, **iTerm2** emits `width=auto`/`height=auto` with `preserveAspectRatio=1`. `GetSize` still
+reserves a whole-cell footprint for layout (the rendered image may diverge sub-cell). At least one axis is always
+pinned (clamped ≥1) so a degenerate 0 can't drop both qualifiers into an unsized native-pixel placement. Sixel is
+inherently cell-quantized (it resamples to the whole-cell pixel box), so aspect-free doesn't apply to it.
+**Hardened (post-review):** both `Clip` paths clamp the source rectangle to the image edge (origin → last valid
+pixel, extent → remaining pixels) so a fractional px/cell ratio can't emit `x+w > width` (Kitty) or throw a
+`min>max` `Math.Clamp` (Sixel, sub-1-px/cell). **Pending:** true inline 1-D wrap-invariant sampling (A — a wrapped
+run currently samples per line-piece) · an end-to-end test of the `Image.CreateFragment` aspect-free derivation
+(the wire behavior given the enum is covered; the baseSize→enum mapping is not yet).
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
 **Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
@@ -592,7 +609,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawContent`. | **6a + per-run (B) + 6b.1 images done**; wrap-invariance (A) / image clipping (6b.2) pending (see §8) |
+| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawContent` + per-protocol clip. | **6a + per-run (B) + 6b.1 images + 6b.2 clip (Sixel pixel-crop / Kitty source-rect / iTerm2 suppress) + Kitty & iTerm2 no-distortion aspect scaling done (adversarially reviewed: source-rect edge-clamping hardened)**; wrap-invariance (A) pending (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's

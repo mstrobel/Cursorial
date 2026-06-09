@@ -124,14 +124,27 @@ public class Image : FragmentContent
         if (data?.Bytes.IsEmpty is not false) return null;
 
         var effectiveSize = MeasureImage(bounds.Size, capabilities, out var pixelSize);
-        
+
+        // When the caller sized exactly one dimension, mark the OTHER (aspect-derived) dimension as
+        // aspect-free so the graphics protocol scales the image to its native aspect in that axis instead
+        // of stretching into the rounded whole-cell box. effectiveSize still reserves a whole-cell
+        // footprint for layout. The present dimension selects which one is omitted — a cols-only request
+        // leaves Rows free, and vice versa. Kitty (omit c=/r=) and iTerm2 (width/height=auto) both honor it.
+        var aspectFree = baseSize switch
+        {
+            { Columns: > 0, Rows: 0 } => AspectFreeDimension.Rows,
+            { Columns: 0, Rows: > 0 } => AspectFreeDimension.Columns,
+            _ => AspectFreeDimension.None,
+        };
+
         // // Kitty first — supports PNG natively, has the most predictable cell-footprint semantics.
+        // Pass the native pixel size so a clip can crop via a source rectangle (Clip → x,y,w,h).
         if (capabilities.Graphics.KittyGraphics && data.Format == ImageFormat.Png)
-            return new KittyImageFragment(data, effectiveSize);
+            return new KittyImageFragment(data, effectiveSize, pixelSize, aspectFree: aspectFree);
 
         // iTerm2 second — accepts PNG / JPEG / GIF; format hint passes through unchanged.
         if (capabilities.Graphics.ITerm2InlineImages)
-            return new ITerm2ImageFragment(data, effectiveSize, pixelSize);
+            return new ITerm2ImageFragment(data, effectiveSize, pixelSize, aspectFree: aspectFree);
 
         // Sixel third — PNG only (we don't decode JPEG / GIF). PNG path: decode to RGBA, scale
         // to the target pixel dimensions, quantize to a 256-color palette, encode the Sixel

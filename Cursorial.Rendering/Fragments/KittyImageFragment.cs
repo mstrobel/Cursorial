@@ -49,18 +49,32 @@ public sealed class KittyImageFragment : IBufferFragment
 
     private readonly ImageData _data;
     private readonly Size _displaySize;
-    // ReSharper disable once NotAccessedField.Local
     private readonly (int Columns, int Rows)? _pixelSize;
+    // Source-rectangle crop in image pixels (Kitty x,y,w,h) for a clipped placement; null = full image.
+    private readonly (int X, int Y, int W, int H)? _sourceRect;
+    // Which placement dimension to leave to Kitty's aspect-ratio scaling (omit c= or r= on the wire).
+    private readonly AspectFreeDimension _aspectFree;
     private readonly uint _imageId;
     private readonly object _contentKey;
 
     /// <summary>Construct a Kitty image fragment for the supplied image data.</summary>
-    public KittyImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null)
+    /// <param name="data">The encoded image and its metadata.</param>
+    /// <param name="displaySize">The whole-cell footprint the placement reserves (reported by <see cref="GetSize"/>).</param>
+    /// <param name="pixelSize">The image's native pixel dimensions, enabling source-rectangle cropping.</param>
+    /// <param name="sourceRect">A pixel source rectangle for a clipped placement; null = full image.</param>
+    /// <param name="aspectFree">Which dimension to omit on the wire so Kitty scales to native aspect (no cell-rounding stretch).</param>
+    public KittyImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null,
+                              (int X, int Y, int W, int H)? sourceRect = null,
+                              AspectFreeDimension aspectFree = AspectFreeDimension.None)
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
         _displaySize = displaySize ?? data.RequestedSize ?? throw new InvalidOperationException("ImageData.CellSize or displaySize must be provided.");
         _pixelSize = pixelSize;
+        _sourceRect = sourceRect;
+        // A cropped placement is exact (the source rectangle defines what shows), so never omit a
+        // dimension when cropping — aspect omission only applies to the full, uncropped image.
+        _aspectFree = sourceRect is null ? aspectFree : AspectFreeDimension.None;
         _imageId = (uint) Interlocked.Increment(ref _nextImageId);
 
         // Content-derived diff key (see Key). Computed once; combines a hash of the encoded bytes
@@ -72,7 +86,40 @@ public sealed class KittyImageFragment : IBufferFragment
         hash.Add(data.Format);
         hash.Add(_displaySize);
         hash.Add(_pixelSize);
-        _contentKey = (data.Bytes.Length, hash.ToHashCode(), _displaySize, _pixelSize);
+        hash.Add(_sourceRect);
+        hash.Add(_aspectFree);
+        _contentKey = (data.Bytes.Length, hash.ToHashCode(), _displaySize, _pixelSize, _sourceRect, _aspectFree);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Kitty <b>can</b> crop: it maps the <paramref name="visible"/> cell rectangle onto the source image's
+    /// pixels (using the native pixel size) and re-places the same image with a source rectangle
+    /// (<c>x,y,w,h</c>) over the visible cell footprint. Returns null only when the native pixel size is
+    /// unknown — then the compositor suppresses the partial image rather than overdrawing.
+    /// </remarks>
+    public IBufferFragment? Clip(in Rect visible)
+    {
+        if (_pixelSize is not { } px || px.Columns <= 0 || px.Rows <= 0 ||
+            _displaySize.Columns <= 0 || _displaySize.Rows <= 0)
+            return null;
+
+        double pixelsPerColumn = (double) px.Columns / _displaySize.Columns;
+        double pixelsPerRow = (double) px.Rows / _displaySize.Rows;
+        // Clamp the ORIGIN to the last valid pixel (px-1), then the EXTENT to whatever pixels remain, so
+        // x+w <= px.Columns and y+h <= px.Rows for every regime — X and W are rounded independently, so
+        // an unclamped extent can overshoot the image edge by a pixel (and at sub-1-px/cell ratios the
+        // origin itself can land on the exclusive end). px.Columns/Rows are >= 1 (guarded above), so the
+        // (1, px - origin) clamp range is always valid (no min>max).
+        int sourceX = Math.Clamp((int) Math.Round(visible.Column * pixelsPerColumn), 0, px.Columns - 1);
+        int sourceY = Math.Clamp((int) Math.Round(visible.Row * pixelsPerRow), 0, px.Rows - 1);
+        var source = (
+            X: sourceX,
+            Y: sourceY,
+            W: Math.Clamp((int) Math.Round(visible.Columns * pixelsPerColumn), 1, px.Columns - sourceX),
+            H: Math.Clamp((int) Math.Round(visible.Rows * pixelsPerRow), 1, px.Rows - sourceY));
+
+        return new KittyImageFragment(_data, new Size(visible.Columns, visible.Rows), _pixelSize, source);
     }
 
     /// <summary>The image being transmitted.</summary>
@@ -220,10 +267,20 @@ public sealed class KittyImageFragment : IBufferFragment
         // Header bytes for the chunk. The first chunk carries full transmit params plus the
         // image ID (i=) so a later EmitErase can target this exact image. Subsequent chunks
         // carry only m=. Quietness q=2 always (we don't read responses).
-        var rowQualifier = _displaySize.Rows >= 1 ? $"r={_displaySize.Rows}," : "";
+        // Pin a cell dimension only when it isn't the aspect-free one — omitting c= (or r=) lets Kitty
+        // scale the image to its native aspect in that axis rather than stretching into a rounded box.
+        // Omit ONLY for the aspect-free axis (never for a degenerate 0): dropping BOTH qualifiers would
+        // make Kitty fall back to the image's native pixel size and blow past the reserved footprint, so
+        // the pinned dimension is clamped to >= 1, guaranteeing at least one sized axis on the wire.
+        var colQualifier = _aspectFree == AspectFreeDimension.Columns
+                               ? "" : $"c={Math.Max(1, _displaySize.Columns)},";
+        var rowQualifier = _aspectFree == AspectFreeDimension.Rows
+                               ? "" : $"r={Math.Max(1, _displaySize.Rows)},";
+        // Source-rectangle crop (image pixels) for a clipped placement — Kitty displays only this region.
+        var cropQualifier = _sourceRect is { } s ? $"x={s.X},y={s.Y},w={s.W},h={s.H}," : "";
         var header = firstChunk
                          ? Encoding.ASCII.GetBytes(
-                             $"a=T,f={format},i={_imageId},c={_displaySize.Columns},{rowQualifier}q=2,m={(isLast ? 0 : 1)};")
+                             $"a=T,f={format},i={_imageId},{colQualifier}{rowQualifier}{cropQualifier}q=2,m={(isLast ? 0 : 1)};")
                          : Encoding.ASCII.GetBytes($"m={(isLast ? 0 : 1)};");
 
         // APC framing: ESC _ G <control-data> ; <payload> ESC \ — the "_G" prefix marks

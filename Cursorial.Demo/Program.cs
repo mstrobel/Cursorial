@@ -27,6 +27,7 @@ IReadOnlyList<IDemo> demos =
     new AnimationDemo(),
     new BrushedTextDemo(),
     new ImageSceneDemo(),
+    new ImageClipDemo(),
     new ImageDemo(),
     new FormatDemo(),
     new PaletteDemo(),

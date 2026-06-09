@@ -21,9 +21,9 @@ internal sealed class ImageSceneDemo : InteractiveDemo
 
     private static readonly (string Resource, string Fallback, string Label)[] Icons =
     [
-        ("Icons/settings.png", "[*]", "settings"),
-        ("Icons/download.png", "[v]", "download"),
-        ("Icons/calendar.png", "[#]", "calendar"),
+        ("Icons/settings.png", "\\[⚙️]", "settings"),
+        ("Icons/download.png", "\\[⬇️]", "download"),
+        ("Icons/calendar.png", "\\[📆]", "calendar"),
     ];
 
     private IContent[] _content = null!;

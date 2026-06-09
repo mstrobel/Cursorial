@@ -107,4 +107,15 @@ public interface IBufferFragment
     /// goes away.
     /// </summary>
     void EmitErase(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) {}
+
+    /// <summary>
+    /// Return a fragment that renders only the <paramref name="visible"/> cell sub-rectangle of this one
+    /// (anchor-relative), for compositing under a clip that cuts the fragment's footprint. The returned
+    /// fragment's <see cref="GetSize"/> is <paramref name="visible"/>'s size and it is re-anchored at the
+    /// translated top-left. Returns <see langword="null"/> when the protocol can't crop a partial image —
+    /// the default for cell-stream protocols that ship a pre-encoded payload (iTerm2) or place an
+    /// uncroppable overlay (Kitty, today); the compositor then suppresses the fragment rather than letting it
+    /// overdraw past the clip. Implementations that hold the raw pixels (Sixel) override to re-crop + re-encode.
+    /// </summary>
+    IBufferFragment? Clip(in Rect visible) => null;
 }

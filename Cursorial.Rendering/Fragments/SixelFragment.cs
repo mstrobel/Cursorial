@@ -47,6 +47,13 @@ public sealed class SixelFragment : IBufferFragment
     private readonly Size _cellSize;
     private readonly string? _sourceFileName;
 
+    // Retained from the RGBA constructor so the fragment can pixel-crop itself under a clip (re-crop the
+    // pixels + re-encode). Null for pre-encoded payloads, which can't be cropped.
+    private readonly byte[]? _rgba;
+    private readonly int _pixelWidth;
+    private readonly int _pixelHeight;
+    private readonly int _maxColors;
+
     /// <summary>
     /// Construct a Sixel fragment from a pre-encoded payload. <paramref name="sixelPayload"/>
     /// must be the full <c>DCS … q … ST</c> envelope (including framing) — the fragment writes
@@ -102,6 +109,41 @@ public sealed class SixelFragment : IBufferFragment
         _payload = SixelEncoder.Encode(quantized.IndexedPixels, pixelWidth, pixelHeight, quantized.Palette);
         _cellSize = cellSize;
         _sourceFileName = imageData?.SourceFileName;
+
+        // Retain the pixels so a clip can re-crop this image.
+        _rgba = rgbaPixels.ToArray();
+        _pixelWidth = pixelWidth;
+        _pixelHeight = pixelHeight;
+        _maxColors = maxColors;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Sixel <b>can</b> crop: it re-crops the retained RGBA to the <paramref name="visible"/> cell rectangle
+    /// (mapping cells to pixels by this image's pixels-per-cell) and re-encodes a fresh Sixel envelope sized to
+    /// those cells. Returns null only for the pre-encoded-payload variant, which has no pixels to crop.
+    /// </remarks>
+    public IBufferFragment? Clip(in Rect visible)
+    {
+        if (_rgba is null || _cellSize.Columns <= 0 || _cellSize.Rows <= 0 ||
+            _pixelWidth <= 0 || _pixelHeight <= 0) return null;
+
+        double pixelsPerColumn = (double) _pixelWidth / _cellSize.Columns;
+        double pixelsPerRow = (double) _pixelHeight / _cellSize.Rows;
+
+        // Clamp the origin to the last valid pixel (px-1) so the extent's (1, _pixelWidth - px) clamp
+        // range is always valid: at sub-1-px/cell ratios a rightmost-cell origin could otherwise reach
+        // _pixelWidth, making the extent clamp Math.Clamp(_, 1, 0) throw (min > max).
+        int px = Math.Clamp((int) Math.Round(visible.Column * pixelsPerColumn), 0, _pixelWidth - 1);
+        int py = Math.Clamp((int) Math.Round(visible.Row * pixelsPerRow), 0, _pixelHeight - 1);
+        int pw = Math.Clamp((int) Math.Round(visible.Columns * pixelsPerColumn), 1, _pixelWidth - px);
+        int ph = Math.Clamp((int) Math.Round(visible.Rows * pixelsPerRow), 1, _pixelHeight - py);
+
+        var cropped = new byte[pw * ph * 4];
+        for (int y = 0; y < ph; y++)
+            Array.Copy(_rgba, ((py + y) * _pixelWidth + px) * 4, cropped, y * pw * 4, pw * 4);
+
+        return new SixelFragment(cropped, pw, ph, new Size(visible.Columns, visible.Rows), _maxColors);
     }
 
     /// <summary>The pre-encoded Sixel payload (DCS framing included).</summary>

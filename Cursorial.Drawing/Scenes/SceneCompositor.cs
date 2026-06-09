@@ -144,8 +144,9 @@ public sealed class SceneCompositor
     /// fragments at the offset-translated anchor (skipping any outside the layer's clip). Fragments are sparse
     /// and the renderer diffs them by Key + anchor, so a stable image doesn't re-emit; a moved one (offset
     /// change) erases at the old anchor and emits at the new. Layer semantics (cell-cover vs overlay) are the
-    /// renderer's concern, driven off the target buffer — the compositor just relocates the anchor. (Per-image
-    /// clipping at sub-cell granularity is a later refinement; here a fragment is all-or-nothing vs the clip.)
+    /// renderer's concern, driven off the target buffer — the compositor just relocates the anchor. Under a
+    /// layer clip a fragment straddling the edge is cropped via <c>IBufferFragment.Clip</c> (Sixel pixel-crop)
+    /// or, when the protocol can't crop (iTerm2 / Kitty today), suppressed rather than overdrawn.
     /// </summary>
     private void PassThroughFragments(ReadOnlySpan<SceneLayer> layers, in CellBufferView target)
     {
@@ -163,9 +164,28 @@ public sealed class SceneCompositor
             {
                 int tc = anchor.Column + p.OffsetColumn;
                 int tr = anchor.Row + p.OffsetRow;
-                if (p.Clip is { } clip && (tc < clip.Column || tc >= clip.ColumnEnd || tr < clip.Row || tr >= clip.RowEnd))
-                    continue;
-                if (target.AddFragment(tc, tr, entry.Fragment, entry.AnchorStyle))
+                var fragment = entry.Fragment;
+
+                if (p.Clip is { } clip)
+                {
+                    var size = fragment.GetSize();
+                    int fw = Math.Max(1, size.Columns), fh = Math.Max(1, size.Rows);
+                    int vCol = Math.Max(tc, clip.Column), vRow = Math.Max(tr, clip.Row);
+                    int vColEnd = Math.Min(tc + fw, clip.ColumnEnd), vRowEnd = Math.Min(tr + fh, clip.RowEnd);
+                    if (vCol >= vColEnd || vRow >= vRowEnd) continue;   // fully outside the clip → drop
+
+                    if (vCol != tc || vRow != tr || vColEnd != tc + fw || vRowEnd != tr + fh)
+                    {
+                        // Partial overlap: crop to the visible cells, or suppress if the protocol can't crop.
+                        var cropped = fragment.Clip(new Rect(vCol - tc, vRow - tr, vColEnd - vCol, vRowEnd - vRow));
+                        if (cropped is null) continue;
+                        fragment = cropped;
+                        tc = vCol;
+                        tr = vRow;
+                    }
+                }
+
+                if (target.AddFragment(tc, tr, fragment, entry.AnchorStyle))
                     _fragmentAnchors.Add((tc, tr));
             }
         }

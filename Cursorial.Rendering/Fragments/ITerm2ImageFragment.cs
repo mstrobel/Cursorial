@@ -19,8 +19,10 @@ namespace Cursorial.Rendering.Fragments;
 /// </para>
 /// <para>
 /// We declare the cell footprint via <c>width=&lt;cells&gt;</c> and <c>height=&lt;cells&gt;</c>
-/// with <c>preserveAspectRatio=0</c> so the image stretches to fit exactly. <c>inline=1</c>
-/// renders the image where the cursor sits; without it the terminal offers a download. The
+/// with <c>preserveAspectRatio=0</c> so the image stretches to fit exactly. When one dimension is
+/// aspect-free (the caller sized only the other), that axis is emitted as <c>auto</c> with
+/// <c>preserveAspectRatio=1</c> so iTerm2 scales to native aspect — mirroring Kitty's <c>c=</c>/<c>r=</c>
+/// omission. <c>inline=1</c> renders the image where the cursor sits; without it the terminal offers a download. The
 /// <c>size=</c> field carries the byte count of the original payload (not the base64-expanded
 /// version) — iTerm2 uses it for the progress indicator.
 /// </para>
@@ -31,14 +33,22 @@ public sealed class ITerm2ImageFragment : IBufferFragment
     // ReSharper disable once NotAccessedField.Local
     private readonly (int Columns, int Rows)? _pixelSize;
     private readonly Size _displaySize;
+    // Which placement dimension to leave to iTerm2's aspect-ratio scaling (emit width=auto / height=auto).
+    private readonly AspectFreeDimension _aspectFree;
 
     /// <summary>Construct an iTerm2 inline image fragment.</summary>
-    public ITerm2ImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null)
+    /// <param name="data">The encoded image and its metadata.</param>
+    /// <param name="displaySize">The whole-cell footprint reported by <see cref="GetSize"/>.</param>
+    /// <param name="pixelSize">The image's native pixel dimensions (carried for parity; iTerm2 scales server-side).</param>
+    /// <param name="aspectFree">Which dimension to emit as <c>auto</c> so iTerm2 scales to native aspect (no cell-rounding stretch).</param>
+    public ITerm2ImageFragment(ImageData data, Size? displaySize = null, (int Columns, int Rows)? pixelSize = null,
+                               AspectFreeDimension aspectFree = AspectFreeDimension.None)
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
         _pixelSize = pixelSize;
         _displaySize = displaySize ?? data.RequestedSize ?? throw new InvalidOperationException("ImageData.CellSize or displaySize must be provided.");
+        _aspectFree = aspectFree;
     }
 
     /// <inheritdoc/>
@@ -96,12 +106,29 @@ public sealed class ITerm2ImageFragment : IBufferFragment
         var header = new StringBuilder();
         header.Append("\x1B]1337;File=");
         header.Append("size=").Append(_data.Bytes.Length).Append(';');
-        header.Append("width=").Append(cellSize.Columns).Append(';');
 
-        if (cellSize.Rows > 0)
-            header.Append("height=").Append(cellSize.Rows).Append(';').Append("preserveAspectRatio=0;");
-        else
-            header.Append("height=auto;preserveAspectRatio=1;");
+        // The aspect-free axis (if any) is emitted as 'auto' with preserveAspectRatio=1 so iTerm2 scales
+        // to the image's native aspect in that axis; the pinned axis is fixed in cells (clamped >= 1).
+        // No aspect-free axis → pin both and stretch to the exact box (preserveAspectRatio=0). Mirrors
+        // KittyImageFragment's c=/r= omission so both protocols size one-dimension-specified images the same.
+        switch (_aspectFree)
+        {
+            case AspectFreeDimension.Columns:
+                header.Append("width=auto;");
+                header.Append("height=").Append(Math.Max(1, cellSize.Rows)).Append(';');
+                header.Append("preserveAspectRatio=1;");
+                break;
+            case AspectFreeDimension.Rows:
+                header.Append("width=").Append(Math.Max(1, cellSize.Columns)).Append(';');
+                header.Append("height=auto;");
+                header.Append("preserveAspectRatio=1;");
+                break;
+            default:
+                header.Append("width=").Append(Math.Max(1, cellSize.Columns)).Append(';');
+                header.Append("height=").Append(Math.Max(1, cellSize.Rows)).Append(';');
+                header.Append("preserveAspectRatio=0;");
+                break;
+        }
 
         header.Append("inline=1");
         header.Append(':');

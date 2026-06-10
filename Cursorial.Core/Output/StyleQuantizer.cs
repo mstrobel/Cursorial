@@ -104,6 +104,89 @@ public sealed class StyleQuantizer
         return new Style(fg, bg, attrs, underlineStyle, underlineColor, link);
     }
 
+    /// <summary>
+    /// Quantize <paramref name="style"/> like <see cref="Quantize(in Style)"/>, but apply ordered
+    /// (Bayer) dithering to <see cref="ColorKind.Rgb"/> colors before palette reduction, using the
+    /// destination cell's position to pick the dither phase. Spatially perturbing the color before
+    /// snapping it to the nearest palette entry trades a stippled texture for perceived depth, so a
+    /// smooth RGB gradient stops banding into flat stripes on a 256- or 16-color terminal.
+    /// </summary>
+    /// <remarks>
+    /// On a <see cref="ColorDepth.Truecolor"/> target this is identical to <see cref="Quantize(in Style)"/>
+    /// (no reduction happens, so there is nothing to dither and perturbation would only corrupt the exact
+    /// color); on <see cref="ColorDepth.NoColor"/> color is discarded either way. Non-RGB
+    /// (<see cref="ColorKind.Palette"/> / <see cref="ColorKind.Default"/>) and <see cref="Color.Transparent"/>
+    /// colors pass through unperturbed — there is no continuous RGB value to dither. Pure given
+    /// <c>(style, column, row)</c>: the same inputs always yield the same style, which keeps the frame
+    /// renderer's front/back diff stable.
+    /// </remarks>
+    /// <param name="style">The style whose foreground / background / underline colors are dithered.</param>
+    /// <param name="column">Destination terminal column (0-based) — selects the Bayer X phase.</param>
+    /// <param name="row">Destination terminal row (0-based) — selects the Bayer Y phase.</param>
+    public Style QuantizeDithered(in Style style, int column, int row)
+    {
+        // Mirror of Quantize: identical structure and capability gating; only the three color sites swap
+        // QuantizeColor → DitherColor. Keep the two in sync.
+        var fg = DitherColor(style.Foreground, column, row);
+        var bg = DitherColor(style.Background, column, row);
+
+        var attrs = QuantizeAttributes(style.Attributes);
+
+        UnderlineStyle underlineStyle = style.UnderlineStyle;
+
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ExtendedUnderline) && underlineStyle != UnderlineStyle.Single)
+            underlineStyle = UnderlineStyle.Single;
+
+        Color underlineColor = style.UnderlineColor;
+
+        if (!_cachedCapabilities.HasFlag(CachedCapabilities.ColoredUnderline) && !underlineColor.IsDefault)
+            underlineColor = Color.Default;
+        else if (!underlineColor.IsDefault)
+            underlineColor = DitherColor(underlineColor, column, row);
+
+        var link = Hyperlink.None;
+
+        if (_cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
+            link = hyperlink;
+
+        return new Style(fg, bg, attrs, underlineStyle, underlineColor, link);
+    }
+
+    // Canonical 4×4 Bayer ordered-dither threshold matrix (values 0–15), indexed by (row&3, column&3).
+    private static readonly int[] Bayer4 =
+    [
+         0,  8,  2, 10,
+        12,  4, 14,  6,
+         3, 11,  1,  9,
+        15,  7, 13,  5,
+    ];
+
+    // Perturbation amplitude (PINNED). Chosen so the per-cell offset (~ ±22) straddles the widest xterm
+    // cube interval (215→255 = 40) without skipping a stop — adjacent cells land on either side of a
+    // palette boundary, which is what produces the stipple. The primary tuning knob; oracle tests lock it.
+    private const double DitherSpread = 48.0;
+
+    // Ordered-dither a single color, then quantize. Only RGB at a reducing depth is perturbed: Transparent
+    // and non-RGB pass straight through QuantizeColor (nothing continuous to dither), and a Truecolor target
+    // needs no reduction — perturbing it would corrupt the exact color and break the "dither is a no-op at
+    // full depth" guarantee.
+    private Color DitherColor(Color color, int column, int row)
+    {
+        if (color.Kind != ColorKind.Rgb || color == Color.Transparent ||
+            _cachedCapabilities.HasFlag(CachedCapabilities.Truecolor))
+            return QuantizeColor(color);
+
+        int threshold = Bayer4[(row & 3) * 4 + (column & 3)];   // 0..15
+        double delta = ((threshold + 0.5) / 16.0 - 0.5) * DitherSpread;
+
+        byte r = Perturb(color.Red, delta);
+        byte g = Perturb(color.Green, delta);
+        byte b = Perturb(color.Blue, delta);
+        return QuantizeColor(Color.FromRgb(r, g, b));
+    }
+
+    private static byte Perturb(byte value, double delta) => (byte) Math.Clamp(value + delta, 0.0, 255.0);
+
     private Color QuantizeColor(Color color)
     {
         var depth = _cachedCapabilities.HasFlag(CachedCapabilities.Truecolor)

@@ -340,6 +340,13 @@ public sealed class FrameRenderer
     {
         if (_frontCells is null) return;
 
+        // Ordered dither makes the emitted color position-dependent (each cell carries a Bayer phase from
+        // its row/column). A vertical scroll by k rows would shift content onto a different phase, so the
+        // shifted cells wouldn't match the front buffer's dithered values — and even if matched, a real SU/SD
+        // would move the wrong dither pattern. Disable scroll detection while dithering; the per-cell diff
+        // still produces a correct (just unscrolled) frame.
+        if (_options.OrderedDither) return;
+
         int cols = back.Columns;
         int rows = back.Rows;
         int maxK = Math.Min(rows / 2, MaxScrollDetect);
@@ -384,7 +391,7 @@ public sealed class FrameRenderer
             var backSpan = back.GetRowSpan(backRow);
             for (int c = 0; c < cols; c++)
             {
-                var backAdapted = Adapt(backSpan[c]);
+                var backAdapted = Adapt(backSpan[c], c, backRow);
                 if (!backAdapted.Equals(front[frontRow * cols + c])) return false;
             }
         }
@@ -488,7 +495,7 @@ public sealed class FrameRenderer
                 // gets compared against the front and snapshotted into it, so a stable rendered
                 // frame produces an empty delta.
                 var intended = IntendedCellFor(c, r, row[c], back);
-                var cell = Adapt(intended);
+                var cell = Adapt(intended, c, r);
 
                 // Wide-continuation cells are skipped from emission here. They aren't "left
                 // undrawn" — the wide glyph emitted at the corresponding WideLeft position
@@ -555,7 +562,7 @@ public sealed class FrameRenderer
                 {
                     // Paint the right neighbor with its own content first (so a narrow render
                     // keeps it), then the ambiguous glyph at c (so a wide render covers it).
-                    var neighbor = Adapt(IntendedCellFor(c + 1, r, row[c + 1], back));
+                    var neighbor = Adapt(IntendedCellFor(c + 1, r, row[c + 1], back), c + 1, r);
 
                     SyncCursor(output, r, c + 1);
                     SyncHyperlink(output, neighbor.Style.Hyperlink);
@@ -741,10 +748,14 @@ public sealed class FrameRenderer
         _cursorCol = -1;
     }
 
-    private Cell Adapt(in Cell cell)
+    private Cell Adapt(in Cell cell, int column, int row)
     {
         if (_quantizer is null) return cell;
-        var quantized = _quantizer.Quantize(cell.Style);
+        // Ordered dither perturbs RGB by the cell's position before palette reduction (no-op at full
+        // depth / for non-RGB). Off → the plain position-independent quantize.
+        var quantized = _options.OrderedDither
+                            ? _quantizer.QuantizeDithered(cell.Style, column, row)
+                            : _quantizer.Quantize(cell.Style);
         return quantized == cell.Style ? cell : cell with { Style = quantized };
     }
 
@@ -846,4 +857,14 @@ public sealed class FrameRenderer
 /// which marks the removed footprint dirty): without the opt-in, such a mark can't silently drop
 /// unrelated changed cells. The dirty regions are still cleared each frame regardless of this flag.
 /// </param>
-public readonly record struct FrameRendererOptions(bool ForceFullRedraw = false, bool RestrictToDirtyRegions = false);
+/// <param name="OrderedDither">
+/// Opt-in for ordered (Bayer) dithering of RGB colors during capability-aware quantization. When the
+/// renderer was constructed with an <see cref="OutputCapabilities"/> whose color depth reduces RGB
+/// (256- or 16-color), this spatially perturbs each cell's color by its position before snapping to the
+/// palette, trading a stipple for perceived depth so gradients don't band into flat stripes. A no-op at
+/// truecolor (nothing to reduce) and for non-RGB colors. Has no effect when the renderer has no
+/// capabilities (the raw-style constructor). <b>Disables vertical scroll detection</b> while on, because
+/// the per-cell dither phase is position-dependent and would not survive a row shift.
+/// </param>
+public readonly record struct FrameRendererOptions(
+    bool ForceFullRedraw = false, bool RestrictToDirtyRegions = false, bool OrderedDither = false);

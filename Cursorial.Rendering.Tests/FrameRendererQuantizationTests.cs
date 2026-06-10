@@ -153,4 +153,60 @@ public class FrameRendererQuantizationTests
         var output = Render(r, buf);
         Assert.Contains("38;2;255;128;0", output);
     }
+
+    // ---- Ordered dither ----
+
+    // Distinct "38;5;N" foreground-palette indices present in the emitted bytes.
+    private static HashSet<int> DistinctFgPaletteIndices(string output) =>
+        System.Text.RegularExpressions.Regex.Matches(output, @"38;5;(\d+)")
+              .Select(m => int.Parse(m.Groups[1].Value)).ToHashSet();
+
+    private static CellBuffer ConstantBand(Color fg, int width = 8)
+    {
+        var buf = new CellBuffer(width, 1);
+        for (int c = 0; c < width; c++)
+            buf.Set(c, 0, "x", Style.Default.WithForeground(fg));
+        return buf;
+    }
+
+    [Fact]
+    public void OrderedDither_Ansi256_ConstantBand_EmitsMultiplePaletteIndices()
+    {
+        // A flat mid-gray band, dithered, spreads across several palette stops per the cells' Bayer phase —
+        // proof of spatial dithering (the band would otherwise be one flat index).
+        var r = new FrameRenderer(Caps(ColorDepth.Ansi256), new FrameRendererOptions(OrderedDither: true));
+        var output = Render(r, ConstantBand(Color.FromRgb(105, 105, 105)));
+        Assert.True(DistinctFgPaletteIndices(output).Count >= 2, output);
+    }
+
+    [Fact]
+    public void OrderedDither_Off_ConstantBand_SinglePaletteIndex()
+    {
+        // Same band without dither: one flat index — the banding the dither relieves.
+        var r = new FrameRenderer(Caps(ColorDepth.Ansi256));
+        var output = Render(r, ConstantBand(Color.FromRgb(105, 105, 105)));
+        Assert.Single(DistinctFgPaletteIndices(output));
+    }
+
+    [Fact]
+    public void OrderedDither_TruecolorCaps_NoSpatialVariation()
+    {
+        // At full depth there's nothing to reduce, so dither is a no-op: one truecolor SGR, no stipple.
+        var r = new FrameRenderer(Caps(ColorDepth.Truecolor), new FrameRendererOptions(OrderedDither: true));
+        var output = Render(r, ConstantBand(Color.FromRgb(105, 105, 105)));
+        Assert.Contains("38;2;105;105;105", output);
+        Assert.Empty(DistinctFgPaletteIndices(output));   // no 38;5;N palette form at truecolor
+    }
+
+    [Fact]
+    public void OrderedDither_StableFrame_EmitsNoCellContent()
+    {
+        // Position-deterministic phase → the dithered front buffer is stable, so an identical second frame
+        // re-emits nothing (the dither must not jitter frame-to-frame).
+        var r = new FrameRenderer(Caps(ColorDepth.Ansi256), new FrameRendererOptions(OrderedDither: true));
+        var buf = ConstantBand(Color.FromRgb(105, 105, 105));
+        Render(r, buf);
+        var output = Render(r, buf);
+        Assert.DoesNotContain("x", output);
+    }
 }

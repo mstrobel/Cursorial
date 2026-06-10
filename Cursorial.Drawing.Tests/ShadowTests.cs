@@ -69,11 +69,10 @@ public class ShadowTests
     public void InnerShadow_LeftEdgeOnly_DarkensOnlyLeft()
     {
         var fill = Color.FromRgb(150, 150, 150);
-        var geom = ShadowGeometry.Inner(radius: 1, strength: 0.5) with { Edges = ShadowEdges.Left };
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             ctx.FillRectangle(new Rect(0, 0, 8, 4), fill);
-            ctx.DrawInnerShadow(new Rect(0, 0, 8, 4), geom, Black);
+            ctx.DrawInnerShadow(new Rect(0, 0, 8, 4), ShadowGeometry.Inner(radius: 1, strength: 0.5, edges: ShadowEdges.Left), Black);
         });
         Assert.True(b[0, 1].Style.Background.Red < fill.Red, "left edge darkened");
         Assert.Equal(fill, b[7, 1].Style.Background);   // right edge untouched (not a casting edge)
@@ -82,10 +81,21 @@ public class ShadowTests
     [Fact]
     public void Shadow_NoneEdges_IsNoOp()
     {
-        var geom = ShadowGeometry.Drop() with { Edges = ShadowEdges.None };
         var b = DrawHarness.Render(8, 6,
-            ctx => ctx.DrawDropShadow(new Rect(2, 2, 3, 2), geom, Black), baseBackground: White);
+            ctx => ctx.DrawDropShadow(new Rect(2, 2, 3, 2), ShadowGeometry.Drop(edges: ShadowEdges.None), Black),
+            baseBackground: White);
         Assert.Equal(White, b[5, 4].Style.Background);   // nothing cast
+    }
+
+    [Fact]
+    public void DropShadow_FactoryEdges_CastsOnlyChosenSides()
+    {
+        // The Drop factory's edges argument restricts which sides cast.
+        var b = DrawHarness.Render(8, 6,
+            ctx => ctx.DrawDropShadow(new Rect(2, 1, 3, 2), ShadowGeometry.Drop(edges: ShadowEdges.Bottom | ShadowEdges.Right), Black),
+            baseBackground: White);
+        Assert.True(b[5, 2].Style.Background.Red < 255, "lower-right cast");   // bottom/right side darkened
+        Assert.Equal(White, b[1, 1].Style.Background);                          // left side not cast
     }
 
     [Fact]

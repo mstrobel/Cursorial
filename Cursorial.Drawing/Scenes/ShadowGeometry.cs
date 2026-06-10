@@ -21,11 +21,11 @@ public readonly record struct ShadowGeometry
     /// <summary>Which element edges cast the shadow. Default <see cref="ShadowEdges.All"/>.</summary>
     public ShadowEdges Edges { get; init; }
 
-    /// <summary>A conventional drop shadow: <paramref name="radius"/> cells, cast lower-right by (<paramref name="offset"/>, <paramref name="offset"/>), all edges.</summary>
-    public static ShadowGeometry Drop(int radius = 1, int offset = 1, double strength = 0.5) =>
-        new() { Radius = radius, OffsetColumn = offset, OffsetRow = offset, Strength = strength, Edges = ShadowEdges.All };
+    /// <summary>A conventional drop shadow: <paramref name="radius"/> cells, cast lower-right by (<paramref name="offset"/>, <paramref name="offset"/>), from <paramref name="edges"/>.</summary>
+    public static ShadowGeometry Drop(int radius = 1, int offset = 1, double strength = 0.5, ShadowEdges edges = ShadowEdges.All) =>
+        new() { Radius = radius, OffsetColumn = offset, OffsetRow = offset, Strength = strength, Edges = edges };
 
-    /// <summary>A conventional inner shadow: <paramref name="radius"/> cells inward from every edge.</summary>
-    public static ShadowGeometry Inner(int radius = 1, double strength = 0.5) =>
-        new() { Radius = radius, OffsetColumn = 0, OffsetRow = 0, Strength = strength, Edges = ShadowEdges.All };
+    /// <summary>A conventional inner shadow: <paramref name="radius"/> cells inward from <paramref name="edges"/>.</summary>
+    public static ShadowGeometry Inner(int radius = 1, double strength = 0.5, ShadowEdges edges = ShadowEdges.All) =>
+        new() { Radius = radius, OffsetColumn = 0, OffsetRow = 0, Strength = strength, Edges = edges };
 }

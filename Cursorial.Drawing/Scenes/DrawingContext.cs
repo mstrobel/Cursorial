@@ -281,7 +281,7 @@ public sealed class DrawingContext
     /// by <paramref name="shadowColor"/> (its alpha scaled per cell by the falloff). Shadow cells lie outside the
     /// element (which occludes its own footprint); each gets a translucent <em>background</em> — the glyph it
     /// covers (if any) is preserved — so <see cref="SceneCompositor"/> darkens whatever is on the target beneath
-    /// at composite time. Draw it before the element.
+    /// at composite time. Draw it before the element. <see cref="ShadowGeometry.Edges"/> selects which sides cast.
     /// </summary>
     public void DrawDropShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
@@ -314,7 +314,7 @@ public sealed class DrawingContext
         }
     }
 
-    /// <summary>Drop shadow with the default soft black shadow (radius 1, offset 1, strength 0.5).</summary>
+    /// <summary>Drop shadow with the default soft black shadow (radius 1, offset 1, strength 0.5, all edges).</summary>
     public void DrawDropShadow(in Rect element) => DrawDropShadow(element, ShadowGeometry.Drop(), Color.FromRgb(0, 0, 0));
 
     /// <summary>
@@ -322,7 +322,7 @@ public sealed class DrawingContext
     /// tinted by <paramref name="shadowColor"/>. Unlike a drop shadow this is a read-modify-write that darkens each
     /// cell's existing background <em>at draw time</em> (compositing the shadow over the cell's own fill and storing
     /// the opaque result), preserving any glyph. Alpha falls off toward the interior; the offset fields are ignored.
-    /// Draw it after the fill it insets.
+    /// Draw it after the fill it insets. <see cref="ShadowGeometry.Edges"/> selects which sides cast.
     /// </summary>
     public void DrawInnerShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
@@ -347,7 +347,7 @@ public sealed class DrawingContext
         }
     }
 
-    /// <summary>Inner shadow with the default soft black inner shadow (radius 1, strength 0.5).</summary>
+    /// <summary>Inner shadow with the default soft black inner shadow (radius 1, strength 0.5, all edges).</summary>
     public void DrawInnerShadow(in Rect element) => DrawInnerShadow(element, ShadowGeometry.Inner(), Color.FromRgb(0, 0, 0));
 
     private static bool TryShadow(in ShadowGeometry geometry, Color shadowColor, out int radius, out double strength)

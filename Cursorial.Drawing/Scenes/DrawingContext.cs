@@ -541,6 +541,111 @@ public sealed class DrawingContext
     public void DrawRectangle(in Rect rect, Color color, Color fill, bool overwrite = false) =>
         DrawRectangle(rect, new Pen(color), new SolidColorBrush(fill), overwrite);
 
+    /// <summary>
+    /// Draw a titled border around <paramref name="rect"/> with <paramref name="pen"/>: the box outline plus
+    /// <paramref name="title"/> laid onto the top edge, the rule split around the label (a pad cell each side)
+    /// so the line never overstrikes the text. A null/empty title — or a box too narrow to seat one — degrades
+    /// to a plain <see cref="DrawBox(in Rect, in Pen, bool)"/>. The title is colored by its own brush, or the
+    /// pen's color when the title brush is null, and is clipped to the interior span between the corners.
+    /// </summary>
+    public void DrawTitledBox(in Rect rect, in PanelTitle title, in Pen pen, bool overwrite = false)
+    {
+        if (string.IsNullOrEmpty(title.Text)) { DrawBox(rect, pen, overwrite); return; }
+        DrawTitledBoxCore(rect, title, pen, overwrite);
+    }
+
+    /// <summary>Titled border with a solid <paramref name="color"/> pen.</summary>
+    public void DrawTitledBox(in Rect rect, in PanelTitle title, Color color, bool overwrite = false) =>
+        DrawTitledBox(rect, title, new Pen(color), overwrite);
+
+    /// <summary>
+    /// Draw a complete panel — optional <paramref name="fill"/> interior, a <paramref name="pen"/> border, and
+    /// an optional <paramref name="title"/> on the top edge — the one-call "group box". Equivalent to a
+    /// <see cref="FillRectangle(in Rect, IBrush)"/> (background-only; lower glyphs show through on composite)
+    /// followed by <see cref="DrawTitledBox(in Rect, in PanelTitle, in Pen, bool)"/>. For an <em>opaque</em>
+    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush)"/> + <c>DrawTitledBox</c>
+    /// (overwrite: true) instead.
+    /// </summary>
+    public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)
+    {
+        if (rect.Columns <= 0 || rect.Rows <= 0) return;
+        if (fill is not null) FillRectangle(rect, fill);
+        DrawTitledBox(rect, title, pen, overwrite);
+    }
+
+    /// <summary>Panel with a solid border <paramref name="color"/> and optional <paramref name="fill"/> brush.</summary>
+    public void DrawPanel(in Rect rect, Color color, IBrush? fill = null, PanelTitle title = default, bool overwrite = false) =>
+        DrawPanel(rect, new Pen(color), fill, title, overwrite);
+
+    /// <summary>Panel with solid border and solid fill colors plus an optional title.</summary>
+    public void DrawPanel(in Rect rect, Color color, Color fill, PanelTitle title = default, bool overwrite = false) =>
+        DrawPanel(rect, new Pen(color), new SolidColorBrush(fill), title, overwrite);
+
+    // Draw a titled box. All four edges deposit under ONE stroke record (like DrawBox), so the corners form via
+    // same-record self-merge — independent of the pen's JunctionMode — and the gradient samples the full rect.
+    // The top edge is two runs around the title gap; the title text writes immediately (beating the deferred
+    // outline) clipped to the interior, so the line and label never collide.
+    private void DrawTitledBoxCore(in Rect rect, in PanelTitle title, in Pen pen, bool overwrite)
+    {
+        if (rect.Columns <= 0 || rect.Rows <= 0) return;
+
+        int recordId = AddStrokeRecord(pen, rect, overwrite);
+        int left = rect.Column, top = rect.Row, right = rect.ColumnEnd - 1, bottom = rect.RowEnd - 1;
+        var weight = pen.Weight;
+        var mode = pen.Junction;
+
+        DepositSegment(left, bottom, right, bottom, weight, recordId, mode);   // bottom
+        DepositSegment(left, top, left, bottom, weight, recordId, mode);       // left
+        DepositSegment(right, top, right, bottom, weight, recordId, mode);     // right
+
+        // A title needs a pad cell each side plus a ≥2-cell line run to each corner (so the corner keeps its
+        // horizontal arm): the text fits only when its width ≤ Columns − 6. Narrower → plain box, no title.
+        int maxText = rect.Columns - 6;
+        int textWidth = 0;
+        string text = maxText >= 1 ? TruncateToWidth(title.Text!, maxText, out textWidth) : string.Empty;
+        if (text.Length == 0)
+        {
+            DepositSegment(left, top, right, top, weight, recordId, mode);     // full top — plain box
+            return;
+        }
+
+        int gapWidth = textWidth + 2;   // 1 pad cell each side of the label
+        int gapStartMin = left + 2;
+        int gapStartMax = right - 1 - gapWidth;
+        int gapStart = title.Position switch
+        {
+            TitlePosition.Center => left + (rect.Columns - gapWidth) / 2,
+            TitlePosition.Right => gapStartMax,
+            _ => gapStartMin,
+        };
+        gapStart = Math.Clamp(gapStart, gapStartMin, gapStartMax);
+        int gapEnd = gapStart + gapWidth - 1;
+
+        DepositSegment(left, top, gapStart - 1, top, weight, recordId, mode);   // corner → title
+        DepositSegment(gapEnd + 1, top, right, top, weight, recordId, mode);    // title → corner
+
+        var titleBrush = title.Brush ?? pen.ResolveBrush();
+        DrawText(gapStart + 1, top, text, titleBrush, background: null, Style.Default.WithAttributes(title.Attributes));
+    }
+
+    // Grapheme-aware truncation to at most maxWidth display columns; returns the kept prefix and its width.
+    private static string TruncateToWidth(string text, int maxWidth, out int width)
+    {
+        width = 0;
+        int end = 0;
+        var clusters = text.AsSpan().GetGraphemeEnumerator();
+        while (clusters.MoveNext())
+        {
+            var cluster = clusters.Current;
+            int w = GraphemeWidth.ClusterWidth(cluster);
+            if (w < 1) w = 1;
+            if (width + w > maxWidth) break;
+            width += w;
+            end += cluster.Length;
+        }
+        return text[..end];
+    }
+
     // Resolve all deferred sub-cell layers to cells. Called by Scene.Draw after the draw delegate
     // returns. Order is priority high→low (each later layer yields to a glyph already in the buffer):
     // immediate writes (text/fills/bars) → braille data → box strokes/axes.

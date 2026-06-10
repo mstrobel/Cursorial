@@ -656,12 +656,11 @@ remains gated. The only Core/Rendering public-surface additions beyond `Style.Tr
 **Still carried forward (out of scope for this layer):**
 - Box vs image/sized-text **fragment** overdraw: v1 scenes are **cell-only**; fragments stay on the
   main buffer and emit after the cell pass. Offscreen fragment compositing is deferred.
-- **Blended junction color at flush** (`Pen` strokes from different records that cross): still
-  last-writer-wins. A blended-junction pass needs per-cell record tracking in `StrokeAccumulator`; its
-  design was lost to a workflow failure and it was deferred un-implemented (lowest-value polish).
 
-(The former carried-forward item *"`FillRectangle` cannot occlude lower-layer glyphs"* is **resolved** by
-`DrawingContext.FillOpaque` — see §12.)
+(Two former carried-forward items are now **resolved**: *"`FillRectangle` cannot occlude lower-layer glyphs"*
+by `DrawingContext.FillOpaque`, and *"blended junction color at flush"* by the opt-in
+`JunctionMode.Blend` — `StrokeAccumulator` tracks the records that cross a cell and the flush averages their
+colors (premultiplied) instead of last-writer-wins. Both are covered in §12.)
 
 ---
 
@@ -699,6 +698,12 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   samples it **per rendered cell** (gradient across the big glyphs), via a brush-blind `GlyphStyleProvider`
   default-interface-method on `IGlyphFont` that `FigletFont` overrides. OSC 66 sized text stays one solid
   color (protocol limit).
+- **`JunctionMode.Blend`** — an opt-in pen junction mode: where two strokes from different records cross,
+  the junction glyph still forms (arms max-union, as `Merge`) but the cell's color is the premultiplied
+  **average** of the crossing strokes' colors instead of the last writer's. `StrokeAccumulator` tracks the
+  crossing records per cell (sparse) and the flush averages; also shadows now blend the foreground (not just
+  the background) so a glyph a drop/inner shadow falls on dims, and the drop shadow uses an offset-displaced
+  silhouette + radius fringe (offset trims the lit corners; the fringe spills only into a casting corner).
 
 > **Adversarial review (Phases 0–2):** passed — foundations (the compositing invariant, premultiplied
 > gradient math, transparency model, one-way dependency) independently confirmed correct. Two P0

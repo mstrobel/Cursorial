@@ -333,9 +333,10 @@ byte writers with a TUI abstraction, and for higher-level frameworks to build on
   emission at the WideLeft position is a single terminal operation that draws both columns; trying to write
   anything at the right-half column is undefined in most terminals (the cursor is past it, and moving back into
   the glyph corrupts it).
-- **What was punted from v1.** (1) Scroll detection (recognizing that a frame is "previous frame scrolled up by
-  K rows" and emitting scroll commands rather than redrawing each row) — defer to later as a pure optimization;
-  the API doesn't preclude it. (2) Multi-row spans for OSC 66 sized text — kept as a separate `TextSizingWriter`
+- **What was punted from v1.** (1) Scroll detection — **landed** (`FrameRenderer.TryDetectAndApplyScroll`):
+  a frame that is the previous one scrolled up/down by K rows emits an SU/SD scroll rather than redrawing each
+  row (bounded by `MaxScrollDetect`; disabled under ordered dither, whose phase is position-dependent).
+  (2) Multi-row spans for OSC 66 sized text — kept as a separate `TextSizingWriter`
   primitive in `Cursorial.Core.Output` that bypasses the cell grid; rendering sized text alongside the cell
   buffer means drawing it at a fixed position with `TextSizingWriter.Write` rather than encoding it as cell
   contents. (3) Automatic dirty-region tracking — a TUI framework above us is the right place to decide *what*

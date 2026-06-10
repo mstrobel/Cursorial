@@ -276,6 +276,122 @@ public sealed class DrawingContext
         _surface[col, row] = cell;
     }
 
+    /// <summary>
+    /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
+    /// by <paramref name="shadowColor"/> (its alpha scaled per cell by the falloff). Shadow cells lie outside the
+    /// element (which occludes its own footprint); each gets a translucent <em>background</em> — the glyph it
+    /// covers (if any) is preserved — so <see cref="SceneCompositor"/> darkens whatever is on the target beneath
+    /// at composite time. Draw it before the element.
+    /// </summary>
+    public void DrawDropShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
+    {
+        if (element.Columns <= 0 || element.Rows <= 0) return;
+        if (!TryShadow(geometry, shadowColor, out int radius, out double strength)) return;
+
+        int dx = geometry.OffsetColumn, dy = geometry.OffsetRow;
+        int sCol = element.Column + dx, sRow = element.Row + dy;
+        int sColEnd = sCol + element.Columns, sRowEnd = sRow + element.Rows;
+
+        int c0 = Math.Max(0, sCol - radius), r0 = Math.Max(0, sRow - radius);
+        int c1 = Math.Min(_surface.Columns, sColEnd + radius), r1 = Math.Min(_surface.Rows, sRowEnd + radius);
+
+        for (int r = r0; r < r1; r++)
+        for (int c = c0; c < c1; c++)
+        {
+            if (Contains(element, c, r)) continue;                 // the element occludes its own footprint
+            if (!OnCastingSide(element, geometry.Edges, c, r)) continue;
+            int d = ChebyshevOutside(sCol, sRow, sColEnd, sRowEnd, c, r);
+            if (d > radius) continue;
+
+            byte alpha = ShadowAlpha(shadowColor.Alpha, strength, d, radius);
+            if (alpha == 0) continue;
+
+            // Translucent background, glyph preserved (no structure change → no wide-glyph orphan); the
+            // compositor consumes the alpha against the target. A later same-cell shadow takes the stronger one.
+            var existing = _surface[c, r];
+            if (existing.Style.Background is { Kind: ColorKind.Rgb } prior && prior.Alpha >= alpha) continue;
+            _surface[c, r] = existing with { Style = existing.Style.WithBackground(shadowColor.WithAlpha(alpha)) };
+        }
+    }
+
+    /// <summary>Drop shadow with the default soft black shadow (radius 1, offset 1, strength 0.5).</summary>
+    public void DrawDropShadow(in Rect element) => DrawDropShadow(element, ShadowGeometry.Drop(), Color.FromRgb(0, 0, 0));
+
+    /// <summary>
+    /// Paint a soft <b>inner</b> shadow inside <paramref name="element"/>'s edges per <paramref name="geometry"/>,
+    /// tinted by <paramref name="shadowColor"/>. Unlike a drop shadow this is a read-modify-write that darkens each
+    /// cell's existing background <em>at draw time</em> (compositing the shadow over the cell's own fill and storing
+    /// the opaque result), preserving any glyph. Alpha falls off toward the interior; the offset fields are ignored.
+    /// Draw it after the fill it insets.
+    /// </summary>
+    public void DrawInnerShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
+    {
+        if (element.Columns <= 0 || element.Rows <= 0) return;
+        if (!TryShadow(geometry, shadowColor, out int radius, out double strength)) return;
+
+        int c0 = Math.Max(0, element.Column), r0 = Math.Max(0, element.Row);
+        int c1 = Math.Min(_surface.Columns, element.ColumnEnd), r1 = Math.Min(_surface.Rows, element.RowEnd);
+
+        for (int r = r0; r < r1; r++)
+        for (int c = c0; c < c1; c++)
+        {
+            int d = InnerEdgeDistance(element, geometry.Edges, c, r);
+            if (d < 0 || d > radius) continue;
+
+            byte alpha = ShadowAlpha(shadowColor.Alpha, strength, d, radius);
+            if (alpha == 0) continue;
+
+            var existing = _surface[c, r];
+            var blended = Color.Composite(shadowColor.WithAlpha(alpha), existing.Style.Background, BlendingModes.Default);
+            _surface[c, r] = existing with { Style = existing.Style.WithBackground(blended) };
+        }
+    }
+
+    /// <summary>Inner shadow with the default soft black inner shadow (radius 1, strength 0.5).</summary>
+    public void DrawInnerShadow(in Rect element) => DrawInnerShadow(element, ShadowGeometry.Inner(), Color.FromRgb(0, 0, 0));
+
+    private static bool TryShadow(in ShadowGeometry geometry, Color shadowColor, out int radius, out double strength)
+    {
+        radius = Math.Max(0, geometry.Radius);
+        strength = Math.Clamp(geometry.Strength, 0.0, 1.0);
+        // Only an RGB shadow color carries an alpha to scale; default / palette have none to fade.
+        return geometry.Edges != ShadowEdges.None && strength > 0.0 && shadowColor.Kind == ColorKind.Rgb;
+    }
+
+    // Per-cell shadow alpha: peak strength at the casting edge (d = 0), linear falloff to 0 across the radius.
+    private static byte ShadowAlpha(byte sourceAlpha, double strength, int distance, int radius)
+    {
+        double falloff = radius == 0 ? 1.0 : 1.0 - (double) distance / (radius + 1);
+        return (byte) Math.Clamp(Math.Round(sourceAlpha * strength * falloff), 0, 255);
+    }
+
+    private static bool Contains(in Rect rect, int c, int r) =>
+        c >= rect.Column && c < rect.ColumnEnd && r >= rect.Row && r < rect.RowEnd;
+
+    // True when the cell sits on a side of the element that the edge flags say casts a shadow.
+    private static bool OnCastingSide(in Rect element, ShadowEdges edges, int c, int r)
+    {
+        bool left = c < element.Column, right = c >= element.ColumnEnd;
+        bool top = r < element.Row, bottom = r >= element.RowEnd;
+        return (left && edges.HasFlag(ShadowEdges.Left)) || (right && edges.HasFlag(ShadowEdges.Right))
+            || (top && edges.HasFlag(ShadowEdges.Top)) || (bottom && edges.HasFlag(ShadowEdges.Bottom));
+    }
+
+    // Chebyshev distance from (c,r) to the rectangle [col,colEnd)×[row,rowEnd); 0 when inside.
+    private static int ChebyshevOutside(int col, int row, int colEnd, int rowEnd, int c, int r) =>
+        Math.Max(0, Math.Max(Math.Max(col - c, c - (colEnd - 1)), Math.Max(row - r, r - (rowEnd - 1))));
+
+    // Distance from an interior cell to the nearest casting edge of the element; −1 when no set edge applies.
+    private static int InnerEdgeDistance(in Rect element, ShadowEdges edges, int c, int r)
+    {
+        int best = int.MaxValue;
+        if (edges.HasFlag(ShadowEdges.Left)) best = Math.Min(best, c - element.Column);
+        if (edges.HasFlag(ShadowEdges.Right)) best = Math.Min(best, element.ColumnEnd - 1 - c);
+        if (edges.HasFlag(ShadowEdges.Top)) best = Math.Min(best, r - element.Row);
+        if (edges.HasFlag(ShadowEdges.Bottom)) best = Math.Min(best, element.RowEnd - 1 - r);
+        return best == int.MaxValue ? -1 : best;
+    }
+
     /// <summary>Draw a single line of text with a solid foreground (and optional background) color.</summary>
     public int DrawText(int column, int row, ReadOnlySpan<char> text,
                         Color foreground, Color? background = null, in Style baseStyle = default)

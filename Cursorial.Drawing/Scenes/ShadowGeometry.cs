@@ -1,0 +1,31 @@
+namespace Cursorial.Drawing;
+
+/// <summary>
+/// The geometry of a soft shadow: how far it reaches, which edges cast it, its drop offset, and its peak
+/// strength. A <c>readonly record struct</c> matching the <c>Pen</c> / <c>GradientStop</c> value-type idiom.
+/// </summary>
+public readonly record struct ShadowGeometry
+{
+    /// <summary>Cells the shadow softens across from the casting edge. Clamped to ≥ 0; 0 is a hard 1-cell edge.</summary>
+    public int Radius { get; init; }
+
+    /// <summary>Column offset of a drop shadow's cast direction (e.g. +1 = light from the upper-left). Ignored by inner shadows.</summary>
+    public int OffsetColumn { get; init; }
+
+    /// <summary>Row offset of a drop shadow's cast direction. Ignored by inner shadows.</summary>
+    public int OffsetRow { get; init; }
+
+    /// <summary>Peak opacity at the casting edge (0–1); alpha falls off linearly to 0 across <see cref="Radius"/>. Default 0.5.</summary>
+    public double Strength { get; init; }
+
+    /// <summary>Which element edges cast the shadow. Default <see cref="ShadowEdges.All"/>.</summary>
+    public ShadowEdges Edges { get; init; }
+
+    /// <summary>A conventional drop shadow: <paramref name="radius"/> cells, cast lower-right by (<paramref name="offset"/>, <paramref name="offset"/>), all edges.</summary>
+    public static ShadowGeometry Drop(int radius = 1, int offset = 1, double strength = 0.5) =>
+        new() { Radius = radius, OffsetColumn = offset, OffsetRow = offset, Strength = strength, Edges = ShadowEdges.All };
+
+    /// <summary>A conventional inner shadow: <paramref name="radius"/> cells inward from every edge.</summary>
+    public static ShadowGeometry Inner(int radius = 1, double strength = 0.5) =>
+        new() { Radius = radius, OffsetColumn = 0, OffsetRow = 0, Strength = strength, Edges = ShadowEdges.All };
+}

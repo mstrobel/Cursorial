@@ -9,8 +9,9 @@ namespace Cursorial.Drawing;
 /// or a no-overshoot Fritsch-Carlson monotone cubic. Optionally stamps markers at the data points.
 /// Auto-ranges X and Y unless ranges are given; the <see cref="Brush"/> samples across the chart area.
 /// </summary>
-/// <remarks>Non-finite points are skipped (gap-as-break is a later refinement). Area-fill under the
-/// curve is not yet supported (a later addition).</remarks>
+/// <remarks>A non-finite point (NaN / ±∞ — "missing data") breaks the curve into a gap rather than
+/// interpolating across it. Set <see cref="FillArea"/> to shade the region between the curve and the
+/// zero baseline.</remarks>
 public sealed class LineChart : IChart
 {
     private readonly PointD[] _points;
@@ -85,28 +86,55 @@ public sealed class LineChart : IChart
         var (xRange, yRange) = ChartMath.AutoRange(_points, XRange, YRange);
         var projector = new PlotProjector(area, xRange, yRange, 2, 4);
 
-        // Area fill first (cell backgrounds), so the foreground braille curve draws over it.
-        if (FillArea) PaintArea(context, area, xRange, yRange);
-
-        // Plot the curve in maximal runs of consecutive finite points, so a non-finite point (NaN / ±∞ —
-        // "missing data") BREAKS the line into a gap rather than the curve jumping straight across it. Each
-        // run is sampled independently; a run shorter than 2 points has no segment (a marker shows it).
-        if (finite.Count >= 2)
+        // Area-fill accumulators: the curve's height (continuous, sub-cell) vs the zero baseline, per column.
+        // Allocated only when filling; both the fill and the line read the SAME single sampling pass below.
+        double baseFrac = 0;
+        double[]? curveFrac = null;
+        bool[]? hasCurve = null;
+        if (FillArea)
         {
-            int recordId = context.AddBrailleRecord(new Pen(Brush), area, overwrite: false);
-            foreach (var run in FiniteRuns(_points))
-            {
-                if (run.Count < 2) continue;
-                int per = Math.Max(2, area.Columns * 2 / Math.Max(1, run.Count - 1));
-                var samples = Curves.Sample(Interpolation, run, per);
+            baseFrac = RowFraction(Math.Clamp(0.0, yRange.Min, yRange.Max), yRange, area.Rows);
+            curveFrac = new double[area.Columns];
+            hasCurve = new bool[area.Columns];
+        }
+
+        // The braille line is a DEFERRED record (flushed at scene end), so it always paints over the area-fill
+        // backgrounds written afterward regardless of ordering here. -1 = no line (fewer than two points).
+        int recordId = finite.Count >= 2 ? context.AddBrailleRecord(new Pen(Brush), area, overwrite: false) : -1;
+
+        // ONE pass over the maximal finite runs (a non-finite point — NaN / ±∞, "missing data" — ends a run, so
+        // the curve breaks into a gap instead of jumping across it). Each run's curve is sampled ONCE and the
+        // samples feed BOTH the area fill and the line, then are discarded — no re-sampling, no retained list.
+        foreach (var run in FiniteRuns(_points))
+        {
+            if (run.Count == 0) continue;
+            int per = Math.Max(2, area.Columns * 2 / Math.Max(1, run.Count - 1));
+            IReadOnlyList<PointD> samples = run.Count >= 2 ? Curves.Sample(Interpolation, run, per) : run;
+
+            if (curveFrac is not null)
+                foreach (var s in samples)
+                {
+                    int idx = projector.ToCell(s.X, s.Y).Column - area.Column;
+                    if ((uint) idx >= (uint) area.Columns) continue;
+                    double f = RowFraction(s.Y, yRange, area.Rows);
+                    // Keep the row furthest from the baseline — the curve's peak in this column.
+                    if (!hasCurve![idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
+                        curveFrac[idx] = f;
+                    hasCurve![idx] = true;
+                }
+
+            if (recordId >= 0)
                 for (int i = 0; i + 1 < samples.Count; i++)
                 {
                     var (sx0, sy0) = projector.ToSub(samples[i].X, samples[i].Y);
                     var (sx1, sy1) = projector.ToSub(samples[i + 1].X, samples[i + 1].Y);
                     context.PlotBrailleSegment(sx0, sy0, sx1, sy1, recordId);
                 }
-            }
         }
+
+        // Paint the accumulated fill (cell backgrounds); the deferred braille line flushes over it at scene end.
+        if (curveFrac is not null)
+            PaintAreaFill(context, area, baseFrac, curveFrac, hasCurve!, AreaBrush ?? Brush);
 
         if (ShowMarkers || finite.Count == 1)
         {
@@ -124,34 +152,12 @@ public sealed class LineChart : IChart
         }
     }
 
-    // Fill the cell backgrounds between the curve and the zero baseline (clamped into the Y range). The
-    // curve's height is tracked at CONTINUOUS (sub-cell) resolution, and a boundary cell is shaded only when
-    // the curve covers at least MinCellCoverage of it — so a cell the curve only clips isn't fully colored.
-    private void PaintArea(DrawingContext context, in Rect area, AxisRange xRange, AxisRange yRange)
+    // Shade the cell backgrounds between the curve and the zero baseline, from the per-column heights
+    // accumulated during Render's single sampling pass. A boundary cell is shaded only when the curve covers
+    // at least MinCellCoverage of it — so a cell the curve only clips isn't fully colored.
+    private static void PaintAreaFill(DrawingContext context, in Rect area, double baseFrac,
+                                      double[] curveFrac, bool[] hasCurve, IBrush fillBrush)
     {
-        var fillBrush = AreaBrush ?? Brush;
-        var proj = new PlotProjector(area, xRange, yRange, 2, 4);   // columns align with the braille curve
-        double baseFrac = RowFraction(Math.Clamp(0.0, yRange.Min, yRange.Max), yRange, area.Rows);
-
-        var curveFrac = new double[area.Columns];
-        var hasCurve = new bool[area.Columns];
-        foreach (var run in FiniteRuns(_points))
-        {
-            if (run.Count == 0) continue;
-            int per = Math.Max(2, area.Columns * 2 / Math.Max(1, run.Count - 1));
-            IReadOnlyList<PointD> samples = run.Count >= 2 ? Curves.Sample(Interpolation, run, per) : run;
-            foreach (var s in samples)
-            {
-                int idx = proj.ToCell(s.X, s.Y).Column - area.Column;
-                if ((uint) idx >= (uint) area.Columns) continue;
-                double f = RowFraction(s.Y, yRange, area.Rows);
-                // Keep the row furthest from the baseline — the curve's peak in this column.
-                if (!hasCurve[idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
-                    curveFrac[idx] = f;
-                hasCurve[idx] = true;
-            }
-        }
-
         for (int idx = 0; idx < area.Columns; idx++)
         {
             if (!hasCurve[idx]) continue;   // gap column (missing data) → no fill

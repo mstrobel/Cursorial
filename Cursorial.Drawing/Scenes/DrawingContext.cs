@@ -804,17 +804,34 @@ public sealed class DrawingContext
             _strokes.Flush(EmitStrokeCell);
     }
 
-    private void EmitStrokeCell(int column, int row, byte arms, StrokeRecord record) =>
+    private void EmitStrokeCell(int column, int row, byte arms, StrokeRecord record, IReadOnlyList<StrokeRecord>? merged)
+    {
+        // A JunctionMode.Blend crossing averages the crossing strokes' colors at this cell; otherwise the
+        // owning record's brush colors it.
+        Color color = merged is { Count: > 1 }
+                          ? BlendStrokeColors(merged, column, row)
+                          : record.Brush.ColorAt(column, row, record.Bounds);
         EmitDecorationCell(column, row, BoxGlyphs.Resolve(arms, record.Decoration, record.GlyphSet),
-                           record.Brush, record.Bounds, record.Attributes, record.Overwrite);
+                           color, record.Attributes, record.Overwrite);
+    }
+
+    // Average the crossing records' colors (each sampled at this cell against its own bounds) in premultiplied
+    // sRGB via the running mean Color.Lerp gives.
+    private static Color BlendStrokeColors(IReadOnlyList<StrokeRecord> merged, int column, int row)
+    {
+        var color = merged[0].Brush.ColorAt(column, row, merged[0].Bounds);
+        for (int i = 1; i < merged.Count; i++)
+            color = Color.Lerp(color, merged[i].Brush.ColorAt(column, row, merged[i].Bounds), 1.0 / (i + 1));
+        return color;
+    }
 
     private void EmitBrailleCell(int column, int row, byte dots, BrailleRecord record) =>
         EmitDecorationCell(column, row, BrailleGlyphs.Glyph(dots, record.GlyphSet),
-                           record.Brush, record.Bounds, record.Attributes, record.Overwrite);
+                           record.Brush.ColorAt(column, row, record.Bounds), record.Attributes, record.Overwrite);
 
-    // The shared emit tail for every deferred layer: text-beats-decoration eviction, deferred brush
-    // sample against the layer's bounds, write through Set with a transparent background.
-    private void EmitDecorationCell(int column, int row, string glyph, IBrush brush, in Rect bounds,
+    // The shared emit tail for every deferred layer: text-beats-decoration eviction, then write the
+    // (already-sampled) color through Set with a transparent background.
+    private void EmitDecorationCell(int column, int row, string glyph, Color color,
                                     TextAttributes attributes, bool overwrite)
     {
         var current = _surface[column, row];
@@ -822,8 +839,6 @@ public sealed class DrawingContext
         // A glyph (or a wide glyph's continuation) already here survives unless this layer overwrites.
         if (!overwrite && (current.Kind == CellKind.WideContinuation || !string.IsNullOrEmpty(current.Grapheme)))
             return;
-
-        var color = brush.ColorAt(column, row, bounds);
 
         // Normally the stroke keeps a transparent background so a fill / the composite target shows under the
         // glyph. But when overwriting an opaque fill (a FillOpaque panel body), keep that background so the

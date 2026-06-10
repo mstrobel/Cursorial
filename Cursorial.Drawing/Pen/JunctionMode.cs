@@ -16,5 +16,10 @@ public enum JunctionMode : byte
 
     /// <summary>The incoming stroke replaces the conflict cell; the incoming one reads continuous and
     /// the prior stroke shows a one-cell gap.</summary>
-    Overlay = 2
+    Overlay = 2,
+
+    /// <summary>Like <see cref="Merge"/> — the junction glyph forms by per-direction max-union — but the
+    /// cell's color is the <em>average</em> of the crossing strokes' colors (sampled at that cell) rather
+    /// than the last writer's, so a junction between two differently-colored pens reads as a blend.</summary>
+    Blend = 3,
 }

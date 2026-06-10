@@ -2,8 +2,12 @@ using Cursorial.Rendering;
 
 namespace Cursorial.Drawing;
 
-/// <summary>Per-cell callback invoked by <see cref="StrokeAccumulator.Flush"/> at draw-pass end.</summary>
-internal delegate void StrokeCellEmitter(int column, int row, byte arms, StrokeRecord record);
+/// <summary>
+/// Per-cell callback invoked by <see cref="StrokeAccumulator.Flush"/> at draw-pass end. <paramref name="merged"/>
+/// is the set of records whose strokes blended at this cell (a <see cref="JunctionMode.Blend"/> junction),
+/// or null when a single record owns the cell.
+/// </summary>
+internal delegate void StrokeCellEmitter(int column, int row, byte arms, StrokeRecord record, IReadOnlyList<StrokeRecord>? merged);
 
 /// <summary>
 /// Accumulates box/line strokes for one scene draw pass so junctions resolve correctly across separate
@@ -26,6 +30,7 @@ internal sealed class StrokeAccumulator
     private int[]? _recordId;         // per cell: 0 = untouched, else index+1 into _records
     private readonly List<StrokeRecord> _records = [];
     private readonly List<int> _touched = [];   // cell indices, each added once on first touch
+    private Dictionary<int, List<int>>? _blended;   // sparse: cell idx → record ids blended there (Blend junctions)
 
     private int _currentFigureId;               // 0 = implicit root
     private int _nextFigureId = 1;
@@ -155,13 +160,29 @@ internal sealed class StrokeAccumulator
                 _arms[idx] = MergeArms(_arms[idx], armBits);
                 _recordId[idx] = recordId;   // last-writer-wins for color / decoration
                 break;
+            case JunctionMode.Blend:
+                _arms[idx] = MergeArms(_arms[idx], armBits);
+                TrackBlend(idx, existing, recordId);   // remember both records so flush averages their colors
+                _recordId[idx] = recordId;             // last writer still drives the glyph / decoration
+                break;
             case JunctionMode.Overlay:
                 _arms[idx] = armBits;
                 _recordId[idx] = recordId;
+                _blended?.Remove(idx);        // a clean replace — no longer a blended junction
                 break;
             case JunctionMode.Break:
                 break;                        // incoming yields — deposit nothing
         }
+    }
+
+    // Remember the records that blended at a cell (the prior owner plus the incoming), in deposit order.
+    private void TrackBlend(int idx, int existing, int incoming)
+    {
+        _blended ??= [];
+        if (!_blended.TryGetValue(idx, out var ids))
+            _blended[idx] = [existing, incoming];
+        else if (!ids.Contains(incoming))
+            ids.Add(incoming);
     }
 
     /// <summary>Replay every touched cell (in first-touch order) to <paramref name="emit"/>.</summary>
@@ -175,7 +196,16 @@ internal sealed class StrokeAccumulator
             int recordId = _recordId[idx];
             if (recordId == 0)
                 continue;
-            emit(idx % _columns, idx / _columns, _arms[idx], _records[recordId - 1]);
+
+            List<StrokeRecord>? merged = null;
+            if (_blended is not null && _blended.TryGetValue(idx, out var ids))
+            {
+                merged = new List<StrokeRecord>(ids.Count);
+                foreach (int id in ids)
+                    merged.Add(_records[id - 1]);
+            }
+
+            emit(idx % _columns, idx / _columns, _arms[idx], _records[recordId - 1], merged);
         }
     }
 

@@ -60,11 +60,16 @@ internal sealed class UiPrimitivesDemo : InteractiveDemo
             ctx.DrawFormattedText(ft, new Rect(2, 0, Math.Min(w - 4, 60), Math.Min(ft.Size.Rows, top - 1)), grad, Capabilities.Output);
         }
 
+        var edges = ShadowEdges.Bottom | ShadowEdges.Right;
+        
         // Titled panel with a drop shadow and an inner shadow on its fill.
+
         if (w >= 24 && top + 7 <= h)
         {
             var panel = new Rect(2, top, 20, 6);
-            ctx.DrawDropShadow(panel, ShadowGeometry.Drop(radius: 1, offset: 1, strength: 0.5), Color.FromRgb(0, 0, 0));
+
+            ctx.DrawDropShadow(panel, ShadowGeometry.Drop(radius: 0, offset: 1, strength: 0.75, edges),
+                               Color.FromRgb(0, 0, 0));
             ctx.DrawPanel(panel, Color.FromRgb(120, 200, 160), new SolidColorBrush(Color.FromRgb(30, 34, 46)),
                           new PanelTitle("Panel").WithColor(Color.FromRgb(200, 210, 255)));
             ctx.DrawInnerShadow(panel, ShadowGeometry.Inner(radius: 1, strength: 0.4), Color.FromRgb(0, 0, 0));
@@ -76,9 +81,9 @@ internal sealed class UiPrimitivesDemo : InteractiveDemo
         if (w >= 48 && top + 7 <= h)
         {
             var modal = new Rect(26, top + 1, 18, 5);
-            ctx.DrawDropShadow(modal, ShadowGeometry.Drop(radius: 2, offset: 1, strength: 0.45), Color.FromRgb(0, 0, 0));
-            ctx.FillOpaque(modal, Color.FromRgb(45, 40, 70));
-            ctx.DrawBox(modal, Color.FromRgb(185, 120, 200), overwrite: true);
+            ctx.DrawDropShadow(modal, ShadowGeometry.Drop(radius: 0, offset: 1, strength: 0.75, edges), Color.FromRgb(0, 0, 0));
+            ctx.FillOpaque(modal, Color.FromRgba(45, 40, 70, 63));
+            ctx.DrawBox(modal, new Pen(Color.FromRgb(185, 120, 200)) { Weight = StrokeWeight.Light, Corners = CornerStyle.Rounded }, overwrite: true);
             ctx.DrawText(28, top + 2, "opaque modal", Color.FromRgb(235, 225, 245));
             ctx.DrawText(28, top + 3, "hides text", Color.FromRgb(200, 190, 220));
         }

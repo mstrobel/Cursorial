@@ -284,61 +284,45 @@ public sealed class DrawingContext
     /// at composite time. Draw it before the element. <see cref="ShadowGeometry.Edges"/> selects which sides cast.
     /// </summary>
     /// <remarks>
-    /// Each set edge casts a band of <see cref="ShadowGeometry.Radius"/> cells (plus any offset in that
-    /// direction). A band runs the element's full length along its edge, extending into a <em>casting</em>
-    /// corner but insetting by the radius at an end whose perpendicular edge does <em>not</em> cast — so a
-    /// band never overhangs past an unlit corner. With one edge and no perpendicular edges the band is
-    /// inset at both ends (length − 2·radius, centred); with two perpendicular edges it spans the full
-    /// height/width.
+    /// The shadow is the element's silhouette displaced by the offset and softened by a
+    /// <see cref="ShadowGeometry.Radius"/>-cell fringe (the element occludes its own footprint, and only the
+    /// casting edges show). The <b>offset</b> trims the near, lit corners (an offset-1 / radius-0 shadow is a
+    /// crisp one-cell sliver, no overhang); the soft fringe spills only into a <b>casting</b> corner — where two
+    /// set edges meet — never past an unlit one. The translucent background rides to the compositor (so the
+    /// shadow darkens the layer beneath), while the foreground is blended at draw time so a <em>same-scene</em>
+    /// glyph the shadow falls on dims too. (A glyph on a <em>lower layer</em> is not dimmed — the compositor's
+    /// background-only path leaves a lower foreground untouched.)
     /// </remarks>
     public void DrawDropShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
         if (element.Columns <= 0 || element.Rows <= 0) return;
         if (!TryShadow(geometry, shadowColor, out int radius, out double strength)) return;
 
-        var edges = geometry.Edges;
-        bool castL = edges.HasFlag(ShadowEdges.Left), castR = edges.HasFlag(ShadowEdges.Right);
-        bool castT = edges.HasFlag(ShadowEdges.Top), castB = edges.HasFlag(ShadowEdges.Bottom);
+        int dx = geometry.OffsetColumn, dy = geometry.OffsetRow;
+        int sCol = element.Column + dx, sRow = element.Row + dy;
+        int sColEnd = sCol + element.Columns, sRowEnd = sRow + element.Rows;
 
-        int eCol = element.Column, eRow = element.Row, eColEnd = element.ColumnEnd, eRowEnd = element.RowEnd;
-
-        // Each band reaches `radius` cells out, plus the offset toward that side (a hard displacement).
-        int reachR = Math.Max(0, geometry.OffsetColumn) + radius, reachL = Math.Max(0, -geometry.OffsetColumn) + radius;
-        int reachB = Math.Max(0, geometry.OffsetRow) + radius, reachT = Math.Max(0, -geometry.OffsetRow) + radius;
-
-        // Band length: a vertical (L/R) band spans [rowLo, rowHi); a horizontal (T/B) band spans [colLo, colHi).
-        // Each end extends into a casting corner or insets by `radius` when its perpendicular edge doesn't cast.
-        int rowLo = eRow - (castT ? reachT : -radius), rowHi = eRowEnd + (castB ? reachB : -radius);
-        int colLo = eCol - (castL ? reachL : -radius), colHi = eColEnd + (castR ? reachR : -radius);
-
-        int c0 = Math.Max(0, eCol - reachL), c1 = Math.Min(_surface.Columns, eColEnd + reachR);
-        int r0 = Math.Max(0, eRow - reachT), r1 = Math.Min(_surface.Rows, eRowEnd + reachB);
+        int c0 = Math.Max(0, sCol - radius), r0 = Math.Max(0, sRow - radius);
+        int c1 = Math.Min(_surface.Columns, sColEnd + radius), r1 = Math.Min(_surface.Rows, sRowEnd + radius);
 
         for (int r = r0; r < r1; r++)
         for (int c = c0; c < c1; c++)
         {
-            if (Contains(element, c, r)) continue;   // the element occludes its own footprint
+            if (Contains(element, c, r)) continue;                                 // the element occludes itself
+            if (!OnCastingSide(sCol, sRow, sColEnd, sRowEnd, geometry.Edges, c, r)) continue;
+            int d = ChebyshevOutside(sCol, sRow, sColEnd, sRowEnd, c, r);
+            if (d > radius) continue;
 
-            // Strongest contribution among the bands this cell is in (peak nearest the element, linear to 0).
-            double factor = 0.0;
-            if (castR && c >= eColEnd && c < eColEnd + reachR && r >= rowLo && r < rowHi)
-                factor = Math.Max(factor, (reachR - (c - eColEnd)) / (double) reachR);
-            if (castL && c < eCol && c >= eCol - reachL && r >= rowLo && r < rowHi)
-                factor = Math.Max(factor, (reachL - (eCol - 1 - c)) / (double) reachL);
-            if (castB && r >= eRowEnd && r < eRowEnd + reachB && c >= colLo && c < colHi)
-                factor = Math.Max(factor, (reachB - (r - eRowEnd)) / (double) reachB);
-            if (castT && r < eRow && r >= eRow - reachT && c >= colLo && c < colHi)
-                factor = Math.Max(factor, (reachT - (eRow - 1 - r)) / (double) reachT);
-
-            if (factor <= 0.0) continue;
-            byte alpha = (byte) Math.Clamp(Math.Round(shadowColor.Alpha * strength * factor), 0, 255);
+            byte alpha = ShadowAlpha(shadowColor.Alpha, strength, d, radius);
             if (alpha == 0) continue;
 
-            // Translucent background, glyph preserved (no structure change → no wide-glyph orphan); the
-            // compositor consumes the alpha against the target. A later same-cell shadow takes the stronger one.
             var existing = _surface[c, r];
             if (existing.Style.Background is { Kind: ColorKind.Rgb } prior && prior.Alpha >= alpha) continue;
-            _surface[c, r] = existing with { Style = existing.Style.WithBackground(shadowColor.WithAlpha(alpha)) };
+
+            // Background stays translucent for the compositor; foreground blends now so a same-scene glyph dims.
+            var shadow = shadowColor.WithAlpha(alpha);
+            var fg = Color.Composite(shadow, existing.Style.Foreground, BlendingModes.Default);
+            _surface[c, r] = existing with { Style = existing.Style.WithForeground(fg).WithBackground(shadow) };
         }
     }
 
@@ -369,9 +353,12 @@ public sealed class DrawingContext
             byte alpha = ShadowAlpha(shadowColor.Alpha, strength, d, radius);
             if (alpha == 0) continue;
 
+            // Darken the cell's own fill (and any glyph on it) at draw time, storing the opaque result.
             var existing = _surface[c, r];
-            var blended = Color.Composite(shadowColor.WithAlpha(alpha), existing.Style.Background, BlendingModes.Default);
-            _surface[c, r] = existing with { Style = existing.Style.WithBackground(blended) };
+            var sh = shadowColor.WithAlpha(alpha);
+            var bg = Color.Composite(sh, existing.Style.Background, BlendingModes.Default);
+            var fg = Color.Composite(sh, existing.Style.Foreground, BlendingModes.Default);
+            _surface[c, r] = existing with { Style = existing.Style.WithForeground(fg).WithBackground(bg) };
         }
     }
 
@@ -395,6 +382,30 @@ public sealed class DrawingContext
 
     private static bool Contains(in Rect rect, int c, int r) =>
         c >= rect.Column && c < rect.ColumnEnd && r >= rect.Row && r < rect.RowEnd;
+
+    // Whether a cell casts, classified against the offset silhouette [sCol,sColEnd)×[sRow,sRowEnd):
+    //  • an edge cell (outside in one axis, within the other) casts when that single edge is set;
+    //  • a corner cell (outside in both axes) casts only when BOTH its edges are set — so the soft fringe
+    //    spills only into a casting corner, never past an unlit one;
+    //  • a cell inside the silhouette but outside the element (the offset sliver) casts at full strength.
+    private static bool OnCastingSide(int sCol, int sRow, int sColEnd, int sRowEnd, ShadowEdges edges, int c, int r)
+    {
+        bool left = c < sCol, right = c >= sColEnd;
+        bool above = r < sRow, below = r >= sRowEnd;
+        bool hOut = left || right, vOut = above || below;
+
+        bool hSet = (left && edges.HasFlag(ShadowEdges.Left)) || (right && edges.HasFlag(ShadowEdges.Right));
+        bool vSet = (above && edges.HasFlag(ShadowEdges.Top)) || (below && edges.HasFlag(ShadowEdges.Bottom));
+
+        if (hOut && vOut) return hSet && vSet;   // corner
+        if (hOut) return hSet;                    // left / right band
+        if (vOut) return vSet;                    // top / bottom band
+        return true;                              // inside the silhouette (the offset sliver) → full shadow
+    }
+
+    // Chebyshev distance from (c,r) to the rectangle [col,colEnd)×[row,rowEnd); 0 when inside.
+    private static int ChebyshevOutside(int col, int row, int colEnd, int rowEnd, int c, int r) =>
+        Math.Max(0, Math.Max(Math.Max(col - c, c - (colEnd - 1)), Math.Max(row - r, r - (rowEnd - 1))));
 
     // Distance from an interior cell to the nearest casting edge of the element; −1 when no set edge applies.
     private static int InnerEdgeDistance(in Rect element, ShadowEdges edges, int c, int r)

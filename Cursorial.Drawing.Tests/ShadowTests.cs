@@ -99,31 +99,32 @@ public class ShadowTests
     }
 
     [Fact]
-    public void DropShadow_BottomRight_NoCornerOverhang()
+    public void DropShadow_OffsetTrimsNearCorners()
     {
-        // A bottom+right shadow must hug those two sides — never overhang above the top-right corner or left
-        // of the bottom-left corner (the band-past-the-corner bug).
+        // Offset 1, radius 0 → the crisp shadow is the silhouette displaced by the offset minus the element:
+        // the lit (near) corners — the right band's top cell and the bottom band's left cell — are NOT shaded.
         var b = DrawHarness.Render(12, 10,
             ctx => ctx.DrawDropShadow(new Rect(3, 3, 5, 4),
-                                      ShadowGeometry.Drop(radius: 1, offset: 0, edges: ShadowEdges.Bottom | ShadowEdges.Right), Black),
+                                      ShadowGeometry.Drop(radius: 0, offset: 1, edges: ShadowEdges.Bottom | ShadowEdges.Right), Black),
             baseBackground: White);
-        Assert.True(b[8, 5].Style.Background.Red < 255, "right band casts");    // (8,5): right of element, within its rows
-        Assert.True(b[5, 7].Style.Background.Red < 255, "bottom band casts");   // (5,7): below element, within its cols
-        Assert.Equal(White, b[8, 2].Style.Background);   // above the top-right corner → no overhang
-        Assert.Equal(White, b[2, 7].Style.Background);   // left of the bottom-left corner → no overhang
+        Assert.True(b[8, 5].Style.Background.Red < 255, "right sliver casts");   // (8,5): in the displaced right sliver
+        Assert.True(b[5, 7].Style.Background.Red < 255, "bottom sliver casts");  // (5,7): in the displaced bottom sliver
+        Assert.Equal(White, b[8, 3].Style.Background);   // right band's top cell (lit corner) → not shaded
+        Assert.Equal(White, b[3, 7].Style.Background);   // bottom band's left cell (lit corner) → not shaded
     }
 
     [Fact]
-    public void DropShadow_SingleEdge_InsetsBandAtBothEnds()
+    public void DropShadow_DarkensForegroundGlyphBeneathIt()
     {
-        // Bottom-only: with no perpendicular edge to anchor the corners, the band runs the element width minus
-        // the radius at each end (length − 2·radius, centred) — its first and last columns are not shaded.
-        var b = DrawHarness.Render(12, 8,
-            ctx => ctx.DrawDropShadow(new Rect(2, 2, 6, 3), ShadowGeometry.Drop(radius: 1, offset: 0, edges: ShadowEdges.Bottom), Black),
-            baseBackground: White);
-        Assert.True(b[4, 5].Style.Background.Red < 255, "centre of the bottom band casts");
-        Assert.Equal(White, b[2, 5].Style.Background);   // left end inset by the radius
-        Assert.Equal(White, b[7, 5].Style.Background);   // right end inset by the radius
+        // A glyph the shadow falls on (same scene) keeps its grapheme but its foreground dims toward the shadow.
+        var fg = Color.FromRgb(210, 210, 210);
+        var b = DrawHarness.Render(12, 10, ctx =>
+        {
+            ctx.Set(8, 5, "x", Style.Default.WithForeground(fg));   // a glyph in the shadow's path
+            ctx.DrawDropShadow(new Rect(3, 3, 5, 4), ShadowGeometry.Drop(radius: 1, offset: 1, strength: 0.7), Black);
+        }, baseBackground: White);
+        Assert.Equal("x", b[8, 5].Grapheme);
+        Assert.True(b[8, 5].Style.Foreground.Red < fg.Red, "the glyph beneath the shadow is darkened");
     }
 
     [Fact]

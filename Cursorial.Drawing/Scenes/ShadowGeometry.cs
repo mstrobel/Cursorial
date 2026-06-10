@@ -6,7 +6,8 @@ namespace Cursorial.Drawing;
 /// </summary>
 public readonly record struct ShadowGeometry
 {
-    /// <summary>Cells a band reaches from the casting edge (its thickness and soft falloff). Clamped to ≥ 0.</summary>
+    /// <summary>Cells the soft fringe fades across, beyond the offset-displaced silhouette. Clamped to ≥ 0
+    /// (the offset is the crisp displacement; the radius is the soft edge).</summary>
     public int Radius { get; init; }
 
     /// <summary>Column offset of a drop shadow's cast direction (e.g. +1 = light from the upper-left). Ignored by inner shadows.</summary>
@@ -22,7 +23,7 @@ public readonly record struct ShadowGeometry
     public ShadowEdges Edges { get; init; }
 
     /// <summary>A conventional drop shadow: <paramref name="radius"/> cells, cast lower-right by (<paramref name="offset"/>, <paramref name="offset"/>), from <paramref name="edges"/>.</summary>
-    public static ShadowGeometry Drop(int radius = 1, int offset = 1, double strength = 0.5, ShadowEdges edges = ShadowEdges.All) =>
+    public static ShadowGeometry Drop(int radius = 0, int offset = 1, double strength = 0.5, ShadowEdges edges = ShadowEdges.All) =>
         new() { Radius = radius, OffsetColumn = offset, OffsetRow = offset, Strength = strength, Edges = edges };
 
     /// <summary>A conventional inner shadow: <paramref name="radius"/> cells inward from <paramref name="edges"/>.</summary>

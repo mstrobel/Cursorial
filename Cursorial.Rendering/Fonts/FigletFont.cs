@@ -138,20 +138,34 @@ public sealed class FigletFont : IGlyphFont
     /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
+        var compatible = EnsureCompatibleStyle(style);
+        return PaintCore(buffer, column, row, text, (_, _) => compatible);
+    }
+
+    /// <summary>
+    /// Paint sampling <paramref name="styleProvider"/> per painted cell — so a gradient (or any position-dependent
+    /// source) flows across the rendered glyphs rather than the whole headline taking one flat color.
+    /// </summary>
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
+    {
+        ArgumentNullException.ThrowIfNull(styleProvider);
+        return PaintCore(buffer, column, row, text, (c, r) => EnsureCompatibleStyle(styleProvider(c, r)));
+    }
+
+    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider provider)
+    {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
         if (row < 0 || row >= buffer.Rows || column >= buffer.Columns) return Size.Empty;
 
         int caret = column;
         FigletGlyph? prev = null;
 
-        var compatibleStyle = EnsureCompatibleStyle(style);
-
         foreach (uint cp in EnumerateCodepoints(text))
         {
             var glyph = GetGlyph(cp);
             int overlap = prev is null ? 0 : ComputeOverlap(prev, glyph);
             caret -= overlap;
-            PaintGlyph(buffer, caret, row, glyph, compatibleStyle);
+            PaintGlyph(buffer, caret, row, glyph, provider);
             caret += glyph.Width;
             prev = glyph;
         }
@@ -162,7 +176,7 @@ public sealed class FigletFont : IGlyphFont
         return new Size(painted, height);
     }
 
-    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, in Style style)
+    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, GlyphStyleProvider style)
     {
         var lines = glyph.Lines;
 
@@ -221,7 +235,7 @@ public sealed class FigletFont : IGlyphFont
                     }
                 }
 
-                buffer.Set(targetCol, targetRow, cluster, style);
+                buffer.Set(targetCol, targetRow, cluster, style(targetCol, targetRow));
 
                 targetCol += width;
             }

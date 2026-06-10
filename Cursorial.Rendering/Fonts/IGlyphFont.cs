@@ -3,6 +3,14 @@ using Cursorial.Output;
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
+/// Supplies the <see cref="Style"/> for the glyph cell at (<paramref name="column"/>, <paramref name="row"/>).
+/// Lets a font be painted with a position-dependent color source (e.g. a gradient flowing across a FIGlet
+/// headline) while the font itself stays unaware of brushes — the provider takes only cell coordinates and a
+/// <see cref="Style"/>, never a higher-layer brush type.
+/// </summary>
+public delegate Style GlyphStyleProvider(int column, int row);
+
+/// <summary>
 /// A font that renders text into cells of a <see cref="CellBuffer"/>. Implementations cover
 /// plain monospace (the identity — one grapheme per cell), FIGlet-style ASCII glyph fonts that
 /// expand each character into a multi-cell pattern, and bitmap-derived fonts such as Braille
@@ -55,4 +63,13 @@ public interface IGlyphFont
     /// they should paint what fits.
     /// </remarks>
     Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style);
+
+    /// <summary>
+    /// Paint <paramref name="text"/> sampling <paramref name="styleProvider"/> per cell, so a caller can color
+    /// the glyphs with a position-dependent source (a gradient across a headline) without the font knowing
+    /// about brushes. The default samples the provider once at the anchor and paints a single style; fonts that
+    /// render cell-by-cell (e.g. <see cref="FigletFont"/>) override this to sample each painted cell.
+    /// </summary>
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
+        => Paint(buffer, column, row, text, styleProvider(column, row));
 }

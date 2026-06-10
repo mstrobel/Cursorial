@@ -120,8 +120,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 PaintHorizontalRule(rule, buffer, column, row, boundsColumns, resolver);
                 break;
             case FormattedFigletBlock figlet:
-                figlet.Face.Paint(buffer, column, row, figlet.Text,
-                                  ResolveStyle(resolver, figlet.Style, centerColumn, centerRow, blockRect));
+                // With a brush resolver, sample it per rendered cell so a gradient flows across the big glyphs;
+                // without one, the whole headline takes its single block style (one center sample, as before).
+                if (resolver is null)
+                    figlet.Face.Paint(buffer, column, row, figlet.Text, figlet.Style);
+                else
+                    figlet.Face.Paint(buffer, column, row, figlet.Text,
+                                      (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, figlet.Style, c, r, blockRect)));
                 break;
             case FormattedSizedTextBlock sized:
                 PaintSizedText(sized, buffer, column, row, capabilities,

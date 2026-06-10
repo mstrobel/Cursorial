@@ -221,6 +221,61 @@ public sealed class DrawingContext
         }
     }
 
+    /// <summary>Fill <paramref name="region"/> with an <b>opaque, occluding</b> solid <paramref name="color"/>.</summary>
+    public void FillOpaque(in Rect region, Color color) => FillOpaque(region, new SolidColorBrush(color));
+
+    /// <summary>
+    /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
+    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer — unlike
+    /// <see cref="FillRectangle(in Rect, IBrush)"/>, which is background-only and lets lower glyphs show through.
+    /// Use it for opaque panels, modals, and menus drawn over content. A translucent brush sample is preserved
+    /// (the alpha rides to the compositor for a frosted-panel effect), but the glyph beneath is still replaced.
+    /// </summary>
+    /// <remarks>
+    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
+    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
+    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
+    /// background so the border sits on the panel rather than punching a transparent hole.
+    /// </remarks>
+    public void FillOpaque(in Rect region, IBrush brush)
+    {
+        ArgumentNullException.ThrowIfNull(brush);
+
+        if (_stateStack.Count != 0)
+        {
+            for (int row = region.Row; row < region.RowEnd; row++)
+            for (int col = region.Column; col < region.ColumnEnd; col++)
+                if (TryMap(col, row, out int sc, out int sr))
+                    RawWriteWithCleanup(sc, sr, OccluderCell(brush.ColorAt(col, row, region)));
+            return;
+        }
+
+        int colStart = Math.Max(0, region.Column);
+        int rowStart = Math.Max(0, region.Row);
+        int colEnd = Math.Min(region.ColumnEnd, _surface.Columns);
+        int rowEnd = Math.Min(region.RowEnd, _surface.Rows);
+
+        for (int row = rowStart; row < rowEnd; row++)
+        for (int col = colStart; col < colEnd; col++)
+            RawWriteWithCleanup(col, row, OccluderCell(brush.ColorAt(col, row, region)));
+    }
+
+    private static Cell OccluderCell(Color color) => new(" ", CellKind.Single, Style.Default.WithBackground(color));
+
+    // Raw-write a cell (preserving its color alpha for the compositor), first blanking any wide-glyph partner
+    // the write would orphan — overwriting a WideContinuation blanks its left half (col−1); overwriting a
+    // WideLeft blanks its now-dangling continuation (col+1). This is the cleanup CellBuffer.Set does, replicated
+    // for the alpha-preserving raw path so a fill straddling a wide glyph can't strand a half-glyph.
+    private void RawWriteWithCleanup(int col, int row, in Cell cell)
+    {
+        var existing = _surface[col, row];
+        if (existing.Kind == CellKind.WideContinuation && col > 0)
+            _surface[col - 1, row] = Cell.Blank;
+        else if (existing.Kind == CellKind.WideLeft && col + 1 < _surface.Columns)
+            _surface[col + 1, row] = Cell.Blank;
+        _surface[col, row] = cell;
+    }
+
     /// <summary>Draw a single line of text with a solid foreground (and optional background) color.</summary>
     public int DrawText(int column, int row, ReadOnlySpan<char> text,
                         Color foreground, Color? background = null, in Style baseStyle = default)
@@ -522,9 +577,18 @@ public sealed class DrawingContext
             return;
 
         var color = brush.ColorAt(column, row, bounds);
+
+        // Normally the stroke keeps a transparent background so a fill / the composite target shows under the
+        // glyph. But when overwriting an opaque fill (a FillOpaque panel body), keep that background so the
+        // border sits ON the panel instead of punching a transparent hole that lets a lower layer bleed
+        // through behind the glyph — the one case that makes a bordered opaque panel expressible.
+        var underBg = current.Style.Background;
+        Color background = overwrite && underBg.Kind != ColorKind.Default && underBg.IsOpaque
+                               ? underBg
+                               : Colors.Transparent;
         var style = Style.Default
             .WithForeground(color)
-            .WithBackground(Colors.Transparent)   // let any fill / target under the glyph show through
+            .WithBackground(background)
             .WithAttributes(attributes);
 
         _surface.Set(column, row, glyph, in style);

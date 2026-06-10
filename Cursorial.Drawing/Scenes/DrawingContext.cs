@@ -33,6 +33,14 @@ public sealed class DrawingContext
     private BrailleRaster? _braille;            // lazy — only allocated when a diagonal/braille line is drawn
     private int _openFigureId = -1;             // -1 = no explicit figure open
 
+    // Clip + translate state stack (empty = identity: no translate, clip = the whole scene). Each push
+    // composes onto the current top; coordinates the per-cell write paths receive are mapped through it.
+    private readonly List<DrawState> _stateStack = [];
+
+    private readonly record struct DrawState(int Dx, int Dy, Rect Clip);
+
+    private DrawState CurrentState => _stateStack.Count > 0 ? _stateStack[^1] : new DrawState(0, 0, Bounds);
+
     internal DrawingContext(Scene scene)
     {
         _surface = scene.Buffer.AsView();
@@ -43,14 +51,121 @@ public sealed class DrawingContext
     /// <summary>The scene's bounds, in scene-local coordinates.</summary>
     public Rect Bounds { get; }
 
+    // ---- Clip + translate state stack ----------------------------------------------------------
+
+    /// <summary>
+    /// Push a clip rectangle, given in <b>current-local</b> coordinates (the space draw calls use right
+    /// now — i.e. after any active translate). It is mapped into scene coordinates and intersected with
+    /// the current clip; subsequent draws are bounded to the result until the returned scope is disposed.
+    /// Nests. An empty intersection means subsequent draws paint nothing.
+    /// </summary>
+    /// <remarks>
+    /// Honored by the per-cell write paths — <see cref="Set"/>, <see cref="FillRectangle(in Rect, IBrush)"/>,
+    /// and <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>. In this version it
+    /// does <b>not</b> bound <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/>,
+    /// <see cref="DrawContent"/>, or deferred <see cref="Pen"/> strokes / chart braille (draw those in absolute
+    /// scene coordinates, or isolate them in a sub-scene composited at an offset).
+    /// </remarks>
+    public DrawingStateScope PushClip(in Rect clip)
+    {
+        var s = CurrentState;
+        _stateStack.Add(s with { Clip = IntersectClip(s.Clip, clip.Column + s.Dx, clip.Row + s.Dy, clip.Columns, clip.Rows) });
+        return new DrawingStateScope(this, _stateStack.Count);
+    }
+
+    /// <summary>
+    /// Push an integer cell translation: subsequent draw coordinates are shifted by
+    /// (<paramref name="columns"/>, <paramref name="rows"/>) when written to the scene. Offsets may be
+    /// <b>negative</b> (content scrolled above / left of its viewport). Composes additively with any active
+    /// translate. Nests. See <see cref="PushClip"/> for which draw calls honor it.
+    /// </summary>
+    public DrawingStateScope PushTranslate(int columns, int rows)
+    {
+        var s = CurrentState;
+        _stateStack.Add(s with { Dx = s.Dx + columns, Dy = s.Dy + rows });
+        return new DrawingStateScope(this, _stateStack.Count);
+    }
+
+    /// <summary>
+    /// Push a clip and a translate together — the common "give this widget a viewport" call. The clip is in
+    /// current-local coordinates (before the new translate); the translate then positions content within it.
+    /// Either argument at its identity (null clip / zero offset) is a no-op for that axis. Nests.
+    /// </summary>
+    public DrawingStateScope Push(in Rect? clip = null, int translateColumns = 0, int translateRows = 0)
+    {
+        var s = CurrentState;
+        var next = s with { Dx = s.Dx + translateColumns, Dy = s.Dy + translateRows };
+        if (clip is { } c)
+            next = next with { Clip = IntersectClip(s.Clip, c.Column + s.Dx, c.Row + s.Dy, c.Columns, c.Rows) };
+        _stateStack.Add(next);
+        return new DrawingStateScope(this, _stateStack.Count);
+    }
+
+    /// <summary>The active clip in scene coordinates (the scene bounds when nothing is pushed).</summary>
+    public Rect CurrentClip => CurrentState.Clip;
+
+    /// <summary>The active cumulative translate in cells (component-wise; may be negative).</summary>
+    public (int Columns, int Rows) CurrentTranslate => (CurrentState.Dx, CurrentState.Dy);
+
+    // Pop the state stack back to (and including) the scope created at this depth. Idempotent: a no-op if
+    // the stack is already at or below that depth (double dispose, out-of-order dispose).
+    internal void PopTo(int depth)
+    {
+        while (_stateStack.Count >= depth && depth > 0)
+            _stateStack.RemoveAt(_stateStack.Count - 1);
+    }
+
+    // Intersect the current scene clip with a scene-coordinate rect, clamping to non-negative before
+    // constructing the result (Rect is ushort-backed and throws on negative coordinates).
+    private static Rect IntersectClip(in Rect current, int col, int row, int cols, int rows)
+    {
+        int c0 = Math.Max(current.Column, col);
+        int r0 = Math.Max(current.Row, row);
+        int c1 = Math.Min(current.ColumnEnd, col + Math.Max(0, cols));
+        int r1 = Math.Min(current.RowEnd, row + Math.Max(0, rows));
+        return c1 > c0 && r1 > r0 ? new Rect(c0, r0, c1 - c0, r1 - r0) : Rect.Empty;
+    }
+
+    // Map a current-local coordinate to a scene coordinate, returning false when it falls outside the active
+    // clip (or onto a negative axis a ushort Rect can't address). The active clip is always within the scene
+    // bounds, so a true result is safe for the raw indexer.
+    private bool TryMap(int localCol, int localRow, out int sceneCol, out int sceneRow)
+    {
+        var s = CurrentState;
+        sceneCol = localCol + s.Dx;
+        sceneRow = localRow + s.Dy;
+        if (sceneCol < 0 || sceneRow < 0) return false;
+        var clip = s.Clip;
+        return sceneCol >= clip.Column && sceneCol < clip.ColumnEnd
+            && sceneRow >= clip.Row && sceneRow < clip.RowEnd;
+    }
+
     /// <summary>
     /// Scalar write: place <paramref name="grapheme"/> at <paramref name="column"/>,
     /// <paramref name="row"/> with the given <paramref name="style"/>. The style's colors are
     /// stored as-is (intra-scene composition follows <see cref="CellBuffer.Set"/>'s rules); the
     /// scene's source colors are later composited onto a target by <see cref="SceneCompositor"/>.
     /// </summary>
-    public void Set(int column, int row, string? grapheme, in Style style) =>
-        _surface.Set(column, row, grapheme, in style);
+    public void Set(int column, int row, string? grapheme, in Style style)
+    {
+        if (_stateStack.Count == 0) { _surface.Set(column, row, grapheme, in style); return; }
+        EmitMapped(column, row, grapheme, in style);
+    }
+
+    // Translate + clip a single glyph write under an active push. A wide glyph whose right half would fall
+    // outside the active clip degrades to a blank single cell (mirroring the surface-edge degrade in
+    // CellBufferView.Set), so a clip can never strand a continuation past its edge.
+    private void EmitMapped(int localCol, int localRow, string? grapheme, in Style style)
+    {
+        if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
+        if (!string.IsNullOrEmpty(grapheme) && GraphemeWidth.ClusterWidth(grapheme.AsSpan()) == 2
+            && sc + 1 >= CurrentState.Clip.ColumnEnd)
+        {
+            _surface.Set(sc, sr, null, in style);
+            return;
+        }
+        _surface.Set(sc, sr, grapheme, in style);
+    }
 
     /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
     public void FillRectangle(in Rect region, Color color) => FillRectangle(region, new SolidColorBrush(color));
@@ -77,6 +192,20 @@ public sealed class DrawingContext
     public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(brush);
+
+        if (_stateStack.Count != 0)
+        {
+            // Transformed path: sample the brush in local coordinates, write at the translated+clipped scene
+            // cell. The active clip is within the scene, so a mapped cell is always a safe raw write.
+            for (int row = region.Row; row < region.RowEnd; row++)
+            for (int col = region.Column; col < region.ColumnEnd; col++)
+            {
+                if (!TryMap(col, row, out int sc, out int sr)) continue;
+                var c = brush.ColorAt(col, row, brushBounds);
+                _surface[sc, sr] = new Cell(null, CellKind.Single, Style.Default.WithBackground(c));
+            }
+            return;
+        }
 
         int colStart = Math.Max(0, region.Column);
         int rowStart = Math.Max(0, region.Row);
@@ -117,11 +246,13 @@ public sealed class DrawingContext
                         IBrush foreground, IBrush? background = null, in Style baseStyle = default)
     {
         ArgumentNullException.ThrowIfNull(foreground);
-        if (text.IsEmpty || (uint) row >= (uint) _surface.Rows) return 0;
+        if (text.IsEmpty) return 0;
+        bool transformed = _stateStack.Count != 0;
+        if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform)
 
         var bg = background ?? Brushes.Transparent;
 
-        // The run's extent (its cells on this row) is the brush bounds.
+        // The run's extent (its cells on this row) is the brush bounds — sampled in local coordinates.
         int runWidth = GraphemeWidth.StringWidth(text);
         var bounds = new Rect(column, row, runWidth, 1);
 
@@ -132,12 +263,21 @@ public sealed class DrawingContext
             var cluster = clusters.Current;
             int width = GraphemeWidth.ClusterWidth(cluster);
             if (width < 1) width = 1;
-            if (column + width > _surface.Columns) break;
 
             var style = baseStyle.WithForeground(foreground.ColorAt(column, row, bounds))
                                  .WithBackground(bg.ColorAt(column, row, bounds));
 
-            column += _surface.Set(column, row, cluster.ToString(), style);
+            if (transformed)
+            {
+                // Translate + clip per cluster (the run advances in local columns regardless of clipping).
+                EmitMapped(column, row, cluster.ToString(), in style);
+                column += width;
+            }
+            else
+            {
+                if (column + width > _surface.Columns) break;   // surface-edge clip
+                column += _surface.Set(column, row, cluster.ToString(), style);
+            }
         }
 
         return column - start;
@@ -221,8 +361,9 @@ public sealed class DrawingContext
     /// </summary>
     /// <remarks>
     /// Fragments are positioned in cell units, so an integer composite offset slides them with the scene.
-    /// Per-protocol clipping and opacity have hard terminal limits (see design doc §8): cell-layer images
-    /// (Sixel / iTerm2) can't be made translucent, and clipping is a later refinement.
+    /// A composite <c>Clip</c> crops fragments per protocol (Kitty via a source rectangle, Sixel / iTerm2 via
+    /// pixel cropping). Opacity remains a hard terminal limit (see design doc §8): cell-layer images
+    /// (Sixel / iTerm2) can't be made translucent.
     /// </remarks>
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
     {
@@ -350,6 +491,8 @@ public sealed class DrawingContext
     // immediate writes (text/fills/bars) → braille data → box strokes/axes.
     internal void FlushDeferred()
     {
+        _stateStack.Clear();   // reconcile any leaked clip/translate scope before the deferred pass
+
         if (_openFigureId >= 0)
             EndFigure();   // close a leaked figure (back-patch bounds) before sampling
 

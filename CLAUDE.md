@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Notes to AI Agents
+
+Your context window will be automatically compacted by the CLI system as it approaches its limit. Do not stop tasks
+early or stall due to token budget concerns. Complete tasks fully and trust the system compaction.
+
 ## Project intent
 
 Cursorial will be a **cross-platform .NET library for building high-quality, visually rich terminal applications with

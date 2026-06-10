@@ -26,6 +26,7 @@ IReadOnlyList<IDemo> demos =
     new ChartsDemo(),
     new AnimationDemo(),
     new BrushedTextDemo(),
+    new UiPrimitivesDemo(),
     new ImageSceneDemo(),
     new ImageClipDemo(),
     new ImageDemo(),

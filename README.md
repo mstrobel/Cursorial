@@ -21,7 +21,7 @@ what you intend to use.
 | --- | --- | --- | --- |
 | **`Cursorial.Core`** | ✅ Available on NuGet | Input parsing & delivery, output sequence emission, capability negotiation, session orchestration, text utilities. | **Ready for integration.** The most relevant APIs are reasonably stable. |
 | **`Cursorial.Rendering`** | ⏳ Not yet published | Cell buffer, diffing frame renderer, rich text formatting, images, blending & alpha compositing. | **Work in progress.** No package yet — feedback welcome. |
-| **`Cursorial.Drawing`** | ⏳ Not yet published | Brushes & gradients, a pen/box engine with automatic junctions, charts, scene compositing with cached rasters, and UI drawing primitives (clip/translate, occluding & image fills, titled panels, shadows). | **Work in progress** (on a feature branch). |
+| **`Cursorial.Drawing`** | ⏳ Not yet published | Brushes & gradients, a pen/box engine with automatic junctions, charts, scene compositing with cached rasters, and UI drawing primitives (clip/translate, occluding & image fills, titled panels, shadows). | **Work in progress.** |
 | **`Cursorial.Animation`** | ⏳ Not yet published | A time-free animation engine — easings, keyframes, and value interpolators (`Cursorial.Core`-only; the consumer/UI owns the clock). | **Work in progress.** |
 | **`Cursorial.UI`** | — Not started | Widget tree, layout, focus management, input routing. | Possible future layer on top of `Cursorial.Drawing`. Work has not yet commenced. |
 

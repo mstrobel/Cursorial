@@ -16,14 +16,14 @@ public class ShadowTests
     [Fact]
     public void DropShadow_FallsOffMonotonically_OverNonBlackBase()
     {
-        var b = DrawHarness.Render(10, 8,
+        var b = DrawHarness.Render(10, 10,
             ctx => ctx.DrawDropShadow(new Rect(2, 2, 4, 3), ShadowGeometry.Drop(radius: 2, offset: 1, strength: 0.5), Black),
             baseBackground: White);
 
-        // Cells stepping away from the element's lower-right cast get progressively lighter (less darkened).
-        int near = b[6, 5].Style.Background.Red;
-        int mid = b[7, 5].Style.Background.Red;
-        int far = b[8, 5].Style.Background.Red;
+        // Stepping down through the bottom band, away from the element, gets progressively lighter.
+        int near = b[3, 5].Style.Background.Red;   // adjacent to the element edge
+        int mid = b[3, 6].Style.Background.Red;
+        int far = b[3, 7].Style.Background.Red;
         Assert.True(near < mid && mid < far, $"expected monotonic falloff, got {near} < {mid} < {far}");
         Assert.True(far < 255, "the outermost shadow cell still darkens the base");
     }
@@ -111,6 +111,19 @@ public class ShadowTests
         Assert.True(b[5, 7].Style.Background.Red < 255, "bottom band casts");   // (5,7): below element, within its cols
         Assert.Equal(White, b[8, 2].Style.Background);   // above the top-right corner → no overhang
         Assert.Equal(White, b[2, 7].Style.Background);   // left of the bottom-left corner → no overhang
+    }
+
+    [Fact]
+    public void DropShadow_SingleEdge_InsetsBandAtBothEnds()
+    {
+        // Bottom-only: with no perpendicular edge to anchor the corners, the band runs the element width minus
+        // the radius at each end (length − 2·radius, centred) — its first and last columns are not shaded.
+        var b = DrawHarness.Render(12, 8,
+            ctx => ctx.DrawDropShadow(new Rect(2, 2, 6, 3), ShadowGeometry.Drop(radius: 1, offset: 0, edges: ShadowEdges.Bottom), Black),
+            baseBackground: White);
+        Assert.True(b[4, 5].Style.Background.Red < 255, "centre of the bottom band casts");
+        Assert.Equal(White, b[2, 5].Style.Background);   // left end inset by the radius
+        Assert.Equal(White, b[7, 5].Style.Background);   // right end inset by the radius
     }
 
     [Fact]

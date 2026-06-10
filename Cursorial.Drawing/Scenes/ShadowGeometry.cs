@@ -6,7 +6,7 @@ namespace Cursorial.Drawing;
 /// </summary>
 public readonly record struct ShadowGeometry
 {
-    /// <summary>Cells the shadow softens across from the casting edge. Clamped to ≥ 0; 0 is a hard 1-cell edge.</summary>
+    /// <summary>Cells a band reaches from the casting edge (its thickness and soft falloff). Clamped to ≥ 0.</summary>
     public int Radius { get; init; }
 
     /// <summary>Column offset of a drop shadow's cast direction (e.g. +1 = light from the upper-left). Ignored by inner shadows.</summary>

@@ -99,6 +99,21 @@ public class ShadowTests
     }
 
     [Fact]
+    public void DropShadow_BottomRight_NoCornerOverhang()
+    {
+        // A bottom+right shadow must hug those two sides — never overhang above the top-right corner or left
+        // of the bottom-left corner (the band-past-the-corner bug).
+        var b = DrawHarness.Render(12, 10,
+            ctx => ctx.DrawDropShadow(new Rect(3, 3, 5, 4),
+                                      ShadowGeometry.Drop(radius: 1, offset: 0, edges: ShadowEdges.Bottom | ShadowEdges.Right), Black),
+            baseBackground: White);
+        Assert.True(b[8, 5].Style.Background.Red < 255, "right band casts");    // (8,5): right of element, within its rows
+        Assert.True(b[5, 7].Style.Background.Red < 255, "bottom band casts");   // (5,7): below element, within its cols
+        Assert.Equal(White, b[8, 2].Style.Background);   // above the top-right corner → no overhang
+        Assert.Equal(White, b[2, 7].Style.Background);   // left of the bottom-left corner → no overhang
+    }
+
+    [Fact]
     public void DefaultShadows_DoNotThrow()
     {
         DrawHarness.Render(8, 6, ctx =>

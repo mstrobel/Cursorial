@@ -299,7 +299,7 @@ public sealed class DrawingContext
         for (int c = c0; c < c1; c++)
         {
             if (Contains(element, c, r)) continue;                 // the element occludes its own footprint
-            if (!OnCastingSide(element, geometry.Edges, c, r)) continue;
+            if (!OnCastingSide(sCol, sRow, sColEnd, sRowEnd, geometry.Edges, c, r)) continue;
             int d = ChebyshevOutside(sCol, sRow, sColEnd, sRowEnd, c, r);
             if (d > radius) continue;
 
@@ -368,13 +368,24 @@ public sealed class DrawingContext
     private static bool Contains(in Rect rect, int c, int r) =>
         c >= rect.Column && c < rect.ColumnEnd && r >= rect.Row && r < rect.RowEnd;
 
-    // True when the cell sits on a side of the element that the edge flags say casts a shadow.
-    private static bool OnCastingSide(in Rect element, ShadowEdges edges, int c, int r)
+    // Whether a cell casts, classified against the (offset) silhouette [sCol,sColEnd)×[sRow,sRowEnd):
+    //  • an edge cell (outside in one axis, within the other) casts when that single edge is set;
+    //  • a corner cell (outside in both axes) casts only when BOTH its edges are set — so a band never
+    //    overhangs past a corner whose perpendicular edge doesn't cast;
+    //  • a cell inside the silhouette but outside the element (the offset sliver) casts at full strength.
+    private static bool OnCastingSide(int sCol, int sRow, int sColEnd, int sRowEnd, ShadowEdges edges, int c, int r)
     {
-        bool left = c < element.Column, right = c >= element.ColumnEnd;
-        bool top = r < element.Row, bottom = r >= element.RowEnd;
-        return (left && edges.HasFlag(ShadowEdges.Left)) || (right && edges.HasFlag(ShadowEdges.Right))
-            || (top && edges.HasFlag(ShadowEdges.Top)) || (bottom && edges.HasFlag(ShadowEdges.Bottom));
+        bool left = c < sCol, right = c >= sColEnd;
+        bool above = r < sRow, below = r >= sRowEnd;
+        bool hOut = left || right, vOut = above || below;
+
+        bool hSet = (left && edges.HasFlag(ShadowEdges.Left)) || (right && edges.HasFlag(ShadowEdges.Right));
+        bool vSet = (above && edges.HasFlag(ShadowEdges.Top)) || (below && edges.HasFlag(ShadowEdges.Bottom));
+
+        if (hOut && vOut) return hSet && vSet;   // corner
+        if (hOut) return hSet;                    // left / right band
+        if (vOut) return vSet;                    // top / bottom band
+        return true;                              // inside the silhouette (the offset sliver) → full shadow
     }
 
     // Chebyshev distance from (c,r) to the rectangle [col,colEnd)×[row,rowEnd); 0 when inside.

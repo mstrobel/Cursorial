@@ -1,8 +1,8 @@
 # Cursorial.Drawing — intermediate drawing layer design
 
-> Status: **living design doc.** Phases 0–2 are implemented (`feature/drawing-layer-foundation`);
-> Phases 3–6 are designed here and not yet built. This is the document we implement from; update it
-> as phases land or decisions change.
+> Status: **living design doc.** Phases 0–6 are implemented (`feature/drawing-layer-foundation`); this is
+> the document we implemented from, kept current as the canonical reference. Update it as decisions change
+> or follow-up work lands.
 
 `Cursorial.Drawing` is an intermediate layer between the cell-buffer renderer (`Cursorial.Rendering`)
 and a future widget/UI layer (`Cursorial.UI`). It adds the authoring capabilities the cell grid
@@ -196,8 +196,11 @@ dividing by its extent).
   only the final straight `Color`. A low-alpha (α 1–4) precision test guards hue preservation.
   **As of 5b this interpolation lives in Core's `Color.Lerp`** (single source of truth, shared with the
   animation `ColorInterpolator`); `GradientBrush` calls it and applies its whole-gradient opacity itself.
-- Banding on low-color terminals is accepted for v1 (nearest palette per cell); ordered dither is
-  deferred.
+- Banding on low-color terminals: nearest-palette-per-cell by default; **ordered (Bayer) dither is an
+  opt-in** (`FrameRendererOptions.OrderedDither`, via `StyleQuantizer.QuantizeDithered(style, col, row)`) —
+  spatially perturbs RGB by cell position before palette reduction so gradients stipple instead of striping.
+  No-op at truecolor / for non-RGB. Disables vertical scroll detection while on (the dither phase is
+  position-dependent and wouldn't survive a row shift).
 - **Convenience (post-review):** each gradient brush has a **two-color** ctor
   (`new LinearGradientBrush(start, end)` / `RadialGradientBrush(centerColor, edgeColor)` /
   `ConicGradientBrush(start, end)`) delegating to the `IReadOnlyList<GradientStop>` ctor, restoring
@@ -380,7 +383,7 @@ families — pure added state. **Decision: keep `StrokeAccumulator` untouched; a
 `BrailleRaster` + diagonal `DrawLine` + the `EmitDecorationCell` seam + four-stage flush; **4c** =
 `ScatterChart`/`LineChart` + curve interpolation + area-fill; **4d** = axes/ticks/labels (box strokes →
 junctions) + multi-series line charts (`MultiLineChart`). **4a + 4b: implemented + tested.** 4a = block charts (ramps
-oracle-pinned; bars non-negative bottom/left-anchored — signed bars deferred). 4b = `BrailleGlyphs`
+oracle-pinned; bars bottom/left-anchored, later extended to signed bars about a zero baseline). 4b = `BrailleGlyphs`
 (dot→bit `dy<3?dx*3+dy:6+dx`, oracle-pinned) + `BrailleRaster` (OR-merge, deferred brush, last-writer
 color) + diagonal `DrawLine` (Bresenham at 2×4 sub-cell res; weight/corners/dash/cap N/A for diagonals)
 + the `EmitDecorationCell` seam shared by box & braille; `Scene.Draw` flush renamed `FlushDeferred`,
@@ -389,26 +392,25 @@ order braille-then-box (data over axes). 4c = `PointD`/`CurveInterpolation`/`Mar
 oracle-pinned**), `PlotProjector` (Y-flip isolated), `ScatterChart` (markers / braille dots), `LineChart`
 (braille curve + optional markers), `ctx.LineChart`/`ctx.ScatterChart` sugar; charts plot via the
 internal braille seam (`AddBrailleRecord` + `PlotBrailleSegment`/`PlotBrailleDot`). **4a + 4b + 4c:
-implemented + tested.** **Deferred:** `LineChart.FillArea` (block fill under the curve — needs the
-line-over-fill resolution: deferred fill or braille `Overwrite`); NaN-gap-as-break (4c skips non-finite
-points for now). **4d.1 (axes): implemented + tested.** `AxisRange.Nice()` (Heckbert nice-number ticks),
+implemented + tested.** (`LineChart.FillArea` and NaN-gap-as-break were deferred at 4c and have since
+landed — see the post-Phase-4 note below.) **4d.1 (axes): implemented + tested.** `AxisRange.Nice()` (Heckbert nice-number ticks),
 `Axis` config, `Axes` (Y-left + X-bottom box-strokes meeting at `└`, numeric tick labels, optional
 gridlines → junctions; returns the inset `PlotLayout` { Plot, nice X, nice Y } so axis + data align).
 4d.2 = `ChartSeries` + `MultiLineChart`: single-surface `Render` — each series keeps its own color; where two
 series cross a cell their dots OR-merge into one glyph painted in the later series' color (a terminal cell has
-one foreground). A per-series-scene `ToLayers` path was prototyped and **cut** (re-add it with `FillArea`,
-below). Empirical finding (probe, code-cited): with opaque single-width braille, `SceneCompositor.CompositeCell`'s
+one foreground). A per-series-scene `ToLayers` path was prototyped, **cut**, then re-added once `FillArea`
+gave it a purpose (translucent fills, below). Empirical finding (probe, code-cited): with opaque single-width braille, `SceneCompositor.CompositeCell`'s
 single-width-glyph branch *replaces* the lower glyph and its color with the top layer's via a raw-indexer write
 that **bypasses the blend stack**, so crossings resolve to the top series' color **identically to `Render`** — no
 color benefit, and `ToLayers` is in fact *worse* at crossings (it drops the lower series' dots). Blending/alpha
 can't rescue it: that branch composites the top foreground only against the merged *background*, never the lower
 series' *foreground* — alpha just darkens the top color toward the backdrop. Per-layer compositing earns its keep
 only for translucent **filled** regions: backgrounds *do* alpha-blend across layers (the same method's
-background-composite step, RGB-on-RGB), so red-fill ∩ blue-fill → genuine purple. That is the real future home for `ToLayers`, gated on
+background-composite step, RGB-on-RGB), so red-fill ∩ blue-fill → genuine purple. That is the home `ToLayers` ultimately earned, gated on
 `FillArea`. **Phase 4 (a–d) complete + tested** (186 `Cursorial.Drawing.Tests`; curve + glyph tables
-oracle-pinned; axes/markers/gridlines share the 2×4 projector so everything aligns). **Remaining enhancements
-(deferred, not blocking):** `LineChart.FillArea` (+ its per-layer `ToLayers` compositing for translucent
-area/heatmap overlaps), NaN-gap-as-break, signed bars, bar-chart category axes.
+oracle-pinned; axes/markers/gridlines share the 2×4 projector so everything aligns). **Post-Phase-4 enhancements
+(since landed):** `LineChart.FillArea` (coverage-thresholded at 0.35, with per-layer `ToLayers` compositing for
+translucent area overlaps), NaN-gap-as-break, signed bars about a zero baseline, and bar-chart category axes.
 
 ---
 
@@ -439,7 +441,11 @@ shortcut. `Color.Lerp` numerically oracle-pinned (Core tests).
 `BrushInterpolator` (same-shape gradient/solid blend — endpoints/center/radii/angle, opacity, pairwise stops via
 `Color.Lerp`; discrete `GradientSpread` + disparate/mismatched-stop pairs **snap** at the midpoint); and
 `CompositeParametersInterpolator` (offset + opacity blend; clip/mode snap) for sliding/fading a **cached** scene
-with no re-raster. Conveniences `BrushAnimation` / `CompositeParametersAnimation`. The Consolonia
+with no re-raster. Conveniences `BrushAnimation` / `CompositeParametersAnimation`. Geometry interpolators round
+out the set — `PointInterpolator` (continuous `PointD`, value space) plus the cell-quantized `SizeInterpolator`
+and `RectInterpolator` (rounded ties-away-from-zero, clamped ≥ 0 so an overshooting ease can't go negative or
+trip the `Rect` ctor), with `PointAnimation` / `SizeAnimation` / `RectAnimation` conveniences; all live in
+Drawing for the same acyclic reason (`Size`/`Rect`/`PointD` are Rendering/Drawing types, not Core's). The Consolonia
 scrolling-gradient case (endpoints swept past 1 + `Reflect`, looped) is validated by an animation test. New
 `animate` demo (the demo owns the only clock — frame × `FrameInterval`): an `AutoReverse` gradient sweep, an
 easing progress bar with a live curve plot and `←`/`→` keystroke cycling of the catalog, and a
@@ -509,8 +515,8 @@ logical offset within the source run (`FormattedTextRun.LogicalStart`) plus a sh
 a wrapped run's gradient flows continuously across the wrap — identical to the unwrapped layout (pinned by
 wrapped-vs-unwrapped color-equality tests, including wide CJK glyphs to fix the width-metric hinge). Synthetic
 glyphs (soft-hyphen at a wrap, ellipsis, alignment padding) carry no brush tag and stay flat — acceptable
-degradation. **Phase 6 complete.** (Deferred follow-up: an end-to-end test of the `Image.CreateFragment` aspect-free
-derivation — the wire behavior given the enum is covered; the baseSize→enum mapping is not yet.)
+degradation. **Phase 6 complete.** (The `Image.CreateFragment` aspect-free derivation is now covered
+end-to-end — both the wire behavior given the enum and the baseSize→enum mapping.)
 
 **Goal:** author images and brush-aware rich text from the Drawing layer (Scene / DrawingContext / `IBrush`).
 **Approach — bridge, not relocate.** The text-layout + content + fragment machinery stays in
@@ -601,8 +607,8 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
   compatible by policy, not frozen.
 - **Gradient color space:** straight **sRGB** channels, **premultiplied** alpha; linear-light is an
   opt-in note only.
-- **Text brush coordinate space:** physical paint bounds (verbatim run copy); logical-span anchoring
-  is a deferred opt-in.
+- **Text brush coordinate space:** Block scope samples physical paint bounds (the block rect); Inline
+  scope samples a wrap-invariant logical-span strip (`ColorAt(logicalX, 0, …)`, Phase 6 item A).
 - **Markup gradients:** done — `[brush=linear:#f92672,#66d9ef]…[/brush]` inline or `[brush=name]` registry, via
   `BrushMarkup` + the opaque-tag channel (the `[fg=…]`/`[bg=…]` solid-color tags are unchanged).
 - **Wide-glyph collision:** **evict** by default (text beats decoration), opt-in overwrite.
@@ -635,22 +641,64 @@ remains gated. The only Core/Rendering public-surface additions beyond `Style.Tr
 
 ## 11. Known deferrals / hardening (carry forward)
 
-- **Wide glyph at the composite union's *right* edge** — when a `WideLeft` source lands at the union
-  edge, `CompositeCell`'s `target.Set` writes the continuation one column past the reset range and the
-  `MarkDirty` union, leaving a stale `WideContinuation` a `RestrictToDirtyRegions` renderer never
-  revisits (a dirty-region hole, not just a visual glitch). The left edge is fine (continuation falls
-  inside the reset range). Phase 3 hardening: in `CompositeCell`, degrade a `WideLeft` to a blank
-  single cell when `column + 1 >= colEnd` (the same trick `CellBuffer.Set` uses at the buffer edge).
+**Hardened (deferred-items program):**
+- **Wide glyph at the composite union's *right* edge** — a `WideLeft` source landing at the union edge
+  left `CompositeCell` writing the continuation one column past the reset range and the `MarkDirty`
+  union, leaving a stale `WideContinuation` a `RestrictToDirtyRegions` renderer never revisits (a
+  dirty-region hole, not just a visual glitch). *Fixed:* `CompositeCell` degrades a `WideLeft` to a
+  blank single cell when `column + 1 >= unionColEnd` (the trick `CellBuffer.Set` uses at the buffer edge).
+- The adversarial-review P2 guardrails are closed: the radial focal point projects back onto the unit
+  ellipse; `CompositeParameters` normalizes `null` vs explicit `BlendingModes.Default`; `Scene.Create`
+  validates its size against the `ushort` `Rect` cap.
+- The scroll-false-positive probe (a sliding scene over patterned rows must not trip `FrameRenderer`'s
+  scroll detection) is in the suite.
+
+**Still carried forward (out of scope for this layer):**
 - Box vs image/sized-text **fragment** overdraw: v1 scenes are **cell-only**; fragments stay on the
   main buffer and emit after the cell pass. Offscreen fragment compositing is deferred.
-- Animated/large-area gradient emit cost is mitigated by cached raster + per-scene invalidation; a
-  scroll-false-positive probe (a sliding scene over patterned rows must not trip `FrameRenderer`'s
-  scroll detection) is a Phase 5 test.
-- **`FillRectangle` cannot occlude** lower-layer glyphs (background-only by design). An additive
-  `FillBlock`/`occlude` primitive (space-bearing cells) is a UI-layer need, not a Phase-3 blocker.
-- Deferred guardrails from the adversarial review (P2s, non-blocking): radial focal-point outside the
-  unit ellipse; normalizing `null` vs explicit `BlendingModes.Default` in `CompositeParameters`;
-  `Scene.Create` size cap vs `ushort` `Rect`. Verified solid and left as-is otherwise.
+- **Blended junction color at flush** (`Pen` strokes from different records that cross): still
+  last-writer-wins. A blended-junction pass needs per-cell record tracking in `StrokeAccumulator`; its
+  design was lost to a workflow failure and it was deferred un-implemented (lowest-value polish).
+
+(The former carried-forward item *"`FillRectangle` cannot occlude lower-layer glyphs"* is **resolved** by
+`DrawingContext.FillOpaque` — see §12.)
+
+---
+
+## 12. UI drawing primitives (post-Phase-6)
+
+A batch of authoring capabilities a `Cursorial.UI` layer needs, designed via a multi-agent design +
+adversarial-critique pass and landed individually (each commit complete + tested). All hold the §9
+brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the compositing invariant.
+
+- **Ordered (Bayer) dither** (`Cursorial.Core`) — `StyleQuantizer.QuantizeDithered(style, col, row)` +
+  `FrameRendererOptions.OrderedDither`; see §6 note. Opt-in; disables scroll detection.
+- **`ImageBrush` / `TileBrush`** (`Cursorial.Drawing/Brush`) — fill shapes / text with a decoded RGBA image
+  (`Fill`/`None`/`Uniform`/`UniformToFill`, cell-aspect-corrected) or a repeating tile
+  (`Tile`/`FlipX`/`FlipY`/`FlipXY`/`None`). Bilinear reuses `Color.Lerp` premultiplied sRGB. `FromPng`
+  factories. New `IBrush` implementations — no `DrawingContext` API change.
+- **Intra-scene clip + translate stack** (`DrawingContext.PushClip`/`PushTranslate`/`Push` → nesting
+  `DrawingStateScope`; `CurrentClip`/`CurrentTranslate`). Honored by the per-cell write paths
+  (`Set`/`FillRectangle`/`FillOpaque`/`DrawText`) incl. **negative** translate (scrolled content); a wide
+  glyph at the clip's right edge degrades to blank. **v1 scope:** formatted text / content / deferred
+  `Pen` strokes / chart braille / shadows / titled-box outlines are **not** transformed by a push (draw
+  them in absolute coordinates, or isolate in a sub-scene composited at an offset). Grouped opacity stays
+  at composite granularity (`CompositeParameters.Opacity`, the §11/§1 "free via nesting" mechanism).
+- **`FillOpaque`** (occlude) — space-bearing fill cells that *hide* lower-layer glyphs (panels, modals),
+  vs background-only `FillRectangle`. A bordered opaque panel = `FillOpaque` + `DrawBox(overwrite: true)`
+  (an overwriting stroke over an opaque fill keeps the fill background under the glyph). Alpha-preserving
+  raw write with wide-orphan cleanup.
+- **Titled boxes / panels** (`DrawTitledBox` / `DrawPanel` + `PanelTitle` / `TitlePosition`) — a one-call
+  group box with a label on the top edge. All four edges deposit under **one** stroke record (like
+  `DrawBox`), so corners are JunctionMode-independent and the gradient samples the full rect; the title
+  is grapheme-clipped to the interior between the corners; too-narrow → plain box.
+- **Drop / inner shadows** (`DrawDropShadow` / `DrawInnerShadow` + `ShadowGeometry` / `ShadowEdges`) — drop
+  = deferred-translucent background outside the element (compositor darkens the target); inner = draw-time
+  composite-and-store-opaque against the cell's own fill (preserves the glyph). Linear falloff, per-edge.
+- **Brush-aware FIGlet headlines** — a `.Figlet` block in a formatted-text document painted with a brush
+  samples it **per rendered cell** (gradient across the big glyphs), via a brush-blind `GlyphStyleProvider`
+  default-interface-method on `IGlyphFont` that `FigletFont` overrides. OSC 66 sized text stays one solid
+  color (protocol limit).
 
 > **Adversarial review (Phases 0–2):** passed — foundations (the compositing invariant, premultiplied
 > gradient math, transparency model, one-way dependency) independently confirmed correct. Two P0

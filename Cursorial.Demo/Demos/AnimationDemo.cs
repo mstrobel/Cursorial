@@ -8,13 +8,14 @@ using Cursorial.Rendering;
 // Phase-5 animation showcase. The library is time-free; THIS demo owns the only clock (frame counter ×
 // FrameInterval) and asks each animation for its value at the elapsed offset. Shows: an animated gradient
 // fill (BrushAnimation sweeping a linear gradient's endpoints, AutoReverse), an easing progress bar with a
-// live plot of the current curve (cycle the easing with ←/→ or any key), and a slide+fade of a *cached*
-// scene via CompositeParametersAnimation (composite-param animation — no re-raster of the slid content).
+// live plot of the current curve (cycle the easing with ←/→ or any key), a slide+fade of a *cached*
+// scene via CompositeParametersAnimation (composite-param animation — no re-raster of the slid content),
+// and a RectAnimation focus box that glides + resizes each frame (the geometry interpolator).
 internal sealed class AnimationDemo : InteractiveDemo
 {
     public override string Name => "animate";
     public override IReadOnlyList<string> Aliases => ["animation", "anim"];
-    public override string Description => "Easings, animated gradients (BrushInterpolator), and slide/fade composite-param animation.";
+    public override string Description => "Easings, animated gradients (BrushInterpolator), slide/fade composite-param animation, and a RectAnimation focus box.";
 
     protected override string? IntroMessage =>
         "Animation demo. Opening alt screen — ←/→ (or any key) cycles the easing; q or Ctrl+C exits.";
@@ -42,6 +43,8 @@ internal sealed class AnimationDemo : InteractiveDemo
     private IAnimation<IBrush> _gradient = null!;
     private IAnimation<CompositeParameters> _slideMove = null!;
     private IAnimation<double> _progress = null!;
+    private IAnimation<Rect>? _focusBox;   // null on terminals too narrow for the side panel
+    private Rect _focusPanel;
 
     protected override void Initialize() => Build();
 
@@ -98,6 +101,24 @@ internal sealed class AnimationDemo : InteractiveDemo
             new CompositeParameters(2, 0, 255),       // in place, opaque
             TimeSpan.FromSeconds(2.5), Easings.CubicInOut).AutoReverse();
 
+        // Focus box: a Rect that glides AND resizes between two corners of a side panel, bouncing forever
+        // (RectAnimation — the geometry interpolator rounds + clamps each component per frame). Drawn only
+        // when the terminal is wide/tall enough for a panel beside the easing curve.
+        int panelLeft = 1 + Math.Clamp(Buffer.Columns - 2, 10, 40) + 3;
+        int panelW = Buffer.Columns - panelLeft - 1;
+        const int panelTop = 10, panelH = 6;
+        if (panelW >= 16 && Buffer.Rows > panelTop + panelH)
+        {
+            _focusPanel = new Rect(panelLeft, panelTop, panelW, panelH);
+            var small = new Rect(panelLeft + 1, panelTop + 1, 4, 2);
+            var large = new Rect(panelLeft + panelW - 11, panelTop + panelH - 4, 10, 3);
+            _focusBox = new RectAnimation(small, large, TimeSpan.FromSeconds(2.0), Easings.CubicInOut).AutoReverse();
+        }
+        else
+        {
+            _focusBox = null;
+        }
+
         _dynamic?.Dispose();
         _dynamic = Scene.Create(Buffer.Columns, Buffer.Rows);
     }
@@ -148,5 +169,13 @@ internal sealed class AnimationDemo : InteractiveDemo
             XRange = new AxisRange(0, 1),
             YRange = new AxisRange(-0.4, 1.4),   // widened so Back-easing overshoot is visible
         }.Render(ctx, new Rect(1, 10, Math.Clamp(w - 2, 10, 40), 6));
+
+        // RectAnimation: a focus box gliding + resizing within its panel (the geometry interpolator).
+        if (_focusBox is not null)
+        {
+            ctx.DrawText(_focusPanel.Column, 9, "RectAnimation:", Label);
+            ctx.FillRectangle(_focusPanel, Color.FromRgb(28, 30, 42));   // panel backdrop
+            ctx.FillRectangle(_focusBox.ValueAt(t), Cyan);              // the gliding/resizing box
+        }
     }
 }

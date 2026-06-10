@@ -159,6 +159,93 @@ public class CompositeParametersInterpolatorTests
     public void Singleton() => Assert.Same(CompositeParametersInterpolator.Instance, CompositeParametersInterpolator.Instance);
 }
 
+public class SizeInterpolatorTests
+{
+    private static Size I(Size a, Size b, double t) => SizeInterpolator.Instance.Interpolate(a, b, t);
+
+    [Fact]
+    public void Interpolates_AndRounds_EachDimension()
+    {
+        // 0→3 at 0.5 is 1.5 → rounds away from zero to 2 (per-cell, like Int32Interpolator).
+        Assert.Equal(new Size(2, 2), I(new Size(0, 0), new Size(3, 3), 0.5));
+    }
+
+    [Fact]
+    public void Endpoints()
+    {
+        Assert.Equal(new Size(4, 9), I(new Size(4, 9), new Size(40, 90), 0.0));
+        Assert.Equal(new Size(40, 90), I(new Size(4, 9), new Size(40, 90), 1.0));
+    }
+
+    [Fact]
+    public void OvershootingEasing_ClampsDimensionsToZero()
+    {
+        // Progress past 1 (e.g. an anticipation/back ease) would drive 10→0 negative; clamp pins it at 0
+        // so a Size never goes negative.
+        Assert.Equal(Size.Empty, I(new Size(10, 10), new Size(0, 0), 1.5));
+    }
+
+    [Fact]
+    public void Singleton() => Assert.Same(SizeInterpolator.Instance, SizeInterpolator.Instance);
+}
+
+public class RectInterpolatorTests
+{
+    private static Rect I(Rect a, Rect b, double t) => RectInterpolator.Instance.Interpolate(a, b, t);
+
+    [Fact]
+    public void Interpolates_AnchorAndExtent()
+    {
+        // Slide (0,0)→(10,20) and grow 4×4 → 8×8, halfway.
+        var r = I(new Rect(0, 0, 4, 4), new Rect(10, 20, 8, 8), 0.5);
+        Assert.Equal(new Rect(5, 10, 6, 6), r);
+    }
+
+    [Fact]
+    public void Endpoints()
+    {
+        var from = new Rect(2, 3, 5, 5);
+        var to = new Rect(20, 30, 9, 9);
+        Assert.Equal(from, I(from, to, 0.0));
+        Assert.Equal(to, I(from, to, 1.0));
+    }
+
+    [Fact]
+    public void OvershootingEasing_ClampsToZero_WithoutThrowing()
+    {
+        // Without the ≥0 clamp this would compute negative dimensions and the Rect ctor would throw.
+        var r = I(new Rect(10, 10, 10, 10), new Rect(0, 0, 0, 0), 1.5);
+        Assert.Equal(new Rect(0, 0, 0, 0), r);
+    }
+
+    [Fact]
+    public void Singleton() => Assert.Same(RectInterpolator.Instance, RectInterpolator.Instance);
+}
+
+public class PointInterpolatorTests
+{
+    private static PointD I(PointD a, PointD b, double t) => PointInterpolator.Instance.Interpolate(a, b, t);
+
+    [Fact]
+    public void Interpolates_EachAxis_Continuously()
+    {
+        var p = I(new PointD(0, 0), new PointD(1, 2), 0.5);
+        Assert.Equal(0.5, p.X, 10);
+        Assert.Equal(1.0, p.Y, 10);
+    }
+
+    [Fact]
+    public void IsUnbounded_Extrapolates()
+    {
+        // Continuous value space — no clamp/round, so an overshooting ease extrapolates cleanly.
+        var p = I(new PointD(0, 0), new PointD(10, 0), 1.5);
+        Assert.Equal(15.0, p.X, 10);
+    }
+
+    [Fact]
+    public void Singleton() => Assert.Same(PointInterpolator.Instance, PointInterpolator.Instance);
+}
+
 public class DrawingAnimationConvenienceTests
 {
     private static readonly TimeSpan OneSecond = TimeSpan.FromSeconds(1);
@@ -179,5 +266,31 @@ public class DrawingAnimationConvenienceTests
         var a = new CompositeParametersAnimation(new CompositeParameters(0, 0, 255), new CompositeParameters(10, 0, 255), OneSecond);
         Assert.IsAssignableFrom<Animation<CompositeParameters>>(a);
         Assert.Equal(5, a.ValueAt(TimeSpan.FromSeconds(0.5)).OffsetColumn);
+    }
+
+    [Fact]
+    public void SizeAnimation_Grows()
+    {
+        var a = new SizeAnimation(new Size(10, 4), new Size(30, 24), OneSecond);
+        Assert.IsAssignableFrom<Animation<Size>>(a);
+        Assert.Equal(new Size(20, 14), a.ValueAt(TimeSpan.FromSeconds(0.5)));
+    }
+
+    [Fact]
+    public void RectAnimation_SlidesAndResizes()
+    {
+        var a = new RectAnimation(new Rect(0, 0, 4, 4), new Rect(10, 20, 8, 8), OneSecond);
+        Assert.IsAssignableFrom<Animation<Rect>>(a);
+        Assert.Equal(new Rect(5, 10, 6, 6), a.ValueAt(TimeSpan.FromSeconds(0.5)));
+    }
+
+    [Fact]
+    public void PointAnimation_Moves()
+    {
+        var a = new PointAnimation(new PointD(0, 0), new PointD(4, 8), OneSecond);
+        Assert.IsAssignableFrom<Animation<PointD>>(a);
+        var mid = a.ValueAt(TimeSpan.FromSeconds(0.5));
+        Assert.Equal(2.0, mid.X, 10);
+        Assert.Equal(4.0, mid.Y, 10);
     }
 }

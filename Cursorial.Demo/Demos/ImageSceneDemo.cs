@@ -29,8 +29,8 @@ internal sealed class ImageSceneDemo : InteractiveDemo
     ];
 
     private IContent[] _content = null!;
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
 
     protected override void Initialize()
     {
@@ -49,7 +49,7 @@ internal sealed class ImageSceneDemo : InteractiveDemo
     private void Build()
     {
         _compositor = new SceneCompositor(Style);
-        _scene.Dispose();
+        _scene?.Dispose();
         _scene = Scene.Create(Buffer.Columns, Buffer.Rows);
         _scene.Draw(Paint);
     }
@@ -76,6 +76,9 @@ internal sealed class ImageSceneDemo : InteractiveDemo
         }
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

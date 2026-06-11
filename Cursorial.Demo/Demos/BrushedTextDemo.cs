@@ -20,8 +20,8 @@ internal sealed class BrushedTextDemo : InteractiveDemo
     protected override string IntroMessage =>
         "Brushed rich-text demo. Opening alt screen — press q or Ctrl+C to exit.";
 
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
     private RichText _doc = null!;
     private RichText _inlineDoc = null!;
     private TextFormatter _formatter = null!;
@@ -43,7 +43,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
     private void Build()
     {
         _compositor = new SceneCompositor(Style);
-        _scene.Dispose();
+        _scene?.Dispose();
         _scene = Scene.Create(Buffer.Columns, Buffer.Rows);
         _scene.Draw(Paint);
     }
@@ -123,6 +123,9 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         return builder.Build();
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

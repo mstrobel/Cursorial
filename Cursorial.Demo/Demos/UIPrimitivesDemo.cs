@@ -20,8 +20,8 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
     protected override string IntroMessage =>
         "UI primitives demo. Opening alt screen — press q or Ctrl+C to exit.";
 
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
     private readonly TextFormatter _formatter = new();
 
     protected override void Initialize() => Build();
@@ -35,7 +35,7 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
     private void Build()
     {
         _compositor = new SceneCompositor(Style);
-        _scene.Dispose();
+        _scene?.Dispose();
         _scene = Scene.Create(Buffer.Columns, Buffer.Rows);
         _scene.Draw(Paint);
     }
@@ -100,6 +100,9 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
         return sb.ToString(0, width);
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

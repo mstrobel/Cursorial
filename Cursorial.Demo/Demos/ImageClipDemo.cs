@@ -23,9 +23,9 @@ internal sealed class ImageClipDemo : InteractiveDemo
         "Image-clip demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private IContent _image = null!;
-    private Scene _labels = null!;
-    private Scene _imageScene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _labels;
+    private Scene? _imageScene;
+    private SceneCompositor? _compositor;
     private int _clipColumns;
     private bool _tooSmall;
 
@@ -49,12 +49,13 @@ internal sealed class ImageClipDemo : InteractiveDemo
         // Only meaningful (and only safe to clamp — min ≤ max needs Columns ≥ 20) when not too small.
         _clipColumns = _tooSmall ? 0 : Math.Clamp(Buffer.Columns / 2, 16, Buffer.Columns - 4);
 
-        _labels.Dispose();
+        _labels?.Dispose();
         _labels = Scene.Create(Buffer.Columns, Buffer.Rows);
         _labels.Draw(PaintLabels);
 
-        _imageScene.Dispose();
+        _imageScene?.Dispose();
         _imageScene = Scene.Create(Buffer.Columns, Buffer.Rows);
+        
         if (!_tooSmall)
             _imageScene.Draw(ctx => ctx.DrawContent(new Rect(_clipColumns - 12, 3, 24, 12), _image, Capabilities.Output));
     }
@@ -78,10 +79,15 @@ internal sealed class ImageClipDemo : InteractiveDemo
         ctx.DrawText(Math.Max(0, _clipColumns - 9), 16, "← clip edge", label);
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite(
-        [
-            new SceneLayer(_labels),
-            new SceneLayer(_imageScene, new CompositeParameters(clip: new Rect(0, 0, _clipColumns, Buffer.Rows))),
-        ], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_labels is {} labels && _imageScene is {} imageScene)
+        {
+            _compositor?.Composite(
+                [
+                    new SceneLayer(labels),
+                    new SceneLayer(imageScene, new CompositeParameters(clip: new Rect(0, 0, _clipColumns, Buffer.Rows))),
+                ], Buffer.AsView());
+        }
+    }
 }

@@ -19,8 +19,8 @@ internal sealed class PensDemo : InteractiveDemo
     protected override string IntroMessage =>
         "Pens demo. Opening alt screen — press q or Ctrl+C to exit.";
 
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
 
     protected override void Initialize() => Build();
 
@@ -33,7 +33,7 @@ internal sealed class PensDemo : InteractiveDemo
     private void Build()
     {
         _compositor = new SceneCompositor(Style);
-        _scene.Dispose();
+        _scene?.Dispose();
         _scene = Scene.Create(Buffer.Columns, Buffer.Rows);
         _scene.Draw(Paint);
     }
@@ -91,6 +91,9 @@ internal sealed class PensDemo : InteractiveDemo
         ctx.DrawLine(49, 13, 56, 20, green);
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

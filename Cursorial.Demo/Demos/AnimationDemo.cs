@@ -40,9 +40,9 @@ internal sealed class AnimationDemo : InteractiveDemo
     private static readonly Color Cyan = Color.FromRgb(120, 220, 232);
     private static readonly Color Label = Color.FromRgb(150, 160, 200);
 
-    private SceneCompositor _compositor = null!;
-    private Scene _dynamic = null!;
-    private Scene _slide = null!;
+    private SceneCompositor? _compositor;
+    private Scene? _dynamic;
+    private Scene? _slide;
 
     private IAnimation<IBrush> _gradient = null!;
     private IAnimation<CompositeParameters> _slideMove = null!;
@@ -92,7 +92,7 @@ internal sealed class AnimationDemo : InteractiveDemo
         // forever. Only its CompositeParameters animate — the tile is rasterized once.
         int boxW = Math.Clamp(Buffer.Columns - 4, 8, 30);
         int boxRow = Math.Max(0, Buffer.Rows - 4);
-        _slide.Dispose();
+        _slide?.Dispose();
         _slide = Scene.Create(Buffer.Columns, Buffer.Rows);
         _slide.Draw(ctx =>
         {
@@ -123,7 +123,7 @@ internal sealed class AnimationDemo : InteractiveDemo
             _focusBox = null;
         }
 
-        _dynamic.Dispose();
+        _dynamic?.Dispose();
         _dynamic = Scene.Create(Buffer.Columns, Buffer.Rows);
     }
 
@@ -131,12 +131,15 @@ internal sealed class AnimationDemo : InteractiveDemo
     {
         TimeSpan t = FrameInterval * frame;
 
-        _dynamic.Invalidate();
-        _dynamic.Draw(ctx => Paint(ctx, t));
+        _dynamic?.Invalidate();
+        _dynamic?.Draw(ctx => Paint(ctx, t));
 
-        _compositor.Composite(
-            [new SceneLayer(_dynamic), new SceneLayer(_slide, _slideMove.ValueAt(t))],
-            Buffer.AsView());
+        if (_dynamic is {} dynamic && _slide is {} slide)
+        {
+            _compositor?.Composite(
+                [new SceneLayer(dynamic), new SceneLayer(slide, _slideMove.ValueAt(t))],
+                Buffer.AsView());
+        }
     }
 
     private void Paint(DrawingContext ctx, TimeSpan t)

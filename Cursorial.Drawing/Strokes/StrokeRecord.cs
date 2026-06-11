@@ -7,7 +7,8 @@ namespace Cursorial.Drawing;
 
 /// <summary>
 /// One deferred stroke draw call's resolved state, accumulated during a scene draw pass and consumed
-/// at flush. <see cref="Bounds"/> starts as the call's own shape rect and is back-patched to the
+/// at flush. <see cref="Bounds"/> starts as the call's own shape rect (translated into scene
+/// coordinates by the ambient push translate captured at record time) and is back-patched to the
 /// figure's union (or explicit) bounds when a figure closes; the implicit root never closes, so root
 /// records keep per-call bounds. <see cref="FigureId"/> partitions junctions (strokes only merge
 /// within the same figure).
@@ -17,8 +18,8 @@ internal struct StrokeRecord
     /// <summary>The resolved brush (never null — a null pen brush became <see cref="Brushes.Default"/>).</summary>
     public IBrush Brush;
 
-    /// <summary>The brush sampling bounds (per-call, or figure union/explicit after back-patch).</summary>
-    public Rect Bounds;
+    /// <summary>The brush sampling bounds in scene coordinates (per-call, or figure union/explicit after back-patch).</summary>
+    public SampleBounds Bounds;
 
     /// <summary>Topology-independent decoration (corners / dash / cap).</summary>
     public StrokeDecoration Decoration;

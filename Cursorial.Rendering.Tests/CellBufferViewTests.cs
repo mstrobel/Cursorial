@@ -626,6 +626,76 @@ public class CellBufferViewTests
         Assert.Equal(new Rect(3, 1, 2, 1), buf.DirtyRegions[0]);   // translated to backing coords
     }
 
+    // ---- WithOrigin: the window/origin-decoupled (re-based) view ----
+
+    [Fact]
+    public void WithOrigin_MapsLocalCoordsThroughTheOrigin_AndClipsToTheWindow()
+    {
+        var buf = new CellBuffer(10, 6);
+        var view = buf.View(2, 1, 4, 2).WithOrigin(5, 4);   // window (2,1,4,2); local (0,0) ↦ backing (5,4)
+
+        Assert.Equal(1, view.Set(0, -2, "A", default));     // backing (5,2) — inside the window
+        Assert.Equal("A", buf[5, 2].Grapheme);
+
+        Assert.Equal(0, view.Set(0, 0, "B", default));      // backing (5,4) — below the window → dropped
+        Assert.True(string.IsNullOrEmpty(buf[5, 4].Grapheme));
+
+        Assert.True(view.Contains(0, -2));
+        Assert.False(view.Contains(0, 0));
+    }
+
+    [Fact]
+    public void WithOrigin_NegativeOrigin_ExpressesScrolledContent()
+    {
+        // Content origin above the viewport: local row 0 maps off-window (clipped), local row 2 lands
+        // on the window's first row — the scrolled-document case.
+        var buf = new CellBuffer(8, 4);
+        var view = buf.AsView().WithOrigin(0, -2);
+
+        Assert.Equal(0, view.Set(0, 0, "X", default));      // backing row −2 → dropped
+        Assert.Equal(1, view.Set(0, 2, "Y", default));      // backing row 0
+        Assert.Equal("Y", buf[0, 0].Grapheme);
+    }
+
+    [Fact]
+    public void WithOrigin_WideGlyphAtTheWindowRightEdge_DegradesToBlank()
+    {
+        var buf = new CellBuffer(10, 3);
+        var view = buf.View(0, 0, 4, 3).WithOrigin(1, 0);   // window cols [0,4); local c ↦ backing c+1
+
+        Assert.Equal(1, view.Set(2, 0, "中", default));      // backing (3,0): right half would leave the window
+        Assert.True(string.IsNullOrEmpty(buf[3, 0].Grapheme));
+        Assert.Equal(CellKind.Single, buf[3, 0].Kind);
+    }
+
+    [Fact]
+    public void WithOrigin_FragmentAnchorsTranslateThroughTheOrigin()
+    {
+        var buf = new CellBuffer(10, 6);
+        var view = buf.View(2, 1, 6, 4).WithOrigin(1, -1);
+
+        IBufferFragment fragment = new TestFragment();
+        Assert.True(view.AddFragment(2, 3, fragment, default));    // backing (3,2) — inside the window
+        Assert.True(buf.Fragments.ContainsKey((3, 2)));
+
+        Assert.True(view.TryGetFragmentAnchor(fragment.Key, out var anchor));
+        Assert.Equal((2, 3), anchor);                              // round-trips through the origin
+        Assert.True(view.Fragments.TryGetValue(anchor, out _));    // dictionary lookups honor the origin
+
+        Assert.False(view.AddFragment(0, 0, new TestFragment(), default));   // backing (1,-1) — outside
+    }
+
+    [Fact]
+    public void WithOrigin_BufferBoundsStaysTheWindow()
+    {
+        var buf = new CellBuffer(10, 6);
+        var view = buf.View(2, 1, 4, 2).WithOrigin(-3, 7);
+
+        Assert.Equal(new Rect(2, 1, 4, 2), view.BufferBounds);
+        Assert.Equal(4, view.Columns);
+        Assert.Equal(2, view.Rows);
+    }
+
     // ---- Test helpers ----
 
     private sealed class TestFragment : IBufferFragment

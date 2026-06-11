@@ -23,7 +23,10 @@ public enum LayoutDiagnosticKind
     /// <summary>A <c>ScrollContentPresenter</c>'s content desired more than <see cref="LayoutLimits.MaxScrollExtent"/>; the published extent was capped (doc §5.7; matrix L215 — one-time per presenter).</summary>
     ScrollExtentClamped,
 
-    /// <summary>A push-stack-uncovered draw call straddled a banded scroll scene's top edge and was dropped — <c>K</c> sizes these edges outside the viewport clip (doc §5.7).</summary>
+    /// <summary>Historical (no longer emitted since the P2.5 ① Drawing push-stack coverage rework): a
+    /// push-stack-uncovered draw call straddled a banded scroll scene's top edge and was dropped. Every
+    /// draw path now rides the band's <c>PushTranslate</c> and clips per cell instead (doc §5.7). The
+    /// member is retained so recorded diagnostics streams keep their meaning.</summary>
     BandStraddlingDrawDropped,
 }
 

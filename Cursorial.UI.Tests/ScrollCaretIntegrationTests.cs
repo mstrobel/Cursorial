@@ -116,21 +116,24 @@ public class ScrollCaretIntegrationTests
         Assert.Equal(0, delta);
     }
 
-    // ───────────────────────────── band-edge behavior for uncovered draws ─────────────────────────────
+    // ───────────────────────────── band-edge behavior for every draw path ─────────────────────────────
 
     [Fact]
-    public void BandRaster_CoveredPathsClipCorrectly_StraddlingUncoveredDrawIsDropped()
+    public void BandRaster_AllDrawPathsRideTheBandTranslate_StraddlingDrawClipsPerCell()
     {
         var (manager, tree, _, presenter, probes) = CreateScrolledTree(contentRows: 100);
         tree.Render();
 
         // probe[13] strokes a 3-row box from its own origin (content rows 13–15); probe[40] strokes
-        // one fully inside the band. After re-anchoring to 25, bandStart = 15: the first box
-        // straddles the band's top edge (rows −2…0 in scene coordinates) and is dropped — the doc
-        // §5.7 pinned mechanism, with K sizing the edge outside the viewport clip; the second lands
-        // at scene rows 25–27 and paints.
-        probes[13].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Color.FromRgb(9, 9, 9));
-        probes[40].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Color.FromRgb(9, 9, 9));
+        // one fully inside the band (content rows 40–42). After re-anchoring to 25, bandStart = 15:
+        // since the P2.5 ① push-stack coverage rework, EVERY draw path (strokes included) rides the
+        // band's PushTranslate — the first box straddles the band's top edge and clips per cell
+        // (rows −2/−1 dropped, its bottom edge lands on band row 0 — outside the viewport per the
+        // doc-§5.7 K padding) with no diagnostic; the second lands at band rows 25–27 exactly (the
+        // double-shift regression this pins: the shift must be applied once, by the push, not also
+        // by RenderContext).
+        probes[13].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Color.FromRgb(9, 9, 9), overwrite: true);
+        probes[40].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Color.FromRgb(9, 9, 9), overwrite: true);
 
         var diagnostics = LayoutFixture.CaptureDiagnostics(manager, () =>
         {
@@ -139,17 +142,25 @@ public class ScrollCaretIntegrationTests
         });
 
         Assert.Equal(15, presenter.BandStartRow);
-#if DEBUG
-        Assert.Single(diagnostics, d => d.Kind == LayoutDiagnosticKind.BandStraddlingDrawDropped);
-#else
-        Assert.Empty(diagnostics);
-#endif
+        Assert.Empty(diagnostics);   // the straddle-drop diagnostic is gone — straddling draws clip per cell
 
-        // The covered paths (the probes' Set fills) clip per-cell at the band edge: the viewport
-        // still composites the correct content rows.
+        // The per-cell paths (the probes' Set fills) still composite the correct content rows.
         var view = new CellBufferView(tree.Composite(20, 10));
         for (var row = 0; row < 10; row++)
             Assert.Equal(((row + 25) % 10).ToString(), view[0, row].Grapheme);
+
+        // Slide in-band (K = 10, anchor 25 → offset 34 is a pure composite slide) so probe[40]'s box
+        // scrolls into view: content row 40 = viewport row 6. A double-applied band shift would have
+        // landed it ten rows up (band rows 10–12) and out of place here.
+        presenter.ScrollOffsetRow = 34;
+        tree.Render();
+        Assert.Equal(15, presenter.BandStartRow);   // no re-anchor — the cached raster is reused
+
+        view = new CellBufferView(tree.Composite(20, 10));
+        Assert.Equal("┌", view[0, 6].Grapheme);     // content row 40 — the box's top edge
+        Assert.Equal("│", view[0, 7].Grapheme);     // content row 41 — its left edge
+        Assert.Equal("└", view[0, 8].Grapheme);     // content row 42 — its bottom edge
+        Assert.Equal("1", view[2, 7].Grapheme);     // the box interior keeps probe[41]'s fill glyph
     }
 
     // ───────────────────────────── terminal caret service (doc §5.9) ─────────────────────────────

@@ -9,7 +9,7 @@ namespace Cursorial.Drawing;
 internal struct BrailleRecord
 {
     public IBrush Brush;
-    public Rect Bounds;
+    public SampleBounds Bounds;
     public TextAttributes Attributes;
     public GlyphSet GlyphSet;
     public bool Overwrite;

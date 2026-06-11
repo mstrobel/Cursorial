@@ -11,11 +11,12 @@ namespace Cursorial.UI;
 /// <summary>
 /// The <see cref="UIElement.Render"/> drawing surface: Cursorial.Drawing's vocabulary re-exposed in
 /// <b>element-local</b> integer cell coordinates. Coordinate translation is performed by this type
-/// at the call site (an origin add) — <em>not</em> via <c>DrawingContext.PushTranslate</c>, which
-/// the v1 Drawing push stack does not apply to formatted text, content, pen strokes, shadows, or
-/// titled boxes (the push-stack coverage gap, design doc §5.5 / terminal deviation ③). Every
-/// forwarded call, including <see cref="DrawFormattedText(FormattedText, in Rect, IBrush)"/>,
-/// <see cref="DrawContent"/>, stroke paths, and shadows, is translated uniformly here.
+/// at the call site (an origin add), applied uniformly to every forwarded call. Since the P2.5 ①
+/// Drawing rework, the push stack covers <em>every</em> Drawing path — the banded-zone row shift
+/// rides the <see cref="RenderTree"/>'s ambient <c>PushTranslate</c> for all of them (this type no
+/// longer folds it), and a draw straddling the band's top edge clips per cell instead of being
+/// dropped. (Migrating the per-element origin add itself onto the push stack is the remainder of
+/// the P2.5 ① batch.)
 /// </summary>
 /// <remarks>
 /// <para>
@@ -45,7 +46,6 @@ public sealed class RenderContext
     private OutputCapabilities _capabilities = OutputCapabilities.None;
     private int _originColumn;
     private int _originRow;
-    private int _bandShiftRow;
     private Size _size;
     private bool _userFigureActive;
     private int _userFigureToken;
@@ -66,19 +66,15 @@ public sealed class RenderContext
     // ───────────────────────────── zone-raster lifecycle (RenderTree-internal) ─────────────────────────────
 
     /// <summary>
-    /// Arms the context for one zone raster over a fresh <see cref="DrawingContext"/>.
-    /// <paramref name="bandShiftRow"/> (≤ 0; <c>−bandStart</c> of a banded scroll zone, doc §5.7)
-    /// is the row shift mapping content coordinates onto the band scene: the four push-stack-covered
-    /// paths ride the <see cref="RenderTree"/>'s <c>PushTranslate</c> and stay untouched here; the
-    /// uncovered paths (strokes, formatted text, content, shadows) fold it manually below and drop
-    /// — with a DEBUG diagnostic — when they straddle the band's top edge (<c>K</c> sizes those
-    /// edges outside the viewport clip).
+    /// Arms the context for one zone raster over a fresh <see cref="DrawingContext"/>. A banded
+    /// scroll zone's row shift (doc §5.7) is NOT folded here — every Drawing path rides the
+    /// <see cref="RenderTree"/>'s ambient <c>PushTranslate</c> (negative-capable, per-cell clipped)
+    /// since the P2.5 ① push-stack coverage rework.
     /// </summary>
-    internal void Begin(DrawingContext inner, OutputCapabilities capabilities, int bandShiftRow = 0, UIElement? boundary = null)
+    internal void Begin(DrawingContext inner, OutputCapabilities capabilities, UIElement? boundary = null)
     {
         _inner = inner;
         _capabilities = capabilities;
-        _bandShiftRow = bandShiftRow;
         _boundary = boundary;
         _userFigureActive = false;
     }
@@ -87,7 +83,6 @@ public sealed class RenderContext
     internal void End()
     {
         _inner = null;
-        _bandShiftRow = 0;
         _boundary = null;
         _userFigureActive = false;
     }
@@ -125,57 +120,6 @@ public sealed class RenderContext
             Math.Min(rect.Column + _originColumn, LayoutMath.MaxExtent),
             Math.Min(rect.Row + _originRow, LayoutMath.MaxExtent),
             rect.Columns, rect.Rows);
-
-    /// <summary>
-    /// Translation for the push-stack-<b>uncovered</b> paths (strokes, formatted text, content,
-    /// shadows), which fold the banded-zone row shift manually: returns <see langword="false"/>
-    /// when the call lands fully above the band scene (silent skip) or straddles its top edge
-    /// (dropped with a DEBUG diagnostic — the doc §5.7 pinned mechanism; <c>K</c> keeps those edges
-    /// outside the visible viewport clip). Identity-fast when no band shift is active.
-    /// </summary>
-    private bool TryTranslateUncovered(in Rect rect, out Rect translated, string operation)
-    {
-        if (_bandShiftRow == 0)
-        {
-            translated = Translate(rect);
-            return true;
-        }
-
-        var row = rect.Row + _originRow + _bandShiftRow;
-        if (row < 0)
-        {
-            translated = default;
-            if (row + rect.Rows > 0)
-                EmitBandStraddleDiagnostic(operation);
-            return false;
-        }
-
-        translated = new Rect(
-            Math.Min(rect.Column + _originColumn, LayoutMath.MaxExtent),
-            Math.Min(row, LayoutMath.MaxExtent),
-            rect.Columns, rect.Rows);
-        return true;
-    }
-
-    /// <summary>The line-endpoint sibling of <see cref="TryTranslateUncovered"/> (rows only — v1 bands the vertical axis).</summary>
-    private bool TryTranslateLineRows(int y0, int y1, out int row0, out int row1, string operation)
-    {
-        row0 = y0 + _originRow + _bandShiftRow;
-        row1 = y1 + _originRow + _bandShiftRow;
-        if (_bandShiftRow == 0 || (row0 >= 0 && row1 >= 0))
-            return true;
-
-        if (row0 >= 0 || row1 >= 0)
-            EmitBandStraddleDiagnostic(operation); // one endpoint above the band: drop (cannot be partially expressed)
-
-        return false;
-    }
-
-    private void EmitBandStraddleDiagnostic(string operation)
-        => LayoutDiagnostics.Emit(
-            LayoutDiagnosticKind.BandStraddlingDrawDropped, _boundary,
-            $"{operation} straddles the banded scroll scene's top edge and was dropped (doc §5.7 — " +
-            "the band padding K keeps these edges outside the visible viewport clip).");
 
     // ───────────────────────────── cells and fills ─────────────────────────────
 
@@ -226,9 +170,7 @@ public sealed class RenderContext
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(bounds, out var translated, nameof(DrawFormattedText)))
-            inner.DrawFormattedText(text, translated, brush, _capabilities);
+        Inner.DrawFormattedText(text, Translate(bounds), brush, _capabilities);
     }
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
@@ -238,17 +180,13 @@ public sealed class RenderContext
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(bounds, out var translated, nameof(DrawFormattedText)))
-            inner.DrawFormattedText(text, translated, _capabilities);
+        Inner.DrawFormattedText(text, Translate(bounds), _capabilities);
     }
 
     /// <summary>Paints embedded content (images, sized text) into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     public void DrawContent(in Rect bounds, IContent content)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(bounds, out var translated, nameof(DrawContent)))
-            inner.DrawContent(translated, content, _capabilities);
+        Inner.DrawContent(Translate(bounds), content, _capabilities);
     }
 
     // ───────────────────────────── strokes, boxes, panels, shadows ─────────────────────────────
@@ -256,49 +194,37 @@ public sealed class RenderContext
     /// <summary>Strokes a line between element-local endpoints (axis-aligned → box glyphs; diagonal → braille).</summary>
     public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateLineRows(y0, y1, out var row0, out var row1, nameof(DrawLine)))
-            inner.DrawLine(x0 + _originColumn, row0, x1 + _originColumn, row1, pen, overwrite);
+        Inner.DrawLine(x0 + _originColumn, y0 + _originRow, x1 + _originColumn, y1 + _originRow, pen, overwrite);
     }
 
     /// <inheritdoc cref="DrawLine(int, int, int, int, in Pen, bool)"/>
     public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateLineRows(y0, y1, out var row0, out var row1, nameof(DrawLine)))
-            inner.DrawLine(x0 + _originColumn, row0, x1 + _originColumn, row1, color, overwrite);
+        Inner.DrawLine(x0 + _originColumn, y0 + _originRow, x1 + _originColumn, y1 + _originRow, color, overwrite);
     }
 
     /// <summary>Strokes the outline of an element-local <paramref name="rect"/>.</summary>
     public void DrawBox(in Rect rect, in Pen pen, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(rect, out var translated, nameof(DrawBox)))
-            inner.DrawBox(translated, pen, overwrite);
+        Inner.DrawBox(Translate(rect), pen, overwrite);
     }
 
     /// <inheritdoc cref="DrawBox(in Rect, in Pen, bool)"/>
     public void DrawBox(in Rect rect, Color color, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(rect, out var translated, nameof(DrawBox)))
-            inner.DrawBox(translated, color, overwrite);
+        Inner.DrawBox(Translate(rect), color, overwrite);
     }
 
     /// <summary>Strokes an outline with an optional background-only fill.</summary>
     public void DrawRectangle(in Rect rect, in Pen pen, IBrush? fill = null, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(rect, out var translated, nameof(DrawRectangle)))
-            inner.DrawRectangle(translated, pen, fill, overwrite);
+        Inner.DrawRectangle(Translate(rect), pen, fill, overwrite);
     }
 
     /// <summary>Strokes a titled box outline.</summary>
     public void DrawTitledBox(in Rect rect, in PanelTitle title, in Pen pen, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(rect, out var translated, nameof(DrawTitledBox)))
-            inner.DrawTitledBox(translated, title, pen, overwrite);
+        Inner.DrawTitledBox(Translate(rect), title, pen, overwrite);
     }
 
     /// <summary>
@@ -309,9 +235,7 @@ public sealed class RenderContext
     /// </summary>
     public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(rect, out var translated, nameof(DrawPanel)))
-            inner.DrawPanel(translated, pen, fill, title, overwrite);
+        Inner.DrawPanel(Translate(rect), pen, fill, title, overwrite);
     }
 
     /// <summary>
@@ -321,17 +245,13 @@ public sealed class RenderContext
     /// </summary>
     public void DrawDropShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(element, out var translated, nameof(DrawDropShadow)))
-            inner.DrawDropShadow(translated, geometry, shadowColor);
+        Inner.DrawDropShadow(Translate(element), geometry, shadowColor);
     }
 
     /// <summary>Paints an inner shadow inside the element-local <paramref name="element"/> rect.</summary>
     public void DrawInnerShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
-        var inner = Inner;
-        if (TryTranslateUncovered(element, out var translated, nameof(DrawInnerShadow)))
-            inner.DrawInnerShadow(translated, geometry, shadowColor);
+        Inner.DrawInnerShadow(Translate(element), geometry, shadowColor);
     }
 
     // ───────────────────────────── user figures ─────────────────────────────
@@ -345,31 +265,12 @@ public sealed class RenderContext
     /// <exception cref="InvalidOperationException">A user figure is already open.</exception>
     public RenderFigureScope BeginFigure() => BeginFigureCore(null);
 
+    // Figure bounds are pen-gradient metadata: the origin add happens here; the band shift rides the
+    // ambient PushTranslate (DrawingContext.BeginFigure takes its bounds in current-local coordinates
+    // and maps them through the ambient state — a straddling rect samples exactly, no clamping needed).
     /// <summary>Begins a user figure with explicit element-local brush bounds (see <see cref="BeginFigure()"/>).</summary>
     /// <exception cref="InvalidOperationException">A user figure is already open.</exception>
-    public RenderFigureScope BeginFigure(in Rect bounds) => BeginFigureCore(TranslateFigureBounds(bounds));
-
-    // Figure bounds are pen-gradient metadata, not a draw: under a band shift a straddling rect is
-    // clamped to the scene's top edge (slightly compressed gradient sampling at a band edge — the
-    // doc §5.7 "may clip imperfectly" allowance) rather than dropped.
-    private Rect TranslateFigureBounds(in Rect bounds)
-    {
-        if (_bandShiftRow == 0)
-            return Translate(bounds);
-
-        var row = bounds.Row + _originRow + _bandShiftRow;
-        var rows = bounds.Rows;
-        if (row < 0)
-        {
-            rows = Math.Max(0, rows + row);
-            row = 0;
-        }
-
-        return new Rect(
-            Math.Min(bounds.Column + _originColumn, LayoutMath.MaxExtent),
-            Math.Min(row, LayoutMath.MaxExtent),
-            bounds.Columns, rows);
-    }
+    public RenderFigureScope BeginFigure(in Rect bounds) => BeginFigureCore(Translate(bounds));
 
     private RenderFigureScope BeginFigureCore(Rect? bounds)
     {

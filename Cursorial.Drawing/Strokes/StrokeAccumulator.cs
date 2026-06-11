@@ -37,7 +37,7 @@ internal sealed class StrokeAccumulator
     private int _currentFigureId;               // 0 = implicit root
     private int _nextFigureId = 1;
     private int _openFigureFirstRecord = -1;     // index of the open figure's first record, or -1
-    private Rect? _figureExplicitBounds;
+    private SampleBounds? _figureExplicitBounds;
 
     public StrokeAccumulator(int columns, int rows)
     {
@@ -56,7 +56,7 @@ internal sealed class StrokeAccumulator
     }
 
     /// <summary>Open a figure; returns its id token. <paramref name="explicitBounds"/> null = auto-union.</summary>
-    public int BeginFigure(Rect? explicitBounds)
+    public int BeginFigure(SampleBounds? explicitBounds)
     {
         _currentFigureId = _nextFigureId++;
         _openFigureFirstRecord = _records.Count;
@@ -88,7 +88,7 @@ internal sealed class StrokeAccumulator
         if (start >= _records.Count)
             return;   // empty figure — nothing drawn
 
-        Rect bounds;
+        SampleBounds bounds;
         if (_figureExplicitBounds is { } explicitBounds)
         {
             bounds = explicitBounds;
@@ -97,7 +97,7 @@ internal sealed class StrokeAccumulator
         {
             bounds = _records[start].Bounds;
             for (int i = start + 1; i < _records.Count; i++)
-                bounds = Union(bounds, _records[i].Bounds);
+                bounds = bounds.Union(_records[i].Bounds);
         }
 
         for (int i = start; i < _records.Count; i++)
@@ -106,15 +106,6 @@ internal sealed class StrokeAccumulator
             record.Bounds = bounds;
             _records[i] = record;
         }
-    }
-
-    private static Rect Union(in Rect a, in Rect b)
-    {
-        int left = Math.Min(a.Column, b.Column);
-        int top = Math.Min(a.Row, b.Row);
-        int right = Math.Max(a.ColumnEnd, b.ColumnEnd);
-        int bottom = Math.Max(a.RowEnd, b.RowEnd);
-        return new Rect(left, top, right - left, bottom - top);
     }
 
     /// <summary>

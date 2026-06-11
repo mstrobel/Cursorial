@@ -448,18 +448,17 @@ public sealed class RenderTree
     {
         var zone = _rasterZone!;
 
-        // A banded scroll zone rasters CONTENT coordinates shifted up by the band start: the four
-        // push-stack-covered paths (Set / fills / DrawText) ride one PushTranslate — negative-
-        // capable, per-cell clipped, gradient-correct; the uncovered paths (strokes, formatted
-        // text, content, shadows) fold the shift manually inside RenderContext and drop when they
-        // straddle the band's top edge (K sizes those edges outside the viewport clip — doc §5.7).
+        // A banded scroll zone rasters CONTENT coordinates shifted up by the band start: every draw
+        // path rides this one PushTranslate — negative-capable, per-cell clipped, gradient-correct —
+        // since the P2.5 ① Drawing push-stack coverage rework (a draw straddling the band's top edge
+        // clips per cell; K keeps those edges outside the viewport clip — doc §5.7).
         var bandStartRow = (zone.Boundary as ScrollContentPresenter)?.BandStartRow ?? 0;
         var bandScope = bandStartRow > 0 ? context.PushTranslate(0, -bandStartRow) : default;
 
         RenderPassGuard.Active = true;
         try
         {
-            _renderContext.Begin(context, Capabilities, bandShiftRow: -bandStartRow, boundary: zone.Boundary);
+            _renderContext.Begin(context, Capabilities, boundary: zone.Boundary);
             try
             {
                 PaintElement(zone.Boundary, originColumn: 0, originRow: 0);

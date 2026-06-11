@@ -657,6 +657,33 @@ remains gated. The only Core/Rendering public-surface additions beyond `Style.Tr
 - The scroll-false-positive probe (a sliding scene over patterned rows must not trip `FrameRenderer`'s
   scroll detection) is in the suite.
 
+**Hardened (UI P2.5 batch, 2026-06-11): push-stack full coverage.** The §12 intra-scene clip/translate
+stack now applies to *every* `DrawingContext` draw path (formatted text, content, deferred strokes,
+chart braille, shadows, titled boxes — see the reworked §12 bullet). Lower-layer changes made for it
+(per the invariant-7 amendment — Rendering accepts first-class improvements):
+- **`CellBufferView.WithOrigin(originColumn, originRow)`** (`Cursorial.Rendering`) — re-bases a view's
+  local origin independently of its clip window (the origin may be negative: content scrolled
+  above/left of a viewport). All coordinate checks generalized from `[0, Columns)` to the window's
+  local range; every pre-existing view (origin == window start) behaves identically. This is the
+  primitive that lets `FormattedText.Paint` / `IContent.Paint` — whose `Rect` bounds cannot express a
+  negative origin — render scrolled, clipped content unchanged.
+- **`FragmentDictionary` origin fix** (`Cursorial.Rendering`) — the view-local translation used by
+  `ContainsKey`/`TryGetValue`/`Keys` previously translated by the view's *local* bounds (always
+  `(0,0)` — a latent no-op that broke fragment lookups through any offset sub-view); it now carries
+  the view's origin as signed ints. Full-buffer views are unaffected.
+- `DrawingContext.IsVisible(column, row)` (new, public) — the push-aware visibility pre-test the chart
+  painters now use in place of raw scene-bounds guards.
+
+**Residual limitations (push-stack fragments — documented, deliberate):**
+- A fragment whose **anchor** (its translated bounds origin) maps outside the active clip — or off the
+  scene — is dropped whole rather than partially shown (registration is anchor-keyed; the
+  "anchored-above-the-clip, lower-half-visible" case only the compositor can express stays out of
+  reach at draw time).
+- A **cached** fragment a `FragmentContent` reuses across re-rasters is not re-cropped when only the
+  clip changed (the content's cache sees "fragment present + size unchanged" and skips re-creation).
+  For a *moving* viewport over protocol images, use the compositor-level `CompositeParameters.Clip`,
+  which re-crops from the uncropped fragment every frame.
+
 **Still carried forward (out of scope for this layer):**
 - Box vs image/sized-text **fragment** overdraw: v1 scenes are **cell-only**; fragments stay on the
   main buffer and emit after the cell pass. Offscreen fragment compositing is deferred.
@@ -681,12 +708,37 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   (`Tile`/`FlipX`/`FlipY`/`FlipXY`/`None`). Bilinear reuses `Color.Lerp` premultiplied sRGB. `FromPng`
   factories. New `IBrush` implementations — no `DrawingContext` API change.
 - **Intra-scene clip + translate stack** (`DrawingContext.PushClip`/`PushTranslate`/`Push` → nesting
-  `DrawingStateScope`; `CurrentClip`/`CurrentTranslate`). Honored by the per-cell write paths
-  (`Set`/`FillRectangle`/`FillOpaque`/`DrawText`) incl. **negative** translate (scrolled content); a wide
-  glyph at the clip's right edge degrades to blank. **v1 scope:** formatted text / content / deferred
-  `Pen` strokes / chart braille / shadows / titled-box outlines are **not** transformed by a push (draw
-  them in absolute coordinates, or isolate in a sub-scene composited at an offset). Grouped opacity stays
-  at composite granularity (`CompositeParameters.Opacity`, the §11/§1 "free via nesting" mechanism).
+  `DrawingStateScope`; `CurrentClip`/`CurrentTranslate`). Honored by **every** draw path, incl.
+  **negative** translate (scrolled content); a wide glyph at the clip's right edge degrades to blank.
+  Coverage, by mechanism:
+  - **Immediate per-cell paths** (`Set`/`FillRectangle`/`FillOpaque`/`DrawText`) — translate + clip at
+    write time; brushes sample in **local** coordinates (gradients travel with the content). The
+    original v1 surface.
+  - **Deferred `Pen` strokes (box) + chart/diagonal braille** — the ambient state is captured at
+    **record** time: stroke arms / braille dots are translated into scene coordinates and clipped as
+    they deposit, so junctions form in final scene coords (strokes of one figure recorded under
+    *different* translates still merge where they actually cross), and a clipped line runs to the
+    viewport edge with its arm intact. Record sampling bounds are signed (`SampleBounds`), normalized
+    back to the `IBrush.ColorAt` bounds-relative contract at flush — local-frame sampling equivalence
+    holds, so a translated stroke's gradient is byte-identical to the untranslated one. Explicit
+    `BeginFigure(bounds)` bounds are taken in current-local coordinates. The flush pass itself never
+    remaps (`FlushDeferred` clears the stack first, by design).
+  - **Shadows + titled boxes / panels** — translate as units; the painted band is bounded by the clip.
+  - **Formatted text + `DrawContent`** — painted through a clip-windowed, origin-re-based
+    `CellBufferView` (`View(clip).WithOrigin(dx, dy)` — see the lower-layer note below), so the
+    painter and the brush resolver keep working in local coordinates while every cell write is
+    translated + clipped (negative translate = the scrolled-document case). Fragments mirror the
+    compositor's clip rules **at draw time**: a body straddling the clip is cropped via
+    `IBufferFragment.Clip` or suppressed when the protocol can't crop. Two residuals (see §11).
+
+  Grouped opacity stays at composite granularity (`CompositeParameters.Opacity`, the §11/§1 "free via
+  nesting" mechanism).
+
+  > *History:* as landed in the §12 batch (v1), only the per-cell write paths honored the stack —
+  > formatted text / content / deferred strokes / chart braille / shadows / titled-box outlines had to
+  > be drawn in absolute coordinates or isolated in a sub-scene. That scope gotcha was closed on
+  > **2026-06-11** by the UI P2.5 batch (full-coverage rework above); the warning is preserved here
+  > only as history.
 - **`FillOpaque`** (occlude) — space-bearing fill cells that *hide* lower-layer glyphs (panels, modals),
   vs background-only `FillRectangle`. A bordered opaque panel = `FillOpaque` + `DrawBox(overwrite: true)`
   (an overwriting stroke over an opaque fill keeps the fill background under the glyph). Alpha-preserving

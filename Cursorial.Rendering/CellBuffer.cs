@@ -269,7 +269,7 @@ public sealed class CellBuffer : ICellSurface
     /// protocol bytes at its anchor. Order is iteration order of the underlying dictionary —
     /// fragments must not depend on each other's visual ordering at the cell layer.
     /// </summary>
-    public FragmentDictionary Fragments => new(_fragments, this.Bounds);
+    public FragmentDictionary Fragments => new(_fragments, 0, 0);
 
     internal Dictionary<(int Column, int Row), FragmentEntry> FragmentsInternal => _fragments;
 

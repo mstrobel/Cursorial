@@ -2,6 +2,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -62,11 +63,14 @@ public sealed class DrawingContext
     /// Nests. An empty intersection means subsequent draws paint nothing.
     /// </summary>
     /// <remarks>
-    /// Honored by the per-cell write paths — <see cref="Set"/>, <see cref="FillRectangle(in Rect, IBrush)"/>,
-    /// and <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>. In this version it
-    /// does <b>not</b> bound <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/>,
-    /// <see cref="DrawContent"/>, or deferred <see cref="Pen"/> strokes / chart braille (draw those in absolute
-    /// scene coordinates, or isolate them in a sub-scene composited at an offset).
+    /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
+    /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush)"/>,
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
+    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/>,
+    /// <see cref="DrawContent"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
+    /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
+    /// <em>record</em> time (the draw call), not at flush, so junctions still form in final scene coordinates.
+    /// See <see cref="DrawContent"/> for the one residual limitation around protocol <em>fragments</em>.
     /// </remarks>
     public DrawingStateScope PushClip(in Rect clip)
     {
@@ -140,6 +144,24 @@ public sealed class DrawingContext
         var clip = s.Clip;
         return sceneCol >= clip.Column && sceneCol < clip.ColumnEnd
             && sceneRow >= clip.Row && sceneRow < clip.RowEnd;
+    }
+
+    /// <summary>
+    /// True when a draw at the current-local (<paramref name="column"/>, <paramref name="row"/>) would land
+    /// inside the active clip (the scene bounds when nothing is pushed) after the active translate — the
+    /// cheap pre-test a painter can use before sampling a brush for a cell it may not paint.
+    /// </summary>
+    public bool IsVisible(int column, int row) => TryMap(column, row, out _, out _);
+
+    // The paint surface for the document / content paths: under an active push, a window over the scene
+    // restricted to the active clip with the local origin re-based to the active translate, so the painter
+    // keeps working in current-local coordinates while the view clips per cell (including the wide-glyph
+    // degrade at the window's right edge). The plain scene surface when nothing is pushed.
+    private CellBufferView MappedSurface()
+    {
+        if (_stateStack.Count == 0) return _surface;
+        var s = CurrentState;
+        return _surface.View(s.Clip).WithOrigin(s.Dx, s.Dy);
     }
 
     /// <summary>
@@ -300,17 +322,24 @@ public sealed class DrawingContext
         if (element.Columns <= 0 || element.Rows <= 0) return;
         if (!TryShadow(geometry, shadowColor, out int radius, out double strength)) return;
 
+        // The whole composite (element silhouette + offset + fringe) translates as a unit by the ambient
+        // push translate, and the painted band is bounded by the ambient clip (the scene bounds when
+        // nothing is pushed).
+        var state = CurrentState;
+        int eCol = element.Column + state.Dx, eRow = element.Row + state.Dy;
+        int eColEnd = eCol + element.Columns, eRowEnd = eRow + element.Rows;
+
         int dx = geometry.OffsetColumn, dy = geometry.OffsetRow;
-        int sCol = element.Column + dx, sRow = element.Row + dy;
+        int sCol = eCol + dx, sRow = eRow + dy;
         int sColEnd = sCol + element.Columns, sRowEnd = sRow + element.Rows;
 
-        int c0 = Math.Max(0, sCol - radius), r0 = Math.Max(0, sRow - radius);
-        int c1 = Math.Min(_surface.Columns, sColEnd + radius), r1 = Math.Min(_surface.Rows, sRowEnd + radius);
+        int c0 = Math.Max(state.Clip.Column, sCol - radius), r0 = Math.Max(state.Clip.Row, sRow - radius);
+        int c1 = Math.Min(state.Clip.ColumnEnd, sColEnd + radius), r1 = Math.Min(state.Clip.RowEnd, sRowEnd + radius);
 
         for (int r = r0; r < r1; r++)
         for (int c = c0; c < c1; c++)
         {
-            if (Contains(element, c, r)) continue;                                 // the element occludes itself
+            if (c >= eCol && c < eColEnd && r >= eRow && r < eRowEnd) continue;    // the element occludes itself
             if (!OnCastingSide(sCol, sRow, sColEnd, sRowEnd, geometry.Edges, c, r)) continue;
             int d = ChebyshevOutside(sCol, sRow, sColEnd, sRowEnd, c, r);
             if (d > radius) continue;
@@ -343,13 +372,18 @@ public sealed class DrawingContext
         if (element.Columns <= 0 || element.Rows <= 0) return;
         if (!TryShadow(geometry, shadowColor, out int radius, out double strength)) return;
 
-        int c0 = Math.Max(0, element.Column), r0 = Math.Max(0, element.Row);
-        int c1 = Math.Min(_surface.Columns, element.ColumnEnd), r1 = Math.Min(_surface.Rows, element.RowEnd);
+        // Translated as a unit by the ambient push translate; bounded by the ambient clip.
+        var state = CurrentState;
+        int eCol = element.Column + state.Dx, eRow = element.Row + state.Dy;
+        int eColEnd = eCol + element.Columns, eRowEnd = eRow + element.Rows;
+
+        int c0 = Math.Max(state.Clip.Column, eCol), r0 = Math.Max(state.Clip.Row, eRow);
+        int c1 = Math.Min(state.Clip.ColumnEnd, eColEnd), r1 = Math.Min(state.Clip.RowEnd, eRowEnd);
 
         for (int r = r0; r < r1; r++)
         for (int c = c0; c < c1; c++)
         {
-            int d = InnerEdgeDistance(element, geometry.Edges, c, r);
+            int d = InnerEdgeDistance(eCol, eRow, eColEnd, eRowEnd, geometry.Edges, c, r);
             if (d < 0 || d > radius) continue;
 
             byte alpha = ShadowAlpha(shadowColor.Alpha, strength, d, radius);
@@ -382,9 +416,6 @@ public sealed class DrawingContext
         return (byte) Math.Clamp(Math.Round(sourceAlpha * strength * falloff), 0, 255);
     }
 
-    private static bool Contains(in Rect rect, int c, int r) =>
-        c >= rect.Column && c < rect.ColumnEnd && r >= rect.Row && r < rect.RowEnd;
-
     // Whether a cell casts, classified against the offset silhouette [sCol,sColEnd)×[sRow,sRowEnd):
     //  • an edge cell (outside in one axis, within the other) casts when that single edge is set;
     //  • a corner cell (outside in both axes) casts only when BOTH its edges are set — so the soft fringe
@@ -409,14 +440,15 @@ public sealed class DrawingContext
     private static int ChebyshevOutside(int col, int row, int colEnd, int rowEnd, int c, int r) =>
         Math.Max(0, Math.Max(Math.Max(col - c, c - (colEnd - 1)), Math.Max(row - r, r - (rowEnd - 1))));
 
-    // Distance from an interior cell to the nearest casting edge of the element; −1 when no set edge applies.
-    private static int InnerEdgeDistance(in Rect element, ShadowEdges edges, int c, int r)
+    // Distance from an interior cell to the nearest casting edge of the (scene-translated) element
+    // [eCol,eColEnd)×[eRow,eRowEnd); −1 when no set edge applies.
+    private static int InnerEdgeDistance(int eCol, int eRow, int eColEnd, int eRowEnd, ShadowEdges edges, int c, int r)
     {
         int best = int.MaxValue;
-        if (edges.HasFlag(ShadowEdges.Left)) best = Math.Min(best, c - element.Column);
-        if (edges.HasFlag(ShadowEdges.Right)) best = Math.Min(best, element.ColumnEnd - 1 - c);
-        if (edges.HasFlag(ShadowEdges.Top)) best = Math.Min(best, r - element.Row);
-        if (edges.HasFlag(ShadowEdges.Bottom)) best = Math.Min(best, element.RowEnd - 1 - r);
+        if (edges.HasFlag(ShadowEdges.Left)) best = Math.Min(best, c - eCol);
+        if (edges.HasFlag(ShadowEdges.Right)) best = Math.Min(best, eColEnd - 1 - c);
+        if (edges.HasFlag(ShadowEdges.Top)) best = Math.Min(best, r - eRow);
+        if (edges.HasFlag(ShadowEdges.Bottom)) best = Math.Min(best, eRowEnd - 1 - r);
         return best == int.MaxValue ? -1 : best;
     }
 
@@ -522,8 +554,17 @@ public sealed class DrawingContext
         var documentForeground = text.DefaultStyle.Foreground;
         Rect docBounds = bounds;   // can't capture an `in` parameter in the resolver closure
 
+        // Under an active push the document paints through a clip-windowed, origin-re-based view: every
+        // cell write is translated + clipped (a negative translate clips the scrolled-off top/left), while
+        // the painter — and the brush resolver below — keeps working in current-local coordinates, so
+        // brush sampling matches the immediate paths' local-frame convention. Embedded content fragments
+        // ride the same view; bodies escaping the clip are cropped after the paint (see DrawContent).
+        bool transformed = _stateStack.Count != 0;
+        var clip = CurrentState.Clip;
+        var fragmentsBefore = transformed ? SnapshotFragments() : null;
+
         text.Paint(
-            _surface,
+            MappedSurface(),
             bounds,
             capabilities,
             // ReSharper disable once RedundantLambdaParameterType
@@ -554,6 +595,9 @@ public sealed class DrawingContext
                                      ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
                                      : ctx.BaseStyle;
                       });
+
+        if (transformed)
+            CropNewFragmentsToClip(clip, fragmentsBefore);
     }
 
     /// <summary>
@@ -565,16 +609,100 @@ public sealed class DrawingContext
     /// session's negotiated capabilities.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Fragments are positioned in cell units, so an integer composite offset slides them with the scene.
     /// A composite <c>Clip</c> crops fragments per protocol (Kitty via a source rectangle, Sixel / iTerm2 via
     /// pixel cropping). Opacity remains a hard terminal limit (see design doc §8): cell-layer images
     /// (Sixel / iTerm2) can't be made translucent.
+    /// </para>
+    /// <para>
+    /// Under an active <see cref="Push"/>, <paramref name="bounds"/> is translated and the content's
+    /// <b>cell</b> output is clipped per cell. Fragments mirror the compositor's clip rules at draw time:
+    /// a fragment whose body straddles the active clip is cropped via <c>IBufferFragment.Clip</c> (or
+    /// suppressed when the protocol can't crop), and one whose anchor (its translated bounds origin) maps
+    /// outside the clip — or off the scene — is dropped whole (fragment registration is anchor-keyed; the
+    /// partially-visible-from-above case the compositor can express is out of reach here). A cached
+    /// fragment a content reuses across re-rasters is <em>not</em> re-cropped when only the clip changed —
+    /// for a moving viewport over protocol images, prefer the compositor-level
+    /// <c>CompositeParameters.Clip</c>, which re-crops every frame.
+    /// </para>
     /// </remarks>
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(capabilities);
-        content.Paint(_surface, bounds, style: default, capabilities);
+
+        if (_stateStack.Count == 0)
+        {
+            content.Paint(_surface, bounds, style: default, capabilities);
+            return;
+        }
+
+        var clip = CurrentState.Clip;
+        var fragmentsBefore = SnapshotFragments();
+        content.Paint(MappedSurface(), bounds, style: default, capabilities);
+        CropNewFragmentsToClip(clip, fragmentsBefore);
+    }
+
+    // ---- Fragment clipping under an active push --------------------------------------------------
+
+    // The scene buffer's registered fragments before a content paint (anchor + fragment identity), so the
+    // paint's own additions can be told apart from pre-existing registrations. Fragment counts are tiny.
+    private List<((int Column, int Row) Anchor, IBufferFragment Fragment)>? SnapshotFragments()
+    {
+        var fragments = _surface.Fragments;
+        if (fragments.Count == 0) return null;
+
+        var snapshot = new List<((int, int), IBufferFragment)>(fragments.Count);
+        foreach (var (anchor, entry) in fragments)
+            snapshot.Add((anchor, entry.Fragment));
+        return snapshot;
+    }
+
+    // Mirror SceneCompositor.PassThroughFragments' clip rules at draw time for the fragments a content
+    // paint just registered: a body escaping the active clip is cropped via IBufferFragment.Clip, or
+    // removed when the protocol can't crop (suppression beats overdrawing past the clip). Anchors are
+    // inside the clip by construction — the windowed view gated registration — so the crop never moves one.
+    private void CropNewFragmentsToClip(in Rect clip, List<((int Column, int Row) Anchor, IBufferFragment Fragment)>? before)
+    {
+        var fragments = _surface.Fragments;
+        if (fragments.Count == 0) return;
+
+        List<((int Column, int Row) Anchor, CellBuffer.FragmentEntry Entry)>? straddling = null;
+        foreach (var (anchor, entry) in fragments)
+        {
+            if (IsInSnapshot(before, anchor, entry.Fragment)) continue;   // pre-existing — not this paint's
+
+            var size = entry.Fragment.GetSize();
+            int columns = Math.Max(1, size.Columns), rows = Math.Max(1, size.Rows);
+            if (anchor.Column + columns <= clip.ColumnEnd && anchor.Row + rows <= clip.RowEnd) continue;
+
+            (straddling ??= []).Add((anchor, entry));
+        }
+
+        if (straddling is null) return;
+
+        foreach (var (anchor, entry) in straddling)
+        {
+            var size = entry.Fragment.GetSize();
+            int visibleColumns = Math.Min(Math.Max(1, size.Columns), clip.ColumnEnd - anchor.Column);
+            int visibleRows = Math.Min(Math.Max(1, size.Rows), clip.RowEnd - anchor.Row);
+
+            _surface.RemoveFragment(anchor.Column, anchor.Row);
+            var cropped = entry.Fragment.Clip(new Rect(0, 0, visibleColumns, visibleRows));
+            if (cropped is not null)
+                _surface.AddFragment(anchor.Column, anchor.Row, cropped, entry.AnchorStyle);
+        }
+    }
+
+    private static bool IsInSnapshot(List<((int Column, int Row) Anchor, IBufferFragment Fragment)>? snapshot,
+                                     (int Column, int Row) anchor, IBufferFragment fragment)
+    {
+        if (snapshot is null) return false;
+        foreach (var (snapAnchor, snapFragment) in snapshot)
+            if (snapAnchor == anchor && ReferenceEquals(snapFragment, fragment))
+                return true;
+        return false;
     }
 
     // ---- Figures -------------------------------------------------------------------------------
@@ -591,12 +719,17 @@ public sealed class DrawingContext
     /// <summary>
     /// Begin a figure with explicit, eager brush bounds — the same junction grouping, but pen brushes
     /// sample against <paramref name="bounds"/> instead of the figure's stroke union (e.g. to color-match
-    /// a partial border to a full box drawn elsewhere).
+    /// a partial border to a full box drawn elsewhere). <paramref name="bounds"/> is in current-local
+    /// coordinates — the ambient push translate at this call maps it into scene coordinates.
     /// </summary>
     /// <exception cref="InvalidOperationException">A figure is already open (figures do not nest).</exception>
-    public FigureScope BeginFigure(in Rect bounds) => BeginFigureCore(bounds);
+    public FigureScope BeginFigure(in Rect bounds)
+    {
+        var s = CurrentState;
+        return BeginFigureCore(SampleBounds.From(bounds, s.Dx, s.Dy));
+    }
 
-    private FigureScope BeginFigureCore(Rect? bounds)
+    private FigureScope BeginFigureCore(SampleBounds? bounds)
     {
         if (_openFigureId >= 0)
             throw new InvalidOperationException("Figures do not nest; end the current figure before beginning another.");
@@ -818,7 +951,7 @@ public sealed class DrawingContext
         // owning record's brush colors it.
         Color color = merged is { Count: > 1 }
                           ? BlendStrokeColors(merged, column, row)
-                          : record.Brush.ColorAt(column, row, record.Bounds);
+                          : record.Bounds.Sample(record.Brush, column, row);
         EmitDecorationCell(column, row, BoxGlyphs.Resolve(arms, record.Decoration, record.GlyphSet),
                            color, record.Attributes, record.Overwrite);
     }
@@ -827,15 +960,15 @@ public sealed class DrawingContext
     // sRGB via the running mean Color.Lerp gives.
     private static Color BlendStrokeColors(IReadOnlyList<StrokeRecord> merged, int column, int row)
     {
-        var color = merged[0].Brush.ColorAt(column, row, merged[0].Bounds);
+        var color = merged[0].Bounds.Sample(merged[0].Brush, column, row);
         for (int i = 1; i < merged.Count; i++)
-            color = Color.Lerp(color, merged[i].Brush.ColorAt(column, row, merged[i].Bounds), 1.0 / (i + 1));
+            color = Color.Lerp(color, merged[i].Bounds.Sample(merged[i].Brush, column, row), 1.0 / (i + 1));
         return color;
     }
 
     private void EmitBrailleCell(int column, int row, byte dots, BrailleRecord record) =>
         EmitDecorationCell(column, row, BrailleGlyphs.Glyph(dots, record.GlyphSet),
-                           record.Brush.ColorAt(column, row, record.Bounds), record.Attributes, record.Overwrite);
+                           record.Bounds.Sample(record.Brush, column, row), record.Attributes, record.Overwrite);
 
     // The shared emit tail for every deferred layer: text-beats-decoration eviction, then write the
     // (already-sampled) color through Set with a transparent background.
@@ -864,20 +997,32 @@ public sealed class DrawingContext
         _surface.Set(column, row, glyph, in style);
     }
 
-    private int AddStrokeRecord(in Pen pen, in Rect bounds, bool overwrite) =>
-        _strokes.AddRecord(new StrokeRecord
+    // The record's sampling bounds capture the ambient translate at record time, so flush-time sampling at
+    // scene cells is equivalent to local-frame sampling — matching the immediate paths' convention.
+    private int AddStrokeRecord(in Pen pen, in Rect bounds, bool overwrite)
+    {
+        var s = CurrentState;
+        return _strokes.AddRecord(new StrokeRecord
         {
             Brush = pen.ResolveBrush(),
-            Bounds = bounds,
+            Bounds = SampleBounds.From(bounds, s.Dx, s.Dy),
             Decoration = new StrokeDecoration(pen.Corners, pen.Dash, pen.EndCap),
             GlyphSet = pen.GlyphSet,
             Attributes = pen.Attributes,
             Overwrite = overwrite,
         });
+    }
 
     // Deposit one axis-aligned segment's per-cell arms (no validation — callers guarantee axis-aligned).
+    // Cells are mapped through the ambient translate and clipped to the ambient clip AT DEPOSIT TIME, so
+    // junctions form in final scene coordinates (strokes of one figure recorded under different translates
+    // still merge where they actually cross) and a clipped-away cell deposits nothing. A cell just inside
+    // the clip keeps its arm toward the clipped neighbor — the line visually runs to the viewport edge,
+    // matching how a scene-edge-clipped stroke has always rendered.
     private void DepositSegment(int x0, int y0, int x1, int y1, StrokeWeight weight, int recordId, JunctionMode mode)
     {
+        var s = CurrentState;
+
         if (y0 == y1)   // horizontal (also the degenerate single-cell case)
         {
             int lo = Math.Min(x0, x1), hi = Math.Max(x0, x1);
@@ -886,7 +1031,7 @@ public sealed class DrawingContext
                 byte arm = 0;
                 if (x > lo) arm |= StrokeAccumulator.ArmBits(Arm.Left, weight);
                 if (x < hi) arm |= StrokeAccumulator.ArmBits(Arm.Right, weight);
-                _strokes.Deposit(x, y0, arm, recordId, mode);
+                DepositMapped(x, y0, arm, recordId, mode, in s);
             }
         }
         else            // vertical
@@ -897,9 +1042,18 @@ public sealed class DrawingContext
                 byte arm = 0;
                 if (y > lo) arm |= StrokeAccumulator.ArmBits(Arm.Up, weight);
                 if (y < hi) arm |= StrokeAccumulator.ArmBits(Arm.Down, weight);
-                _strokes.Deposit(x0, y, arm, recordId, mode);
+                DepositMapped(x0, y, arm, recordId, mode, in s);
             }
         }
+    }
+
+    // Translate a local stroke cell into scene coordinates and deposit it when inside the captured clip.
+    private void DepositMapped(int x, int y, byte arm, int recordId, JunctionMode mode, in DrawState s)
+    {
+        int sceneX = x + s.Dx, sceneY = y + s.Dy;
+        if (sceneX < s.Clip.Column || sceneX >= s.Clip.ColumnEnd || sceneY < s.Clip.Row || sceneY >= s.Clip.RowEnd)
+            return;
+        _strokes.Deposit(sceneX, sceneY, arm, recordId, mode);
     }
 
     private static Rect LineBounds(int x0, int y0, int x1, int y1)
@@ -916,40 +1070,63 @@ public sealed class DrawingContext
     }
 
     // Braille sub-cell seam (used by DrawLine's diagonal path and by the chart layer). The sub-cell grid
-    // is 2 sub-columns × 4 sub-rows per cell; coordinates are absolute (scene) sub-cell units.
+    // is 2 sub-columns × 4 sub-rows per cell; coordinates are current-local sub-cell units — each plot is
+    // mapped through the ambient translate (×2 / ×4 in sub-cell units) and clipped to the ambient clip at
+    // plot time, so the deferred raster accumulates in final scene coordinates.
 
-    /// <summary>Begin a braille stroke (its brush is sampled at flush against <paramref name="bounds"/>); returns its record id.</summary>
+    /// <summary>Begin a braille stroke (its brush is sampled at flush against <paramref name="bounds"/>,
+    /// translated into scene coordinates by the ambient push translate); returns its record id.</summary>
     internal int AddBrailleRecord(in Pen pen, in Rect bounds, bool overwrite)
     {
+        var s = CurrentState;
         _braille ??= new BrailleRaster(_surface.Columns, _surface.Rows);
         return _braille.AddRecord(new BrailleRecord
         {
             Brush = pen.ResolveBrush(),
-            Bounds = bounds,
+            Bounds = SampleBounds.From(bounds, s.Dx, s.Dy),
             Attributes = pen.Attributes,
             GlyphSet = pen.GlyphSet,
             Overwrite = overwrite,
         });
     }
 
-    /// <summary>Plot a single braille dot at an absolute sub-cell coordinate for <paramref name="recordId"/>.</summary>
-    internal void PlotBrailleDot(int subColumn, int subRow, int recordId) =>
-        _braille!.Plot(subColumn, subRow, recordId);
+    /// <summary>Plot a single braille dot at a current-local sub-cell coordinate for <paramref name="recordId"/>.</summary>
+    internal void PlotBrailleDot(int subColumn, int subRow, int recordId)
+    {
+        var s = CurrentState;
+        PlotMappedBrailleDot(subColumn, subRow, recordId, in s);
+    }
 
-    /// <summary>Bresenham a braille segment between two absolute sub-cell coordinates for <paramref name="recordId"/>.</summary>
+    /// <summary>Bresenham a braille segment between two current-local sub-cell coordinates for <paramref name="recordId"/>.</summary>
     internal void PlotBrailleSegment(int subX0, int subY0, int subX1, int subY1, int recordId)
     {
+        var s = CurrentState;
         int dx = Math.Abs(subX1 - subX0), dy = -Math.Abs(subY1 - subY0);
         int stepX = subX0 < subX1 ? 1 : -1, stepY = subY0 < subY1 ? 1 : -1;
         int err = dx + dy;
 
         while (true)
         {
-            _braille!.Plot(subX0, subY0, recordId);
+            PlotMappedBrailleDot(subX0, subY0, recordId, in s);
             if (subX0 == subX1 && subY0 == subY1) break;
             int e2 = 2 * err;
             if (e2 >= dy) { err += dy; subX0 += stepX; }
             if (e2 <= dx) { err += dx; subY0 += stepY; }
         }
+    }
+
+    // Map a local sub-cell dot through the ambient translate, clip its CELL against the ambient clip (the
+    // clip is cell-grained, so cell-level rejection is exact), and plot. Negative mapped sub-coordinates
+    // are dropped here; the raster's own range check drops the off-scene remainder.
+    private void PlotMappedBrailleDot(int subX, int subY, int recordId, in DrawState s)
+    {
+        int sceneSubX = subX + s.Dx * 2, sceneSubY = subY + s.Dy * 4;
+        if (sceneSubX < 0 || sceneSubY < 0) return;
+
+        int column = sceneSubX >> 1, row = sceneSubY >> 2;
+        if (column < s.Clip.Column || column >= s.Clip.ColumnEnd || row < s.Clip.Row || row >= s.Clip.RowEnd)
+            return;
+
+        _braille!.Plot(sceneSubX, sceneSubY, recordId);
     }
 }

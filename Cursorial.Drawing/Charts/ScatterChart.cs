@@ -76,7 +76,7 @@ public sealed class ScatterChart : IChart
         {
             if (!ChartMath.Finite(p)) continue;
             var (column, row) = cells.ToCell(p.X, p.Y);
-            if ((uint) column >= (uint) context.Bounds.Columns || (uint) row >= (uint) context.Bounds.Rows) continue;
+            if (!context.IsVisible(column, row)) continue;
 
             var color = Brush.ColorAt(column, row, area);
             context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));

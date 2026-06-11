@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>One-liner chart sugar on <see cref="DrawingContext"/>, so the common cases need no chart object.</summary>

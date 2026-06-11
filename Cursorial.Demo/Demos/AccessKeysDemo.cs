@@ -5,6 +5,8 @@ using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 using Cursorial.Terminal;
 
+// ReSharper disable CheckNamespace
+
 // Probe 3 (ui-layer-design §14 P0): the access-key terminal probe. Validates the requirement-6
 // gate truth table on live terminals BEFORE S3 exists. Opens a session, prints the gate inputs
 // once — the negotiated keyboard / protocol capabilities, the RAW Kitty flags read from the
@@ -273,7 +275,7 @@ internal sealed class AccessKeysDemo : IDemo
     // Alt+Q are chords under observation, not exit requests.
     private static bool IsExitSignal(InputEvent inputEvent) =>
         DemoSupport.IsStopSignal(inputEvent) ||
-        inputEvent is KeyEvent { Key: Key.Escape, Modifiers: KeyModifiers.None } and not KeyEvent { Kind: KeyEventKind.Up } ||
+        inputEvent is KeyEvent { Key: Key.Escape, Modifiers: KeyModifiers.None } and not { Kind: KeyEventKind.Up } ||
         (inputEvent is KeyEvent { Key: Key.Character, Text.Length: > 0 } k &&
          k.Kind != KeyEventKind.Up &&
          (k.Modifiers & ~KeyModifiers.Shift) == KeyModifiers.None &&

@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// Layout matrix §10 — WrapPanel (L160–L172). Horizontal orientation (the default) unless noted;
 /// panel arranged via <c>Root</c> at the stated size; items are <c>Probe</c>s; line constraint =

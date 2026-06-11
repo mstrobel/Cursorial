@@ -5,6 +5,8 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 
+// ReSharper disable RedundantJumpStatement
+
 namespace Cursorial.Terminal.Stdio;
 
 /// <summary>

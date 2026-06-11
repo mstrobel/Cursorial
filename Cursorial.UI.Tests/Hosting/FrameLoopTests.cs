@@ -39,7 +39,7 @@ public sealed class FrameLoopTests
         host.RunFrame();
 
         Assert.Equal(
-            ["begin-frame", "dispatch", "job", "flush", "tick", "flush", "tick-newly-started", "measure:el", "arrange:el", "render:el"],
+            ["begin-frame", "dispatch", "job", "flush", "tick", "flush", "tick-newly-started", "measure:el", "arrange:el", "render:el", "update-hover"],
             log);
     }
 
@@ -242,7 +242,7 @@ public sealed class FrameLoopTests
 
         public void UpdateHover() => log.Add("update-hover");
 
-        public void OnCapabilitiesChanged(Cursorial.Terminal.TerminalCapabilities capabilities) => log.Add("caps");
+        public void OnCapabilitiesChanged(Terminal.TerminalCapabilities capabilities) => log.Add("caps");
 
         public void FlushPendingActivations() => log.Add("flush");
 

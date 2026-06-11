@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>L76: a custom element registering effects in its static ctor — one flagged property, one unflagged.</summary>
 public class EffectsProbe : Probe
 {

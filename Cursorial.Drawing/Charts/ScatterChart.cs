@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>
@@ -14,7 +16,7 @@ public sealed class ScatterChart : IChart
     private readonly PointD[] _points;
 
     /// <summary>Create a scatter chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
-    public ScatterChart(ReadOnlySpan<PointD> points, IBrush brush)
+    public ScatterChart(ReadOnlySpan<PointD> points, IBrush? brush = null)
     {
         _points = points.ToArray();
         Brush = brush ?? Brushes.Default;

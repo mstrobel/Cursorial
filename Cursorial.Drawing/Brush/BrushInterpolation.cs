@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>Texture filtering an image-sampling brush uses when a cell falls between source texels.</summary>

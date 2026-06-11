@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>

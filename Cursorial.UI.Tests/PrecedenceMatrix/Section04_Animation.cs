@@ -1,6 +1,9 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable RedundantCast
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §4 — the Animation lane (M54–M75).</summary>

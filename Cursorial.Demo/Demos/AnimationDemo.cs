@@ -5,6 +5,8 @@ using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 // Phase-5 animation showcase. The library is time-free; THIS demo owns the only clock (frame counter ×
 // FrameInterval) and asks each animation for its value at the elapsed offset. Shows: an animated gradient
 // fill (BrushAnimation sweeping a linear gradient's endpoints, AutoReverse), an easing progress bar with a
@@ -17,7 +19,7 @@ internal sealed class AnimationDemo : InteractiveDemo
     public override IReadOnlyList<string> Aliases => ["animation", "anim"];
     public override string Description => "Easings, animated gradients (BrushInterpolator), slide/fade composite-param animation, and a RectAnimation focus box.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Animation demo. Opening alt screen — ←/→ (or any key) cycles the easing; q or Ctrl+C exits.";
 
     protected override bool Animated => true;
@@ -88,7 +90,7 @@ internal sealed class AnimationDemo : InteractiveDemo
         // forever. Only its CompositeParameters animate — the tile is rasterized once.
         int boxW = Math.Clamp(Buffer.Columns - 4, 8, 30);
         int boxRow = Math.Max(0, Buffer.Rows - 4);
-        _slide?.Dispose();
+        _slide.Dispose();
         _slide = Scene.Create(Buffer.Columns, Buffer.Rows);
         _slide.Draw(ctx =>
         {
@@ -119,7 +121,7 @@ internal sealed class AnimationDemo : InteractiveDemo
             _focusBox = null;
         }
 
-        _dynamic?.Dispose();
+        _dynamic.Dispose();
         _dynamic = Scene.Create(Buffer.Columns, Buffer.Rows);
     }
 

@@ -252,7 +252,7 @@ public sealed class UITestHostRenderingTests
         {
         }
 
-        public void OnCapabilitiesChanged(Cursorial.Terminal.TerminalCapabilities capabilities)
+        public void OnCapabilitiesChanged(Terminal.TerminalCapabilities capabilities)
         {
         }
     }

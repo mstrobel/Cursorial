@@ -5,6 +5,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// §11 — Render zones, composite order, hit testing (T3): rows L173–L200. Harness per §0.1: the
 /// root element is a render boundary by construction (the P1 single-root stand-in for S4's window);

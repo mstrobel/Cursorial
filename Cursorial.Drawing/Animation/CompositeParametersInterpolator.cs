@@ -1,5 +1,7 @@
 using Cursorial.Animation;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>

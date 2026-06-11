@@ -110,14 +110,14 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
     [Fact]
     public void Spike1_HoverFlipChurn_300Objects_1000Frames()
     {
-        const int ObjectCount = 300;
-        const int HoverCount = 30;
-        const int FrameCount = 1000;
-        const int Windows = ObjectCount / HoverCount;
+        const int objectCount = 300;
+        const int hoverCount = 30;
+        const int frameCount = 1000;
+        const int windows = objectCount / hoverCount;
 
-        var hosts = new BenchHost[ObjectCount];
-        var frames = new TestValueFrame[ObjectCount];
-        for (var i = 0; i < ObjectCount; i++)
+        var hosts = new BenchHost[objectCount];
+        var frames = new TestValueFrame[objectCount];
+        for (var i = 0; i < objectCount; i++)
         {
             hosts[i] = new BenchHost();
             frames[i] = new TestValueFrame(1)
@@ -130,26 +130,27 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
 
         void Tick()
         {
-            var window = tick % Windows;
+            var window = tick % windows;
 
             if (hovered >= 0)
             {
-                for (var i = hovered * HoverCount; i < (hovered + 1) * HoverCount; i++)
+                for (var i = hovered * hoverCount; i < (hovered + 1) * hoverCount; i++)
                     hosts[i].RemoveFrame(frames[i]);
             }
 
-            for (var i = window * HoverCount; i < (window + 1) * HoverCount; i++)
+            for (var i = window * hoverCount; i < (window + 1) * hoverCount; i++)
                 hosts[i].AddFrame(frames[i]);
 
             hovered = window;
             tick++;
         }
 
+        // ReSharper disable once ConvertToLocalFunction
         var frameLoop = () =>
-        {
-            for (var t = 0; t < FrameCount; t++)
-                Tick();
-        };
+                        {
+                            for (var t = 0; t < frameCount; t++)
+                                Tick();
+                        };
 
         // Warm-up runs the exact measured delegate: invocation 1 pays first-touch costs
         // (ValueStore + EffectiveValue entries on all 300 objects); tiered promotion of this path
@@ -157,6 +158,7 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
         // rep 4 fast when measuring cold), so warm until that window has passed, settle, fault in.
         for (var w = 0; w < 4; w++)
             frameLoop();
+
         SettleJit();
         frameLoop();
         GC.Collect();
@@ -172,12 +174,12 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
             changes += host.Changes;
 
         // 30 removes (2 promotions) + 30 adds (2 changes) per frame — the dispatch path ran.
-        Assert.Equal(Repetitions * FrameCount * HoverCount * 2 * 2, changes);
+        Assert.Equal(Repetitions * frameCount * hoverCount * 2 * 2, changes);
 
-        var bytesPerFrame = bytes / (double)FrameCount;
+        var bytesPerFrame = bytes / (double)frameCount;
         output.WriteLine(
-            $"hover-flip churn: {ObjectCount} objects, {FrameCount} frames x ({HoverCount} remove + {HoverCount} add, 2 setters), best of {Repetitions}: " +
-            $"{ms:F2} ms ({ms * 1000 / FrameCount:F1} us/frame), {bytesPerFrame:F0} bytes/frame steady-state, {changes / Repetitions:N0} notifications/rep");
+            $"hover-flip churn: {objectCount} objects, {frameCount} frames x ({hoverCount} remove + {hoverCount} add, 2 setters), best of {Repetitions}: " +
+            $"{ms:F2} ms ({ms * 1000 / frameCount:F1} us/frame), {bytesPerFrame:F0} bytes/frame steady-state, {changes / Repetitions:N0} notifications/rep");
 
         // Drift bound, not a target: the known per-op dedupe-list allocation lands well under this.
         Assert.True(bytesPerFrame <= 8192, $"hover churn allocated {bytesPerFrame:F0} bytes/frame (bound 8192)");
@@ -192,7 +194,7 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
     [Fact]
     public void Spike2_AnimatedWriteLoop_10kWrites_ZeroAllocation()
     {
-        const int Writes = 10_000;
+        const int writes = 10_000;
 
         var host = new BenchHost();
         var handle = host.BeginAnimation(SpikeOpacity);
@@ -211,16 +213,16 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
         var sequence = 0L;
         var (ms, bytes) = MeasureBest(Repetitions, () =>
         {
-            for (var i = 0; i < Writes; i++)
+            for (var i = 0; i < writes; i++)
                 handle.SetValue(++sequence * 1e-9); // distinct every write — full dispatch each time
         });
 
         Assert.Equal(0, bytes);
-        Assert.Equal(1_000 + Repetitions * Writes, host.Changes);
+        Assert.Equal(1_000 + Repetitions * writes, host.Changes);
 
         output.WriteLine(
-            $"animated write: {Writes:N0} writes through one AnimatedValueHandle<double>, best of {Repetitions}: " +
-            $"{ms:F2} ms ({ms * 1_000_000 / Writes:F0} ns/write), {bytes} bytes steady-state");
+            $"animated write: {writes:N0} writes through one AnimatedValueHandle<double>, best of {Repetitions}: " +
+            $"{ms:F2} ms ({ms * 1_000_000 / writes:F0} ns/write), {bytes} bytes steady-state");
     }
 
     /// <summary>
@@ -232,8 +234,8 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
     [Fact]
     public void Spike3_ColdAndWarmMicroNumbers()
     {
-        const int BatchSize = 2_000;
-        const int WarmOps = 100_000;
+        const int batchSize = 2_000;
+        const int warmOps = 100_000;
 
         // Warm the code paths (metadata caches + tiered JIT) on throwaway instances so "cold"
         // means per-instance materialization cost under steady-state code, not first-JIT cost.
@@ -253,7 +255,7 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
             warmUp.SetValue(SpikeScratch, 1);
         }
 
-        var writeHosts = new BenchHost[Repetitions * BatchSize];
+        var writeHosts = new BenchHost[Repetitions * batchSize];
         for (var i = 0; i < writeHosts.Length; i++)
             writeHosts[i] = new BenchHost();
         GC.Collect();
@@ -261,23 +263,27 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
         var writeBatch = 0;
         var (coldSetMs, coldSetBytes) = MeasureBest(Repetitions, () =>
         {
-            var start = writeBatch++ * BatchSize;
-            for (var i = start; i < start + BatchSize; i++)
+            var start = writeBatch++ * batchSize;
+            for (var i = start; i < start + batchSize; i++)
                 writeHosts[i].SetValue(SpikeScratch, 42); // first write: ValueStore + entry table + EffectiveValue<int>
         });
 
-        var readHosts = new BenchHost[Repetitions * BatchSize];
+        var readHosts = new BenchHost[Repetitions * batchSize];
         for (var i = 0; i < readHosts.Length; i++)
             readHosts[i] = new BenchHost();
         GC.Collect();
 
         var readBatch = 0;
-        var (coldGetMs, coldGetBytes) = MeasureBest(Repetitions, () =>
-        {
-            var start = readBatch++ * BatchSize;
-            for (var i = start; i < start + BatchSize; i++)
-                sink += readHosts[i].GetValue(SpikeScratch); // storeless read — the metadata-default path
-        });
+
+        // ReSharper disable once AccessToModifiedClosure
+        var (coldGetMs, coldGetBytes) =
+            MeasureBest(Repetitions, () =>
+                                     {
+                                         var start = readBatch++ * batchSize;
+
+                                         for (var i = start; i < start + batchSize; i++)
+                                             sink += readHosts[i].GetValue(SpikeScratch); // storeless read — the metadata-default path
+                                     });
 
         var warm = new BenchHost();
         for (var i = 0; i < 10_000; i++)
@@ -290,13 +296,13 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
         var sequence = 0;
         var (warmSetMs, warmSetBytes) = MeasureBest(Repetitions, () =>
         {
-            for (var i = 0; i < WarmOps; i++)
+            for (var i = 0; i < warmOps; i++)
                 warm.SetValue(SpikeScratch, ++sequence); // changing value — full dispatch each write
         });
 
         var (warmGetMs, warmGetBytes) = MeasureBest(Repetitions, () =>
         {
-            for (var i = 0; i < WarmOps; i++)
+            for (var i = 0; i < warmOps; i++)
                 sink += warm.GetValue(SpikeScratch);
         });
 
@@ -306,13 +312,13 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
         Assert.True(sink != 0 || warm.Changes >= 0); // keep the read loops un-elidable
 
         output.WriteLine(
-            $"cold SetValue (first write on a fresh object): {coldSetMs * 1_000_000 / BatchSize:F0} ns/op, " +
-            $"{coldSetBytes / (double)BatchSize:F0} bytes/op (store + entry materialization)");
+            $"cold SetValue (first write on a fresh object): {coldSetMs * 1_000_000 / batchSize:F0} ns/op, " +
+            $"{coldSetBytes / (double)batchSize:F0} bytes/op (store + entry materialization)");
         output.WriteLine(
-            $"cold GetValue (default read on a storeless object): {coldGetMs * 1_000_000 / BatchSize:F0} ns/op, 0 bytes/op");
+            $"cold GetValue (default read on a storeless object): {coldGetMs * 1_000_000 / batchSize:F0} ns/op, 0 bytes/op");
         output.WriteLine(
-            $"warm SetValue (changing value): {warmSetMs * 1_000_000 / WarmOps:F0} ns/op, 0 bytes");
+            $"warm SetValue (changing value): {warmSetMs * 1_000_000 / warmOps:F0} ns/op, 0 bytes");
         output.WriteLine(
-            $"warm GetValue: {warmGetMs * 1_000_000 / WarmOps:F0} ns/op, 0 bytes");
+            $"warm GetValue: {warmGetMs * 1_000_000 / warmOps:F0} ns/op, 0 bytes");
     }
 }

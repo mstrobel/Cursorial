@@ -1,5 +1,7 @@
 using System.Diagnostics;
 
+// ReSharper disable RedundantTypeArgumentsOfMethod
+
 namespace Cursorial.UI;
 
 /// <summary>

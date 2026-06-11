@@ -5,6 +5,8 @@ using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>
@@ -520,32 +522,38 @@ public sealed class DrawingContext
         var documentForeground = text.DefaultStyle.Foreground;
         Rect docBounds = bounds;   // can't capture an `in` parameter in the resolver closure
 
-        text.Paint(_surface, bounds, capabilities,
-                   resolver: (in BrushedTextContext ctx) =>
-                   {
-                       // A run that declares its own brush wins, sampled at its declaration scope.
-                       if (ctx.Tag is BrushedStyle bs)
-                       {
-                           // Inline → wrap-invariant 1-D reading-order strip: sample at the cell's cumulative
-                           // logical offset within the source run, over the run's total width, so the gradient
-                           // flows continuously across a wrap instead of restarting per line-piece. Block /
-                           // Document → the 2-D laid-out box.
-                           Color foreground = bs.Scope == DeclarationScope.Inline
-                               ? bs.Foreground.ColorAt(ctx.LogicalColumn, 0, new Rect(0, 0, Math.Max(1, ctx.ScopeWidth), 1))
-                               : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
-                                                       bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
-                           return ctx.BaseStyle.WithForeground(foreground);
-                       }
+        text.Paint(
+            _surface,
+            bounds,
+            capabilities,
+            // ReSharper disable once RedundantLambdaParameterType
+            resolver: (in BrushedTextContext ctx) =>
+                      {
+                          // A run that declares its own brush wins, sampled at its declaration scope.
+                          if (ctx.Tag is BrushedStyle bs)
+                          {
+                              // Inline → wrap-invariant 1-D reading-order strip: sample at the cell's cumulative
+                              // logical offset within the source run, over the run's total width, so the gradient
+                              // flows continuously across a wrap instead of restarting per line-piece. Block /
+                              // Document → the 2-D laid-out box.
+                              Color foreground = bs.Scope == DeclarationScope.Inline
+                                                     ? bs.Foreground.ColorAt(ctx.LogicalColumn, 0, new Rect(0, 0, Math.Max(1, ctx.ScopeWidth), 1))
+                                                     : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
+                                                                             bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
 
-                       // Otherwise the document brush (if any) colors cells that inherited the document
-                       // foreground; an explicit run color (differing from the default) wins.
-                       if (documentBrush is null) return ctx.BaseStyle;
-                       var fg = ctx.BaseStyle.Foreground;
-                       bool inherited = fg.IsDefault || fg == documentForeground;
-                       return inherited
-                           ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
-                           : ctx.BaseStyle;
-                   });
+                              return ctx.BaseStyle.WithForeground(foreground);
+                          }
+
+                          // Otherwise the document brush (if any) colors cells that inherited the document
+                          // foreground; an explicit run color (differing from the default) wins.
+                          if (documentBrush is null) return ctx.BaseStyle;
+                          var fg = ctx.BaseStyle.Foreground;
+                          bool inherited = fg.IsDefault || fg == documentForeground;
+
+                          return inherited
+                                     ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
+                                     : ctx.BaseStyle;
+                      });
     }
 
     /// <summary>

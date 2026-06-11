@@ -1,3 +1,7 @@
+// ReSharper disable CheckNamespace
+
+using System.Diagnostics.CodeAnalysis;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -71,7 +75,7 @@ internal sealed class ValueStore
         StyledProperty<T> property, PropertyMetadata<T> metadata, T rawValue,
         bool isCurrentValue, BindingEntryBase? writer = null)
     {
-        var coerced = metadata.Coerce is { } coerce ? coerce(Owner, rawValue) : rawValue;
+        var coerced = metadata.Coerce is {} coerce ? coerce(Owner, rawValue) : rawValue;
         var comparer = metadata.EffectiveComparer;
 
         var entry = (EffectiveValue<T>?)TryGetEntry(property.Id);
@@ -123,8 +127,10 @@ internal sealed class ValueStore
     public void SetCurrentValue<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, T rawValue)
     {
         var entry = (EffectiveValue<T>?)TryGetEntry(property.Id);
-        if (entry is null || entry.EffectivePriority == BindingPriority.Unset ||
-            (entry.BasePriority == BindingPriority.LocalValue && !entry.HasAnimatedValue))
+
+        if (entry is null || 
+            entry.EffectivePriority == BindingPriority.Unset ||
+            entry is { BasePriority: BindingPriority.LocalValue, HasAnimatedValue: false })
         {
             // No contribution (M118) — or the local lane already wins, where "overwrite in place"
             // IS a local write that also refreshes the raw slot (M119): both reduce to the local
@@ -133,7 +139,8 @@ internal sealed class ValueStore
             return;
         }
 
-        var coerced = metadata.Coerce is { } coerce ? coerce(Owner, rawValue) : rawValue;
+        var coerced = metadata.Coerce is {} coerce ? coerce(Owner, rawValue) : rawValue;
+
         var comparer = metadata.EffectiveComparer;
         if (comparer.Equals(entry.Value, coerced))
             return; // gated: stored value survives (PD20), +cur NOT set (M135)
@@ -171,7 +178,7 @@ internal sealed class ValueStore
     {
         if (TryGetEntry(property.Id) is EffectiveValue<T> { EffectivePriority: not BindingPriority.Unset } entry)
             return entry.GetEffectiveBoxedValue();
-        if (property.Inherits && Owner.FindInheritedEntry(property.Id, out _) is { } inherited)
+        if (property.Inherits && Owner.FindInheritedEntry(property.Id, out _) is {} inherited)
             return inherited.GetEffectiveBoxedValue(); // interning rides the ancestor's entry
         return property.GetMetadata(Owner.GetType()).BoxedDefault;
     }
@@ -203,7 +210,7 @@ internal sealed class ValueStore
                 if (entry is { BasePriority: BindingPriority.Style })
                     return entry.BaseValue; // the maintained style base (a +cur overwrite included)
                 if (TryResolveStyleValue(property, out var styleValue, out _))
-                    return metadata.Coerce is { } coerce ? coerce(Owner, styleValue) : styleValue;
+                    return metadata.Coerce is {} coerce ? coerce(Owner, styleValue) : styleValue;
                 break;
         }
 
@@ -276,7 +283,7 @@ internal sealed class ValueStore
         else if (TryResolveStyleValue(property, out var styleRaw, out contributor))
         {
             newBasePriority = BindingPriority.Style;
-            newBaseValue = metadata.Coerce is { } coerce ? coerce(Owner, styleRaw) : styleRaw;
+            newBaseValue = metadata.Coerce is {} coerce ? coerce(Owner, styleRaw) : styleRaw;
             newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(styleRaw, newBaseValue);
         }
         else
@@ -383,7 +390,7 @@ internal sealed class ValueStore
     public bool SetAnimatedValue<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, T rawValue)
     {
         var entry = GetOrCreateEntry(property);
-        var coerced = metadata.Coerce is { } coerce ? coerce(Owner, rawValue) : rawValue;
+        var coerced = metadata.Coerce is {} coerce ? coerce(Owner, rawValue) : rawValue;
 
         var oldValue = entry.EffectivePriority != BindingPriority.Unset
             ? entry.Value
@@ -460,7 +467,7 @@ internal sealed class ValueStore
     {
         var entry = GetOrCreateEntry(property);
 
-        if (entry.LocalEntry is { } prior)
+        if (entry.LocalEntry is {} prior)
         {
             entry.LocalEntry = null;
             prior.Evict(); // PD2: the eviction fires before the promotion's notification
@@ -602,7 +609,7 @@ internal sealed class ValueStore
             if (!frame.IsActive)
                 continue;
 
-            if (frame.HostedEntries is { } hosted)
+            if (frame.HostedEntries is {} hosted)
             {
                 foreach (var entry in hosted)
                 {
@@ -633,7 +640,7 @@ internal sealed class ValueStore
         {
             var frame = _frames[i];
 
-            if (frame.HostedEntries is { } hosted)
+            if (frame.HostedEntries is {} hosted)
             {
                 for (var j = hosted.Count - 1; j >= 0; j--)
                 {
@@ -670,7 +677,7 @@ internal sealed class ValueStore
             if (!frame.IsActive)
                 continue;
 
-            if (frame.HostedEntries is { } hosted)
+            if (frame.HostedEntries is {} hosted)
             {
                 for (var j = hosted.Count - 1; j >= 0; j--)
                 {
@@ -755,7 +762,7 @@ internal sealed class ValueStore
             frame.Store = null;
             _frames[i] = null!;
 
-            if (frame.TakeHostedEntries() is { } hosted)
+            if (frame.TakeHostedEntries() is {} hosted)
             {
                 foreach (var entry in hosted)
                     entry.Evict();
@@ -902,7 +909,7 @@ internal sealed class ValueStore
 
     private void RemoveObserver(int propertyId, object observer, ObserverChannel channel)
     {
-        if (GetObservers(propertyId) is not { } observers)
+        if (GetObservers(propertyId) is not {} observers)
             return;
 
         switch (channel)
@@ -927,6 +934,7 @@ internal sealed class ValueStore
         return grown;
     }
 
+    [SuppressMessage("ReSharper", "CoVariantArrayConversion")]
     private static TArray[] RemoveFirst<TArray>(TArray[] array, object observer) where TArray : class
     {
         var index = Array.IndexOf(array, observer);

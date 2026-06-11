@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>A 2-D data point in a chart's value space (<see cref="X"/>, <see cref="Y"/>).</summary>

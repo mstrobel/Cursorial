@@ -2,6 +2,8 @@ using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 // Chart showcase: block-element bar charts, sparklines, axed braille line/scatter charts, and the deferred
 // features now landed — signed bars (negatives below a zero baseline) with category labels, line-chart area
 // fill, NaN-as-gap breaks, and MultiLineChart.ToLayers (two translucent filled series composited so their
@@ -14,7 +16,7 @@ internal sealed class ChartsDemo : InteractiveDemo
     public override string Description =>
         "Bars (signed + categories), sparklines, lines/scatter + axes, area fill, gaps, layered translucent fills.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Charts demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private static readonly double[] Bars = [3, 7, 4, 9, 5, 8, 2, 6];
@@ -43,7 +45,7 @@ internal sealed class ChartsDemo : InteractiveDemo
     private void Build()
     {
         _compositor = new SceneCompositor(Style);
-        _scene?.Dispose();
+        _scene.Dispose();
         _scene = Scene.Create(Buffer.Columns, Buffer.Rows);
         _scene.Draw(Paint);
         BuildOverlay();

@@ -13,6 +13,7 @@ public class ScenePoolTests
 
         // Rent, paint it red, return it to the pool.
         var first = pool.Rent(2, 1);
+        // ReSharper disable once AccessToDisposedClosure
         first.Draw(ctx => ctx.FillRectangle(first.Bounds, new SolidColorBrush(Color.FromRgb(255, 0, 0))));
         first.Dispose();
 

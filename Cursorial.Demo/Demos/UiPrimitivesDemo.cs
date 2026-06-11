@@ -4,17 +4,19 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 
+// ReSharper disable CheckNamespace
+
 // Showcase of the post-Phase-6 UI drawing primitives: a gradient FIGlet headline (per-cell brushed), a
 // titled panel with a drop + inner shadow, and an opaque modal that occludes the background text beneath it
 // (FillOpaque) with its own drop shadow. Event-driven (static): repaints only on resize.
-internal sealed class UiPrimitivesDemo : InteractiveDemo
+internal sealed class UIPrimitivesDemo : InteractiveDemo
 {
     public override string Name => "ui";
     public override IReadOnlyList<string> Aliases => ["panels"];
     public override string Description =>
         "UI primitives — gradient FIGlet, titled panel + shadows, and an occluding opaque modal.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "UI primitives demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private Scene _scene = null!;
@@ -32,7 +34,7 @@ internal sealed class UiPrimitivesDemo : InteractiveDemo
     private void Build()
     {
         _compositor = new SceneCompositor(Style);
-        _scene?.Dispose();
+        _scene.Dispose();
         _scene = Scene.Create(Buffer.Columns, Buffer.Rows);
         _scene.Draw(Paint);
     }

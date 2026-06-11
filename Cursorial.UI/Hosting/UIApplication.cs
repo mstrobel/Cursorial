@@ -6,6 +6,9 @@ using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
+using Cursorial.UI.Input;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
 
@@ -17,9 +20,10 @@ namespace Cursorial.UI;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>P1 shape.</b> The styling engine (P3), animation driver (P8), input router (P2), and window
-/// system (P7) are documented no-op seams — the frame loop's phase slots exist and are exercised,
-/// but the seam fields are null until their phases land. <see cref="RootElement"/> is the P1
+/// <b>Phase shape.</b> S3's input router (P2) is installed — <see cref="InputDispatcher"/> is the
+/// default Phase-1 dispatch seam. The styling engine (P3), animation driver (P8), and window
+/// system (P7) remain documented no-op seams — the frame loop's phase slots exist and are
+/// exercised, but those seam fields are null until their phases land. <see cref="RootElement"/> is the P1
 /// stand-in for window content: at P7, S4's <c>Window</c>/<c>WindowManager</c> replace the
 /// single-root wiring (and the doc's <c>RunAsync(Func&lt;Window&gt;)</c> shape replaces the
 /// <see cref="UIElement"/>-typed overloads) with no frame-loop change. The S7 theme surface
@@ -78,9 +82,15 @@ public sealed partial class UIApplication : IAsyncDisposable
     private int _tornDown;
     private Task<int>? _runTask;
 
-    // The frame loop's cross-subsystem seams (design doc §10.9). Null until their phases land:
-    // S3's router (P2), Fork B's styling hooks (P3), S5's animation driver (P8). Internal so the
-    // landing phases — and phase-order tests — install implementations without public API churn.
+    private readonly FocusManager _focusManager;
+    private readonly AccessKeyManager _accessKeys;
+    private readonly InputDispatcher _inputDispatcher;
+    private readonly AnimationScheduler _animationScheduler;
+
+    // The frame loop's cross-subsystem seams (design doc §10.9). S3's router (P2) and the early-S5
+    // scheduler slice (frozen clock + UITimer registry; the full animation surface joins at P8)
+    // are installed by default; Fork B's styling hooks (P3) stay null until their phase lands.
+    // Internal so phase-order tests can install probe implementations.
     internal IInputDispatchTarget? InputDispatchTarget;
     internal IStyleFrameHooks? StyleHooks;
     internal IAnimationFrameDriver? AnimationDriver;
@@ -91,6 +101,19 @@ public sealed partial class UIApplication : IAsyncDisposable
         Dispatcher = new UIDispatcher();
         _syncContext = new UISynchronizationContext(Dispatcher);
         _guard = new UserCodeGuard(this);
+        InteractionStates = new InteractionStateService();
+        _focusManager = new FocusManager(Dispatcher, InteractionStates);
+        _accessKeys = new AccessKeyManager(Dispatcher, _focusManager, InteractionStates);
+        // The P2 topology: one implicit surface (the shown root). S4's WindowManager substitutes
+        // the real IWindowTopology at P7 with no dispatcher rewrite (matrix ND5).
+        _inputDispatcher = new InputDispatcher(Dispatcher, _focusManager, _accessKeys, InteractionStates, new SingleRootWindowTopology(this));
+        _focusManager.InputDispatcherInternal = _inputDispatcher; // the :focus-visible modality source (doc §7.7)
+        _focusManager.AccessKeysInternal = _accessKeys;           // pointer-driven focus exits menu mode (doc §7.7)
+        InteractionStates.PressedSink = _inputDispatcher;         // the Pressed fan-in (ND12 / C8)
+        InputDispatchTarget = _inputDispatcher; // S3's router IS the default Phase-1 dispatch seam
+        _animationScheduler = new AnimationScheduler();
+        AnimationDriver = _animationScheduler;
+        AnimationScheduler.Install(_animationScheduler); // build/headless thread; the UI thread re-installs at loop start
         _caretService.StateChanged = RequestRender; // a pure caret move must arm Phase 6 (§5.9)
         _current = this; // Build-thread Current: pre-run UIObject construction is legal from here
     }
@@ -108,6 +131,51 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     /// <summary>The single UI thread's dispatcher.</summary>
     public UIDispatcher Dispatcher { get; }
+
+    /// <summary>
+    /// S3's input dispatcher (design doc §7.4) — the application's routing surface: capture,
+    /// pointer-state bookkeeping, <c>TerminalFocusChanged</c>/<c>EditCommitRequested</c>, and the
+    /// <c>ProcessEvent</c> entry the frame loop drives in Phase 1.
+    /// </summary>
+    public InputDispatcher InputDispatcher => _inputDispatcher;
+
+    /// <summary>
+    /// The keyboard-focus manager (design doc §7.7): the physical-focus singleton, logical focus
+    /// scopes with memory, Tab / directional navigation, and the detach repair chain.
+    /// </summary>
+    public FocusManager FocusManager => _focusManager;
+
+    /// <summary>
+    /// The access-key engine (design doc §7.8): the flat registry, the capability-gated cue
+    /// machine, scopes, and the menu-mode entry hooks. Receives its own capability fan-out call
+    /// with the <b>negotiated</b> snapshot (ND23).
+    /// </summary>
+    public AccessKeyManager AccessKeys => _accessKeys;
+
+    /// <summary>
+    /// The thread-ambient animation scheduler (design doc §9.1) — at P2 the early-S5 slice: the
+    /// frame-frozen <see cref="FrameClock"/> and the <see cref="UITimer"/> registry.
+    /// </summary>
+    public AnimationScheduler AnimationScheduler => _animationScheduler;
+
+    /// <summary>
+    /// The one installable per-application interaction-state observer (matrix ND11) — Fork B's
+    /// styling engine becomes the production instance at P3; tests install recording sinks.
+    /// Receives one <c>(element, oldState, newState)</c> notification per element per batch,
+    /// delivered after the state commit.
+    /// </summary>
+    public IInteractionStateObserver? InteractionStateObserver
+    {
+        get => InteractionStates.Observer;
+        set
+        {
+            Dispatcher.VerifyAccess();
+            InteractionStates.Observer = value;
+        }
+    }
+
+    /// <summary>The interaction-state coordinator (batching + observer delivery + Pressed fan-in).</summary>
+    internal InteractionStateService InteractionStates { get; }
 
     /// <summary>The undecorated negotiated snapshot; replaced by <see cref="RenegotiateAsync"/>.</summary>
     public TerminalCapabilities Capabilities => _capabilities;
@@ -161,17 +229,20 @@ public sealed partial class UIApplication : IAsyncDisposable
         set
         {
             Dispatcher.VerifyAccess();
+
             if (ReferenceEquals(_rootElement, value))
                 return;
 
-            if (_systemsReady && _rootElement is { } old)
+            if (_systemsReady && _rootElement is {} old)
             {
+                _focusManager.OnWindowDeactivated(old); // the P1 single-root deactivation (S4 at P7)
                 _renderSystem!.SetRoot(null); // RenderTree.Detach — scenes back to the pool
                 old.DetachRoot();
                 _layoutSystem!.SetRoot(null);
             }
 
             _rootElement = value;
+
             if (_systemsReady && value is not null)
                 WireRoot(value);
 
@@ -220,12 +291,12 @@ public sealed partial class UIApplication : IAsyncDisposable
     public void NotifyResized(int columns, int rows)
     {
         _inputQueue.Enqueue(new ResizeEvent
-        {
-            Columns = columns,
-            Rows = rows,
-            Timestamp = _options.TimeProvider.GetUtcNow(),
-            Synthesized = true,
-        });
+                            {
+                                Columns = columns,
+                                Rows = rows,
+                                Timestamp = _options.TimeProvider.GetUtcNow(),
+                                Synthesized = true
+                            });
         Dispatcher.Wake();
     }
 
@@ -237,6 +308,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     public IDisposable RegisterDeviceResponseSink(Action<DeviceResponseEvent> sink)
     {
         ArgumentNullException.ThrowIfNull(sink);
+
         lock (_responseSinkLock)
         {
             _responseSinks = [.. _responseSinks, sink];
@@ -256,14 +328,14 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     /// <summary>The idle predicate behind <c>UITestHost.RunUntilIdle</c> and the Phase-7 guard inputs.</summary>
     internal bool IsIdle
-        => _inputQueue.IsEmpty
-           && Dispatcher.JobCount == 0
-           && !(_layoutSystem?.HasPendingLayout ?? false)
-           && !(_renderSystem?.HasDirtyVisuals ?? false)
-           && !(StyleHooks?.HasPendingActivations ?? false)
-           && !(AnimationDriver?.HasActiveAnimations ?? false)
-           && Volatile.Read(ref _renderRequested) == 0
-           && _controlSequences.IsEmpty;
+        => _inputQueue.IsEmpty &&
+           Dispatcher.JobCount == 0 &&
+           _layoutSystem is not { HasPendingLayout: true } &&
+           _renderSystem is not { HasDirtyVisuals: true } &&
+           StyleHooks is not { HasPendingActivations: true } &&
+           AnimationDriver is not { HasActiveAnimations: true } &&
+           Volatile.Read(ref _renderRequested) == 0 &&
+           _controlSequences.IsEmpty;
 
     internal bool HasFatalException => _fatalException is not null;
 
@@ -279,16 +351,24 @@ public sealed partial class UIApplication : IAsyncDisposable
     {
         _layoutSystem!.SetRoot(root);  // attaches root under a fresh LayoutManager
         _renderSystem!.SetRoot(root);  // requires the root attached — ordering matters
+
+        // The window-root focus convention (doc §7.7, matrix N117): the shown root is a focus
+        // scope, set by the harness — S4's window manager owns this per window at P7. Activation
+        // then restores focus: scope memory if valid, else the first tab-ordered focusable (N115).
+        FocusManager.SetIsFocusScope(root, true);
+        _focusManager.OnWindowActivated(root);
+        _accessKeys.OnWindowActivated(root); // cue stamping (permanent in AlwaysVisible mode — doc §7.8)
     }
 
     private void DispatchDeviceResponse(DeviceResponseEvent response)
     {
         var sinks = Volatile.Read(ref _responseSinks); // snapshot-iterate
-        for (var i = 0; i < sinks.Length; i++)
+
+        foreach (var sink in sinks)
         {
             try
             {
-                sinks[i](response);
+                sink(response);
             }
             catch (Exception ex)
             {
@@ -306,9 +386,9 @@ public sealed partial class UIApplication : IAsyncDisposable
     }
 
     private static bool IsCtrlC(KeyEvent key)
-        => key is { Kind: KeyEventKind.Down, Key: Key.Character, Text.Length: > 0 }
-           && (key.Modifiers & KeyModifiers.Control) != 0
-           && key.Text.Span[0] is 'c' or 'C';
+        => key is { Kind: KeyEventKind.Down, Key: Key.Character, Text.Length: > 0 } &&
+           key.Modifiers.HasFlag(KeyModifiers.Control) &&
+           key.Text.Span[0] is 'c' or 'C';
 
     /// <summary>
     /// The funnel core (design doc §10.8). Returns <see langword="true"/> when the frame may
@@ -320,9 +400,10 @@ public sealed partial class UIApplication : IAsyncDisposable
         if (exception is OperationCanceledException oce && oce.CancellationToken == Dispatcher.ShutdownToken)
             return true; // cooperative shutdown cancellation bypasses the funnel entirely
 
-        if (DispatcherUnhandledException is { } handler)
+        if (DispatcherUnhandledException is {} handler)
         {
             var args = new DispatcherUnhandledExceptionEventArgs { Exception = exception };
+
             try
             {
                 handler(this, args);
@@ -351,29 +432,30 @@ public sealed partial class UIApplication : IAsyncDisposable
     }
 
     private static bool ComputeAltKeyTracking(InputCapabilities undecorated)
-        => (undecorated.Keyboard.DistinguishesKeyUpDown && undecorated.Keyboard.ReportsRepeats)
-           || undecorated.Protocol.Win32InputMode;
+        => undecorated.Keyboard is { DistinguishesKeyUpDown: true, ReportsRepeats: true } ||
+           undecorated.Protocol.Win32InputMode;
 
     /// <summary>Re-applies the recorded decoration projections to a fresh snapshot (renegotiation).</summary>
     private InputCapabilities ApplyDecorationProjections(InputCapabilities undecorated)
     {
         var capabilities = undecorated;
+
         if (_options.KeyReleaseSynthesis is not null)
         {
             capabilities = capabilities with
-            {
-                Keyboard = capabilities.Keyboard with { DistinguishesKeyUpDown = true, ReportsRepeats = true },
-            };
+                           {
+                               Keyboard = capabilities.Keyboard with { DistinguishesKeyUpDown = true, ReportsRepeats = true }
+                           };
         }
 
         return capabilities with
-        {
-            Mouse = capabilities.Mouse with
-            {
-                SynthesizesClickCounts = _options.ClickOptions.ClickCount != ClickCountTarget.None,
-                SynthesizesClicks = _options.ClickOptions.SynthesizeClickEvents,
-            },
-        };
+               {
+                   Mouse = capabilities.Mouse with
+                           {
+                               SynthesizesClickCounts = _options.ClickOptions.ClickCount != ClickCountTarget.None,
+                               SynthesizesClicks = _options.ClickOptions.SynthesizeClickEvents
+                           }
+               };
     }
 
     private sealed class ResponseSinkRegistration(UIApplication app, Action<DeviceResponseEvent> sink) : IDisposable
@@ -382,12 +464,13 @@ public sealed partial class UIApplication : IAsyncDisposable
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _sink, null) is not { } removed)
+            if (Interlocked.Exchange(ref _sink, null) is not {} removed)
                 return;
 
             lock (app._responseSinkLock)
             {
                 var sinks = app._responseSinks;
+
                 var index = Array.IndexOf(sinks, removed);
                 if (index < 0)
                     return;

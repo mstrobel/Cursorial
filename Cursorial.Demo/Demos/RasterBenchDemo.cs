@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 // The 'rasterbench' command — Probe 1 of the UI-layer phase plan (docs/ui-layer-design.md §14 P0).
 // The measurement itself is fully headless (see RasterBenchmark.cs) so agents/CI can run it with
 // redirected stdio and still get the table. On a real terminal it first plays a live preview of
@@ -59,7 +61,7 @@ internal sealed class RasterBenchDemo : IDemo
 
         protected override bool Animated => true;
         protected override TimeSpan FrameInterval => TimeSpan.FromMilliseconds(33);
-        protected override string? IntroMessage =>
+        protected override string IntroMessage =>
             "Live preview — alternates scenario A (whole-zone re-raster dashboard) and scenario B (banded scroll).\n" +
             "Press q or Esc to continue to the measured headless run.";
 

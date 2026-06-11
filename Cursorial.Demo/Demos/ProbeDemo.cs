@@ -2,6 +2,8 @@ using System.Buffers;
 
 using Cursorial.Terminal.Stdio;
 
+// ReSharper disable CheckNamespace
+
 // One-shot XTVERSION + DA1 capture. Writes the probe sequences directly through raw stdio
 // transports, then reads back whatever the terminal sends for one second and dumps it as hex +
 // ASCII. Implements IDemo directly (no render loop, so no InteractiveDemo harness). Migrated

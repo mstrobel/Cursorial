@@ -1,6 +1,9 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable RedundantCast
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §2 — the local lane (M15–M32; M31 needs binding entries and lands with them).</summary>
@@ -182,15 +185,19 @@ public class Section02_LocalLane
         var host = new Host();
         var late = new TypedRecorder<int>();
         var subscribed = false;
-        var first = new TypedRecorder<int>();
-        first.Callback = (_, _) =>
-        {
-            if (!subscribed)
-            {
-                subscribed = true;
-                host.AddObserver(P, late);
-            }
-        };
+
+        var first = new TypedRecorder<int>
+                    {
+                        Callback = (_, _) =>
+                                   {
+                                       if (!subscribed)
+                                       {
+                                           subscribed = true;
+                                           host.AddObserver(P, late);
+                                       }
+                                   }
+                    };
+
         host.AddObserver(P, first);
 
         host.SetValue(P, 1);
@@ -206,8 +213,15 @@ public class Section02_LocalLane
         var host = new Host();
         var second = new TypedRecorder<int>();
         IDisposable? secondSubscription = null;
-        var first = new TypedRecorder<int>();
-        first.Callback = (_, _) => secondSubscription?.Dispose();
+
+        var first = new TypedRecorder<int>
+                    {
+                        // ReSharper disable AccessToModifiedClosure
+                        Callback = (_, _) => secondSubscription?.Dispose()
+                    };
+
+        // ReSharper restore AccessToModifiedClosure
+
         host.AddObserver(P, first);
         secondSubscription = host.AddObserver(P, second);
 
@@ -229,7 +243,7 @@ public class Section02_LocalLane
                 return;
             Assert.Equal(0, args.GetOldValue<int>());
             Assert.Equal(1, args.GetNewValue<int>());
-            Assert.Throws<InvalidCastException>(() => args.GetNewValue<string>());
+            Assert.Throws<InvalidCastException>(args.GetNewValue<string>);
             asserted = true;
         };
 

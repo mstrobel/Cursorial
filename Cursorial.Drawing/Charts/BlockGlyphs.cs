@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>Which edge a fractional block bar fills from.</summary>

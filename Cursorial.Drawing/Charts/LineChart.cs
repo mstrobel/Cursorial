@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>
@@ -17,7 +19,7 @@ public sealed class LineChart : IChart
     private readonly PointD[] _points;
 
     /// <summary>Create a line chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
-    public LineChart(ReadOnlySpan<PointD> points, IBrush brush)
+    public LineChart(ReadOnlySpan<PointD> points, IBrush? brush = null)
     {
         _points = points.ToArray();
         Brush = brush ?? Brushes.Default;
@@ -66,7 +68,7 @@ public sealed class LineChart : IChart
     /// <summary>
     /// Fill the area between the curve and the zero baseline. The fill is a cell <b>background</b>, so the
     /// foreground braille curve still draws over it and a translucent <see cref="AreaBrush"/> alpha-blends
-    /// with lower layers (e.g. overlapping <c>MultiLineChart.ToLayers</c> fills compose, red∩blue → purple).
+    /// with lower layers (e.g., overlapping <c>MultiLineChart.ToLayers</c> fills compose, red∩blue → purple).
     /// </summary>
     public bool FillArea { get; init; }
 
@@ -120,7 +122,7 @@ public sealed class LineChart : IChart
                     // Keep the row furthest from the baseline — the curve's peak in this column.
                     if (!hasCurve![idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
                         curveFrac[idx] = f;
-                    hasCurve![idx] = true;
+                    hasCurve[idx] = true;
                 }
 
             if (recordId >= 0)

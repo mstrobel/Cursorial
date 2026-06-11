@@ -1,5 +1,7 @@
 using Cursorial.UI;
 
+// ReSharper disable RedundantTypeArgumentsOfMethod
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>

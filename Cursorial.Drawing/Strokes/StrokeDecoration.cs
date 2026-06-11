@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>A cardinal direction / arm of a box-drawing cell. The value is its 2-bit field index in an

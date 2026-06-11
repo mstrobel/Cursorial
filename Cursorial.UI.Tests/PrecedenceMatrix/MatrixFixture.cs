@@ -1,5 +1,7 @@
 using Cursorial.UI;
 
+// ReSharper disable RedundantCast
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>The matrix host fixture (§0.1): <c>Host</c> is the default property host.</summary>

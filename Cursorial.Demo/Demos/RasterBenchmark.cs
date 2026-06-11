@@ -10,6 +10,8 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 
+// ReSharper disable CheckNamespace
+
 // Probe 1 (docs/ui-layer-design.md §14 P0): the scene-raster benchmark. Headless — no
 // TerminalSession, no TTY; everything renders into an ArrayBufferWriter so the numbers are pure
 // CPU cost (raster / composite / diff+emit), uncontaminated by terminal I/O. The question it

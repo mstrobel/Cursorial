@@ -146,7 +146,7 @@ public class FragmentPassthroughTests
         var frag = new SixelFragment(new byte[20 * 10 * 4], pixelWidth: 20, pixelHeight: 10, cellSize: new Size(2, 1));
         var clipped = frag.Clip(new Rect(0, 0, 1, 1));
         Assert.NotNull(clipped);
-        Assert.Equal(new Size(1, 1), clipped!.GetSize());
+        Assert.Equal(new Size(1, 1), clipped.GetSize());
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class FragmentPassthroughTests
 
         var clipped = frag.Clip(new Rect(0, 0, 1, 1));
         Assert.NotNull(clipped);
-        Assert.Equal(new Size(1, 1), clipped!.GetSize());
+        Assert.Equal(new Size(1, 1), clipped.GetSize());
 
         var output = new ArrayBufferWriter<byte>();
         clipped.Emit(0, 0, output, OutputCapabilities.None);
@@ -238,7 +238,7 @@ public class FragmentPassthroughTests
         Assert.NotNull(clipped);
 
         var output = new ArrayBufferWriter<byte>();
-        clipped!.Emit(0, 0, output, OutputCapabilities.None);
+        clipped.Emit(0, 0, output, OutputCapabilities.None);
         string header = Encoding.ASCII.GetString(output.WrittenSpan);
         header = header[..header.IndexOf(';')];
         Assert.Contains("x=10,", header);   // non-zero source X — the right half of the image
@@ -316,7 +316,7 @@ public class FragmentPassthroughTests
         var frag = new SixelFragment(new byte[3 * 4 * 4], pixelWidth: 3, pixelHeight: 4, cellSize: new Size(8, 1));
         var clipped = frag.Clip(new Rect(7, 0, 1, 1));   // rightmost cell
         Assert.NotNull(clipped);
-        Assert.Equal(new Size(1, 1), clipped!.GetSize());
+        Assert.Equal(new Size(1, 1), clipped.GetSize());
     }
 
     [Fact]
@@ -370,7 +370,7 @@ public class FragmentPassthroughTests
         public Size GetSize() => _size;
         public bool IsSupported(OutputCapabilities capabilities) => true;
         public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) { }
-        public IBufferFragment? Clip(in Rect visible) => new CroppableFragment(visible.Columns, visible.Rows);
+        public IBufferFragment Clip(in Rect visible) => new CroppableFragment(visible.Columns, visible.Rows);
     }
 
     // A minimal out-of-band fragment for tests — never actually emits.

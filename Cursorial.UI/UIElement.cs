@@ -1,5 +1,3 @@
-using Cursorial.Rendering;
-
 namespace Cursorial.UI;
 
 /// <summary>
@@ -358,12 +356,20 @@ public abstract partial class UIElement : UIObject
     }
 
     /// <summary>The bottom-up detach walk (design doc §5.1 lifecycle): descendants first, then self.</summary>
-    private static void DetachSubtree(UIElement element)
+    private static void DetachSubtree(UIElement element) => DetachSubtree(element, element);
+
+    /// <param name="element">The element being detached at this step of the walk.</param>
+    /// <param name="detachingRoot">
+    /// The subtree root the walk started from — threaded to the input services so focus repair
+    /// skips every doomed element (matrix ND30: the bottom-up walk leaves ancestors momentarily
+    /// attached-looking; they must never become repair targets).
+    /// </param>
+    private static void DetachSubtree(UIElement element, UIElement detachingRoot)
     {
         if (element._visualChildren is { } children)
         {
             for (var i = 0; i < children.Count; i++)
-                DetachSubtree(children[i]);
+                DetachSubtree(children[i], detachingRoot);
         }
 
         // Release render state before the detach notification (doc §5.1 ordering): boundary scene
@@ -379,6 +385,11 @@ public abstract partial class UIElement : UIObject
         element._visualRoot = null;
         element.Depth = 0;
         element.UpdateEffectiveEnabled();
+
+        // S3 detach fan-in (doc §7.10): capture force-release, focus hygiene (hover/pressed
+        // truncation join at their stages). After the detach notification so services observe
+        // the element already detached.
+        NotifyInputServicesDetached(element, detachingRoot);
     }
 
     // ───────────────────────────── permanent detach (teardown sweep) ─────────────────────────────
@@ -450,6 +461,7 @@ public abstract partial class UIElement : UIObject
     {
         VerifyAccess();
         UpdateEffectiveEnabled();
+        RepairFocusAfterStateInvalidation(); // ND28: a command-disabled control must not retain key focus
     }
 
     /// <summary>Called when <see cref="IsEffectivelyEnabled"/> changes — the S3 interaction-state seam (P2).</summary>
@@ -465,6 +477,7 @@ public abstract partial class UIElement : UIObject
             return;
 
         _effectivelyEnabled = value;
+        SetInteractionStateInternal(InteractionState.Disabled, !value); // the :disabled producer (doc §13.2; N146)
         OnIsEffectivelyEnabledChanged(value);
 
         if (_visualChildren is { } children)

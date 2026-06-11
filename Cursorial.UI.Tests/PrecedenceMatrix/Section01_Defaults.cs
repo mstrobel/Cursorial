@@ -1,6 +1,8 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §1 — defaults, registration, metadata (M1–M14).</summary>

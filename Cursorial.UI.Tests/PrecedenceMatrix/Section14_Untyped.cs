@@ -1,6 +1,9 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable RedundantCast
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §14 — the untyped lane (M221–M229).</summary>
@@ -37,6 +40,7 @@ public class Section14_Untyped
 
     private enum SampleEnum
     {
+        // ReSharper disable once UnusedMember.Local
         None = 0,
         Red = 1,
     }

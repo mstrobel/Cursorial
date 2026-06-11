@@ -1,6 +1,9 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable RedundantCast
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §7 — free-standing binding entries (M136–M152): A6/A7/A8/A9.</summary>

@@ -5,6 +5,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 
+// ReSharper disable CheckNamespace
+
 // Phase-6b.2 showcase: an image clipped at a scene boundary. Two composited layers — an unclipped label layer
 // (title + a line marking the clip edge) and an image layer clipped to the left of that edge. The image is
 // positioned to straddle the edge, so its right half is past the clip. Sixel re-crops the pixels at the edge
@@ -17,7 +19,7 @@ internal sealed class ImageClipDemo : InteractiveDemo
     public override string Description =>
         "An image clipped at a scene boundary — Sixel + Kitty crop; iTerm2 suppresses (Phase 6b.2).";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Image-clip demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private IContent _image = null!;
@@ -47,11 +49,11 @@ internal sealed class ImageClipDemo : InteractiveDemo
         // Only meaningful (and only safe to clamp — min ≤ max needs Columns ≥ 20) when not too small.
         _clipColumns = _tooSmall ? 0 : Math.Clamp(Buffer.Columns / 2, 16, Buffer.Columns - 4);
 
-        _labels?.Dispose();
+        _labels.Dispose();
         _labels = Scene.Create(Buffer.Columns, Buffer.Rows);
         _labels.Draw(PaintLabels);
 
-        _imageScene?.Dispose();
+        _imageScene.Dispose();
         _imageScene = Scene.Create(Buffer.Columns, Buffer.Rows);
         if (!_tooSmall)
             _imageScene.Draw(ctx => ctx.DrawContent(new Rect(_clipColumns - 12, 3, 24, 12), _image, Capabilities.Output));

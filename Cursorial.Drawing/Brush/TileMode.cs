@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>How a <see cref="TileBrush"/> fills cells beyond its first tile.</summary>
@@ -16,5 +18,5 @@ public enum TileMode
     FlipY,
 
     /// <summary>Repeat, mirroring every other tile on both axes.</summary>
-    FlipXY,
+    FlipXY
 }

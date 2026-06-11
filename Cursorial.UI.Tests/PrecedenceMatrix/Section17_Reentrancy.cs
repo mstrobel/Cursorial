@@ -1,6 +1,8 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §17 — reentrancy (M252–M258; M258 needs the animation lane).</summary>
@@ -105,6 +107,8 @@ public class Section17_Reentrancy
         var sequence = new List<string>();
         Host host = null!;
         StyledProperty<int> property = null!;
+
+        // ReSharper disable AccessToModifiedClosure
         property = UIProperty.Register<Host, int>(
             UniqueName("M256"),
             changed: (_, oldValue, newValue) =>
@@ -113,8 +117,11 @@ public class Section17_Reentrancy
                 if (newValue == 2)
                     host.SetValue(property, 5);
             });
+        // ReSharper restore AccessToModifiedClosure
+                
         host = new RecordingHost();
         host.AddObserver(property, new TypedRecorder<int> { SequenceLog = sequence, Label = "obs" });
+
         ((RecordingHost)host).VirtualHook += args =>
         {
             if (ReferenceEquals(args.Property, property))

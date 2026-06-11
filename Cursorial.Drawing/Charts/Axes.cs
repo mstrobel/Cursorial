@@ -3,6 +3,8 @@ using System.Globalization;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>The inset plot rectangle an <see cref="Axes"/> leaves for the data, plus the nice-rounded

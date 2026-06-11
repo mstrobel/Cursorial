@@ -2,6 +2,8 @@ using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Terminal;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>

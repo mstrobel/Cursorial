@@ -1,5 +1,7 @@
 using Cursorial.UI;
 
+// ReSharper disable EqualExpressionComparison
+
 namespace Cursorial.Tests.UI;
 
 /// <summary>

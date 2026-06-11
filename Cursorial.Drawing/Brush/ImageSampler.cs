@@ -1,6 +1,9 @@
 using Cursorial.Output;
 using Cursorial.Rendering.Imaging;
 
+// ReSharper disable InconsistentNaming
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>

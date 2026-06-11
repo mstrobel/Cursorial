@@ -2,6 +2,8 @@ using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 // Drawing-layer scene-compositing demo. A static wallpaper (gradient + title bar) with three
 // translucent panels that slide and blend over it, demonstrating gradients, opacity, z-order,
 // clipping, and the cached-raster payoff. Animated at ~20 fps for a smooth slide; the scene graph
@@ -14,7 +16,7 @@ internal sealed class DrawingDemo : InteractiveDemo
     public override string Description =>
         "Drawing-layer scene compositing — translucent panels slide and blend over a static background.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Drawing demo (scene compositing). Translucent panels slide and blend over a static background — press q or Ctrl+C to exit.";
 
     protected override TimeSpan FrameInterval => TimeSpan.FromMilliseconds(20); // ~20 fps for a smooth slide
@@ -43,7 +45,7 @@ internal sealed class DrawingDemo : InteractiveDemo
     private double CellAspect()
     {
         var win = Capabilities.Output.Window;
-        return win.CellPixelWidth is { } w && win.CellPixelHeight is { } h && h > 0 ? w / (double) h : 0.5;
+        return win is { CellPixelWidth: {} w, CellPixelHeight: {} h and > 0 } ? w / (double) h : 0.5;
     }
 
     protected override void RenderFrame(long frame) => _scene.Composite(Buffer, frame);
@@ -52,7 +54,6 @@ internal sealed class DrawingDemo : InteractiveDemo
     {
         private readonly int _cols;
         private readonly int _rows;
-        private readonly double _cellAspect;
         private readonly SceneCompositor _compositor;
         private readonly Scene _wallpaper;
         private readonly Panel[] _panels;
@@ -66,12 +67,11 @@ internal sealed class DrawingDemo : InteractiveDemo
         {
             _cols = Math.Max(1, columns);
             _rows = Math.Max(1, rows);
-            _cellAspect = cellAspect;
 
             // Dark base; the compositor resets each dirty region to it before compositing the z-stack.
             _compositor = new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(16, 18, 24)));
 
-            _wallpaper = BuildWallpaper(_cols, _rows, _cellAspect);
+            _wallpaper = BuildWallpaper(_cols, _rows, cellAspect);
 
             int w = Math.Min(Math.Clamp(_cols / 4, 6, 22), _cols);
             int h = Math.Min(Math.Clamp(_rows / 3, 3, 8), Math.Max(1, _rows - 1));
@@ -88,12 +88,14 @@ internal sealed class DrawingDemo : InteractiveDemo
                                  ? new Rect(clipCol, 1, _cols - clipCol, _rows - 1)
                                  : null;
 
+            // @formatter:off
             _panels =
             [
                 new Panel(red,   w, h, 0.9, 0.0, 0.0,             0.0, midRow,                       Clip: null),
                 new Panel(green, w, h, 0.9, 0.0, Math.PI,         0.0, midRow,                       Clip: null),
                 new Panel(blue,  w, h, 0.6, 0.7, Math.PI / 2.0,   0.5, Math.Max(1, midRow - h / 2),  Clip: blueClip),
             ];
+            // @formatter:on
 
             _layers = new SceneLayer[1 + _panels.Length];
         }

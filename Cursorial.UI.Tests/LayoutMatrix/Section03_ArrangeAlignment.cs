@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// Layout matrix §3 — core Arrange &amp; alignment (L38–L60). Alignment rows: <c>Probe(4×2)</c> in
 /// <c>slot((0,0,10×6))</c> unless noted; <c>V = Top</c> for horizontal rows, <c>H = Left</c> for

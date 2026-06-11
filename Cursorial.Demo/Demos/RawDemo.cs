@@ -3,6 +3,8 @@ using System.Text;
 
 using Cursorial.Terminal.Stdio;
 
+// ReSharper disable CheckNamespace
+
 // One-shot raw byte dump. Opens platform stdio transports directly (no negotiation, no parsing) and
 // echoes every byte read from stdin as a hex/char line until Ctrl+C. Implements IDemo directly
 // (no render loop, so no InteractiveDemo harness). Migrated verbatim from Program.DumpRawAsync.

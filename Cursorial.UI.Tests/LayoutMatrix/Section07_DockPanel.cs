@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// Layout matrix §7 — DockPanel (L107–L118). Panel arranged 20×10 via <c>Root</c>;
 /// <c>LastChildFill</c> default true; child sizes are desired sizes (<c>Probe</c>).

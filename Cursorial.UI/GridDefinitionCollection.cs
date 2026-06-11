@@ -16,7 +16,7 @@ public abstract class GridDefinitionCollection<T> : IList<T>, IReadOnlyList<T>
 
     private protected GridDefinitionCollection(Grid owner) => _owner = owner;
 
-    /// <inheritdoc/>
+    /// <inheritdoc cref="IReadOnlyList{T}.Count" />
     public int Count => _items.Count;
 
     /// <inheritdoc/>

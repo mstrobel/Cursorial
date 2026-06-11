@@ -4,6 +4,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>Which way a <see cref="BarChart"/>'s bars grow.</summary>
@@ -30,7 +32,7 @@ public sealed class BarChart : IChart
     private readonly double[] _values;
 
     /// <summary>Create a bar chart over <paramref name="values"/> painted with <paramref name="brush"/>.</summary>
-    public BarChart(ReadOnlySpan<double> values, IBrush brush)
+    public BarChart(ReadOnlySpan<double> values, IBrush? brush = null)
     {
         _values = values.ToArray();
         Brush = brush ?? Brushes.Default;
@@ -165,6 +167,7 @@ public sealed class BarChart : IChart
             int laneStart = b * (barThickness + gap);
             if (laneStart >= area.Columns) break;
 
+            // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
             string text = TruncateToWidth(Categories[b] ?? "", barThickness);                  // truncate to the lane
             int offset = Math.Max(0, (barThickness - GraphemeWidth.StringWidth(text)) / 2);     // center within the lane
             int col = area.Column + laneStart + offset;

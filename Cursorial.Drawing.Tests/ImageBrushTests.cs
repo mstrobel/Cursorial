@@ -10,12 +10,13 @@ namespace Cursorial.Tests.Drawing;
 // and turn letterbox-transparent into the base color before read-back.
 public class ImageBrushTests
 {
+    // ReSharper disable once InconsistentNaming
     // 2×2: TL red, TR green, BL blue, BR white (all opaque).
     private static DecodedImage Img2x2() => new(2, 2,
-    [
-        255, 0, 0, 255,   0, 255, 0, 255,
-        0, 0, 255, 255,   255, 255, 255, 255,
-    ]);
+                                                [
+                                                    255, 0, 0, 255,   0, 255, 0, 255,
+                                                    0, 0, 255, 255,   255, 255, 255, 255,
+                                                ]);
 
     private static readonly Color Red = Color.FromRgb(255, 0, 0);
     private static readonly Color Green = Color.FromRgb(0, 255, 0);
@@ -57,7 +58,7 @@ public class ImageBrushTests
     [Fact]
     public void Uniform_Letterboxes_OutsideTransparent()
     {
-        // Square image into a 4×2 box: pillarboxed to the centre 2 columns; the outer columns sample nothing.
+        // Square image into a 4×2 box: pillarboxed to the center 2 columns; the outer columns sample nothing.
         var brush = new ImageBrush(Img2x2(), Stretch.Uniform, BrushInterpolation.NearestNeighbor);
         var bounds = new Rect(0, 0, 4, 2);
         Assert.Equal(Colors.Transparent, brush.ColorAt(0, 0, bounds));   // left pillarbox
@@ -86,6 +87,7 @@ public class ImageBrushTests
     public void InvalidImage_Throws()
     {
         Assert.Throws<ArgumentException>(() => new ImageBrush(default));                       // Rgba null
+        // ReSharper disable once UseUtf8StringLiteral
         Assert.Throws<ArgumentException>(() => new ImageBrush(new DecodedImage(2, 2, [0, 0]))); // wrong length
     }
 
@@ -116,6 +118,7 @@ public class ImageBrushTests
 
 public class TileBrushTests
 {
+    // ReSharper disable once InconsistentNaming
     private static DecodedImage Img2x2() => new(2, 2,
     [
         255, 0, 0, 255,   0, 255, 0, 255,

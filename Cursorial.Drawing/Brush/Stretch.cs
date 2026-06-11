@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>How an <see cref="ImageBrush"/> fits its source image into the paint bounds.</summary>

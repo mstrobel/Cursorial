@@ -1,12 +1,17 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Rendering;
 using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// Layout matrix §6 — StackPanel (L95–L106). Vertical orientation (the default) unless noted;
 /// panel arranged 20×10 via <c>Root</c>.
 /// </summary>
+[SuppressMessage("ReSharper", "UnusedTupleComponentInReturnValue")]
 public class Section06_StackPanel
 {
     private const int U = LayoutMath.Unbounded;

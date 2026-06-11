@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>Layout matrix §8 — Canvas (L119–L129). Canvas arranged 20×10 via <c>Root</c>.</summary>
 public class Section08_Canvas
 {

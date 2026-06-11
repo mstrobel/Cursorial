@@ -7,6 +7,8 @@ using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 
+// ReSharper disable CheckNamespace
+
 // The interactive reference demo. Cursorial.Rendering showcase — colors, wide glyphs, attributes,
 // an alpha-blended overlay, sized title, PNG icons, and a clock ticking in the corner. Animated at
 // ~3 fps so the clock visibly advances and the diff renderer's per-cell deltas are observable.
@@ -17,7 +19,7 @@ internal sealed class RenderDemo : InteractiveDemo
     public override string Description =>
         "Cursorial.Rendering showcase — colors, wide glyphs, attributes, alpha overlay, clock.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Render demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     protected override TimeSpan FrameInterval => TimeSpan.FromMilliseconds(333); // ~3 fps

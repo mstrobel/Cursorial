@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 // A single demo command. Each demo declares its primary verb, optional aliases, a one-line
 // description for 'help', and a RunAsync entry point that receives the rest of the command line.
 internal interface IDemo

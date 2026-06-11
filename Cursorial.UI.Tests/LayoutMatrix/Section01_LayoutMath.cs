@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>Layout matrix §1 — <c>LayoutMath</c> &amp; integer saturation (L1–L12).</summary>
 public class Section01_LayoutMath
 {

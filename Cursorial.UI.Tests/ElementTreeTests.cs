@@ -2,6 +2,8 @@ using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 
+// ReSharper disable CollectionNeverQueried.Local
+
 namespace Cursorial.Tests.UI;
 
 /// <summary>A <see cref="Host"/> recording lifecycle walks, with enabled-core and templated-parent knobs.</summary>
@@ -263,7 +265,7 @@ public class ElementTreeTests
 
         panel.Children.Move(0, 1); // reorder without detach
         Assert.Same(panel, a.VisualParent);
-        Assert.Equal(new[] { b, a }, panel.Children.ToArray());
+        Assert.Equal([b, a], panel.Children.ToArray());
         manager.Layout(20, 10);
         Assert.Equal(0, b.Bounds.Row);
         Assert.Equal(1, a.Bounds.Row);

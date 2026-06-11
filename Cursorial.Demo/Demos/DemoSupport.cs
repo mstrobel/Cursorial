@@ -6,6 +6,9 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 
+// ReSharper disable RedundantAssignment
+// ReSharper disable CheckNamespace
+
 // Shared helpers for the demos. Moved out of Program.cs so both the still-static demos there and
 // the migrated IDemo classes can call them. Pure utility — no per-demo state.
 internal static class DemoSupport

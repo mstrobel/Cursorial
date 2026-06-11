@@ -1,6 +1,8 @@
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>Matrix §18 — read surfaces: <c>GetValue(maxPriority)</c>, <c>GetBaseValue</c>, <c>GetValueSource</c>, diagnostics (M259–M264).</summary>

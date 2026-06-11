@@ -88,20 +88,32 @@ public class ScrollCaretIntegrationTests
         var (_, tree, _, presenter, _) = CreateScrolledTree(contentRows: 100);
         tree.Render();
 
-        for (var i = 0; i < 64; i++)
+        // ND25 hardening: warm the EXACT measured delegate, and retry once on a nonzero delta —
+        // under full-suite parallel load, asynchronous tier-up can land mid-measurement and charge
+        // one-time compilation-support allocations to this thread (observed flake at the P2 review).
+        void Frames(int count)
         {
-            presenter.ScrollOffsetRow = 1 + (i & 1); // alternate within the band
-            tree.RunRenderPass();
+            for (var i = 0; i < count; i++)
+            {
+                presenter.ScrollOffsetRow = 1 + (i & 1); // alternate within the band
+                tree.RunRenderPass(); // composite-parameter refresh only — the per-frame scroll path
+            }
         }
+
+        Frames(64);
 
         var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1_000; i++)
+        Frames(1_000);
+        var delta = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        if (delta != 0)
         {
-            presenter.ScrollOffsetRow = 1 + (i & 1);
-            tree.RunRenderPass(); // composite-parameter refresh only — the per-frame scroll path
+            before = GC.GetAllocatedBytesForCurrentThread();
+            Frames(1_000);
+            delta = GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, delta);
     }
 
     // ───────────────────────────── band-edge behavior for uncovered draws ─────────────────────────────
@@ -117,8 +129,8 @@ public class ScrollCaretIntegrationTests
         // straddles the band's top edge (rows −2…0 in scene coordinates) and is dropped — the doc
         // §5.7 pinned mechanism, with K sizing the edge outside the viewport clip; the second lands
         // at scene rows 25–27 and paints.
-        probes[13].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Cursorial.Output.Color.FromRgb(9, 9, 9));
-        probes[40].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Cursorial.Output.Color.FromRgb(9, 9, 9));
+        probes[13].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Color.FromRgb(9, 9, 9));
+        probes[40].OnRender = (_, context) => context.DrawBox(new Rect(0, 0, 6, 3), Color.FromRgb(9, 9, 9));
 
         var diagnostics = LayoutFixture.CaptureDiagnostics(manager, () =>
         {
@@ -309,12 +321,12 @@ public class ScrollCaretIntegrationTests
         var presenter = new ScrollContentPresenter { CanScrollHorizontally = true };
         var content = new Probe(50, 5)
         {
-            OnRender = static (probe, context) =>
+            OnRender = static (_, context) =>
             {
                 for (var row = 0; row < context.Size.Rows; row++)
                 for (var column = 0; column < context.Size.Columns; column++)
                     context.Set(column, row, (column % 10).ToString(), default);
-            },
+            }
         };
         presenter.Content = content;
         root.Add(presenter);

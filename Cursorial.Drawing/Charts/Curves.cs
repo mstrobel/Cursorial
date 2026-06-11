@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>
@@ -64,8 +66,10 @@ internal static class Curves
         return Lerp(b1, b2, t1, t2, t);
 
         static double Knot(PointD a, PointD b, double e) => Math.Pow(Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y)), e);
+
         static PointD Lerp(PointD a, PointD b, double ta, double tb, double at)
         {
+            // ReSharper disable once CompareOfFloatsByEqualityOperator
             if (tb == ta) return a;
             double wa = (tb - at) / (tb - ta), wb = (at - ta) / (tb - ta);
             return new PointD(a.X * wa + b.X * wb, a.Y * wa + b.Y * wb);

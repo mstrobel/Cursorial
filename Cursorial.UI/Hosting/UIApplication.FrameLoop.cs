@@ -7,6 +7,9 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 
+// ReSharper disable EmptyGeneralCatchClause
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 public sealed partial class UIApplication
@@ -59,17 +62,21 @@ public sealed partial class UIApplication
             try
             {
                 // The one-shot ownership hand-off (design doc §10.3): pin the dedicated thread,
-                // install the thread-local Current and the frame-coherent sync context.
+                // install the thread-local Current, the ambient scheduler, and the frame-coherent
+                // sync context.
                 Dispatcher.TransferOwnershipToCurrentThread();
                 _current = this;
+                AnimationScheduler.Install(_animationScheduler);
                 SynchronizationContext.SetSynchronizationContext(_syncContext);
 
                 ComposeSystems();
 
-                // Capability fan-out (design doc §10.5 preamble) — the P1 subset; styling (P3),
-                // access keys (P2), and the S7 application leg join as their phases land.
+                // Capability fan-out (design doc §10.5 preamble), explicit and ordered — styling
+                // (P3) and the S7 application leg join as their phases land. The access-key call
+                // receives the NEGOTIATED snapshot (ND23 — never the decorated pipeline view).
                 StyleHooks?.OnCapabilitiesChanged(_capabilities);
                 InputDispatchTarget?.OnCapabilitiesChanged(_capabilities);
+                _accessKeys.OnCapabilitiesChanged(_capabilities);
 
                 // Resolve the main content ON the UI thread (the factory overload's contract).
                 if ((rootFactory is not null ? rootFactory() : prebuiltRoot) is { } root)
@@ -444,6 +451,21 @@ public sealed partial class UIApplication
                 if (_guard.ConsumeHandledFlag())
                     changed = true; // handled draw exception ⇒ conservative emit (design doc §10.8)
 
+                // Hover re-evaluation once per rendered frame, after layout AND composite
+                // parameters are final (doc §10.5 / matrix ND21): hover stays correct under
+                // layout moves, composite slides, and scrolls without pointer motion, and
+                // detach-deferred hover work executes here. Flips it queues (restyles at P3)
+                // are caught by the Phase-7 guard and render frame N+1 (doc §7.10).
+                try
+                {
+                    InputDispatchTarget?.UpdateHover();
+                }
+                catch (Exception ex)
+                {
+                    if (!RaiseUnhandled(ex))
+                        return default;
+                }
+
                 if (changed || resized)
                 {
                     _scratch.ResetWrittenCount(); // pooled ArrayBufferWriter<byte>, reset per frame
@@ -451,8 +473,6 @@ public sealed partial class UIApplication
                     rendered = true;
                 }
             }
-            // (P2 seam: inputDispatcher.UpdateHover() once per rendered frame, after layout AND
-            // composite parameters are final.)
 
             if (!_controlSequences.IsEmpty)
             {
@@ -560,9 +580,12 @@ public sealed partial class UIApplication
             _supportsAltKeyTracking = ComputeAltKeyTracking(fresh.Input);
             _renderSystem?.OnCapabilitiesChanged(fresh.Output);
 
-            // The capability fan-out, in order (P1 subset; the S7 application leg joins at P5).
+            // The capability fan-out, in order (the S7 application leg joins at P5). The
+            // access-key leg re-evaluates the gate AND unconditionally clears Alt/sticky-cue state
+            // (renegotiation parks the pump; an Alt Up can vanish — doc §7.8).
             StyleHooks?.OnCapabilitiesChanged(fresh);
             InputDispatchTarget?.OnCapabilitiesChanged(fresh);
+            _accessKeys.OnCapabilitiesChanged(fresh);
             CapabilitiesChanged?.Invoke(this, new CapabilitiesChangedEventArgs
             {
                 OldCapabilities = oldCapabilities,
@@ -666,9 +689,10 @@ public sealed partial class UIApplication
             }
         }
 
-        // 11. Only now is Console.WriteLine safe. Clear the thread-local Current on this thread.
+        // 11. Only now is Console.WriteLine safe. Clear the thread-local Current + scheduler on this thread.
         if (ReferenceEquals(_current, this))
             _current = null;
+        AnimationScheduler.Uninstall(_animationScheduler);
     }
 
     /// <summary>
@@ -697,6 +721,7 @@ public sealed partial class UIApplication
 
         if (ReferenceEquals(_current, this))
             _current = null;
+        AnimationScheduler.Uninstall(_animationScheduler);
     }
 
     // ───────────────────────────── headless stepping (UITestHost) ─────────────────────────────
@@ -721,9 +746,10 @@ public sealed partial class UIApplication
         InitializeFromHost(size);
         ComposeSystems();
 
-        // Fan-out parity with the production preamble (P1 subset).
+        // Fan-out parity with the production preamble.
         StyleHooks?.OnCapabilitiesChanged(_capabilities);
         InputDispatchTarget?.OnCapabilitiesChanged(_capabilities);
+        _accessKeys.OnCapabilitiesChanged(_capabilities);
     }
 
     /// <summary>

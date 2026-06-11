@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// Layout matrix §9 — Grid (L130–L159). Star algorithm per the pinned integer Hamilton policy
 /// (floors, leftover to largest fractional parts, ties to lowest index; clamp re-runs to fixpoint).

@@ -1,6 +1,8 @@
 using Cursorial.Animation;
 using Cursorial.Output;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>
@@ -30,38 +32,38 @@ public sealed class BrushInterpolator : IInterpolator<IBrush>
         ArgumentNullException.ThrowIfNull(to);
 
         return (from, to) switch
-        {
-            (SolidColorBrush a, SolidColorBrush b) =>
-                new SolidColorBrush(Color.Lerp(a.Color, b.Color, progress)),
+               {
+                   (SolidColorBrush a, SolidColorBrush b) =>
+                       new SolidColorBrush(Color.Lerp(a.Color, b.Color, progress)),
 
-            (LinearGradientBrush a, LinearGradientBrush b) when a.Stops.Count == b.Stops.Count =>
-                new LinearGradientBrush(
-                    LerpStops(a.Stops, b.Stops, progress),
-                    LerpPoint(a.StartPoint, b.StartPoint, progress),
-                    LerpPoint(a.EndPoint, b.EndPoint, progress),
-                    progress < 0.5 ? a.Spread : b.Spread,
-                    Lerp(a.Opacity, b.Opacity, progress)),
+                   (LinearGradientBrush a, LinearGradientBrush b) when a.Stops.Count == b.Stops.Count =>
+                       new LinearGradientBrush(
+                           LerpStops(a.Stops, b.Stops, progress),
+                           LerpPoint(a.StartPoint, b.StartPoint, progress),
+                           LerpPoint(a.EndPoint, b.EndPoint, progress),
+                           progress < 0.5 ? a.Spread : b.Spread,
+                           Lerp(a.Opacity, b.Opacity, progress)),
 
-            (RadialGradientBrush a, RadialGradientBrush b) when a.Stops.Count == b.Stops.Count =>
-                new RadialGradientBrush(
-                    LerpStops(a.Stops, b.Stops, progress),
-                    LerpPoint(a.Center, b.Center, progress),
-                    Lerp(a.RadiusX, b.RadiusX, progress),
-                    Lerp(a.RadiusY, b.RadiusY, progress),
-                    LerpPoint(a.GradientOrigin, b.GradientOrigin, progress),
-                    progress < 0.5 ? a.Spread : b.Spread,
-                    Lerp(a.Opacity, b.Opacity, progress)),
+                   (RadialGradientBrush a, RadialGradientBrush b) when a.Stops.Count == b.Stops.Count =>
+                       new RadialGradientBrush(
+                           LerpStops(a.Stops, b.Stops, progress),
+                           LerpPoint(a.Center, b.Center, progress),
+                           Lerp(a.RadiusX, b.RadiusX, progress),
+                           Lerp(a.RadiusY, b.RadiusY, progress),
+                           LerpPoint(a.GradientOrigin, b.GradientOrigin, progress),
+                           progress < 0.5 ? a.Spread : b.Spread,
+                           Lerp(a.Opacity, b.Opacity, progress)),
 
-            (ConicGradientBrush a, ConicGradientBrush b) when a.Stops.Count == b.Stops.Count =>
-                new ConicGradientBrush(
-                    LerpStops(a.Stops, b.Stops, progress),
-                    LerpPoint(a.Center, b.Center, progress),
-                    Lerp(a.AngleDegrees, b.AngleDegrees, progress),
-                    Lerp(a.Opacity, b.Opacity, progress)),
+                   (ConicGradientBrush a, ConicGradientBrush b) when a.Stops.Count == b.Stops.Count =>
+                       new ConicGradientBrush(
+                           LerpStops(a.Stops, b.Stops, progress),
+                           LerpPoint(a.Center, b.Center, progress),
+                           Lerp(a.AngleDegrees, b.AngleDegrees, progress),
+                           Lerp(a.Opacity, b.Opacity, progress)),
 
-            // Disparate shapes / mismatched stop counts: nothing meaningful to blend — snap to the nearer.
-            _ => progress < 0.5 ? from : to,
-        };
+                   // Disparate shapes / mismatched stop counts: nothing meaningful to blend — snap to the nearer.
+                   _ => progress < 0.5 ? from : to
+               };
     }
 
     private static GradientStop[] LerpStops(IReadOnlyList<GradientStop> a, IReadOnlyList<GradientStop> b, double t)

@@ -1,5 +1,7 @@
 using Cursorial.Output;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>A color placed at a normalized offset (0–1) along a gradient.</summary>

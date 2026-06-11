@@ -1,5 +1,7 @@
 using Cursorial.Animation;
 
+// ReSharper disable RedundantTypeArgumentsOfMethod
+
 namespace Cursorial.Tests.Animation;
 
 public class RepeatTests

@@ -8,6 +8,8 @@ using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 
+// ReSharper disable CheckNamespace
+
 // The rich-text formatter showcase. A composite RichText document (BBcode markup + builder) is laid
 // out once into an off-screen buffer sized to the full document; per frame a sliding window of its
 // cells is blitted into the visible buffer with a scroll indicator. Event-driven (not animated):
@@ -20,7 +22,7 @@ internal sealed class FormatDemo : InteractiveDemo
     public override string Description =>
         "Showcase the rich-text formatter — wrap modes, alignment, inline styles, content, scrolling.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Formatting demo. Opening alt screen — press q or Ctrl+C to exit; ↑/↓ + PgUp/PgDn + Home/End to scroll.";
 
     // Built once in Initialize and reused across resizes by re-formatting against the new column

@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>One deferred braille draw call's state, sampled at flush (mirrors <see cref="StrokeRecord"/>).</summary>

@@ -7,6 +7,8 @@ using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Text;
 
+// ReSharper disable RedundantCast
+
 namespace Cursorial.Rendering.Text;
 
 /// <summary>
@@ -145,7 +147,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// run rect equals the block and the tag is null.
     /// </summary>
     private static Style ResolveStyle(BrushedTextResolver? resolver, in Style baseStyle, int column, int row, in Rect block)
-        => resolver is null ? baseStyle : resolver(new BrushedTextContext(baseStyle, column, row, block, logicalColumn: 0, scopeWidth: 0, tag: null));
+        => resolver?.Invoke(new BrushedTextContext(baseStyle, column, row, block, logicalColumn: 0, scopeWidth: 0, tag: null)) ?? baseStyle;
 
     private static void PaintParagraph(
         FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
@@ -179,10 +181,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             var grapheme = enumerator.Current;
                             // Resolver (when present) recolors per cell. Width is grapheme-driven, so a
                             // substituted style is layout-safe.
-                            var style = resolver is null
-                                ? text.Style
-                                : resolver(new BrushedTextContext(text.Style, cursor, row + i, blockRect,
-                                                                  text.LogicalStart + (cursor - pieceStartColumn), scopeWidth, text.Tag));
+                            var style = resolver?.Invoke(
+                                            new BrushedTextContext(text.Style, cursor, row + i, blockRect,
+                                                                   text.LogicalStart + (cursor - pieceStartColumn), scopeWidth, text.Tag))
+                                        ?? text.Style;
                             int width = buffer.Set(cursor, row + i, grapheme.ToString(), style);
                             cursor += width;
                         }
@@ -361,11 +363,11 @@ public sealed record FormattedTextRun : FormattedRun
     /// </summary>
     internal InlineRunScope? Scope { get; init; }
 
-    public void Deconstruct(out string Text, out Style Style, out string? Hyperlink)
+    public void Deconstruct(out string text, out Style style, out string? hyperlink)
     {
-        Text = this.Text;
-        Style = this.Style;
-        Hyperlink = this.Hyperlink;
+        text = Text;
+        style = Style;
+        hyperlink = Hyperlink;
     }
 }
 

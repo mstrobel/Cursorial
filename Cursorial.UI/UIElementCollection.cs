@@ -22,7 +22,7 @@ public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElem
         _owner = owner;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc cref="IReadOnlyCollection{T}.Count"/>
     public int Count => _items.Count;
 
     /// <inheritdoc/>

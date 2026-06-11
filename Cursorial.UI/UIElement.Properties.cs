@@ -222,12 +222,14 @@ public abstract partial class UIElement
         {
             // Custom routing (LD5): no PropertyEffects flags are registered for Visibility.
             RouteVisibilityChange(args.GetOldValue<Visibility>(), args.GetNewValue<Visibility>());
+            RepairFocusAfterStateInvalidation(); // ND28: hiding the focused element (or an ancestor) repairs focus
             return;
         }
 
         if (ReferenceEquals(args.Property, IsEnabledProperty))
         {
             UpdateEffectiveEnabled();
+            RepairFocusAfterStateInvalidation(); // ND28: after the cascade settles — never mid-walk
             return;
         }
 

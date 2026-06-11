@@ -2,6 +2,8 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -41,7 +43,12 @@ public interface IInputDispatchTarget
     /// </summary>
     InputDispatchResult Dispatch(InputEvent inputEvent);
 
-    /// <summary>Phase 6, once per rendered frame, after layout and composite parameters are final.</summary>
+    /// <summary>
+    /// Phase 6, once per rendered frame, after layout and composite parameters are final. Also the
+    /// deferred hover-refresh path after surface/topology changes (ND5/N207): S4's
+    /// <c>OnSurfacesChanged</c> re-validates capture synchronously but leaves hover to this
+    /// per-frame re-diff.
+    /// </summary>
     void UpdateHover();
 
     /// <summary>The capability fan-out leg (startup and renegotiation).</summary>

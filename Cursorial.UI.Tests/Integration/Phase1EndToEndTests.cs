@@ -3,6 +3,8 @@
 // these tests block on purpose (the blocked work is thread-pool-side and cannot deadlock).
 #pragma warning disable xUnit1031
 
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
@@ -19,6 +21,7 @@ namespace Cursorial.Tests.UI.Integration;
 /// AffectsComposite re-emit-without-re-raster invariant (invariant 3), banded scrolling across a
 /// re-anchor edge, mid-run resize, and the caret transform leg.
 /// </summary>
+[SuppressMessage("ReSharper", "UnusedTupleComponentInReturnValue")]
 public sealed class Phase1EndToEndTests
 {
     private static readonly Color Blue = Color.FromRgb(10, 20, 90);
@@ -50,18 +53,18 @@ public sealed class Phase1EndToEndTests
         var dock = new DockPanel { Background = new SolidColorBrush(Blue) };
         var top = new Probe(20, 2)
         {
-            OnRender = static (probe, context) =>
+            OnRender = static (_, context) =>
             {
                 var style = Style.Default.WithForeground(HeaderFg).WithBackground(HeaderBg);
                 for (var row = 0; row < context.Size.Rows; row++)
                 for (var column = 0; column < context.Size.Columns; column++)
                     context.Set(column, row, "T", style);
-            },
+            }
         };
         DockPanel.SetDock(top, Dock.Top);
         var bottom = new Probe(20, 1) { FillGlyph = "B" };
         DockPanel.SetDock(bottom, Dock.Bottom);
-        var fill = new Probe(0, 0) { FillGlyph = "F", Margin = new Cursorial.Rendering.Margins(1) };
+        var fill = new Probe(0, 0) { FillGlyph = "F", Margin = new Rendering.Margins(1) };
         dock.Children.Add(top);
         dock.Children.Add(bottom);
         dock.Children.Add(fill); // LastChildFill — takes the remaining rows 2–22
@@ -88,7 +91,7 @@ public sealed class Phase1EndToEndTests
         {
             Height = 2,
             Opacity = 0.5,
-            Background = new SolidColorBrush(Red),
+            Background = new SolidColorBrush(Red)
         };
         stack.Children.Add(opacityGroup);
 
@@ -97,7 +100,7 @@ public sealed class Phase1EndToEndTests
         {
             FillGlyph = "S",
             HorizontalAlignment = HorizontalAlignment.Left,
-            RenderOffsetColumn = 3,
+            RenderOffsetColumn = 3
         };
         stack.Children.Add(slide);
 
@@ -190,7 +193,7 @@ public sealed class Phase1EndToEndTests
             FillGlyph = "Z",
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            RenderOffsetColumn = 1, // a boundary from the first frame (predicate ③)
+            RenderOffsetColumn = 1 // a boundary from the first frame (predicate ③)
         };
         root.Add(probe);
         host.ShowRoot(root);
@@ -236,8 +239,8 @@ public sealed class Phase1EndToEndTests
         // bandStart = clamp(11 − 10, 0, 40 − 30) = 1.
         using var host = UITestHost.Create(new UITestHostOptions
         {
-            InitialSize = new Cursorial.Rendering.Size(20, 10),
-            CaptureFrameBytes = true,
+            InitialSize = new Rendering.Size(20, 10),
+            CaptureFrameBytes = true
         });
         var root = new Host();
         var presenter = new ScrollContentPresenter();
@@ -343,7 +346,7 @@ public sealed class Phase1EndToEndTests
     [Fact]
     public void Caret_PublishedInScrolledContent_BufferCursorLandsAtTheTransformedPosition()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 10) });
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Rendering.Size(20, 10) });
         var root = new Host();
         var presenter = new ScrollContentPresenter();
         var stack = new StackPanel();
@@ -390,7 +393,7 @@ public sealed class Phase1EndToEndTests
 
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static void AssertBackgroundCell(Cursorial.Rendering.Cell cell, Color background)
+    private static void AssertBackgroundCell(Rendering.Cell cell, Color background)
     {
         Assert.True(string.IsNullOrEmpty(cell.Grapheme) || cell.Grapheme == " ",
                     $"Expected a surface cell, found glyph '{cell.Grapheme}'.");

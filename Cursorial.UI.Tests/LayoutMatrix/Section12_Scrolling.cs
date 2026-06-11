@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>
 /// §12 — Scrolling: banded scenes (T4): rows L201–L218. Harness per the matrix: <c>SCP</c> under
 /// <c>Root</c>; <c>CanScrollVertically</c> default true, <c>CanScrollHorizontally</c> default
@@ -183,7 +185,7 @@ public class Section12_Scrolling
         // construction (LD11; LD13: never extent-sized).
         var scene = tree.GetScene(presenter);
         Assert.NotNull(scene);
-        Assert.Equal(30, scene!.Rows);
+        Assert.Equal(30, scene.Rows);
         Assert.Equal(20, scene.Columns);
         Assert.Equal(0, presenter.BandStartRow); // clamp(0 − 10, 0, 100 − 30) = 0
     }
@@ -193,6 +195,8 @@ public class Section12_Scrolling
     {
         var (_, tree, root, presenter, probes) = CreateScrolledTree(contentRows: 100);
         tree.Render(); // anchor 0, K = 10
+
+        // ReSharper disable once UnusedVariable
         var baseline = TotalRenderCalls(root, probes);
 
         presenter.ScrollOffsetRow = 11; // |11 − 0| > K — trips the re-anchor

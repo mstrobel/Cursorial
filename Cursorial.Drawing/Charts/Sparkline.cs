@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>
@@ -14,7 +16,7 @@ public sealed class Sparkline
     private readonly double[] _values;
 
     /// <summary>Create a sparkline over <paramref name="values"/> painted with <paramref name="brush"/>.</summary>
-    public Sparkline(ReadOnlySpan<double> values, IBrush brush)
+    public Sparkline(ReadOnlySpan<double> values, IBrush? brush = null)
     {
         _values = values.ToArray();
         Brush = brush ?? Brushes.Default;

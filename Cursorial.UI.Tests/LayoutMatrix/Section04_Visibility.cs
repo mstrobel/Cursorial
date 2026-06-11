@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>Layout matrix §4 — Visibility (L61–L70).</summary>
 public class Section04_Visibility
 {

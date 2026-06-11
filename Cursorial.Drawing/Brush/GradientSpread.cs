@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>How a gradient behaves outside its [0, 1] parameter range.</summary>

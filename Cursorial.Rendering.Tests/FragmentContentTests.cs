@@ -54,7 +54,7 @@ public class FragmentContentTests
             return availableSpace;
         }
 
-        protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        protected override IBufferFragment CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
         {
             CreateCount++;
             return new StubFragment(bounds.Size);

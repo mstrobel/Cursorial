@@ -82,8 +82,9 @@ results are recorded under the doc's §14 phase table.
   `UIDispatcher` + `UISynchronizationContext` (Build-thread → UI-thread one-shot ownership hand-off; `UIObject`
   affinity now captures `UIApplication.Current?.Dispatcher` per ledger A25, falling back to the constructing thread
   id), `UIApplication` + builder (owns the screen `CellBuffer` + `FrameRenderer`; the doc §10.5 7-phase frame loop
-  with the normative wake protocol; styling/animation/input-routing/windowing phases are null seam fields —
-  `IStyleFrameHooks`/`IAnimationFrameDriver`/`IInputDispatchTarget` declared, implementations land at P3/P8/P2),
+  with the normative wake protocol; styling/animation/windowing phases are null seam fields —
+  `IStyleFrameHooks`/`IAnimationFrameDriver` declared, implementations land at P3/P8; the `IInputDispatchTarget`
+  seam is implemented by S3's `InputDispatcher` since P2 stage I1),
   `SingleRootLayoutSystem`/`SingleRootRenderSystem` (the P1 single-root stand-ins S4's `WindowManager` replaces at
   P7; `RootElement` is the window-content stand-in), resize pipeline (coalesced last-wins, same-frame relayout),
   device-response router, `QueueControlSequence` (the only sanctioned out-of-band byte path), the canonical teardown
@@ -98,14 +99,95 @@ results are recorded under the doc's §14 phase table.
 The doc §14 P1 exit criteria are proven end-to-end in `Cursorial.UI.Tests/Integration/Phase1EndToEndTests.cs`
 (UITestHost through the full spine: static panel-tree cell+byte assertions, the AffectsComposite
 re-emit-without-re-raster invariant via `Scene.RasterVersion`, banded scroll across a re-anchor edge, mid-run
-resize, the caret transform leg) and live in the `uipanels` demo. The demo installs its key handling via the
-internal `UIApplication.InputDispatchTarget` seam (`InternalsVisibleTo` to `Cursorial.Demo` — a P1 stopgap that
-S3's public routing replaces at P2).
+resize, the caret transform leg) and live in the `uipanels` demo (whose key handling now rides S3's public routed
+events — the P1 `InternalsVisibleTo("Cursorial.Demo")` stopgap is removed).
+
+**Phase 2 complete** (doc §14 — the S3 input/focus spine; normative test spec at
+`docs/ui-layer-design/input-matrix.md` with the ND pinned-decision ledger, one test per row in
+`Cursorial.UI.Tests/InputMatrix/Section01…Section14`). Stage I1 (routing core) landed:
+the `RoutedEvent` registry + lazy per-element handler stores (`AddHandler(handledEventsToo)`), the route walker
+(visual parents + the logical hop at surface roots) with pooled per-type args free-lists (DEBUG stale stamps,
+`RentEvent` rentals), the UI event vocabulary (`Preview*`/main Key/TextInput/Mouse pairs, Direct
+`MouseEnter`/`MouseLeave`/`LostMouseCapture`, bubbling `GotFocus`/`LostFocus`) with the `On*` virtuals as the
+class-handler stage, and `Cursorial.UI.Input.InputDispatcher` — `ProcessEvent` classification (3-state
+`InputDispatchResult`; key dispatch order with TextInput synthesis incl. the chord mask; paste → `TextInput
+{FromPaste=true}`; the `FocusEvent{false}` cluster with focus retained + `EditCommitRequested`/`TerminalFocusChanged`;
+`Kind==Click` defensive no-op; capture grant/release; `LastModality`/`LastPointerPosition`/`ButtonsHeld`), installed
+as the application's default `IInputDispatchTarget` and exposed publicly as `UIApplication.InputDispatcher`.
+Stage I2 (mouse) landed: mouse dispatch delegated to
+S1's `RenderTree.HitTest` through the internal `IWindowTopology` consumption seam (ND5 — `SingleRootWindowTopology`
+is the P2 implementation; S4 substitutes at P7), one hit test per event shared by hover + routing, ND7 disabled
+gating (hit-opaque/event-transparent), the two-phase hover diff (pooled chain + pooled `HoverChainSnapshot`s,
+`PointerOver` flips through `UIElement.SetInteractionStateInternal` — the minimal slice I3's `IInteractionStateSink`
+batching replaces — then `MouseLeave` deepest-first / `MouseEnter` outermost-first / `HoverChanged`), per-rendered-
+frame `UpdateHover()` wired into the frame loop's Phase 6 (after layout + composite finalize; hover driver forgotten
+on terminal focus-out so a stale position never re-hovers), capture-first routing with hit-honest hover and
+wheel-targets-hit under capture, detach hover truncation, and the public `InteractionState` enum +
+`UIElement.IsPointerOver`. The Move/hover path is zero-steady-state-allocation (GC-asserted, formal ND25 rows in
+`Section14`). The I3 focus stage landed: the public `FocusManager` (`UIApplication.FocusManager`) — `SetFocus` with the
+doc §7.7 transition (validation without ancestor fallback, state-before-events, diverging-chain
+`Focused`/`FocusWithin`/`FocusVisible` flips + the structurally read-only `IsFocused`/`IsKeyboardFocusWithin`
+mirrors via private `UIPropertyKey`s, re-entrant last-wins depth-capped 8), the `:focus-visible` policy
+(Tab/Directional/AccessKey/Restore always — Restore by pinned divergence — Programmatic under keyboard modality,
+never Pointer; focus repair never sets it), logical focus scopes (`IsFocusScopeProperty` + `FocusedElementProperty`
+memory on the nearest scope, eager clear on detach, `GetFocusScope` self-inclusive), window activation/restore
+(`ShowRoot` marks the root a scope and auto-focuses memory → first tab stop with `Restore` — N115), detach focus
+repair (nearest focusable ancestor → scope-root first tab stop → clear), `Focusable`/`IsTabStop`/`TabIndex`,
+`MoveFocus`/`FindNext` over the `FocusNavigator` (per-keypress recompute into one retained list, stable
+TabIndex-then-document-order sort, `Continue`/`Cycle`/`None`/`Once` incl. ND16 entry resolution, root-as-Cycle
+trap), ND17 directional navigation (`KeyboardNavigation.TabNavigation`/`DirectionalNavigation` attached
+properties; facing + 2×orthogonal-gap scoring on window-translated bounds, `Cycle` wraps farthest-opposite), and
+the dispatcher's step-6 navigation tail (Tab/Shift+Tab/chordless arrows; handled only when focus moved).
+The final I4 stage landed:
+
+- **Interaction-state seam (ND11)** — `UIElement` implements the public `IInteractionStateSink`
+  (`protected SetInteractionState` + `BeginInteractionUpdate()` returning a `using`-scoped `InteractionUpdateScope`);
+  the internal `InteractionStateService` coalesces batched flips into one `(element, old→new)` notification per
+  element per batch (first-flip order, net-zero silent, nested scopes flush at the outermost dispose, delivery
+  post-commit) to the one installable per-application `IInteractionStateObserver`
+  (`UIApplication.InteractionStateObserver` — P3's styling engine becomes the production instance). Hover phase 1 and
+  the focus-transition commit ride one batch each; `UpdateEffectiveEnabled` pushes `InteractionState.Disabled` (the
+  `:disabled` producer); `Pressed` flips fan into the dispatcher-held pressed-holder set (ND12) which terminal
+  focus-out clears window-wide (C8) and detach removes.
+- **Commands (doc §7.9)** — `KeyGesture` (ND13 `Parse` grammar incl. the `Space`→character-gesture pin; ND14
+  exact lock-free-modifier matching, `(Key, Text)` identity for printable keys — one gesture matches legacy-C0,
+  Kitty CSI-u, and ESC-prefix Alt wires), `InputBinding`/`KeyBinding`/ordered `InputBindingCollection`,
+  `UIElement.InputBindings` (lazy) swept per node during the `KeyDown` bubble after virtual + instance handlers while
+  unhandled (`CanExecute == false` skips without consuming — ND15; disabled nodes never execute); `ICommand` is the
+  BCL interface, `IsEnabledCore`/`InvalidateIsEnabledCore` is the CanExecute coupling.
+- **`AccessKeyManager` core (doc §7.8; UX at P9)** — `UIApplication.AccessKeys`: the pinned capability gate
+  `(DistinguishesKeyUpDown && ReportsRepeats) || Win32InputMode` evaluated on the **negotiated** snapshot (ND23 — its
+  own explicit fan-out call in startup/headless/renegotiate, which also unconditionally clears bracket/sticky/latch/
+  cue), the AltHeld cue machine (per-side brackets, Alt-tap sticky + `EnterMenuMode`, second-tap/Esc-consume/pointer-
+  focus/terminal-focus-out exits, stale-Alt inference with the ND26 sampled activation window, chord-flash
+  self-correction), `AccessKeyCue` stamped on scope/window roots (permanent in `AlwaysVisible`), the flat case-folded
+  registry with activation-time scope resolution (`PushScope`/`PopScope`/`OnWindowActivated`; detach backstop),
+  single-match invoke vs multi-match focus-only tab-order cycling (ND18; the manager moves focus),
+  `IAccessKeyTarget`/`AccessKeyEventArgs`, F10 ≡ Alt tap (ND19), and the `IMainMenu` registration slot.
+- **Early-S5 slice (doc §9.8)** — `AnimationScheduler` (thread-ambient `Current`/`Install`, implements
+  `IAnimationFrameDriver`, installed as the default `AnimationDriver` seam), `FrameClock` (frozen at `BeginFrame`),
+  `UITimer` (frame-aligned, ND20 coalescing with frozen-clock re-arm, state-before-callback so a thrower never
+  re-fires, idle-guard participation via `HasActiveAnimations`, `Shutdown` in teardown). S5 absorbs these unchanged
+  at P8.
+
+The P2 exit criteria (motion-storm gate, focus restore, gesture-encoding rows; modal-occlusion precursors N65/N69)
+are green; `Section14` carries the ND25 allocation contracts (0 B steady-state Move/hover/key-dispatch/UpdateHover
+paths) and the probe-4 motion-storm CI gate (`[Trait("Category","Benchmark")]`). The P2 integration pass adds
+`Cursorial.UI.Tests/Benchmarks/MotionStormBenchmark.cs` (the loaded probe-4 storm: 300 hover-reactive leaves
+writing `InteractionState.Pressed` per enter/leave with an installed observer + `HoverChanged` subscriber —
+Release numbers ~2.7 µs/Move at exactly 0 B steady-state, 0.55–0.58 ms for a 200-event frame against the 33 ms
+budget, recorded in the design doc's "Probe 4 / motion-storm results" blockquote) and
+`Cursorial.UI.Tests/Integration/Phase2EndToEndTests.cs` (end-to-end through `UITestHost`: Tab cycling +
+`Once`-scope memory + window-activation restore, hover re-target under wheel-driven scroll with no mouse motion,
+capture across an out-of-bounds drag, one `KeyBinding` fired from both Ctrl+S wire encodings, the terminal
+focus-out cluster, and the access-key gate verdicts under the `TestCapabilities` presets). The `uipanels` demo is
+the live canary for the same surface: three focusable sidebar cards (Tab/click focus, hover highlight, visuals
+from direct `IsFocused`/`IsPointerOver` reads pending P3 styling) and a Ctrl+R `KeyBinding` reset.
 
 Recorded P1 gaps: `BindingOperations.TearDown` leg of `UIElement.TearDown()` (P4); palette theming + capability
 rewrite and the S7 surface merge into `UIApplication` (P5); `TerminalSessionOptions.EmergencyRestoreBytes` Core seam
 for signal-path alt-screen restore (doc §10.7 — until it lands, a signal-killed app restores cooked mode but may
-leave the shell on the alt screen). Next: P2 — the S3 input-routing spine.
+leave the shell on the alt screen).
 
 Modules landed:
 

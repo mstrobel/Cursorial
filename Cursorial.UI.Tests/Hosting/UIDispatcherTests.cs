@@ -136,7 +136,7 @@ public sealed class UIDispatcherTests
         var resumedOn = 0;
         var done = false;
 
-        app.Dispatcher.Post(() => RunAsyncFlow());
+        app.Dispatcher.Post(RunAsyncFlow);
         host.RunFrame();  // runs the post; the async flow awaits InvokeAsync (queued)
         host.RunFrame();  // runs the InvokeAsync job; continuation posts via the sync context
         host.RunFrame();  // runs the continuation
@@ -184,7 +184,7 @@ public sealed class UIDispatcherTests
 
         // Constructed while UIApplication.Current is ambient ⇒ the element captured the
         // dispatcher (ledger A25); touching it from another thread trips the DEBUG assert.
-        var element = new Cursorial.Tests.UI.LayoutMatrix.Probe(2, 1);
+        var element = new LayoutMatrix.Probe(2, 1);
         Assert.True(element.CheckAccess());
 
         var exception = WorkerThread.Run(() => Record.Exception(() => element.VerifyAccess()));

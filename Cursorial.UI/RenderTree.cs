@@ -2,6 +2,8 @@ using Cursorial.Drawing;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 
+// ReSharper disable ForCanBeConvertedToForeach
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -129,9 +131,8 @@ public sealed class RenderTree
                 // the flip that un-defers (Visibility / bounds) raises a measure or composite
                 // invalidation, which surfaces the pending work through the other flags.
                 var zone = _layers[i];
-                if (zone.RasterDirty
-                    && zone.Boundary.Visibility == Visibility.Visible
-                    && !IsZeroArea(zone.Boundary.Bounds.Size))
+                if (zone is { RasterDirty: true, Boundary.Visibility: Visibility.Visible } &&
+                    !IsZeroArea(zone.Boundary.Bounds.Size))
                 {
                     return true;
                 }
@@ -164,10 +165,8 @@ public sealed class RenderTree
             // cached raster; rastering is deferred (the dirty bit survives) so a boundary hidden at
             // its FIRST raster doesn't cache an empty scene that a later parameters-only Visible
             // flip would expose blank.
-            if (zone.RasterDirty
-                && zone.Scene is not null
-                && zone.Boundary.Visibility == Visibility.Visible
-                && !IsZeroArea(zone.Boundary.Bounds.Size))
+            if (zone is { RasterDirty: true, Scene: not null, Boundary.Visibility: Visibility.Visible } &&
+                !IsZeroArea(zone.Boundary.Bounds.Size))
             {
                 if (UserCodeGuard is { } guard)
                 {
@@ -207,7 +206,9 @@ public sealed class RenderTree
         _root.VerifyAccess();
         ThrowIfDetached();
 
+        // ReSharper disable once CompareOfFloatsByEqualityOperator
         var folded = windowOffsetColumn != 0 || windowOffsetRow != 0 || windowOpacity != 1.0;
+
         for (var i = 0; i < _layers.Count; i++)
         {
             var zone = _layers[i];
@@ -565,9 +566,11 @@ public sealed class RenderTree
                 sceneOffsetRow += presenter.BandStartRow - presenter.ScrollOffsetRow;
             }
 
+            // ReSharper disable RedundantCheckBeforeAssignment
             var parameters = new CompositeParameters(sceneOffsetColumn, sceneOffsetRow, OpacityByte(opacityProduct), clip);
             if (parameters != zone.Parameters)
                 zone.Parameters = parameters; // publish only when different — equality is the change detector
+            // ReSharper restore RedundantCheckBeforeAssignment
         }
     }
 

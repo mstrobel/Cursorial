@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -45,8 +47,8 @@ public sealed class DispatcherUnhandledExceptionEventArgs : EventArgs
 public sealed class CapabilitiesChangedEventArgs : EventArgs
 {
     /// <summary>The snapshot before renegotiation.</summary>
-    public required Cursorial.Terminal.TerminalCapabilities OldCapabilities { get; init; }
+    public required Terminal.TerminalCapabilities OldCapabilities { get; init; }
 
     /// <summary>The snapshot after renegotiation.</summary>
-    public required Cursorial.Terminal.TerminalCapabilities NewCapabilities { get; init; }
+    public required Terminal.TerminalCapabilities NewCapabilities { get; init; }
 }

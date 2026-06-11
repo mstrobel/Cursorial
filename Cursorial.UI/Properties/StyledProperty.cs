@@ -1,5 +1,7 @@
 using System.Collections.Frozen;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>

@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 
+// ReSharper disable InconsistentNaming
+
 /// <summary>Layout matrix §2 — core Measure contract (L13–L37).</summary>
 public class Section02_Measure
 {

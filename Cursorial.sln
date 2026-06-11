@@ -42,6 +42,47 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.Animation", "Curs
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.Animation.Tests", "Cursorial.Animation.Tests\Cursorial.Animation.Tests.csproj", "{2BE70BA0-5005-456E-AE67-021224BDF595}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI", "Cursorial.UI\Cursorial.UI.csproj", "{02BBD42C-8C45-44F6-B939-78C1202E3367}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Tests", "Cursorial.UI.Tests\Cursorial.UI.Tests.csproj", "{E9439CA1-BF3E-4010-836B-C7475C86B228}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{F3E5B623-25DB-48C0-B36D-ADE4EF77DF34}"
+	ProjectSection(SolutionItems) = preProject
+		docs\ui-layer-design\judgment-property-system-engineering.md = docs\ui-layer-design\judgment-property-system-engineering.md
+		docs\ui-layer-design\spec-animation.md = docs\ui-layer-design\spec-animation.md
+		docs\ui-layer-design\punch-list.md = docs\ui-layer-design\punch-list.md
+		docs\ui-layer-design\judgment-xaml-coherence.md = docs\ui-layer-design\judgment-xaml-coherence.md
+		docs\ui-layer-design\spec-controls.md = docs\ui-layer-design\spec-controls.md
+		docs\ui-layer-design\proposal-property-system-avalonia.md = docs\ui-layer-design\proposal-property-system-avalonia.md
+		docs\ui-layer-design\judgment-styling-engineering.md = docs\ui-layer-design\judgment-styling-engineering.md
+		docs\ui-layer-design\spec-input-focus.md = docs\ui-layer-design\spec-input-focus.md
+		docs\ui-layer-design\judgment-xaml-ergonomics.md = docs\ui-layer-design\judgment-xaml-ergonomics.md
+		docs\ui-layer-design\spec-resources.md = docs\ui-layer-design\spec-resources.md
+		docs\ui-layer-design\proposal-property-system-wpf.md = docs\ui-layer-design\proposal-property-system-wpf.md
+		docs\ui-layer-design\proposal-styling-avalonia-selectors.md = docs\ui-layer-design\proposal-styling-avalonia-selectors.md
+		docs\ui-layer-design\judgment-property-system-ergonomics.md = docs\ui-layer-design\judgment-property-system-ergonomics.md
+		docs\ui-layer-design\judgment-styling-ergonomics.md = docs\ui-layer-design\judgment-styling-ergonomics.md
+		docs\ui-layer-design\proposal-styling-hybrid.md = docs\ui-layer-design\proposal-styling-hybrid.md
+		docs\ui-layer-design\proposal-styling-wpf-triggers.md = docs\ui-layer-design\proposal-styling-wpf-triggers.md
+		docs\ui-layer-design\resolutions.md = docs\ui-layer-design\resolutions.md
+		docs\ui-layer-design\proposal-xaml-reuse-xaml.md = docs\ui-layer-design\proposal-xaml-reuse-xaml.md
+		docs\ui-layer-design\judgment-property-system-coherence.md = docs\ui-layer-design\judgment-property-system-coherence.md
+		docs\ui-layer-design\judgment-xaml-engineering.md = docs\ui-layer-design\judgment-xaml-engineering.md
+		docs\ui-layer-design\spec-binding.md = docs\ui-layer-design\spec-binding.md
+		docs\ui-layer-design\judgment-styling-coherence.md = docs\ui-layer-design\judgment-styling-coherence.md
+		docs\ui-layer-design\spec-app-model.md = docs\ui-layer-design\spec-app-model.md
+		docs\ui-layer-design\proposal-xaml-source-gen.md = docs\ui-layer-design\proposal-xaml-source-gen.md
+		docs\ui-layer-design\spec-tree-layout.md = docs\ui-layer-design\spec-tree-layout.md
+		docs\ui-layer-design\proposal-xaml-runtime-loader.md = docs\ui-layer-design\proposal-xaml-runtime-loader.md
+		docs\ui-layer-design\completeness-report.md = docs\ui-layer-design\completeness-report.md
+		docs\ui-layer-design\proposal-property-system-hybrid.md = docs\ui-layer-design\proposal-property-system-hybrid.md
+		docs\ui-layer-design\spec-windowing.md = docs\ui-layer-design\spec-windowing.md
+		docs\ui-layer-design\decisions.md = docs\ui-layer-design\decisions.md
+		docs\ui-layer-design\precedence-matrix.md = docs\ui-layer-design\precedence-matrix.md
+		docs\drawing-layer-design.md = docs\drawing-layer-design.md
+		docs\ui-layer-design.md = docs\ui-layer-design.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -160,6 +201,30 @@ Global
 		{2BE70BA0-5005-456E-AE67-021224BDF595}.Release|x64.Build.0 = Release|Any CPU
 		{2BE70BA0-5005-456E-AE67-021224BDF595}.Release|x86.ActiveCfg = Release|Any CPU
 		{2BE70BA0-5005-456E-AE67-021224BDF595}.Release|x86.Build.0 = Release|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Debug|x64.Build.0 = Debug|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Debug|x86.Build.0 = Debug|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Release|Any CPU.Build.0 = Release|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Release|x64.ActiveCfg = Release|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Release|x64.Build.0 = Release|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Release|x86.ActiveCfg = Release|Any CPU
+		{02BBD42C-8C45-44F6-B939-78C1202E3367}.Release|x86.Build.0 = Release|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Debug|x64.Build.0 = Debug|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Debug|x86.Build.0 = Debug|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x64.ActiveCfg = Release|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x64.Build.0 = Release|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x86.ActiveCfg = Release|Any CPU
+		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

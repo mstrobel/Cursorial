@@ -1,0 +1,215 @@
+namespace Cursorial.UI;
+
+/// <summary>
+/// Non-generic base for the per-property store entry. Carries the lane bookkeeping the untyped read
+/// surfaces (<c>IsSet</c>, <c>GetValueSource</c>) need without knowing <c>T</c>, plus the virtuals
+/// the untyped mouths (<c>ClearValue</c>, <c>CoerceValue</c>, defer flush, teardown) dispatch
+/// through — the entry knows its typed property, so untyped operations recover the typed context
+/// virtually with no reflection.
+/// </summary>
+internal abstract class EffectiveValueBase
+{
+    /// <summary>
+    /// The lane the effective value resolved from; <see cref="BindingPriority.Unset"/> when the
+    /// entry currently contributes nothing (reads fall through to the metadata default — the entry
+    /// is kept so re-application holds no ghost state, matrix M115).
+    /// </summary>
+    public BindingPriority EffectivePriority = BindingPriority.Unset;
+
+    /// <summary>
+    /// The lane of the strongest sub-Animation contribution (the winning base, ledger A20). Equal
+    /// to <see cref="EffectivePriority"/> while no animation holds the property.
+    /// </summary>
+    public BindingPriority BasePriority = BindingPriority.Unset;
+
+    /// <summary>Whether a local-lane contribution is present (raw value stored, PD6).</summary>
+    public bool HasLocal;
+
+    /// <summary>Whether the local slot's current value was pushed by <see cref="LocalEntry"/> (vs a plain <c>SetValue</c>) — eviction withdraws only the entry's own contribution.</summary>
+    public bool LocalValueFromEntry;
+
+    /// <summary>The <c>+cur</c> bit: the effective value was overwritten by <c>SetCurrentValue</c>.</summary>
+    public bool IsCurrentValue;
+
+    /// <summary>Whether the Animation lane holds a value (an attached handle has pushed — PD4: a fresh handle is inert).</summary>
+    public bool HasAnimatedValue;
+
+    /// <summary>Whether the effective value was modified by the coercer when produced (the <see cref="ValueSource.IsCoerced"/> annotation).</summary>
+    public bool IsCoerced;
+
+    /// <summary>Whether the winning base value was modified by the coercer when produced (resurfaces into <see cref="IsCoerced"/> when an animation ends).</summary>
+    public bool BaseIsCoerced;
+
+    /// <summary>
+    /// The installed local-priority binding entry, or <see langword="null"/> (at most one — a newer
+    /// install displaces the prior with eviction, matrix PD12).
+    /// </summary>
+    public BindingEntryBase? LocalEntry;
+
+    /// <summary>
+    /// The identity of the frame entry the winning base resolved from (<see langword="null"/> for
+    /// local/default bases) — lets a <c>SetCurrentValue</c> overwrite survive re-evaluations whose
+    /// winner is the same un-re-emitted contribution (matrix M120 vs M122).
+    /// </summary>
+    public object? BaseContributor;
+
+    /// <summary>Whether a coalesced change is waiting for the defer-scope flush (ledger A23).</summary>
+    public bool HasPendingNotification;
+
+    /// <summary>The coalesced pending change's priority (last change wins, matrix M250).</summary>
+    public BindingPriority PendingPriority;
+
+    /// <summary>Removes the local contribution — value and entry alike (ledger A9) — and promotes the next source.</summary>
+    public abstract void ClearLocal(ValueStore store);
+
+    /// <summary>Re-runs the coercer against the stored raw local value (PD6; no-op without one).</summary>
+    public abstract void RecoerceLocal(ValueStore store);
+
+    /// <summary>Delivers the coalesced deferred change, equality-gated on first-old vs last-new (M245).</summary>
+    public abstract void FlushPending(ValueStore store);
+
+    /// <summary>Teardown sweep (ledger A13): evicts the local entry, silently detaches the animation handle.</summary>
+    public abstract void TearDownContributions();
+
+    /// <summary>The boxed effective value, interned per entry (the untyped/diagnostics read mouth).</summary>
+    public abstract object? GetEffectiveBoxedValue();
+
+    /// <summary>The boxed raw (pre-coercion) local value, or <see langword="null"/> when no local contribution exists.</summary>
+    public abstract object? GetRawLocalBoxedValue();
+}
+
+/// <summary>
+/// The per-<c>(instance, property)</c> entry — the effective/base two-slot split from design doc
+/// §2.3. <see cref="Value"/> holds the post-coercion <em>effective</em> value (what <c>GetValue</c>
+/// returns — the animated value while an animation holds the property);
+/// <see cref="BaseValue"/> the post-coercion winning <em>base</em> (the strongest sub-Animation
+/// contribution, which keeps living underneath an animation and absorbs masked writes);
+/// <see cref="RawLocalValue"/> the pre-coercion local write (PD6 — <c>CoerceValue</c> re-runs the
+/// coercer against it, the WPF Maximum/Value dance). Entries mutate in place: one allocation per
+/// property that ever leaves its default, ever. <see cref="BoxedValue"/> is the untyped lane's
+/// box-interning cache (invalidated on change — matrix M267).
+/// </summary>
+internal sealed class EffectiveValue<T> : EffectiveValueBase
+{
+    /// <summary>The typed property identity this entry stores values for.</summary>
+    public readonly StyledProperty<T> Property;
+
+    /// <summary>The post-coercion effective value; valid while <see cref="EffectiveValueBase.EffectivePriority"/> is not <c>Unset</c>.</summary>
+    public T Value = default!;
+
+    /// <summary>The post-coercion winning-base value; valid while <see cref="EffectiveValueBase.BasePriority"/> is not <c>Unset</c>. Holds the coerced local value whenever <see cref="EffectiveValueBase.HasLocal"/>.</summary>
+    public T BaseValue = default!;
+
+    /// <summary>The raw (pre-coercion) local value; valid while <see cref="EffectiveValueBase.HasLocal"/> (PD6).</summary>
+    public T RawLocalValue = default!;
+
+    /// <summary>The deferred change's first-old snapshot; valid while <see cref="EffectiveValueBase.HasPendingNotification"/>.</summary>
+    public T PendingOldValue = default!;
+
+    /// <summary>Box-interning cache for the untyped read lane; <see langword="null"/> after any value change.</summary>
+    public object? BoxedValue;
+
+    /// <summary>The attached animation handle, or <see langword="null"/> (last-started wins; PD4 inert until its first push).</summary>
+    public AnimatedValueHandle<T>? AnimationHandle;
+
+    public EffectiveValue(StyledProperty<T> property) => Property = property;
+
+    /// <inheritdoc/>
+    public override void ClearLocal(ValueStore store)
+    {
+        // A9: ClearValue is the binding kill — evict the local entry first (PD2: evict →
+        // recompute → notify), even when it is currently valueless.
+        var evicted = LocalEntry;
+        if (evicted is not null)
+        {
+            LocalEntry = null;
+            evicted.Evict();
+        }
+
+        if (!HasLocal)
+        {
+            if (evicted is null)
+                return; // no local contribution at all — no-op, silent (M21, M125, M162)
+        }
+        else
+        {
+            HasLocal = false;
+            LocalValueFromEntry = false;
+            RawLocalValue = default!;
+        }
+
+        store.Reevaluate(Property, changedEntry: null);
+    }
+
+    /// <inheritdoc/>
+    public override void RecoerceLocal(ValueStore store)
+    {
+        if (!HasLocal)
+            return; // default lane is never coerced (PD8, M234)
+
+        var metadata = Property.GetMetadata(store.Owner.GetType());
+        if (metadata.Coerce is not { } coerce)
+            return;
+
+        var coerced = coerce(store.Owner, RawLocalValue); // against the RAW value (PD6, M232)
+        var comparer = metadata.EffectiveComparer;
+        BaseIsCoerced = !comparer.Equals(RawLocalValue, coerced);
+        if (comparer.Equals(BaseValue, coerced))
+            return;
+
+        var oldBase = BaseValue;
+        BaseValue = coerced;
+        store.Owner.DispatchBaseValueChanged(Property, oldBase, coerced, HasAnimatedValue);
+
+        if (HasAnimatedValue)
+            return; // masked: the animated effective is untouched
+
+        var oldValue = Value;
+        Value = coerced;
+        IsCoerced = BaseIsCoerced;
+        BoxedValue = null;
+        store.NotifyOrDefer(this, metadata, oldValue, coerced, EffectivePriority); // current effective lane (M233)
+    }
+
+    /// <inheritdoc/>
+    public override void FlushPending(ValueStore store)
+    {
+        if (!HasPendingNotification)
+            return;
+
+        HasPendingNotification = false;
+        var oldValue = PendingOldValue;
+        PendingOldValue = default!;
+
+        var metadata = Property.GetMetadata(store.Owner.GetType());
+        var newValue = EffectivePriority != BindingPriority.Unset
+            ? Value
+            : store.GetUnsetFallback(Property, metadata, out _); // inherited-or-default (lazy walk)
+        if (metadata.EffectiveComparer.Equals(oldValue, newValue))
+            return; // first old == last new ⇒ the scope's changes cancelled out (M245)
+
+        store.Owner.DispatchPropertyChanged(Property, metadata.Changed, oldValue, newValue, PendingPriority);
+    }
+
+    /// <inheritdoc/>
+    public override void TearDownContributions()
+    {
+        if (LocalEntry is { } local)
+        {
+            LocalEntry = null;
+            local.Evict(); // fires OnEvicted; no change notifications (PD13)
+        }
+
+        if (AnimationHandle is { } handle)
+        {
+            AnimationHandle = null;
+            handle.MarkDetached();
+        }
+    }
+
+    /// <inheritdoc/>
+    public override object? GetEffectiveBoxedValue() => BoxedValue ??= ValueBoxes.Box(Value);
+
+    /// <inheritdoc/>
+    public override object? GetRawLocalBoxedValue() => HasLocal ? ValueBoxes.Box(RawLocalValue) : null;
+}

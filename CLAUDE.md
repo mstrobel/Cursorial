@@ -16,17 +16,48 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Early-stage. Five projects:
+Eleven projects:
 
 - `Cursorial.Core` — input parsing, capability negotiation, terminal session orchestration, byte-level output writers.
 - `Cursorial.Rendering` — cell buffer + diff frame renderer that sits on top of `Cursorial.Core`'s output writers.
-- `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests` — xUnit.
+- `Cursorial.Drawing` — scene/brush/pen drawing layer (cached-raster scenes, compositor, gradients, charts); design
+  doc at `docs/drawing-layer-design.md`.
+- `Cursorial.Animation` — pure, time-free animation primitives (`IAnimation<T>`: elapsed → value; the consumer owns
+  the clock).
+- `Cursorial.UI` — the WPF/Avalonia-style UI framework layer (in progress; design doc at `docs/ui-layer-design.md`,
+  phase plan in its §14). Phase 0 (the typed property system — `UIProperty`/`StyledProperty<T>`, `UIObject`,
+  `ValueStore` with priority frames) is complete; see "UI module status" below.
+- `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests`, `Cursorial.Drawing.Tests`, `Cursorial.Animation.Tests`,
+  `Cursorial.UI.Tests` — xUnit.
 - `Cursorial.Demo` — interactive REPL for hands-on verification. `dotnet run --project Cursorial.Demo` opens a prompt
   with commands: `negotiate` (dump realized capabilities), `read` (stream input events to stdout), `raw` (dump
   stdin bytes verbatim with no parsing), `trace` (live raw bytes + decoded events side-by-side for protocol
   debugging), `sizing` (Kitty OSC 66 text-sizing demonstration), `probe` (XTVERSION + DA1 raw-response capture),
-  `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked mode before the next
-  prompt.
+  drawing/animation showcases (`draw`, `animate`, `charts`, `brushtext`, `imagescene`, `imageclip`, `ui`),
+  `rasterbench` (headless-capable scene-raster/compositor/diff benchmark — UI design-doc probe 1), `accesskeys`
+  (live access-key gate probe: Alt down/up tracking, negotiated Kitty flags, the requirement-6 gate verdict — UI
+  design-doc probe 3), `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked
+  mode before the next prompt.
+
+## UI module status (`Cursorial.UI`)
+
+`docs/ui-layer-design.md` is the canonical design reference (§0 invariants, §2–4 engine chapters, §5–12 subsystem
+sections, §13 resolved decisions, §14 phase plan, §15 deferrals); full design-phase artifacts are archived under
+`docs/ui-layer-design/`. The acronym **UI is fully capitalized in type names** (`UIElement`, `UIProperty`). The UI
+styling object is `Cursorial.UI.Style`; framework source disambiguates the SGR record via
+`using CellStyle = Cursorial.Output.Style;`.
+
+**Phase 0 complete** (doc §14): the Fork A property engine — `UIProperty`/`StyledProperty<T>`/`AttachedProperty<T>`/
+`DirectProperty<TOwner,T>`/`UIPropertyKey<T>` registration + per-type frozen metadata, two-lane `PropertyEffects`,
+`UIObject` + `ValueStore` (effective/base split, priority frames at `BindingPriority` Animation > LocalValue > Style >
+Default, store-owned retraction/promotion), `SetCurrentValue`, copied-value change carriers, typed/untyped observers
+(incl. the winning-base observer), `BindingEntry<T>`/`BindInFrame`/`AnimatedValueHandle<T>` producer seams,
+lazy-read/eager-notify inheritance over `IInheritanceNode`, untyped XAML lane + box interning + `GetValueSource`
+diagnostics, and the `ValueFrame` conformance kit. The oracle-pinned precedence matrix
+(`docs/ui-layer-design/precedence-matrix.md`) was authored before the engine; its rows are tests in
+`Cursorial.UI.Tests/PrecedenceMatrix/`. Benchmarks (`StoreSpikeBenchmark`, asserted allocation contracts) and probe
+results are recorded under the doc's §14 phase table. Next: P1 — element tree, layout, render zones, minimal
+`UIApplication` frame loop, headless `UITestHost`.
 
 Modules landed:
 

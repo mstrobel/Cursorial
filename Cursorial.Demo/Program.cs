@@ -33,6 +33,8 @@ IReadOnlyList<IDemo> demos =
     new FormatDemo(),
     new PaletteDemo(),
     new ProbeDemo(),
+    new AccessKeysDemo(),
+    new RasterBenchDemo(),
 ];
 
 PrintBanner();

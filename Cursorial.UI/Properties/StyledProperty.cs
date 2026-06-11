@@ -16,9 +16,12 @@ public class StyledProperty<T> : UIProperty
     /// The per-type RESOLVED metadata table: rebuilt as a <see cref="FrozenDictionary{TKey,TValue}"/>
     /// when a new type first resolves (cold, bounded by the number of concrete types), giving
     /// frozen-cost reads thereafter. A type's presence here is the "touched" marker that freezes
-    /// metadata overrides for it and its ancestors.
+    /// metadata overrides for it and its ancestors. Values are the immutable
+    /// <see cref="CachedResolution"/> pairs so a dictionary hit republishes the existing instance
+    /// into the inline cache — polymorphic call sites (the render/hit walks alternate element
+    /// types) stay allocation-free.
     /// </summary>
-    private FrozenDictionary<Type, PropertyMetadata<T>> _resolved = FrozenDictionary<Type, PropertyMetadata<T>>.Empty;
+    private FrozenDictionary<Type, CachedResolution> _resolved = FrozenDictionary<Type, CachedResolution>.Empty;
 
     /// <summary>
     /// Monomorphic last-type inline cache, held as a single immutable pair so the publication is
@@ -48,16 +51,16 @@ public class StyledProperty<T> : UIProperty
         if (_lastResolution is { } last && ReferenceEquals(forType, last.Type))
             return last.Metadata;
 
-        if (!_resolved.TryGetValue(forType, out var metadata))
+        if (!_resolved.TryGetValue(forType, out var resolution))
         {
-            metadata = ResolveMetadata(forType);
-            var grown = new Dictionary<Type, PropertyMetadata<T>>(_resolved) { [forType] = metadata };
+            resolution = new CachedResolution(forType, ResolveMetadata(forType));
+            var grown = new Dictionary<Type, CachedResolution>(_resolved) { [forType] = resolution };
             _resolved = grown.ToFrozenDictionary();
             CloseRegistrationWindow();
         }
 
-        _lastResolution = new CachedResolution(forType, metadata);
-        return metadata;
+        _lastResolution = resolution; // a reference republish — atomic, allocation-free on hits
+        return resolution.Metadata;
     }
 
     /// <summary>

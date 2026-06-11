@@ -13,6 +13,8 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.Drawing.Tests" />
+        <!-- Cursorial.UI's P1 integration tests assert re-raster behavior via Scene.RasterVersion. -->
+        <InternalsVisibleTo Include="Cursorial.UI.Tests" />
     </ItemGroup>
 
 </Project>

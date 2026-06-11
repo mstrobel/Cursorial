@@ -13,6 +13,10 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.UI.Tests" />
+        <InternalsVisibleTo Include="Cursorial.UI.Testing" />
+        <!-- P1 stopgap: the demo installs an IInputDispatchTarget via the internal seam field.
+             S3's InputDispatcher (P2) becomes the public routing surface; remove this then. -->
+        <InternalsVisibleTo Include="Cursorial.Demo" />
     </ItemGroup>
 
 </Project>

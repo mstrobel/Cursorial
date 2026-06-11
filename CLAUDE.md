@@ -25,8 +25,10 @@ Eleven projects:
 - `Cursorial.Animation` — pure, time-free animation primitives (`IAnimation<T>`: elapsed → value; the consumer owns
   the clock).
 - `Cursorial.UI` — the WPF/Avalonia-style UI framework layer (in progress; design doc at `docs/ui-layer-design.md`,
-  phase plan in its §14). Phase 0 (the typed property system — `UIProperty`/`StyledProperty<T>`, `UIObject`,
-  `ValueStore` with priority frames) is complete; see "UI module status" below.
+  phase plan in its §14). Phases 0 (property system) and 1 (element tree + layout + render zones + app spine) are
+  complete; see "UI module status" below.
+- `Cursorial.UI.Testing` — the headless test harness (`UITestHost` + `SyntheticTerminalHost` + capability presets);
+  the integration substrate for every UI subsystem — no test needs a TTY.
 - `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests`, `Cursorial.Drawing.Tests`, `Cursorial.Animation.Tests`,
   `Cursorial.UI.Tests` — xUnit.
 - `Cursorial.Demo` — interactive REPL for hands-on verification. `dotnet run --project Cursorial.Demo` opens a prompt
@@ -34,6 +36,8 @@ Eleven projects:
   stdin bytes verbatim with no parsing), `trace` (live raw bytes + decoded events side-by-side for protocol
   debugging), `sizing` (Kitty OSC 66 text-sizing demonstration), `probe` (XTVERSION + DA1 raw-response capture),
   drawing/animation showcases (`draw`, `animate`, `charts`, `brushtext`, `imagescene`, `imageclip`, `ui`),
+  `uipanels` (Cursorial.UI panel-tree showcase on the real `UIApplication` frame loop — arrows slide a render
+  boundary composite-only, `v` toggles a Visibility, `o` cycles an Opacity group),
   `rasterbench` (headless-capable scene-raster/compositor/diff benchmark — UI design-doc probe 1), `accesskeys`
   (live access-key gate probe: Alt down/up tracking, negotiated Kitty flags, the requirement-6 gate verdict — UI
   design-doc probe 3), `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked
@@ -56,8 +60,52 @@ lazy-read/eager-notify inheritance over `IInheritanceNode`, untyped XAML lane + 
 diagnostics, and the `ValueFrame` conformance kit. The oracle-pinned precedence matrix
 (`docs/ui-layer-design/precedence-matrix.md`) was authored before the engine; its rows are tests in
 `Cursorial.UI.Tests/PrecedenceMatrix/`. Benchmarks (`StoreSpikeBenchmark`, asserted allocation contracts) and probe
-results are recorded under the doc's §14 phase table. Next: P1 — element tree, layout, render zones, minimal
-`UIApplication` frame loop, headless `UITestHost`.
+results are recorded under the doc's §14 phase table.
+
+**Phase 1 complete** (doc §14 — S1 T0–T4 + the S6 spine):
+
+- **Tree + layout** — `UIElement` (visual/logical relationships, attach/detach walks, `TemplatedParent`,
+  effective-enabled, `TranslateToWindow/ToLocal`), `LayoutMath`/`LayoutLimits`, Measure/Arrange with the WPF-derived
+  oracle layout matrix (`docs/ui-layer-design/layout-matrix.md`, one test per row in
+  `Cursorial.UI.Tests/LayoutMatrix/`), `LayoutManager` (depth-keyed heaps, internal 16-pass fixpoint — the sole
+  convergence owner, `AbandonPendingLayout` parking), `UIElementCollection`, and panels: `StackPanel`, `DockPanel`,
+  `Canvas`, `Grid` (+`GridLength`/definitions), `WrapPanel`.
+- **Render zones** — `RenderTree` (boundary-zone partitioning over the shared `ScenePool`, whole-zone re-raster per
+  the probe-1 verdict, the unconditional per-pass boundary walk publishing `CompositeParameters` on value-difference,
+  `CollectLayers` bottom-up, composite-order `HitTest`), `RenderContext` (element-local, self-translating),
+  `RenderPassGuard` (DEBUG read-only guard during paint), cached z-order, sticky boundary promotion, the
+  empty-clip trick for hidden/zero-sized boundaries.
+- **Scrolling + caret** — `ScrollContentPresenter` (always-boundary; banded scenes per doc §5.7 — band = viewport +
+  2K rows, re-anchor marks the zone dirty, in-band scroll is a pure composite slide), `ITerminalCaretService` +
+  `TerminalCaretService` (publication registry, live transform leg, clip-gated visibility).
+- **S6 app spine** — `ITerminalHost` (+`TerminalSessionHost` over real sessions, `SyntheticTerminalHost` headless),
+  `UIDispatcher` + `UISynchronizationContext` (Build-thread → UI-thread one-shot ownership hand-off; `UIObject`
+  affinity now captures `UIApplication.Current?.Dispatcher` per ledger A25, falling back to the constructing thread
+  id), `UIApplication` + builder (owns the screen `CellBuffer` + `FrameRenderer`; the doc §10.5 7-phase frame loop
+  with the normative wake protocol; styling/animation/input-routing/windowing phases are null seam fields —
+  `IStyleFrameHooks`/`IAnimationFrameDriver`/`IInputDispatchTarget` declared, implementations land at P3/P8/P2),
+  `SingleRootLayoutSystem`/`SingleRootRenderSystem` (the P1 single-root stand-ins S4's `WindowManager` replaces at
+  P7; `RootElement` is the window-content stand-in), resize pipeline (coalesced last-wins, same-frame relayout),
+  device-response router, `QueueControlSequence` (the only sanctioned out-of-band byte path), the canonical teardown
+  (sync-context uninstall → job cancellation → pump stop → renderer close → cursor/SGR/alt-screen restore → host
+  dispose; runs on crash paths), the exception funnel (`DispatcherUnhandledException` + `IUserCodeGuard` passed into
+  the draw path). Clean frames are zero-allocation (asserted).
+- **`Cursorial.UI.Testing`** — `UITestHost` (calling thread is the UI thread; manual `RunFrame`/`RunUntilIdle`/
+  `AdvanceTime` stepping on a `FakeTimeProvider`; `SendKey/SendText/SendClick/SendResize/SendInput` direct injection;
+  `SendBytes` through a real `VtInputDevice` on the fake clock; cell/row/byte assertions; teardown-byte capture),
+  `UITestHostOptions`, `TestCapabilities` presets (`KittyTruecolor`/`Ansi16Legacy`/`NoMotion`).
+
+The doc §14 P1 exit criteria are proven end-to-end in `Cursorial.UI.Tests/Integration/Phase1EndToEndTests.cs`
+(UITestHost through the full spine: static panel-tree cell+byte assertions, the AffectsComposite
+re-emit-without-re-raster invariant via `Scene.RasterVersion`, banded scroll across a re-anchor edge, mid-run
+resize, the caret transform leg) and live in the `uipanels` demo. The demo installs its key handling via the
+internal `UIApplication.InputDispatchTarget` seam (`InternalsVisibleTo` to `Cursorial.Demo` — a P1 stopgap that
+S3's public routing replaces at P2).
+
+Recorded P1 gaps: `BindingOperations.TearDown` leg of `UIElement.TearDown()` (P4); palette theming + capability
+rewrite and the S7 surface merge into `UIApplication` (P5); `TerminalSessionOptions.EmergencyRestoreBytes` Core seam
+for signal-path alt-screen restore (doc §10.7 — until it lands, a signal-killed app restores cooked mode but may
+leave the shell on the alt screen). Next: P2 — the S3 input-routing spine.
 
 Modules landed:
 

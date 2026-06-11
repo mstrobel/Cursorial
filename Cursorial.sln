@@ -81,7 +81,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{F3E5B623-2
 		docs\ui-layer-design\precedence-matrix.md = docs\ui-layer-design\precedence-matrix.md
 		docs\drawing-layer-design.md = docs\drawing-layer-design.md
 		docs\ui-layer-design.md = docs\ui-layer-design.md
+		docs\ui-layer-design\layout-matrix.md = docs\ui-layer-design\layout-matrix.md
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Testing", "Cursorial.UI.Testing\Cursorial.UI.Testing.csproj", "{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -225,6 +228,18 @@ Global
 		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x64.Build.0 = Release|Any CPU
 		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x86.ActiveCfg = Release|Any CPU
 		{E9439CA1-BF3E-4010-836B-C7475C86B228}.Release|x86.Build.0 = Release|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Debug|x64.Build.0 = Debug|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Debug|x86.Build.0 = Debug|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Release|x64.ActiveCfg = Release|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Release|x64.Build.0 = Release|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Release|x86.ActiveCfg = Release|Any CPU
+		{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

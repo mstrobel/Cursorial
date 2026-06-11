@@ -1,0 +1,572 @@
+using Cursorial.Rendering;
+
+namespace Cursorial.UI;
+
+/// <summary>
+/// The tree / layout / render / input node above <see cref="UIObject"/> (design doc §5.1): one node
+/// class in <b>one visual tree</b> (layout, render, hit-test, composite order) plus a separate
+/// <b>logical-parent</b> pointer (styling descendant combinators, resource scope, DataContext
+/// inheritance). The property system's inheritance parent is
+/// <c>LogicalParent ?? VisualParent</c> — content inherits through its <c>ContentControl</c>,
+/// template parts through chrome to the templated control.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Lifecycle.</b> The attach walk is pre-order parent-first (set <see cref="VisualRoot"/>, raise
+/// <see cref="OnAttachedToTree"/>, mark layout invalid); the detach walk is bottom-up. Elements are
+/// reusable — detach + reattach rebuilds all single-shot state. There is no <see cref="IDisposable"/>
+/// on elements; pooled scenes (T3) release on detach, and viewmodel subscriptions release via the
+/// permanent-detach teardown sweep (<see cref="TearDown"/>).
+/// </para>
+/// <para>
+/// <b>Thread affinity.</b> All tree mutation, layout, and render runs on the single UI thread
+/// (invariant 6); entry points assert via <see cref="UIObject.VerifyAccess"/> in DEBUG builds.
+/// </para>
+/// </remarks>
+public abstract partial class UIElement : UIObject
+{
+    private static readonly UIElement[] NoChildren = [];
+
+    private UIElement? _visualParent;
+    private UIElement? _logicalParent;
+    private UIElement? _visualRoot;
+    private UIElement? _templatedParent;
+    private List<UIElement>? _visualChildren;
+    private List<UIElement>? _logicalChildren;
+    private LayoutManager? _layoutManager; // non-null only on a root attached via LayoutManager
+    private bool _effectivelyEnabled = true;
+
+    /// <summary>The tree depth from the visual root (0 at the root or when detached) — the layout queues' heap key.</summary>
+    internal int Depth;
+
+    // ───────────────────────────── tree surface ─────────────────────────────
+
+    /// <summary>The element's parent in the visual tree, set by <see cref="AddVisualChild"/>.</summary>
+    public UIElement? VisualParent => _visualParent;
+
+    /// <summary>
+    /// The element's logical parent (Fork B descendant combinators, S7 resource scope, S2
+    /// DataContext inheritance), set by <see cref="AddLogicalChild"/>; <see langword="null"/> means
+    /// inheritance falls back to <see cref="VisualParent"/>.
+    /// </summary>
+    public UIElement? LogicalParent => _logicalParent;
+
+    /// <summary>The root of the attached visual tree, or <see langword="null"/> when detached.</summary>
+    public UIElement? VisualRoot => _visualRoot;
+
+    /// <summary>Whether the element is part of an attached visual tree (true between <see cref="OnAttachedToTree"/> and <see cref="OnDetachedFromTree"/>).</summary>
+    public bool IsAttachedToTree => _visualRoot is not null;
+
+    /// <summary>
+    /// The template-barrier datum (invariant 5): non-null on elements stamped from a control
+    /// template. Set only via <see cref="SetTemplatedParent"/> (the S8 seam) — there is no template
+    /// engine at P1; this is storage plus the styling engine's barrier input.
+    /// </summary>
+    public UIElement? TemplatedParent => _templatedParent;
+
+    /// <summary>
+    /// The element's name for <c>x:Name</c> / <c>#name</c> selector lookup. Plain storage at P1;
+    /// styling re-match on change arrives with Fork B (P3), namescopes with S2 (P4).
+    /// </summary>
+    public string? Name { get; set; }
+
+    /// <summary>The element's visual children in physical order — the base paint order.</summary>
+    protected IReadOnlyList<UIElement> VisualChildren => _visualChildren ?? (IReadOnlyList<UIElement>)NoChildren;
+
+    /// <summary>The visual-children list for internal allocation-free iteration (may be null).</summary>
+    internal List<UIElement>? VisualChildrenList => _visualChildren;
+
+    /// <summary>
+    /// Adopts <paramref name="child"/> into the visual tree at <paramref name="index"/> (−1 =
+    /// append; index = paint order). Sets the child's visual parent, rewires its inheritance parent
+    /// (<c>LogicalParent ?? VisualParent</c>), and — when this element is attached — runs the
+    /// pre-order attach walk over the child subtree. Does <b>not</b> invalidate this element's
+    /// measure: owner-wired collections (<see cref="UIElementCollection"/>) and content models own
+    /// that contract.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="child"/> is null.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="child"/> already has a visual parent.</exception>
+    protected void AddVisualChild(UIElement child, int index = -1)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        VerifyAccess();
+        RenderPassGuard.ThrowIfActive();
+
+        if (child._visualParent is not null)
+        {
+            throw new InvalidOperationException(
+                $"Cannot add '{child.GetType().Name}' as a visual child of '{GetType().Name}': it already has a " +
+                $"visual parent ('{child._visualParent.GetType().Name}'). Remove it from its current parent first.");
+        }
+
+        for (var ancestor = this; ancestor is not null; ancestor = ancestor._visualParent)
+        {
+            if (ReferenceEquals(ancestor, child))
+                throw new InvalidOperationException("Adding this visual child would create a cycle in the visual tree.");
+        }
+
+        var children = _visualChildren ??= [];
+        if (index < 0 || index >= children.Count)
+            children.Add(child);
+        else
+            children.Insert(index, child);
+
+        InvalidateZOrder();
+        child._visualParent = this;
+        child.SetInheritanceParent(child._logicalParent ?? this);
+        child.OnVisualParentChanged(null, this);
+
+        if (IsAttachedToTree)
+        {
+            AttachSubtree(child, _visualRoot!, Depth + 1);
+            // New content paints into existing zones (or mints new boundary layers): the rebuild
+            // walk assigns zone pointers and marks the affected zones dirty next pass.
+            GetRenderTree()?.MarkLayersDirty();
+        }
+        else
+        {
+            child.UpdateEffectiveEnabled();
+        }
+    }
+
+    /// <summary>
+    /// Removes <paramref name="child"/> from the visual tree: runs the bottom-up detach walk (when
+    /// attached), clears the visual parent, and re-points the child's inheritance parent at its
+    /// logical parent (or null).
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="child"/> is null.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="child"/> is not a visual child of this element.</exception>
+    protected void RemoveVisualChild(UIElement child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        VerifyAccess();
+        RenderPassGuard.ThrowIfActive();
+
+        if (!ReferenceEquals(child._visualParent, this) || _visualChildren is null || !_visualChildren.Remove(child))
+            throw new InvalidOperationException($"'{child.GetType().Name}' is not a visual child of this '{GetType().Name}'.");
+
+        InvalidateZOrder();
+        if (child.IsAttachedToTree)
+        {
+            // The vacated pixels must repaint: a non-boundary subtree marks its owning zone dirty;
+            // a boundary subtree drops its layer (count change → the compositor's full recomposite).
+            if (child.GetRenderTree() is { } tree)
+            {
+                if (!ReferenceEquals(child.ZoneRoot, child))
+                    child.ZoneRoot?.Zone?.MarkRasterDirty();
+                tree.MarkLayersDirty();
+            }
+
+            DetachSubtree(child);
+        }
+
+        child._visualParent = null;
+        child.SetInheritanceParent(child._logicalParent);
+        child.OnVisualParentChanged(this, null);
+        child.UpdateEffectiveEnabled();
+    }
+
+    /// <summary>
+    /// Visual adoption <b>without</b> logical reparenting (design-doc punch 43): <c>ItemsPresenter</c>
+    /// hosts generated containers visually while they remain logical children of the
+    /// <c>ItemsControl</c>. The delegation is correct by construction — <see cref="AddVisualChild"/>
+    /// never touches <see cref="LogicalParent"/> (logical adoption is a separate
+    /// <see cref="AddLogicalChild"/> call; only <see cref="AdoptChild"/> composes both), and its
+    /// inheritance rewire is <c>LogicalParent ?? this</c>, so an item already logically parented
+    /// elsewhere keeps that parent as its inheritance parent. Pinned by
+    /// <c>AddVisualChildOnly_PreservesExistingLogicalParent_AndInheritance</c>.
+    /// </summary>
+    internal void AddVisualChildOnly(UIElement child, int index = -1) => AddVisualChild(child, index);
+
+    /// <summary>
+    /// Full adoption for owner-wired collections (<see cref="UIElementCollection"/>): logical
+    /// parent first (so the attach walk observes the final inheritance topology), then visual
+    /// adoption at <paramref name="index"/>.
+    /// </summary>
+    internal void AdoptChild(UIElement child, int index)
+    {
+        AddLogicalChild(child);
+        AddVisualChild(child, index);
+    }
+
+    /// <summary>Full disownment for owner-wired collections: visual detach (bottom-up walk) first, then logical.</summary>
+    internal void DisownChild(UIElement child)
+    {
+        RemoveVisualChild(child);
+        RemoveLogicalChild(child);
+    }
+
+    /// <summary>Reorders an existing visual child to <paramref name="newIndex"/> without detaching it (collection <c>Move</c> support).</summary>
+    internal void MoveVisualChild(UIElement child, int newIndex)
+    {
+        VerifyAccess();
+        RenderPassGuard.ThrowIfActive();
+
+        if (_visualChildren is not { } children || !children.Remove(child))
+            throw new InvalidOperationException($"'{child.GetType().Name}' is not a visual child of this '{GetType().Name}'.");
+
+        children.Insert(Math.Clamp(newIndex, 0, children.Count), child);
+        InvalidateZOrder();
+
+        if (IsAttachedToTree && GetRenderTree() is { } tree)
+        {
+            // Reorder changes the paint order within this element's zone — and may reorder sibling
+            // boundary layers in the flat list.
+            ZoneRoot?.Zone?.MarkRasterDirty();
+            tree.MarkLayersDirty();
+        }
+    }
+
+    /// <summary>
+    /// Adopts <paramref name="child"/> as a logical child (content models: <c>ContentControl.Content</c>,
+    /// panel children via <see cref="UIElementCollection"/>). Re-points the child's inheritance
+    /// parent at this element and raises <see cref="AttachedToLogicalTree"/> on the child.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="child"/> is null.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="child"/> already has a logical parent.</exception>
+    protected void AddLogicalChild(UIElement child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        VerifyAccess();
+
+        if (child._logicalParent is not null)
+        {
+            throw new InvalidOperationException(
+                $"Cannot add '{child.GetType().Name}' as a logical child of '{GetType().Name}': it already has a " +
+                $"logical parent ('{child._logicalParent.GetType().Name}').");
+        }
+
+        (_logicalChildren ??= []).Add(child);
+        child._logicalParent = this;
+        child.SetInheritanceParent(this);
+        child.UpdateEffectiveEnabled();
+        child.AttachedToLogicalTree?.Invoke(child, new LogicalTreeAttachmentEventArgs(child, oldParent: null, newParent: this));
+    }
+
+    /// <summary>
+    /// Removes <paramref name="child"/> from this element's logical children, re-points its
+    /// inheritance parent at its visual parent (or null), and raises
+    /// <see cref="DetachedFromLogicalTree"/> on the child.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="child"/> is null.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="child"/> is not a logical child of this element.</exception>
+    protected void RemoveLogicalChild(UIElement child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        VerifyAccess();
+
+        if (!ReferenceEquals(child._logicalParent, this) || _logicalChildren is null || !_logicalChildren.Remove(child))
+            throw new InvalidOperationException($"'{child.GetType().Name}' is not a logical child of this '{GetType().Name}'.");
+
+        child._logicalParent = null;
+        child.SetInheritanceParent(child._visualParent);
+        child.UpdateEffectiveEnabled();
+        child.DetachedFromLogicalTree?.Invoke(child, new LogicalTreeAttachmentEventArgs(child, oldParent: this, newParent: null));
+    }
+
+    /// <summary>
+    /// Stamps the template-barrier datum (invariant 5) — the S8 seam, called during template
+    /// expansion <em>before</em> the part attaches to the tree. There is no template engine at P1.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The element is already attached to a tree.</exception>
+    protected internal void SetTemplatedParent(UIElement? value)
+    {
+        VerifyAccess();
+
+        if (IsAttachedToTree && !ReferenceEquals(_templatedParent, value))
+        {
+            throw new InvalidOperationException(
+                "TemplatedParent can only be stamped while the element is detached — template parts are " +
+                "marked during template expansion, before they attach (S8 contract).");
+        }
+
+        _templatedParent = value;
+    }
+
+    /// <summary>Raised when the element gains a logical parent (the S2 seam — DataContext/namescope wiring rides this).</summary>
+    public event EventHandler<LogicalTreeAttachmentEventArgs>? AttachedToLogicalTree;
+
+    /// <summary>Raised when the element loses its logical parent (the S2 seam).</summary>
+    public event EventHandler<LogicalTreeAttachmentEventArgs>? DetachedFromLogicalTree;
+
+    // ───────────────────────────── lifecycle walks ─────────────────────────────
+
+    /// <summary>
+    /// Called when this element becomes part of an attached visual tree (pre-order, parent-first —
+    /// the element's ancestors have already attached). Layout is invalid at this point; styling
+    /// attach (Fork B, P3) is ordered before the first measure so styles affect same-frame layout.
+    /// </summary>
+    protected virtual void OnAttachedToTree(in TreeAttachmentEventArgs e)
+    {
+    }
+
+    /// <summary>
+    /// Called when this element leaves the attached visual tree (bottom-up — descendants detach
+    /// first, per Fork B's batch-retraction contract).
+    /// </summary>
+    protected virtual void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+    }
+
+    /// <summary>Called when the element's <see cref="VisualParent"/> changes (both attach and detach directions).</summary>
+    protected virtual void OnVisualParentChanged(UIElement? oldParent, UIElement? newParent)
+    {
+    }
+
+    /// <summary>Attaches this element as the visual root of a single-root tree (the P1 stand-in — see <see cref="LayoutManager"/>).</summary>
+    internal void AttachAsRoot(LayoutManager manager)
+    {
+        if (_visualParent is not null)
+            throw new ArgumentException("A root element must not have a visual parent.", nameof(manager));
+        if (IsAttachedToTree)
+            throw new InvalidOperationException("This element is already attached to a tree.");
+
+        _layoutManager = manager;
+        AttachSubtree(this, this, depth: 0);
+    }
+
+    /// <summary>Detaches this root element (test/teardown path; reverses <see cref="AttachAsRoot"/>).</summary>
+    internal void DetachRoot()
+    {
+        if (_layoutManager is null)
+            throw new InvalidOperationException("This element is not an attached root.");
+
+        RenderTreeHost?.Detach(); // returns all zone scenes to the pool while the tree is still attached
+        DetachSubtree(this);
+        _layoutManager = null;
+    }
+
+    /// <summary>The pre-order parent-first attach walk (design doc §5.1 lifecycle).</summary>
+    private static void AttachSubtree(UIElement element, UIElement root, int depth)
+    {
+        element._visualRoot = root;
+        element.Depth = depth;
+
+        // Mark layout invalid (no enqueue: the parent that adopted this subtree re-measures it
+        // top-down; collection mutation invalidates the owner, which is the queue entry).
+        element.IsMeasureValid = false;
+        element.IsArrangeValid = false;
+
+        element.UpdateEffectiveEnabled();
+        element.OnAttachedToTree(new TreeAttachmentEventArgs(root, element._visualParent));
+
+        if (element._visualChildren is { } children)
+        {
+            for (var i = 0; i < children.Count; i++)
+                AttachSubtree(children[i], root, depth + 1);
+        }
+    }
+
+    /// <summary>The bottom-up detach walk (design doc §5.1 lifecycle): descendants first, then self.</summary>
+    private static void DetachSubtree(UIElement element)
+    {
+        if (element._visualChildren is { } children)
+        {
+            for (var i = 0; i < children.Count; i++)
+                DetachSubtree(children[i]);
+        }
+
+        // Release render state before the detach notification (doc §5.1 ordering): boundary scene
+        // back to the pool, zone pointer cleared, sticky promotion cleared — a reattach rebuilds all
+        // single-shot state.
+        element.Zone?.ReleaseScene();
+        element.Zone = null;
+        element.ZoneRoot = null;
+        element.IsPromotedBoundary = false;
+
+        var root = element._visualRoot!;
+        element.OnDetachedFromTree(new TreeAttachmentEventArgs(root, element._visualParent));
+        element._visualRoot = null;
+        element.Depth = 0;
+        element.UpdateEffectiveEnabled();
+    }
+
+    // ───────────────────────────── permanent detach (teardown sweep) ─────────────────────────────
+
+    /// <summary>
+    /// The permanent-detach teardown sweep (design doc §5.1 CONTRACT): for app-discarded subtrees
+    /// (and window close, via S4 at P7), runs bottom-up per element:
+    /// <c>ValueStore.TearDown()</c> → <c>BindingOperations.TearDown(element)</c>. Pooled scenes and
+    /// style cookies already release on ordinary detach; this sweep is what releases S2's strong
+    /// INPC subscriptions to long-lived viewmodels — a dropped subtree is only leak-free if it runs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// At P1 the sweep runs the value-store leg only; the <c>BindingOperations.TearDown(element)</c>
+    /// leg is a recorded seam that lands with the binding engine (S2, P4). Detaching the subtree
+    /// from its parent is the caller's responsibility.
+    /// </para>
+    /// <para>
+    /// Teardown is deliberately <b>not</b> folded into <c>Children.Remove</c> /
+    /// <see cref="RemoveVisualChild"/>: elements are reusable (detach + reattach rebuilds all
+    /// single-shot state — doc §5.1), so an automatic sweep on remove would break legal
+    /// remove-then-reattach flows. Discarding a subtree is a caller-visible decision; forgetting
+    /// this call leaks nothing at P1 but will pin viewmodel subscriptions alive once S2 lands.
+    /// </para>
+    /// </remarks>
+    public void TearDown()
+    {
+        VerifyAccess();
+
+        if (_visualChildren is { } children)
+        {
+            for (var i = 0; i < children.Count; i++)
+                children[i].TearDown();
+        }
+
+        if (_logicalChildren is { } logical)
+        {
+            for (var i = 0; i < logical.Count; i++)
+            {
+                // Logical-only children (visual children were swept above).
+                if (!ReferenceEquals(logical[i]._visualParent, this))
+                    logical[i].TearDown();
+            }
+        }
+
+        TearDownValueStore();
+        // S2 seam (P4): BindingOperations.TearDown(this) — the second sweep leg (doc §5.1).
+    }
+
+    // ───────────────────────────── effective IsEnabled (S1-owned) ─────────────────────────────
+
+    /// <summary>
+    /// The effective enabled state: <c>IsEnabled &amp;&amp; IsEnabledCore &amp;&amp; parentEffective</c>,
+    /// computed over the inheritance wiring (<c>LogicalParent ?? VisualParent</c>). A change
+    /// re-evaluates descendants; the styling push (<c>InteractionState.Disabled</c>, S3's seam)
+    /// rides <see cref="OnIsEffectivelyEnabledChanged"/> when input lands (P2/P3).
+    /// </summary>
+    public bool IsEffectivelyEnabled => _effectivelyEnabled;
+
+    /// <summary>
+    /// The control-author enabled gate (design doc §5.1): a control whose commands/state make it
+    /// non-interactive overrides this and calls <see cref="InvalidateIsEnabledCore"/> when the
+    /// input changes.
+    /// </summary>
+    protected virtual bool IsEnabledCore => true;
+
+    /// <summary>Re-evaluates <see cref="IsEffectivelyEnabled"/> after an <see cref="IsEnabledCore"/> input changed.</summary>
+    protected void InvalidateIsEnabledCore()
+    {
+        VerifyAccess();
+        UpdateEffectiveEnabled();
+    }
+
+    /// <summary>Called when <see cref="IsEffectivelyEnabled"/> changes — the S3 interaction-state seam (P2).</summary>
+    protected virtual void OnIsEffectivelyEnabledChanged(bool isEffectivelyEnabled)
+    {
+    }
+
+    private void UpdateEffectiveEnabled()
+    {
+        var parent = _logicalParent ?? _visualParent;
+        var value = IsEnabled && IsEnabledCore && (parent?._effectivelyEnabled ?? true);
+        if (value == _effectivelyEnabled)
+            return;
+
+        _effectivelyEnabled = value;
+        OnIsEffectivelyEnabledChanged(value);
+
+        if (_visualChildren is { } children)
+        {
+            for (var i = 0; i < children.Count; i++)
+                children[i].UpdateEffectiveEnabled();
+        }
+
+        if (_logicalChildren is { } logical)
+        {
+            for (var i = 0; i < logical.Count; i++)
+            {
+                if (!ReferenceEquals(logical[i]._visualParent, this))
+                    logical[i].UpdateEffectiveEnabled();
+            }
+        }
+    }
+
+    // ───────────────────────────── visibility / hit-test surface ─────────────────────────────
+
+    /// <summary>
+    /// Whether this element and every visual ancestor is <see cref="Visibility.Visible"/> — a live
+    /// O(depth) walk (never stale; consumed by S3's hit/focus checks).
+    /// </summary>
+    public bool IsEffectivelyVisible
+    {
+        get
+        {
+            for (var element = this; element is not null; element = element._visualParent)
+            {
+                if (element.Visibility != Visibility.Visible)
+                    return false;
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// The shaped-control hit-test escape hatch (design doc §5.8): called in element-local
+    /// coordinates after the bounds check already passed. The default accepts the whole rect.
+    /// </summary>
+    protected virtual bool HitTestCore(int column, int row) => true;
+
+    // ───────────────────────────── scroll-host seam (T4 — ScrollContentPresenter) ─────────────────────────────
+
+    /// <summary>
+    /// The horizontal scroll this element applies to its <b>children</b>: a child at
+    /// <c>Bounds.Column</c> in content coordinates sits at <c>Bounds.Column − this</c> in the
+    /// element's own frame. 0 everywhere except scroll hosts (<c>ScrollContentPresenter</c>
+    /// overrides — doc §5.7). Folded by the boundary walk, hit testing, and
+    /// <see cref="TranslateToWindow"/>/<see cref="TranslateToLocal"/>.
+    /// </summary>
+    internal virtual int ChildScrollOffsetColumn => 0;
+
+    /// <summary>The vertical sibling of <see cref="ChildScrollOffsetColumn"/>.</summary>
+    internal virtual int ChildScrollOffsetRow => 0;
+
+    // ───────────────────────────── coordinate translation ─────────────────────────────
+
+    /// <summary>
+    /// Translates element-local coordinates to window (visual-root) coordinates — a live O(depth)
+    /// parent-chain walk, allocation-free and never stale (no cached absolute bounds exist). Each
+    /// hop folds in the element's <see cref="Bounds"/> position and <see cref="RenderOffsetColumn"/> /
+    /// <see cref="RenderOffsetRow"/>, minus the parent's scroll when crossing into a scroll host
+    /// (<see cref="ChildScrollOffsetColumn"/>/<see cref="ChildScrollOffsetRow"/>).
+    /// </summary>
+    public (int Column, int Row) TranslateToWindow(int column, int row)
+    {
+        for (var element = this; element is not null; element = element._visualParent)
+        {
+            column += element.Bounds.Column + element.RenderOffsetColumn;
+            row += element.Bounds.Row + element.RenderOffsetRow;
+
+            if (element._visualParent is { } parent)
+            {
+                column -= parent.ChildScrollOffsetColumn;
+                row -= parent.ChildScrollOffsetRow;
+            }
+        }
+
+        return (column, row);
+    }
+
+    /// <summary>Translates window (visual-root) coordinates to element-local coordinates — the inverse of <see cref="TranslateToWindow"/>.</summary>
+    public (int Column, int Row) TranslateToLocal(int column, int row)
+    {
+        for (var element = this; element is not null; element = element._visualParent)
+        {
+            column -= element.Bounds.Column + element.RenderOffsetColumn;
+            row -= element.Bounds.Row + element.RenderOffsetRow;
+
+            if (element._visualParent is { } parent)
+            {
+                column += parent.ChildScrollOffsetColumn;
+                row += parent.ChildScrollOffsetRow;
+            }
+        }
+
+        return (column, row);
+    }
+
+    /// <summary>The layout manager owning this element's visual root, or <see langword="null"/> when detached.</summary>
+    internal LayoutManager? GetLayoutManager() => _visualRoot?._layoutManager;
+}

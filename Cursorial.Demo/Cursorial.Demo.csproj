@@ -12,6 +12,7 @@
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
     </ItemGroup>
 
     <ItemGroup>

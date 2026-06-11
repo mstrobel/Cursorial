@@ -12,14 +12,18 @@ namespace Cursorial.UI;
 /// direct-property <c>SetAndRaise</c>.
 /// </summary>
 /// <remarks>
-/// <b>Single UI thread is the v1 contract.</b> A <see cref="UIObject"/> captures its constructing
-/// thread; <see cref="VerifyAccess"/> asserts affinity in DEBUG builds and compiles away in release
-/// (zero synchronization anywhere in the store — the whole stack below is single-render-thread).
-/// Per ledger A25 the capture will move to <c>UIApplication.Current!.Dispatcher</c> once the
-/// dispatcher exists (S6); the managed-thread-id capture is the P0 stand-in with the same contract.
+/// <b>Single UI thread is the v1 contract.</b> A <see cref="UIObject"/> constructed while a
+/// thread-local <see cref="UIApplication.Current"/> exists captures that application's
+/// <see cref="UIDispatcher"/> (ledger A25 / design doc §10.3) — affinity then follows the
+/// dispatcher's owner thread, which survives the Build-thread → UI-thread ownership hand-off.
+/// Without an ambient application (unit tests, standalone use) the constructing thread id is
+/// captured instead. <see cref="VerifyAccess"/> asserts affinity in DEBUG builds and compiles
+/// away in release (zero synchronization anywhere in the store — the whole stack below is
+/// single-render-thread).
 /// </remarks>
 public abstract class UIObject : IInheritanceNode
 {
+    private readonly UIDispatcher? _dispatcher; // captured from UIApplication.Current (ledger A25)
     private readonly int _ownerManagedThreadId;
     private ValueStore? _store;
     private UIObject? _inheritanceParent;
@@ -32,14 +36,19 @@ public abstract class UIObject : IInheritanceNode
     /// </summary>
     internal object? BindingHostState;
 
-    /// <summary>Captures the constructing thread's affinity (invariant 6).</summary>
+    /// <summary>
+    /// Captures the constructing thread's affinity (invariant 6): the ambient application's
+    /// dispatcher when one exists on this thread, the managed thread id otherwise.
+    /// </summary>
     protected UIObject()
     {
+        _dispatcher = UIApplication.Current?.Dispatcher;
         _ownerManagedThreadId = Environment.CurrentManagedThreadId;
     }
 
     /// <summary>Whether the calling thread is the thread this object has affinity with.</summary>
-    public bool CheckAccess() => _ownerManagedThreadId == Environment.CurrentManagedThreadId;
+    public bool CheckAccess()
+        => _dispatcher?.CheckAccess() ?? _ownerManagedThreadId == Environment.CurrentManagedThreadId;
 
     /// <summary>
     /// DEBUG-only thread-affinity assert: throws <see cref="InvalidOperationException"/> when called
@@ -309,6 +318,7 @@ public abstract class UIObject : IInheritanceNode
     {
         ArgumentNullException.ThrowIfNull(property);
         VerifyAccess();
+        RenderPassGuard.ThrowIfActive(); // the render pass is read-only (design doc §5.5; DEBUG only)
 
         if (property.IsDirect)
             throw new ArgumentException($"Direct property '{property}' cannot be cleared; push the registered unset value through its setter instead.", nameof(property));
@@ -339,6 +349,7 @@ public abstract class UIObject : IInheritanceNode
     private void SetValueCore<T>(StyledProperty<T> property, T value, bool isCurrentValue)
     {
         VerifyAccess();
+        RenderPassGuard.ThrowIfActive(); // the render pass is read-only (design doc §5.5; DEBUG only)
         DebugValidateAttachedHost(property);
 
         var metadata = property.GetMetadata(GetType());
@@ -970,10 +981,14 @@ public abstract class UIObject : IInheritanceNode
     //
     // Called from owner-type static constructors during the registration window:
     //     static Button() { AffectsRender<Button>(BackgroundProperty, BorderPenProperty); }
-    // Each writes BOTH effects lanes (A1): the per-type lane for TOwner and the global lane (which
-    // is what makes attached properties invalidate on host types whose per-type tables never saw the
-    // declaring type's registration). The element tree (S1) layers the actual invalidation dispatch
-    // on the metadata Changed channel; the engine itself never references scenes or rendering
+    // Each writes the per-type lane for TOwner, plus the global lane for ATTACHED properties only
+    // (doc §5.5: the global lane exists because a host type's per-type table can freeze before the
+    // declaring panel's static ctor runs — without it Grid.SetRow(button, 2) would invalidate
+    // nothing; A1 makes it mandatory for attached properties). Ordinary styled properties stay
+    // per-type so effects dispatch is bounded to types that opted in — what keeps an inherited
+    // AffectsRender fan-out scoped to zones actually containing affected elements (doc §5.5,
+    // layout-matrix L196). The element tree (S1) layers the actual invalidation dispatch on the
+    // metadata Changed channel; the engine itself never references scenes or rendering
     // (invariant 2).
 
     /// <summary>Marks <paramref name="properties"/> as <see cref="PropertyEffects.AffectsMeasure"/> for <typeparamref name="TOwner"/> (both lanes, pre-freeze).</summary>
@@ -1006,7 +1021,8 @@ public abstract class UIObject : IInheritanceNode
         {
             ArgumentNullException.ThrowIfNull(property, nameof(properties));
             property.AddPerTypeEffects(typeof(TOwner), effects);
-            property.GlobalEffects |= effects;
+            if (property.IsAttached)
+                property.GlobalEffects |= effects;
         }
     }
 }

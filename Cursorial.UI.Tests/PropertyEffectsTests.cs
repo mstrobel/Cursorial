@@ -5,7 +5,9 @@ namespace Cursorial.Tests.UI;
 /// <summary>
 /// The two-lane effects design (ledger A1): global lane delivery (M199 shape), per-type lane with
 /// chain resolution and the two-lane OR (M200 shape), the registration-window freeze (M201 shape),
-/// and the <c>Affects*</c> sugar writing both lanes (ledger A2).
+/// and the <c>Affects*</c> sugar (ledger A2): per-type for the registering type, plus the global
+/// lane for <b>attached</b> properties only (doc §5.5 — ordinary styled properties stay per-type so
+/// effects dispatch is bounded; layout-matrix L196).
 /// </summary>
 public class PropertyEffectsTests
 {
@@ -110,13 +112,29 @@ public class PropertyEffectsTests
     [InlineData(PropertyEffects.AffectsComposite)]
     [InlineData(PropertyEffects.AffectsParentMeasure)]
     [InlineData(PropertyEffects.AffectsParentArrange)]
-    public void Sugar_WritesBothLanes(PropertyEffects effects)
+    public void Sugar_StyledProperty_WritesPerTypeLaneOnly(PropertyEffects effects)
     {
         var p = UIProperty.Register<FxHost, int>($"FxSugar{effects}");
         FxHost.RegisterAffects<FxDerivedHost>(effects, p);
 
-        // Per-type lane for the registering type, global lane for everyone (A1/A2).
+        // Per-type lane for the registering type only (doc §5.5): unrelated types see nothing —
+        // what bounds inherited-change fan-out to types that opted in (layout-matrix L196).
         Assert.True(p.GetEffects(typeof(FxDerivedHost)).HasFlag(effects));
+        Assert.False(p.GetEffects(typeof(FxOtherHost)).HasFlag(effects));
+        Assert.False(p.GlobalEffects.HasFlag(effects));
+    }
+
+    [Theory]
+    [InlineData(PropertyEffects.AffectsRender)]
+    [InlineData(PropertyEffects.AffectsParentMeasure)]
+    public void Sugar_AttachedProperty_AlsoWritesGlobalLane(PropertyEffects effects)
+    {
+        var p = UIProperty.RegisterAttached<FxHost, UIObject, int>($"FxSugarAttached{effects}");
+        FxHost.RegisterAffects<FxHost>(effects, p);
+
+        // The global lane is mandatory for attached properties (A1): a host type's per-type table
+        // can freeze before the declaring type's static ctor runs — without this lane
+        // Grid.SetRow(button, 2) would invalidate nothing.
         Assert.True(p.GetEffects(typeof(FxOtherHost)).HasFlag(effects));
         Assert.True(p.GlobalEffects.HasFlag(effects));
     }

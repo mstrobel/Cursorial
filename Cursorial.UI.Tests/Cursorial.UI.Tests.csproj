@@ -21,6 +21,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
     </ItemGroup>
 
 </Project>

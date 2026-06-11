@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using Cursorial.Input;
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI.Input;
@@ -110,6 +111,7 @@ public sealed partial class UIApplication : IAsyncDisposable
         _focusManager.InputDispatcherInternal = _inputDispatcher; // the :focus-visible modality source (doc §7.7)
         _focusManager.AccessKeysInternal = _accessKeys;           // pointer-driven focus exits menu mode (doc §7.7)
         InteractionStates.PressedSink = _inputDispatcher;         // the Pressed fan-in (ND12 / C8)
+        _inputDispatcher.CursorShapeChangedInternal = OnEffectiveCursorShapeChanged; // §7.6 — S3 resolves, S6 emits
         InputDispatchTarget = _inputDispatcher; // S3's router IS the default Phase-1 dispatch seam
         _animationScheduler = new AnimationScheduler();
         AnimationDriver = _animationScheduler;
@@ -359,6 +361,33 @@ public sealed partial class UIApplication : IAsyncDisposable
         _focusManager.OnWindowActivated(root);
         _accessKeys.OnWindowActivated(root); // cue stamping (permanent in AlwaysVisible mode — doc §7.8)
     }
+
+    /// <summary>
+    /// The §7.6 pointer-shape emission leg: S3's dispatcher resolves and equality-gates (the seam
+    /// fires only on effective-shape change, and never when the terminal didn't negotiate
+    /// <c>MouseCursorShape</c>); S6 turns each change into one queued OSC 22 sequence — drained in
+    /// Phase 6 after the frame's delta, like every other out-of-band control sequence. "Back to
+    /// the terminal default" is an explicit <c>WriteSet(Default)</c>, never the empty-payload
+    /// <c>WriteReset</c>: kitty honors empty-as-reset, but Ghostty ignores it and strands the
+    /// previous shape (observed live, 2026-06-11); the named <c>default</c> shape restores on both.
+    /// </summary>
+    private void OnEffectiveCursorShapeChanged(MouseCursorShape? shape)
+    {
+        // null = "back to the terminal default" → the named Default shape (slot 0), per the
+        // Ghostty rationale above.
+        var resolved = shape ?? MouseCursorShape.Default;
+        var index = (int)resolved;
+        QueueControlSequence((uint)index < (uint)CursorShapeWriters.Length
+            ? CursorShapeWriters[index] ??= writer => MouseCursorWriter.WriteSet(writer, resolved)
+            : writer => MouseCursorWriter.WriteSet(writer, resolved)); // out-of-range enum value: uncached — the writer throws at drain, same as before
+    }
+
+    // One cached writer delegate per shape, lazily filled (index = the enum value). Shape changes
+    // are user-rate (hover crossings), not motion-rate, but the emission leg stays allocation-free
+    // like the S3 resolution leg feeding it. Static: shared across application instances (benign
+    // race — identical delegates, last write wins).
+    private static readonly Action<IBufferWriter<byte>>?[] CursorShapeWriters =
+        new Action<IBufferWriter<byte>>?[(int)MouseCursorShape.ZoomOut + 1];
 
     private void DispatchDeviceResponse(DeviceResponseEvent response)
     {

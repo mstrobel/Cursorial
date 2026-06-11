@@ -1,6 +1,7 @@
 using Cursorial.Drawing;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.UI.Controls;
 
 // ReSharper disable ForCanBeConvertedToForeach
 
@@ -458,7 +459,7 @@ public sealed class RenderTree
         RenderPassGuard.Active = true;
         try
         {
-            _renderContext.Begin(context, Capabilities, boundary: zone.Boundary);
+            _renderContext.Begin(context, Capabilities);
             try
             {
                 PaintElement(zone.Boundary, originColumn: 0, originRow: 0);

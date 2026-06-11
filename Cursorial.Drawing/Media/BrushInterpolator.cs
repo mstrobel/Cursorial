@@ -1,10 +1,7 @@
 using Cursorial.Animation;
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// Interpolates between two brushes of the <b>same shape</b>, producing a fresh immutable brush per call

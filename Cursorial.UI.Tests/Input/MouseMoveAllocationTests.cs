@@ -4,6 +4,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Input;

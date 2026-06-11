@@ -1,10 +1,7 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Text;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// Drawing-side authoring sugar for brush-bearing rich text: declare a brush on a run while keeping

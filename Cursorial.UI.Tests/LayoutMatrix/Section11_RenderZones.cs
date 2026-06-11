@@ -2,6 +2,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.LayoutMatrix;
 

@@ -92,6 +92,7 @@ public sealed partial class UIApplication
             finally
             {
                 registration.Dispose();
+
                 try
                 {
                     RunTeardown(); // crash paths restore the terminal too (design doc §10.7)
@@ -154,7 +155,7 @@ public sealed partial class UIApplication
             }
         }
 
-        InitializeFromHost(size is { } s && s.Columns > 0 && s.Rows > 0 ? s : (80, 24));
+        InitializeFromHost(size is { Columns: > 0, Rows: > 0 } s ? s : (80, 24));
     }
 
     /// <summary>
@@ -212,30 +213,31 @@ public sealed partial class UIApplication
         // Exactly one ReadAllAsync enumeration per session (single-shot contract). EOF ⇒ shutdown;
         // faults land in the Interlocked slot, surfaced ONCE on the UI thread (Phase 1).
         _pumpCts = new CancellationTokenSource();
+
         var token = _pumpCts.Token;
         var device = _device!;
-        _pumpTask = Task.Run(async () =>
-        {
-            try
+
+        _pumpTask = Task.Run(
+            async () =>
             {
-                await foreach (var inputEvent in device.ReadAllAsync(token).ConfigureAwait(false))
+                try
                 {
-                    _inputQueue.Enqueue(inputEvent);
+                    await foreach (var inputEvent in device.ReadAllAsync(token).ConfigureAwait(false))
+                    {
+                        _inputQueue.Enqueue(inputEvent);
+                        Dispatcher.Wake();
+                    }
+
+                    _streamEnded = true;
                     Dispatcher.Wake();
                 }
-
-                _streamEnded = true;
-                Dispatcher.Wake();
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                Interlocked.Exchange(ref _pumpFault, ex);
-                Dispatcher.Wake();
-            }
-        });
+                catch (OperationCanceledException) {}
+                catch (Exception ex)
+                {
+                    Interlocked.Exchange(ref _pumpFault, ex);
+                    Dispatcher.Wake();
+                }
+            });
     }
 
     // ───────────────────────────── the loop (design doc §10.5) ─────────────────────────────
@@ -243,6 +245,7 @@ public sealed partial class UIApplication
     private void RunLoop()
     {
         var time = _options.TimeProvider;
+
         while (!_shutdownRequested)
         {
             var frameStart = time.GetTimestamp();
@@ -250,6 +253,7 @@ public sealed partial class UIApplication
             var frameTime = new FrameTime(_frame, elapsed, elapsed - _lastElapsed);
 
             var result = RunFrameOnce(in frameTime);
+
             if (_fatalException is not null)
                 return; // unwind — RunCoreAsync's finally runs the canonical teardown
 
@@ -257,9 +261,11 @@ public sealed partial class UIApplication
             if (!_shutdownRequested)
             {
                 var remaining = _options.FrameInterval - time.GetElapsedTime(frameStart);
-                var workPending = (_renderSystem?.HasDirtyVisuals ?? false)
-                                  || (_layoutSystem?.HasPendingLayout ?? false)
-                                  || (StyleHooks?.HasPendingActivations ?? false);
+
+                bool workPending = _renderSystem is { HasDirtyVisuals: true } ||
+                                   _layoutSystem is { HasPendingLayout: true } ||
+                                   StyleHooks is { HasPendingActivations: true };
+
                 if (workPending || (AnimationDriver?.HasActiveAnimations ?? false))
                 {
                     // Late invalidation / animating: run another frame, but at frame pace.
@@ -276,6 +282,7 @@ public sealed partial class UIApplication
                     // during the clamp then proceeds straight into the next frame; otherwise park
                     // for free until input / Post / RequestRender / QueueControlSequence / Shutdown.
                     var wokeDuringClamp = false;
+
                     if (result.Rendered)
                     {
                         while (!_shutdownRequested && remaining > TimeSpan.Zero)
@@ -313,6 +320,7 @@ public sealed partial class UIApplication
         // PHASE 1 — input drain to empty (the pump is the only producer — no self-feeding;
         // inline try/catch, no per-event closures at motion rates).
         ResizeEvent? resize = null;
+
         while (_inputQueue.TryDequeue(out var inputEvent))
         {
             switch (inputEvent)
@@ -343,20 +351,23 @@ public sealed partial class UIApplication
         }
 
         var resized = false;
+
         if (resize is { Columns: > 0, Rows: > 0 })
         {
             ApplyResize(resize);
             resized = true;
         }
 
-        if (Interlocked.Exchange(ref _pumpFault, null) is { } fault && !RaiseUnhandled(fault))
+        if (Interlocked.Exchange(ref _pumpFault, null) is {} fault && !RaiseUnhandled(fault))
             return default; // Handled ⇒ the app runs on with input PERMANENTLY DEAD (single-shot device)
+
         if (_streamEnded)
             Shutdown(0);
         // (P7 seam: windowSystem.DrainDeferredTopology() lands at this boundary.)
 
         // PHASE 2 — dispatcher jobs, SNAPSHOT count: jobs posted during the drain run next frame.
         var jobs = Dispatcher.JobCount;
+
         while (jobs-- > 0 && Dispatcher.TryDequeueJob(out var job))
         {
             try
@@ -372,7 +383,7 @@ public sealed partial class UIApplication
 
         // PHASE 3 — styling activation flush (Fork B, P3): phase-1/2 pseudo/class flips reach
         // fixpoint BEFORE animation/layout/render (invariant 1).
-        if (StyleHooks is { } styling)
+        if (StyleHooks is {} styling)
         {
             try
             {
@@ -388,7 +399,7 @@ public sealed partial class UIApplication
         // PHASE 4 — animation tick at the frozen clock (S5, P8); a second cheap styling flush
         // catches animation-driven flips; TickNewlyStarted samples same-frame ignitions at
         // elapsed-zero (no one-frame From-snap).
-        if (AnimationDriver is { } animation)
+        if (AnimationDriver is {} animation)
         {
             try
             {
@@ -406,6 +417,7 @@ public sealed partial class UIApplication
         // PHASE 5 — layout: ONE call per frame; the LayoutManager owns convergence internally and
         // the facade owns the give-up (never pins HasPendingLayout).
         var layoutRan = false;
+
         if (_layoutSystem is { HasPendingLayout: true } layout)
         {
             try
@@ -424,16 +436,19 @@ public sealed partial class UIApplication
 
         // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
         var rendered = false;
+
         if (!_renegotiating)
         {
             // Consume the request flag unconditionally (no short-circuit): leaving it set when
             // visuals are already dirty would buy one wasted empty-diff render next frame.
             var renderRequested = Interlocked.Exchange(ref _renderRequested, 0) != 0;
-            var renderNeeded = (_renderSystem?.HasDirtyVisuals ?? false) || layoutRan || resized
-                               || renderRequested;
-            if (renderNeeded && _renderSystem is { } renderSystem)
+
+            var renderNeeded = (_renderSystem?.HasDirtyVisuals ?? false) || layoutRan || resized || renderRequested;
+
+            if (renderNeeded && _renderSystem is {} renderSystem)
             {
                 bool changed;
+
                 try
                 {
                     changed = renderSystem.RenderFrame(_buffer!, in time);
@@ -448,6 +463,7 @@ public sealed partial class UIApplication
 
                 if (_guard.IsFatal)
                     return default; // a draw delegate recorded fatal — unwind to teardown
+
                 if (_guard.ConsumeHandledFlag())
                     changed = true; // handled draw exception ⇒ conservative emit (design doc §10.8)
 
@@ -479,6 +495,7 @@ public sealed partial class UIApplication
                 // The out-of-band OSC channel — AFTER the delta; forces a flush even when empty.
                 if (!rendered)
                     _scratch.ResetWrittenCount();
+
                 while (_controlSequences.TryDequeue(out var payload))
                 {
                     try
@@ -537,11 +554,14 @@ public sealed partial class UIApplication
     public async ValueTask RenegotiateAsync(CancellationToken cancellationToken = default)
     {
         Dispatcher.VerifyAccess();
+
         if (_host is null || _renderer is null)
             throw new InvalidOperationException("The application is not running.");
 
         var oldCapabilities = _capabilities;
+
         _renegotiating = true; // set BEFORE the await — the loop reads it from Phase 6
+
         try
         {
             await _host.RenegotiateAsync(cancellationToken);
@@ -558,10 +578,17 @@ public sealed partial class UIApplication
             _capabilities = fresh;
 
             // Close the old renderer (fragment erases, autowrap restore) and flush before rebuilding.
+            // The pointer shape is re-baselined here too (§7.6): reset under the OLD gate (a shape
+            // may be active from before the window); the dispatcher's OnCapabilitiesChanged below
+            // forgets its tracked shape and re-emits an active one under the NEW gate.
             try
             {
                 _scratch.ResetWrittenCount();
                 _renderer.Close(_scratch);
+
+                if (oldCapabilities.Output.Protocol.MouseCursorShape)
+                    MouseCursorWriter.WriteSet(_scratch, MouseCursorShape.Default); // not WriteReset — Ghostty ignores empty-payload reset (§7.6)
+
                 if (_scratch.WrittenCount > 0)
                 {
                     _host.Output.Writer.Write(_scratch.WrittenSpan);
@@ -574,6 +601,7 @@ public sealed partial class UIApplication
             }
 
             var (columns, rows) = (_buffer!.Columns, _buffer.Rows);
+
             _buffer = new CellBuffer(columns, rows, fresh) { CursorVisible = false };
             _renderer = new FrameRenderer(fresh.Output, new FrameRendererOptions(OrderedDither: _options.OrderedDither));
             _effectiveInputCapabilities = ApplyDecorationProjections(fresh.Input);
@@ -586,11 +614,13 @@ public sealed partial class UIApplication
             StyleHooks?.OnCapabilitiesChanged(fresh);
             InputDispatchTarget?.OnCapabilitiesChanged(fresh);
             _accessKeys.OnCapabilitiesChanged(fresh);
-            CapabilitiesChanged?.Invoke(this, new CapabilitiesChangedEventArgs
-            {
-                OldCapabilities = oldCapabilities,
-                NewCapabilities = fresh,
-            });
+
+            CapabilitiesChanged?.Invoke(this,
+                                        new CapabilitiesChangedEventArgs
+                                        {
+                                            OldCapabilities = oldCapabilities,
+                                            NewCapabilities = fresh,
+                                        });
         }
         finally
         {
@@ -607,7 +637,8 @@ public sealed partial class UIApplication
     /// The canonical teardown — runs in <c>finally</c> so crash paths restore the terminal too;
     /// every step best-effort and idempotent. Order: sync-context uninstall + job-drain (canceled)
     /// → <i>(P7: CloseAllAsync)</i> → animation shutdown seam → pump cancel + blocking wait →
-    /// renderer Close → show cursor → SGR reset → leave alt screen (or clear) → one write + flush
+    /// renderer Close → show cursor → SGR reset → pointer-shape reset (capability-gated, §7.6) →
+    /// leave alt screen (or clear) → one write + flush
     /// → <i>(P5: palette dispose)</i> → host dispose (owned only) → clear thread-local Current.
     /// </summary>
     internal void RunTeardown()
@@ -664,10 +695,15 @@ public sealed partial class UIApplication
                 _renderer.Close(_scratch);
                 CursorWriter.WriteShow(_scratch);
                 SgrEncoder.WriteReset(_scratch);
+
+                if (_capabilities.Output.Protocol.MouseCursorShape)
+                    MouseCursorWriter.WriteSet(_scratch, MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)
+
                 if (_enteredAltScreen)
                     ScreenWriter.WriteLeaveAlternateScreen(_scratch);
                 else
                     ScreenWriter.WriteClearScreen(_scratch);
+
                 host.Output.Writer.Write(_scratch.WrittenSpan);
                 host.Output.Writer.FlushAsync().AsTask().GetAwaiter().GetResult();
             }

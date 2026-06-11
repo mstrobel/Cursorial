@@ -66,11 +66,13 @@ public sealed class Scene : IDisposable
     internal CellBuffer Buffer => _buffer;
 
     /// <summary>
-    /// Monotonic counter bumped each time <see cref="Draw"/> actually re-rasters. The compositor
-    /// compares it to detect a content change even though <see cref="IsDirty"/> is reset by
-    /// <see cref="Draw"/> before compositing runs.
+    /// Monotonic counter bumped each time <see cref="Draw"/> actually re-rasters (never on a
+    /// clean-scene no-op). Snapshot it before a compositing pass and compare after: a stable
+    /// version means the raster content is unchanged and prior composite output remains valid —
+    /// the change signal that survives <see cref="IsDirty"/> being reset by <see cref="Draw"/>
+    /// before compositing runs (<see cref="SceneCompositor"/> relies on exactly this).
     /// </summary>
-    internal long RasterVersion => _rasterVersion;
+    public long RasterVersion => _rasterVersion;
 
     /// <summary>
     /// Re-raster the scene if dirty: wipe to transparent, run <paramref name="draw"/>, mark clean,

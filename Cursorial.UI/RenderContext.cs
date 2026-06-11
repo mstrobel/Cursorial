@@ -11,18 +11,17 @@ namespace Cursorial.UI;
 
 /// <summary>
 /// The <see cref="UIElement.Render"/> drawing surface: Cursorial.Drawing's vocabulary re-exposed in
-/// <b>element-local</b> integer cell coordinates. Coordinate translation is performed by this type
-/// at the call site (an origin add), applied uniformly to every forwarded call. Since the P2.5 ①
-/// Drawing rework, the push stack covers <em>every</em> Drawing path — the banded-zone row shift
-/// rides the <see cref="RenderTree"/>'s ambient <c>PushTranslate</c> for all of them (this type no
-/// longer folds it), and a draw straddling the band's top edge clips per cell instead of being
-/// dropped. (Migrating the per-element origin add itself onto the push stack is the remainder of
-/// the P2.5 ① batch.)
+/// <b>element-local</b> integer cell coordinates. This type is a thin veneer over
+/// <see cref="DrawingContext"/> — it performs no coordinate arithmetic of its own. Each element
+/// render runs under <b>one</b> pushed translate scope (the element's zone-local origin) on Drawing's
+/// clip/translate state stack, composing with the <see cref="RenderTree"/>'s ambient banded-zone
+/// scope, so every forwarded call — cells, fills, text, content, strokes, shadows, panels — maps and
+/// clips per cell through one mechanism (the P2.5 ① push-stack full-coverage guarantee).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One instance is reused per zone raster</b>, its internal (origin, size) re-pointed per
-/// element — do not capture it beyond the <see cref="UIElement.Render"/> call. Negotiated
+/// <b>One instance is reused per zone raster</b>, its per-element scope re-pushed per element — do
+/// not capture it beyond the <see cref="UIElement.Render"/> call. Negotiated
 /// <see cref="Capabilities"/> are supplied automatically to the text/content calls that need them.
 /// </para>
 /// <para>
@@ -43,10 +42,8 @@ namespace Cursorial.UI;
 public sealed class RenderContext
 {
     private DrawingContext? _inner;
-    private UIElement? _boundary; // the zone boundary being rastered (diagnostic routing)
     private OutputCapabilities _capabilities = OutputCapabilities.None;
-    private int _originColumn;
-    private int _originRow;
+    private DrawingStateScope _elementScope; // the one per-element push (origin translate)
     private Size _size;
     private bool _userFigureActive;
     private int _userFigureToken;
@@ -68,34 +65,43 @@ public sealed class RenderContext
 
     /// <summary>
     /// Arms the context for one zone raster over a fresh <see cref="DrawingContext"/>. A banded
-    /// scroll zone's row shift (doc §5.7) is NOT folded here — every Drawing path rides the
-    /// <see cref="RenderTree"/>'s ambient <c>PushTranslate</c> (negative-capable, per-cell clipped)
-    /// since the P2.5 ① push-stack coverage rework.
+    /// scroll zone's row shift (doc §5.7) is the <see cref="RenderTree"/>'s ambient
+    /// <c>PushTranslate</c> — already on the stack when the per-element scopes push on top of it.
     /// </summary>
-    internal void Begin(DrawingContext inner, OutputCapabilities capabilities, UIElement? boundary = null)
+    internal void Begin(DrawingContext inner, OutputCapabilities capabilities)
     {
         _inner = inner;
         _capabilities = capabilities;
-        _boundary = boundary;
+        _elementScope = default;
         _userFigureActive = false;
     }
 
     /// <summary>Disarms the context at the end of a zone raster (captured references throw thereafter).</summary>
     internal void End()
     {
+        _elementScope.Dispose(); // pop the last element's scope (no-op when none was pushed)
+        _elementScope = default;
         _inner = null;
-        _boundary = null;
         _userFigureActive = false;
     }
 
-    /// <summary>Re-points the origin/size at the element about to render (no per-element allocation).</summary>
+    /// <summary>
+    /// Re-points the context at the element about to render: pops the previous element's scope and
+    /// pushes one translate scope at the element's zone-local origin (no per-element allocation —
+    /// the scope is a struct over Drawing's state stack).
+    /// </summary>
     internal void PointAt(int originColumn, int originRow, Size size)
     {
         Debug.Assert(originColumn >= 0 && originRow >= 0,
             "Zone-raster origins are non-negative by construction at P1 (child Bounds are non-negative; " +
             "RenderOffset* never enters the raster — it promotes a boundary).");
-        _originColumn = originColumn;
-        _originRow = originRow;
+        // Pop-then-push, in that order. If PushTranslate ever threw between the two, the stale
+        // _elementScope's later double-dispose in End() is a safe no-op (DrawingContext.PopTo is
+        // depth-gated and idempotent). Do NOT "fix" this by pushing first and disposing after: the
+        // new push would compose onto the un-popped previous translate, and the old scope's pop —
+        // same depth token as the new scope's — would then remove both.
+        _elementScope.Dispose();
+        _elementScope = Inner.PushTranslate(originColumn, originRow);
         _size = size;
     }
 
@@ -116,25 +122,19 @@ public sealed class RenderContext
             "This RenderContext is not active. It is valid only inside Render(...) during a zone raster " +
             "and must not be captured beyond that call.");
 
-    private Rect Translate(in Rect rect)
-        => new(
-            Math.Min(rect.Column + _originColumn, LayoutMath.MaxExtent),
-            Math.Min(rect.Row + _originRow, LayoutMath.MaxExtent),
-            rect.Columns, rect.Rows);
-
     // ───────────────────────────── cells and fills ─────────────────────────────
 
     /// <summary>Writes one cell at element-local (<paramref name="column"/>, <paramref name="row"/>).</summary>
     public void Set(int column, int row, string? grapheme, in Style style)
-        => Inner.Set(column + _originColumn, row + _originRow, grapheme, in style);
+        => Inner.Set(column, row, grapheme, in style);
 
     /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
     public void FillRectangle(in Rect region, IBrush brush)
-        => Inner.FillRectangle(Translate(region), brush);
+        => Inner.FillRectangle(region, brush);
 
     /// <inheritdoc cref="FillRectangle(in Rect, IBrush)"/>
     public void FillRectangle(in Rect region, Color color)
-        => Inner.FillRectangle(Translate(region), color);
+        => Inner.FillRectangle(region, color);
 
     /// <summary>
     /// Glyph-occluding fill — the opaque-surface path (<c>Panel.Background</c> uses this; design doc
@@ -142,23 +142,26 @@ public sealed class RenderContext
     /// Borders over an opaque fill need <c>overwrite: true</c> (the Drawing recipe).
     /// </summary>
     public void FillOpaque(in Rect region, IBrush brush)
-        => Inner.FillOpaque(Translate(region), brush);
+        => Inner.FillOpaque(region, brush);
 
     /// <inheritdoc cref="FillOpaque(in Rect, IBrush)"/>
     public void FillOpaque(in Rect region, Color color)
-        => Inner.FillOpaque(Translate(region), color);
+        => Inner.FillOpaque(region, color);
 
     // ───────────────────────────── text and content ─────────────────────────────
 
-    /// <summary>Draws one line of text at element-local coordinates; returns the columns written.</summary>
+    /// <summary>
+    /// Draws one line of text at element-local coordinates; returns the columns advanced — the
+    /// run's full local width (clusters a band/zone edge clips away still advance the count).
+    /// </summary>
     public int DrawText(int column, int row, ReadOnlySpan<char> text,
                         IBrush foreground, IBrush? background = null, in Style baseStyle = default)
-        => Inner.DrawText(column + _originColumn, row + _originRow, text, foreground, background, baseStyle);
+        => Inner.DrawText(column, row, text, foreground, background, baseStyle);
 
     /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>
     public int DrawText(int column, int row, ReadOnlySpan<char> text,
                         Color foreground, Color? background = null, in Style baseStyle = default)
-        => Inner.DrawText(column + _originColumn, row + _originRow, text, foreground, background, baseStyle);
+        => Inner.DrawText(column, row, text, foreground, background, baseStyle);
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>, brushed; capabilities auto-supplied.</summary>
     /// <remarks>
@@ -171,7 +174,7 @@ public sealed class RenderContext
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush)
     {
-        Inner.DrawFormattedText(text, Translate(bounds), brush, _capabilities);
+        Inner.DrawFormattedText(text, bounds, brush, _capabilities);
     }
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
@@ -181,13 +184,13 @@ public sealed class RenderContext
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds)
     {
-        Inner.DrawFormattedText(text, Translate(bounds), _capabilities);
+        Inner.DrawFormattedText(text, bounds, _capabilities);
     }
 
     /// <summary>Paints embedded content (images, sized text) into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     public void DrawContent(in Rect bounds, IContent content)
     {
-        Inner.DrawContent(Translate(bounds), content, _capabilities);
+        Inner.DrawContent(bounds, content, _capabilities);
     }
 
     // ───────────────────────────── strokes, boxes, panels, shadows ─────────────────────────────
@@ -195,37 +198,37 @@ public sealed class RenderContext
     /// <summary>Strokes a line between element-local endpoints (axis-aligned → box glyphs; diagonal → braille).</summary>
     public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false)
     {
-        Inner.DrawLine(x0 + _originColumn, y0 + _originRow, x1 + _originColumn, y1 + _originRow, pen, overwrite);
+        Inner.DrawLine(x0, y0, x1, y1, pen, overwrite);
     }
 
     /// <inheritdoc cref="DrawLine(int, int, int, int, in Pen, bool)"/>
     public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false)
     {
-        Inner.DrawLine(x0 + _originColumn, y0 + _originRow, x1 + _originColumn, y1 + _originRow, color, overwrite);
+        Inner.DrawLine(x0, y0, x1, y1, color, overwrite);
     }
 
     /// <summary>Strokes the outline of an element-local <paramref name="rect"/>.</summary>
     public void DrawBox(in Rect rect, in Pen pen, bool overwrite = false)
     {
-        Inner.DrawBox(Translate(rect), pen, overwrite);
+        Inner.DrawBox(rect, pen, overwrite);
     }
 
     /// <inheritdoc cref="DrawBox(in Rect, in Pen, bool)"/>
     public void DrawBox(in Rect rect, Color color, bool overwrite = false)
     {
-        Inner.DrawBox(Translate(rect), color, overwrite);
+        Inner.DrawBox(rect, color, overwrite);
     }
 
     /// <summary>Strokes an outline with an optional background-only fill.</summary>
     public void DrawRectangle(in Rect rect, in Pen pen, IBrush? fill = null, bool overwrite = false)
     {
-        Inner.DrawRectangle(Translate(rect), pen, fill, overwrite);
+        Inner.DrawRectangle(rect, pen, fill, overwrite);
     }
 
     /// <summary>Strokes a titled box outline.</summary>
     public void DrawTitledBox(in Rect rect, in PanelTitle title, in Pen pen, bool overwrite = false)
     {
-        Inner.DrawTitledBox(Translate(rect), title, pen, overwrite);
+        Inner.DrawTitledBox(rect, title, pen, overwrite);
     }
 
     /// <summary>
@@ -236,7 +239,7 @@ public sealed class RenderContext
     /// </summary>
     public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)
     {
-        Inner.DrawPanel(Translate(rect), pen, fill, title, overwrite);
+        Inner.DrawPanel(rect, pen, fill, title, overwrite);
     }
 
     /// <summary>
@@ -246,13 +249,13 @@ public sealed class RenderContext
     /// </summary>
     public void DrawDropShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
-        Inner.DrawDropShadow(Translate(element), geometry, shadowColor);
+        Inner.DrawDropShadow(element, geometry, shadowColor);
     }
 
     /// <summary>Paints an inner shadow inside the element-local <paramref name="element"/> rect.</summary>
     public void DrawInnerShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
-        Inner.DrawInnerShadow(Translate(element), geometry, shadowColor);
+        Inner.DrawInnerShadow(element, geometry, shadowColor);
     }
 
     // ───────────────────────────── user figures ─────────────────────────────
@@ -266,12 +269,12 @@ public sealed class RenderContext
     /// <exception cref="InvalidOperationException">A user figure is already open.</exception>
     public RenderFigureScope BeginFigure() => BeginFigureCore(null);
 
-    // Figure bounds are pen-gradient metadata: the origin add happens here; the band shift rides the
-    // ambient PushTranslate (DrawingContext.BeginFigure takes its bounds in current-local coordinates
-    // and maps them through the ambient state — a straddling rect samples exactly, no clamping needed).
+    // Figure bounds are pen-gradient metadata: DrawingContext.BeginFigure takes its bounds in
+    // current-local coordinates and maps them through the ambient state (element origin + band
+    // shift) — a rect straddling the band's top edge samples exactly, no clamping needed.
     /// <summary>Begins a user figure with explicit element-local brush bounds (see <see cref="BeginFigure()"/>).</summary>
     /// <exception cref="InvalidOperationException">A user figure is already open.</exception>
-    public RenderFigureScope BeginFigure(in Rect bounds) => BeginFigureCore(Translate(bounds));
+    public RenderFigureScope BeginFigure(in Rect bounds) => BeginFigureCore(bounds);
 
     private RenderFigureScope BeginFigureCore(Rect? bounds)
     {

@@ -1,6 +1,6 @@
 using System.Collections;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The owner-wired definition collection backing <see cref="Grid.ColumnDefinitions"/> /
@@ -16,7 +16,7 @@ public abstract class GridDefinitionCollection<T> : IList<T>, IReadOnlyList<T>
 
     private protected GridDefinitionCollection(Grid owner) => _owner = owner;
 
-    /// <inheritdoc cref="IReadOnlyList{T}.Count" />
+    /// <inheritdoc cref="IReadOnlyCollection{T}.Count" />
     public int Count => _items.Count;
 
     /// <inheritdoc/>

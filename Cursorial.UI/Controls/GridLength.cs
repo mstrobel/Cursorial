@@ -1,4 +1,4 @@
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>The sizing mode of a <see cref="GridLength"/> (design doc §5.4).</summary>
 public enum GridUnitType : byte

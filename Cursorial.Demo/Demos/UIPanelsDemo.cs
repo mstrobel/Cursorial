@@ -4,6 +4,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
 // ReSharper disable CheckNamespace
@@ -20,7 +21,9 @@ using Cursorial.UI.Input;
 // Shift+Tab cycles them through the step-6 navigation tail, clicking one focuses it (pointer
 // modality), and each card renders its visual state from DIRECT InteractionState reads (IsFocused /
 // IsPointerOver — the P3 styling engine will replace these hand-rolled reads with pseudo-classes).
-// Hovering any card highlights it live off the any-event-motion hover chain. Ctrl+R is a
+// Hovering any card highlights it live off the any-event-motion hover chain — and, on OSC 22
+// terminals (Kitty/Ghostty/Foot), flips the HOST mouse pointer through UIElement.Cursor (§7.6):
+// the cards request the hand, the glass panel the I-beam, everything else the default. Ctrl+R is a
 // KeyBinding (KeyGesture → ICommand on the root's InputBindings) that resets the showcase. Resize
 // is handled by the loop's resize transaction; q / Esc exit through Shutdown, and an UNHANDLED
 // Ctrl+C exits through the S6 default gesture (the handler deliberately leaves Ctrl-modified keys
@@ -35,7 +38,9 @@ internal sealed class UIPanelsDemo : IDemo
     {
         Console.WriteLine("UI panels demo. Opening alt screen — arrows slide the floating panel, " +
                           "'v' toggles the badge, 'o' cycles the glass opacity, Tab/click focuses the " +
-                          "sidebar cards (hover highlights), Ctrl+R resets; q / Esc / Ctrl+C exits.");
+                          "sidebar cards (hover highlights; on Kitty-class terminals the mouse pointer " +
+                          "turns to a hand over the cards and an I-beam over the glass), Ctrl+R resets; " +
+                          "q / Esc / Ctrl+C exits.");
 
         var app = UIApplication.CreateBuilder()
             .WithFrameRate(60)
@@ -160,6 +165,8 @@ internal sealed class UIPanelsDemo : IDemo
             sidebar.Children.Add(cardStack);
 
             sidebar.Children.Add(new Label(" keys:", ChromeText, SidebarBg));
+            sidebar.Children.Add(new Label("   hover    cards=hand", ChromeText, SidebarBg));
+            sidebar.Children.Add(new Label("            glass=I-beam", ChromeText, SidebarBg) { Margin = new(0, -1, 0, 0) });
             sidebar.Children.Add(new Label("   ← ↑ ↓ →  slide panel", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   v        toggle badge", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   o        cycle opacity", ChromeText, SidebarBg));
@@ -205,6 +212,7 @@ internal sealed class UIPanelsDemo : IDemo
                 Width = 26,
                 Height = 5,
                 Opacity = OpacitySteps[_opacityStep],
+                Cursor = MouseCursorShape.Text, // §7.6 — I-beam over the glass panel (OSC 22 terminals)
             };
             _glassReadout = new Label($"   opacity {OpacitySteps[_opacityStep]:0.00}", Color.FromRgb(235, 242, 252), GlassBg);
             _glass.Children.Add(new Label(" glass panel (o)", Color.FromRgb(235, 242, 252), GlassBg));
@@ -409,6 +417,7 @@ internal sealed class UIPanelsDemo : IDemo
         {
             Title = title;
             Focusable = true;
+            Cursor = MouseCursorShape.Pointer; // §7.6 — clickable hand over the cards (OSC 22 terminals)
         }
 
         public string Title { get; }

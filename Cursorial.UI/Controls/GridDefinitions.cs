@@ -1,4 +1,4 @@
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The base class for <see cref="ColumnDefinition"/>/<see cref="RowDefinition"/> (spec §2.3).

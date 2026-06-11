@@ -1,9 +1,6 @@
 using Cursorial.Animation;
-using Cursorial.Drawing.Media;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// An <see cref="IBrush"/> animation — <see cref="Animation{T}"/> with <see cref="BrushInterpolator"/>

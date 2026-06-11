@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// Positions children at explicit coordinates via the <see cref="LeftProperty"/> /

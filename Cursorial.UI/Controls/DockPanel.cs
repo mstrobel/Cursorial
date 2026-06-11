@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// Docks children against its edges in child order (design doc §5.4; the classic WPF

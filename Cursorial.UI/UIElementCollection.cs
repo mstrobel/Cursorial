@@ -8,6 +8,8 @@ namespace Cursorial.UI;
 /// attached-elsewhere children, and invalidates the owner's measure (the cached z-order array
 /// invalidation joins at T3). <c>ItemsPresenter</c>-style visual-only adoption uses
 /// <c>UIElement.AddVisualChildOnly</c> instead (punch 43).
+/// Lives in <c>Cursorial.UI</c> beside <see cref="UIElement"/> — a deliberate deviation from WPF,
+/// which places its counterpart in <c>System.Windows.Controls</c> (design doc §1.3).
 /// </summary>
 public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElement>
 {

@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// Stacks children sequentially along <see cref="Orientation"/> (default

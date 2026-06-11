@@ -1,10 +1,7 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Text;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// Wires gradient brushes into <see cref="TextMarkup"/> via a <c>[brush=VALUE]…[/brush]</c> tag. Two authoring

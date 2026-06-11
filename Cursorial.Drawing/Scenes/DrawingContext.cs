@@ -220,14 +220,21 @@ public sealed class DrawingContext
 
         if (_stateStack.Count != 0)
         {
-            // Transformed path: sample the brush in local coordinates, write at the translated+clipped scene
-            // cell. The active clip is within the scene, so a mapped cell is always a safe raw write.
-            for (int row = region.Row; row < region.RowEnd; row++)
-            for (int col = region.Column; col < region.ColumnEnd; col++)
+            // Transformed path: sample the brush in local coordinates, write at the translated scene cell.
+            // The iteration range is pre-clamped to the active clip mapped back into local space — an
+            // oversized region must cost O(visible), not O(requested) (Rect permits 65535×65535) — so every
+            // remaining cell lands inside the clip, which is within the scene: a safe raw write.
+            var s = CurrentState;
+            int lColStart = Math.Max(region.Column, s.Clip.Column - s.Dx);
+            int lRowStart = Math.Max(region.Row, s.Clip.Row - s.Dy);
+            int lColEnd = Math.Min(region.ColumnEnd, s.Clip.ColumnEnd - s.Dx);
+            int lRowEnd = Math.Min(region.RowEnd, s.Clip.RowEnd - s.Dy);
+
+            for (int row = lRowStart; row < lRowEnd; row++)
+            for (int col = lColStart; col < lColEnd; col++)
             {
-                if (!TryMap(col, row, out int sc, out int sr)) continue;
                 var c = brush.ColorAt(col, row, brushBounds);
-                _surface[sc, sr] = new Cell(null, CellKind.Single, Style.Default.WithBackground(c));
+                _surface[col + s.Dx, row + s.Dy] = new Cell(null, CellKind.Single, Style.Default.WithBackground(c));
             }
             return;
         }
@@ -268,10 +275,16 @@ public sealed class DrawingContext
 
         if (_stateStack.Count != 0)
         {
-            for (int row = region.Row; row < region.RowEnd; row++)
-            for (int col = region.Column; col < region.ColumnEnd; col++)
-                if (TryMap(col, row, out int sc, out int sr))
-                    RawWriteWithCleanup(sc, sr, OccluderCell(brush.ColorAt(col, row, region)));
+            // Pre-clamped to the active clip in local space — see FillRectangle's transformed path.
+            var s = CurrentState;
+            int lColStart = Math.Max(region.Column, s.Clip.Column - s.Dx);
+            int lRowStart = Math.Max(region.Row, s.Clip.Row - s.Dy);
+            int lColEnd = Math.Min(region.ColumnEnd, s.Clip.ColumnEnd - s.Dx);
+            int lRowEnd = Math.Min(region.RowEnd, s.Clip.RowEnd - s.Dy);
+
+            for (int row = lRowStart; row < lRowEnd; row++)
+            for (int col = lColStart; col < lColEnd; col++)
+                RawWriteWithCleanup(col + s.Dx, row + s.Dy, OccluderCell(brush.ColorAt(col, row, region)));
             return;
         }
 
@@ -465,7 +478,9 @@ public sealed class DrawingContext
     /// <paramref name="background"/>) per cell across the run — so a gradient brush colors the text
     /// continuously, glyph by glyph. <paramref name="background"/> defaults to transparent (glyph
     /// only). Grapheme-aware (wide clusters occupy two cells); does not wrap or interpret newlines.
-    /// Returns the number of columns written.
+    /// Returns the number of columns <b>advanced</b> in local coordinates: under an active
+    /// push the run advances through clusters an active clip suppresses (the full local run width);
+    /// with no push it stops at the surface's right edge and returns the clamped width.
     /// </summary>
     /// <remarks>
     /// Glyphs are written through <see cref="CellBuffer.Set"/>, which composites against the

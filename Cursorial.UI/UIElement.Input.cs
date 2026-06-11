@@ -1,3 +1,4 @@
+using Cursorial.Output;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI;
@@ -129,6 +130,27 @@ public abstract partial class UIElement : IInteractionStateSink
 
     /// <inheritdoc cref="TabIndexProperty"/>
     public int TabIndex { get => GetValue(TabIndexProperty); set => SetValue(TabIndexProperty, value); }
+
+    // ───────────────────────────── mouse cursor (doc §7.6) ─────────────────────────────
+
+    /// <summary>
+    /// The host mouse-pointer shape requested while the pointer is over this element (doc §7.6) —
+    /// Core's <see cref="MouseCursorShape"/> directly, no UI wrapper type. <see langword="null"/>
+    /// (the default) means "no preference": resolution walks the hover chain leaf→root to the
+    /// first non-null <c>Cursor</c>, falling back to the terminal default at the root; while mouse
+    /// capture is held the capture target's resolved cursor wins. Honored only on terminals
+    /// reporting <c>OutputProtocolCapabilities.MouseCursorShape</c> (OSC 22 — Kitty, Ghostty,
+    /// Foot); silently inert otherwise, no polyfill. <b>[no invalidation]</b> — the cursor is not
+    /// cell content; a change takes effect at the next hover/capture re-resolution — at the latest,
+    /// the next rendered frame's per-frame re-resolution (doc §7.6). No <c>RequestRender</c> is
+    /// needed when anything else renders; an otherwise-idle tree picks the change up on its next
+    /// frame.
+    /// </summary>
+    public static readonly StyledProperty<MouseCursorShape?> CursorProperty =
+        UIProperty.Register<UIElement, MouseCursorShape?>(nameof(Cursor));
+
+    /// <inheritdoc cref="CursorProperty"/>
+    public MouseCursorShape? Cursor { get => GetValue(CursorProperty); set => SetValue(CursorProperty, value); }
 
     private static readonly UIPropertyKey<bool> IsFocusedPropertyKey =
         UIProperty.RegisterReadOnly<UIElement, bool>(nameof(IsFocused));

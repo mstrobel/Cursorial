@@ -14,7 +14,8 @@ public static class TestCapabilities
 {
     /// <summary>
     /// A modern Kitty-class terminal: verified truecolor, full styling, alt screen, cursor
-    /// control, SGR mouse with motion, Kitty keyboard (key-up/repeats), bracketed paste + focus.
+    /// control, SGR mouse with motion, Kitty keyboard (key-up/repeats), bracketed paste + focus,
+    /// and the OSC 22 pointer-shape protocol (<c>MouseCursorShape</c> — Kitty honors it live).
     /// The default preset.
     /// </summary>
     public static TerminalCapabilities KittyTruecolor { get; } = new(
@@ -74,6 +75,7 @@ public static class TestCapabilities
                 AlternateScreenBuffer = true,
                 ScrollRegion = true,
             },
+            Protocol = OutputProtocolCapabilities.None with { MouseCursorShape = true },
         });
 
     /// <summary>
@@ -120,6 +122,19 @@ public static class TestCapabilities
         Input = KittyTruecolor.Input with
         {
             Mouse = KittyTruecolor.Input.Mouse with { Motion = false, Drag = false },
+        },
+    };
+
+    /// <summary>
+    /// The Kitty preset minus the OSC 22 pointer-shape protocol (the §7.6 cursor-emission
+    /// capability gate): hover/motion fully functional, but <c>UIElement.Cursor</c> must produce
+    /// zero emission and zero tracking.
+    /// </summary>
+    public static TerminalCapabilities NoMouseCursorShape { get; } = KittyTruecolor with
+    {
+        Output = KittyTruecolor.Output with
+        {
+            Protocol = KittyTruecolor.Output.Protocol with { MouseCursorShape = false },
         },
     };
 }

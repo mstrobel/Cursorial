@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// A track-based layout grid (design doc §5.4): children are placed via the

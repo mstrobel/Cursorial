@@ -1,5 +1,6 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 using Cursorial.Terminal;
 
 // ReSharper disable RedundantTypeArgumentsOfMethod
@@ -63,6 +64,16 @@ public sealed class InputDispatcher : IInputDispatchTarget
     private int _hoverCount;
     private MouseEvent? _lastMouseEvent;
     private bool _inHoverDiff; // the N206 guard (thrown in DEBUG only; the flag is kept in all builds)
+
+    // The §7.6 pointer-shape state: the capability gate (OutputProtocolCapabilities.MouseCursorShape
+    // — when off, resolution never runs: no emission, no tracking cost), the last shape pushed
+    // through the S6 emission seam (null = the terminal default), and the seam itself (S6 wires it
+    // to QueueControlSequence; emission is equality-gated here so the seam fires only on change).
+    private bool _trackCursorShape;
+    private MouseCursorShape? _effectiveCursorShape;
+
+    /// <summary>S6's pointer-shape emission seam (doc §7.6): invoked only on effective-shape change; null = terminal default.</summary>
+    internal Action<MouseCursorShape?>? CursorShapeChangedInternal;
 
     internal InputDispatcher(
         UIDispatcher dispatcher,
@@ -159,7 +170,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
         _dispatcher.VerifyAccess();
 
         if (_lastMouseEvent is not {} device)
-            return; // N80: zero hit tests before the first real mouse event
+        {
+            // N80: zero hit tests before the first real mouse event — but the §7.6 pointer-shape
+            // resolution still re-runs per frame (a programmatic capture, or a Cursor property
+            // change on the capture target, has no hover driver to ride).
+            UpdateEffectiveCursorShape();
+            return;
+        }
 
         UpdateHoverChain(HitTestForEvent(device), device);
     }
@@ -178,6 +195,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
         ArgumentNullException.ThrowIfNull(capabilities);
         _dispatcher.VerifyAccess();
 
+        // §7.6 — forget the tracked pointer shape SILENTLY (and park the gate so the hover-clear
+        // below cannot emit mid-method): across (re)negotiation the wire state is S6's to
+        // re-baseline (it writes the OSC 22 reset on the renegotiate path). The re-resolution at
+        // the end re-emits an active shape under the NEW gate — at most one emission per call.
+        _effectiveCursorShape = null;
+        _trackCursorShape = false;
+
         if (_capabilities.Input.Mouse.Motion && !capabilities.Input.Mouse.Motion)
         {
             // Clear under the OLD gate (the new one would short-circuit the diff), then forget the
@@ -189,6 +213,8 @@ public sealed class InputDispatcher : IInputDispatchTarget
         }
 
         _capabilities = capabilities;
+        _trackCursorShape = capabilities.Output.Protocol.MouseCursorShape;
+        UpdateEffectiveCursorShape();
     }
 
     /// <summary>
@@ -205,7 +231,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
         _dispatcher.VerifyAccess();
 
         if (_captureTarget is {} holder && !(holder.IsAttachedToTree && holder.IsEffectivelyVisible))
+        {
             ForceReleaseCapture();
+            UpdateEffectiveCursorShape(); // §7.6 — back to the hover chain's resolution (or the default)
+        }
     }
 
     /// <summary>
@@ -253,6 +282,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         ForceReleaseCapture(); // transfer notifies the old holder
         _captureTarget = element;
+        UpdateEffectiveCursorShape(); // §7.6 — the capture target's resolved cursor wins immediately
         return true;
     }
 
@@ -264,7 +294,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
         _dispatcher.VerifyAccess();
 
         if (ReferenceEquals(_captureTarget, element))
+        {
             ForceReleaseCapture();
+            UpdateEffectiveCursorShape(); // §7.6 — back to the hover chain's resolution (or the default)
+        }
     }
 
     /// <summary>S3's seam contract: <see cref="ProcessEvent"/> IS the Dispatch implementation (doc §10.9).</summary>
@@ -278,10 +311,15 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// </summary>
     internal void OnElementDetached(UIElement element)
     {
-        if (ReferenceEquals(_captureTarget, element))
+        var releasedCapture = ReferenceEquals(_captureTarget, element);
+
+        if (releasedCapture)
             ForceReleaseCapture();
 
         TruncateHoverChain(element);
+
+        if (releasedCapture)
+            UpdateEffectiveCursorShape(); // §7.6 — after the truncate, so the detached holder can't resolve
 
         if (_pressedHolders.Contains(element))
             element.SetInteractionStateInternal(InteractionState.Pressed, false); // fan-in removes it from the set
@@ -511,18 +549,23 @@ public sealed class InputDispatcher : IInputDispatchTarget
     {
         ThrowIfHoverDiffReentrant(); // N206: a handler re-running the diff mid-diff is a programming error
 
-        if (!_capabilities.Input.Mouse.Motion)
-            return; // capability-honest: PointerOver never set without real motion reporting (doc §7.6)
+        if (_capabilities.Input.Mouse.Motion) // capability-honest: PointerOver never set without real motion reporting (doc §7.6)
+        {
+            _inHoverDiff = true;
+            try
+            {
+                UpdateHoverChainCore(hit, device);
+            }
+            finally
+            {
+                _inHoverDiff = false;
+            }
+        }
 
-        _inHoverDiff = true;
-        try
-        {
-            UpdateHoverChainCore(hit, device);
-        }
-        finally
-        {
-            _inHoverDiff = false;
-        }
+        // §7.6 — the pointer-shape resolution rides the hover machinery: re-resolve against the
+        // committed (post-phase-2) chain and the capture holder. Equality-gated inside; runs even
+        // without motion reporting so a capture-held cursor still resolves.
+        UpdateEffectiveCursorShape();
     }
 
     private void UpdateHoverChainCore(UIElement? hit, MouseEvent device)
@@ -652,6 +695,61 @@ public sealed class InputDispatcher : IInputDispatchTarget
         }
     }
 
+    // ───────────────────────────── the pointer shape (doc §7.6) ─────────────────────────────
+
+    /// <summary>
+    /// The §7.6 pointer-shape resolution: while mouse capture is held the capture target's
+    /// resolved cursor wins (its self→root walk — capture redirects the pointer's meaning, so it
+    /// owns the shape); otherwise the first non-null <see cref="UIElement.Cursor"/> walking the
+    /// hover chain leaf→root; <see langword="null"/> = the terminal default. Equality-gated — the
+    /// S6 emission seam fires only when the effective shape changes — and capability-gated on
+    /// <c>OutputProtocolCapabilities.MouseCursorShape</c> (no resolution, no emission, no tracking
+    /// when the terminal didn't negotiate OSC 22 — no polyfill). Allocation-free: it rides the
+    /// existing hover diff / capture transitions / per-frame <see cref="UpdateHover"/>.
+    /// </summary>
+    private void UpdateEffectiveCursorShape()
+    {
+        if (!_trackCursorShape)
+            return;
+
+        var resolved = _captureTarget is {} holder
+            ? ResolveCursor(holder)
+            : ResolveCursorFromHoverChain();
+
+        if (resolved == _effectiveCursorShape)
+            return;
+
+        _effectiveCursorShape = resolved;
+        CursorShapeChangedInternal?.Invoke(resolved);
+    }
+
+    /// <summary>First non-null <see cref="UIElement.Cursor"/> on <paramref name="leaf"/>'s self→root chain (the route walk's parent hop).</summary>
+    private static MouseCursorShape? ResolveCursor(UIElement leaf)
+    {
+        for (var node = (UIElement?)leaf; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        {
+            if (node.GetValue(UIElement.CursorProperty) is {} cursor)
+                return cursor;
+        }
+
+        return null;
+    }
+
+    /// <summary>First non-null <see cref="UIElement.Cursor"/> walking the retained hover chain leaf→root.</summary>
+    private MouseCursorShape? ResolveCursorFromHoverChain()
+    {
+        for (var i = _hoverCount - 1; i >= 0; i--)
+        {
+            if (_hoverChain[i].GetValue(UIElement.CursorProperty) is {} cursor)
+                return cursor;
+        }
+
+        return null;
+    }
+
+    /// <summary>The last shape pushed through the S6 seam (test observability); null = the terminal default.</summary>
+    internal MouseCursorShape? EffectiveCursorShapeInternal => _effectiveCursorShape;
+
     private InputDispatchResult ProcessFocusEvent(FocusEvent focusEvent)
     {
         if (focusEvent.HasFocus)
@@ -665,6 +763,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
         _accessKeys.OnTerminalFocusLost();                       // ① unconditional Alt/sticky/cue clears
         ForceReleaseCapture();                                   // ② capture force-release
         ClearHoverChainOnTerminalFocusLost();                    // ③ hover-chain clear
+        UpdateEffectiveCursorShape();                            // §7.6 once, after ②+③ — usually a no-op
+                                                                 // (③'s diff resolved when a hover driver
+                                                                 // existed); covers programmatic capture
+                                                                 // released with no mouse event ever seen
         ClearPressedHoldersOnTerminalFocusLost();                // ④ pressed-holder clears (C8)
         _buttonsHeld = MouseButtons.None;                        // ④ held-mask zeroed (N203 — the Ups go to another window)
 
@@ -703,6 +805,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
         }
     }
 
+    // §7.6 contract: this method does NOT re-resolve the pointer shape — each caller owns exactly
+    // one UpdateEffectiveCursorShape() after its full transition settles (after the new capture
+    // target installs, after the hover chain clears/truncates), so a capture transfer or focus-out
+    // resolves once, never through an intermediate state with redundant OSC 22 bytes.
     private void ForceReleaseCapture()
     {
         if (_captureTarget is not {} target)

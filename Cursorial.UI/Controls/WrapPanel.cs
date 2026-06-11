@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// Greedy line-packing panel (design doc §5.4): children flow along <see cref="Orientation"/>

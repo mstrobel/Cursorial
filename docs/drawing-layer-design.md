@@ -128,10 +128,18 @@ therefore isn't available in Phase 1 — use composite opacity, or `FillRectangl
 
 ### 3.4 Pooling
 
-`ScenePool.Rent(cols, rows)` recycles backing buffers (resizing on reuse; the ctor re-clears to
-transparent); `Scene.Dispose()` returns the buffer. Persistent (cached) scenes are owner-held via
-`Scene.Create(...)`. Phase 1 keeps the pool simple (single free list); size-bucketing is a later
-refinement.
+`ScenePool.Rent(cols, rows)` recycles backing buffers (the `Scene` ctor re-clears to transparent);
+`Scene.Dispose()` returns the buffer. Persistent (cached) scenes are owner-held via
+`Scene.Create(...)`. The pool is **size-bucketed** (UI P2.5 batch — it replaced Phase 1's single
+free list, which resized/reallocated the recycled buffer on nearly every rent): freed buffers live
+in exact-dimension buckets, so the dominant consumer — a UI render tree renting per-zone scenes
+whose sizes are stable frame over frame — hits its exact size and the steady-state rent → return
+cycle allocates only the small `Scene` wrapper. A size miss allocates fresh and leaves other sizes
+pooled. Retention is capped (`MaxRetainedBuffers`, default 32); over the cap, a buffer is dropped
+from the least-recently-used size bucket (linear scan — bucket counts are tens at most), so cold
+sizes age out. Empty buckets are kept so the steady-state return path stays allocation-free.
+`Rent` validates dimensions against the `ushort` `Rect` cap exactly like `Scene.Create`. Not
+thread-safe — rent/return from a single render loop.
 
 ---
 
@@ -673,6 +681,36 @@ chart braille, shadows, titled boxes — see the reworked §12 bullet). Lower-la
   the view's origin as signed ints. Full-buffer views are unaffected.
 - `DrawingContext.IsVisible(column, row)` (new, public) — the push-aware visibility pre-test the chart
   painters now use in place of raw scene-bounds guards.
+
+**Hardened (UI P2.5 batch, stage ②): pool + observability.** Two further Drawing-side changes for the
+UI layer (invariant-7 amendment), landed with the UI `RenderContext` simplification (that type is now
+a thin veneer: one pushed translate scope per element render on the §12 stack — no UI-side coordinate
+arithmetic remains):
+- **`Scene.RasterVersion` is public read-only** (was internal). It always had two consumers — the
+  compositor's content-change detection and test assertions of "this frame re-emitted from the cache"
+  — and the second forced an `InternalsVisibleTo("Cursorial.UI.Tests")` into this project, which is
+  now removed. The counter still bumps only inside `Scene.Draw` on an actual re-raster; there is no
+  public setter or bump path.
+- **`ScenePool` is size-bucketed with an LRU retention cap** — see §3.4 for the design (exact-dimension
+  buckets, `MaxRetainedBuffers` default 32, least-recently-used-bucket eviction, steady-state re-rent
+  allocates only the `Scene` wrapper — covered by an allocation assertion in the suite). This closes
+  the "single free list, resize-on-rent" deferral recorded at Phase 1. `Rent` now also validates its
+  dimensions against the `ushort` `Rect` cap, matching `Scene.Create`.
+
+**Hardened (UI P2.5 review pass, 2026-06-11):** three review findings applied on top of the batch:
+- **Transformed fills pre-clamp to the clip.** `FillRectangle`/`FillOpaque` under an active push used
+  to iterate the full requested region with a per-cell map-and-reject — O(region area) for an
+  oversized rect (`Rect` permits 65535×65535 ≈ 4.3G cells) where the unpushed paths clamp to the
+  surface. Both transformed paths now pre-intersect the iteration range with the clip mapped back
+  into local space (O(visible)); a perf-guard test rides the push-stack suite.
+- **`ScenePool` sweeps empty bucket metadata.** Empty buckets are still retained for the zero-alloc
+  steady-state return, but once the bucket table exceeds 4× `MaxRetainedBuffers`, eviction sweeps the
+  empties — unbounded size churn (an animated resize, one cell per frame for hours) can no longer
+  accrete a `Bucket` + `Stack` entry per distinct size forever. `RetainedBufferCount` is now public
+  (pool-health observability for consumers configuring a non-default cap).
+- **`DrawText` return-value contract documented for the transformed path**: it returns the columns
+  *advanced* in local coordinates — under a push, clusters the clip suppresses still advance (the
+  full local run width); with no push it stops at the surface edge and returns the clamped width.
 
 **Residual limitations (push-stack fragments — documented, deliberate):**
 - A fragment whose **anchor** (its translated bounds origin) maps outside the active clip — or off the

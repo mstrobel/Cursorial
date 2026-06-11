@@ -51,6 +51,16 @@ sections, §13 resolved decisions, §14 phase plan, §15 deferrals); full design
 styling object is `Cursorial.UI.Style`; framework source disambiguates the SGR record via
 `using CellStyle = Cursorial.Output.Style;`.
 
+**Namespace scheme** (doc §1.3 is canonical; WPF/Avalonia kinship): `Cursorial.UI` — the core (`UIObject`/`UIElement`,
+the property system, element-level layout enums (`Visibility`, the alignments), render integration, hosting; the
+`System.Windows` analog). `Cursorial.UI.Controls` — `Panel` and the panels (`StackPanel`, `DockPanel`, `Canvas`,
+`Grid` + `GridLength`/definitions, `WrapPanel`), presenters (`ScrollContentPresenter`, later `ContentPresenter`/
+`ItemsPresenter`), every control from `Control` down, and the panel-facing `Orientation`/`Dock` enums (the
+`System.Windows.Controls` analog).
+`UIElementCollection` stays in `Cursorial.UI` beside `UIElement` — a deliberate deviation from WPF's placement.
+`Cursorial.UI.Input` — S3's routed events, dispatcher, focus, gestures. Folder layout mirrors the namespaces
+(`Cursorial.UI/Controls/`).
+
 **Phase 0 complete** (doc §14): the Fork A property engine — `UIProperty`/`StyledProperty<T>`/`AttachedProperty<T>`/
 `DirectProperty<TOwner,T>`/`UIPropertyKey<T>` registration + per-type frozen metadata, two-lane `PropertyEffects`,
 `UIObject` + `ValueStore` (effective/base split, priority frames at `BindingPriority` Animation > LocalValue > Style >
@@ -72,7 +82,8 @@ results are recorded under the doc's §14 phase table.
   `Canvas`, `Grid` (+`GridLength`/definitions), `WrapPanel`.
 - **Render zones** — `RenderTree` (boundary-zone partitioning over the shared `ScenePool`, whole-zone re-raster per
   the probe-1 verdict, the unconditional per-pass boundary walk publishing `CompositeParameters` on value-difference,
-  `CollectLayers` bottom-up, composite-order `HitTest`), `RenderContext` (element-local, self-translating),
+  `CollectLayers` bottom-up, composite-order `HitTest`), `RenderContext` (element-local; a thin veneer — one pushed
+  Drawing translate scope per element render),
   `RenderPassGuard` (DEBUG read-only guard during paint), cached z-order, sticky boundary promotion, the
   empty-clip trick for hidden/zero-sized boundaries.
 - **Scrolling + caret** — `ScrollContentPresenter` (always-boundary; banded scenes per doc §5.7 — band = viewport +
@@ -94,7 +105,7 @@ results are recorded under the doc's §14 phase table.
 - **`Cursorial.UI.Testing`** — `UITestHost` (calling thread is the UI thread; manual `RunFrame`/`RunUntilIdle`/
   `AdvanceTime` stepping on a `FakeTimeProvider`; `SendKey/SendText/SendClick/SendResize/SendInput` direct injection;
   `SendBytes` through a real `VtInputDevice` on the fake clock; cell/row/byte assertions; teardown-byte capture),
-  `UITestHostOptions`, `TestCapabilities` presets (`KittyTruecolor`/`Ansi16Legacy`/`NoMotion`).
+  `UITestHostOptions`, `TestCapabilities` presets (`KittyTruecolor`/`Ansi16Legacy`/`NoMotion`/`NoMouseCursorShape`).
 
 The doc §14 P1 exit criteria are proven end-to-end in `Cursorial.UI.Tests/Integration/Phase1EndToEndTests.cs`
 (UITestHost through the full spine: static panel-tree cell+byte assertions, the AffectsComposite

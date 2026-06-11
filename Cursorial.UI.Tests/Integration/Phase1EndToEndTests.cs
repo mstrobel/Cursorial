@@ -9,6 +9,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Integration;

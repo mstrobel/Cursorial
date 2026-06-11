@@ -1,8 +1,4 @@
-// ReSharper disable CheckNamespace
-
-using Cursorial.Drawing.Media;
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// A brush declared on a rich-text run — its foreground <see cref="IBrush"/> and the

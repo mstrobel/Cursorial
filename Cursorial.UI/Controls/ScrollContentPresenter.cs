@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The scroll-mechanics element (design doc §5.7): hosts a single <see cref="Content"/> child,

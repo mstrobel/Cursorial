@@ -25,6 +25,7 @@ public sealed class SyntheticTerminalHost : ITerminalHost
     private readonly (int Columns, int Rows) _initialSize;
     private long _inputBytesWritten;
     private byte[] _finalOutput = [];
+    private TerminalCapabilities? _scriptedRenegotiation;
     private bool _disposed;
 
     /// <summary>
@@ -56,7 +57,7 @@ public sealed class SyntheticTerminalHost : ITerminalHost
     }
 
     /// <inheritdoc/>
-    public TerminalCapabilities Capabilities { get; }
+    public TerminalCapabilities Capabilities { get; private set; }
 
     /// <inheritdoc/>
     public IAsyncInputDevice Input => _inputDevice;
@@ -77,9 +78,29 @@ public sealed class SyntheticTerminalHost : ITerminalHost
     public ValueTask<(int Columns, int Rows)?> QuerySizeAsync(CancellationToken cancellationToken = default)
         => ValueTask.FromResult<(int, int)?>(_initialSize);
 
+    /// <summary>
+    /// Scripts the snapshot the <b>next</b> <see cref="RenegotiateAsync"/> realizes — the headless
+    /// stand-in for a terminal whose capabilities change across renegotiation (capability-gate
+    /// flip tests). Single-shot: the script is consumed by one renegotiation; without a script,
+    /// renegotiation keeps the current snapshot (scripted capabilities never change on their own).
+    /// </summary>
+    public void ScriptRenegotiatedCapabilities(TerminalCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+        _scriptedRenegotiation = capabilities;
+    }
+
     /// <inheritdoc/>
     public ValueTask RenegotiateAsync(CancellationToken cancellationToken = default)
-        => ValueTask.CompletedTask; // scripted capabilities never change
+    {
+        if (_scriptedRenegotiation is {} scripted)
+        {
+            Capabilities = scripted;
+            _scriptedRenegotiation = null;
+        }
+
+        return ValueTask.CompletedTask;
+    }
 
     /// <summary>
     /// Injects raw wire bytes into the parser path (the <c>UITestHost.SendBytes</c> substrate).

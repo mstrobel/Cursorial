@@ -1,6 +1,6 @@
 using Cursorial.Drawing.Media;
 
-namespace Cursorial.UI;
+namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The base class for layout containers (design doc §5.4): <see cref="Children"/> is owner-wired

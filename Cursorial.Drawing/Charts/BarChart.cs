@@ -1,12 +1,11 @@
 using System.Text;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>Which way a <see cref="BarChart"/>'s bars grow.</summary>
 public enum BarOrientation

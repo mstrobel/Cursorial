@@ -1,9 +1,8 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A single-row sparkline: each cell shows one value as a vertical eighth-block, normalized across the

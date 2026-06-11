@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;

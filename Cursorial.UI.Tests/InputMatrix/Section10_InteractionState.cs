@@ -279,6 +279,7 @@ public class Section10_InteractionState
             root.SetState(InteractionState.AccessKeyCue, true);
         });
 
+        // ReSharper disable once UnusedVariable
         using (var batch = a.BeginUpdate())
         {
             a.SetState(InteractionState.Pressed, true);

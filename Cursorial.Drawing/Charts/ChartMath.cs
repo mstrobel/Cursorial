@@ -1,6 +1,4 @@
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>Shared helpers for the point-series charts (scatter / line).</summary>
 internal static class ChartMath

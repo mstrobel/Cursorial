@@ -1,6 +1,4 @@
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>The glyph a <see cref="ScatterChart"/> stamps at each point (all width-1).</summary>
 public enum MarkerStyle

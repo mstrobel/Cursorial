@@ -1,8 +1,6 @@
 using Cursorial.Rendering;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// Maps a chart's value space to sub-cell device coordinates within a plot <see cref="Rect"/>. The

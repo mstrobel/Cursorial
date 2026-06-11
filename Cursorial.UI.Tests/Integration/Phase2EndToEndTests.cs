@@ -51,7 +51,7 @@ public sealed class Phase2EndToEndTests
             Focusable = true;
         }
 
-        public string Name { get; }
+        public new string Name { get; }
 
         protected override Size MeasureOverride(Size availableSize) => new(_columns, _rows);
     }

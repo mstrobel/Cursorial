@@ -1,8 +1,7 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>One named-by-brush data series for a multi-series chart: its points and its color.</summary>
 public sealed record ChartSeries

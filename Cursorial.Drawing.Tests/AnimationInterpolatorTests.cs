@@ -1,7 +1,11 @@
 using Cursorial.Animation;
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+
+// ReSharper disable RedundantCast
 
 namespace Cursorial.Tests.Drawing;
 

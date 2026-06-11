@@ -5,7 +5,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;

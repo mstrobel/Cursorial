@@ -1,5 +1,7 @@
 using Cursorial.Animation;
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;

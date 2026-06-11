@@ -1,11 +1,10 @@
 using System.Globalization;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>The inset plot rectangle an <see cref="Axes"/> leaves for the data, plus the nice-rounded
 /// ranges it used (pass these to the chart so axis ticks and data align).</summary>

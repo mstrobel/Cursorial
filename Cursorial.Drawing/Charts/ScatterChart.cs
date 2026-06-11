@@ -1,9 +1,8 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A scatter chart: a marker glyph at each point. Whole-cell markers (●○■◆▲✕) are written immediately;

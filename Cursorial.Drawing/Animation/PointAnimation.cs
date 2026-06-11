@@ -1,4 +1,5 @@
 using Cursorial.Animation;
+using Cursorial.Drawing.Charts;
 
 // ReSharper disable CheckNamespace
 

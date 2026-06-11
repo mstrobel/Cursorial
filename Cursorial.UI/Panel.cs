@@ -1,4 +1,4 @@
-using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 
 namespace Cursorial.UI;
 

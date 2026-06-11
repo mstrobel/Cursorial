@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;

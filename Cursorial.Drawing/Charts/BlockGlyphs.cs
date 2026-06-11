@@ -1,6 +1,6 @@
-// ReSharper disable CheckNamespace
+using Cursorial.Drawing.Media;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>Which edge a fractional block bar fills from.</summary>
 internal enum BlockAxis

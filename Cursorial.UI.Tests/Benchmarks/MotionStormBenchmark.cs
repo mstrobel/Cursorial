@@ -45,13 +45,13 @@ public class MotionStormBenchmark(ITestOutputHelper output)
 
         protected override Size MeasureOverride(Size availableSize) => new(2, 2);
 
-        protected override void OnMouseEnter(Cursorial.UI.Input.MouseEventArgs e)
+        protected override void OnMouseEnter(MouseEventArgs e)
         {
             Flips++;
             SetInteractionState(InteractionState.Pressed, true);
         }
 
-        protected override void OnMouseLeave(Cursorial.UI.Input.MouseEventArgs e)
+        protected override void OnMouseLeave(MouseEventArgs e)
         {
             Flips++;
             SetInteractionState(InteractionState.Pressed, false);
@@ -130,7 +130,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     public void Probe4_MotionStorm_ZeroMoveAllocation_FrameWithinBudget()
     {
         var (host, leaves, sweep) = CreateStorm();
-        using var _host = host;
+        using var _ = host;
 
         var dispatcher = host.Application.InputDispatcher;
         var observer = new CountingObserver();
@@ -140,7 +140,6 @@ public class MotionStormBenchmark(ITestOutputHelper output)
 
         // ───────────── leg 1: the per-Move dispatch path (allocation contract — exact zero) ─────────────
 
-        // ReSharper disable once ConvertToLocalFunction
         var storm = () =>
                     {
                         for (var n = 0; n < SweepsPerRepetition; n++)

@@ -665,20 +665,26 @@ public class Section08_FocusCore
 
         var events = new List<string>();
         bool? gotWhileUnfocused = null;
-        // ReSharper disable AccessToModifiedClosure
-        a.AddHandler(UIElement.LostFocusEvent, (_, _) =>
-        {
-            events.Add("A.LostFocus");
-            c.Focus(); // the nested transition completes inside the handler
-        });
-        b.AddHandler(UIElement.LostFocusEvent, (_, _) => events.Add("B.LostFocus"));
-        b.AddHandler(UIElement.GotFocusEvent, (_, _) =>
-        {
-            events.Add("B.GotFocus");
-            gotWhileUnfocused = !b.IsFocused;
-        });
-        c.AddHandler(UIElement.GotFocusEvent, (_, _) => events.Add("C.GotFocus"));
-        // ReSharper restore AccessToModifiedClosure
+
+        a.AddHandler(UIElement.LostFocusEvent,
+                     (_, _) =>
+                     {
+                         events.Add("A.LostFocus");
+                         c.Focus(); // the nested transition completes inside the handler
+                     });
+
+        b.AddHandler(UIElement.LostFocusEvent,
+                     (_, _) => events.Add("B.LostFocus"));
+
+        b.AddHandler(UIElement.GotFocusEvent,
+                     (_, _) =>
+                     {
+                         events.Add("B.GotFocus");
+                         gotWhileUnfocused = !b.IsFocused;
+                     });
+
+        c.AddHandler(UIElement.GotFocusEvent,
+                     (_, _) => events.Add("C.GotFocus"));
 
         b.Focus();
 

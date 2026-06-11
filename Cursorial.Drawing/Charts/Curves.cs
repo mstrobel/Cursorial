@@ -1,6 +1,4 @@
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// Curve interpolation for line charts. Produces a dense polyline through the data; the caller draws

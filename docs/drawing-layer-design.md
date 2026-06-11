@@ -445,7 +445,11 @@ with no re-raster. Conveniences `BrushAnimation` / `CompositeParametersAnimation
 out the set — `PointInterpolator` (continuous `PointD`, value space) plus the cell-quantized `SizeInterpolator`
 and `RectInterpolator` (rounded ties-away-from-zero, clamped ≥ 0 so an overshooting ease can't go negative or
 trip the `Rect` ctor), with `PointAnimation` / `SizeAnimation` / `RectAnimation` conveniences; all live in
-Drawing for the same acyclic reason (`Size`/`Rect`/`PointD` are Rendering/Drawing types, not Core's). The Consolonia
+Drawing for the same acyclic reason (`Size`/`Rect`/`PointD` are Rendering/Drawing types, not Core's).
+Added 2026-06-11: `PenInterpolator` + `PenAnimation` — the brush routes through `BrushInterpolator`
+(reference-equal brushes pass through unchanged, alloc-free; a `null` endpoint — terminal default
+foreground — snaps); every other `Pen` member is a glyph-family/flag selection, so the whole discrete
+remainder snaps at the midpoint, `CompositeParametersInterpolator`-style. The Consolonia
 scrolling-gradient case (endpoints swept past 1 + `Reflect`, looped) is validated by an animation test. New
 `animate` demo (the demo owns the only clock — frame × `FrameInterval`): an `AutoReverse` gradient sweep, an
 easing progress bar with a live curve plot and `←`/`→` keystroke cycling of the catalog, and a

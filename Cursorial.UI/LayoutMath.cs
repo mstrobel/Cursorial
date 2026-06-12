@@ -15,9 +15,10 @@ public static class LayoutMath
     public const int Unbounded = int.MaxValue;
 
     /// <summary>
-    /// The <c>ushort</c>-backed <c>Rect</c> cap — the hard ceiling for any arrange position or
-    /// extent. Arrange rects clamp to <c>[0, MaxExtent]</c> before <c>Rect</c> construction (with a
-    /// DEBUG diagnostic) so a misbehaving panel can never detonate the <c>Rect</c> constructor.
+    /// The <c>ushort</c>-backed <c>Rect</c> cap — the hard ceiling for any arrange extent. Arrange
+    /// extents clamp to <c>[0, MaxExtent]</c> and positions to <c>[−MaxExtent, MaxExtent]</c>
+    /// (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG diagnostic) so a
+    /// misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
     /// </summary>
     public const int MaxExtent = 65535;
 
@@ -26,7 +27,9 @@ public static class LayoutMath
 
     /// <summary>
     /// Saturating add: <see cref="Unbounded"/> absorbs; a finite overflow becomes
-    /// <see cref="Unbounded"/>; results floor at 0 (matrix LD18).
+    /// <see cref="Unbounded"/>; results floor at 0 (matrix LD18). <paramref name="b"/> may be
+    /// <b>negative</b> (signed margins, LD19) — the 0 floor is exactly the
+    /// <c>DesiredSize = content + margin</c> clamp.
     /// </summary>
     public static int Add(int a, int b)
     {
@@ -39,7 +42,9 @@ public static class LayoutMath
     /// <summary>
     /// Saturating subtract: <see cref="Unbounded"/> absorbs on the left
     /// (<c>Unbounded − anything = Unbounded</c>); <c>finite − Unbounded = 0</c>; results floor at 0
-    /// (matrix LD18).
+    /// (matrix LD18). <paramref name="b"/> may be <b>negative</b> (signed margins, LD19) — the
+    /// margin-deflate then <em>enlarges</em>, saturating into <c>[0, Unbounded]</c> (a pathological
+    /// enlargement becomes <see cref="Unbounded"/> and behaves as such from there).
     /// </summary>
     public static int Sub(int a, int b)
     {
@@ -51,11 +56,11 @@ public static class LayoutMath
         return (int)Math.Clamp((long)a - b, 0, Unbounded);
     }
 
-    /// <summary>Per-axis saturating <see cref="Add(int,int)"/> of a size and a margin's combined thickness.</summary>
+    /// <summary>Per-axis saturating <see cref="Add(int,int)"/> of a size and a margin's combined thickness (signed — LD19).</summary>
     public static Size Add(Size size, Margins margins)
         => new(Add(size.Columns, margins.Horizontal), Add(size.Rows, margins.Vertical));
 
-    /// <summary>Per-axis saturating <see cref="Sub(int,int)"/> of a margin's combined thickness from a size.</summary>
+    /// <summary>Per-axis saturating <see cref="Sub(int,int)"/> of a margin's combined thickness from a size (signed — a negative sum enlarges, LD19).</summary>
     public static Size Sub(Size size, Margins margins)
         => new(Sub(size.Columns, margins.Horizontal), Sub(size.Rows, margins.Vertical));
 

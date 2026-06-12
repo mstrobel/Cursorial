@@ -466,21 +466,32 @@ public sealed class DrawingContext
         return best == int.MaxValue ? -1 : best;
     }
 
-    /// <summary>Draw a single line of text with a solid foreground (and optional background) color.</summary>
-    public int DrawText(int column, int row, ReadOnlySpan<char> text,
-                        Color foreground, Color? background = null, in Style baseStyle = default)
+    /// <summary>Draw text (multi-line capable, see the brush overload) with a solid foreground (and optional background) color.</summary>
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         Color foreground, Color? background = null, in Style baseStyle = default)
         => DrawText(column, row, text, new SolidColorBrush(foreground),
                     background is { } bg ? new SolidColorBrush(bg) : null, baseStyle);
 
     /// <summary>
-    /// Draw a single line of <paramref name="text"/> starting at <paramref name="column"/>,
-    /// <paramref name="row"/>, sampling <paramref name="foreground"/> (and optional
-    /// <paramref name="background"/>) per cell across the run — so a gradient brush colors the text
-    /// continuously, glyph by glyph. <paramref name="background"/> defaults to transparent (glyph
-    /// only). Grapheme-aware (wide clusters occupy two cells); does not wrap or interpret newlines.
-    /// Returns the number of columns <b>advanced</b> in local coordinates: under an active
-    /// push the run advances through clusters an active clip suppresses (the full local run width);
-    /// with no push it stops at the surface's right edge and returns the clamped width.
+    /// Draw <paramref name="text"/> starting at <paramref name="column"/>, <paramref name="row"/>,
+    /// sampling <paramref name="foreground"/> (and optional <paramref name="background"/>) per cell —
+    /// so a gradient brush colors the text continuously, glyph by glyph.
+    /// <paramref name="background"/> defaults to transparent (glyph only). Grapheme-aware (wide
+    /// clusters occupy two cells). <c>\r\n</c>, <c>\n</c>, and <c>\r</c> are line breaks: each
+    /// subsequent line continues at the original start <paramref name="column"/> one row down; empty
+    /// lines consume a row; the active clip/translate applies per line; the brush samples against
+    /// the <b>full multi-line extent</b> (widest line × line count), so a gradient flows down the
+    /// lines. A tab is substituted with one space and any other C0/C1 control is skipped (zero
+    /// columns) — each with a DEBUG diagnostic (<see cref="DrawingDiagnostics"/>). Returns the
+    /// text's bounding box: the widest line's column <b>advance</b> × the line count (a trailing
+    /// newline yields a final empty line that counts). Per line the advance keeps the single-line
+    /// contract: under an active push the run advances through clusters an active clip suppresses
+    /// (the full local line width); with no push it stops at the surface's right edge and yields
+    /// the clamped width (0 for an off-surface row). Negative starts never throw (design doc
+    /// §13.1): with no push, rows off the surface on either side draw nothing (advance 0) and
+    /// clusters starting left of column 0 are skipped while the run still advances through them;
+    /// under a push, negative local coordinates flow through the translate/clip map. A negative
+    /// brush-bounds anchor samples contract-equivalently (shifted to a zero origin).
     /// </summary>
     /// <remarks>
     /// Glyphs are written through <see cref="CellBuffer.Set"/>, which composites against the
@@ -489,46 +500,146 @@ public sealed class DrawingContext
     /// translucency use a composite opacity instead. A transparent background correctly lets a prior
     /// fill (or the composite target) show through under the glyph.
     /// </remarks>
-    public int DrawText(int column, int row, ReadOnlySpan<char> text,
-                        IBrush foreground, IBrush? background = null, in Style baseStyle = default)
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         IBrush foreground, IBrush? background = null, in Style baseStyle = default)
     {
         ArgumentNullException.ThrowIfNull(foreground);
-        if (text.IsEmpty) return 0;
+        if (text.IsEmpty) return Size.Empty;
         bool transformed = _stateStack.Count != 0;
-        if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform)
 
         var bg = background ?? Brushes.Transparent;
 
-        // The run's extent (its cells on this row) is the brush bounds — sampled in local coordinates.
-        int runWidth = GraphemeWidth.StringWidth(text);
-        var bounds = new Rect(column, row, runWidth, 1);
+        // Measure pass: the brush bounds are the full multi-line extent (widest sanitized line ×
+        // line count) anchored at the start cell, sampled in local coordinates — a gradient flows
+        // down the lines instead of restarting per line. The signed SampleBounds carrier (not the
+        // ushort-backed Rect) keeps a negative anchor — or an extent past the Rect cap — from
+        // throwing: it shifts/clamps contract-equivalently at sample time (design doc §13.1).
+        int widest = 0, lineCount = 0;
+        var measure = text;
+        bool moreLines = true;
+        while (moreLines)
+        {
+            var line = NextLine(ref measure, out moreLines);
+            widest = Math.Max(widest, SanitizedLineWidth(line));
+            lineCount++;
+        }
+        var bounds = new SampleBounds(column, row, widest, lineCount);
+
+        int maxAdvance = 0;
+        int currentRow = row;
+        var remaining = text;
+        moreLines = true;
+        while (moreLines)
+        {
+            var line = NextLine(ref remaining, out moreLines);
+            maxAdvance = Math.Max(maxAdvance, DrawTextLine(column, currentRow, line, foreground, bg, in baseStyle, in bounds, transformed));
+            currentRow++;
+        }
+
+        return new Size(maxAdvance, lineCount);
+    }
+
+    // Draw one (break-free) line of text; returns the columns advanced under the single-line contract.
+    private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, IBrush foreground, IBrush background,
+                             in Style baseStyle, in SampleBounds bounds, bool transformed)
+    {
+        if (line.IsEmpty) return 0;
+        if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform; covers negative rows)
 
         int start = column;
-        var clusters = text.GetGraphemeEnumerator();
+        var clusters = line.GetGraphemeEnumerator();
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
-            int width = GraphemeWidth.ClusterWidth(cluster);
-            if (width < 1) width = 1;
+            string? substitute = null;
+            int width;
+            if (IsC0OrC1Control(cluster[0]))   // controls are single-char clusters; breaks never reach here
+            {
+                if (cluster[0] != '\t')
+                {
+                    DrawingDiagnostics.Emit(DrawingDiagnosticKind.ControlCharacterInText,
+                                            $"DrawText skipped control character U+{(int) cluster[0]:X4} at local ({column}, {row}).");
+                    continue;
+                }
 
-            var style = baseStyle.WithForeground(foreground.ColorAt(column, row, bounds))
-                                 .WithBackground(bg.ColorAt(column, row, bounds));
+                DrawingDiagnostics.Emit(DrawingDiagnosticKind.TabInText,
+                                        $"DrawText substituted one space for a tab at local ({column}, {row}); expand tabs upstream.");
+                substitute = " ";
+                width = 1;
+            }
+            else
+            {
+                width = GraphemeWidth.ClusterWidth(cluster);
+                if (width < 1) width = 1;
+            }
 
             if (transformed)
             {
                 // Translate + clip per cluster (the run advances in local columns regardless of clipping).
-                EmitMapped(column, row, cluster.ToString(), in style);
+                var style = baseStyle.WithForeground(bounds.Sample(foreground, column, row))
+                                     .WithBackground(bounds.Sample(background, column, row));
+                EmitMapped(column, row, substitute ?? cluster.ToString(), in style);
                 column += width;
             }
             else
             {
-                if (column + width > _surface.Columns) break;   // surface-edge clip
-                column += _surface.Set(column, row, cluster.ToString(), style);
+                if (column < 0) { column += width; continue; }  // left-edge clip (negative start; the run still advances)
+                if (column + width > _surface.Columns) break;   // right-edge clip (stops the line)
+
+                var style = baseStyle.WithForeground(bounds.Sample(foreground, column, row))
+                                     .WithBackground(bounds.Sample(background, column, row));
+                column += _surface.Set(column, row, substitute ?? cluster.ToString(), style);
             }
         }
 
         return column - start;
     }
+
+    // Slice the next line off `remaining` at the first \r\n, \n, or \r. `hasMore` reports whether a
+    // break was consumed — i.e. at least one more line (possibly empty) follows.
+    private static ReadOnlySpan<char> NextLine(ref ReadOnlySpan<char> remaining, out bool hasMore)
+    {
+        int i = remaining.IndexOfAny('\r', '\n');
+        if (i < 0)
+        {
+            var last = remaining;
+            remaining = default;
+            hasMore = false;
+            return last;
+        }
+
+        var line = remaining[..i];
+        int skip = remaining[i] == '\r' && i + 1 < remaining.Length && remaining[i + 1] == '\n' ? 2 : 1;
+        remaining = remaining[(i + skip)..];
+        hasMore = true;
+        return line;
+    }
+
+    // The width one line of text will advance after sanitization (tab → 1 column, other controls → 0,
+    // zero-width clusters coerced to 1 as the draw loop does). Diagnostics are the draw loop's job.
+    private static int SanitizedLineWidth(ReadOnlySpan<char> line)
+    {
+        int width = 0;
+        var clusters = line.GetGraphemeEnumerator();
+        while (clusters.MoveNext())
+        {
+            var cluster = clusters.Current;
+            if (IsC0OrC1Control(cluster[0]))
+            {
+                if (cluster[0] == '\t') width++;
+                continue;
+            }
+
+            int w = GraphemeWidth.ClusterWidth(cluster);
+            width += w < 1 ? 1 : w;
+        }
+
+        return width;
+    }
+
+    // C0 (U+0000–U+001F), DEL (U+007F), and C1 (U+0080–U+009F). Controls are grapheme-cluster
+    // boundaries on both sides (UAX #29), so checking a cluster's first char classifies the cluster.
+    private static bool IsC0OrC1Control(char c) => c < 0x20 || (c >= 0x7F && c <= 0x9F);
 
     /// <summary>
     /// Paint a laid-out <paramref name="text"/> document at <paramref name="bounds"/>, coloring it with
@@ -897,11 +1008,22 @@ public sealed class DrawingContext
         DepositSegment(left, top, left, bottom, weight, recordId, mode);       // left
         DepositSegment(right, top, right, bottom, weight, recordId, mode);     // right
 
+        // A title is a single-line slot: sanitize to the first line before truncation/gap math
+        // (design doc §13.2). An empty first line degrades to a plain box, like an empty title.
+        string titleText = title.Text!;
+        int breakAt = titleText.AsSpan().IndexOfAny('\r', '\n');
+        if (breakAt >= 0)
+        {
+            DrawingDiagnostics.Emit(DrawingDiagnosticKind.MultiLineTextInSingleLineSlot,
+                                    "DrawTitledBox: a PanelTitle is a single-line slot; only the first line of a multi-line title is used.");
+            titleText = titleText[..breakAt];
+        }
+
         // A title needs a pad cell each side plus a ≥2-cell line run to each corner (so the corner keeps its
         // horizontal arm): the text fits only when its width ≤ Columns − 6. Narrower → plain box, no title.
         int maxText = rect.Columns - 6;
         int textWidth = 0;
-        string text = maxText >= 1 ? TruncateToWidth(title.Text!, maxText, out textWidth) : string.Empty;
+        string text = maxText >= 1 && titleText.Length > 0 ? TruncateToWidth(titleText, maxText, out textWidth) : string.Empty;
         if (text.Length == 0)
         {
             DepositSegment(left, top, right, top, weight, recordId, mode);     // full top — plain box
@@ -927,7 +1049,10 @@ public sealed class DrawingContext
         DrawText(gapStart + 1, top, text, titleBrush, background: null, Style.Default.WithAttributes(title.Attributes));
     }
 
-    // Grapheme-aware truncation to at most maxWidth display columns; returns the kept prefix and its width.
+    // Grapheme-aware truncation to at most maxWidth display columns; returns the kept prefix and
+    // its width. Width accounting matches SanitizedLineWidth / the DrawText draw loop (tab → 1
+    // column, other controls → 0) so the title-gap math and the painted label agree — a control
+    // character in a title must not leave a hole in the top rule.
     private static string TruncateToWidth(string text, int maxWidth, out int width)
     {
         width = 0;
@@ -936,8 +1061,17 @@ public sealed class DrawingContext
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
-            int w = GraphemeWidth.ClusterWidth(cluster);
-            if (w < 1) w = 1;
+            int w;
+            if (IsC0OrC1Control(cluster[0]))
+            {
+                w = cluster[0] == '\t' ? 1 : 0;   // DrawText substitutes / skips — count the same
+            }
+            else
+            {
+                w = GraphemeWidth.ClusterWidth(cluster);
+                if (w < 1) w = 1;
+            }
+
             if (width + w > maxWidth) break;
             width += w;
             end += cluster.Length;

@@ -124,7 +124,7 @@ public class Section08_Canvas
         canvas.Children.Add(child);
         Rooted(canvas);
 
-        Assert.Equal(0, child.Bounds.Column); // negative placement never enters layout (use RenderOffset*)
+        Assert.Equal(0, child.Bounds.Column); // Canvas offsets clamp ≥ 0 — signed Margin is the pull-up lane (LD19), RenderOffset* the animated one
     }
 
     [Fact]

@@ -195,6 +195,29 @@ focus-out cluster, and the access-key gate verdicts under the `TestCapabilities`
 the live canary for the same surface: three focusable sidebar cards (Tab/click focus, hover highlight, visuals
 from direct `IsFocused`/`IsPointerOver` reads pending P3 styling) and a Ctrl+R `KeyBinding` reset.
 
+**P2.5 + P2.6 batches complete** (lower-layer improvements under the amended invariant 7 — only `Cursorial.Core`
+has shipped; Rendering/Drawing/Animation accept first-class changes):
+
+- **Drawing push-stack full coverage** — the clip/translate stack now covers every draw path (deferred strokes arm
+  at deposit time; braille maps at plot time; shadows/titled boxes translate as units; formatted text/content paint
+  through origin-mapped views with compositor-mirrored fragment cropping). `Cursorial.UI.RenderContext` is a
+  translate-only veneer (one `PushTranslate` scope per element render). `Scene.RasterVersion` is public;
+  `ScenePool` uses exact-size LRU buckets. Drawing doc §12/§11 updated.
+- **Element-level mouse cursors** (doc §7.6) — `UIElement.Cursor : MouseCursorShape?`, hover-chain/capture
+  resolution in S3, equality-gated OSC 22 emission via `QueueControlSequence`. **Restore-to-default is always
+  `WriteSet(MouseCursorShape.Default)`, never the empty-payload `WriteReset` — Ghostty ignores the latter.**
+- **Namespaces** — `Cursorial.UI.Controls` holds `Panel` + panels + presenters + `Orientation`/`Dock`
+  (`UIElementCollection` stays in `Cursorial.UI`, a deliberate WPF deviation); brushes/pens live in
+  `Cursorial.Drawing.Media`, charts in `Cursorial.Drawing.Charts`.
+- **Signed margins** (P2.6, matrix §13/LD19) — negative `Margin` components are honored with WPF semantics:
+  measure enlargement, `DesiredSize` clamped ≥ 0 (with the cached-natural-size arrange fix, L225), signed arrange
+  origins via the new `LayoutRect` carrier (`UIElement.Bounds` is now `LayoutRect`; implicit `Rect→LayoutRect`
+  widening), zone-edge bleed clipping, LD3 alignment clamps unchanged.
+- **Line breaks across the text tier** (drawing doc §13) — `DrawingContext.DrawText` interprets `\r\n|\n|\r`
+  (continuation at the original start column; brush samples the multi-line extent; returns `Size`, was `int`;
+  `\t`→space + DEBUG diagnostic); `CellBuffer.Write` stops at the first C0/C1 control and returns columns written;
+  `PanelTitle` sanitizes to its first line; the per-tier behavior table is drawing doc §13.3.
+
 Recorded P1 gaps: `BindingOperations.TearDown` leg of `UIElement.TearDown()` (P4); palette theming + capability
 rewrite and the S7 surface merge into `UIApplication` (P5); `TerminalSessionOptions.EmergencyRestoreBytes` Core seam
 for signal-path alt-screen restore (doc §10.7 — until it lands, a signal-killed app restores cooked mode but may

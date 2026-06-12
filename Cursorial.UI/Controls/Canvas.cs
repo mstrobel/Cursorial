@@ -7,9 +7,10 @@ namespace Cursorial.UI.Controls;
 /// <see cref="TopProperty"/> / <see cref="RightProperty"/> / <see cref="BottomProperty"/> attached
 /// properties (design doc §5.4). Children measure with an unbounded constraint; the canvas itself
 /// desires 0×0. <c>Left</c> beats <c>Right</c> and <c>Top</c> beats <c>Bottom</c> when both are set
-/// (LD16); computed offsets clamp ≥ 0 — negative placement never enters layout (use
-/// <c>RenderOffset*</c> for negative slides, doc §5.2). All four attached properties are
-/// <c>[AffectsParentArrange]</c> — the cheap, arrange-only invalidation lane.
+/// (LD16); computed offsets clamp ≥ 0 — Canvas coordinates never go negative (use a signed
+/// <c>Margin</c> for static pull-up/overlap placement (LD19) or <c>RenderOffset*</c> for animated
+/// slides, doc §5.2). All four attached properties are <c>[AffectsParentArrange]</c> — the cheap,
+/// arrange-only invalidation lane.
 /// </summary>
 public class Canvas : Panel
 {
@@ -115,7 +116,8 @@ public class Canvas : Panel
             var row = GetTop(child)
                 ?? (GetBottom(child) is { } bottom ? finalSize.Rows - bottom - desired.Rows : 0);
 
-            // Negative placement never enters layout (doc §5.2) — use RenderOffset* instead.
+            // Canvas offsets clamp ≥ 0 (L126; doc §5.2) — negative placement enters layout only
+            // via signed margins (LD19); use RenderOffset* for animated slides.
             child.Arrange(new Rect(Math.Max(0, column), Math.Max(0, row), desired.Columns, desired.Rows));
         }
 

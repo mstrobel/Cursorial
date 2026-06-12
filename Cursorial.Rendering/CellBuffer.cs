@@ -220,8 +220,10 @@ public sealed class CellBuffer : ICellSurface
     /// wide) and applying the active blending mode per cell — exactly as
     /// <see cref="Set(int, int, string?, in Style)"/> does for a single cluster. A cluster that
     /// would not fit in the remaining columns stops the write rather than being clipped to a
-    /// partial glyph. Control characters (including newlines) are <b>not</b> interpreted; split
-    /// the text into lines yourself for multi-row layout. Returns the number of columns written.
+    /// partial glyph. The write is single-row by contract: it <b>stops at the first C0/C1 control
+    /// character</b> (including newlines and tabs) rather than storing it as a junk cell — split
+    /// text into lines (or use the drawing layer's multi-line text) for multi-row layout, and
+    /// expand tabs upstream. Returns the number of columns written.
     /// </summary>
     public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
     {
@@ -234,6 +236,10 @@ public sealed class CellBuffer : ICellSurface
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
+
+            // Stop at the first control character — this is a single-row, printable-text write.
+            if (IsC0OrC1Control(cluster[0])) break;
+
             int width = GraphemeWidth.ClusterWidth(cluster);
             if (width < 1) width = 1;
 
@@ -245,6 +251,10 @@ public sealed class CellBuffer : ICellSurface
 
         return column - start;
     }
+
+    // C0 (U+0000–U+001F), DEL (U+007F), and C1 (U+0080–U+009F). Controls are grapheme-cluster
+    // boundaries on both sides (UAX #29), so checking a cluster's first char classifies the cluster.
+    internal static bool IsC0OrC1Control(char c) => c < 0x20 || (c >= 0x7F && c <= 0x9F);
 
     /// <summary>
     /// Reset every cell to <see cref="Cell.Blank"/>. Does NOT apply the active blending mode —

@@ -38,22 +38,22 @@ internal static class BoxGlyphs
         (0x99, "┿"), (0x9A, "╇"), (0xA0, "┓"), (0xA1, "┪"), (0xA2, "┫"), (0xA4, "┱"), (0xA5, "╅"),
         (0xA6, "╉"), (0xA8, "┳"), (0xA9, "╈"), (0xAA, "╋"), (0xC1, "╛"), (0xC3, "╝"), (0xCC, "═"),
         (0xCD, "╧"), (0xCF, "╩"), (0xD0, "╕"), (0xD1, "╡"), (0xDC, "╤"), (0xDD, "╪"), (0xF0, "╗"),
-        (0xF3, "╣"), (0xFC, "╦"), (0xFF, "╬"),
+        (0xF3, "╣"), (0xFC, "╦"), (0xFF, "╬")
     ]);
 
     // The four all-light corners that have a rounded arc variant.
     private static readonly string?[] Rounded = BuildTable(
     [
-        (0x05, "╰"), (0x14, "╭"), (0x41, "╯"), (0x50, "╮"),
+        (0x05, "╰"), (0x14, "╭"), (0x41, "╯"), (0x50, "╮")
     ]);
 
     // Half-stub glyphs for a lone-arm cell with EndCap.Stub, indexed by arm code (light + heavy only).
     private static readonly string?[] Cap = BuildTable(
     [
-        (0x01, "╵"), (0x02, "╹"),   // up   light / heavy
-        (0x04, "╶"), (0x08, "╺"),   // right
-        (0x10, "╷"), (0x20, "╻"),   // down
-        (0x40, "╴"), (0x80, "╸"),   // left
+        (0x01, "╵"), (0x02, "╹"), // up   light / heavy
+        (0x04, "╶"), (0x08, "╺"), // right
+        (0x10, "╷"), (0x20, "╻"), // down
+        (0x40, "╴"), (0x80, "╸")  // left
     ]);
 
     private static string?[] BuildTable(ReadOnlySpan<(byte Code, string Glyph)> seed)
@@ -83,12 +83,16 @@ internal static class BoxGlyphs
 
         if (count == 2)
         {
-            if (deco.Dash != LineDash.None && TryStraightRun(arms, out bool vertical, out int runWeight)
-                && DashFor(vertical, runWeight, deco.Dash) is { } dashed)
+            if (deco.Dash == LineDash.None || !TryStraightRun(arms, out bool vertical, out int runWeight) ||
+                DashFor(vertical, runWeight, deco.Dash) is not {} dashed)
+            {
+                if (deco.Corners == CornerStyle.Rounded && Rounded[arms] is {} arc)
+                    return arc;
+            }
+            else
+            {
                 return dashed;
-
-            if (deco.Corners == CornerStyle.Rounded && Rounded[arms] is { } arc)
-                return arc;
+            }
         }
 
         return Base[arms] ?? Fallback(arms);
@@ -128,14 +132,25 @@ internal static class BoxGlyphs
         vertical = false; weight = 0; return false;
     }
 
-    private static string? DashFor(bool vertical, int weight, LineDash dash) => (vertical, weight, dash) switch
-    {
-        (false, 1, LineDash.Double) => "╌", (false, 1, LineDash.Triple) => "┄", (false, 1, LineDash.Quadruple) => "┈",
-        (false, 2, LineDash.Double) => "╍", (false, 2, LineDash.Triple) => "┅", (false, 2, LineDash.Quadruple) => "┉",
-        (true, 1, LineDash.Double) => "╎", (true, 1, LineDash.Triple) => "┆", (true, 1, LineDash.Quadruple) => "┊",
-        (true, 2, LineDash.Double) => "╏", (true, 2, LineDash.Triple) => "┇", (true, 2, LineDash.Quadruple) => "┋",
-        _ => null,
-    };
+    // @formatter:off
+    private static string? DashFor(bool vertical, int weight, LineDash dash)
+        => (vertical, weight, dash) switch
+           {
+               (false, 1, LineDash.Double)    => "╌",
+               (false, 1, LineDash.Triple)    => "┄",
+               (false, 1, LineDash.Quadruple) => "┈",
+               (false, 2, LineDash.Double)    => "╍",
+               (false, 2, LineDash.Triple)    => "┅",
+               (false, 2, LineDash.Quadruple) => "┉",
+               (true,  1, LineDash.Double)    => "╎",
+               (true,  1, LineDash.Triple)    => "┆",
+               (true,  1, LineDash.Quadruple) => "┊",
+               (true,  2, LineDash.Double)    => "╏",
+               (true,  2, LineDash.Triple)    => "┇",
+               (true,  2, LineDash.Quadruple) => "┋",
+               _                                                      => null
+           };
+    // @formatter:on
 
     private static byte MapWeights(byte arms, Func<int, int> map)
     {

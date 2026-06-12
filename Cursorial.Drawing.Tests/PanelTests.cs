@@ -28,6 +28,18 @@ public class PanelTests
         Assert.Equal("─", b[6, 0].Grapheme);    // line resumes after the title gap
     }
 
+    [Fact]
+    public void TitledBox_ControlCharInTitle_NoHoleInTopRule()
+    {
+        // TruncateToWidth counts a non-tab control as 0 columns — matching DrawText, which skips
+        // it — so the gap is sized to the painted label and the rule resumes right after the pad.
+        var b = DrawHarness.Render(20, 4, ctx => ctx.DrawTitledBox(new Rect(0, 0, 12, 4), "H\u0007i", White));
+        Assert.Equal("H", b[3, 0].Grapheme);
+        Assert.Equal("i", b[4, 0].Grapheme);   // BEL skipped — the label paints 2 columns
+        Assert.Equal("─", b[6, 0].Grapheme);   // no 1-cell hole between the pad and the resuming rule
+        Assert.Equal("┐", b[11, 0].Grapheme);
+    }
+
     [Theory]
     [InlineData(JunctionMode.Merge)]
     [InlineData(JunctionMode.Break)]
@@ -86,6 +98,30 @@ public class PanelTests
         Assert.Equal("V", b[3, 0].Grapheme);
         Assert.Equal("y", b[6, 0].Grapheme);   // clipped to "Very" (maxText = 10 − 6 = 4)
         Assert.Equal("─", b[8, 0].Grapheme);
+    }
+
+    [Fact]
+    public void TitledBox_MultiLineTitle_UsesFirstLineOnly()
+    {
+        // A title is a single-line slot (design doc §13.2): the gap is sized to — and the label drawn
+        // from — the first line only; the rest never paints anywhere.
+        var b = DrawHarness.Render(20, 4, ctx => ctx.DrawTitledBox(new Rect(0, 0, 12, 4), "Hi\nJunk", White));
+        Assert.Equal("H", b[3, 0].Grapheme);
+        Assert.Equal("i", b[4, 0].Grapheme);
+        Assert.Equal("─", b[6, 0].Grapheme);   // rule resumes — the gap fits "Hi", not "Junk"
+        Assert.DoesNotContain("J", Enumerable.Range(0, 4)
+                                             .SelectMany(r => Enumerable.Range(0, 20).Select(c => b[c, r].Grapheme)));
+    }
+
+    [Fact]
+    public void TitledBox_TitleStartingWithLineBreak_DegradesToPlainBox()
+    {
+        // First line is empty → same degrade as an empty title: full top rule, corners intact.
+        var b = DrawHarness.Render(20, 4, ctx => ctx.DrawTitledBox(new Rect(0, 0, 12, 4), "\nHi", White));
+        Assert.Equal("┌", b[0, 0].Grapheme);
+        Assert.Equal("┐", b[11, 0].Grapheme);
+        Assert.Equal("─", b[3, 0].Grapheme);   // no gap
+        Assert.DoesNotContain("H", Enumerable.Range(0, 12).Select(c => b[c, 0].Grapheme));
     }
 
     [Fact]

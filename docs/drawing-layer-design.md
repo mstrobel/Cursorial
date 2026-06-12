@@ -218,8 +218,9 @@ dividing by its extent).
   validated **finite** (NaN/Inf throws, mirroring the opacity guard) — but **not** range-clamped, since
   out-of-`[0,1]` points are legal (animation).
 
-Phase 2 also delivers `DrawingContext.DrawText` — **single-line, unlaid-out** brush text: walk
-grapheme clusters, sample fg/bg per cell across the run, build a scalar `Style`, `Set`.
+Phase 2 also delivers `DrawingContext.DrawText` — **unlaid-out** brush text: walk grapheme
+clusters, sample fg/bg per cell across the run, build a scalar `Style`, `Set`. (Originally
+single-line; multi-line via embedded line breaks since the 2026-06-11 line-break batch — see §13.)
 
 ---
 
@@ -711,6 +712,8 @@ arithmetic remains):
 - **`DrawText` return-value contract documented for the transformed path**: it returns the columns
   *advanced* in local coordinates — under a push, clusters the clip suppresses still advance (the
   full local run width); with no push it stops at the surface edge and returns the clamped width.
+  (Since the §13 line-break batch the return is a `Size` — the per-line advance keeps exactly this
+  contract; the `Size` is widest-line advance × line count.)
 
 **Residual limitations (push-stack fragments — documented, deliberate):**
 - A fragment whose **anchor** (its translated bounds origin) maps outside the active clip — or off the
@@ -805,3 +808,69 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
 > P1s (rect `Fill` transparent-clear consistency; conic `spread` dropped as a no-op; `ScenePool`
 > double-dispose idempotency; `CompositeParameters.WithMode`) — all with regression tests. The
 > low-alpha premultiplied precision test (α 1–4) is now in the suite.
+
+---
+
+## 13. Line breaks across the text tier (2026-06-11, UI P2.6 fixes batch)
+
+Until this batch every plain-text entry point treated its input as a single line, and a stray
+control character became a width-1 junk cell. This section pins the line-break and control-character
+contract per tier; the changes landed together (user-pinned decisions, restated normatively here).
+
+### 13.1 `DrawingContext.DrawText` — multi-line (both overloads)
+
+- **Line breaks**: `\r\n`, `\n`, and `\r` are all line breaks (one rule, three forms — a lone `\r`
+  is a break, never an overstrike). Each subsequent line continues at the **original start column**,
+  one row down. Empty lines consume a row; a trailing newline yields a final empty line that counts.
+- **Clip/translate**: honored per line through the push stack (each cell write maps and clips
+  exactly as v1 single-line text did).
+- **Brush extent**: the brush samples against the **full multi-line extent** — widest sanitized
+  line width × line count, anchored at the call's (column, row) — so a gradient flows down the
+  lines of one call instead of restarting per line.
+- **Return type** changed `int` → `Size` (**breaking-but-cleared**; every caller swept repo-wide):
+  the text's bounding box — widest line's column advance × line count. Per-line advance keeps the
+  v1 §11 contract: the full local width under a push (clipped clusters still advance); clamped at
+  the surface's right edge — and 0 for an off-surface row — without one.
+- **Negative starts never throw** (P2.6 review fix — the multi-line rewrite briefly built the
+  brush bounds before the v1 row guard, turning a graceful no-op into a render-pass crash when
+  centering math went negative). Coordinates are signed end-to-end. With no push: rows off the
+  surface on **either** side (negative or past the bottom) draw nothing and advance 0; clusters
+  that start left of column 0 are skipped (not painted) while the run still advances through them
+  — unlike the right edge, which stops the line (so the advance counts local columns from the
+  possibly-negative start). Under a push, negative local coordinates flow through the
+  translate/clip map as v1 did for non-text draws. Brush sampling rides the internal signed
+  `SampleBounds` carrier (the deferred-stroke one): a negative anchor shifts both the rect and the
+  sample point to a zero origin — contract-equivalent under bounds-relative sampling — and an
+  extent past the ushort `Rect` cap (65,535 lines/columns) clamps defensively (the gradient
+  parameter compresses) instead of throwing.
+- **Sanitization**: `\t` is substituted with **one space** + a DEBUG diagnostic; all other C0/C1
+  controls (including DEL and the C1 range U+0080–U+009F) are **skipped** (zero columns) + a DEBUG
+  diagnostic. Sanitization is width-coherent: the measured brush extent applies the same rules.
+- **Diagnostics channel**: `DrawingDiagnostics` (+ `DrawingDiagnosticKind`/`DrawingDiagnosticEvent`)
+  mirrors `Cursorial.UI`'s `LayoutDiagnostics` shape — a static event raised through a
+  `[Conditional("DEBUG")]` emit, so the behavior (substitute/skip) is identical in release while
+  the channel compiles away.
+
+### 13.2 Single-line slots sanitize to the first line
+
+`PanelTitle` text in `DrawTitledBox` / `DrawPanel` cuts at the first `\r` or `\n` before
+truncation/gap math (+ `MultiLineTextInSingleLineSlot` DEBUG diagnostic). An empty first line
+degrades to a plain box, same as an empty title. No other Drawing-owned single-line slot exists
+today (window/OSC titles are Core's, out of scope).
+
+### 13.3 The per-tier behavior table (audited 2026-06-11)
+
+| Tier — entry point | `\r\n` / `\n` / `\r` | `\t` | Other C0/C1 | Status |
+|---|---|---|---|---|
+| Core — `AnsiTextWrap.Wrap` | Hard breaks (all three forms), re-emitted as `WrapOptions.NewLine` | Passes through verbatim, counted zero-width; also a wrap **break-opportunity** (like space — `IsWrapWhitespace`) and trimmed when trailing under `TrimTrailingSpaces` | Passes through verbatim, zero-width (ANSI escapes are recognized pass-through tokens) | Pre-existing; verified |
+| Core — `TextSizingWriter.Write/WriteSplit` | Raw passthrough into the OSC 66 payload — caller sanitizes; control bytes on the wire are terminal-defined | same | same | Pre-existing; recorded (callers are single-line by usage) |
+| Rendering — `CellBuffer.Write` / `CellBufferView.Write` / `ICellSurface.Write` | **Stops at the first C0/C1 control** and returns columns written (single-row by contract; split lines yourself or use Drawing's `DrawText`) | stop | stop | **Changed this batch** (was: width-1 junk cells) |
+| Rendering — `CellBuffer.Set` / `CellBufferView.Set` | Single-cluster raw primitive: a control cluster is stored as given (junk cell) — callers own sanitization | as given | as given | Unchanged; recorded |
+| Rendering — `RichTextBuilder` / `TextMarkup` / `TextFormatter` (`FormattedText`) | Hard breaks are **structural**: `LineBreak` inlines (`.LineBreak()`, `[br/]`) and paragraph boundaries. A literal `\n` in run text is **not** a break — the formatter deliberately treats it as a word character (wrap whitespace excludes `\r`/`\n`; markup preserves source whitespace) and it reaches `Set` as a junk cell | Expanded to `TabWidth` spaces (a `SpaceAtom` — wrappable like a space) | junk cell | Pre-existing; verified + recorded (hardening candidate if it bites; tab cell corrected post-audit — the formatter expands, it does not store) |
+| Rendering — FIGlet (`FigletFont.Measure/Paint`) | Single-line; any codepoint without a glyph — including `\n` — falls back to the **space glyph** | space glyph | space glyph | Pre-existing; recorded |
+| Rendering — `ScaledText` (OSC 66 content) | Text passes unsanitized to the protocol fragment or the fallback `IGlyphFont`; single-line by usage | as above | as above | Pre-existing; recorded |
+| Drawing — `DrawingContext.DrawText` (Color + IBrush) | **Multi-line** (§13.1) | One space + DEBUG diagnostic | Skipped + DEBUG diagnostic | **Changed this batch** |
+| Drawing — `PanelTitle` (`DrawTitledBox`/`DrawPanel`) | **First line only** (§13.2); the title then rides `DrawText`'s tab/control rules | space | skipped | **Changed this batch** |
+| Drawing — charts (`Axes` labels, `BarChart` value/category labels) | Labels ride `DrawText`, so an embedded break now continues one row down at the start column; labels are single-line by convention and numeric formatting never produces breaks | space | skipped | Inherited; recorded |
+| UI — `RenderContext.DrawText` | Thin veneer over Drawing's: multi-line + `Size` return (element-local) | space | skipped | **Changed this batch** |
+| UI — text-bearing leaves (demo labels today, `TextBlock` at S8) | Single-call `DrawText` leaves inherit multi-line; document-shaped text rides `FormattedText` (structural breaks) | — | — | Recorded |

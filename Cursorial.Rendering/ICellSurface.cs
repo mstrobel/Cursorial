@@ -54,7 +54,8 @@ internal interface ICellSurface
     /// <summary>Place a single grapheme cluster, handling wide-cell width. Returns columns occupied.</summary>
     int Set(int column, int row, string? grapheme, in Style style);
 
-    /// <summary>Lay out a string's grapheme clusters across a row. Returns columns written.</summary>
+    /// <summary>Lay out a string's grapheme clusters across a single row, stopping at the first
+    /// C0/C1 control character. Returns columns written.</summary>
     int Write(int column, int row, ReadOnlySpan<char> text, in Style style);
 
     /// <summary>Fill every cell with <paramref name="cell"/>, applying the active blending mode.</summary>

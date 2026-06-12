@@ -526,6 +526,21 @@ public class CellBufferViewTests
         Assert.Equal(0, view.Write(0, 5, "X", default));   // past the bottom edge
     }
 
+    [Fact]
+    public void Write_StopsAtFirstControlCharacter()
+    {
+        // Single-row contract (parity with CellBuffer.Write): a newline terminates the write.
+        var buf = new CellBuffer(10, 10);
+        var view = buf.View(4, 3, 5, 5);
+
+        int advanced = view.Write(0, 0, "ab\ncd", Style.Default);
+
+        Assert.Equal(2, advanced);
+        Assert.Equal("a", buf[4, 3].Grapheme);
+        Assert.Equal("b", buf[5, 3].Grapheme);
+        Assert.Equal(default(Cell), buf[6, 3]);          // nothing past the control — "cd" dropped
+    }
+
     // ---- Fill(in Rect, in Cell) ----
 
     [Fact]

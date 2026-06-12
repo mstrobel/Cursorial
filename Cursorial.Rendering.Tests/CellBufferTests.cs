@@ -267,6 +267,44 @@ public class CellBufferTests
     }
 
     [Fact]
+    public void Write_StopsAtFirstControlCharacter()
+    {
+        // Single-row contract: a newline is not interpreted, it terminates the write (no junk cell).
+        var buf = new CellBuffer(10, 1);
+
+        int advanced = buf.Write(0, 0, "ab\ncd", Style.Default);
+
+        Assert.Equal(2, advanced);
+        Assert.Equal("a", buf[0, 0].Grapheme);
+        Assert.Equal("b", buf[1, 0].Grapheme);
+        Assert.Equal(default(Cell), buf[2, 0]);          // nothing past the control — "cd" dropped
+    }
+
+    [Theory]
+    [InlineData("\tab")]      // tab (C0)
+    [InlineData("\rab")]      // CR (C0)
+    [InlineData("\u007Fab")]  // DEL
+    public void Write_LeadingControlCharacter_WritesNothing(string text)
+    {
+        var buf = new CellBuffer(10, 1);
+
+        Assert.Equal(0, buf.Write(0, 0, text, Style.Default));
+        Assert.Equal(default(Cell), buf[0, 0]);
+    }
+
+    [Fact]
+    public void Write_StopsAtC1Control()
+    {
+        var buf = new CellBuffer(10, 1);
+
+        int advanced = buf.Write(0, 0, "ab" + (char) 0x9C + "cd", Style.Default);   // U+009C (ST)
+
+        Assert.Equal(2, advanced);
+        Assert.Equal("b", buf[1, 0].Grapheme);
+        Assert.Equal(default(Cell), buf[2, 0]);
+    }
+
+    [Fact]
     public void Write_InvalidStart_Throws()
     {
         var buf = new CellBuffer(5, 1);

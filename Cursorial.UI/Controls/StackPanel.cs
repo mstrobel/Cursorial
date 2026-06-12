@@ -17,8 +17,8 @@ public class StackPanel : Panel
 
     /// <summary>
     /// Cells of space between consecutive non-collapsed children (default 0; LD7). Negative values
-    /// coerce to 0 (the <c>ItemWidth</c>/<c>Margin</c> precedent — v1 layout has no signed
-    /// geometry, doc §5.2; a negative gap would wrap the ushort-backed arrange <c>Rect</c>).
+    /// coerce to 0 — spacing is panel geometry, not a margin: a negative gap would wrap the
+    /// ushort-backed arrange slot <c>Rect</c> (overlap effects use signed margins, LD19).
     /// <c>[AffectsMeasure]</c>
     /// </summary>
     public static readonly StyledProperty<int> SpacingProperty =

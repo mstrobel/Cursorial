@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
@@ -92,9 +91,11 @@ public sealed class RenderContext
     /// </summary>
     internal void PointAt(int originColumn, int originRow, Size size)
     {
-        Debug.Assert(originColumn >= 0 && originRow >= 0,
-            "Zone-raster origins are non-negative by construction at P1 (child Bounds are non-negative; " +
-            "RenderOffset* never enters the raster — it promotes a boundary).");
+        // Origins may be NEGATIVE since the P2.6 signed-margin batch (matrix LD19): a child with a
+        // negative margin arranges above/left of its parent, and Drawing's push-stack translate is
+        // negative-capable — cells above/left of the zone clip per cell (the P2.5 ① coverage).
+        // (RenderOffset* still never enters the raster — it promotes a boundary.)
+        //
         // Pop-then-push, in that order. If PushTranslate ever threw between the two, the stale
         // _elementScope's later double-dispose in End() is a safe no-op (DrawingContext.PopTo is
         // depth-gated and idempotent). Do NOT "fix" this by pushing first and disposing after: the
@@ -151,16 +152,20 @@ public sealed class RenderContext
     // ───────────────────────────── text and content ─────────────────────────────
 
     /// <summary>
-    /// Draws one line of text at element-local coordinates; returns the columns advanced — the
-    /// run's full local width (clusters a band/zone edge clips away still advance the count).
+    /// Draws text at element-local coordinates. <c>\r\n</c> | <c>\n</c> | <c>\r</c> are line
+    /// breaks — each subsequent line continues at the original start <paramref name="column"/> one
+    /// row down, the brush sampling the full multi-line extent; a tab becomes one space and other
+    /// C0/C1 controls are skipped (DEBUG diagnostics via <c>DrawingDiagnostics</c>). Returns the
+    /// text's bounding box: widest line's advance × line count — per line the full local width
+    /// (clusters a band/zone edge clips away still advance the count).
     /// </summary>
-    public int DrawText(int column, int row, ReadOnlySpan<char> text,
-                        IBrush foreground, IBrush? background = null, in Style baseStyle = default)
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         IBrush foreground, IBrush? background = null, in Style baseStyle = default)
         => Inner.DrawText(column, row, text, foreground, background, baseStyle);
 
     /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>
-    public int DrawText(int column, int row, ReadOnlySpan<char> text,
-                        Color foreground, Color? background = null, in Style baseStyle = default)
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         Color foreground, Color? background = null, in Style baseStyle = default)
         => Inner.DrawText(column, row, text, foreground, background, baseStyle);
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>, brushed; capabilities auto-supplied.</summary>

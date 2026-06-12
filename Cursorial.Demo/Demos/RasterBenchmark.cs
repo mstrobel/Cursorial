@@ -380,9 +380,9 @@ internal sealed class BandScrollScenario : RasterBenchScenario
             string call = Calls[(int) ((x >> 8) % (ulong) Calls.Length)];
 
             int c = column + indent;
-            c += ctx.DrawText(c, row, keyword, Keyword) + 1;
-            c += ctx.DrawText(c, row, $"zone_{x % 997:D3} = ", Ident);
-            c += ctx.DrawText(c, row, $"{call}(band: {x % 91}, k: {x % 17})", Literal);
+            c += ctx.DrawText(c, row, keyword, Keyword).Columns + 1;
+            c += ctx.DrawText(c, row, $"zone_{x % 997:D3} = ", Ident).Columns;
+            c += ctx.DrawText(c, row, $"{call}(band: {x % 91}, k: {x % 17})", Literal).Columns;
             ctx.DrawText(c + 2, row, $"// doc row {doc}", Comment);
             return 4;
         }

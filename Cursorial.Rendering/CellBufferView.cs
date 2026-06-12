@@ -301,8 +301,11 @@ public readonly struct CellBufferView : ICellSurface
     /// view-local <c>(column, row)</c>, advancing the column by each cluster's width (1 or 2) and
     /// applying the active blending mode per cell — see <see cref="Set(int, int, string?, in Style)"/>.
     /// A start outside the view is dropped (returns 0); a cluster that would not fit in the
-    /// remaining columns stops the write rather than being clipped. Control characters (including
-    /// newlines) are not interpreted. Returns the number of columns written.
+    /// remaining columns stops the write rather than being clipped. The write is single-row by
+    /// contract: it <b>stops at the first C0/C1 control character</b> (including newlines and tabs)
+    /// rather than storing it as a junk cell — split text into lines (or use the drawing layer's
+    /// multi-line text) for multi-row layout, and expand tabs upstream. Returns the number of
+    /// columns written.
     /// </summary>
     public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
     {
@@ -315,6 +318,10 @@ public readonly struct CellBufferView : ICellSurface
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
+
+            // Stop at the first control character — this is a single-row, printable-text write.
+            if (CellBuffer.IsC0OrC1Control(cluster[0])) break;
+
             int width = GraphemeWidth.ClusterWidth(cluster);
             if (width < 1) width = 1;
 

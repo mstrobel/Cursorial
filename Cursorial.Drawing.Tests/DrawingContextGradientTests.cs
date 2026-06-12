@@ -98,10 +98,10 @@ public class DrawingContextGradientTests
     public void DrawText_AdvancesPastWideClusters()
     {
         var scene = Scene.Create(6, 1);
-        int advanced = 0;
+        var advanced = Size.Empty;
         scene.Draw(ctx => advanced = ctx.DrawText(0, 0, "中a", Color.FromRgb(255, 255, 255)));
 
-        Assert.Equal(3, advanced);   // wide CJK (2) + 'a' (1)
+        Assert.Equal(new Size(3, 1), advanced);   // wide CJK (2) + 'a' (1), one line
 
         var buffer = Composite(scene, 6, 1);
         Assert.Equal("中", buffer[0, 0].Grapheme);

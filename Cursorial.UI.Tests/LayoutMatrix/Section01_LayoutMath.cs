@@ -74,20 +74,24 @@ public class Section01_LayoutMath
         Assert.Equal(0, LayoutMath.CenterOffset(4, 10));
     }
 
-    [Fact]
-    public void L11_ArrangePosition_ClampsToMaxExtent_WithDiagnostic_NoThrow()
+    [Theory]
+    [InlineData(20, 65530, LayoutMath.MaxExtent)]            // positive edge: 65530 + 20 = 65550
+    [InlineData(-70_000, 0, -LayoutMath.MaxExtent)]          // negative edge (LD19 symmetric clamp)
+    [InlineData(int.MaxValue, 65530, LayoutMath.MaxExtent)]  // int fold would wrap negative — long fold keeps the edge's sign
+    public void L11_ArrangePosition_ClampsSymmetricallyToMaxExtent_WithDiagnostic_NoThrow(
+        int marginLeft, int slotColumn, int expectedColumn)
     {
         var probe = new Probe(4, 2)
         {
-            Margin = new Margins(20, 0, 0, 0),
+            Margin = new Margins(marginLeft, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
         };
 
         var diagnostics = LayoutFixture.CaptureDiagnostics(
-            () => probe.Arrange(new Rect(65530, 0, 30, 5)));
+            () => probe.Arrange(new Rect(slotColumn, 0, 30, 5)));
 
-        Assert.Equal(LayoutMath.MaxExtent, probe.Bounds.Column); // 65530 + 20 clamps to 65535
+        Assert.Equal(expectedColumn, probe.Bounds.Column);
 #if DEBUG
         Assert.Contains(diagnostics, d => d.Kind == LayoutDiagnosticKind.ArrangeRectClamped && ReferenceEquals(d.Element, probe));
 #endif

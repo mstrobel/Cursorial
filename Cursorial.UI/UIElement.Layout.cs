@@ -5,7 +5,8 @@ namespace Cursorial.UI;
 public abstract partial class UIElement
 {
     private Size _desiredSize;
-    private Rect _bounds;
+    private Size _naturalSize; // post-MinMax, pre-margin (WPF's _unclippedDesiredSize) — arrange content sizing (L225)
+    private LayoutRect _bounds;
     private Size _lastMeasureConstraint;
     private Rect _lastArrangeRect;
     private bool _hasMeasured;
@@ -19,14 +20,19 @@ public abstract partial class UIElement
     internal LayoutManager? ArrangeQueuedIn;
 
     /// <summary>
-    /// The size this element desires including <see cref="Margin"/> (the WPF rule), produced by
+    /// The size this element desires including <see cref="Margin"/> (the WPF rule, clamped ≥ 0 per
+    /// axis — negative margins can shrink it below the content size, LD19), produced by
     /// <see cref="Measure"/>. May exceed the measure constraint — parents own overflow policy
     /// (LD2); never <see cref="LayoutMath.Unbounded"/> on any axis.
     /// </summary>
     public Size DesiredSize => _desiredSize;
 
-    /// <summary>The parent-relative arranged bounds, produced by <see cref="Arrange"/>.</summary>
-    public Rect Bounds => _bounds;
+    /// <summary>
+    /// The parent-relative arranged bounds, produced by <see cref="Arrange"/>. The origin is
+    /// <b>signed</b> (LD19): negative <see cref="Margin"/> components may place an element
+    /// above/left of its parent's slot; cells outside the zone clip at composite time.
+    /// </summary>
+    public LayoutRect Bounds => _bounds;
 
     /// <summary>Whether the element's measure state is current.</summary>
     public bool IsMeasureValid { get; private set; }
@@ -51,11 +57,12 @@ public abstract partial class UIElement
     /// <summary>
     /// Measures the element (design doc §5.3): Collapsed early-out (precedes
     /// <see cref="ApplyTemplate"/>) → constraint cache hit (keys the <em>raw</em>
-    /// <paramref name="availableSize"/>, LD6) → <see cref="ApplyTemplate"/> → margin-deflate +
-    /// min/max clamp (explicit <see cref="Width"/>/<see cref="Height"/> fold into both min and max —
-    /// the WPF <c>MinMax</c> rule, LD1) → <see cref="MeasureOverride"/> → clamp →
-    /// <c>DesiredSize = natural + Margin</c> (saturating) → <see cref="OnChildDesiredSizeChanged"/>
-    /// on the parent when the desired size changed.
+    /// <paramref name="availableSize"/>, LD6) → <see cref="ApplyTemplate"/> → margin-deflate
+    /// (negative margins <b>enlarge</b> the inner constraint — LD19) + min/max clamp (explicit
+    /// <see cref="Width"/>/<see cref="Height"/> fold into both min and max — the WPF <c>MinMax</c>
+    /// rule, LD1) → <see cref="MeasureOverride"/> → clamp → <c>DesiredSize = natural + Margin</c>
+    /// (saturating, floored at 0 per axis) → <see cref="OnChildDesiredSizeChanged"/> on the parent
+    /// when the desired size changed.
     /// </summary>
     public void Measure(Size availableSize)
     {
@@ -117,6 +124,11 @@ public abstract partial class UIElement
         natural = new Size(
             LayoutMath.Clamp(natural.Columns, minWidth, maxWidth),
             LayoutMath.Clamp(natural.Rows, minHeight, maxHeight));
+
+        // Cached for Arrange (L225): with a negative margin the DesiredSize floor can clamp to 0,
+        // and reconstructing content size as `DesiredSize − margin` would "recover" |margin| —
+        // inflating the element past its natural size. WPF caches _unclippedDesiredSize the same way.
+        _naturalSize = natural;
 
         var desired = LayoutMath.Add(natural, margin);
         if (LayoutMath.IsUnbounded(desired.Columns) || LayoutMath.IsUnbounded(desired.Rows))
@@ -199,9 +211,14 @@ public abstract partial class UIElement
     /// Arranges the element into the parent-relative, margin-inclusive slot
     /// <paramref name="finalRect"/> (design doc §5.3): self-heals an invalid measure (LD4 — a
     /// never-measured element measures with the slot size), caches on <paramref name="finalRect"/>
-    /// (LD6), computes the aligned size (Stretch fills the slot; explicit/Min/Max still bind),
-    /// runs <see cref="ArrangeOverride"/>, and places the result with the LD3 offset algebra
+    /// (LD6), computes the aligned size (Stretch fills the slot; non-Stretch takes the
+    /// measure-cached <b>natural</b> size, never <c>DesiredSize − margin</c> — L225;
+    /// explicit/Min/Max still bind), runs <see cref="ArrangeOverride"/>, and places the result
+    /// with the LD3 offset algebra
     /// (Stretch-that-cannot-fill centers; all offsets clamp ≥ 0 — overflow pins Left/Top).
+    /// The final position fold adds the <b>signed</b> margin (LD19): a negative
+    /// <see cref="Margin"/> component may place <see cref="Bounds"/> at a negative origin —
+    /// slots themselves stay non-negative (panels never produce negative slot rects).
     /// </summary>
     public void Arrange(in Rect finalRect)
     {
@@ -212,7 +229,7 @@ public abstract partial class UIElement
             _lastArrangeRect = finalRect;
             _hasArranged = true;
             IsArrangeValid = true;
-            SetBoundsAndRoute(Rect.Empty);
+            SetBoundsAndRoute(LayoutRect.Empty);
             return;
         }
 
@@ -228,7 +245,7 @@ public abstract partial class UIElement
 
         var margin = Margin;
         var slot = LayoutMath.Sub(finalRect.Size, margin);
-        var desiredContent = LayoutMath.Sub(_desiredSize, margin);
+        var desiredContent = _naturalSize; // cached at measure — NOT `DesiredSize − margin` (L225)
         var horizontalAlignment = HorizontalAlignment;
         var verticalAlignment = VerticalAlignment;
         var (minWidth, maxWidth, minHeight, maxHeight) = ResolveMinMax();
@@ -267,18 +284,24 @@ public abstract partial class UIElement
             _ => LayoutMath.CenterOffset(slot.Rows, usedRows),
         };
 
-        var column = finalRect.Column + margin.Left + offsetColumn;
-        var row = finalRect.Row + margin.Top + offsetRow;
-        if (column > LayoutMath.MaxExtent || row > LayoutMath.MaxExtent)
+        // The signed position fold (LD19): margin.Left / margin.Top may be negative, producing a
+        // negative origin. The fold itself computes in long — an int fold could wrap (e.g.
+        // margin.Left near int.MaxValue) and silently clamp to the WRONG edge (L11). Positions
+        // clamp symmetrically into [−MaxExtent, MaxExtent] (the L11 clamp, made two-sided) so
+        // pathological inputs can't overflow downstream int arithmetic.
+        var column = (long) finalRect.Column + margin.Left + offsetColumn;
+        var row = (long) finalRect.Row + margin.Top + offsetRow;
+        if (column is > LayoutMath.MaxExtent or < -LayoutMath.MaxExtent ||
+            row is > LayoutMath.MaxExtent or < -LayoutMath.MaxExtent)
         {
             LayoutDiagnostics.Emit(
                 LayoutDiagnosticKind.ArrangeRectClamped, this,
-                $"Arrange position ({column}, {row}) for '{GetType().Name}' exceeds MaxExtent; clamped (doc §5.2).");
-            column = Math.Min(column, LayoutMath.MaxExtent);
-            row = Math.Min(row, LayoutMath.MaxExtent);
+                $"Arrange position ({column}, {row}) for '{GetType().Name}' exceeds ±MaxExtent; clamped (doc §5.2).");
+            column = Math.Clamp(column, -LayoutMath.MaxExtent, LayoutMath.MaxExtent);
+            row = Math.Clamp(row, -LayoutMath.MaxExtent, LayoutMath.MaxExtent);
         }
 
-        SetBoundsAndRoute(new Rect(column, row, usedColumns, usedRows));
+        SetBoundsAndRoute(new LayoutRect((int) column, (int) row, usedColumns, usedRows));
     }
 
     /// <summary>
@@ -305,7 +328,7 @@ public abstract partial class UIElement
     /// for non-boundaries — which is why position animations must use <c>RenderOffset*</c>, never
     /// <c>Margin</c>/<c>Canvas.Left</c> (invariant 3).
     /// </summary>
-    private void SetBoundsAndRoute(Rect newBounds)
+    private void SetBoundsAndRoute(LayoutRect newBounds)
     {
         var oldBounds = _bounds;
         if (!SetAndRaise(BoundsProperty, ref _bounds, newBounds))

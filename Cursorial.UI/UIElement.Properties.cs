@@ -31,12 +31,16 @@ public abstract partial class UIElement
         UIProperty.Register<UIElement, int>(nameof(MaxHeight), defaultValue: LayoutMath.Unbounded);
 
     /// <summary>
-    /// The margin around the element, inside its layout slot. Negative components are unsupported
-    /// in v1 and coerce to 0 with a DEBUG diagnostic (doc §5.2 — overlap effects use
-    /// <see cref="RenderOffsetColumn"/>/<see cref="RenderOffsetRow"/>).
+    /// The margin around the element, inside its layout slot. Components are <b>signed</b> with WPF
+    /// semantics (LD19, doc §5.2): negative components enlarge the measure/arrange constraint,
+    /// <see cref="DesiredSize"/> clamps ≥ 0 per axis, and the arranged <see cref="Bounds"/> origin
+    /// may go negative (pull-up/overlap layouts) — cells outside the zone clip at composite time.
+    /// For <em>animated</em> position effects still prefer
+    /// <see cref="RenderOffsetColumn"/>/<see cref="RenderOffsetRow"/> (the no-re-raster lane,
+    /// invariant 3).
     /// </summary>
     public static readonly StyledProperty<Margins> MarginProperty =
-        UIProperty.Register<UIElement, Margins>(nameof(Margin), coerce: CoerceMargin);
+        UIProperty.Register<UIElement, Margins>(nameof(Margin));
 
     /// <summary>Horizontal placement within the layout slot (default <see cref="HorizontalAlignment.Stretch"/>).</summary>
     public static readonly StyledProperty<HorizontalAlignment> HorizontalAlignmentProperty =
@@ -116,9 +120,9 @@ public abstract partial class UIElement
     public static readonly DirectProperty<UIElement, Size> DesiredSizeProperty =
         UIProperty.RegisterDirect<UIElement, Size>(nameof(DesiredSize), static e => e._desiredSize);
 
-    /// <summary>The element's parent-relative arranged bounds, produced by <see cref="Arrange"/>. Read-only direct property.</summary>
-    public static readonly DirectProperty<UIElement, Rect> BoundsProperty =
-        UIProperty.RegisterDirect<UIElement, Rect>(nameof(Bounds), static e => e._bounds);
+    /// <summary>The element's parent-relative arranged bounds (signed origin — LD19), produced by <see cref="Arrange"/>. Read-only direct property.</summary>
+    public static readonly DirectProperty<UIElement, LayoutRect> BoundsProperty =
+        UIProperty.RegisterDirect<UIElement, LayoutRect>(nameof(Bounds), static e => e._bounds);
 
     static UIElement()
     {
@@ -191,21 +195,6 @@ public abstract partial class UIElement
 
     /// <inheritdoc cref="IsRenderBoundaryProperty"/>
     public bool IsRenderBoundary { get => GetValue(IsRenderBoundaryProperty); set => SetValue(IsRenderBoundaryProperty, value); }
-
-    private static Margins CoerceMargin(UIObject sender, Margins value)
-    {
-        if (value is { Left: >= 0, Top: >= 0, Right: >= 0, Bottom: >= 0 })
-            return value;
-
-        LayoutDiagnostics.Emit(
-            LayoutDiagnosticKind.NegativeMarginCoerced, sender as UIElement,
-            $"Negative Margin components are unsupported in v1 and were coerced to 0 ({value}); " +
-            "use RenderOffsetColumn/Row for overlap effects.");
-
-        return new Margins(
-            Math.Max(0, value.Left), Math.Max(0, value.Top),
-            Math.Max(0, value.Right), Math.Max(0, value.Bottom));
-    }
 
     // ───────────────────────────── effects routing (invariant 2) ─────────────────────────────
     //

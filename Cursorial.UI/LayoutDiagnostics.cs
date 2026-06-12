@@ -5,7 +5,10 @@ namespace Cursorial.UI;
 /// <summary>The kinds of layout diagnostics the tree/layout engine emits in DEBUG builds.</summary>
 public enum LayoutDiagnosticKind
 {
-    /// <summary>A negative <c>Margin</c> component was coerced to 0 (v1 has no signed margins — doc §5.2).</summary>
+    /// <summary>Historical (no longer emitted since the P2.6 signed-margin batch, matrix LD19): a
+    /// negative <c>Margin</c> component was coerced to 0 under the v1 unsigned-margin cut. Margins
+    /// are signed with WPF semantics now — no coercion exists. The member is retained so recorded
+    /// diagnostics streams keep their meaning.</summary>
     NegativeMarginCoerced,
 
     /// <summary>A <c>MeasureOverride</c> returned <see cref="LayoutMath.Unbounded"/>; the desired size was clamped to <see cref="LayoutMath.MaxExtent"/> (LD2).</summary>

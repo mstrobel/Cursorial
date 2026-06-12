@@ -250,15 +250,14 @@ public class Section02_Measure
     }
 
     [Fact]
-    public void L37_NegativeMargin_CoercedToZero_WithDiagnostic()
+    public void L37_NegativeMargin_EnlargesConstraint_DesiredClampsAtZero()
     {
-        var probe = new Probe(5, 5);
-        var diagnostics = LayoutFixture.CaptureDiagnostics(
-            () => probe.Margin = new Margins(-2, 1, 1, 1));
+        // Amended P2.6 (LD19): margins are signed — no coercion, no diagnostic.
+        var fit = new Fit(3, 1) { Margin = new Margins(0, -2, 0, 0) };
+        Assert.Equal(new Margins(0, -2, 0, 0), fit.Margin); // reads back unchanged
 
-        Assert.Equal(new Margins(0, 1, 1, 1), probe.Margin);
-#if DEBUG
-        Assert.Contains(diagnostics, d => d.Kind == LayoutDiagnosticKind.NegativeMarginCoerced);
-#endif
+        fit.Measure(new Size(10, 5));
+        Assert.Equal(new Size(10, 7), Assert.Single(fit.MeasureConstraints)); // 5 − (−2): the deflate ENLARGES
+        Assert.Equal(new Size(3, 0), fit.DesiredSize);                        // content 1 + margin (−2) clamps ≥ 0
     }
 }

@@ -29,6 +29,7 @@ public abstract partial class UIElement : UIObject
     private UIElement? _logicalParent;
     private UIElement? _visualRoot;
     private UIElement? _templatedParent;
+    private string? _name;
     private List<UIElement>? _visualChildren;
     private List<UIElement>? _logicalChildren;
     private LayoutManager? _layoutManager; // non-null only on a root attached via LayoutManager
@@ -63,10 +64,23 @@ public abstract partial class UIElement : UIObject
     public UIElement? TemplatedParent => _templatedParent;
 
     /// <summary>
-    /// The element's name for <c>x:Name</c> / <c>#name</c> selector lookup. Plain storage at P1;
-    /// styling re-match on change arrives with Fork B (P3), namescopes with S2 (P4).
+    /// The element's name for <c>x:Name</c> / <c>#name</c> selector lookup. Changes notify the
+    /// styling engine (S130 — a rename re-matches <c>#name</c> rules); namescopes arrive with S2
+    /// (P4). Comparison is ordinal (SD2).
     /// </summary>
-    public string? Name { get; set; }
+    public string? Name
+    {
+        get => _name;
+        set
+        {
+            if (string.Equals(_name, value, StringComparison.Ordinal))
+                return;
+
+            var oldName = _name;
+            _name = value;
+            OnStylingNameChanged(oldName, value);
+        }
+    }
 
     /// <summary>The element's visual children in physical order — the base paint order.</summary>
     protected IReadOnlyList<UIElement> VisualChildren => _visualChildren ?? (IReadOnlyList<UIElement>)NoChildren;
@@ -348,6 +362,10 @@ public abstract partial class UIElement : UIObject
         element.UpdateEffectiveEnabled();
         element.OnAttachedToTree(new TreeAttachmentEventArgs(root, element._visualParent));
 
+        // Fork B's styling attach (B19): pre-order with the walk, so every element arms before its
+        // first measure — styles affect layout in the same frame.
+        element.OnStylingAttached();
+
         if (element._visualChildren is { } children)
         {
             for (var i = 0; i < children.Count; i++)
@@ -384,6 +402,13 @@ public abstract partial class UIElement : UIObject
         element.OnDetachedFromTree(new TreeAttachmentEventArgs(root, element._visualParent));
         element._visualRoot = null;
         element.Depth = 0;
+
+        // Fork B's styling detach (B19): bottom-up with the walk — batched cookie retraction (the
+        // store promotes per property; invariant 4) and the per-element state drop (SD15). Runs
+        // while the element already reads as detached, before the enabled recompute can flip
+        // interaction bits against dropped state.
+        element.OnStylingDetached();
+
         element.UpdateEffectiveEnabled();
 
         // S3 detach fan-in (doc §7.10): capture force-release, focus hygiene (hover/pressed

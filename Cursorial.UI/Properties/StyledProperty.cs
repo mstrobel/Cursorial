@@ -139,6 +139,9 @@ public class StyledProperty<T> : UIProperty
     internal override object? GetEntryValueBoxed(IValueEntry entry)
         => entry.HasValue ? ValueBoxes.Box(((IValueEntry<T>)entry).GetValue()) : null;
 
+    internal override IValueEntry CreateStyleEntry(object? boxedValue, bool hasValue)
+        => new StyleSetterEntry<T>(this, hasValue ? (T)boxedValue! : default!, hasValue);
+
     private PropertyMetadata<T> ResolveMetadata(Type forType)
     {
         if (_overrides is not { Count: > 0 } overrides)

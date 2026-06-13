@@ -242,6 +242,22 @@ public class Section09_Grid
     }
 
     [Fact]
+    public void L148b_AutoMaxColumn_MeasuresChildAgainstTheCap_NotUnbounded()
+    {
+        // LD1 constraint coercion: a MaxWidth-bounded Auto track measures its child against the
+        // cap (not Unbounded like the uncapped L150 case), so the child can wrap/ellipsize to the
+        // space it will actually get rather than measuring full-width and clipping at arrange.
+        var grid = GridWithColumns(GridLength.Auto, GridLength.Star());
+        grid.ColumnDefinitions[0].MaxWidth = 3;
+        var child = new Probe(5, 1);
+        grid.Children.Add(child);
+        Layout(grid, 10, 3);
+
+        Assert.All(child.MeasureConstraints, c => Assert.Equal(3, c.Columns));
+        Assert.DoesNotContain(child.MeasureConstraints, c => LayoutMath.IsUnbounded(c.Columns));
+    }
+
+    [Fact]
     public void L149_AutoMin_RaisesContent()
     {
         var grid = GridWithColumns(GridLength.Auto, GridLength.Star());

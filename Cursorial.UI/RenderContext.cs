@@ -6,6 +6,8 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Text;
 
+using CellStyle = Cursorial.Output.Style;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -126,7 +128,7 @@ public sealed class RenderContext
     // ───────────────────────────── cells and fills ─────────────────────────────
 
     /// <summary>Writes one cell at element-local (<paramref name="column"/>, <paramref name="row"/>).</summary>
-    public void Set(int column, int row, string? grapheme, in Style style)
+    public void Set(int column, int row, string? grapheme, in CellStyle style)
         => Inner.Set(column, row, grapheme, in style);
 
     /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
@@ -160,12 +162,12 @@ public sealed class RenderContext
     /// (clusters a band/zone edge clips away still advance the count).
     /// </summary>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background = null, in Style baseStyle = default)
+                         IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
         => Inner.DrawText(column, row, text, foreground, background, baseStyle);
 
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>
+    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in Style baseStyle = default)
+                         Color foreground, Color? background = null, in CellStyle baseStyle = default)
         => Inner.DrawText(column, row, text, foreground, background, baseStyle);
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>, brushed; capabilities auto-supplied.</summary>

@@ -1,5 +1,7 @@
 using System.Diagnostics;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>The kinds of diagnostics the drawing layer emits in DEBUG builds.</summary>

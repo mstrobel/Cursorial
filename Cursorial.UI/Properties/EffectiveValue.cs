@@ -30,6 +30,14 @@ internal abstract class EffectiveValueBase
     /// <summary>Whether the local slot's current value was pushed by <see cref="LocalEntry"/> (vs a plain <c>SetValue</c>) — eviction withdraws only the entry's own contribution.</summary>
     public bool LocalValueFromEntry;
 
+    /// <summary>
+    /// Whether the local contribution exists only as the <c>SetCurrentValue</c> no-contribution
+    /// graft (matrix M118): the overlay rode Default/Inherited, so it grafted as local for storage —
+    /// but a <em>style producer arriving later replaces it</em> (A11 "a producer change replaces the
+    /// overlay"; style matrix S100). A real <c>SetValue</c> clears the flag; the graft refresh keeps it.
+    /// </summary>
+    public bool LocalIsCurrentValueOnly;
+
     /// <summary>The <c>+cur</c> bit: the effective value was overwritten by <c>SetCurrentValue</c>.</summary>
     public bool IsCurrentValue;
 
@@ -137,6 +145,7 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
         {
             HasLocal = false;
             LocalValueFromEntry = false;
+            LocalIsCurrentValueOnly = false;
             RawLocalValue = default!;
         }
 

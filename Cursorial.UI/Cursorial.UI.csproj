@@ -29,6 +29,9 @@
       <Compile Update="UIElement.Render.cs">
         <DependentUpon>UIElement.cs</DependentUpon>
       </Compile>
+      <Compile Update="UIElement.Styling.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
     </ItemGroup>
 
 </Project>

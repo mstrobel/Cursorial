@@ -291,11 +291,24 @@ public class Grid : Panel
         }
     }
 
+    // Both constraint builders coerce each track's contribution to the definition's Min/Max
+    // (LD1 "constraint coercion" — a child in a MaxWidth-bounded Auto/Star track measures against
+    // that cap, not Unbounded). One `LayoutMath.Clamp(value, Min, Max)` per track, matching every
+    // other clamp site in this file (InitializeAxis / ResolveContentSizes / ResolveStars): Min is
+    // applied last, so **min wins a min>max conflict** (LD18). Defaults are no-ops — Min is 0
+    // (clamp floor) and Max is Unbounded (clamp ceiling), so an unconstrained Auto/Star track still
+    // contributes Unbounded and a Cell track its already-clamped size.
+
     private static int InterimConstraint(TrackScratch[] axis, int start, int span)
     {
         var sum = 0;
         for (var i = start; i < start + span; i++)
-            sum = LayoutMath.Add(sum, axis[i].Unit == GridUnitType.Cell ? axis[i].Size : LayoutMath.Unbounded);
+        {
+            ref var track = ref axis[i];
+            var constraint = track.Unit == GridUnitType.Cell ? track.Size : LayoutMath.Unbounded;
+            sum = LayoutMath.Add(sum, LayoutMath.Clamp(constraint, track.Min, track.Max));
+        }
+
         return sum;
     }
 
@@ -305,12 +318,13 @@ public class Grid : Panel
         for (var i = start; i < start + span; i++)
         {
             ref var track = ref axis[i];
-            sum = LayoutMath.Add(sum, track.Unit switch
-            {
-                GridUnitType.Cell => track.Size,
-                GridUnitType.Star when bounded => track.Size,
-                _ => LayoutMath.Unbounded, // Auto stays content-driven (L150); star-as-Auto when unbounded
-            });
+            var constraint = track.Unit switch
+                             {
+                                 GridUnitType.Cell              => track.Size,
+                                 GridUnitType.Star when bounded => track.Size,
+                                 _                              => LayoutMath.Unbounded // Auto stays content-driven (L150); star-as-Auto when unbounded
+                             };
+            sum = LayoutMath.Add(sum, LayoutMath.Clamp(constraint, track.Min, track.Max));
         }
 
         return sum;

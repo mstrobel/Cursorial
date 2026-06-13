@@ -207,6 +207,9 @@ public abstract partial class UIElement
     {
         base.OnPropertyChanged(in args);
 
+        // Fork B's property → pseudo-class bridge (doc §3.2): near-free when no mappings exist.
+        PseudoClassMapping.NotifyPropertyChanged(this, in args);
+
         if (ReferenceEquals(args.Property, VisibilityProperty))
         {
             // Custom routing (LD5): no PropertyEffects flags are registered for Visibility.

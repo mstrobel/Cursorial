@@ -398,25 +398,32 @@ public sealed partial class UIApplication
 
         // PHASE 4 — animation tick at the frozen clock (S5, P8); a second cheap styling flush
         // catches animation-driven flips; TickNewlyStarted samples same-frame ignitions at
-        // elapsed-zero (no one-frame From-snap).
-        if (AnimationDriver is {} animation)
+        // elapsed-zero (no one-frame From-snap). The post-tick flush runs EVERY frame regardless
+        // of the driver seam (B1/S151 — "cheap when empty" makes the unconditional call free).
+        try
         {
-            try
-            {
-                animation.Tick();
-                StyleHooks?.FlushPendingActivations();
-                animation.TickNewlyStarted();
-            }
-            catch (Exception ex)
-            {
-                if (!RaiseUnhandled(ex))
-                    return default;
-            }
+            AnimationDriver?.Tick();
+            StyleHooks?.FlushPendingActivations();
+            AnimationDriver?.TickNewlyStarted();
+        }
+        catch (Exception ex)
+        {
+            if (!RaiseUnhandled(ex))
+                return default;
         }
 
         // PHASE 5 — layout: ONE call per frame; the LayoutManager owns convergence internally and
         // the facade owns the give-up (never pins HasPendingLayout).
+        //
+        // Phases 5–6 are Fork B's DEFERRED window (B1/SD12): pseudo flips raised during layout,
+        // render, or the post-render hover re-diff queue in the engine and surface via
+        // HasPendingActivations into the Phase-7 guard, instead of restyling mid-pass.
         var layoutRan = false;
+        var rendered = false;
+        InDeferredStylingPhase = true;
+
+        try
+        {
 
         if (_layoutSystem is { HasPendingLayout: true } layout)
         {
@@ -435,8 +442,6 @@ public sealed partial class UIApplication
         // (P7 seam: windowSystem.OnLayoutCompleted() at this boundary.)
 
         // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
-        var rendered = false;
-
         if (!_renegotiating)
         {
             // Consume the request flag unconditionally (no short-circuit): leaving it set when
@@ -520,6 +525,12 @@ public sealed partial class UIApplication
                 writer.Write(_scratch.WrittenSpan);
                 writer.FlushAsync().AsTask().GetAwaiter().GetResult();
             }
+        }
+
+        }
+        finally
+        {
+            InDeferredStylingPhase = false; // close Fork B's deferred window on every unwind path
         }
 
         return new FrameResult(rendered, layoutRan, resized);

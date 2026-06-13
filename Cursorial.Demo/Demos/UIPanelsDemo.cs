@@ -7,6 +7,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
+using Style = Cursorial.UI.Style; // both Cursorial.Output and Cursorial.UI declare `Style`
+
 // ReSharper disable CheckNamespace
 
 // Phase-1 Cursorial.UI showcase: a panel tree (DockPanel chrome, star Grid, StackPanel sidebar,
@@ -19,8 +21,10 @@ using Cursorial.UI.Input;
 // Input lands through S3's public routed events (P2): a KeyDown handler on the root tree sees
 // every key the focused element leaves unhandled. The sidebar carries three FOCUSABLE cards — Tab /
 // Shift+Tab cycles them through the step-6 navigation tail, clicking one focuses it (pointer
-// modality), and each card renders its visual state from DIRECT InteractionState reads (IsFocused /
-// IsPointerOver — the P3 styling engine will replace these hand-rolled reads with pseudo-classes).
+// modality), and each card's visual state is driven by REAL P3 style rules — one app-channel style
+// (`FocusCard.card`) carries the rest look plus `^:pointerover` / `^:focus` children, so hover and
+// focus restyle the cards through pseudo-class flips + AffectsRender invalidation (the styling
+// engine's live canary; no hand-rolled IsFocused/IsPointerOver reads, no InvalidateVisual calls).
 // Hovering any card highlights it live off the any-event-motion hover chain — and, on OSC 22
 // terminals (Kitty/Ghostty/Foot), flips the HOST mouse pointer through UIElement.Cursor (§7.6):
 // the cards request the hand, the glass panel the I-beam, everything else the default. Ctrl+R is a
@@ -32,13 +36,14 @@ internal sealed class UIPanelsDemo : IDemo
 {
     public string Name => "uipanels";
     public IReadOnlyList<string> Aliases => ["uip"];
-    public string Description => "Cursorial.UI panel-tree showcase on the real frame loop (arrows slide, v visibility, o opacity, Tab focus, Ctrl+R reset).";
+    public string Description => "Cursorial.UI panel-tree showcase on the real frame loop (arrows slide, v visibility, o opacity, Tab focus, style-rule cards, Ctrl+R reset).";
 
     public async Task RunAsync(string argument)
     {
         Console.WriteLine("UI panels demo. Opening alt screen — arrows slide the floating panel, " +
                           "'v' toggles the badge, 'o' cycles the glass opacity, Tab/click focuses the " +
-                          "sidebar cards (hover highlights; on Kitty-class terminals the mouse pointer " +
+                          "sidebar cards (hover/focus looks come from REAL :pointerover/:focus style " +
+                          "rules — the P3 styling engine live; on Kitty-class terminals the mouse pointer " +
                           "turns to a hand over the cards and an I-beam over the glass), Ctrl+R resets; " +
                           "q / Esc / Ctrl+C exits.");
 
@@ -93,6 +98,30 @@ internal sealed class UIPanelsDemo : IDemo
 
         public UIElement BuildTree()
         {
+            // The P3 styling canary: the sidebar cards take their entire visual state from style
+            // rules. One app-channel style targets `FocusCard.card` (type + class) with the rest
+            // look; its `^`-composed children flip the look on :pointerover / :focus — declared in
+            // that order, so a hovered+focused card keeps the focus look (declaration order breaks
+            // the specificity tie). All three properties are AffectsRender: a pseudo-class flip
+            // restyles and re-rasters only the card's zone — no hand-rolled InvalidateVisual.
+            var cardStyle = new Style(Selectors.OfType<FocusCard>().Class("card"));
+            cardStyle.Setters.Add(new Setter(FocusCard.CardBackgroundProperty, CardBg));
+            cardStyle.Setters.Add(new Setter(FocusCard.CardForegroundProperty, CardText));
+            cardStyle.Setters.Add(new Setter(FocusCard.MarkerProperty, " "));
+
+            var hovered = new Style(Selectors.Nesting().PseudoClass("pointerover"));
+            hovered.Setters.Add(new Setter(FocusCard.CardBackgroundProperty, CardHoverBg));
+            hovered.Setters.Add(new Setter(FocusCard.MarkerProperty, "-"));
+            cardStyle.Children.Add(hovered);
+
+            var focused = new Style(Selectors.Nesting().PseudoClass("focus"));
+            focused.Setters.Add(new Setter(FocusCard.CardBackgroundProperty, Accent));
+            focused.Setters.Add(new Setter(FocusCard.CardForegroundProperty, Color.FromRgb(240, 244, 255)));
+            focused.Setters.Add(new Setter(FocusCard.MarkerProperty, ">"));
+            cardStyle.Children.Add(focused);
+
+            app.Styles.Add(cardStyle);
+
             var root = new DockPanel { Background = new SolidColorBrush(Chrome) };
 
             // S3 routing (P2): keys route to the focused card and bubble; whatever the cards leave
@@ -119,7 +148,7 @@ internal sealed class UIPanelsDemo : IDemo
 
             // Body: a star grid — fixed sidebar, stage takes the rest.
             var body = new Grid();
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = 26 });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MaxWidth = 32 });
             body.ColumnDefinitions.Add(new ColumnDefinition()); // 1*
             body.Children.Add(BuildSidebar());
             var stage = BuildStage();
@@ -145,13 +174,14 @@ internal sealed class UIPanelsDemo : IDemo
             for (var i = 0; i < 8; i++)
             {
                 var hue = i / 8.0;
-                chips.Children.Add(new FillBox(HsvToRgb(hue, 0.65, 0.85)) { Width = 4, Height = 1 });
+                chips.Children.Add(new FillBox(Color.FromHsv(hue, 0.65, 0.85)) { Width = 4, Height = 1 });
             }
 
             sidebar.Children.Add(chips);
 
             // The focus cards — Tab cycles them (step-6 navigation), clicking focuses (pointer
-            // modality), hover highlights; each renders from direct IsFocused/IsPointerOver reads.
+            // modality), hover highlights; the looks come from the `FocusCard.card` style rules
+            // installed in BuildTree (the "card" class is what the selector's `.card` part matches).
             sidebar.Children.Add(new Label(" cards (Tab / click):", ChromeText, SidebarBg));
             _cards =
             [
@@ -161,7 +191,10 @@ internal sealed class UIPanelsDemo : IDemo
             ];
             var cardStack = new StackPanel { Margin = new Margins(2, 0) };
             foreach (var card in _cards)
+            {
+                card.Classes.Add("card");
                 cardStack.Children.Add(card);
+            }
             sidebar.Children.Add(cardStack);
 
             sidebar.Children.Add(new Label(" keys:", ChromeText, SidebarBg));
@@ -326,24 +359,6 @@ internal sealed class UIPanelsDemo : IDemo
                               $" · focus {Array.Find(_cards, static card => card.IsFocused)?.Title ?? "none"}" +
                               $" · rasters: float {_floating.RasterCount}, glass {_glass.RasterCount}" +
                               " — arrows slide, v badge, o opacity, Tab cards, Ctrl+R reset, q quits";
-
-        private static Color HsvToRgb(double hue, double saturation, double value)
-        {
-            var h = hue * 6.0 % 6.0;
-            var c = value * saturation;
-            var x = c * (1 - Math.Abs(h % 2 - 1));
-            var (r, g, b) = (int)h switch
-            {
-                0 => (c, x, 0.0),
-                1 => (x, c, 0.0),
-                2 => (0.0, c, x),
-                3 => (0.0, x, c),
-                4 => (x, 0.0, c),
-                _ => (c, 0.0, x),
-            };
-            var m = value - c;
-            return Color.FromRgb((byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255));
-        }
     }
 
     // ───────────────────────────── showcase elements ─────────────────────────────
@@ -405,14 +420,31 @@ internal sealed class UIPanelsDemo : IDemo
     }
 
     /// <summary>
-    /// A focusable, hover-aware card painting its visual state from DIRECT InteractionState reads
-    /// (<see cref="UIElement.IsFocused"/> / <see cref="UIElement.IsPointerOver"/>) — the P2
-    /// stand-in for the P3 pseudo-class styling. The S3 routed events drive repaint: focus and
-    /// hover transitions invalidate the visual, mouse-down focuses (pointer modality — no focus
-    /// ring policy yet, the card's own accent serves as the indication).
+    /// A focusable, hover-aware card whose ENTIRE visual state arrives through the P3 styling
+    /// engine: <see cref="CardBackgroundProperty"/> / <see cref="CardForegroundProperty"/> /
+    /// <see cref="MarkerProperty"/> are written only by the <c>FocusCard.card</c> style rules
+    /// (rest + <c>^:pointerover</c> + <c>^:focus</c>) installed in <c>BuildTree</c>. All three are
+    /// <c>AffectsRender</c>, so a pseudo-class flip restyles and repaints with no hand-rolled
+    /// <c>InvalidateVisual</c> — this card is the styling engine's live canary. Mouse-down focuses
+    /// (pointer modality — no focus ring policy yet, the focus rule's accent serves as the
+    /// indication).
     /// </summary>
     private sealed class FocusCard : UIElement
     {
+        /// <summary>The card's background — styled (rest / hover / focus rules); terminal default until armed.</summary>
+        public static readonly StyledProperty<Color> CardBackgroundProperty =
+            UIProperty.Register<FocusCard, Color>(nameof(CardBackground));
+
+        /// <summary>The card's text color — styled.</summary>
+        public static readonly StyledProperty<Color> CardForegroundProperty =
+            UIProperty.Register<FocusCard, Color>(nameof(CardForeground));
+
+        /// <summary>The one-glyph state marker — styled (<c>" "</c> rest, <c>"-"</c> hover, <c>"&gt;"</c> focus).</summary>
+        public static readonly StyledProperty<string> MarkerProperty =
+            UIProperty.Register<FocusCard, string>(nameof(Marker), defaultValue: " ");
+
+        static FocusCard() => AffectsRender<FocusCard>(CardBackgroundProperty, CardForegroundProperty, MarkerProperty);
+
         public FocusCard(string title)
         {
             Title = title;
@@ -422,43 +454,20 @@ internal sealed class UIPanelsDemo : IDemo
 
         public string Title { get; }
 
+        public Color CardBackground => GetValue(CardBackgroundProperty);
+
+        public Color CardForeground => GetValue(CardForegroundProperty);
+
+        public string Marker => GetValue(MarkerProperty);
+
         protected override Size MeasureOverride(Size availableSize)
             => new(GraphemeWidth.StringWidth(Title) + 4, 1);
 
         protected override void Render(RenderContext context)
         {
-            var focused = IsFocused;
-            var hovered = IsPointerOver;
-            var background = focused ? Accent : hovered ? CardHoverBg : CardBg;
-            var foreground = focused ? Color.FromRgb(240, 244, 255) : CardText;
-            var marker = focused ? ">" : hovered ? "-" : " ";
-
+            var background = CardBackground;
             context.FillOpaque(context.Bounds, background);
-            context.DrawText(0, 0, $" {marker} {Title}", foreground, background);
-        }
-
-        protected override void OnGotFocus(FocusChangedEventArgs e)
-        {
-            base.OnGotFocus(e);
-            InvalidateVisual();
-        }
-
-        protected override void OnLostFocus(FocusChangedEventArgs e)
-        {
-            base.OnLostFocus(e);
-            InvalidateVisual();
-        }
-
-        protected override void OnMouseEnter(MouseEventArgs e)
-        {
-            base.OnMouseEnter(e);
-            InvalidateVisual();
-        }
-
-        protected override void OnMouseLeave(MouseEventArgs e)
-        {
-            base.OnMouseLeave(e);
-            InvalidateVisual();
+            context.DrawText(0, 0, $" {Marker} {Title}", CardForeground, background);
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)

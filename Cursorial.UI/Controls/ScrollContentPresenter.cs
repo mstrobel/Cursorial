@@ -130,6 +130,7 @@ public class ScrollContentPresenter : UIElement
         set
         {
             VerifyAccess();
+
             if (ReferenceEquals(_content, value))
                 return;
 
@@ -137,6 +138,7 @@ public class ScrollContentPresenter : UIElement
                 DisownChild(old);
 
             _content = value;
+
             if (value is not null)
                 AdoptChild(value, -1);
 
@@ -196,18 +198,20 @@ public class ScrollContentPresenter : UIElement
 
         if (_content is { } content)
         {
-            content.Measure(new Size(
-                canScrollHorizontally ? LayoutLimits.MaxScrollExtent : availableSize.Columns,
-                canScrollVertically ? LayoutLimits.MaxScrollExtent : availableSize.Rows));
+            content.Measure(
+                new Size(canScrollHorizontally ? LayoutLimits.MaxScrollExtent : availableSize.Columns,
+                         canScrollVertically ? LayoutLimits.MaxScrollExtent : availableSize.Rows));
 
             var desired = content.DesiredSize;
             var columns = Math.Min(desired.Columns, LayoutLimits.MaxScrollExtent);
             var rows = Math.Min(desired.Rows, LayoutLimits.MaxScrollExtent);
+
             if (columns != desired.Columns || rows != desired.Rows)
             {
                 if (!_extentClampDiagnosed)
                 {
                     _extentClampDiagnosed = true;
+
                     LayoutDiagnostics.Emit(
                         LayoutDiagnosticKind.ScrollExtentClamped, this,
                         $"Content desired size {desired} exceeds LayoutLimits.MaxScrollExtent " +
@@ -241,10 +245,12 @@ public class ScrollContentPresenter : UIElement
 
         if (_content is { } content)
         {
-            content.Arrange(new Rect(
-                0, 0,
-                CanScrollHorizontally ? Math.Max(_extent.Columns, finalSize.Columns) : finalSize.Columns,
-                CanScrollVertically ? Math.Max(_extent.Rows, finalSize.Rows) : finalSize.Rows));
+            content.Arrange(
+                new Rect(
+                    0,
+                    0,
+                    CanScrollHorizontally ? Math.Max(_extent.Columns, finalSize.Columns) : finalSize.Columns,
+                    CanScrollVertically ? Math.Max(_extent.Rows, finalSize.Rows) : finalSize.Rows));
         }
 
         // End-of-arrange re-coercion (doc §5.7): re-runs the coercer against the stored raw value
@@ -306,6 +312,7 @@ public class ScrollContentPresenter : UIElement
         var start = bandLength >= contentRows ? 0 : Math.Clamp(anchor - BandPadding, 0, contentRows - bandLength);
 
         BandAnchorRow = anchor;
+
         if (start == BandStartRow)
             return;
 

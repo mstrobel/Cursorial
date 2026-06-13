@@ -218,6 +218,37 @@ has shipped; Rendering/Drawing/Animation accept first-class changes):
   `\t`→space + DEBUG diagnostic); `CellBuffer.Write` stops at the first C0/C1 control and returns columns written;
   `PanelTitle` sanitizes to its first line; the per-tier behavior table is drawing doc §13.3.
 
+**Phase 3 complete** (doc §14 — the Fork B styling engine; normative spec at
+`docs/ui-layer-design/style-matrix.md`, 180+ rows S1–S184 + the SD pinned-decision ledger, tests in
+`Cursorial.UI.Tests/StyleMatrix/Section01…Section13`). In `Cursorial.UI/Styling/` (namespace `Cursorial.UI`):
+`Selector`/`SelectorParser`/`Selectors` (the full §3.1 grammar — type/`.class`/`#name`/`:pseudo-class`/child `>`/
+descendant/`/template/`/lists/`^`-nesting/`:is()`, the `+ ~ :not :nth-*` NO-fence with "unsupported by design"
+errors, `ISelectorTypeResolver` simple-name resolution), `Style`/`Setter`/`Styles` (BasedOn flatten + cycle check,
+seal-on-attach naming the style/rule/property, `StyleSetterConverter` constant ladder, `Style.Set<T>` fluent),
+`StyleSortKey.Create` (bit-exact packed `[layer][names][classLike][types][scopeDepth][order]`, min-wins ties via
+document order), the matcher/activation engine (candidate-by-type indexing, the **template barrier** before scan,
+arming vs activation split, `PseudoInterestMask` early-out, one `ValueFrame` per active rule at
+`BindingPriority.Style` with cookie batch retraction — store-owned promotion, never set-back; runs the
+`ValueFrameConformanceKit`), `PseudoClassMapping` + the `InteractionPseudoClasses` table consuming P2's
+`IInteractionStateObserver` slot, the SD24 structural re-entrancy fence (defer + fixpoint, gen cap 16).
+`UIElement` gained `Classes`/`PseudoClasses`/`Styles`/`Style` + notifying `Name`; `UIApplication.Styles` is the app
+layer + the installed `StyleHooks`/`InteractionStateObserver`; capability classes (`caps-truecolor|ansi256|ansi16|
+nocolor`, `caps-motion`, `caps-kitty-keyboard`) stamp on the root from the **negotiated** snapshot (P5/S7 re-points
+to the effective tier; `caps-ascii` reserved/unstamped until a glyph-capability source exists). `StyleDiagnostics.
+Explain` renders each winning value's full sort-key derivation in one line (pinned acceptance format, S164).
+`IStyleEdgeAction` is a declared seam (P8 storyboards). `Phase3EndToEndTests` prove the invariant-3 RasterVersion
+isolation (a `:pointerover` flip re-rasters only the hovered zone) and the motion-storm re-assert with real hover
+restyle rules (Release: ~2.9 µs/Move incl. restyle, 0 B steady-state, 3.66 ms/frame vs the 33 ms budget — recorded
+in the doc's "P3 motion-storm re-assert" blockquote); the `uipanels` cards now draw their hover/focus looks from
+real `:pointerover`/`:focus` style rules.
+
+**Grid track Min/Max constraint coercion** (2026-06-12, alongside P3): `Grid.InterimConstraint`/`FinalConstraint`
+now clamp each track's child-measure contribution via a single `LayoutMath.Clamp(constraint, Min, Max)` (matrix
+LD1 "constraint coercion") — a `MaxWidth`/`MaxHeight`-bounded Auto/Star track measures its child against the cap
+instead of `Unbounded`, so the child wraps/ellipsizes to the space it will get rather than measuring full-width and
+clipping at arrange. Cell tracks already passed their clamped `Size`; min-wins on a `min>max` conflict per LD18.
+Regression row **L148b**.
+
 Recorded P1 gaps: `BindingOperations.TearDown` leg of `UIElement.TearDown()` (P4); palette theming + capability
 rewrite and the S7 surface merge into `UIApplication` (P5); `TerminalSessionOptions.EmergencyRestoreBytes` Core seam
 for signal-path alt-screen restore (doc §10.7 — until it lands, a signal-killed app restores cooked mode but may

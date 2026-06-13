@@ -87,14 +87,25 @@ public sealed partial class UIApplication : IAsyncDisposable
     private readonly AccessKeyManager _accessKeys;
     private readonly InputDispatcher _inputDispatcher;
     private readonly AnimationScheduler _animationScheduler;
+    private Styles? _styles;
 
-    // The frame loop's cross-subsystem seams (design doc §10.9). S3's router (P2) and the early-S5
-    // scheduler slice (frozen clock + UITimer registry; the full animation surface joins at P8)
-    // are installed by default; Fork B's styling hooks (P3) stay null until their phase lands.
-    // Internal so phase-order tests can install probe implementations.
+    // The frame loop's cross-subsystem seams (design doc §10.9). S3's router (P2), Fork B's
+    // styling engine (P3), and the early-S5 scheduler slice (frozen clock + UITimer registry; the
+    // full animation surface joins at P8) are installed by default. Internal so phase-order tests
+    // can install probe implementations.
     internal IInputDispatchTarget? InputDispatchTarget;
     internal IStyleFrameHooks? StyleHooks;
     internal IAnimationFrameDriver? AnimationDriver;
+
+    /// <summary>Fork B's matcher + activation engine (P3) — the production styling instance.</summary>
+    internal StyleEngine StyleEngineInternal { get; }
+
+    /// <summary>
+    /// Whether the frame loop is inside its layout/render window (Phases 5–6): pseudo flips raised
+    /// here queue and surface via <see cref="IStyleFrameHooks.HasPendingActivations"/> instead of
+    /// applying synchronously (ledger B1 / matrix SD12).
+    /// </summary>
+    internal bool InDeferredStylingPhase;
 
     internal UIApplication(UIApplicationOptions options)
     {
@@ -103,6 +114,9 @@ public sealed partial class UIApplication : IAsyncDisposable
         _syncContext = new UISynchronizationContext(Dispatcher);
         _guard = new UserCodeGuard(this);
         InteractionStates = new InteractionStateService();
+        StyleEngineInternal = new StyleEngine(this);
+        StyleHooks = StyleEngineInternal;            // B1: the Phase-3 flush slot
+        InteractionStates.Observer = StyleEngineInternal; // SD22: the production observer (slot stays assignable)
         _focusManager = new FocusManager(Dispatcher, InteractionStates);
         _accessKeys = new AccessKeyManager(Dispatcher, _focusManager, InteractionStates);
         // The P2 topology: one implicit surface (the shown root). S4's WindowManager substitutes
@@ -178,6 +192,36 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     /// <summary>The interaction-state coordinator (batching + observer delivery + Pressed fan-in).</summary>
     internal InteractionStateService InteractionStates { get; }
+
+    /// <summary>
+    /// The application-level style collection — Fork B's <see cref="StyleLayer.App"/> channel
+    /// (design doc §3.5): its rules apply to every shown tree, below element-scoped
+    /// <see cref="UIElement.Styles"/> and explicit <see cref="UIElement.Style"/> attachments.
+    /// Lazily allocated; styles added here seal on add (doc §3.3).
+    /// </summary>
+    public Styles Styles
+    {
+        get
+        {
+            if (_styles is null)
+            {
+                Dispatcher.VerifyAccess();
+                _styles = new Styles();
+                _styles.AttachTo(this);
+            }
+
+            return _styles;
+        }
+    }
+
+    /// <summary>The App-channel styles without lazy allocation (the engine's scope-gathering read).</summary>
+    internal Styles? StylesOrNull => _styles;
+
+    /// <summary>
+    /// The SD21 invalidation hook for <see cref="Styles"/> mutation — the styling engine's
+    /// scope-wide re-match entry (coarse re-match with rule-identity diff).
+    /// </summary>
+    internal void OnStylesInvalidated(Styles styles) => StyleEngineInternal.OnAppStylesInvalidated();
 
     /// <summary>The undecorated negotiated snapshot; replaced by <see cref="RenegotiateAsync"/>.</summary>
     public TerminalCapabilities Capabilities => _capabilities;

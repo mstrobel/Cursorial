@@ -20,6 +20,7 @@ internal static class UIPropertyRegistry
     private static readonly List<UIProperty> ById = [];
     private static readonly Dictionary<(Type Owner, string Name), UIProperty> ByOwnerAndName = [];
     private static readonly Dictionary<string, List<Type>> OwnersByShortName = [];
+    private static readonly Dictionary<string, List<Type>> OwnerTypesBySimpleName = [];
     private static int[]? _inheritingPropertyIds;
     private static UIProperty[]? _inheritingProperties;
 
@@ -131,6 +132,21 @@ internal static class UIPropertyRegistry
         }
     }
 
+    /// <summary>
+    /// Every type that has registered (declared or via <c>AddOwner</c>) at least one property and
+    /// whose CLR simple name is <paramref name="simpleName"/> (ordinal) — the "registry-known types"
+    /// half of Fork B's default selector type resolver (style matrix SD1). Returns a snapshot;
+    /// empty when no registered type carries the name.
+    /// </summary>
+    internal static IReadOnlyList<Type> FindOwnerTypesBySimpleName(string simpleName)
+    {
+        ArgumentNullException.ThrowIfNull(simpleName);
+        lock (Gate)
+        {
+            return OwnerTypesBySimpleName.TryGetValue(simpleName, out var types) ? [.. types] : [];
+        }
+    }
+
     /// <summary>The number of registered properties (the sentinel excluded). Diagnostics only.</summary>
     internal static int RegisteredCount
     {
@@ -154,5 +170,10 @@ internal static class UIPropertyRegistry
         if (!OwnersByShortName.TryGetValue(property.Name, out var owners))
             OwnersByShortName[property.Name] = owners = [];
         owners.Add(ownerType);
+
+        if (!OwnerTypesBySimpleName.TryGetValue(ownerType.Name, out var types))
+            OwnerTypesBySimpleName[ownerType.Name] = types = [];
+        if (!types.Contains(ownerType))
+            types.Add(ownerType);
     }
 }

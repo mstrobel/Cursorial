@@ -141,6 +141,7 @@ public readonly record struct Color
             throw new ArgumentException($"Invalid hex digit: '{c}'");
         }
     }
+
     /// <summary>
     /// Construct a 24-bit truecolor value with an explicit alpha channel. <paramref name="alpha"/>
     /// of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is fully transparent
@@ -150,6 +151,30 @@ public readonly record struct Color
     public static Color FromRgba(byte red, byte green, byte blue, byte alpha)
     {
         return new Color(ColorKind.Rgb, red, green, blue, alpha);
+    }
+
+    /// <summary>
+    /// Construct a 24-bit truecolor value from its HSV components with an explicit alpha channel.
+    /// <paramref name="alpha"/> of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is
+    /// fully transparent (compositing returns the backdrop unchanged). Intermediate values mix the
+    /// blended source color with the backdrop linearly.
+    /// </summary>
+    public static Color FromHsv(double hue, double saturation, double value, byte alpha = 255)
+    {
+        var h = hue * 6.0 % 6.0;
+        var c = value * saturation;
+        var x = c * (1 - Math.Abs(h % 2 - 1));
+        var (r, g, b) = (int)h switch
+                        {
+                            0 => (c, x, 0.0),
+                            1 => (x, c, 0.0),
+                            2 => (0.0, c, x),
+                            3 => (0.0, x, c),
+                            4 => (x, 0.0, c),
+                            _ => (c, 0.0, x),
+                        };
+        var m = value - c;
+        return FromRgba((byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255), alpha);
     }
 
     /// <summary>

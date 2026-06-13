@@ -89,6 +89,11 @@ internal sealed class ValueStore
             ? entry.BaseValue
             : GetUnsetFallback(property, metadata, out _); // inherited-or-default (M96: the old value is the inherited one)
 
+        // The M118 graft marker (style matrix S100/A11): a SetCurrentValue that grafted as local
+        // (no prior local) stays replaceable by a later-arriving style producer; a graft refresh
+        // keeps the marker, a real SetValue (or SCV over a real local) clears it.
+        entry.LocalIsCurrentValueOnly = isCurrentValue && (!entry.HasLocal || entry.LocalIsCurrentValueOnly);
+
         entry.RawLocalValue = rawValue;
         entry.HasLocal = true;
         entry.LocalValueFromEntry = writer is not null;
@@ -274,7 +279,12 @@ internal sealed class ValueStore
         var newBaseIsCoerced = false;
         object? contributor = null;
 
-        if (entry is { HasLocal: true })
+        // The SetCurrentValue no-contribution graft (M118) is local-for-storage only: a style
+        // producer arriving replaces the overlay (A11; style matrix S100), so a graft does not
+        // short-circuit the style resolution the way a real local write does.
+        var graftLocal = entry is { HasLocal: true, LocalIsCurrentValueOnly: true };
+
+        if (entry is { HasLocal: true } && !graftLocal)
         {
             newBasePriority = BindingPriority.LocalValue;
             newBaseValue = entry.BaseValue; // the stored coerced local (never re-derived on reads)
@@ -285,6 +295,22 @@ internal sealed class ValueStore
             newBasePriority = BindingPriority.Style;
             newBaseValue = metadata.Coerce is {} coerce ? coerce(Owner, styleRaw) : styleRaw;
             newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(styleRaw, newBaseValue);
+
+            if (graftLocal)
+            {
+                // The graft evaporates — the producer it stood in for has arrived.
+                entry!.HasLocal = false;
+                entry.LocalValueFromEntry = false;
+                entry.LocalIsCurrentValueOnly = false;
+                entry.RawLocalValue = default!;
+            }
+        }
+        else if (graftLocal)
+        {
+            // No style producer: the graft keeps holding the local lane (M118 storage semantics).
+            newBasePriority = BindingPriority.LocalValue;
+            newBaseValue = entry!.BaseValue;
+            newBaseIsCoerced = entry.BaseIsCoerced;
         }
         else
         {
@@ -475,6 +501,7 @@ internal sealed class ValueStore
             {
                 entry.HasLocal = false;
                 entry.LocalValueFromEntry = false;
+                entry.LocalIsCurrentValueOnly = false;
                 entry.RawLocalValue = default!;
                 Reevaluate(property, changedEntry: null);
             }
@@ -497,6 +524,7 @@ internal sealed class ValueStore
 
         entry.HasLocal = false;
         entry.LocalValueFromEntry = false;
+        entry.LocalIsCurrentValueOnly = false;
         entry.RawLocalValue = default!;
         Reevaluate(property, changedEntry: null);
     }
@@ -518,6 +546,7 @@ internal sealed class ValueStore
         {
             entry.HasLocal = false;
             entry.LocalValueFromEntry = false;
+            entry.LocalIsCurrentValueOnly = false;
             entry.RawLocalValue = default!;
             Reevaluate(property, changedEntry: null);
         }
@@ -663,6 +692,40 @@ internal sealed class ValueStore
     }
 
     /// <summary>
+    /// Appends the property's <b>active</b> style contributors in arbitration order — strongest
+    /// frame first (largest sort key; equal keys later-added), within a frame hosted entries before
+    /// declared ones, later indices first — the <c>StyleDiagnostics.Explain</c> surface (style
+    /// matrix SD13: Explain renders active contributors only; armed-inactive frames belong to
+    /// <c>MatchedRules</c>). Valueless (A8) entries are included — the renderer prints
+    /// <c>(unset)</c>. Cold path.
+    /// </summary>
+    public void AppendActiveStyleContributors(UIProperty property, List<(ValueFrame Frame, IValueEntry Entry)> results)
+    {
+        for (var i = _frameCount - 1; i >= 0; i--)
+        {
+            var frame = _frames[i];
+            if (!frame.IsActive)
+                continue;
+
+            if (frame.HostedEntries is {} hosted)
+            {
+                for (var j = hosted.Count - 1; j >= 0; j--)
+                {
+                    if (hosted[j].Property.Id == property.Id)
+                        results.Add((frame, hosted[j]));
+                }
+            }
+
+            for (var j = frame.EntryCount - 1; j >= 0; j--)
+            {
+                var entry = frame.GetEntry(j);
+                if (entry.Property.Id == property.Id)
+                    results.Add((frame, entry));
+            }
+        }
+    }
+
+    /// <summary>
     /// Resolves the strongest active style contribution: frames strongest-first (largest sort key;
     /// equal keys later-added), within a frame hosted entries beat declared ones and later indices
     /// beat earlier (install/document order); valueless entries are skipped wholesale (A8 unset
@@ -710,37 +773,51 @@ internal sealed class ValueStore
 
     private void ReevaluateFrameProperties(ValueFrame frame, List<BindingEntryBase>? hosted)
     {
-        List<UIProperty>? seen = null;
-
+        // Allocation-free duplicate suppression (the style-flip hot path — matrix S173): instead of
+        // a dedupe list, each property scans the entries before it. Frame entry counts are tiny
+        // (style rules carry a handful of setters), so the O(n²) scan-back beats allocating.
         var count = frame.EntryCount;
-        var total = count + (hosted?.Count ?? 0);
-        if (total > 1)
-            seen = new List<UIProperty>(total);
 
         for (var i = 0; i < count; i++)
-            ReevaluateDistinct(frame.GetEntry(i).Property, seen);
-
-        if (hosted is not null)
         {
-            foreach (var entry in hosted)
-                ReevaluateDistinct(entry.Property, seen);
+            var property = frame.GetEntry(i).Property;
+            if (!SeenInDeclaredEntries(frame, i, property))
+                property.Reevaluate(this, changedEntry: null);
+        }
+
+        if (hosted is null)
+            return;
+
+        for (var i = 0; i < hosted.Count; i++)
+        {
+            var property = hosted[i].Property;
+            if (SeenInDeclaredEntries(frame, count, property))
+                continue;
+
+            var duplicate = false;
+            for (var j = 0; j < i; j++)
+            {
+                if (ReferenceEquals(hosted[j].Property, property))
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            if (!duplicate)
+                property.Reevaluate(this, changedEntry: null);
         }
     }
 
-    private void ReevaluateDistinct(UIProperty property, List<UIProperty>? seen)
+    private static bool SeenInDeclaredEntries(ValueFrame frame, int beforeIndex, UIProperty property)
     {
-        if (seen is not null)
+        for (var i = 0; i < beforeIndex; i++)
         {
-            for (var i = 0; i < seen.Count; i++)
-            {
-                if (ReferenceEquals(seen[i], property))
-                    return;
-            }
-
-            seen.Add(property);
+            if (ReferenceEquals(frame.GetEntry(i).Property, property))
+                return true;
         }
 
-        property.Reevaluate(this, changedEntry: null);
+        return false;
     }
 
     // ───────────────────────────── teardown (ledger A13) ─────────────────────────────

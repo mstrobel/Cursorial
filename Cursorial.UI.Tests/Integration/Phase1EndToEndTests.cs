@@ -10,6 +10,8 @@ using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+
+using CellStyle = Cursorial.Output.Style;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Integration;
@@ -56,7 +58,7 @@ public sealed class Phase1EndToEndTests
         {
             OnRender = static (_, context) =>
             {
-                var style = Style.Default.WithForeground(HeaderFg).WithBackground(HeaderBg);
+                var style = CellStyle.Default.WithForeground(HeaderFg).WithBackground(HeaderBg);
                 for (var row = 0; row < context.Size.Rows; row++)
                 for (var column = 0; column < context.Size.Columns; column++)
                     context.Set(column, row, "T", style);

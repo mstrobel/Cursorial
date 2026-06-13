@@ -40,7 +40,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     /// per-flip work a P2 control can hang off the hover chain (state commit + service routing +
     /// pressed-holder fan-in + observer notification).
     /// </summary>
-    private sealed class HoverReactiveLeaf : UIElement
+    private class HoverReactiveLeaf : UIElement
     {
         public int Flips;
 
@@ -57,6 +57,19 @@ public class MotionStormBenchmark(ITestOutputHelper output)
             Flips++;
             SetInteractionState(InteractionState.Pressed, false);
         }
+    }
+
+    /// <summary>
+    /// The P3 leaf: hover-reactive AND style-targetable — two registered <c>AffectsRender</c>
+    /// properties give a <c>:pointerover</c> rule real background-setter weight (store arbitration
+    /// + render invalidation per flip), the §14 P3 re-assert load.
+    /// </summary>
+    private sealed class RestyledLeaf : HoverReactiveLeaf
+    {
+        public static readonly StyledProperty<int> HotProperty = UIProperty.Register<RestyledLeaf, int>("Hot");
+        public static readonly StyledProperty<int> GlowProperty = UIProperty.Register<RestyledLeaf, int>("Glow");
+
+        static RestyledLeaf() => AffectsRender<RestyledLeaf>(HotProperty, GlowProperty);
     }
 
     private sealed class CountingObserver : IInteractionStateObserver
@@ -90,7 +103,8 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     /// The probe-1-shaped dashboard tree: 300 hover-reactive 2×2 leaves (30 × 10) on an 80×24
     /// canvas, plus the 200-position row-3 sweep crossing a leaf boundary every other cell.
     /// </summary>
-    private static (UITestHost Host, HoverReactiveLeaf[] Leaves, MouseEvent[] Sweep) CreateStorm()
+    private static (UITestHost Host, HoverReactiveLeaf[] Leaves, MouseEvent[] Sweep) CreateStorm(
+        Func<HoverReactiveLeaf>? leafFactory = null, Action<UIApplication>? beforeShow = null)
     {
         var host = UITestHost.Create();
         var root = new Canvas();
@@ -99,7 +113,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
         {
             for (var column = 0; column < 30; column++)
             {
-                var leaf = new HoverReactiveLeaf();
+                var leaf = leafFactory?.Invoke() ?? new HoverReactiveLeaf();
                 leaves[row * 30 + column] = leaf;
                 Canvas.SetLeft(leaf, column * 2 + 10);
                 Canvas.SetTop(leaf, row * 2 + 2);
@@ -107,6 +121,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
             }
         }
 
+        beforeShow?.Invoke(host.Application);
         host.ShowRoot(root);
         host.RunFrame(); // settle layout + render — RenderTree.HitTest valid
 
@@ -210,5 +225,108 @@ public class MotionStormBenchmark(ITestOutputHelper output)
         Assert.True(
             bestFrameMs <= 33,
             $"Motion-storm frame budget exceeded: best-of-{Repetitions} was {bestFrameMs:F2} ms (budget 33 ms).");
+    }
+
+    /// <summary>
+    /// The §14 P3 row's re-assert of this gate at full styling weight: the identical storm, but
+    /// every leaf is armed with a real 2-setter <c>:is(RestyledLeaf):pointerover</c> rule
+    /// (background-setter shape — both properties <c>AffectsRender</c>), so every hover flip rides
+    /// the engine's pseudo-class fast path (armed frame + interest-mask hit + in-place
+    /// <c>SetActive</c>) through store arbitration and render invalidation. The styling engine
+    /// stays in its production <c>InteractionStateObserver</c> slot (SD22) — installing a counting
+    /// observer would EVICT it and silently un-style the storm. Same contracts: exactly zero
+    /// steady-state bytes per <c>Move</c> including the restyles (worst repetition), frame leg
+    /// ≤ 33 ms (best-of-5). The matrix's <c>Section13_Perf.S177</c> is the lean always-on twin;
+    /// numbers are recorded in <c>docs/ui-layer-design.md</c> ("P3 motion-storm re-assert").
+    /// </summary>
+    [Fact]
+    public void Probe4_MotionStormWithHoverRestyles_ZeroMoveAllocation_FrameWithinBudget()
+    {
+        var (host, leaves, sweep) = CreateStorm(
+            static () => new RestyledLeaf(),
+            static app => app.Styles.Add(CreateHoverRule()));
+        using var _ = host;
+
+        var dispatcher = host.Application.InputDispatcher;
+
+        // Every leaf armed the rule (inactive until its first hover) — the restyle load is real.
+        Assert.All(leaves, static leaf => Assert.NotEmpty(StyleDiagnostics.MatchedRules(leaf)));
+
+        // ───────────── leg 1: the per-Move dispatch path INCLUDING restyles (exact zero) ─────────────
+
+        var storm = () =>
+                    {
+                        for (var n = 0; n < SweepsPerRepetition; n++)
+                        {
+                            foreach (var move in sweep)
+                                dispatcher.ProcessEvent(move);
+                        }
+                    };
+
+        storm();
+        storm();
+        SettleJit();
+        storm();
+        GC.Collect();
+
+        var bestMs = double.MaxValue;
+        var worstBytes = long.MinValue;
+        for (var rep = 0; rep < Repetitions; rep++)
+        {
+            var (ms, bytes) = Measure(storm);
+            output.WriteLine($"  move-path rep {rep}: {ms:F2} ms, {bytes} bytes");
+            bestMs = Math.Min(bestMs, ms);
+            worstBytes = Math.Max(worstBytes, bytes);
+        }
+
+        const int movesPerRepetition = SweepsPerRepetition * SweepLength;
+        output.WriteLine(
+            $"move path (with hover restyles): {movesPerRepetition:N0} Move dispatches over 300 rule-armed leaves, " +
+            $"best of {Repetitions}: {bestMs:F2} ms ({bestMs * 1_000_000 / movesPerRepetition:F0} ns/move, " +
+            $"{bestMs * 1000 / SweepsPerRepetition:F1} us per 200-move sweep), {worstBytes} bytes steady-state (worst rep)");
+
+        Assert.Equal(0, worstBytes); // zero per Move INCLUDING activation/retraction through the store
+
+        // The restyles actually flowed: the leaf under the pointer holds the rule's values NOW.
+        dispatcher.ProcessEvent(sweep[10]); // column 10 — inside the leaf band
+        Assert.Contains(leaves, static leaf => leaf.GetValue(RestyledLeaf.HotProperty) == 5
+                                               && leaf.GetValue(RestyledLeaf.GlowProperty) == 6);
+        Assert.True(leaves.Sum(static leaf => leaf.Flips) > 0, "hover-reactive flips never ran");
+
+        // ───────────── leg 2: the frame-loop leg (storm + restyles + render in ONE frame) ─────────────
+
+        var bestFrameMs = double.MaxValue;
+        var worstFrameMs = 0d;
+        for (var rep = 0; rep < Repetitions + 2; rep++) // 2 warm-up frames, 5 measured
+        {
+            foreach (var move in sweep)
+                host.SendInput(move);
+            host.Application.RequestRender();
+
+            var (ms, _) = Measure(host.RunFrame);
+            if (rep < 2)
+                continue;
+
+            output.WriteLine($"  frame rep {rep - 2}: {ms:F2} ms");
+            bestFrameMs = Math.Min(bestFrameMs, ms);
+            worstFrameMs = Math.Max(worstFrameMs, ms);
+        }
+
+        output.WriteLine(
+            $"frame loop (with hover restyles): 200-event storm + restyles + render in one frame, best of {Repetitions}: " +
+            $"{bestFrameMs:F2} ms (worst {worstFrameMs:F2} ms, budget 33 ms)");
+
+        Assert.True(
+            bestFrameMs <= 33,
+            $"Motion-storm (restyle) frame budget exceeded: best-of-{Repetitions} was {bestFrameMs:F2} ms (budget 33 ms).");
+    }
+
+    /// <summary>The armed rule: <c>:is(RestyledLeaf):pointerover { Hot = 5; Glow = 6 }</c> (fluent — no resolver).</summary>
+    private static Style CreateHoverRule()
+    {
+        var style = new Style(Selectors.Is<RestyledLeaf>().PseudoClass("pointerover"));
+        style.Setters.Add(new Setter(RestyledLeaf.HotProperty, 5));
+        style.Setters.Add(new Setter(RestyledLeaf.GlowProperty, 6));
+        return style;
     }
 }

@@ -279,6 +279,7 @@ Notation: `G[cols: …]` with `c5` = `FromCells(5)`, `a` = `Auto`, `*`/`2*` = `S
 | L146 | `G[cols: a,*]`, child `@(0,0)` `Probe(4×1)` | `layout(10×3)` | `4,6` — Auto sizes to content max | WPF |
 | L147 | `G[cols: a,*]`, no child in col0 | `layout(10×3)` | `0,10` — empty Auto is zero | WPF |
 | L148 | `G[cols: a,*]`, col0 `MaxWidth = 3`, child `Probe(5×1)` | `layout(10×3)` | col0 `ActualWidth = 3` | WPF |
+| L148b | `G[cols: a,*]`, col0 `MaxWidth = 3`, child `Probe(5×1)` | `layout(10×3)` | child's measure constraint on the axis = `3` on every pass, never `U` (LD1 constraint coercion — a `MaxWidth`-bounded Auto/Star track measures the child against the cap, unlike uncapped L150; Cell tracks already pass their clamped `Size`) | WPF |
 | L149 | `G[cols: a,*]`, col0 `MinWidth = 6`, child `Probe(4×1)` | `layout(10×3)` | col0 `ActualWidth = 6` | WPF |
 | L150 | child in an Auto column | inspect recorded constraint | measured with `U` on that axis (auto = content-driven) | WPF |
 | L151 | `G[cols: *]`, child `Probe(7×1)` | `measure(G, U×3)` | `desired(G).Columns = 7` — star behaves as Auto under an Unbounded constraint | WPF |

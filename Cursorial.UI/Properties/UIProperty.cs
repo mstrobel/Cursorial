@@ -233,6 +233,15 @@ public abstract class UIProperty
         => throw new NotSupportedException($"'{this}' does not support frame entries.");
 
     /// <summary>
+    /// The untyped→typed style-entry bridge (Fork B's frame construction, design doc §3.6): creates
+    /// the typed <c>IValueEntry&lt;T&gt;</c> for one compiled setter with no reflection. The boxed
+    /// value was seal-converted to the property type already (style matrix SD9);
+    /// <paramref name="hasValue"/> <see langword="false"/> creates the valueless (A8) entry.
+    /// </summary>
+    internal virtual IValueEntry CreateStyleEntry(object? boxedValue, bool hasValue)
+        => throw new NotSupportedException($"'{this}' does not support frame entries.");
+
+    /// <summary>
     /// Closes the registration window: both effects lanes become read-only. Invoked on the first
     /// metadata resolution (a <c>GetValue</c> counts — it resolves the default) and the first
     /// <see cref="GetEffects"/> query.

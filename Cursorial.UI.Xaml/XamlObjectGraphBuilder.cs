@@ -985,10 +985,11 @@ internal sealed class XamlObjectGraphBuilder
                     case XamlValueKind.Extension:
                     {
                         ref readonly var ext = ref _doc.Extensions[member.ValueIndex];
+                        // The key is a literal string or a nested key extension ({x:Static …}) — XD7a.
                         if (ext.Kind == ExtensionKind.DynamicResource)
-                            value = new ResourceReference(_doc.Strings[ext.Payload]);
+                            value = new ResourceReference(_extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column));
                         else if (ext.Kind == ExtensionKind.StaticResource)
-                            value = _extensionHandler.ResolveStaticResource(this, _doc.Strings[ext.Payload], line, column);
+                            value = _extensionHandler.ResolveStaticResource(this, _extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column), line, column);
                         break;
                     }
                 }

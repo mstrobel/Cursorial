@@ -15,7 +15,7 @@ namespace Cursorial.UI.Themes;
 /// value the consumer sets always wins. Two deliberate exclusions stay constants: the <c>:focus</c> /
 /// <c>:default</c> border-WEIGHT escalation pens (render-only, NoColor-safe — they are weight bumps,
 /// not colors) and a control's resting <c>Background</c> (an unset/transparent face is the
-/// WPF/Avalonia default — the surface paints only when the consumer sets it). The <see cref="GlyphSet"/>
+/// WPF/Avalonia default — the surface paints only when the consumer sets it). The <see cref="GlyphSetCarrier"/>
 /// keys (<see cref="CheckBoxGlyphs"/>/<see cref="RadioGlyphs"/>/<see cref="ScrollArrowGlyphs"/>) have
 /// always been live resource reads.
 /// </para>
@@ -44,7 +44,7 @@ public static class ThemeKeys
     public const string AccessKeyUnderlineBrush = "Theme.AccessKeyUnderlineBrush";
 
     /// <summary>
-    /// The <see cref="Controls.CheckBox"/> glyph triple — a <see cref="GlyphSet"/> of
+    /// The <see cref="Controls.CheckBox"/> glyph triple — a <see cref="GlyphSetCarrier"/> of
     /// <c>(Unchecked, Checked, Indeterminate)</c> strings (design doc §12.7; spec line 660). The
     /// true-ASCII default is <c>[ ] [x] [-]</c>; a <c>caps-unicode</c> dictionary may swap to
     /// <c>☐ ☑ ◪</c>-class glyphs.
@@ -69,7 +69,7 @@ public static class ThemeKeys
 /// <param name="Unchecked">The first glyph (unchecked box / up-or-left arrow).</param>
 /// <param name="Checked">The second glyph (checked box / down-or-right arrow).</param>
 /// <param name="Indeterminate">The third glyph (the indeterminate box; unused for a two-glyph arrow pair).</param>
-public readonly record struct GlyphSet(string Unchecked, string Checked, string Indeterminate = "")
+public readonly record struct GlyphSetCarrier(string Unchecked, string Checked, string Indeterminate = "")
 {
     /// <summary>
     /// Selects the glyph for a three-state checked value (<see langword="false"/>/<see langword="true"/>/

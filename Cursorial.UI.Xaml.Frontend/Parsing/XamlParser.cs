@@ -560,7 +560,17 @@ internal sealed class XamlParser
             case ExtensionKind.StaticResource:
             case ExtensionKind.DynamicResource:
             {
-                // Carry the key (the primary positional argument) for X2.
+                // Carry the key (the primary positional argument) for X2. The common form is a literal
+                // string ({DynamicResource Accent} → Strings, X44/X57). When the key is itself a markup
+                // extension ({DynamicResource {x:Static ThemeKeys.X}}, X44a/X57a) the frontend cannot
+                // resolve it (no static resolver in netstandard2.0) — store the INNER key node and let
+                // the loader resolve it at instantiate (PayloadIsParsedExtension, XD7a).
+                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is { } keyNode)
+                {
+                    int parsedKey = _builder.AddParsedExtension(keyNode);
+                    return _builder.AddExtension(new ExtensionRecord(kind, parsedKey, LineInfo.Pack(node.Line, node.Column), payloadIsParsedExtension: true));
+                }
+
                 string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 return _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
@@ -1026,6 +1036,16 @@ internal sealed class XamlParser
             case ExtensionKind.StaticResource:
             case ExtensionKind.DynamicResource:
             {
+                // Same nested-vs-literal key split as the direct-property site (XD7a): a nested key
+                // extension ({DynamicResource {x:Static ThemeKeys.X}}) stores the inner node for the
+                // loader to resolve at instantiate; a literal key interns as before (X117 unchanged).
+                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is { } keyNode)
+                {
+                    int parsedKey = _builder.AddParsedExtension(keyNode);
+                    int nestedExtIndex = _builder.AddExtension(new ExtensionRecord(kind, parsedKey, LineInfo.Pack(node.Line, node.Column), payloadIsParsedExtension: true));
+                    return new MemberRecord(valueMemberId, XamlValueKind.Extension, nestedExtIndex, 0, LineInfo.Pack(line, column));
+                }
+
                 string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 int extIndex = _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));

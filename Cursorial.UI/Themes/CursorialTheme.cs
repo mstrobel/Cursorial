@@ -59,11 +59,11 @@ public static class CursorialTheme
         // render identically on every terminal (zero ambiguous-width risk). A consumer (or a future
         // caps-unicode dictionary) may shadow these at a nearer scope to opt up to Unicode. Keyed at
         // the dictionary top level (capability-driven, not color-tier-driven).
-        dict[ThemeKeys.CheckBoxGlyphs] = new GlyphSet("[ ]", "[x]", "[-]");
+        dict[ThemeKeys.CheckBoxGlyphs] = new GlyphSetCarrier("[ ]", "[x]", "[-]");
         // The indeterminate "(-)" is distinct from unchecked "( )" so an explicitly-set IsChecked=null
         // radio is visually distinguishable (doc §12.7 — only an explicit set reaches indeterminate).
-        dict[ThemeKeys.RadioGlyphs] = new GlyphSet("( )", "(*)", "(-)");
-        dict[ThemeKeys.ScrollArrowGlyphs] = new GlyphSet("^", "v");
+        dict[ThemeKeys.RadioGlyphs] = new GlyphSetCarrier("( )", "(*)", "(-)");
+        dict[ThemeKeys.ScrollArrowGlyphs] = new GlyphSetCarrier("^", "v");
 
         // The Type-keyed control themes (S8 content authored into S7's structure, CD30): selector-less
         // Styles rooted at '^', armed at ControlTheme(0). Their templates + pseudo-class child rules

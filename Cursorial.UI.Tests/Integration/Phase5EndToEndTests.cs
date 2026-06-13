@@ -13,7 +13,7 @@ using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 
-using GlyphSet = Cursorial.UI.Themes.GlyphSet;
+using GlyphSet = Cursorial.UI.Themes.GlyphSetCarrier;
 using Style = Cursorial.UI.Style;
 
 namespace Cursorial.Tests.UI.Integration;

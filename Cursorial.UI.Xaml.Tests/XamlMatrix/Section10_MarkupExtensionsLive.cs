@@ -88,6 +88,62 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         Assert.Equal("A", ((ResourceReference)setter.Value!).Key);
     }
 
+    [Fact] // X116a — DynamicResource on a styled property with a nested {x:Static} key (XD7a)
+    public void X116a_DynamicResource_NestedStaticKey_ResolvesAndInstalls()
+    {
+        // {x:Static ThemeKeys.SurfaceBrush} resolves to the const "Theme.SurfaceBrush" at instantiate;
+        // the DynamicResource then keys off that — the real demo scenario.
+        using var host = UITestHost.Create();
+        var border = Load<UIControls.Border>(
+            "<Border><Border.Resources><TestBrush x:Key=\"Theme.SurfaceBrush\" Color=\"Red\"/></Border.Resources>" +
+            "<Button Background=\"{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}\"/></Border>");
+        host.ShowRoot(border);
+        host.RunFrame();
+
+        var button = (UIControls.Button)border.Child!;
+        Assert.Equal(BindingPriority.LocalValue, button.GetValueSource(UIControls.Control.BackgroundProperty).Priority);
+        Assert.IsType<TestBrush>(button.Background);
+        Assert.IsNotType<ResourceReference>(button.Background);
+    }
+
+    [Fact] // X113a — StaticResource with a nested {x:Static} key resolves eagerly
+    public void X113a_StaticResource_NestedStaticKey_ResolvesEagerly()
+    {
+        var border = Load<UIControls.Border>(
+            "<Border><Border.Resources><TestBrush x:Key=\"Theme.AccentBrush\" Color=\"Blue\"/></Border.Resources>" +
+            "<Button Background=\"{StaticResource {x:Static ThemeKeys.AccentBrush}}\"/></Border>");
+        var button = (UIControls.Button)border.Child!;
+        Assert.IsType<TestBrush>(button.Background);
+    }
+
+    [Fact] // X117a — Setter.Value DynamicResource with a nested {x:Static} key stores the resolved key
+    public void X117a_DynamicResource_NestedStaticKey_OnSetterValue_StoresResolvedKey()
+    {
+        var dict = (ResourceDictionary)LoadRaw(
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<Style x:Key=\"S\" TargetType=\"Button\">" +
+            "<Setter Property=\"Background\" Value=\"{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}\"/></Style></ResourceDictionary>");
+        var setter = ((Style)dict["S"]!).Setters[0];
+        Assert.IsType<ResourceReference>(setter.Value);
+        Assert.Equal("Theme.SurfaceBrush", ((ResourceReference)setter.Value!).Key); // the resolved const, not "ThemeKeys.SurfaceBrush"
+    }
+
+    [Fact] // X114a — nested-key resolution failures are position-carrying, never a silent empty key
+    public void X114a_NestedKey_UnresolvableStatic_And_NullKey_AreDiagnosed()
+    {
+        // {x:Static} to an unresolvable member → MemberNotFound with line+col.
+        var ex1 = Assert.Throws<XamlParseException>(() =>
+            Load<UIControls.Button>("<Button Background=\"{StaticResource {x:Static Bogus.Member}}\"/>"));
+        Assert.Equal(XamlDiagnosticCodes.MemberNotFound, ex1.Code);
+        Assert.True(ex1.Line > 0 && ex1.Column > 0);
+
+        // {x:Null} key → the null-key guard (ResourceNotFound), NOT a bare ArgumentNullException downstream.
+        var ex2 = Assert.Throws<XamlParseException>(() =>
+            Load<UIControls.Button>("<Button Background=\"{StaticResource {x:Null}}\"/>"));
+        Assert.Equal(XamlDiagnosticCodes.ResourceNotFound, ex2.Code);
+        Assert.True(ex2.Line > 0 && ex2.Column > 0);
+    }
+
     [Fact] // X118
     public void X118_Binding_LiveAttach_PushesValue()
     {

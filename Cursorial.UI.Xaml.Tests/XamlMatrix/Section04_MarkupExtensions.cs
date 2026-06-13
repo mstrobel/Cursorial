@@ -57,6 +57,7 @@ public sealed class Section04_MarkupExtensions : XamlTestBase
         Assert.Equal(XamlValueKind.Extension, m.Kind);
         ref readonly var ext = ref doc.ExtensionOf(m);
         Assert.Equal(ExtensionKind.StaticResource, ext.Kind);
+        Assert.False(ext.PayloadIsParsedExtension); // literal key ⇒ Payload indexes Strings (XD7a guard)
         Assert.Equal("AccentBrush", doc.Strings[ext.Payload]);
     }
 
@@ -68,6 +69,42 @@ public sealed class Section04_MarkupExtensions : XamlTestBase
         Assert.True(converter.IsNested);
         Assert.Equal("StaticResource", converter.Nested!.Name);
         Assert.Equal("StatusToBrush", converter.Nested!.PositionalArguments[0].Text);
+    }
+
+    [Fact] // X44a — a StaticResource KEY that is itself an {x:Static} (XD7a)
+    public void X044a_StaticResource_NestedStaticKey_RecordsParsedKeyNode()
+    {
+        var doc = Parse("<Button Content=\"{StaticResource {x:Static ThemeKeys.SurfaceBrush}}\"/>");
+        Assert.True(doc.TryFindMember(0, "Content", out var m));
+        Assert.Equal(XamlValueKind.Extension, m.Kind);
+        ref readonly var ext = ref doc.ExtensionOf(m);
+        Assert.Equal(ExtensionKind.StaticResource, ext.Kind);
+        Assert.True(ext.PayloadIsParsedExtension);          // nested key ⇒ Payload indexes ParsedExtensions
+        var keyNode = doc.ParsedExtension(in ext);          // the INNER key node, not the outer *Resource
+        Assert.NotNull(keyNode);
+        Assert.Equal("x:Static", keyNode!.Name);
+        Assert.Equal("ThemeKeys.SurfaceBrush", keyNode.PositionalArguments[0].Text);
+    }
+
+    [Fact] // X57a — the DynamicResource analog
+    public void X057a_DynamicResource_NestedStaticKey_RecordsParsedKeyNode()
+    {
+        var doc = Parse("<Button Content=\"{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}\"/>");
+        Assert.True(doc.TryFindMember(0, "Content", out var m));
+        ref readonly var ext = ref doc.ExtensionOf(m);
+        Assert.Equal(ExtensionKind.DynamicResource, ext.Kind);
+        Assert.True(ext.PayloadIsParsedExtension);
+        Assert.Equal("x:Static", doc.ParsedExtension(in ext)!.Name);
+    }
+
+    [Fact] // X44a generality — the nested key is any markup extension, not x:Static-only
+    public void X044a_StaticResource_NestedResourceKey_NotStaticOnly()
+    {
+        var doc = Parse("<Button Content=\"{StaticResource {StaticResource KeyHolder}}\"/>");
+        Assert.True(doc.TryFindMember(0, "Content", out var m));
+        ref readonly var ext = ref doc.ExtensionOf(m);
+        Assert.True(ext.PayloadIsParsedExtension);
+        Assert.Equal("StaticResource", doc.ParsedExtension(in ext)!.Name);
     }
 
     [Fact, Trait("Oracle", "SystemXaml")] // X46
@@ -162,6 +199,7 @@ public sealed class Section04_MarkupExtensions : XamlTestBase
         Assert.Equal(XamlValueKind.Extension, m.Kind);
         ref readonly var ext = ref doc.ExtensionOf(m);
         Assert.Equal(ExtensionKind.DynamicResource, ext.Kind);
+        Assert.False(ext.PayloadIsParsedExtension); // literal key ⇒ Payload indexes Strings (XD7a guard)
         Assert.Equal("AccentBrush", doc.Strings[ext.Payload]);
     }
 

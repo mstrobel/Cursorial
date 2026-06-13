@@ -45,11 +45,11 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         switch (extension.Kind)
         {
             case ExtensionKind.StaticResource:
-                AttachStaticResource(builder, instance, member, doc.Strings[extension.Payload], line, column);
+                AttachStaticResource(builder, instance, member, ResolveResourceKey(builder, in extension, doc, line, column), line, column);
                 break;
 
             case ExtensionKind.DynamicResource:
-                AttachDynamicResource(builder, instance, type, member, doc.Strings[extension.Payload], line, column);
+                AttachDynamicResource(builder, instance, type, member, ResolveResourceKey(builder, in extension, doc, line, column), line, column);
                 break;
 
             case ExtensionKind.Binding:
@@ -71,10 +71,32 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         }
     }
 
+    // ── Resource key resolution (literal string or a nested key extension, XD7a) ─────────────────
+
+    /// <summary>
+    /// The resource key for a <c>{StaticResource}</c>/<c>{DynamicResource}</c>: a literal string (the
+    /// common form, X44/X57) or — when the key is itself a markup extension
+    /// (<c>{DynamicResource {x:Static ThemeKeys.X}}</c>, X44a/X57a) — the nested extension resolved to
+    /// its value at instantiate (<c>{x:Static}</c>→the member value; <c>{StaticResource}</c>→the keyed
+    /// value; the resource system is object-keyed). A null-resolving nested key is rejected here with a
+    /// position-carrying diagnostic so a bare <see cref="ArgumentNullException"/> never escapes
+    /// downstream (XD7a / risk-1).
+    /// </summary>
+    internal object ResolveResourceKey(XamlObjectGraphBuilder builder, in ExtensionRecord ext, XamlDocument doc, int line, int column)
+    {
+        if (!ext.PayloadIsParsedExtension)
+            return doc.Strings[ext.Payload];
+
+        var resolved = ResolveNestedExtension(builder, doc.ParsedExtensions[ext.Payload]!, line, column);
+        return resolved ?? throw builder.Fatal(XamlDiagnosticCodes.ResourceNotFound,
+            "A {StaticResource}/{DynamicResource} key markup extension resolved to null; a resource key must be non-null.",
+            line, column);
+    }
+
     // ── {StaticResource} — eager (matrix X113/X114/X121-nested) ──────────────────────────────────
 
     /// <summary>Resolves a StaticResource key against the ambient scope stack; the value reaches the XD8 assignment.</summary>
-    internal object ResolveStaticResource(XamlObjectGraphBuilder builder, string key, int line, int column)
+    internal object ResolveStaticResource(XamlObjectGraphBuilder builder, object key, int line, int column)
     {
         if (_scopes.TryResolve(key, out var value))
             return value!;
@@ -83,7 +105,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             $"StaticResource '{key}' was not found.{Environment.NewLine}{_scopes.DescribeSearchedChain()}", line, column);
     }
 
-    private void AttachStaticResource(XamlObjectGraphBuilder builder, object instance, XamlMember? member, string key, int line, int column)
+    private void AttachStaticResource(XamlObjectGraphBuilder builder, object instance, XamlMember? member, object key, int line, int column)
     {
         if (member is null)
             throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound, "StaticResource has no target member.", line, column);
@@ -94,7 +116,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
 
     // ── {DynamicResource} — late (matrix X116/X117) ──────────────────────────────────────────────
 
-    private void AttachDynamicResource(XamlObjectGraphBuilder builder, object instance, XamlType type, XamlMember? member, string key, int line, int column)
+    private void AttachDynamicResource(XamlObjectGraphBuilder builder, object instance, XamlType type, XamlMember? member, object key, int line, int column)
     {
         if (member is null)
             throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound, "DynamicResource has no target member.", line, column);

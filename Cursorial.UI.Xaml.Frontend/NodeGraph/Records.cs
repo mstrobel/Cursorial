@@ -85,9 +85,10 @@ internal readonly struct MemberRecord
 /// </summary>
 internal readonly struct ExtensionRecord
 {
-    public ExtensionRecord(ExtensionKind kind, int payload, int lineInfo)
+    public ExtensionRecord(ExtensionKind kind, int payload, int lineInfo, bool payloadIsParsedExtension = false)
     {
         Kind = kind;
+        PayloadIsParsedExtension = payloadIsParsedExtension;
         Payload = payload;
         PackedLineInfo = lineInfo;
     }
@@ -96,10 +97,23 @@ internal readonly struct ExtensionRecord
     public readonly ExtensionKind Kind;
 
     /// <summary>
+    /// Discriminates a <c>*Resource</c> key whose key is itself a markup extension. When
+    /// <see langword="false"/> (the literal-key form, the default), a <c>*Resource</c>
+    /// <see cref="Payload"/> indexes <see cref="XamlDocument.Strings"/>. When <see langword="true"/>
+    /// (e.g. <c>{DynamicResource {x:Static ThemeKeys.X}}</c>), it indexes
+    /// <see cref="XamlDocument.ParsedExtensions"/> — the nested key extension the loader resolves at
+    /// instantiate. Irrelevant for non-<c>*Resource</c> kinds. (Slots into the byte-enum padding after
+    /// <see cref="Kind"/> — the struct stays 12 bytes.)
+    /// </summary>
+    public readonly bool PayloadIsParsedExtension;
+
+    /// <summary>
     /// The payload index: <c>Static</c>/<c>Type</c>/<c>Null</c>→<see cref="XamlDocument.Constants"/>
-    /// (folded at parse); <c>*Resource</c>→<see cref="XamlDocument.Strings"/> (the key);
-    /// <c>Binding</c>/<c>TemplateBinding</c>→<see cref="XamlDocument.ParsedExtensions"/>
-    /// (the structured argument node); <c>Custom</c>→<see cref="XamlDocument.ParsedExtensions"/>.
+    /// (folded at parse); <c>*Resource</c>→<see cref="XamlDocument.Strings"/> (the literal key) when
+    /// <see cref="PayloadIsParsedExtension"/> is false, else <see cref="XamlDocument.ParsedExtensions"/>
+    /// (a nested key markup extension producing the key at instantiate); <c>Binding</c>/
+    /// <c>TemplateBinding</c>→<see cref="XamlDocument.ParsedExtensions"/> (the structured argument
+    /// node); <c>Custom</c>→<see cref="XamlDocument.ParsedExtensions"/>.
     /// </summary>
     public readonly int Payload;
 

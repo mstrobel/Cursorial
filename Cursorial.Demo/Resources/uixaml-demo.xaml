@@ -1,6 +1,6 @@
 <DockPanel xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
-           Background="{StaticResource Chrome}">
+           Background="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}">
 
     <!-- The whole window is declarative: resources, a control template, themed buttons + toggles, a
          {Binding}-driven status line, access-key mnemonics, and a ScrollViewer — loaded from this one
@@ -23,51 +23,50 @@
     </DockPanel.Resources>
 
     <!-- Header band (docked top). -->
-    <Border DockPanel.Dock="Top" Background="{StaticResource Accent}" Height="1">
+    <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" Height="1">
         <TextBlock Text=" Cursorial.UI — Phase 6: declarative UI loaded from XAML"
                    Foreground="#f0f4ff"/>
     </Border>
 
     <!-- Status band (docked bottom) — its text is a {Binding} onto the demo view-model. -->
-    <Border DockPanel.Dock="Bottom" Background="{StaticResource Chrome}" Height="1">
-        <TextBlock x:Name="Status" Text="{Binding Status}" Foreground="{StaticResource CaptionInk}"/>
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" Height="1">
+        <TextBlock x:Name="Status" Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
     </Border>
 
     <!-- The control panel, inside a scroller (LastChildFill). -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Border Title=" Settings " BorderPen="Light"
-                Background="{StaticResource PanelBg}" Padding="1">
+        <Border Title=" Settings " BorderPen="Light" Padding="1">
             <StackPanel Spacing="1" Margin="1">
 
                 <TextBlock Text="Buttons (Tab focus, Space/Enter or Alt-mnemonic activates):"
-                           Foreground="{StaticResource CaptionInk}"/>
+                           Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
                 <StackPanel Orientation="Horizontal" Spacing="2" Margin="1,0">
-                    <Button x:Name="Ok"     Content="_OK"     Background="{StaticResource ButtonFace}" Foreground="{StaticResource ControlInk}"/>
-                    <Button x:Name="Cancel" Content="_Cancel" Background="{StaticResource ButtonFace}" Foreground="{StaticResource ControlInk}"/>
-                    <Button x:Name="Apply"  Content="_Apply"  Background="{StaticResource ButtonFace}" Foreground="{StaticResource ControlInk}"/>
+                    <Button x:Name="Ok"     Content="_OK"     Background="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+                    <Button x:Name="Cancel" Content="_Cancel" Background="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+                    <Button x:Name="Apply"  Content="_Apply"  Background="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
                 </StackPanel>
 
                 <TextBlock Text="Check boxes (Space / click toggles):"
-                           Foreground="{StaticResource CaptionInk}"/>
+                           Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
                 <StackPanel Margin="2,0">
-                    <CheckBox x:Name="Airplane" Content=" Airplane mode" Foreground="{StaticResource ControlInk}"/>
-                    <CheckBox x:Name="Wifi"     Content=" Wi-Fi"         Foreground="{StaticResource ControlInk}" IsChecked="true"/>
+                    <CheckBox x:Name="Airplane" Content=" Airplane mode" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+                    <CheckBox x:Name="Wifi"     Content=" Wi-Fi"         Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}" IsChecked="true"/>
                 </StackPanel>
 
                 <TextBlock Text="Radio buttons (one group; arrows move + check):"
-                           Foreground="{StaticResource CaptionInk}"/>
+                           Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
                 <StackPanel Margin="2,0">
-                    <RadioButton x:Name="Low"  Content=" Low"    GroupName="quality" Foreground="{StaticResource ControlInk}"/>
-                    <RadioButton x:Name="Med"  Content=" Medium" GroupName="quality" Foreground="{StaticResource ControlInk}" IsChecked="true"/>
-                    <RadioButton x:Name="High" Content=" High"   GroupName="quality" Foreground="{StaticResource ControlInk}"/>
+                    <RadioButton x:Name="Low"  Content=" Low"    GroupName="quality" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+                    <RadioButton x:Name="Med"  Content=" Medium" GroupName="quality" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}" IsChecked="true"/>
+                    <RadioButton x:Name="High" Content=" High"   GroupName="quality" Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
                 </StackPanel>
 
                 <TextBlock Text="Bound text (the {Binding} on the view-model's Caption):"
-                           Foreground="{StaticResource CaptionInk}"/>
-                <TextBlock x:Name="Live" Text="{Binding Caption}" Foreground="{StaticResource Accent}" Margin="2,0"/>
+                           Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+                <TextBlock x:Name="Live" Text="{Binding Caption}" Foreground="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" Margin="2,0"/>
 
                 <TextBlock Text="Keys: t = cycle color tier · d = flip dark/light · Alt = access keys · q = quit"
-                           Foreground="{StaticResource CaptionInk}"/>
+                           Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
             </StackPanel>
         </Border>
     </ScrollViewer>

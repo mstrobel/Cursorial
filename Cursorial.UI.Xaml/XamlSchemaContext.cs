@@ -38,8 +38,11 @@ public sealed class XamlSchemaContext
     public XamlSchemaContext()
     {
         // The default xmlns map covers UI/Controls/Data plus Drawing.Media (where brushes/colors/Colors/
-        // Brushes live — the XD13 color mini-language and {x:Static Colors.Red}/{x:Static Brushes.Red}).
-        _defaultClrNamespaces = ["Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.Drawing.Media"];
+        // Brushes live — the XD13 color mini-language and {x:Static Colors.Red}/{x:Static Brushes.Red}) and
+        // Themes (ThemeKeys — so {x:Static ThemeKeys.SurfaceBrush} resolves unprefixed, the same way
+        // {x:Static Colors.Red} does; the colliding Themes glyph carrier was renamed GlyphSetCarrier to
+        // keep the simple name GlyphSet unambiguous against Drawing.Media.GlyphSet).
+        _defaultClrNamespaces = ["Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.Drawing.Media", "Cursorial.UI.Themes"];
         _defaultAssemblies =
         [
             typeof(UIElement).Assembly,                    // Cursorial.UI

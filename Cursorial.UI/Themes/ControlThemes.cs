@@ -238,10 +238,10 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     void IValueObserver<bool?>.OnPropertyChanged(UIObject source, UIProperty property, bool? oldValue, bool? newValue, BindingPriority priority)
         => InvalidateVisual();
 
-    private GlyphSet Glyphs
-        => this.TryFindResource(_glyphKey, out var value) && value is GlyphSet glyphs
+    private GlyphSetCarrier Glyphs
+        => this.TryFindResource(_glyphKey, out var value) && value is GlyphSetCarrier glyphs
             ? glyphs
-            : new GlyphSet("[ ]", "[x]", "[-]");
+            : new GlyphSetCarrier("[ ]", "[x]", "[-]");
 
     // The owner's checked state, defaulting to unchecked only when there is no owner — a null here is
     // the genuine *indeterminate* value, which the '?? false' coalesce must NOT collapse.

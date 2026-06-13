@@ -449,6 +449,54 @@ public class Section12_AccessKeys
         Assert.True(ak.IsCueActive); // the cue stays up for cycling
     }
 
+    [Fact]
+    public void N184b_SingleMatch_FocusableTarget_MovesFocusThenInvokes()
+    {
+        // A single (non-colliding) access key both INVOKES the target and moves focus to it when the
+        // target is focusable — parity with multi-match cycling, the plain-element fallback, and
+        // WPF/Avalonia. The manager owns the focus move (the fixture target only records OnAccessKey).
+        var (host, log, root, ak, dispatcher) = CreateHost();
+        using var _host = host;
+        var other = new Btn("Other", log);
+        var target = new AkTarget("T", log);
+        root.Place(other, 2, 2);
+        root.Place(target, 15, 5);
+        host.RunFrame();
+        Assert.True(other.Focus()); // focus starts elsewhere, so a move is observable
+        ak.Register('f', target);
+
+        AltDown(dispatcher);
+        var result = dispatcher.ProcessEvent(KeyEvt(Key.Character, KeyModifiers.Alt, "f"));
+
+        Assert.Equal(InputDispatchResult.DispatchedHandled, result);
+        Assert.Equal([('f', false)], target.Activations);                       // invoked (single-match)
+        Assert.Same(target, host.Application.FocusManager.FocusedElement);      // …and focus moved to it
+        Assert.True((target.InteractionStateInternal & InteractionState.FocusVisible) != 0); // method = AccessKey
+    }
+
+    [Fact]
+    public void N184c_SingleMatch_NonFocusableTarget_InvokesWithoutGrabbingFocus()
+    {
+        // The Focusable guard: a non-focusable target (e.g. a Label, which forwards focus to its own
+        // Target inside OnAccessKey) is invoked but the manager does NOT pull focus onto it.
+        var (host, log, root, ak, dispatcher) = CreateHost();
+        using var _host = host;
+        var other = new Btn("Other", log);
+        var target = new AkTarget("T", log) { Focusable = false };
+        root.Place(other, 2, 2);
+        root.Place(target, 15, 5);
+        host.RunFrame();
+        Assert.True(other.Focus());
+        ak.Register('f', target);
+
+        AltDown(dispatcher);
+        var result = dispatcher.ProcessEvent(KeyEvt(Key.Character, KeyModifiers.Alt, "f"));
+
+        Assert.Equal(InputDispatchResult.DispatchedHandled, result);
+        Assert.Equal([('f', false)], target.Activations);                  // still invoked
+        Assert.Same(other, host.Application.FocusManager.FocusedElement);  // focus stayed put
+    }
+
     public enum IneligibleKind
     {
         Disabled,

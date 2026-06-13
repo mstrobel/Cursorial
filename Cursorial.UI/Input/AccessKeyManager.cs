@@ -135,10 +135,13 @@ public sealed class AccessKeyManager
     public void OnCapabilitiesChanged(TerminalCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
+
         _dispatcher.VerifyAccess();
 
         var keyboard = capabilities.Input.Keyboard;
-        var mode = (keyboard.DistinguishesKeyUpDown && keyboard.ReportsRepeats) || capabilities.Input.Protocol.Win32InputMode
+
+        var mode = keyboard is { DistinguishesKeyUpDown: true, ReportsRepeats: true } ||
+                   capabilities.Input.Protocol.Win32InputMode
             ? AccessKeyMode.AltHeld
             : AccessKeyMode.AlwaysVisible;
 
@@ -449,6 +452,14 @@ public sealed class AccessKeyManager
             if (!anyAltDown)
                 ClearCueForAltHeld();
 
+            // Move focus to a focusable target BEFORE invoking — parity with the multi-match cycle
+            // (below) and the plain-element fallback, with WPF/Avalonia, and with the fixture contract
+            // that "the manager owns the focus move". Focusing first lets the invoked action redirect
+            // focus (last-wins). Non-focusable targets (e.g. a Label, which forwards focus to its own
+            // Target inside OnAccessKey) are left untouched here. ND18-companion (single-match focuses).
+            if (target.Focusable)
+                _focus.SetFocus(target, FocusNavigationMethod.AccessKey);
+
             InvokeAccessKey(target, folded, isMultiMatch: false);
             return true;
         }
@@ -481,10 +492,12 @@ public sealed class AccessKeyManager
 
     private static void InvokeAccessKey(UIElement target, char key, bool isMultiMatch)
     {
+        // Focus movement is owned by the caller now (the single-match branch focuses a focusable target;
+        // the multi-match cycle calls SetFocus before this). A plain (non-IAccessKeyTarget) element thus
+        // gets focused upstream and has no invoke action of its own, so this dispatches only the
+        // IAccessKeyTarget reaction.
         if (target is IAccessKeyTarget accessKeyTarget)
             accessKeyTarget.OnAccessKey(new AccessKeyEventArgs(key, isMultiMatch, target));
-        else if (!isMultiMatch)
-            target.Focus(FocusNavigationMethod.AccessKey); // plain-element fallback: at least move focus
     }
 
     private void CollectEligibleMatches(char folded)

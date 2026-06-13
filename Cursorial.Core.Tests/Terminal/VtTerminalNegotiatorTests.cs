@@ -1031,4 +1031,78 @@ public class VtTerminalNegotiatorTests
 
         await negotiator.DisposeAsync();
     }
+
+    // ---- Screen-local opt-in re-apply (per-screen-buffer Kitty keyboard stack) ----
+
+    [Fact]
+    public async Task ReapplyScreenLocalOptIns_ReEmitsTheKittyPush_WithoutChangingRestoreAccounting()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\"); // identifies Kitty → the keyboard push applies
+        _source.Enqueue("\x1b[?64c");                 // DA1 sentinel
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(new NegotiationOptions { ProbeTimeout = TimeSpan.FromMilliseconds(100) });
+
+        // The realized snapshot surfaces the flag SET (not just the bool) so a screen-switching
+        // consumer can re-apply it. Default flags = 31 (Disambiguate|EventTypes|AlternateKeys|
+        // AllKeysAsEscapeCodes|AssociatedText).
+        Assert.True(caps.Input.Protocol.KittyKeyboardProtocol);
+        Assert.Equal(NegotiationOptions.DefaultKittyKeyboardFlags, caps.Input.Protocol.KittyKeyboardFlags);
+
+        // Negotiation pushed the Kitty flags exactly once (on the main screen), no pop yet.
+        var negotiated = await AllWrittenAsync();
+        Assert.Equal(1, CountOccurrences(negotiated, "\x1b[>31u")); // CSI > flags u
+        Assert.DoesNotContain("\x1b[<u", negotiated);               // PopKittyKeyboard
+
+        // Re-apply (the alt-screen case): the SAME push is re-emitted byte-identically, along with the
+        // idempotent global enables — and the restore accounting is untouched (no pop here).
+        await negotiator.ReapplyScreenLocalOptInsAsync();
+        var reapplied = await AllWrittenAsync();
+        Assert.Equal(1, CountOccurrences(reapplied, "\x1b[>31u")); // identical re-push
+        Assert.Contains("\x1b[?1006h", reapplied);                 // SGR mouse re-enabled (idempotent)
+        Assert.Contains("\x1b[?1004h", reapplied);                 // focus re-enabled (idempotent)
+        Assert.DoesNotContain("\x1b[<u", reapplied);               // still no pop
+
+        // Restore pops EXACTLY ONCE despite the two pushes — the 1:1 tracked accounting held.
+        await negotiator.RestoreAsync();
+        var restored = await AllWrittenAsync();
+        Assert.Equal(1, CountOccurrences(restored, "\x1b[<u"));
+    }
+
+    [Fact]
+    public async Task ReapplyScreenLocalOptIns_AfterRestore_IsNoOp()
+    {
+        _source.Enqueue("\x1bP>|kitty 0.34.1\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        await negotiator.NegotiateAsync(new NegotiationOptions { ProbeTimeout = TimeSpan.FromMilliseconds(100) });
+        await negotiator.RestoreAsync();
+        _ = await AllWrittenAsync(); // drain everything emitted so far
+
+        await negotiator.ReapplyScreenLocalOptInsAsync(); // guarded on _restored → emits nothing
+        Assert.Empty(await AllWrittenAsync());
+    }
+
+    [Fact]
+    public async Task ReapplyScreenLocalOptIns_WhenOptInsIgnored_IsNoOp()
+    {
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        await negotiator.NegotiateAsync(DisableAllOptIns());
+        _ = await AllWrittenAsync();
+
+        await negotiator.ReapplyScreenLocalOptInsAsync(); // _applied is empty → no-op
+        Assert.Empty(await AllWrittenAsync());
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        for (var i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+            count++;
+        return count;
+    }
 }

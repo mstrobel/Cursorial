@@ -103,6 +103,21 @@ public sealed class SyntheticTerminalHost : ITerminalHost
     }
 
     /// <summary>
+    /// The number of times <see cref="ReapplyScreenLocalOptInsAsync"/> has been called — lets a test
+    /// assert the application re-applies screen-local opt-ins exactly once after entering the alt
+    /// screen (and not at all when no alt screen was entered). Headless has no real Kitty stack, so
+    /// the call itself is a no-op.
+    /// </summary>
+    public int ReapplyScreenLocalOptInsCount { get; private set; }
+
+    /// <inheritdoc/>
+    public ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
+    {
+        ReapplyScreenLocalOptInsCount++;
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
     /// Injects raw wire bytes into the parser path (the <c>UITestHost.SendBytes</c> substrate).
     /// Synchronous — the in-memory pipe never back-pressures.
     /// </summary>

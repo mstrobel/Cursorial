@@ -38,4 +38,14 @@ public interface ITerminalHost : IAsyncDisposable
 
     /// <summary>Re-runs capability negotiation. Hosts that cannot renegotiate no-op.</summary>
     ValueTask RenegotiateAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Re-applies the negotiated screen-local opt-ins (notably the per-screen-buffer Kitty keyboard
+    /// flag push) on the currently-active screen, without disturbing restore accounting. The
+    /// application calls this once after it enters the alternate screen, so key-up / repeat reporting
+    /// (and the access-key Alt gate) engage on the alt screen rather than being stranded on the main
+    /// screen where negotiation ran. Hosts with no screen-local protocol state (headless) no-op.
+    /// </summary>
+    ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
 }

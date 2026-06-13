@@ -185,6 +185,16 @@ public sealed partial class UIApplication
         SgrEncoder.WriteReset(writer);
         writer.FlushAsync().AsTask().GetAwaiter().GetResult();
 
+        // The Kitty keyboard flag stack is per-screen-buffer: negotiation (during host open) pushed our
+        // flags on the MAIN screen, but we just switched to the ALTERNATE screen — a fresh, empty stack.
+        // Re-apply the negotiated screen-local opt-ins on the now-active alt screen so key-up / repeat
+        // reporting (and with it the access-key Alt gate, ND23) actually engages instead of being
+        // stranded on the main screen. The negotiator's restore accounting is untouched; the extra
+        // alt-screen push is discarded when we leave the alt screen at teardown. No-op for the
+        // clear-screen fallback (still on the main screen) and for headless hosts.
+        if (_enteredAltScreen)
+            host.ReapplyScreenLocalOptInsAsync().AsTask().GetAwaiter().GetResult();
+
         // Input assembly (design doc §10.4): synthesizer innermost (opt-in), click transform
         // outermost; the pull surface, never EventInputDevice (it swallows handler exceptions).
         var device = host.Input;

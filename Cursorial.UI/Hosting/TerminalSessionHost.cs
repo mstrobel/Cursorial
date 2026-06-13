@@ -63,6 +63,10 @@ public sealed class TerminalSessionHost : ITerminalHost
         => _session.RenegotiateAsync(cancellationToken);
 
     /// <inheritdoc/>
+    public ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
+        => _session.ReapplyScreenLocalOptInsAsync(cancellationToken);
+
+    /// <inheritdoc/>
     public ValueTask DisposeAsync()
         => _disposeSession ? _session.DisposeAsync() : ValueTask.CompletedTask;
 }

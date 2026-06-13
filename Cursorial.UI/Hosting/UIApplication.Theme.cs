@@ -69,7 +69,16 @@ public sealed partial class UIApplication : IResourceHost
     /// <summary>The application resources slot without lazy allocation (the chain-walk read surface).</summary>
     internal ResourceDictionary? ResourcesOrNull => _resources;
 
-    /// <summary>The active theme dictionary (design doc §11.3): the chain hop above <see cref="CursorialTheme.BuiltIn"/>; <see langword="null"/> ⇒ BuiltIn only.</summary>
+    /// <summary>
+    /// An <b>optional</b> application theme dictionary (design doc §11.3) — the chain hop <i>above</i>
+    /// <see cref="CursorialTheme.BuiltIn"/>. Leave it <see langword="null"/> (the normal state): the lookup
+    /// chain probes <see cref="CursorialTheme.BuiltIn"/> unconditionally as its final tail, so controls are
+    /// fully themed without setting this, and the active look is driven by <see cref="ActualThemeVariant"/>
+    /// (via <see cref="RequestedColorTier"/> / <see cref="RequestedThemeBase"/>), not by this slot. Set it
+    /// only to <i>layer</i> your own theme dictionary over BuiltIn (chain: <c>Resources → Theme → BuiltIn</c>,
+    /// so your keys win and BuiltIn fills the gaps). It is deliberately NOT defaulted to BuiltIn — that would
+    /// make assigning a custom theme <i>replace</i> the fallback rather than layer over it.
+    /// </summary>
     public ResourceDictionary? Theme
     {
         get => _theme;

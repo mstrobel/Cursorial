@@ -21,11 +21,18 @@ namespace Cursorial.UI.Themes;
 /// </summary>
 internal static class ControlThemes
 {
-    // The default pens/brushes the templates wire as constants (the ResourceReference palette spine —
-    // re-skin-via-one-key-override — is the R2 concern; P5 control themes wire constants so the
-    // controls render with a sane default look on every tier through the quantizer).
-    private static readonly Pen BorderPen = Pens.Light;
-    private static readonly Pen FocusPen = Pens.Heavy;
+    // :focus escalates to the palette ThemeKeys.FocusPen via a DynamicResource (R2, design doc §11.5):
+    // it is a heavy-weight pen that ALSO carries the per-variant accent color (RGB cyan/blue, Ansi16
+    // palette-14/4, NoColor a brush-less heavy ASCII pen). Wiring it as a resource — not the brush-less
+    // Pens.Heavy constant — means focusing a default-themed control keeps a colored frame (the accent)
+    // and bumps the weight, rather than regressing the border color to the terminal default; and it
+    // re-skins on a dark/light flip through the same spine. (Before R2 this was the local Pens.Heavy
+    // constant, which stranded a brush-less pen → Colors.Default at draw — the P6.1 P2-1 finding.)
+    //
+    // :default (the Enter-default cue) stays the render-only WEIGHT bump Pens.Double: there is no
+    // per-variant DefaultPen palette key, so it intentionally inherits the resting BorderPen weight-
+    // -only semantics. The COLOR-bearing resting setters (Foreground / Background / the resting
+    // BorderPen) are ResourceReferences into the ThemeKeys palette spine — see ApplyPaletteSpine.
     private static readonly Pen DefaultPen = Pens.Double;
 
     internal static void Populate(ResourceDictionary dict)
@@ -49,35 +56,50 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        var border = new Border
-        {
-            BorderPen = BorderPen,
-            Padding = new Margins(1, 0),
-            Child = presenter,
-        };
+        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
         // The surface fill follows the button's Background (the WPF default-template wiring): a
         // TemplateBinding makes Button.Background paint the face, quantized per the negotiated tier.
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        // The border stroke follows the control's BorderPen — which the theme root rule resolves from
+        // ThemeKeys.BorderPen (and the :focus/:default rules escalate). So the resting frame re-colors on
+        // a variant flip and a :focus heavy-weight bump rides through the same one TemplateBinding.
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
     private static Style ButtonTheme()
     {
-        var theme = new Style { Key = "Theme.Button" }.Set(Control.TemplateProperty, ButtonContentTemplate());
-        theme.Children.Add(new Style("^:focus").Set(Control.BorderPenProperty, FocusPen));
+        var theme = ApplyPaletteSpine(new Style { Key = "Theme.Button" })
+            .Set(Control.TemplateProperty, ButtonContentTemplate());
+        theme.Children.Add(new Style("^:focus").SetResource(Control.BorderPenProperty, ThemeKeys.FocusPen));
         theme.Children.Add(new Style("^:default").Set(Control.BorderPenProperty, DefaultPen));
         return theme;
     }
 
     private static Style RepeatButtonTheme()
-        => new Style { Key = "Theme.RepeatButton" }.Set(Control.TemplateProperty, ButtonContentTemplate());
+        => ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" })
+            .Set(Control.TemplateProperty, ButtonContentTemplate());
 
     private static Style ToggleButtonTheme()
     {
-        var theme = new Style { Key = "Theme.ToggleButton" }.Set(Control.TemplateProperty, ButtonContentTemplate());
-        theme.Children.Add(new Style("^:focus").Set(Control.BorderPenProperty, FocusPen));
+        var theme = ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" })
+            .Set(Control.TemplateProperty, ButtonContentTemplate());
+        theme.Children.Add(new Style("^:focus").SetResource(Control.BorderPenProperty, ThemeKeys.FocusPen));
         return theme;
     }
+
+    // The R2 palette spine (design doc §11.5 / B10): wire a control theme's resting color setters as
+    // DynamicResources into the ThemeKeys palette so a default-look control (no explicit Foreground /
+    // Background / BorderPen) resolves them per-variant and re-skins on a dark/light flip or a single
+    // ThemeKeys override — with zero template work. The setters arm at the ControlTheme layer (below
+    // LocalValue), so an explicit value the consumer sets always wins. Background stays UNSET by default
+    // (a transparent button face is the WPF/Avalonia default — the surface paints only when the consumer
+    // sets Background); the spine wires Foreground + the resting BorderPen, which every BuiltIn control
+    // reads through inheritance / its template.
+    private static Style ApplyPaletteSpine(Style theme)
+        => theme
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
 
     // ───────────────────────────── CheckBox / RadioButton ─────────────────────────────
 
@@ -97,8 +119,12 @@ internal static class ControlThemes
 
     // themeKey is the diagnostic Style.Key (e.g. "Theme.CheckBox"); glyphKey is the ThemeKeys glyph-set
     // resource the ToggleGlyph leaf reads (already a fully-qualified "Theme.*" constant — never re-prefix it).
+    // The toggle has no Border by default; only the Foreground spine applies (the ToggleGlyph + the
+    // content presenter both paint in the inherited Control.Foreground, so a variant flip re-inks them).
     private static Style ToggleGlyphTheme(string themeKey, string glyphKey)
-        => new Style { Key = themeKey }.Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey));
+        => new Style { Key = themeKey }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey));
 
     // ───────────────────────────── ScrollBar / ScrollViewer ─────────────────────────────
 
@@ -119,11 +145,15 @@ internal static class ControlThemes
         var dock = new DockPanel();
         var bareTemplate = BareGlyphButtonTemplate();
 
-        var lineUp = new RepeatButton { Content = horizontal ? "<" : "^", Template = bareTemplate };
+        // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
+        // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
+        // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
+        // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
+        var lineUp = new RepeatButton { Content = horizontal ? "<" : "^", Template = bareTemplate, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_LineUpButton", lineUp);
         DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
 
-        var lineDown = new RepeatButton { Content = horizontal ? ">" : "v", Template = bareTemplate };
+        var lineDown = new RepeatButton { Content = horizontal ? ">" : "v", Template = bareTemplate, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_LineDownButton", lineDown);
         DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
 
@@ -142,7 +172,7 @@ internal static class ControlThemes
     {
         var theme = new Style { Key = "Theme.ScrollBar" }
             .Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: false))
-            .Set(ScrollBar.BorderPenProperty, BorderPen);
+            .SetResource(ScrollBar.BorderPenProperty, ThemeKeys.BorderPen);
         // A horizontal bar uses the rotated template (arrows on the ends of the long axis).
         theme.Children.Add(new Style("^:horizontal").Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: true)));
         return theme;

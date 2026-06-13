@@ -81,6 +81,24 @@ public abstract class ValueFrame
             Store?.OnFrameEntryChanged(this, entry);
     }
 
+    /// <summary>
+    /// Called by the store right after the frame is installed (<see cref="Store"/> set; before the
+    /// initial reevaluation). The B10 hook: a subclass with resource-backed entries opens its
+    /// subscriptions and pushes the first resolved values here. No-op by default.
+    /// </summary>
+    internal virtual void OnInstalled()
+    {
+    }
+
+    /// <summary>
+    /// Called by the store right before the frame is removed (while <see cref="Store"/> is still set,
+    /// before hosted-entry eviction). The B10 teardown hook: a subclass closes its resource
+    /// subscriptions here. No-op by default.
+    /// </summary>
+    internal virtual void OnRemoving()
+    {
+    }
+
     /// <summary>Hosts <paramref name="entry"/> in this frame (ledger A5; install order is arbitration order — later wins).</summary>
     internal void AddHostedEntry(BindingEntryBase entry) => (_hostedEntries ??= []).Add(entry);
 

@@ -457,6 +457,138 @@ public sealed class Section10_ButtonBase
         Assert.Equal(before, defaultClicks); // no longer activated by Enter from elsewhere
     }
 
+    // ───────────────────────────── 10.4 real-spacebar activation (ND10 regression) ─────────────────────────────
+
+    [Fact] // C199 — the real spacebar (Key.Character + " ") activates, per input-matrix ND10
+    public void C199_RealSpacebar_ActivatesAndToggles()
+    {
+        // ND10: a real spacebar arrives as (Key.Character, Text == " ") on EVERY protocol path
+        // (VT 0x20, Kitty codepoint 32, Win32 VK_SPACE). Key.Space is emitted only for NUL→Ctrl+Space.
+        // UITestHost.SendText(" ") reproduces the production wire (Key.Character + " ").
+
+        // (a) A Button activates (Click) on a real-spacebar DOWN.
+        var button = new Button { Width = 10, Height = 1 };
+        var clicks = 0;
+        button.Click += (_, _) => clicks++;
+        using (var host = Show(button))
+        {
+            button.Focus();
+            host.SendText(" "); // Key.Character + " " — the real spacebar
+            host.RunFrame();
+            Assert.Equal(1, clicks);       // activates on Down (CD23), even though Key != Key.Space
+            Assert.True(button.IsPressed); // pressed latch
+        }
+
+        // (b) A CheckBox toggles IsChecked on a real-spacebar DOWN (routes through ButtonBase).
+        var check = new CheckBox();
+        using (var host = Show(check))
+        {
+            check.Focus();
+            Assert.Equal(false, check.IsChecked);
+
+            host.SendText(" ");
+            host.RunFrame();
+            Assert.Equal(true, check.IsChecked); // toggled by the real spacebar (was the bug)
+
+            host.SendText(" ");
+            host.RunFrame();
+            Assert.Equal(false, check.IsChecked); // toggles back
+        }
+
+        // (c) A RadioButton (also via ButtonBase) checks on a real-spacebar DOWN.
+        var radio = new RadioButton();
+        using (var host = Show(radio))
+        {
+            radio.Focus();
+            host.SendText(" ");
+            host.RunFrame();
+            Assert.Equal(true, radio.IsChecked);
+        }
+    }
+
+    [Fact] // C200 — the real-spacebar latch clears on Up / focus loss (Key.Character identity at all sites)
+    public void C200_RealSpacebar_LatchClearsOnUpAndFocusLoss()
+    {
+        // The pressed-latch identity must use the same (Key.Character, " ") match as activation, or a
+        // real-spacebar Up would never clear the latch and the button would stay :pressed.
+        var button = new Button { Width = 10, Height = 1 };
+        using (var host = Show(button))
+        {
+            button.Focus();
+            host.SendKey(Key.Character, text: " "); // down only
+            host.RunFrame();
+            Assert.True(button.IsPressed);
+
+            host.SendKey(Key.Character, text: " "); // a real-spacebar Up is a Character event too
+            host.SendInput(new KeyEvent { Key = Key.Character, Kind = KeyEventKind.Up, Text = " ".AsMemory(), Modifiers = KeyModifiers.None, Timestamp = DateTimeOffset.UnixEpoch });
+            host.RunFrame();
+            Assert.False(button.IsPressed); // Up cleared the latch (C200)
+        }
+
+        // Focus loss clears the latch too (no further click).
+        var sib = new Button { Width = 10, Height = 1 };
+        var latched = new Button { Width = 10, Height = 1 };
+        var panel = new StackPanel();
+        panel.Children.Add(latched);
+        panel.Children.Add(sib);
+        using (var host = Show(panel))
+        {
+            latched.Focus();
+            var clicks = 0;
+            latched.Click += (_, _) => clicks++;
+
+            host.SendKey(Key.Character, text: " "); // activates + latches
+            host.RunFrame();
+            Assert.True(latched.IsPressed);
+            var afterSpace = clicks;
+
+            sib.Focus(); // focus loss → latch clears, no extra click
+            host.RunFrame();
+            Assert.False(latched.IsPressed);
+            Assert.Equal(afterSpace, clicks);
+        }
+    }
+
+    [Fact] // C201 — Ctrl+Space (NUL → Key.Space + Control) must NOT activate (ND10 / N158 — P0-1 regression)
+    public void C201_CtrlSpace_DoesNotActivate()
+    {
+        // ND10: Key.Space is emitted ONLY for NUL→Ctrl+Space, and VtInputInterpreter ALWAYS stamps it
+        // with KeyModifiers.Control. The activation gesture is the modifier-free (Character, " ") form
+        // (N158: (Character, " ", None)). A modified-Space chord — Ctrl+Space being the only real wire
+        // that produces Key.Space at all — must never click the button. This was the P0-1 defect:
+        // the unguarded `e.Key == Key.Space` clause activated on Ctrl+Space.
+        var button = new Button { Width = 10, Height = 1 };
+        var clicks = 0;
+        button.Click += (_, _) => clicks++;
+        using var host = Show(button);
+        button.Focus();
+
+        // (a) The exact CtrlSpace() wire shape (Key.Space + Control) does not activate or latch.
+        host.SendInput(new KeyEvent
+        {
+            Key = Key.Space,
+            Modifiers = KeyModifiers.Control,
+            Kind = KeyEventKind.Down,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunFrame();
+        Assert.Equal(0, clicks);         // Ctrl+Space did NOT click (P0-1)
+        Assert.False(button.IsPressed);  // and did NOT latch :pressed
+
+        // (b) A modified character-form Space (Alt+Space) is likewise inert — the modifier guard
+        //     covers the character clause too, aligning with N158's (Character, " ", None) oracle.
+        host.SendKey(Key.Character, modifiers: KeyModifiers.Alt, text: " ");
+        host.RunFrame();
+        Assert.Equal(0, clicks);
+        Assert.False(button.IsPressed);
+
+        // (c) Sanity: the modifier-free spacebar still activates (the guard didn't over-reach).
+        host.SendText(" ");
+        host.RunFrame();
+        Assert.Equal(1, clicks);
+        Assert.True(button.IsPressed);
+    }
+
     /// <summary>A focusable leaf that handles no keys — Enter bubbles past it (the C198 fixture).</summary>
     private sealed class FocusableLeaf : UIElement
     {

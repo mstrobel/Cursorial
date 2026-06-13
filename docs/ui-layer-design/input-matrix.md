@@ -242,7 +242,7 @@ Tree: `Root` (Canvas 80×24) with `A` at (10,5,10×4), `B` at (30,5,10×4), `D` 
 
 ---
 
-## 8. Focus core — `Focus()`, physical singleton, scopes (I3) — N95–N117, N208–N210
+## 8. Focus core — `Focus()`, physical singleton, scopes (I3) — N95–N117, N208–N210, N213
 
 | # | Setup | Operation | Expected | Oracle |
 |---|---|---|---|---|
@@ -272,6 +272,7 @@ Tree: `Root` (Canvas 80×24) with `A` at (10,5,10×4), `B` at (30,5,10×4), `D` 
 | N208 | B focused | `B.IsEnabled = false` / `B.Visibility = Collapsed` / disable an ancestor containing focus (Theory) | in-place repair (ND28): focus repairs as on detach — nearest valid ancestor (else scope root's first tab stop, else clear); `LostFocus` raised at B, `method = Programmatic`, no `FocusVisible`; subsequent keys route to the repaired target, never to the disabled/hidden element | WPF (ND28) |
 | N209 | focus on a deep leaf; its (focusable) parent and grandparent inside the same subtree; remove the subtree root | `RemoveVisualChild(subtreeRoot)` | exactly **one** transition (ND30): one `LostFocus` (from the old leaf) + one `GotFocus` at a target **outside** the removed subtree; the doomed focusable ancestors never receive focus or `GotFocus` | PIN (ND30) |
 | N210 | A focused; A's `LostFocus` handler calls `C.Focus()` | `B.Focus()` | the nested transition wins (ND31): event order `A.LostFocus → B.LostFocus → C.GotFocus`; **no** `GotFocus` at B (B never observes `GotFocus` while `IsFocused == false`); final `focused == C` | PIN (ND31) |
+| N213 | `host.ShowRoot(Root)` where every focusable sits behind a not-yet-realized boundary (`ScrollViewer.Content → Border → StackPanel → Button`s) — the first tab stop does not exist in the visual tree until the first layout applies templates / realizes content | `RunUntilIdle()` (≥1 layout pass) | activation is **parked** (ND33): `OnWindowActivated` found no tab stop pre-layout and recorded the root; the spine's post-layout retry (`CompletePendingActivationFocus`) re-runs the first-tab-stop search once the subtree is built and focuses it with `method = Restore`. Initial focus is on the first button on the first idle frame, not `none`. The retry is a no-op if focus landed or the app/user moved it meanwhile (never overrides), and is cleared on deactivation | PIN (ND33). In-section test: `Section08_FocusCore.N213_ParkedActivation_FirstTabStopBehindBoundary_FocusesAfterLayout` (hand-built shape). Loader-built parity + the no-override invariant are also proven end-to-end in `Cursorial.UI.Xaml.Tests/Integration/XamlFocusActivationTests.cs` |
 
 ---
 

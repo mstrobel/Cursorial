@@ -5,15 +5,19 @@ namespace Cursorial.UI.Themes;
 /// are typo-proof from C# and verbatim from XAML. S8 adds control-specific keys here as its content
 /// lands.
 /// <para>
-/// <b>Palette-spine status:</b> the design-doc intent is that every color-bearing setter in a control
-/// theme is a <see cref="ResourceReference"/> into one of these keys, so overriding a single key at a
-/// nearer scope re-skins every control with zero template work. That re-skin-via-one-key path is the
-/// <b>R2</b> work item and is <b>not yet wired</b>: the P5 built-in control themes
-/// (<c>ControlThemes</c>) author their pens/brushes as constants, so today overriding a
-/// <see cref="ThemeKeys"/> entry at a chain scope does <em>not</em> re-skin the built-in controls. The
-/// <see cref="GlyphSet"/> keys (<see cref="CheckBoxGlyphs"/>/<see cref="RadioGlyphs"/>/
-/// <see cref="ScrollArrowGlyphs"/>) <em>are</em> live resource reads today; the color keys become live
-/// when R2 lands. See the design-doc §11 known-gaps table.
+/// <b>Palette-spine status (R2 — wired):</b> the color-bearing setters in the built-in control themes
+/// (<c>ControlThemes</c>) are <see cref="ResourceReference"/>s into these keys (via
+/// <see cref="Style.SetResource{T}"/>), so overriding a single key at a nearer chain scope — or a
+/// <c>RequestedThemeBase</c>/<c>RequestedColorTier</c> flip — re-skins every default-look control with
+/// zero template work: the styling frame re-resolves the key per element on the resource pulse and the
+/// AffectsRender change re-rasters only the affected zone. The setters arm at the
+/// <c>ControlTheme</c> layer (below <see cref="BindingPriority.LocalValue"/>), so an explicit local
+/// value the consumer sets always wins. Two deliberate exclusions stay constants: the <c>:focus</c> /
+/// <c>:default</c> border-WEIGHT escalation pens (render-only, NoColor-safe — they are weight bumps,
+/// not colors) and a control's resting <c>Background</c> (an unset/transparent face is the
+/// WPF/Avalonia default — the surface paints only when the consumer sets it). The <see cref="GlyphSet"/>
+/// keys (<see cref="CheckBoxGlyphs"/>/<see cref="RadioGlyphs"/>/<see cref="ScrollArrowGlyphs"/>) have
+/// always been live resource reads.
 /// </para>
 /// </summary>
 public static class ThemeKeys

@@ -105,6 +105,28 @@ public sealed class Style
     }
 
     /// <summary>
+    /// Adds a DynamicResource setter and returns <see langword="this"/> for chaining (the R2 palette
+    /// spine — design doc §11.5 / B10): the setter's value is resolved per styled element against its
+    /// resource chain at <see cref="UIApplication.ActualThemeVariant"/>, and re-resolved live on every
+    /// variant-flip / chain-shadowing pulse reaching the element's root — so a built-in control theme
+    /// that wires its color setters this way re-skins on a dark/light flip with zero template work. The
+    /// contribution arms at the rule's style layer (below <see cref="BindingPriority.LocalValue"/>), so
+    /// an explicit local value always wins; a resource miss leaves the setter valueless (the store
+    /// promotes the next source). Throws if the style is already sealed (S42).
+    /// </summary>
+    /// <typeparam name="T">The property's value type.</typeparam>
+    /// <param name="property">The target styled property.</param>
+    /// <param name="key">The resource key resolved against the styled element's chain.</param>
+    /// <returns>This style, for fluent chaining.</returns>
+    public Style SetResource<T>(StyledProperty<T> property, object key)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(key);
+        Setters.Add(new Setter(property, new ResourceReference(key)));
+        return this;
+    }
+
+    /// <summary>
     /// Nested styles whose selectors start with <c>^</c> and AND-compose with this style's selector
     /// into flattened rules (<c>Widget.primary</c> + <c>^:pointerover</c> ⇒ one rule
     /// <c>Widget.primary:pointerover</c>; composition is transitive through grandchildren).

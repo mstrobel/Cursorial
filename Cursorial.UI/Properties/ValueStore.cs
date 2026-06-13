@@ -589,6 +589,10 @@ internal sealed class ValueStore
         _frameCount++;
         frame.Store = this;
 
+        // The B10 install hook: a resource-backed frame opens its subscriptions and pushes the first
+        // resolved values BEFORE the reevaluation, so the initial arbitration sees the resolved value.
+        frame.OnInstalled();
+
         if (frame.IsActive)
             ReevaluateFrameProperties(frame, hosted: null);
     }
@@ -603,6 +607,9 @@ internal sealed class ValueStore
     {
         if (!ReferenceEquals(frame.Store, this))
             throw new ArgumentException("The frame is not installed on this object (PD21).", nameof(frame));
+
+        // The B10 teardown hook: close any resource subscriptions while the frame is still installed.
+        frame.OnRemoving();
 
         var index = Array.IndexOf(_frames, frame, 0, _frameCount);
         _frameCount--;

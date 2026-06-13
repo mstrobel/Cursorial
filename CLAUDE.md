@@ -380,6 +380,22 @@ loader.
   compiles cross-platform. The **`uixaml` demo** loads its entire control tree from an embedded `.xaml` resource at
   runtime — the live P6 proof.
 
+**P6.1 fixes** (four control/input/theming bugs surfaced by hands-on demo use, each fixed at the engine/theme layer
+with a regression test — no demo hacks): **(1) spacebar activation** — `ButtonBase` keyed off `Key.Space`, but a real
+spacebar is `(Key.Character, " ")` on every wire (ND10; `Key.Space` is only NUL→Ctrl+Space); now matches the
+modifier-free character form, with Ctrl+Space explicitly excluded (it's the lone real `Key.Space` wire). **(2)
+ScrollBar arrows stole Tab** — the BuiltIn `ScrollBarTemplate`'s line `RepeatButton`s inherited `Focusable=true`;
+set `Focusable=false`/`IsTabStop=false` (WPF parity — scrollbars are driven by content keyboard + mouse). **(3)
+theme cycling had no visible effect** — control themes wired *constant* pens/brushes; the **R2 DynamicResource
+palette spine** (`SetResource` into `ThemeKeys`) now feeds resting Foreground/BorderPen + the `:focus` `FocusPen`, so
+a dark/light flip re-skins live (and the focus border resolves the palette accent, not the terminal default). **(4)
+keyboard-focus never engaged a freshly-shown tree** (XAML *and* hand-built) — activation auto-focus ran
+synchronously in the `RootElement` setter, **before the first layout** realized templated subtrees, so the
+first-tab-stop walk found nothing and gave up; `FocusManager` now **parks** the activation and the frame loop retries
+it at the post-layout boundary (`CompletePendingActivationFocus`), so the first focusable auto-focuses the same frame
+its subtree materializes. (The XAML loader was exonerated — a hand-vs-loader diff proved both trees hit the identical
+latent timing bug.)
+
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
 theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);

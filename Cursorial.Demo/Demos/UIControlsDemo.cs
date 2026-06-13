@@ -63,7 +63,6 @@ internal sealed class UIControlsDemo : IDemo
     private static readonly Color PanelBg = Color.FromRgb(38, 42, 58);
     private static readonly Color ButtonFace = Color.FromRgb(56, 92, 168);
     private static readonly Color ButtonHover = Color.FromRgb(80, 124, 210);
-    private static readonly Color ControlText = Color.FromRgb(225, 230, 245);
 
     private sealed class Controller(UIApplication app)
     {
@@ -182,14 +181,18 @@ internal sealed class UIControlsDemo : IDemo
             return row;
         }
 
+        // The button keeps an explicit colored face (an intentional accent surface), but its content ink
+        // and the check/radio foreground are LEFT TO THE THEME — no explicit Foreground — so the BuiltIn
+        // control theme's per-variant TextBrush inks them. That makes 'd' (dark/light) a live canary: the
+        // content re-colors on the flip (an explicit Foreground would pin it and win over the theme).
         private static Button ThemedButton(string content)
-            => new() { Content = content, Background = new SolidColorBrush(ButtonFace), Foreground = new SolidColorBrush(ControlText) };
+            => new() { Content = content, Background = new SolidColorBrush(ButtonFace) };
 
         private static CheckBox ThemedCheck(string content, bool isChecked = false)
-            => new() { Content = content, Foreground = new SolidColorBrush(ControlText), IsChecked = isChecked };
+            => new() { Content = content, IsChecked = isChecked };
 
         private static RadioButton ThemedRadio(string content, string group, bool isChecked = false)
-            => new() { Content = content, GroupName = group, Foreground = new SolidColorBrush(ControlText), IsChecked = isChecked };
+            => new() { Content = content, GroupName = group, IsChecked = isChecked };
 
         // ───────────────────────────── routed key handling ─────────────────────────────
 

@@ -62,6 +62,14 @@ internal sealed class StyleRuleFrame : ValueFrame
 {
     private readonly IValueEntry[] _entries;
 
+    // The R2 palette spine (design doc §11.5 / B10): the resource-backed entries — a setter whose
+    // compiled value is a ResourceReference. Resolved per-element against the owner's resource chain
+    // when the frame installs, re-resolved on every variant-flip / chain-shadowing pulse, torn down on
+    // remove. Null when the rule carries no DynamicResource setters (the overwhelmingly common case —
+    // zero per-frame overhead). The bound subscriptions parallel this array index-for-index.
+    private readonly ResourceBackedEntry[]? _resourceEntries;
+    private ResourceSubscription[]? _resourceSubscriptions;
+
     internal StyleRuleFrame(
         UIElement? owner, CompiledRule rule, StyleSortKey sortKey, StyleLayer layer, object? scopeOwner,
         bool isActive = false)
@@ -74,10 +82,27 @@ internal sealed class StyleRuleFrame : ValueFrame
 
         var setters = rule.Setters;
         var entries = new IValueEntry[setters.Length];
+        List<ResourceBackedEntry>? resourceEntries = null;
+
         for (var i = 0; i < setters.Length; i++)
-            entries[i] = setters[i].Property.CreateStyleEntry(setters[i].Value, hasValue: !setters[i].IsUnset);
+        {
+            var setter = setters[i];
+
+            // A DynamicResource setter installs a VALUELESS entry (the store promotes the next source
+            // until the first resolve); the resolved value flows in at OnInstalled / on each pulse.
+            if (setter.Value is ResourceReference reference)
+            {
+                var entry = setter.Property.CreateStyleEntry(boxedValue: null, hasValue: false);
+                entries[i] = entry;
+                (resourceEntries ??= []).Add(new ResourceBackedEntry(setter.Property, (IStyleSetterEntry)entry, reference.Key));
+                continue;
+            }
+
+            entries[i] = setter.Property.CreateStyleEntry(setter.Value, hasValue: !setter.IsUnset);
+        }
 
         _entries = entries;
+        _resourceEntries = resourceEntries?.ToArray();
     }
 
     /// <summary>The styled element (null only for conformance-kit frames hosted on bare <see cref="UIObject"/>s).</summary>
@@ -145,6 +170,85 @@ internal sealed class StyleRuleFrame : ValueFrame
         throw new ArgumentException($"The frame carries no entry for '{property}'.", nameof(property));
     }
 
+    // ───────────────────────────── DynamicResource setters (design doc §11.5 / B10) ─────────────────────────────
+
+    /// <inheritdoc/>
+    internal override void OnInstalled()
+    {
+        if (_resourceEntries is not { Length: > 0 } resourceEntries || Owner is not { } owner)
+            return;
+
+        // One chain subscription per resource-backed setter, against the owner element's resource chain.
+        // The initial value flows into the entry now (before the store's first reevaluation), so the
+        // arm-time arbitration already sees the resolved palette value; later variant-flip / shadowing
+        // pulses re-push in place via SetEntryValue/UnsetEntryValue (never remove/re-add — §2.4).
+        var subscriptions = new ResourceSubscription[resourceEntries.Length];
+        for (var i = 0; i < resourceEntries.Length; i++)
+        {
+            var backed = resourceEntries[i];
+            subscriptions[i] = ResourceServices.Subscribe(owner, backed.Key, backed.Listener(this), out var initial);
+            ApplyResource(backed, initial);
+        }
+
+        _resourceSubscriptions = subscriptions;
+    }
+
+    /// <inheritdoc/>
+    internal override void OnRemoving()
+    {
+        if (_resourceSubscriptions is not { } subscriptions)
+            return;
+
+        foreach (var subscription in subscriptions)
+            subscription.Dispose();
+
+        _resourceSubscriptions = null;
+    }
+
+    // Pushes a resolved resource value into a backed entry and re-emits in place. A miss
+    // (UnsetValue) or a type-incompatible resource leaves the entry valueless so the store promotes the
+    // next source (CD12) — never a wrong-typed clobber.
+    private void ApplyResource(ResourceBackedEntry backed, object? value)
+    {
+        if (ReferenceEquals(value, UIProperty.UnsetValue))
+        {
+            if (backed.Entry.HasValue)
+                UnsetEntryValue(backed.Property);
+            return;
+        }
+
+        if (!backed.Property.PropertyType.IsInstanceOfType(value) &&
+            !(value is null && !backed.Property.PropertyType.IsValueType))
+        {
+            ResourceDiagnostics.OnRejectedValue(
+                backed.Key,
+                $"resource '{backed.Key}' resolved to {value?.GetType().Name ?? "null"}, incompatible with " +
+                $"style setter target '{backed.Property.Name}' ({backed.Property.PropertyType.Name})");
+
+            if (backed.Entry.HasValue)
+                UnsetEntryValue(backed.Property);
+            return;
+        }
+
+        SetEntryValue(backed.Property, value);
+    }
+
     /// <inheritdoc/>
     public override string ToString() => $"frame[{Rule}] key={SortKey} active={IsActive}";
+
+    // One resource-backed setter: the target property, its style entry, and the resource key. The
+    // listener is created lazily per (frame, entry) so a pulse routes back to ApplyResource on this frame.
+    private sealed class ResourceBackedEntry(UIProperty property, IStyleSetterEntry entry, object key)
+    {
+        internal UIProperty Property { get; } = property;
+        internal IStyleSetterEntry Entry { get; } = entry;
+        internal object Key { get; } = key;
+
+        internal IResourceChangeListener Listener(StyleRuleFrame frame) => new Change(frame, this);
+
+        private sealed class Change(StyleRuleFrame frame, ResourceBackedEntry backed) : IResourceChangeListener
+        {
+            public void OnResourceChanged(object key, object? newValue) => frame.ApplyResource(backed, newValue);
+        }
+    }
 }

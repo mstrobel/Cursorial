@@ -39,6 +39,13 @@ internal static class StyleSetterConverter
         if (ReferenceEquals(value, UIProperty.UnsetValue))
             return new CompiledSetter(property, value: null, isUnset: true);
 
+        // A DynamicResource setter (the R2 palette spine, design doc §11.5 / B10): the value is a
+        // resolution marker, not the property's value type. It passes through seal-conversion verbatim
+        // and the frame resolves it per-element against the owner's resource chain (re-resolving on every
+        // variant flip / chain shadowing pulse). The entry installs valueless until the first resolve.
+        if (value is ResourceReference)
+            return new CompiledSetter(property, value, isUnset: false);
+
         var targetType = property.PropertyType;
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 

@@ -28,6 +28,12 @@ public sealed class FocusManager
     private readonly List<UIElement> _newChainScratch = [];
     private int _transitionDepth;
 
+    // The root awaiting a deferred first-focus: set by OnWindowActivated when activation could not
+    // place focus yet (no scope memory and no tab stop — the visual subtree behind templates /
+    // content presenters is not built until the first layout pass), retried at the post-layout
+    // boundary by CompletePendingActivationFocus. One-shot per activation.
+    private UIElement? _pendingActivationRoot;
+
     /// <summary>The modality source for the <c>:focus-visible</c> policy (assigned by the application after dispatcher construction).</summary>
     internal InputDispatcher? InputDispatcherInternal;
 
@@ -203,11 +209,20 @@ public sealed class FocusManager
     /// always with <see cref="FocusNavigationMethod.Restore"/>. At P2 the single application root
     /// is the only surface; S4's window manager takes over these calls at P7.
     /// </summary>
+    /// <remarks>
+    /// Activation runs synchronously when a root is shown — <b>before the first layout pass</b>, so a
+    /// just-attached root's controls behind a template / content-presenter boundary
+    /// (<c>ContentControl.Content</c>, <c>ScrollViewer</c>) are not yet in the visual tree the tab-order
+    /// walk descends. When neither scope memory nor a first tab stop is reachable, the activation is
+    /// <em>parked</em> (<see cref="_pendingActivationRoot"/>) and the spine retries it through
+    /// <see cref="CompletePendingActivationFocus"/> after the first layout pass builds the subtree.
+    /// </remarks>
     public void OnWindowActivated(UIElement windowRoot)
     {
         ArgumentNullException.ThrowIfNull(windowRoot);
         _dispatcher.VerifyAccess();
         ActiveRoot = windowRoot;
+        _pendingActivationRoot = null;
 
         if (GetFocusedElement(windowRoot) is { } memory && IsValidFocusTarget(memory))
         {
@@ -216,8 +231,52 @@ public sealed class FocusManager
         }
 
         if (_navigator.FirstOrLastTabStop(windowRoot, forward: true) is { } first)
+        {
             SetFocus(first, FocusNavigationMethod.Restore);
-        // else: no focusables — keys/paste fall back to the active root (N115).
+            return;
+        }
+
+        // No focus target reachable yet — park the activation. The first tab stop typically appears
+        // once the first layout pass applies templates and realizes content (the demo's whole panel
+        // sits behind a ScrollViewer's banded SCP + a ContentControl boundary); the post-layout retry
+        // places focus then. Until it resolves, keys/paste fall back to the active root (N115).
+        _pendingActivationRoot = windowRoot;
+    }
+
+    /// <summary>
+    /// Retries a <em>parked</em> activation focus (see <see cref="OnWindowActivated"/>): the spine calls
+    /// this at the post-layout boundary so a root whose first tab stop only materializes after the first
+    /// measure/arrange (templates applied, content realized) auto-focuses its first focusable. A no-op
+    /// once focus has landed anywhere, once the user moved focus, or once the active root changed — the
+    /// retry never overrides a genuine focus the application or the user already established.
+    /// </summary>
+    internal void CompletePendingActivationFocus()
+    {
+        if (_pendingActivationRoot is not { } root)
+            return;
+
+        // Stale-park hygiene: only retry while this is still the active root and focus is still empty.
+        if (!ReferenceEquals(ActiveRoot, root) || FocusedElement is not null)
+        {
+            _pendingActivationRoot = null;
+            return;
+        }
+
+        // Scope memory may have been recorded since activation (e.g. window-activation memory) — honor
+        // it first, exactly as OnWindowActivated does.
+        if (GetFocusedElement(root) is { } memory && IsValidFocusTarget(memory))
+        {
+            _pendingActivationRoot = null;
+            SetFocus(memory, FocusNavigationMethod.Restore);
+            return;
+        }
+
+        if (_navigator.FirstOrLastTabStop(root, forward: true) is { } first)
+        {
+            _pendingActivationRoot = null;
+            SetFocus(first, FocusNavigationMethod.Restore);
+        }
+        // else: still nothing reachable — leave it parked; a later layout (content arriving async) retries.
     }
 
     /// <summary>
@@ -231,6 +290,8 @@ public sealed class FocusManager
         _dispatcher.VerifyAccess();
         if (ReferenceEquals(ActiveRoot, windowRoot))
             ActiveRoot = null;
+        if (ReferenceEquals(_pendingActivationRoot, windowRoot))
+            _pendingActivationRoot = null; // a deactivated root never auto-focuses
     }
 
     // ───────────────────────────── detach hygiene (doc §7.10) ─────────────────────────────

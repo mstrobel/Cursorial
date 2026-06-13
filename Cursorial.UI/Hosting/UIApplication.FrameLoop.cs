@@ -440,6 +440,22 @@ public sealed partial class UIApplication
             }
 
             layoutRan = true;
+
+            // Post-layout activation focus (doc §7.7): a root shown before its first layout could not
+            // place focus at OnWindowActivated time (the first tab stop sits behind templates / content
+            // presenters not yet realized — the demo's whole panel is inside a ScrollViewer's SCP). Now
+            // that the pass has built the visual subtree, complete any parked activation so the first
+            // focusable auto-focuses BEFORE Phase 6 renders (its :focus-visible visual lands this frame).
+            // A no-op once focus has landed or the user moved it (the retry never overrides real focus).
+            try
+            {
+                _focusManager.CompletePendingActivationFocus();
+            }
+            catch (Exception ex)
+            {
+                if (!RaiseUnhandled(ex))
+                    return default;
+            }
         }
         // (P7 seam: windowSystem.OnLayoutCompleted() at this boundary.)
 

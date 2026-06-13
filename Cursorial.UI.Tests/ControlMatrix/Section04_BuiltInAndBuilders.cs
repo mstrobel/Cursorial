@@ -197,27 +197,33 @@ public sealed class Section04_BuiltInAndBuilders
         var armed = StyleDiagnostics.MatchedRules(button);
         Assert.NotEmpty(armed);
         Assert.All(armed, r => Assert.Equal(StyleLayer.ControlTheme, r.Layer)); // the BuiltIn Button theme arms here
-        // P5 wires the theme's pens as constants (the ResourceReference palette spine — re-skin-via-one-key —
-        // is the R2 concern; see ThemeKeys docs / design-doc §11 known gaps). C99 covers the R2 re-skin.
+        // The theme's COLOR setters (Foreground / resting BorderPen) are ResourceReferences into the
+        // ThemeKeys palette (the R2 spine — they still arm at ControlTheme). The :focus escalation is now
+        // ALSO a ResourceReference (ThemeKeys.FocusPen — accent color + heavy weight, P2-1 fix); :default
+        // stays the Pens.Double weight-only constant. C99 covers the live re-skin; C116 covers the variant
+        // flip; Section04 C100b asserts the focus pen resolves the accent color, not terminal default.
     }
 
-    [Fact] // C99 — shadowing a palette key re-skins with zero template work — DEFERRED to R2 (palette spine not wired)
-    public void C99_PaletteKeyShadow_ReSkin_R2Deferred()
+    [Fact] // C99 — shadowing a palette key re-skins a BuiltIn control with zero template work (R2 landed)
+    public void C99_PaletteKeyShadow_ReSkin()
     {
-        using var host = UITestHost.Create();
-        var button = new Button { Content = "OK" };
+        using var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor });
+        var button = new Button { Content = "OK", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         host.ShowRoot(button);
         host.RunFrame();
 
-        // The R2 contract: shadowing ThemeKeys.FocusPen at app scope re-points the control theme's
-        // :focus border pen with zero template work. P5 control themes wire constant pens (not
-        // ResourceReferences), so the shadow has no effect today — assert the current P5 reality so the
-        // row is bound and the R2 flip is a visible, single-assertion change when the spine lands.
-        var beforePen = CursorialTheme.BuiltIn[typeof(Button)];
-        host.Application.Resources[ThemeKeys.FocusPen] = new Pen(Color.FromRgb(1, 2, 3)) { Weight = StrokeWeight.Heavy };
+        // The R2 contract: shadowing ThemeKeys.TextBrush at app scope re-points the control theme's
+        // Foreground ResourceReference setter — the control re-inks with zero template work (the theme
+        // Style instance is untouched; only the resolved resource changes).
+        var beforeTheme = CursorialTheme.BuiltIn[typeof(Button)];
+        var skin = Color.FromRgb(0x11, 0xAA, 0x55);
+        host.Application.Resources[ThemeKeys.TextBrush] = new DrawingMedia.SolidColorBrush(skin);
         host.RunFrame();
-        // Same theme Style instance, constant-pen setters unaffected by the palette shadow (R2 gap).
-        Assert.Same(beforePen, CursorialTheme.BuiltIn[typeof(Button)]);
+
+        // The resolved Foreground tracks the override; the theme Style instance is the same (no re-template).
+        var brush = Assert.IsType<DrawingMedia.SolidColorBrush>(button.Foreground);
+        Assert.Equal(skin, brush.Color);
+        Assert.Same(beforeTheme, CursorialTheme.BuiltIn[typeof(Button)]);
     }
 
     [Fact] // C100 — app.Theme.Styles arm at Theme(2) — DEFERRED to R2 (the theme-styles channel is not consumed in P5)

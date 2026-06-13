@@ -490,6 +490,69 @@ public sealed class Section13_Scrolling
         Assert.IsType<Track>(bar.TemplateInstance!.NameScope.Find("PART_Track"));
     }
 
+    [Fact] // C237 — ScrollBar parts (line buttons + thumb track) are NOT Tab stops
+    public void C237_ScrollBarParts_AreNotTabStops()
+    {
+        // A ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never
+        // by tabbing onto the arrows (WPF/Avalonia parity). ButtonBase opts Focusable in by default,
+        // so the line RepeatButtons must opt back out in the BuiltIn template.
+        var top = new Button { Content = "Top", Width = 10, Height = 1 };
+        var bottom = new Button { Content = "Bottom", Width = 10, Height = 1 };
+        var stack = new StackPanel();
+        stack.Children.Add(top);
+        stack.Children.Add(new Block(8, 100)); // tall body forces a visible vertical bar
+        stack.Children.Add(bottom);
+
+        var sv = new ScrollViewer
+        {
+            Width = 20,
+            Height = 12,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
+            Content = stack,
+        };
+        using var host = Show(sv);
+        var focus = host.Application.FocusManager;
+
+        // The scrollbar parts are present and non-focusable / non-tab-stop.
+        var bar = (ScrollBar)sv.TemplateInstance!.NameScope.Find("PART_VerticalScrollBar")!;
+        var lineUp = (RepeatButton)bar.TemplateInstance!.NameScope.Find("PART_LineUpButton")!;
+        var lineDown = (RepeatButton)bar.TemplateInstance!.NameScope.Find("PART_LineDownButton")!;
+        var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
+        Assert.False(lineUp.Focusable);
+        Assert.False(lineUp.IsTabStop);
+        Assert.False(lineDown.Focusable);
+        Assert.False(lineDown.IsTabStop);
+        Assert.False(track.Focusable); // the Track is a non-focusable UIElement to begin with
+
+        // Tab cycles through ONLY the content buttons — never the scrollbar parts. Drive a full cycle
+        // and assert the focus never lands on (or passes through) any scrollbar part.
+        top.Focus();
+        Assert.Same(top, focus.FocusedElement);
+
+        var visited = new List<UIElement?>();
+        for (var i = 0; i < 6; i++) // more than enough Tabs to cycle the 2-stop content twice over
+        {
+            host.SendKey(Key.Tab);
+            host.RunFrame();
+            visited.Add(focus.FocusedElement);
+            Assert.NotSame(lineUp, focus.FocusedElement);
+            Assert.NotSame(lineDown, focus.FocusedElement);
+            Assert.NotSame(track, focus.FocusedElement);
+        }
+
+        // The cycle is exactly {bottom, top, bottom, top, …} — the two content buttons, nothing else.
+        Assert.All(visited, e => Assert.True(ReferenceEquals(e, top) || ReferenceEquals(e, bottom)));
+        Assert.Contains(visited, e => ReferenceEquals(e, bottom));
+        Assert.Contains(visited, e => ReferenceEquals(e, top));
+
+        // The bar still works by code (mouse/wheel/repeat path) — the value still moves the viewer.
+        bar.Value = 7;
+        host.RunFrame();
+        Assert.Equal(7, sv.VerticalOffset);
+    }
+
     // A bare track-only ScrollBar template (no optional arrows) for the degrade row.
     private static ControlTemplate TrackOnlyTemplate() => new(ctx =>
     {

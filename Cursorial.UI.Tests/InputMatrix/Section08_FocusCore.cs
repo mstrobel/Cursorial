@@ -1,6 +1,8 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
@@ -693,5 +695,43 @@ public class Section08_FocusCore
         Assert.Same(c, focus.FocusedElement);
         Assert.Equal(["A.LostFocus", "B.LostFocus", "C.GotFocus"], events);
         Assert.Null(gotWhileUnfocused);
+    }
+
+    [Fact] // N213 — parked activation: first tab stop behind a not-yet-realized boundary auto-focuses post-layout (ND33)
+    public void N213_ParkedActivation_FirstTabStopBehindBoundary_FocusesAfterLayout()
+    {
+        // The offending shape (matrix N213): every focusable sits behind ScrollViewer.Content → Border →
+        // StackPanel → Buttons. The subtree is realized only when the first measure applies templates /
+        // realizes content, so OnWindowActivated (which runs synchronously inside the RootElement set,
+        // BEFORE the first layout pass) finds no first tab stop and PARKS the activation (ND33). The
+        // spine's post-layout retry (CompletePendingActivationFocus) re-runs the first-tab-stop search
+        // once the subtree is built and focuses the first button with method = Restore.
+        using var host = UITestHost.Create();
+
+        var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var border = new Border { Padding = new Margins(1) };
+        var panel = new StackPanel { Spacing = 1 };
+        var ok = new Button { Content = "OK" };
+        var cancel = new Button { Content = "Cancel" };
+        panel.Children.Add(ok);
+        panel.Children.Add(cancel);
+        border.Child = panel;
+        sv.Content = border;
+
+        var focus = host.Application.FocusManager;
+
+        // Activation parks here (RootElement set → OnWindowActivated, pre-layout): nothing reachable yet.
+        host.ShowRoot(sv);
+        Assert.Null(focus.FocusedElement); // parked, NOT focused — keys fall back to the active root (N115)
+
+        // RunUntilIdle drives ≥1 layout pass; the post-layout retry then focuses the FIRST tab stop.
+        Assert.True(host.RunUntilIdle());
+        Assert.Same(ok, focus.FocusedElement);                                              // initial focus is the first button, not "none"
+        Assert.True((ok.InteractionStateInternal & InteractionState.FocusVisible) != 0);    // method = Restore ⇒ :focus-visible (N115/ND33)
+
+        // The retry is a no-op once focus landed: a further idle settle does not re-target.
+        host.SendKey(Keys.Tab);
+        host.RunUntilIdle();
+        Assert.Same(cancel, focus.FocusedElement); // and the realized subtree is genuinely Tab-navigable
     }
 }

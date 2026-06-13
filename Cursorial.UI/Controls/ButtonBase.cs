@@ -149,6 +149,20 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
 
     // ───────────────────────────── keyboard (down-activation, CD23) ─────────────────────────────
 
+    /// <summary>
+    /// Whether <paramref name="e"/> is the spacebar (the button-activation key). Per the P2 input
+    /// matrix ND10 the spacebar's identity is <c>(Key.Character, " ")</c> on every protocol path
+    /// (VT 0x20, Kitty codepoint 32, Win32 VK_SPACE); <see cref="Key.Space"/> is emitted only for
+    /// NUL→Ctrl+Space, which always carries <see cref="KeyModifiers.Control"/>. Both forms are
+    /// matched — but only when modifier-free — so the real character-form spacebar (and a synthetic
+    /// modifier-free <see cref="Key.Space"/>) activates while Ctrl+Space (and any other modified
+    /// chord) does not (ND10 / N158 — the activation gesture is <c>(Character, " ", None)</c>).
+    /// </summary>
+    private static bool IsActivationSpace(KeyEventArgs e)
+        => e.Modifiers == KeyModifiers.None &&
+           (e.Key == Key.Space ||
+            e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' ');
+
     /// <inheritdoc/>
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -156,27 +170,27 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         if (e.Handled)
             return;
 
-        switch (e.Key)
+        if (IsActivationSpace(e))
         {
-            case Key.Space:
-                // Space activates on Down (IsRepeat-guarded, CD23); the pressed-latch visual is a
-                // capability-gated nicety where Up is reported.
-                if (e.IsRepeat)
-                {
-                    e.Handled = true;
-                    return; // auto-repeat does not re-activate (C192)
-                }
-
+            // Space activates on Down (IsRepeat-guarded, CD23); the pressed-latch visual is a
+            // capability-gated nicety where Up is reported.
+            if (e.IsRepeat)
+            {
                 e.Handled = true;
-                _spaceLatched = true;
-                SetPressed(true);
-                OnClick();
-                break;
+                return; // auto-repeat does not re-activate (C192)
+            }
 
-            case Key.Enter:
-                e.Handled = true;
-                OnClick(); // immediate click, no pressed latch (C193)
-                break;
+            e.Handled = true;
+            _spaceLatched = true;
+            SetPressed(true);
+            OnClick();
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            OnClick(); // immediate click, no pressed latch (C193)
         }
     }
 
@@ -184,7 +198,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
-        if (e.Key == Key.Space && _spaceLatched)
+        if (_spaceLatched && IsActivationSpace(e))
         {
             _spaceLatched = false;
             SetPressed(false);

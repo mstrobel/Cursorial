@@ -9,7 +9,9 @@ namespace Cursorial.UI.Input;
 /// capability gate (<see cref="AccessKeyMode"/>), the Alt-held cue state machine with chord-flash
 /// self-correction, activation-time scope resolution, single-match invocation and multi-match
 /// focus-only cycling, and the menu-mode entry hooks (Alt tap / F10). P2 ships the manager core;
-/// the cue rendering pipeline (<c>AccessTextPresenter</c>, underline UX) lands at P9.
+/// the visual cue (the underscore mnemonic) is wired through the built-in theme rule
+/// <c>:access-keys AccessTextPresenter { ShowUnderline: true }</c> — the cue bit drives it via pure
+/// styling. The remaining P9 UX (multi-match cycling polish, F10/menu surfaces) is deferred.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,9 +32,12 @@ public sealed class AccessKeyManager
     /// <summary>
     /// The access-key cue flag an <c>AccessTextPresenter</c> reads to decide whether to underline its
     /// mnemonic grapheme (design doc §12.5; default <see langword="false"/>). The end-to-end cue
-    /// <em>route</em> (the theme's <c>:access-keys AccessTextPresenter { ShowUnderline: true }</c> rule,
-    /// driven by the <see cref="InteractionState.AccessKeyCue"/> bit) lands at P9; the presenter
-    /// mechanism that consumes this flag is C0.
+    /// <em>route</em> is live: the built-in theme ships
+    /// <c>:access-keys AccessTextPresenter { ShowUnderline: true }</c>, whose <c>:access-keys</c>
+    /// pseudo-class binds on the ancestor scope/window root this manager stamps with
+    /// <see cref="InteractionState.AccessKeyCue"/>, flipping this flag (<c>AffectsRender</c>) on every
+    /// presenter beneath the cue root — permanently in <see cref="AccessKeyMode.AlwaysVisible"/>,
+    /// Alt-toggled in <see cref="AccessKeyMode.AltHeld"/>.
     /// </summary>
     public static readonly AttachedProperty<bool> ShowUnderlineProperty =
         UIProperty.RegisterAttached<AccessKeyManager, UIElement, bool>("ShowUnderline");

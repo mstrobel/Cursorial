@@ -646,6 +646,16 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             if (_app.StylesOrNull is { Count: > 0 } appStyles)
                 appStyles.GetOrBuildIndex(StyleLayer.App, 0).GatherCandidates(element, candidates, _app);
 
+            // Theme(2) — the FRAMEWORK leg of the theme-styles channel (design doc §11.8 #3): the BuiltIn
+            // theme's own ResourceDictionary.Styles, armed below App so an app style always wins. This is
+            // the minimal slice that delivers requirement 6's access-key cue rule; the user-facing
+            // UIApplication.Theme.Styles consumption (and the re-read-on-pulse / version-compare machinery)
+            // remains the deferred R2/B13 work item (the C100/C102 rows pin that deferral). The BuiltIn
+            // dictionary is sealed, so its rules are static — its (Theme, 0) index is warmed once in
+            // CursorialTheme's static init, and a one-time gather at match is exact.
+            if (Themes.CursorialTheme.BuiltIn.Styles is { Count: > 0 } builtInStyles)
+                builtInStyles.GetOrBuildIndex(StyleLayer.Theme, 0).GatherCandidates(element, candidates, Themes.CursorialTheme.BuiltIn);
+
             // Template(1): the owning control template's Styles, scoped to the templated parent (CD30,
             // doc §12.2 step 3). Gathered only for template parts (TemplatedParent != null with a
             // template-styles slot); the rules carry the /template/ hop so they survive the barrier

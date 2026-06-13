@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 
 using Cursorial.UI.Controls;
@@ -23,9 +20,16 @@ public sealed class XamlSchemaContext
     /// <summary>The intrinsics (<c>x:</c>) xmlns URI.</summary>
     public const string IntrinsicsNamespace = "https://cursorial.dev/xaml";
 
+    // Guards every read/write of the mutable registration lists below. The Default instance is
+    // process-wide and documented as shared across documents/hosts; both the loader (Resolve /
+    // GetKnownTypeNames, on whatever thread parses a document) and registration paths (an app/host or
+    // a parallel test fixture calling RegisterAssembly / RegisterDefaultNamespace) touch these lists,
+    // so a List<T>.Add concurrent with an in-flight enumeration would corrupt resolution. The critical
+    // sections are tiny and registration is rare, so a single monitor is the right tool.
+    private readonly object _gate = new();
     private readonly List<string> _defaultClrNamespaces;
     private readonly List<Assembly> _defaultAssemblies;
-    private readonly List<Assembly> _additionalAssemblies = new();
+    private readonly List<Assembly> _additionalAssemblies = [];
 
     /// <summary>The process-wide default context (the Cursorial UI/Controls/Data map).</summary>
     public static XamlSchemaContext Default { get; } = new();
@@ -35,14 +39,14 @@ public sealed class XamlSchemaContext
     {
         // The default xmlns map covers UI/Controls/Data plus Drawing.Media (where brushes/colors/Colors/
         // Brushes live — the XD13 color mini-language and {x:Static Colors.Red}/{x:Static Brushes.Red}).
-        _defaultClrNamespaces = new List<string> { "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.Drawing.Media" };
-        _defaultAssemblies = new List<Assembly>
-        {
-            typeof(UIElement).Assembly,                  // Cursorial.UI
-            typeof(Control).Assembly,                    // Cursorial.UI.Controls (same assembly)
-            typeof(Binding).Assembly,                    // Cursorial.UI.Data (same assembly)
-            typeof(Drawing.Media.SolidColorBrush).Assembly, // Cursorial.Drawing (brushes / Colors / Brushes)
-        };
+        _defaultClrNamespaces = ["Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.Drawing.Media"];
+        _defaultAssemblies =
+        [
+            typeof(UIElement).Assembly,                    // Cursorial.UI
+            typeof(Control).Assembly,                      // Cursorial.UI.Controls (same assembly)
+            typeof(Binding).Assembly,                      // Cursorial.UI.Data (same assembly)
+            typeof(Drawing.Media.SolidColorBrush).Assembly // Cursorial.Drawing (brushes / Colors / Brushes)
+        ];
     }
 
     /// <summary>
@@ -53,8 +57,11 @@ public sealed class XamlSchemaContext
     public void RegisterAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
-        if (!_additionalAssemblies.Contains(assembly))
-            _additionalAssemblies.Add(assembly);
+        lock (_gate)
+        {
+            if (!_additionalAssemblies.Contains(assembly))
+                _additionalAssemblies.Add(assembly);
+        }
     }
 
     /// <summary>
@@ -65,18 +72,21 @@ public sealed class XamlSchemaContext
     public void RegisterDefaultNamespace(string clrNamespace)
     {
         ArgumentException.ThrowIfNullOrEmpty(clrNamespace);
-        if (!_defaultClrNamespaces.Contains(clrNamespace))
-            _defaultClrNamespaces.Add(clrNamespace);
+        lock (_gate)
+        {
+            if (!_defaultClrNamespaces.Contains(clrNamespace))
+                _defaultClrNamespaces.Add(clrNamespace);
+        }
     }
 
     /// <summary>The CLR namespaces mapped to an xmlns URI (for did-you-mean enumeration).</summary>
     public IReadOnlyList<string> GetClrNamespaces(string xmlNamespace)
     {
         if (string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
-            return _defaultClrNamespaces;
+            return SnapshotClrNamespaces();
         if (TryDecodeClrNamespace(xmlNamespace, out var clrNs, out _))
-            return new[] { clrNs };
-        return Array.Empty<string>();
+            return [clrNs];
+        return [];
     }
 
     /// <summary>
@@ -86,13 +96,13 @@ public sealed class XamlSchemaContext
     /// </summary>
     public Type? Resolve(string xmlNamespace, string localName, out string[] ambiguous)
     {
-        ambiguous = Array.Empty<string>();
+        ambiguous = [];
 
         if (TryDecodeClrNamespace(xmlNamespace, out var clrNs, out var assemblyName))
-            return ResolveInNamespaces(localName, new[] { clrNs }, AssembliesFor(assemblyName), out ambiguous);
+            return ResolveInNamespaces(localName, [clrNs], AssembliesFor(assemblyName), out ambiguous);
 
         if (string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
-            return ResolveInNamespaces(localName, _defaultClrNamespaces, AllAssemblies(), out ambiguous);
+            return ResolveInNamespaces(localName, SnapshotClrNamespaces(), AllAssemblies(), out ambiguous);
 
         return null;
     }
@@ -101,14 +111,15 @@ public sealed class XamlSchemaContext
     public string[] GetKnownTypeNames(string xmlNamespace)
     {
         if (!string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
-            return Array.Empty<string>();
+            return [];
 
+        var clrNamespaces = SnapshotClrNamespaces();
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var asm in AllAssemblies())
         {
             foreach (var type in SafeGetExportedTypes(asm))
             {
-                if (type.Namespace is { } ns && _defaultClrNamespaces.Contains(ns) && !type.IsGenericTypeDefinition)
+                if (type.Namespace is { } ns && clrNamespaces.Contains(ns) && !type.IsGenericTypeDefinition)
                     names.Add(type.Name);
             }
         }
@@ -119,7 +130,7 @@ public sealed class XamlSchemaContext
 
     private Type? ResolveInNamespaces(string localName, IReadOnlyList<string> clrNamespaces, IReadOnlyList<Assembly> assemblies, out string[] ambiguous)
     {
-        ambiguous = Array.Empty<string>();
+        ambiguous = [];
         var matches = new List<Type>();
 
         foreach (var clrNs in clrNamespaces)
@@ -141,11 +152,23 @@ public sealed class XamlSchemaContext
         return null;
     }
 
+    // Snapshots the registration lists under the gate so callers iterate a stable copy after the
+    // monitor is released — registration mutates these lists and reflection (the slow part) must not
+    // hold the lock.
+    private List<string> SnapshotClrNamespaces()
+    {
+        lock (_gate)
+            return [.._defaultClrNamespaces];
+    }
+
     private IReadOnlyList<Assembly> AllAssemblies()
     {
-        if (_additionalAssemblies.Count == 0)
-            return _defaultAssemblies;
-        return _defaultAssemblies.Concat(_additionalAssemblies).Distinct().ToList();
+        lock (_gate)
+        {
+            if (_additionalAssemblies.Count == 0)
+                return _defaultAssemblies.ToArray();
+            return _defaultAssemblies.Concat(_additionalAssemblies).Distinct().ToArray();
+        }
     }
 
     private IReadOnlyList<Assembly> AssembliesFor(string? assemblyName)
@@ -156,14 +179,14 @@ public sealed class XamlSchemaContext
         var match = AllAssemblies().FirstOrDefault(a =>
             string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
         if (match is not null)
-            return new[] { match };
+            return [match];
 
         // Try to load the named assembly by simple name from the load context.
         try
         {
-            return new[] { Assembly.Load(assemblyName) };
+            return [Assembly.Load(assemblyName)];
         }
-        catch (Exception ex) when (ex is System.IO.FileNotFoundException or BadImageFormatException or System.IO.FileLoadException)
+        catch (Exception ex) when (ex is FileNotFoundException or BadImageFormatException or FileLoadException)
         {
             return AllAssemblies();
         }
@@ -177,7 +200,7 @@ public sealed class XamlSchemaContext
         }
         catch (Exception ex) when (ex is ReflectionTypeLoadException or NotSupportedException)
         {
-            return Array.Empty<Type>();
+            return [];
         }
     }
 
@@ -208,7 +231,7 @@ public sealed class XamlSchemaContext
                 clrNamespace = body.Substring(0, semi).Trim();
                 foreach (var part in body.Substring(semi + 1).Split(';'))
                 {
-                    var kv = part.Split(new[] { '=' }, 2);
+                    var kv = part.Split(['='], 2);
                     if (kv.Length == 2 && string.Equals(kv[0].Trim(), "assembly", StringComparison.OrdinalIgnoreCase))
                         assemblyName = kv[1].Trim();
                 }

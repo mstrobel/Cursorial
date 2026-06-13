@@ -38,6 +38,13 @@ public static class CursorialTheme
         var dict = new ResourceDictionary();
         Populate(dict);
         dict.Seal();
+
+        // Warm the process-shared theme-styles matcher index once, here in the static initializer,
+        // before any UIApplication can gather against it. The BuiltIn dictionary is shared across every
+        // host (and xUnit runs test classes in parallel); the styling engine only ever gathers it at
+        // (Theme, 0), and a sealed dictionary's Styles never mutate — so this single build is the only
+        // build, and every later GetOrBuildIndex returns the cached instance with no racing rebuild.
+        dict.Styles?.GetOrBuildIndex(StyleLayer.Theme, 0);
         return dict;
     }
 
@@ -62,6 +69,16 @@ public static class CursorialTheme
         // Styles rooted at '^', armed at ControlTheme(0). Their templates + pseudo-class child rules
         // ship the default look for every P5 control.
         ControlThemes.Populate(dict);
+
+        // The theme-styles channel (design doc §11.8 #3): selector styles the theme ships, consumed
+        // from this dictionary's Styles slot and armed at Theme(2) — below App, so app styles always
+        // win. Requirement 6's access-key cue lives here as a single global rule (doc §7.8/§11.8): the
+        // AccessKeyManager stamps InteractionState.AccessKeyCue (the :access-keys pseudo-class) on the
+        // active scope/window root, and this descendant rule binds that ancestor bit to every
+        // AccessTextPresenter underneath, flipping its ShowUnderline (AffectsRender). It works in both
+        // cue modes with zero per-control wiring — permanent underscores in AlwaysVisible (the
+        // non-capable terminal fallback) and Alt-toggled on a capable terminal.
+        dict.Styles = new Styles { CursorialThemeStyles.AccessKeyCue() };
 
         // (·,NoColor): attribute-only fallbacks that win on monochrome — no color, no stranded RGB.
         var noColor = new ResourceDictionary();

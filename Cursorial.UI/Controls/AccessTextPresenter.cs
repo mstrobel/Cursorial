@@ -77,6 +77,10 @@ public sealed class AccessTextPresenter : UIElement
             context.DrawText(0, 0, label.Text, Color.Default);
 
         // The cue: underline the KeyIndex grapheme when AccessKeyManager.ShowUnderline is set on us.
+        // The theme's ':access-keys AccessTextPresenter' rule flips ShowUnderline on EVERY presenter
+        // under the cue-bearing root regardless of whether its label carries a mnemonic, so the HasKey
+        // clause — not a false ShowUnderline — is what guarantees a mnemonic-less label draws no
+        // underline even while the cue is active.
         if (!label.HasKey || !AccessKeyManager.GetShowUnderline(this))
             return;
 

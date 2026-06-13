@@ -1,6 +1,7 @@
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
@@ -350,6 +351,117 @@ public sealed class Section09_TextBorderAccessKey
         // Single-match invokes (Button → click).
         ((IAccessKeyTarget)button).OnAccessKey(new AccessKeyEventArgs('b', isMultiMatch: false, button));
         Assert.True(clicked);
+    }
+
+    // ─── the cue → ShowUnderline link end-to-end (requirement 6 visual half): the BuiltIn theme's
+    //     ':access-keys AccessTextPresenter { ShowUnderline: true }' rule, driven by the cue bit the
+    //     AccessKeyManager stamps on the scope/window root. No test-added style — the framework default
+    //     alone must render the mnemonic underscore. ───
+
+    private static AccessTextPresenter FindPresenter(UIElement element)
+    {
+        if (element is AccessTextPresenter presenter)
+            return presenter;
+
+        if (element.VisualChildrenList is { } children)
+        {
+            foreach (var child in children)
+            {
+                if (FindPresenter(child) is { } found)
+                    return found;
+            }
+        }
+
+        return null!;
+    }
+
+    [Fact] // C181 — PERMANENT (AlwaysVisible) mode: a non-capable keyboard underlines from the first frame.
+    public void C181_AccessKeyCue_PermanentUnderscore_OnLegacyTerminal()
+    {
+        // Ansi16Legacy has KeyboardCapabilities.None → the gate is false → AccessKeyMode.AlwaysVisible
+        // (requirement 6's fallback: the cue bit is stamped on the root permanently at startup). The
+        // theme rule must then underline the mnemonic with NO Alt press.
+        var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
+        var button = new Button { Content = "_OK" }; // folds to AccessText("OK", 'O', 0) → AccessTextPresenter
+        host.ShowRoot(button);
+        host.RunFrame();
+
+        Assert.Equal(AccessKeyMode.AlwaysVisible, host.Application.AccessKeys.Mode);
+
+        var presenter = FindPresenter(button);
+        Assert.True(AccessKeyManager.GetShowUnderline(presenter)); // the theme rule flipped it — no Alt
+
+        // The 'O' mnemonic cell carries TextAttributes.Underline; the 'K' next to it does not.
+        var (oc, orow) = presenter.TranslateToWindow(0, 0);
+        Assert.Equal("O", host.GetCell(oc, orow).Grapheme);
+        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+        Assert.False(host.GetCell(oc + 1, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+
+        using (host) { }
+    }
+
+    [Fact] // C182 — ALT-TOGGLE (AltHeld) mode: a capable terminal underlines only while Alt is held.
+    public void C182_AccessKeyCue_AltToggle_OnCapableTerminal()
+    {
+        // KittyTruecolor reports key up/down + repeats → the gate is true → AccessKeyMode.AltHeld: no
+        // cue at rest, the cue (and thus the underline) appears on Alt-down and reverts on Alt-up.
+        using var host = UITestHost.Create(); // KittyTruecolor default
+        var button = new Button { Content = "_OK" };
+        host.ShowRoot(button);
+        host.RunFrame();
+
+        Assert.Equal(AccessKeyMode.AltHeld, host.Application.AccessKeys.Mode);
+        var presenter = FindPresenter(button);
+        var (oc, orow) = presenter.TranslateToWindow(0, 0);
+
+        // At rest: no cue, no underline.
+        Assert.False(AccessKeyManager.GetShowUnderline(presenter));
+        Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+
+        // Alt down → cue up → the theme rule underlines the mnemonic in the same frame.
+        host.SendKey(Key.LeftAlt, KeyModifiers.Alt);
+        host.RunFrame();
+        Assert.True(host.Application.AccessKeys.IsCueActive);
+        Assert.True(AccessKeyManager.GetShowUnderline(presenter));
+        Assert.Equal("O", host.GetCell(oc, orow).Grapheme);
+        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+
+        // A clean Alt down/up is an Alt TAP (N171): the cue goes sticky (menu mode) and stays up — so
+        // the underscore persists across the release. This is the framework's pinned behavior.
+        host.SendInput(new KeyEvent { Key = Key.LeftAlt, Modifiers = KeyModifiers.None, Kind = KeyEventKind.Up, Timestamp = host.Time.GetUtcNow() });
+        host.RunFrame();
+        Assert.True(host.Application.AccessKeys.IsCueActive); // sticky tap holds the cue
+        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+
+        // A SECOND Alt tap toggles the sticky cue off (N178) → cue down → the underline reverts.
+        host.SendKey(Key.LeftAlt, KeyModifiers.Alt);
+        host.RunFrame();
+        host.SendInput(new KeyEvent { Key = Key.LeftAlt, Modifiers = KeyModifiers.None, Kind = KeyEventKind.Up, Timestamp = host.Time.GetUtcNow() });
+        host.RunFrame();
+        Assert.False(host.Application.AccessKeys.IsCueActive);
+        Assert.False(AccessKeyManager.GetShowUnderline(presenter));
+        Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+    }
+
+    [Fact] // C182b — terminal focus-out clears the cue and the underline (ND24 ①).
+    public void C182b_AccessKeyCue_TerminalFocusOut_ClearsUnderline()
+    {
+        using var host = UITestHost.Create();
+        var button = new Button { Content = "_OK" };
+        host.ShowRoot(button);
+        host.RunFrame();
+        var presenter = FindPresenter(button);
+        var (oc, orow) = presenter.TranslateToWindow(0, 0);
+
+        host.SendKey(Key.LeftAlt, KeyModifiers.Alt);
+        host.RunFrame();
+        Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
+
+        // A terminal focus-out (Alt+Tab swallows the Up) must clear the cue unconditionally.
+        host.SendInput(new Cursorial.Input.Events.FocusEvent { HasFocus = false, Timestamp = host.Time.GetUtcNow() });
+        host.RunFrame();
+        Assert.False(host.Application.AccessKeys.IsCueActive);
+        Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
     }
 
     // ─── registration THROUGH the manager (not OnAccessKey directly) — C177/C178 producer ③ ───

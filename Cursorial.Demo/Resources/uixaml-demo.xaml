@@ -7,12 +7,12 @@
          embedded .xaml string at runtime by Cursorial.UI.Xaml (the P6 runtime loader). -->
 
     <DockPanel.Resources>
-        <DemoBrush x:Key="Chrome"     Color="#1e212c"/>
-        <DemoBrush x:Key="Accent"     Color="#5678dc"/>
-        <DemoBrush x:Key="PanelBg"    Color="#262a3a"/>
-        <DemoBrush x:Key="ButtonFace" Color="#385ca8"/>
-        <DemoBrush x:Key="ControlInk" Color="#e1e6f5"/>
-        <DemoBrush x:Key="CaptionInk" Color="#c8cee2"/>
+        <SolidColorBrush x:Key="Chrome"     Color="#1e212c"/>
+        <SolidColorBrush x:Key="Accent"     Color="#5678dc"/>
+        <SolidColorBrush x:Key="PanelBg"    Color="#262a3a"/>
+        <SolidColorBrush x:Key="ButtonFace" Color="#385ca8"/>
+        <SolidColorBrush x:Key="ControlInk" Color="#e1e6f5"/>
+        <SolidColorBrush x:Key="CaptionInk" Color="#c8cee2"/>
 
         <!-- A chrome ControlTemplate whose part binds to the templated parent via {TemplateBinding}. -->
         <ControlTemplate x:Key="ChromeTemplate">

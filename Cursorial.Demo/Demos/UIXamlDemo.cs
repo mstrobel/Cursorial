@@ -45,12 +45,8 @@ internal sealed class UIXamlDemo : IDemo
                           "activates, the wheel/arrows scroll, 't' cycles the color tier, 'd' flips " +
                           "dark/light; q / Esc / Ctrl+C exits.");
 
-        // Register the demo's XAML-visible fixture type (Cursorial.Demo.DemoBrush) in the default xmlns so
-        // the document can name it unprefixed — the app/host's "register my control namespace" step
-        // (XamlSchemaContext). The demo command classes live in the global namespace; DemoBrush is in an
-        // explicit Cursorial.Demo namespace precisely so it has a namespace to register.
-        XamlSchemaContext.Default.RegisterAssembly(typeof(UIXamlDemo).Assembly);
-        XamlSchemaContext.Default.RegisterDefaultNamespace(typeof(Cursorial.Demo.DemoBrush).Namespace!);
+        // No app-assembly type registration needed: the document names only built-in controls plus
+        // SolidColorBrush, which lives in Cursorial.Drawing.Media — already in the default xmlns map.
 
         var app = UIApplication.CreateBuilder()
             .WithFrameRate(60)
@@ -172,13 +168,13 @@ internal sealed class UIXamlDemo : IDemo
         private void CycleColorTier()
         {
             app.RequestedColorTier = app.RequestedColorTier switch
-            {
-                null => ColorDepth.Ansi256,
-                ColorDepth.Ansi256 => ColorDepth.Ansi16,
-                ColorDepth.Ansi16 => ColorDepth.NoColor,
-                ColorDepth.NoColor => ColorDepth.Truecolor,
-                _ => null,
-            };
+                                     {
+                                         null                 => ColorDepth.Ansi256,
+                                         ColorDepth.Truecolor => ColorDepth.Ansi256,
+                                         ColorDepth.Ansi256   => ColorDepth.Ansi16,
+                                         ColorDepth.Ansi16    => ColorDepth.NoColor,
+                                         _                    => ColorDepth.Truecolor
+                                     };
             Action($"color tier → {app.ActualThemeVariant.Tier}");
         }
 
@@ -191,12 +187,14 @@ internal sealed class UIXamlDemo : IDemo
         private void UpdateStatus()
         {
             var focused = app.FocusManager.FocusedElement;
+
             var focusName = focused switch
-            {
-                ContentControl cc when cc.Content is string s => s.Replace("_", string.Empty),
-                { } other => other.GetType().Name,
-                _ => "none",
-            };
+                            {
+                                ContentControl { Content: string s } => s.Replace("_", string.Empty),
+                                {} other                             => other.GetType().Name,
+                                _                                    => "none"
+                            };
+
             // The status line is a {Binding} onto _vm.Status — writing the VM flows through the binding to
             // the bound TextBlock on the next frame (the live proof the loader produced a real binding).
             _vm.Status = $" focus: {focusName,-10} · last: {_lastAction,-16} · theme: {app.ActualThemeVariant}" +
@@ -227,24 +225,5 @@ internal sealed class UIXamlDemo : IDemo
         public event PropertyChangedEventHandler? PropertyChanged;
         private void Raise([CallerMemberName] string? name = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-    }
-}
-
-namespace Cursorial.Demo
-{
-    /// <summary>
-    /// A XAML-constructible brush (parameterless ctor + a string-convertible <c>Color</c>) for the
-    /// <c>uixaml</c> demo's resource dictionary — the immutable <see cref="SolidColorBrush"/> has no
-    /// parameterless ctor, so it can't be authored as a resource ELEMENT. Public + in the explicit
-    /// <c>Cursorial.Demo</c> namespace (not the demo files' global namespace) so the document can name it
-    /// unprefixed once that namespace is registered in the default xmlns.
-    /// </summary>
-    public sealed class DemoBrush : IBrush
-    {
-        /// <summary>The brush color (the <c>#hex</c> / named-ANSI string-convertible XAML attribute).</summary>
-        public Color Color { get; set; }
-
-        /// <inheritdoc/>
-        public Color ColorAt(int column, int row, Rect bounds) => Color;
     }
 }

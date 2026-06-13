@@ -32,7 +32,7 @@ public sealed class BrushInterpolator : IInterpolator<IBrush>
         return (from, to) switch
                {
                    (SolidColorBrush a, SolidColorBrush b) =>
-                       new SolidColorBrush(Color.Lerp(a.Color, b.Color, progress)),
+                       new SolidColorBrush(Color.Lerp(a.Color, b.Color, progress), Lerp(a.Opacity, b.Opacity, progress)),
 
                    (LinearGradientBrush a, LinearGradientBrush b) when a.Stops.Count == b.Stops.Count =>
                        new LinearGradientBrush(

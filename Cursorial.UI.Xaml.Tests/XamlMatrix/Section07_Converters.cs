@@ -90,6 +90,26 @@ public sealed class Section07_Converters : LoaderTestBase
         => Assert.IsType(expected, Convert(typeof(IBrush), text));
 
     [Fact]
+    public void X088b_SolidColorBrush_ElementDeclaration_ParameterlessCtorPlusInitColor()
+    {
+        // The DemoBrush workaround is gone: SolidColorBrush is now directly authorable as a resource
+        // ELEMENT (parameterless ctor + init-only Color the loader sets reflectively after activation).
+        var brush = Load<SolidColorBrush>("<SolidColorBrush Color=\"#1e212c\"/>");
+        Assert.Equal(Color.FromHex("#1e212c"), brush.Color);
+        Assert.Equal(1.0, brush.Opacity);
+        Assert.Equal(Color.FromHex("#1e212c"), brush.ColorAt(0, 0, new Rect(0, 0, 4, 4)));
+    }
+
+    [Fact]
+    public void X088c_SolidColorBrush_ElementDeclaration_OpacityInit_FoldsAtSample()
+    {
+        var brush = Load<SolidColorBrush>("<SolidColorBrush Color=\"#ff0000\" Opacity=\"0.5\"/>");
+        Assert.Equal(0.5, brush.Opacity);
+        Assert.Equal(Color.FromHex("#ff0000"), brush.Color);     // declared color is raw…
+        Assert.Equal(128, brush.ColorAt(0, 0, new Rect(0, 0, 4, 4)).Alpha); // …opacity folds into the sample
+    }
+
+    [Fact]
     public void X090_Enum_ByNameAndOrdinal()
     {
         Assert.Equal(Visibility.Collapsed, Convert(typeof(Visibility), "Collapsed"));

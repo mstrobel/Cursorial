@@ -186,10 +186,10 @@ internal sealed class UIPanelsDemo : IDemo
 
             sidebar.Children.Add(new Label(" chips (WrapPanel):", ChromeText, SidebarBg));
             var chips = new WrapPanel { ItemWidth = 5, ItemHeight = 1, Margin = new Margins(2, 0) };
-            for (var i = 0; i < 8; i++)
+            for (var i = 0; i < 16; i++)
             {
-                var hue = i / 8.0;
-                chips.Children.Add(new FillBox(Color.FromHsv(hue, 0.65, 0.85)) { Width = 4, Height = 1 });
+                // var hue = i / 8.0;
+                chips.Children.Add(new FillBox(/*Color.FromHsv(hue, 0.65, 0.85)*/Color.FromPalette((byte)i)) { Width = 4, Height = 1 });
             }
 
             sidebar.Children.Add(chips);

@@ -237,13 +237,13 @@ internal sealed class UIControlsDemo : IDemo
         private void CycleColorTier()
         {
             app.RequestedColorTier = app.RequestedColorTier switch
-            {
-                null => ColorDepth.Ansi256,
-                ColorDepth.Ansi256 => ColorDepth.Ansi16,
-                ColorDepth.Ansi16 => ColorDepth.NoColor,
-                ColorDepth.NoColor => ColorDepth.Truecolor,
-                _ => null, // clear → back to the negotiated tier
-            };
+                                     {
+                                         null                 => ColorDepth.Ansi256,
+                                         ColorDepth.Truecolor => ColorDepth.Ansi256,
+                                         ColorDepth.Ansi256   => ColorDepth.Ansi16,
+                                         ColorDepth.Ansi16    => ColorDepth.NoColor,
+                                         _                    => ColorDepth.Truecolor
+                                     };
             Action($"color tier → {app.ActualThemeVariant.Tier}");
         }
 

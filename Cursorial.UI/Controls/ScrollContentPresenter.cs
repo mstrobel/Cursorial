@@ -135,16 +135,39 @@ public class ScrollContentPresenter : UIElement
                 return;
 
             if (_content is { } old)
-                DisownChild(old);
+            {
+                // Symmetric with the adoption below: a visual-only host releases only the visual link.
+                if (_contentLogicallyOwned)
+                    DisownChild(old);
+                else
+                    RemoveVisualChild(old);
+            }
 
             _content = value;
+            _contentLogicallyOwned = false;
 
             if (value is not null)
-                AdoptChild(value, -1);
+            {
+                // Content the ScrollViewer (a ContentControl) already owns logically is hosted
+                // visual-only — adopting it logically here would double-parent it (a logical-tree
+                // violation). Free-standing content (no logical parent) is adopted both ways so
+                // DataContext inheritance flows.
+                if (value.LogicalParent is null)
+                {
+                    AdoptChild(value, -1);
+                    _contentLogicallyOwned = true;
+                }
+                else
+                {
+                    AddVisualChildOnly(value, -1);
+                }
+            }
 
             InvalidateMeasure();
         }
     }
+
+    private bool _contentLogicallyOwned;
 
     /// <summary>Always a render boundary — design doc §5.5 predicate ⑥ (a boundary from attach, never via mid-life promotion).</summary>
     internal override bool IsAlwaysRenderBoundary => true;

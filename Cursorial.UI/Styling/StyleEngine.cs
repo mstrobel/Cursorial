@@ -88,7 +88,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // ordinary class-change re-match path within the same tick (B4 P3 slice, SD14).
         _capabilities = capabilities;
 
-        if (_app.RootElement is { } root && IsStylable(root))
+        if (_app.RootElement is {} root && IsStylable(root))
             StampCapabilityClasses(root);
     }
 
@@ -97,7 +97,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// <inheritdoc/>
     public void OnInteractionStateChanged(UIElement element, InteractionState oldState, InteractionState newState)
     {
-        if (element.StyleStateInternal is not { } state)
+        if (element.StyleStateInternal is not {} state)
             return; // no styling state — O(1), allocation-free (S175)
 
         var delta = oldState ^ newState;
@@ -110,7 +110,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// <summary>A custom pseudo-class flip (<see cref="PseudoClassSet"/> / <see cref="PseudoClassMapping"/>).</summary>
     internal void OnCustomPseudoClassChanged(UIElement element)
     {
-        if (element.StyleStateInternal is not { } state)
+        if (element.StyleStateInternal is not {} state)
             return;
 
         if (!state.HasCustomSubjectInterest && !state.HasCustomAncestorInterest)
@@ -161,7 +161,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// <summary>The detach walk's per-element hook (bottom-up; SD15 — the state drops entirely).</summary>
     internal void OnElementDetached(UIElement element)
     {
-        if (element.StyleStateInternal is not { } state)
+        if (element.StyleStateInternal is not {} state)
             return;
 
         RetractAllFrames(element, state);
@@ -231,6 +231,29 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         }
     }
 
+    /// <summary>
+    /// A control's resolved theme identity changed (the <c>Control.Theme</c> override set, a variant
+    /// flip, or chain shadowing — CD13/CD15): re-match the element so the new theme's rules arm and the
+    /// old theme's frames retract (the SD21 identity diff keeps shared survivors). A re-resolve to the
+    /// <em>same</em> <see cref="Style"/> instance is a no-op diff (CD15 — variant flips keep the
+    /// per-type theme identity, so no re-templating).
+    /// </summary>
+    internal void OnControlThemeChanged(UIElement element)
+    {
+        if (!IsStylable(element))
+            return;
+
+        BeginStructuralPass();
+        try
+        {
+            ReMatchElement(element);
+        }
+        finally
+        {
+            EndStructuralPass();
+        }
+    }
+
     /// <summary>An element scope's <see cref="UIElement.Styles"/> changed (SD21 — coarse re-match with identity diff).</summary>
     internal void OnScopeStylesInvalidated(UIElement scopeOwner)
     {
@@ -251,7 +274,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// <summary>The application <see cref="UIApplication.Styles"/> collection changed (SD21).</summary>
     internal void OnAppStylesInvalidated()
     {
-        if (_app.RootElement is not { } root || !IsStylable(root))
+        if (_app.RootElement is not {} root || !IsStylable(root))
             return;
 
         BeginStructuralPass();
@@ -359,7 +382,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 for (var i = 0; i < batch.Count; i++)
                 {
                     var element = batch[i];
-                    if (element.StyleStateInternal is not { } state)
+                    if (element.StyleStateInternal is not {} state)
                         continue; // detached/retracted since it queued
 
                     state.QueuedForReconcile = false;
@@ -386,7 +409,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         var first = true;
         foreach (var element in _pending)
         {
-            if (element.StyleStateInternal is not { } state)
+            if (element.StyleStateInternal is not {} state)
                 continue;
 
             foreach (var frame in state.Frames)
@@ -411,7 +434,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             foreach (var frame in frames)
                 ReconcileFrame(frame);
 
-            if (state.Dependents is { } dependents)
+            if (state.Dependents is {} dependents)
             {
                 // Index loop tolerant of unregistration during reconciliation.
                 for (var i = 0; i < dependents.Count; i++)
@@ -459,7 +482,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     {
         // Recompute-from-truth (immune to ordering drift; O(requirements), allocation-free — the
         // counter-decrement shape of doc §3.3 is an optimization this recompute replaces 1:1).
-        if (frame.Owner is not { } owner)
+        if (frame.Owner is not {} owner)
             return true;
 
         var rule = frame.Rule;
@@ -473,7 +496,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 return false;
         }
 
-        if (frame.AncestorRequirements is { } requirements)
+        if (frame.AncestorRequirements is {} requirements)
         {
             foreach (var requirement in requirements)
             {
@@ -485,7 +508,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // When data conditions: every armed condition's watch value must satisfy its verdict
         // (unresolved ⇒ unmet — doc §3.3). The watches are live (B16); this is a pure read of their
         // last-delivered values, allocation-free, ordering-immune.
-        if (frame.WhenRequirements is { } whenRequirements)
+        if (frame.WhenRequirements is {} whenRequirements)
         {
             foreach (var requirement in whenRequirements)
             {
@@ -499,7 +522,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private static void RunEdgeActions(StyleRuleFrame frame, EdgeActionCollection? actions, bool entering)
     {
-        if (actions is not { Count: > 0 } || frame.Owner is not { } owner)
+        if (actions is not { Count: > 0 } || frame.Owner is not {} owner)
             return;
 
         // Rule-document order, on EVERY edge (SD16). No exception guard at P3 — S5 adds the
@@ -543,7 +566,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private bool IsStylable(UIElement element)
         => element.IsAttachedToTree
-           && _app.RootElement is { } root
+           && _app.RootElement is {} root
            && ReferenceEquals(element.VisualRoot, root);
 
     /// <summary>Re-runs Phase 1 for one element and applies the SD21 identity diff to its armed frames.</summary>
@@ -584,7 +607,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             ReMatchElement(element);
         }
 
-        if (element.VisualChildrenList is not { } children)
+        if (element.VisualChildrenList is not {} children)
             return;
 
         for (var i = 0; i < children.Count; i++)
@@ -623,19 +646,36 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             if (_app.StylesOrNull is { Count: > 0 } appStyles)
                 appStyles.GetOrBuildIndex(StyleLayer.App, 0).GatherCandidates(element, candidates, _app);
 
+            // Template(1): the owning control template's Styles, scoped to the templated parent (CD30,
+            // doc §12.2 step 3). Gathered only for template parts (TemplatedParent != null with a
+            // template-styles slot); the rules carry the /template/ hop so they survive the barrier
+            // below. Theme(2) is the app-theme Styles channel (R2 content); this gathers the
+            // structurally-armed Template layer P5 templates depend on.
+            if (element.TemplatedParent is {} templatedParent &&
+                templatedParent.TemplateStylesForArming is { Count: > 0 } templateStyles)
+            {
+                templateStyles.GetOrBuildIndex(StyleLayer.Template, 0)
+                              .GatherCandidates(element, candidates, templatedParent);
+            }
+
             // Invariant 5 (SD8): the barrier tests the subject only — a templated part is skipped for
             // every rule without a /template/ hop, BEFORE structural evaluation.
             var barred = element.TemplatedParent is not null;
 
             foreach (var candidate in candidates)
             {
-                if (candidate.Rule.Branch is not { } branch)
+                if (candidate.Rule.Branch is not {} branch)
                     continue; // selector-less keyed styles never match through the index
 
                 if (barred && !candidate.Rule.HasTemplateHop)
                     continue;
 
-                if (MatchBranch(element, branch, anchor: null, bindings: null))
+                // A Template-layer rule's '^' subject anchor binds to its scope owner (the templated
+                // parent) — the template's Styles are authored as '^ /template/ part' (CD30): after the
+                // template hop the '^' compound matches the owner. App/Scoped rules pass a null anchor.
+                var anchor = candidate.Layer == StyleLayer.Template ? candidate.ScopeOwner as UIElement : null;
+
+                if (MatchBranch(element, branch, anchor, bindings: null))
                     matches.Add(candidate);
             }
         }
@@ -645,27 +685,60 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             ReturnChainList(chain);
         }
 
+        // ControlTheme(0) — the per-type control theme (a selector-less Style rooted at '^', CD13/CD30):
+        // resolved by ControlThemeKey through the chain (or the explicit Control.Theme override), armed
+        // element-addressed exactly like the Explicit channel but at the weakest style layer so app
+        // styles always beat the theme. Children rules ('^:pressed', '^:checked') arm anchored to the
+        // element; the selector-less root rule arms always-active.
+        if (element is IControlThemeHost themeHost && ResolveControlTheme(themeHost) is { } controlTheme)
+            GatherElementAddressedStyle(element, controlTheme, StyleLayer.ControlTheme, matches);
+
         // Explicit(5) — element-addressed, exempt from the barrier (SD8/S88); skips the index.
-        if (element.ExplicitStyleOrNull is { } explicitStyle)
+        if (element.ExplicitStyleOrNull is {} explicitStyle)
+            GatherElementAddressedStyle(element, explicitStyle, StyleLayer.Explicit, matches);
+    }
+
+    /// <summary>
+    /// Arms a selector-less or <c>^</c>-rooted style element-addressed at <paramref name="layer"/>
+    /// (the shared shape of the Explicit and ControlTheme channels): a selector-less rule is
+    /// always-active; a single-compound <c>^</c>-anchored rule matches against the element itself
+    /// (reach-in <c>^ /template/ #part</c> / <c>^ &gt; Child</c> shapes arm parts/descendants).
+    /// </summary>
+    private void GatherElementAddressedStyle(UIElement element, Style style, StyleLayer layer, List<ScopeCandidate> matches)
+    {
+        var rules = style.CompiledRules;
+        for (var r = 0; r < rules.Length; r++)
         {
-            var rules = explicitStyle.CompiledRules;
-            for (var r = 0; r < rules.Length; r++)
+            var rule = rules[r];
+            var key = StyleSortKey.Create(layer, rule.Names, rule.ClassLike, rule.Types, scopeDepth: 0, order: r);
+
+            if (rule.Branch is not {} branch)
             {
-                var rule = rules[r];
-                var key = StyleSortKey.Create(StyleLayer.Explicit, rule.Names, rule.ClassLike, rule.Types, scopeDepth: 0, order: r);
-
-                if (rule.Branch is not { } branch)
-                {
-                    matches.Add(new ScopeCandidate(rule, key, StyleLayer.Explicit, element));
-                    continue;
-                }
-
-                // P3 arms the rules whose subject IS the '^' anchor; reach-in shapes
-                // ('^ /template/ #part', '^ > Child') arm template parts/descendants at P5.
-                if (branch.Compounds.Length == 1 && MatchCompound(element, branch.Subject, anchor: element))
-                    matches.Add(new ScopeCandidate(rule, key, StyleLayer.Explicit, element));
+                matches.Add(new ScopeCandidate(rule, key, layer, element));
+                continue;
             }
+
+            if (branch.Compounds.Length == 1 && MatchCompound(element, branch.Subject, anchor: element))
+                matches.Add(new ScopeCandidate(rule, key, layer, element));
         }
+    }
+
+    /// <summary>
+    /// Resolves an element's control theme (design doc §11.3, CD13): the explicit <c>Control.Theme</c>
+    /// override wins, else a chain lookup by <see cref="IControlThemeHost.ControlThemeKey"/> (exact-key,
+    /// no base probing). Returns <see langword="null"/> on a miss — the control degrades to its own
+    /// template/render with a one-time diagnostic owned by the control.
+    /// </summary>
+    private static Style? ResolveControlTheme(IControlThemeHost host)
+    {
+        Style? theme = host.ThemeOverride;
+        if (theme is null && host.Element.TryFindResource(host.ControlThemeKey, out var value))
+            theme = value as Style;
+
+        // A theme style must be sealed before its rules compile (CompiledRules throws otherwise). A
+        // BuiltIn theme is sealed by its dictionary; an explicit Control.Theme override is sealed here.
+        theme?.Seal();
+        return theme;
     }
 
     // ───────────────────────────── Phase 1 scratch pools (re-entrancy-safe) ─────────────────────────────
@@ -921,7 +994,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private static void UnbindAncestorRequirements(StyleRuleFrame frame)
     {
-        if (frame.AncestorRequirements is not { } requirements)
+        if (frame.AncestorRequirements is not {} requirements)
             return;
 
         frame.AncestorRequirements = null;
@@ -930,7 +1003,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         {
             foreach (var candidate in requirement.Candidates)
             {
-                if (candidate.StyleStateInternal is not { } state)
+                if (candidate.StyleStateInternal is not {} state)
                     continue;
 
                 state.RemoveDependent(requirement);
@@ -975,7 +1048,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private static void UnbindWhenRequirements(StyleRuleFrame frame)
     {
-        if (frame.WhenRequirements is not { } requirements)
+        if (frame.WhenRequirements is not {} requirements)
             return;
 
         frame.WhenRequirements = null;
@@ -992,10 +1065,10 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// </summary>
     private void OnWhenConditionChanged(StyleRuleFrame frame)
     {
-        if (frame.Store is null || frame.Owner is not { } owner)
+        if (frame.Store is null || frame.Owner is not {} owner)
             return; // removed/disarmed since the watch was armed
 
-        if (owner.StyleStateInternal is not { } state)
+        if (owner.StyleStateInternal is not {} state)
             return; // detached — OnElementDetached already retracted (SD15)
 
         RequestReconcile(owner, state);
@@ -1115,7 +1188,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             case SelectorCombinator.Template:
                 // SD8: the hop requires a non-null TemplatedParent matching the left compound and
                 // crosses exactly one stamp edge — the walk continues FROM the templated parent.
-                return element.TemplatedParent is { } templatedParent
+                return element.TemplatedParent is {} templatedParent
                        && MatchFrom(templatedParent, branch, compoundIndex - 1, anchor, bindings);
 
             default: // Descendant — any styling ancestor, with full backtracking (S68)
@@ -1135,7 +1208,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (compound.IsNesting && !ReferenceEquals(element, anchor))
             return false;
 
-        if (compound.Type is { } type)
+        if (compound.Type is {} type)
         {
             if (compound.IsAssignableType)
             {
@@ -1153,7 +1226,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             switch (simple.Kind)
             {
                 case SimpleSelectorKind.Class:
-                    if (element.ClassesOrNull is not { } classes || !classes.Contains(simple.Value))
+                    if (element.ClassesOrNull is not {} classes || !classes.Contains(simple.Value))
                         return false;
                     break;
 
@@ -1198,7 +1271,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private static bool SubtreeHasInterestedScope(UIElement element, string name, bool isClass)
     {
-        if (element.VisualChildrenList is not { } children)
+        if (element.VisualChildrenList is not {} children)
             return false;
 
         for (var i = 0; i < children.Count; i++)
@@ -1226,28 +1299,38 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private static bool IndexContains(StyleScopeIndex index, string name, bool isClass)
         => isClass
-            ? index.AncestorInterestingClasses is { } classes && classes.Contains(name)
-            : index.AncestorInterestingNames is { } names && names.Contains(name);
+            ? index.AncestorInterestingClasses is {} classes && classes.Contains(name)
+            : index.AncestorInterestingNames is {} names && names.Contains(name);
 
     // ───────────────────────────── capability classes (SD14) ─────────────────────────────
 
     /// <summary>
-    /// Stamps the <c>caps-*</c> classes on the shown root from the <b>negotiated</b> snapshot
-    /// (SD14): exactly one color tier (<c>caps-truecolor</c>/<c>caps-ansi256</c>/<c>caps-ansi16</c>/
-    /// <c>caps-nocolor</c>), <c>caps-motion</c>, <c>caps-kitty-keyboard</c>, and the unconditional
-    /// <c>caps-unicode</c>. <b>Inversion 6 interim:</b> sourcing from the negotiated snapshot is P3
-    /// scaffolding — at P5, S7's theming re-points the color tier to
-    /// <c>ActualThemeVariant.Tier</c> (the effective tier after palette rewrite) with no engine
-    /// change beyond this method's source read.
+    /// Re-stamps the effective-tier color class when <see cref="UIApplication.ActualThemeVariant"/>'s
+    /// tier changes (the P5 inversion-6 re-point, CD14): the color-tier class flip rides the
+    /// variant-changed event, not a separate negotiated-caps hook. Non-color classes are unaffected.
+    /// </summary>
+    internal void OnEffectiveTierChanged(ColorDepth tier)
+    {
+        if (_app.RootElement is {} root && IsStylable(root))
+            StampCapabilityClasses(root);
+    }
+
+    /// <summary>
+    /// Stamps the <c>caps-*</c> classes on the shown root (SD14, CD14): exactly one color tier
+    /// (<c>caps-truecolor</c>/<c>caps-ansi256</c>/<c>caps-ansi16</c>/<c>caps-nocolor</c>) from the
+    /// <b>effective</b> tier (<see cref="UIApplication.ActualThemeVariant"/>.Tier, honoring
+    /// <c>RequestedColorTier</c> — the P5 re-point of the P3 scaffolding); <c>caps-motion</c>,
+    /// <c>caps-kitty-keyboard</c>, and the unconditional <c>caps-unicode</c> from the
+    /// <b>negotiated</b> snapshot.
     /// </summary>
     private void StampCapabilityClasses(UIElement root)
     {
-        if (_capabilities is not { } capabilities)
+        if (_capabilities is not {} capabilities)
             return; // nothing negotiated yet — the startup pre-Show call records only (B2)
 
         var replacement = new List<string>();
 
-        if (root.ClassesOrNull is { } existing)
+        if (root.ClassesOrNull is {} existing)
         {
             foreach (var name in existing)
             {
@@ -1256,7 +1339,8 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             }
         }
 
-        replacement.Add(capabilities.Output.Color.Depth switch
+        // The color-tier class follows the EFFECTIVE tier (inversion 6 — honors RequestedColorTier).
+        replacement.Add(_app.ActualThemeVariant.Tier switch
                         {
                             ColorDepth.Truecolor => "caps-truecolor",
                             ColorDepth.Ansi256 => "caps-ansi256",
@@ -1264,13 +1348,14 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                             _ => "caps-nocolor"
                         });
 
+        // Non-color classes stay sourced from the negotiated snapshot (CD14).
         if (capabilities.Input.Mouse.Motion)
             replacement.Add("caps-motion");
 
         if (capabilities.Input.Protocol.KittyKeyboardProtocol)
             replacement.Add("caps-kitty-keyboard");
 
-        // caps-unicode is unconditional; caps-ascii is RESERVED and never stamped at P3 — no
+        // caps-unicode is unconditional; caps-ascii is RESERVED and never stamped at P5 — no
         // negotiated glyph-capability source exists (SD14 recorded deferral).
         replacement.Add("caps-unicode");
 

@@ -1043,4 +1043,16 @@ public abstract class UIObject : IInheritanceNode
                 property.GlobalEffects |= effects;
         }
     }
+
+    /// <summary>
+    /// Registers <paramref name="effects"/> on the <b>global</b> effects lane (A1) of an attached
+    /// property — the inherited fan-out reaches arbitrary descendant types, so an inherited attached
+    /// property (e.g. <c>TextElement.Foreground</c>, declared by a non-<see cref="UIObject"/> holder)
+    /// must route effects globally, not per owner type. Pre-freeze only.
+    /// </summary>
+    internal static void AddGlobalEffects(PropertyEffects effects, UIProperty property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        property.GlobalEffects |= effects;
+    }
 }

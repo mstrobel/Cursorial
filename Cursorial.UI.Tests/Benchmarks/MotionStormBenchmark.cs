@@ -329,4 +329,156 @@ public class MotionStormBenchmark(ITestOutputHelper output)
         style.Setters.Add(new Setter(RestyledLeaf.GlowProperty, 6));
         return style;
     }
+
+    // ───────────────────────────── the §14 P5 re-assert (templated controls) ─────────────────────────────
+
+    private const int ButtonGridColumns = 20;
+    private const int ButtonGridRows = 8; // 160 templated buttons (each a Border/ContentPresenter subtree)
+
+    /// <summary>
+    /// The §14 P5 row's re-assert of the motion-storm gate at full <em>templated-control</em> weight:
+    /// the identical 200-position sweep, but the hovered tree is 160 real <see cref="Button"/>s — each
+    /// a templated <see cref="Control"/> (a <see cref="ContentPresenter"/> over presented content),
+    /// natively <c>:pointerover</c>-aware
+    /// (S3 hover → <see cref="InteractionState"/>) — armed with a real <c>Button:pointerover</c>
+    /// background-setter rule. Every hover flip therefore drives the full P5 hot path: the hit-test
+    /// descends THROUGH each button's template subtree, the <c>:pointerover</c> pseudo-class flips, the
+    /// styling engine reconciles the armed rule on the templated control, and the <c>AffectsRender</c>
+    /// setter re-rasters the button's zone. The styling engine stays in its production
+    /// <c>InteractionStateObserver</c> slot (SD22). Contracts (the §14 P5 exit row): exactly zero
+    /// steady-state bytes per <c>Move</c> including the templated restyles (worst repetition), and the
+    /// frame leg ≤ 33 ms (best-of-5). Numbers recorded in <c>docs/ui-layer-design.md</c>
+    /// ("P5 motion-storm re-assert").
+    /// </summary>
+    [Fact]
+    public void Probe4_MotionStormOverTemplatedButtons_ZeroMoveAllocation_FrameWithinBudget()
+    {
+        // A wide host so 300 default-themed buttons (each ~4×3 cells with the border) fit in a grid and
+        // the top button band lines up under the sweep row.
+        var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor, InitialSize = new Size(160, 40) });
+        using var _ = host;
+
+        // 300 contiguous 2×2 buttons (30 × 10) on the canvas — the sweep over the top band crosses a
+        // button boundary every other cell, mirroring the probe-1 leaf layout but with real templates.
+        var root = new Canvas();
+        var buttons = new Button[ButtonGridColumns * ButtonGridRows];
+        for (var row = 0; row < ButtonGridRows; row++)
+        {
+            for (var column = 0; column < ButtonGridColumns; column++)
+            {
+                var button = new Button { Content = "xx", Template = CompactButtonTemplate(), Width = 2, Height = 2 };
+                buttons[row * ButtonGridColumns + column] = button;
+                Canvas.SetLeft(button, column * 2);
+                Canvas.SetTop(button, row * 2);
+                root.Children.Add(button);
+            }
+        }
+
+        // The armed restyle: a Button:pointerover background-setter rule (AffectsRender weight).
+        host.Application.Styles.Add(CreateButtonHoverRule());
+
+        host.ShowRoot(root);
+        host.RunFrame(); // settle layout + template expansion + render — HitTest valid
+
+        // Every button armed the rule (inactive until its first hover) — the restyle load is real.
+        Assert.All(buttons, static b => Assert.NotEmpty(StyleDiagnostics.MatchedRules(b)));
+
+        var sweep = new MouseEvent[SweepLength];
+        for (var i = 0; i < sweep.Length; i++)
+        {
+            sweep[i] = new MouseEvent
+            {
+                Kind = MouseEventKind.Move,
+                Position = new CellPosition(i % (ButtonGridColumns * 2), 0), // the top button band (rows 0–1)
+                Button = MouseButton.None,
+                ButtonsHeld = MouseButtons.None,
+                Modifiers = KeyModifiers.None,
+                Timestamp = DateTimeOffset.UnixEpoch,
+            };
+        }
+
+        var dispatcher = host.Application.InputDispatcher;
+
+        // ───────────── leg 1: the per-Move dispatch path INCLUDING the templated restyles (exact zero) ─────────────
+
+        var storm = () =>
+                    {
+                        for (var n = 0; n < SweepsPerRepetition; n++)
+                        {
+                            foreach (var move in sweep)
+                                dispatcher.ProcessEvent(move);
+                        }
+                    };
+
+        storm();
+        storm();
+        SettleJit();
+        storm();
+        GC.Collect();
+
+        var bestMs = double.MaxValue;
+        var worstBytes = long.MinValue;
+        for (var rep = 0; rep < Repetitions; rep++)
+        {
+            var (ms, bytes) = Measure(storm);
+            output.WriteLine($"  move-path rep {rep}: {ms:F2} ms, {bytes} bytes");
+            bestMs = Math.Min(bestMs, ms);
+            worstBytes = Math.Max(worstBytes, bytes);
+        }
+
+        const int movesPerRepetition = SweepsPerRepetition * SweepLength;
+        output.WriteLine(
+            $"move path (templated buttons): {movesPerRepetition:N0} Move dispatches over {buttons.Length} rule-armed Buttons, " +
+            $"best of {Repetitions}: {bestMs:F2} ms ({bestMs * 1_000_000 / movesPerRepetition:F0} ns/move, " +
+            $"{bestMs * 1000 / SweepsPerRepetition:F1} us per 200-move sweep), {worstBytes} bytes steady-state (worst rep)");
+
+        Assert.Equal(0, worstBytes); // zero per Move INCLUDING the templated restyle through the store
+
+        // The restyles actually flowed: a button under the pointer is :pointerover NOW.
+        dispatcher.ProcessEvent(sweep[1]); // column 1 — inside the first button (cols 0–1)
+        Assert.Contains(buttons, static b => b.IsPointerOver);
+
+        // ───────────── leg 2: the frame-loop leg (storm + templated restyles + render in ONE frame) ─────────────
+
+        var bestFrameMs = double.MaxValue;
+        var worstFrameMs = 0d;
+        for (var rep = 0; rep < Repetitions + 2; rep++) // 2 warm-up frames, 5 measured
+        {
+            foreach (var move in sweep)
+                host.SendInput(move);
+            host.Application.RequestRender();
+
+            var (ms, _) = Measure(host.RunFrame);
+            if (rep < 2)
+                continue;
+
+            output.WriteLine($"  frame rep {rep - 2}: {ms:F2} ms");
+            bestFrameMs = Math.Min(bestFrameMs, ms);
+            worstFrameMs = Math.Max(worstFrameMs, ms);
+        }
+
+        output.WriteLine(
+            $"frame loop (templated buttons): 200-event storm + restyles + render in one frame, best of {Repetitions}: " +
+            $"{bestFrameMs:F2} ms (worst {worstFrameMs:F2} ms, budget 33 ms)");
+
+        Assert.True(
+            bestFrameMs <= 33,
+            $"Motion-storm (templated button) frame budget exceeded: best-of-{Repetitions} was {bestFrameMs:F2} ms (budget 33 ms).");
+    }
+
+    /// <summary>A compact 1×1 button template (a bare ContentPresenter — no border) so 300 fit the grid.</summary>
+    private static ControlTemplate CompactButtonTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        return presenter;
+    });
+
+    /// <summary>The armed rule: <c>Button:pointerover { Background = … }</c> (AffectsRender, the restyle weight).</summary>
+    private static Style CreateButtonHoverRule()
+    {
+        var style = new Style(Selectors.OfType<Button>().PseudoClass("pointerover"));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, new Cursorial.Drawing.Media.SolidColorBrush(Cursorial.Output.Color.FromRgb(80, 120, 200))));
+        return style;
+    }
 }

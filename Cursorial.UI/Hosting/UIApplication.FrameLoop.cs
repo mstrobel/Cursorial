@@ -71,9 +71,11 @@ public sealed partial class UIApplication
 
                 ComposeSystems();
 
-                // Capability fan-out (design doc §10.5 preamble), explicit and ordered — styling
-                // (P3) and the S7 application leg join as their phases land. The access-key call
-                // receives the NEGOTIATED snapshot (ND23 — never the decorated pipeline view).
+                // Capability fan-out (design doc §10.5 preamble), explicit and ordered. The S7
+                // application theme leg runs FIRST so the effective ActualThemeVariant is current
+                // before styling stamps the effective-tier capability class (inversion 6). The
+                // access-key call receives the NEGOTIATED snapshot (ND23 — never the decorated view).
+                OnCapabilitiesChanged(_capabilities);
                 StyleHooks?.OnCapabilitiesChanged(_capabilities);
                 InputDispatchTarget?.OnCapabilitiesChanged(_capabilities);
                 _accessKeys.OnCapabilitiesChanged(_capabilities);
@@ -619,9 +621,11 @@ public sealed partial class UIApplication
             _supportsAltKeyTracking = ComputeAltKeyTracking(fresh.Input);
             _renderSystem?.OnCapabilitiesChanged(fresh.Output);
 
-            // The capability fan-out, in order (the S7 application leg joins at P5). The
+            // The capability fan-out, in order — the S7 application theme leg first (re-derives the
+            // effective variant + re-stamps the effective-tier class, inversion 6), then styling. The
             // access-key leg re-evaluates the gate AND unconditionally clears Alt/sticky-cue state
             // (renegotiation parks the pump; an Alt Up can vanish — doc §7.8).
+            OnCapabilitiesChanged(fresh);
             StyleHooks?.OnCapabilitiesChanged(fresh);
             InputDispatchTarget?.OnCapabilitiesChanged(fresh);
             _accessKeys.OnCapabilitiesChanged(fresh);
@@ -793,7 +797,8 @@ public sealed partial class UIApplication
         InitializeFromHost(size);
         ComposeSystems();
 
-        // Fan-out parity with the production preamble.
+        // Fan-out parity with the production preamble (S7 theme leg first — inversion 6).
+        OnCapabilitiesChanged(_capabilities);
         StyleHooks?.OnCapabilitiesChanged(_capabilities);
         InputDispatchTarget?.OnCapabilitiesChanged(_capabilities);
         _accessKeys.OnCapabilitiesChanged(_capabilities);

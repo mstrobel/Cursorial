@@ -35,6 +35,15 @@
       <Compile Update="UIElement.Data.cs">
         <DependentUpon>UIElement.cs</DependentUpon>
       </Compile>
+      <Compile Update="UIElement.Resources.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="Hosting\UIApplication.Theme.cs">
+        <DependentUpon>UIApplication.cs</DependentUpon>
+      </Compile>
+      <Compile Update="Hosting\UIApplication.FrameLoop.cs">
+        <DependentUpon>UIApplication.cs</DependentUpon>
+      </Compile>
     </ItemGroup>
 
 </Project>

@@ -147,6 +147,14 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
             case AnchorKind.FindAncestor:
                 SubscribeTreeEvents();
                 break;
+            case AnchorKind.TemplatedParent:
+                // A TemplateBinding / RelativeSource.TemplatedParent binding installed BEFORE the part
+                // is stamped (the build delegate runs before StampTemplatedParent) parks SourceMissing;
+                // it re-resolves when the stamp arrives (template parts attach visually, not logically,
+                // so AttachedToLogicalTree never fires for them).
+                if (_anchorElement is not null)
+                    _anchorElement.TemplatedParentChanged += OnAnchorTemplatedParentChanged;
+                break;
         }
     }
 
@@ -164,6 +172,13 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
             return;
         _anchorElement.AttachedToLogicalTree -= OnAnchorTreeChanged;
         _anchorElement.DetachedFromLogicalTree -= OnAnchorTreeChanged;
+        _anchorElement.TemplatedParentChanged -= OnAnchorTemplatedParentChanged;
+    }
+
+    private void OnAnchorTemplatedParentChanged(object? sender, EventArgs e)
+    {
+        if (!IsDisposed)
+            ResolveRootAndWire();
     }
 
     private void OnAnchorTreeChanged(object? sender, LogicalTreeAttachmentEventArgs e)

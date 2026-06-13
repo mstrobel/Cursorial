@@ -29,6 +29,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     private readonly List<Style> _items = [];
     private object? _owner;
     private StyleScopeIndex? _cachedIndex;
+    private bool _frozen;
 
     /// <summary>Creates a detached, empty collection (supports collection initializers).</summary>
     public Styles() {}
@@ -46,6 +47,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            ThrowIfFrozen();
             ValidateForAttach(value);
             _items[index] = value;
             NotifyChanged();
@@ -62,6 +64,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     public void Add(Style style)
     {
         ArgumentNullException.ThrowIfNull(style);
+        ThrowIfFrozen();
         ValidateForAttach(style);
         _items.Add(style);
         NotifyChanged();
@@ -71,6 +74,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     public void Insert(int index, Style style)
     {
         ArgumentNullException.ThrowIfNull(style);
+        ThrowIfFrozen();
         ValidateForAttach(style);
         _items.Insert(index, style);
         NotifyChanged();
@@ -79,6 +83,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     /// <summary>Removes <paramref name="style"/>; on an attached collection its rules retract scope-wide (S136 — Y3).</summary>
     public bool Remove(Style style)
     {
+        ThrowIfFrozen();
         if (!_items.Remove(style))
             return false;
 
@@ -89,6 +94,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     /// <summary>Removes the style at <paramref name="index"/>.</summary>
     public void RemoveAt(int index)
     {
+        ThrowIfFrozen();
         _items.RemoveAt(index);
         NotifyChanged();
     }
@@ -96,6 +102,7 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     /// <summary>Removes every style.</summary>
     public void Clear()
     {
+        ThrowIfFrozen();
         if (_items.Count == 0)
             return;
 
@@ -150,6 +157,33 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     {
         _owner = null;
         _cachedIndex = null;
+    }
+
+    /// <summary>
+    /// Permanently freezes the collection's membership (seals every member, then blocks further
+    /// Add/Insert/Remove/Clear/index-set). Used by <see cref="Controls.ControlTemplate.Seal"/> so a
+    /// sealed, shared template's <c>Styles</c> cannot be mutated after the first instantiation arms
+    /// them (post-seal additions would never be placement-validated). Idempotent.
+    /// </summary>
+    internal void Freeze()
+    {
+        if (_frozen)
+            return;
+
+        foreach (var style in _items)
+            style.Seal();
+
+        _frozen = true;
+    }
+
+    private void ThrowIfFrozen()
+    {
+        if (_frozen)
+        {
+            throw new InvalidOperationException(
+                "This Styles collection is frozen (its owning ControlTemplate is sealed) and can no longer be mutated. " +
+                "Author all template styles before the template is first instantiated.");
+        }
     }
 
     /// <summary>
@@ -236,6 +270,10 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
 
             case UIApplication application:
                 application.OnStylesInvalidated(this);
+                break;
+
+            case ResourceDictionary dictionary:
+                dictionary.OnStylesMutated(); // the theme-styles channel pulse path (C25)
                 break;
         }
     }

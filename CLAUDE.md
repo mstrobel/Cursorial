@@ -282,6 +282,44 @@ detach via `OnElementDetached`; the teardown sweep is the backstop). End-to-end 
 `binding-matrix.md` §13a (B162a–B162h, tests in `Cursorial.UI.Tests/StyleMatrix/Section14_When.cs`); the P3
 style-matrix carries a recorded P4 amendment in its §0 scope note.
 
+**Phase 5 complete** (doc §14 — S7 resources/theming R0–R3 + S8 control infra C0/C1/C3 + the first controls;
+normative spec at `docs/ui-layer-design/control-matrix.md`, 242 rows C1–C242 + the CD ledger, tests in
+`Cursorial.UI.Tests/ControlMatrix/Section01…Section14`).
+
+- **Resources / theming (S7, `Cursorial.UI/Resources/` + `Themes/`)** — `ResourceDictionary` (string/`Type`/
+  `DataTemplateKey` keys, `MergedDictionaries` own-beats-merged-later-wins, `ThemeDictionaries`, deep-freeze `Seal`
+  that never pulses, refcounted `BeginUpdate` coalescing, structural `Version`, in-place deferred realization via
+  `IDeferredResourceEntry`); the lookup chain (`FindResource`/`TryFindResource`: element → logical ancestors with
+  the template-root hop → app `Resources` → app `Theme` → `CursorialTheme.BuiltIn`); StaticResource (ambient stack)
+  vs DynamicResource (`SetResourceReference`, live `ResourceSubscriptionRegistry` with pause-not-destroy + snapshot/
+  tombstone sweep + scope-containment shadowing); `ThemeVariant` (`ThemeBase` from negotiated background luminance ×
+  `ColorDepth` tier, `ThemeVariantProbe` truth table, flip = `ResourcesChanged` only — no style re-match), the
+  `GetResourceVersion(element)` + `ActualThemeVariant` cache-key contract (TextBlock's `FormattedText` never goes
+  stale on a flip). **The `UIApplication` S6+S7 merge (punch 44)**: one type carrying host/loop + theme
+  (`Resources`/`Theme`/`RequestedThemeBase`/`RequestedColorTier`/`ActualThemeVariant`/`ResourcesChanged`); the
+  capability color-tier class re-points to the **effective** tier (`ActualThemeVariant.Tier` — inversion 6 closed),
+  app theme leg first in the capability fan-out.
+- **Control infrastructure (S8 C0, `Cursorial.UI.Controls`)** — `Control` (Template `StyledProperty`,
+  `ControlThemeKey:object` exact-key, Background/Foreground(inherited)/BorderPen/Padding, `ApplyTemplate` at
+  measure-time, `OnApplyTemplate`/`OnTemplateDetaching`, `GetTemplatePart<T>`, `[TemplatePart]` validation),
+  `ControlTemplate` + `ITemplateContent` (runtime `FuncTemplateContent`; XAML node-graph at P6) +
+  `TemplateInstance` (Root/NameScope/`Detach()` store-owned retraction with a leak tracker; template namescope on
+  the templated parent — punch 31; `TemplatedParent` stamping = the barrier mechanism), `TemplateBinding` fast
+  path; `ContentControl` + `ContentPresenter` (Content/ContentTemplate + the DataTemplate-by-type chain ItemsControl
+  reuses at P9; auto-aliasing read-through with no presenter store entry — A22; recursion guard).
+- **First controls (S8 C1/C3)** — `TextBlock` (markup/`FormattedText`, the version+variant cache key), `Border`/
+  `Decorator`, `ButtonBase`→`Button`/`RepeatButton`(on the `UITimer` slice)/`ToggleButton` (`Click` routed event,
+  `IsPressed` via `SetInteractionState` ND12 holder, **Space/Enter activate on key DOWN** §13, Command/CanExecute→
+  `IsEnabledCore`), `CheckBox`/`RadioButton` (`GroupName` mutual exclusion, `:checked`/`:indeterminate` via
+  `PseudoClassMapping`), `ScrollViewer`+`ScrollBar` (wrap S1's banded `ScrollContentPresenter`; `HorizontalOffset`/
+  `VerticalOffset` two-way mirrors of the SCP styled offsets; wheel scroll; `Track`/`Thumb`/`RepeatButton` line
+  buttons; horizontal `Auto`→`Disabled` with a DEBUG diagnostic). `Label` carries access-key registration (lifted to
+  `ContentControl`). `CursorialTheme.BuiltIn` authors the `Type`-keyed control themes in box-drawing idiom, with
+  color-tier glyph resources + `caps-ascii` escapes (`☐☑`/`(•)` vs `[ ]`/`[x]`/`(*)`). `Phase5EndToEndTests` prove
+  cross-`ThemeVariant`-tier rendering, template Detach retraction, DataTemplate-by-type, click via mouse+keyboard,
+  the ScrollViewer banded composite-slide, invariant-3 control restyle isolation, and the TextBlock theme-flip
+  cache-key; the motion-storm gate re-asserts over templated controls.
+
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
 theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);

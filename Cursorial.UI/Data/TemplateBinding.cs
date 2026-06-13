@@ -9,6 +9,15 @@ namespace Cursorial.UI.Data;
 /// <see cref="UpdateSourceTrigger"/>, throws; converter/fallback/null/format are honored but forfeit
 /// the typed fast path (BD15).
 /// </summary>
+/// <remarks>
+/// <b>Current limitation (the typed B2 fast path is deferred):</b> the binding resolves the source by
+/// <see cref="UIProperty.Name"/> through the reflection binding path. The <see cref="Property"/>'s
+/// <c>Name</c> must therefore match a public CLR property on the templated parent's runtime type — true
+/// for the standard <c>StyledProperty</c> wrapper pattern. A <c>DirectProperty</c> whose <c>Name</c>
+/// differs from its CLR member, or an attached property, will not resolve and the binding reports
+/// <c>BindingFailure.SourceMissing</c> at runtime. The typed B2 path (binding straight off the
+/// <see cref="UIProperty"/> identity, no name lookup) removes this restriction when it lands.
+/// </remarks>
 public sealed class TemplateBinding : BindingBase
 {
     /// <summary>Binds the template part to <paramref name="property"/> of the templated parent.</summary>
@@ -42,9 +51,19 @@ public sealed class TemplateBinding : BindingBase
                 $"TemplateBinding does not support a non-default UpdateSourceTrigger (BD15); got {UpdateSourceTrigger}.");
         }
 
-        // The typed fast-path expression lands in stage B2 (the untyped→typed bridge); the descriptor
-        // validation above is the v1 contract (matrix B140/B141).
-        throw new NotImplementedException(
-            "TemplateBinding installation lands in stage B2 (the typed fast path / untyped→typed bridge).");
+        // The one-way reach to the templated parent's source property (doc §6.1): functionally
+        // equivalent to `new Binding { Path = Property.Name, RelativeSource = TemplatedParent, Mode =
+        // OneWay }`. The descriptor validation above keeps the typed-fast-path forfeit rules (BD15);
+        // the underlying expression rides the reflection binding over the relative-source anchor that
+        // already resolves `TemplatedParent`. A converter/parameter forfeits the typed path but works.
+        var binding = new Binding(Property.Name)
+        {
+            RelativeSource = RelativeSource.TemplatedParent,
+            Mode = BindingMode.OneWay,
+            Converter = Converter,
+            ConverterParameter = ConverterParameter,
+        };
+
+        return binding.CreateExpression(in context);
     }
 }

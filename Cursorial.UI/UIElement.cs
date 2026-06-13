@@ -88,6 +88,16 @@ public abstract partial class UIElement : UIObject
     /// <summary>The visual-children list for internal allocation-free iteration (may be null).</summary>
     internal List<UIElement>? VisualChildrenList => _visualChildren;
 
+    /// <summary>The logical-children list for internal allocation-free iteration (may be null) — RadioButton group enumeration (CD27).</summary>
+    internal List<UIElement>? LogicalChildrenList => _logicalChildren;
+
+    /// <summary>
+    /// The visual children iterated by the template-expansion <c>TemplatedParent</c> stamp (S8):
+    /// the pre-attach built subtree's children. Allocation-free — empty when none.
+    /// </summary>
+    internal IReadOnlyList<UIElement> VisualChildrenForTemplateStamp =>
+        _visualChildren ?? (IReadOnlyList<UIElement>)NoChildren;
+
     /// <summary>
     /// Adopts <paramref name="child"/> into the visual tree at <paramref name="index"/> (−1 =
     /// append; index = paint order). Sets the child's visual parent, rewires its inheritance parent
@@ -292,8 +302,18 @@ public abstract partial class UIElement : UIObject
                 "marked during template expansion, before they attach (S8 contract).");
         }
 
+        if (ReferenceEquals(_templatedParent, value))
+            return;
+
         _templatedParent = value;
+        TemplatedParentChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// Raised when <see cref="TemplatedParent"/> is stamped (the S2 seam — a <c>TemplateBinding</c> /
+    /// <c>RelativeSource.TemplatedParent</c> binding installed before the stamp re-resolves here).
+    /// </summary>
+    internal event EventHandler? TemplatedParentChanged;
 
     /// <summary>Raised when the element gains a logical parent (the S2 seam — DataContext/namescope wiring rides this).</summary>
     public event EventHandler<LogicalTreeAttachmentEventArgs>? AttachedToLogicalTree;
@@ -362,6 +382,10 @@ public abstract partial class UIElement : UIObject
         element.UpdateEffectiveEnabled();
         element.OnAttachedToTree(new TreeAttachmentEventArgs(root, element._visualParent));
 
+        // S7 resource subscription re-resolution (CD16): force one re-resolve per producer, before
+        // styling arms (a control-theme/setter resource read must see fresh values).
+        element.OnResourcesAttached();
+
         // Fork B's styling attach (B19): pre-order with the walk, so every element arms before its
         // first measure — styles affect layout in the same frame.
         element.OnStylingAttached();
@@ -402,6 +426,10 @@ public abstract partial class UIElement : UIObject
         element.OnDetachedFromTree(new TreeAttachmentEventArgs(root, element._visualParent));
         element._visualRoot = null;
         element.Depth = 0;
+
+        // S7 resource subscription teardown (design doc §11.6): unregister this element's producer
+        // nodes from the (about-to-be-orphaned) root's registry — O(own subscriptions).
+        element.OnResourcesDetached();
 
         // Fork B's styling detach (B19): bottom-up with the walk — batched cookie retraction (the
         // store promotes per property; invariant 4) and the per-element state drop (SD15). Runs

@@ -244,8 +244,18 @@ public abstract partial class UIElement : IInteractionStateSink
             return false;
 
         _interactionState = next; // commit BEFORE notification — observers read the new mask (N136)
+        OnInteractionStateChangedCore(old, next);
         UIApplication.Current?.InteractionStates.OnStateCommitted(this, old, next);
         return true;
+    }
+
+    /// <summary>
+    /// Called after the interaction-state mask is committed, before observer delivery (N136). The
+    /// control-author seam for read-only mirrors that must track a bit the framework can flip
+    /// window-wide (a <c>ButtonBase</c>'s <c>IsPressed</c> after a pressed-holder clear, CD24).
+    /// </summary>
+    private protected virtual void OnInteractionStateChangedCore(InteractionState oldState, InteractionState newState)
+    {
     }
 
     /// <summary>Marks this element as recorded in the open batch. Returns false when already recorded.</summary>

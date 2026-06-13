@@ -112,6 +112,14 @@ public abstract partial class UIElement
     /// <summary>The explicit style without surface ceremony (explicit-layer arming).</summary>
     internal Style? ExplicitStyleOrNull => _style;
 
+    /// <summary>
+    /// The owning control template's <c>Styles</c> collection, armed at <see cref="StyleLayer.Template"/>
+    /// scoped to this (templated-parent) element when its parts re-match (CD30, doc §12.2). Non-null
+    /// only on a <c>Control</c> with an expanded template carrying styles; <see langword="null"/>
+    /// otherwise. S8's <c>Control</c> overrides this from its <c>TemplateInstance</c>.
+    /// </summary>
+    internal virtual Styles? TemplateStylesForArming => null;
+
     /// <summary>The styling-parent chain hop (SD7): <c>LogicalParent ?? VisualParent</c> — the tree's inheritance fallback.</summary>
     internal UIElement? StylingParent => LogicalParent ?? VisualParent;
 

@@ -1,0 +1,199 @@
+using Cursorial.Rendering;
+using Cursorial.UI;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Testing;
+
+namespace Cursorial.Tests.UI.ControlMatrix;
+
+/// <summary>
+/// §7 — ContentControl + ContentPresenter + auto-aliasing (C0; rows C141–C152). A control whose
+/// template hosts a <see cref="ContentPresenter"/> exercises the auto-alias read-through and the
+/// content-realization chain.
+/// </summary>
+public sealed class Section07_ContentPresenter
+{
+    // A ContentControl whose template hosts an auto-aliasing presenter (neither Content nor
+    // ContentTemplate set on the presenter).
+    private sealed class HostControl : ContentControl
+    {
+        public ContentPresenter? Presenter => GetTemplatePart<ContentPresenter>("PART_CP");
+
+        public HostControl()
+        {
+            Template = new ControlTemplate(ctx =>
+            {
+                var cp = new ContentPresenter();
+                ctx.RegisterName("PART_CP", cp);
+                return cp;
+            });
+        }
+    }
+
+    private static UITestHost Attach(UIElement root)
+    {
+        var host = UITestHost.Create();
+        host.ShowRoot(root);
+        host.RunFrame();
+        return host;
+    }
+
+    [Fact] // C141
+    public void C141_ContentControlAndPresenterMetadata()
+    {
+        Assert.True(ContentControl.ContentProperty.GetEffects(typeof(ContentControl)).HasFlag(PropertyEffects.AffectsMeasure));
+        Assert.True(ContentControl.ContentTemplateProperty.GetEffects(typeof(ContentControl)).HasFlag(PropertyEffects.AffectsMeasure));
+        Assert.True(ContentPresenter.ContentProperty.GetEffects(typeof(ContentPresenter)).HasFlag(PropertyEffects.AffectsMeasure));
+        Assert.True(ContentPresenter.ContentTemplateProperty.GetEffects(typeof(ContentPresenter)).HasFlag(PropertyEffects.AffectsMeasure));
+        Assert.False(new ContentPresenter().RecognizesAccessKey); // default false
+    }
+
+    [Fact] // C142
+    public void C142_AutoAliasReadsThroughTemplatedParentContent()
+    {
+        var control = new HostControl { Content = "hello" };
+        using var host = Attach(control);
+
+        var cp = control.Presenter!;
+        Assert.False(cp.IsSet(ContentPresenter.ContentProperty)); // no installed binding, no frame
+        var text = Assert.IsType<TextBlock>(cp.Child);
+        Assert.Equal("hello", text.Text);
+    }
+
+    [Fact] // C143
+    public void C143_AutoAliasObserverReRealizesOnParentContentChange()
+    {
+        var control = new HostControl { Content = "hello" };
+        using var host = Attach(control);
+
+        control.Content = "world";
+        host.RunFrame();
+
+        var text = Assert.IsType<TextBlock>(control.Presenter!.Child);
+        Assert.Equal("world", text.Text);
+    }
+
+    [Fact] // C144
+    public void C144_ExplicitPresenterValueStopsReadThrough()
+    {
+        var control = new HostControl { Content = "hello" };
+        using var host = Attach(control);
+        var cp = control.Presenter!;
+
+        cp.Content = "explicit"; // a local presenter value → IsSet flips, read-through stops
+        host.RunFrame();
+        Assert.True(cp.IsSet(ContentPresenter.ContentProperty));
+        Assert.Equal("explicit", Assert.IsType<TextBlock>(cp.Child).Text);
+
+        control.Content = "world"; // a later parent change no longer reaches the presenter
+        host.RunFrame();
+        Assert.Equal("explicit", Assert.IsType<TextBlock>(cp.Child).Text);
+    }
+
+    [Fact] // C145
+    public void C145_AutoAliasObserverTornDownOnReTemplate()
+    {
+        var control = new HostControl { Content = "hello" };
+        using var host = Attach(control);
+        var oldPresenter = control.Presenter!;
+
+        // Re-template: the old presenter detaches; its auto-alias observers tear down with the instance.
+        control.Template = new ControlTemplate(ctx =>
+        {
+            var cp = new ContentPresenter();
+            ctx.RegisterName("PART_CP", cp);
+            return cp;
+        });
+        host.RunFrame();
+
+        Assert.Null(oldPresenter.VisualParent); // old presenter gone
+        Assert.NotSame(oldPresenter, control.Presenter);
+        // The new presenter reads through to the still-set Content.
+        Assert.Equal("hello", Assert.IsType<TextBlock>(control.Presenter!.Child).Text);
+    }
+
+    [Fact] // C146
+    public void C146_HeaderedContentControlShape()
+    {
+        var hcc = new HeaderedContentControl { Header = "H", Content = "C" };
+        Assert.IsAssignableFrom<ContentControl>(hcc);
+        Assert.Equal("H", hcc.Header);
+        Assert.True(HeaderedContentControl.HeaderProperty.GetEffects(typeof(HeaderedContentControl)).HasFlag(PropertyEffects.AffectsMeasure));
+    }
+
+    [Fact] // C147
+    public void C147_RecursionGuard()
+    {
+        // A DataTemplate whose Build re-enters the presenter's realization (degenerate self-reference)
+        // must not infinitely expand — the recursion guard short-circuits the nested EnsureChild.
+        ContentPresenter? cp = null;
+        var template = new DataTemplate
+        {
+            DataType = typeof(object),
+            Content = new FuncTemplateContent(_ =>
+            {
+                // Re-enter realization during the build (the degenerate path the guard protects).
+                cp!.InvalidateMeasure();
+                return new TextBlock("leaf");
+            }),
+        };
+        cp = new ContentPresenter { Content = new object(), ContentTemplate = template };
+
+        var host = UITestHost.Create();
+        host.ShowRoot(cp);
+        host.RunFrame(); // must not stack-overflow — the guard caps re-entry
+        Assert.IsType<TextBlock>(cp.Child);
+    }
+
+    [Fact] // C148
+    public void C148_ElementContentPassthrough()
+    {
+        var element = new TextBlock("direct");
+        var cp = new ContentPresenter { Content = element };
+        using var host = Attach(cp);
+
+        Assert.Same(element, cp.Child);         // the element itself
+        Assert.Same(cp, element.VisualParent);  // visual child of the presenter
+        Assert.Same(cp, element.LogicalParent); // logical child (free-standing presenter adopts)
+    }
+
+    [Fact] // C149
+    public void C149_PlainStringNoAccessKeyFold()
+    {
+        var cp = new ContentPresenter { RecognizesAccessKey = false, Content = "snake_case.txt" };
+        using var host = Attach(cp);
+
+        var text = Assert.IsType<TextBlock>(cp.Child);
+        Assert.Equal("snake_case.txt", text.Text); // underscores literal, not folded
+    }
+
+    [Fact] // C150
+    public void C150_PlainStringRecognizesAccessKeyFolds()
+    {
+        var cp = new ContentPresenter { RecognizesAccessKey = true, Content = "_Save" };
+        using var host = Attach(cp);
+
+        var atp = Assert.IsType<AccessTextPresenter>(cp.Child);
+        Assert.Equal("Save", atp.Text.Text);
+        Assert.Equal('S', atp.Text.Key);
+    }
+
+    [Fact] // C151
+    public void C151_AccessTextContentAlwaysAccessTextPresenter()
+    {
+        var cp = new ContentPresenter { RecognizesAccessKey = false, Content = new AccessText("File", 'F', 0) };
+        using var host = Attach(cp);
+
+        var atp = Assert.IsType<AccessTextPresenter>(cp.Child);
+        Assert.Equal("File", atp.Text.Text);
+    }
+
+    [Fact] // C152
+    public void C152_NonStringFallsBackToTextBlock()
+    {
+        var cp = new ContentPresenter { Content = 42 };
+        using var host = Attach(cp);
+
+        var text = Assert.IsType<TextBlock>(cp.Child);
+        Assert.Equal("42", text.Text); // Convert.ToString(42), CurrentCulture
+    }
+}

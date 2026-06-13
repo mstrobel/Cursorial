@@ -1,0 +1,220 @@
+using Cursorial.Output;
+using Cursorial.Terminal;
+using Cursorial.UI.Themes;
+
+// ReSharper disable CheckNamespace
+
+namespace Cursorial.UI;
+
+/// <summary>
+/// The S7 theme surface (design doc §11.3, punch 44) folded onto the merged <see cref="UIApplication"/>:
+/// the resource dictionaries, the active theme, the theme-variant axes, and the variant/resource
+/// lifecycle. Capability-class stamping re-points to the <b>effective</b> tier
+/// (<see cref="ActualThemeVariant"/>.Tier, inversion 6) here.
+/// </summary>
+public sealed partial class UIApplication : IResourceHost
+{
+    private ResourceDictionary? _resources;
+    private ResourceDictionary? _theme;
+    private ThemeBase? _requestedThemeBase;
+    private ColorDepth? _requestedColorTier;
+    private ThemeVariant _actualThemeVariant = new(ThemeBase.Dark, ColorDepth.Truecolor);
+    private bool _variantInitialized;
+
+    // One subscription registry per visual root (design doc §11.6). App-level pulses fan to all.
+    private readonly Dictionary<UIElement, ResourceSubscriptionRegistry> _registries = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// The application-level resources (design doc §11.3) — the chain hop above every root, below
+    /// <see cref="Theme"/>. Replacing the dictionary pulses a catch-all to every root.
+    /// </summary>
+    public ResourceDictionary Resources
+    {
+        get
+        {
+            Dispatcher.VerifyAccess();
+            if (_resources is null)
+            {
+                _resources = new ResourceDictionary();
+                _resources.Acquire(this);
+                _resources.Changed += OnApplicationResourcesChanged;
+            }
+
+            return _resources;
+        }
+        set
+        {
+            Dispatcher.VerifyAccess();
+            ArgumentNullException.ThrowIfNull(value);
+
+            if (ReferenceEquals(_resources, value))
+                return;
+
+            if (_resources is { } old)
+            {
+                old.Changed -= OnApplicationResourcesChanged;
+                old.Release(this);
+            }
+
+            value.Acquire(this);
+            _resources = value;
+            _resources.Changed += OnApplicationResourcesChanged;
+            RaiseApplicationCatchAll(); // an app-scope replace is a catch-all (C60)
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool HasResources => _resources is { Count: > 0 } or { HasThemeDictionaries: true };
+
+    /// <summary>The application resources slot without lazy allocation (the chain-walk read surface).</summary>
+    internal ResourceDictionary? ResourcesOrNull => _resources;
+
+    /// <summary>The active theme dictionary (design doc §11.3): the chain hop above <see cref="CursorialTheme.BuiltIn"/>; <see langword="null"/> ⇒ BuiltIn only.</summary>
+    public ResourceDictionary? Theme
+    {
+        get => _theme;
+        set
+        {
+            Dispatcher.VerifyAccess();
+
+            if (ReferenceEquals(_theme, value))
+                return;
+
+            _theme = value;
+            RaiseApplicationCatchAll();
+        }
+    }
+
+    /// <summary>An explicit light/dark override (design doc §11.3); <see langword="null"/> derives from the terminal background.</summary>
+    public ThemeBase? RequestedThemeBase
+    {
+        get => _requestedThemeBase;
+        set
+        {
+            Dispatcher.VerifyAccess();
+            if (_requestedThemeBase == value)
+                return;
+            _requestedThemeBase = value;
+            UpdateActualThemeVariant(reStampClasses: false); // a base flip changes only resources (CD14)
+        }
+    }
+
+    /// <summary>A preview/testing color-tier override (design doc §11.3); <see langword="null"/> uses the negotiated depth. Re-points the effective tier (inversion 6).</summary>
+    public ColorDepth? RequestedColorTier
+    {
+        get => _requestedColorTier;
+        set
+        {
+            Dispatcher.VerifyAccess();
+            if (_requestedColorTier == value)
+                return;
+            _requestedColorTier = value;
+            UpdateActualThemeVariant(reStampClasses: true); // a tier flip re-stamps caps classes (CD14)
+        }
+    }
+
+    /// <summary>The effective theme variant (design doc §11.3): <c>(RequestedThemeBase ?? derived, RequestedColorTier ?? negotiated)</c> per axis.</summary>
+    public ThemeVariant ActualThemeVariant => _actualThemeVariant;
+
+    /// <summary>Raised on the UI thread when <see cref="ActualThemeVariant"/> changes (design doc §11.3).</summary>
+    public event EventHandler? ActualThemeVariantChanged;
+
+    /// <summary>The external variant signal (design doc §11.3): a catch-all on app-scope or variant changes.</summary>
+    public event EventHandler<ResourcesChangedEventArgs>? ResourcesChanged;
+
+    // ───────────────────────────── capability coherence (design doc §11.7) ─────────────────────────────
+
+    /// <summary>
+    /// The S7 capability leg (design doc §11.7): re-derives the effective variant from
+    /// <paramref name="capabilities"/> (honoring the requested overrides) and, on change, raises
+    /// <see cref="ActualThemeVariantChanged"/> then <see cref="ResourcesChanged"/>(CatchAll), pulses
+    /// every root's registry, and re-stamps the effective-tier capability classes (inversion 6). No
+    /// dictionary mutates and no dictionary <c>Changed</c> fires (CD15).
+    /// </summary>
+    public void OnCapabilitiesChanged(TerminalCapabilities capabilities)
+    {
+        Dispatcher.VerifyAccess();
+        _negotiatedVariant = ThemeVariant.FromCapabilities(capabilities);
+        UpdateActualThemeVariant(reStampClasses: true);
+    }
+
+    // The negotiated-only variant (the per-axis derivation source before the requested overrides).
+    private ThemeVariant _negotiatedVariant = new(ThemeBase.Dark, ColorDepth.Truecolor);
+
+    private void UpdateActualThemeVariant(bool reStampClasses)
+    {
+        var effective = new ThemeVariant(
+            _requestedThemeBase ?? _negotiatedVariant.Base,
+            _requestedColorTier ?? _negotiatedVariant.Tier);
+
+        var first = !_variantInitialized;
+        var changed = first || effective != _actualThemeVariant;
+        var tierChanged = first || effective.Tier != _actualThemeVariant.Tier;
+
+        _actualThemeVariant = effective;
+        _variantInitialized = true;
+
+        if (!changed)
+            return;
+
+        if (!first)
+        {
+            ActualThemeVariantChanged?.Invoke(this, EventArgs.Empty); // order pinned: variant-changed first (C64)
+            RaiseApplicationCatchAll();                                // then ResourcesChanged + pulse all roots
+        }
+
+        // The color-tier capability class re-points to the effective tier (CD14). A base-only flip
+        // (reStampClasses == false) does not touch classes.
+        if (reStampClasses && tierChanged)
+            StyleEngineInternal.OnEffectiveTierChanged(effective.Tier);
+    }
+
+    // ───────────────────────────── subscription registry per root (design doc §11.6) ─────────────────────────────
+
+    internal ResourceSubscriptionRegistry RegistryForRoot(UIElement root)
+    {
+        if (!_registries.TryGetValue(root, out var registry))
+            _registries[root] = registry = new ResourceSubscriptionRegistry(this);
+        return registry;
+    }
+
+    internal void ReleaseRegistryForRoot(UIElement root) => _registries.Remove(root);
+
+    /// <summary>Routes an element-scoped <see cref="ResourceDictionary"/> mutation to its root's registry (design doc §11.6).</summary>
+    internal void OnResourceDictionaryChanged(UIElement scope, ResourceDictionary dictionary, ResourcesChangedEventArgs e)
+    {
+        var root = ResourceServices.LogicalRoot(scope);
+        if (!_registries.TryGetValue(root, out var registry))
+            return; // no subscribers under this root yet
+
+        if (e.Kind == ResourceChangeKind.Keyed && e.Key is { } key)
+            registry.PulseKeyed(scope, key);
+        else
+            registry.PulseCatchAll(scope);
+    }
+
+    private void OnApplicationResourcesChanged(object? sender, ResourcesChangedEventArgs e)
+    {
+        // Application-level dictionary mutation fans to every root. The app is above every root, so an
+        // app-scope keyed pulse uses the root itself as the containing scope (every node is contained).
+        // Snapshot first: a listener could attach/detach a root re-entrantly during a pulse, which would
+        // otherwise throw "collection modified" mid-iteration.
+        foreach (var (root, registry) in _registries.ToArray())
+        {
+            if (e.Kind == ResourceChangeKind.Keyed && e.Key is { } key)
+                registry.PulseKeyed(root, key);
+            else
+                registry.PulseCatchAll(pulsingScope: null);
+        }
+
+        ResourcesChanged?.Invoke(this, e);
+    }
+
+    private void RaiseApplicationCatchAll()
+    {
+        foreach (var registry in _registries.Values.ToArray()) // snapshot — a pulse may mutate _registries
+            registry.PulseCatchAll(pulsingScope: null);
+
+        ResourcesChanged?.Invoke(this, new ResourcesChangedEventArgs(ResourceChangeKind.CatchAll, null));
+    }
+}

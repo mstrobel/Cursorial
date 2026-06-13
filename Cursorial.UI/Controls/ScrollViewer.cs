@@ -1,0 +1,435 @@
+using Cursorial.Input;
+using Cursorial.Rendering;
+
+using Cursorial.UI.Input;
+
+namespace Cursorial.UI.Controls;
+
+/// <summary>
+/// A scrollable content host (design doc §12.4/§12.7, CD28; inversion 5 — lands at P5 ahead of
+/// ListBox): a <see cref="ContentControl"/> whose template wraps S1's banded
+/// <see cref="ScrollContentPresenter"/> (<c>PART_ScrollContentPresenter</c>, required) and two
+/// optional <see cref="ScrollBar"/>s (<c>PART_VerticalScrollBar</c>/<c>PART_HorizontalScrollBar</c>).
+/// <see cref="HorizontalOffset"/>/<see cref="VerticalOffset"/> are <c>DirectProperty</c>
+/// two-way mirrors of the SCP's <b>styled</b> offsets (which are <c>AffectsComposite</c> and
+/// storyboard-animatable — smooth scroll in v1; the DirectProperty just reflects them). The mouse
+/// wheel scrolls <c>WheelDeltaY / 120 × LinesPerNotch</c> rows (Shift / <c>WheelDeltaX</c>
+/// horizontal); an unconsumed wheel bubbles to an outer scroller.
+/// </summary>
+[TemplatePart(PartPresenter, typeof(ScrollContentPresenter), IsRequired = true)]
+[TemplatePart(PartVerticalBar, typeof(ScrollBar))]
+[TemplatePart(PartHorizontalBar, typeof(ScrollBar))]
+public class ScrollViewer : ContentControl
+{
+    private const string PartPresenter = "PART_ScrollContentPresenter";
+    private const string PartVerticalBar = "PART_VerticalScrollBar";
+    private const string PartHorizontalBar = "PART_HorizontalScrollBar";
+
+    private ScrollContentPresenter? _presenter;
+    private ContentPresenter? _contentHost; // hosts the ScrollViewer's Content inside the SCP
+    private ScrollBar? _verticalBar;
+    private ScrollBar? _horizontalBar;
+    private IDisposable? _offsetRowObserver;
+    private IDisposable? _offsetColumnObserver;
+    private int _horizontalOffset;
+    private int _verticalOffset;
+    private Size _extent;
+    private Size _viewport;
+
+    /// <summary>The vertical scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.</summary>
+    public static readonly StyledProperty<ScrollBarVisibility> VerticalScrollBarVisibilityProperty =
+        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(VerticalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto, changed: OnVisibilityChanged);
+
+    /// <summary>
+    /// The horizontal scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.
+    /// <para>
+    /// <b>v1 limitation:</b> only the vertical axis is banded (doc §5.7), so horizontal
+    /// <see cref="ScrollBarVisibility.Auto"/> — which means "scroll when content overflows, hide the bar
+    /// otherwise" — cannot be honored and degrades to <see cref="ScrollBarVisibility.Disabled"/> (a DEBUG
+    /// <see cref="ControlDiagnosticKind.HorizontalAutoUnsupported"/> diagnostic is emitted). To allow
+    /// horizontal scrolling by wheel/keys today, set <see cref="ScrollBarVisibility.Hidden"/> (scrolls, no
+    /// bar) or <see cref="ScrollBarVisibility.Visible"/>. When the horizontal axis is banded (v2), <c>Auto</c>
+    /// will gain its overflow semantics.
+    /// </para>
+    /// </summary>
+    public static readonly StyledProperty<ScrollBarVisibility> HorizontalScrollBarVisibilityProperty =
+        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(HorizontalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto, changed: OnVisibilityChanged);
+
+    /// <summary>The horizontal scroll offset in cells — a two-way mirror of the SCP's styled <c>ScrollOffsetColumn</c> (CD28).</summary>
+    public static readonly DirectProperty<ScrollViewer, int> HorizontalOffsetProperty =
+        UIProperty.RegisterDirect<ScrollViewer, int>(nameof(HorizontalOffset), static s => s._horizontalOffset, static (s, v) => s.SetHorizontalOffset(v));
+
+    /// <summary>The vertical scroll offset in cells — a two-way mirror of the SCP's styled <c>ScrollOffsetRow</c> (CD28).</summary>
+    public static readonly DirectProperty<ScrollViewer, int> VerticalOffsetProperty =
+        UIProperty.RegisterDirect<ScrollViewer, int>(nameof(VerticalOffset), static s => s._verticalOffset, static (s, v) => s.SetVerticalOffset(v));
+
+    /// <summary>The scrollable content size (read-only mirror of the SCP's <c>Extent</c>).</summary>
+    public static readonly DirectProperty<ScrollViewer, Size> ExtentProperty =
+        UIProperty.RegisterDirect<ScrollViewer, Size>(nameof(Extent), static s => s._extent);
+
+    /// <summary>The visible content size (read-only mirror of the SCP's <c>Viewport</c>).</summary>
+    public static readonly DirectProperty<ScrollViewer, Size> ViewportProperty =
+        UIProperty.RegisterDirect<ScrollViewer, Size>(nameof(Viewport), static s => s._viewport);
+
+    /// <inheritdoc cref="VerticalScrollBarVisibilityProperty"/>
+    public ScrollBarVisibility VerticalScrollBarVisibility { get => GetValue(VerticalScrollBarVisibilityProperty); set => SetValue(VerticalScrollBarVisibilityProperty, value); }
+
+    /// <inheritdoc cref="HorizontalScrollBarVisibilityProperty"/>
+    public ScrollBarVisibility HorizontalScrollBarVisibility { get => GetValue(HorizontalScrollBarVisibilityProperty); set => SetValue(HorizontalScrollBarVisibilityProperty, value); }
+
+    /// <inheritdoc cref="HorizontalOffsetProperty"/>
+    public int HorizontalOffset { get => _horizontalOffset; set => SetHorizontalOffset(value); }
+
+    /// <inheritdoc cref="VerticalOffsetProperty"/>
+    public int VerticalOffset { get => _verticalOffset; set => SetVerticalOffset(value); }
+
+    /// <inheritdoc cref="ExtentProperty"/>
+    public Size Extent => _extent;
+
+    /// <inheritdoc cref="ViewportProperty"/>
+    public Size Viewport => _viewport;
+
+    /// <summary>The wrapped scroll-content presenter (the S1-owned banded SCP); null before first template expansion.</summary>
+    protected internal ScrollContentPresenter? Presenter => _presenter;
+
+    // ───────────────────────────── template wiring (CD17 / C235) ─────────────────────────────
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _presenter = GetTemplatePart<ScrollContentPresenter>(PartPresenter);
+        _verticalBar = GetTemplatePart<ScrollBar>(PartVerticalBar);
+        _horizontalBar = GetTemplatePart<ScrollBar>(PartHorizontalBar);
+
+        if (_presenter is { } presenter)
+        {
+            // The SCP hosts the ScrollViewer's content. A UIElement content already logical-parents to
+            // this ScrollViewer (ContentControl, chain ③), so the SCP hosts it visual-only (its Content
+            // setter detects the existing logical parent). Non-element content rides a ContentPresenter
+            // that runs the §12.3 realization chain (the presenter freshly owns its built child).
+            _contentHost = Content as UIElement is null ? new ContentPresenter { Content = Content } : null;
+            presenter.Content = Content as UIElement ?? _contentHost;
+            UpdatePresenterScrollAxes();
+
+            // The DirectProperty mirrors track the styled SCP offsets (CD28): a styled-side change
+            // (incl. an animated write, the re-anchor, and the end-of-arrange coercion) reflects here —
+            // this is the zero-re-raster composite-slide reflection (invariant 3, C240).
+            _offsetRowObserver = presenter.AddObserver(ScrollContentPresenter.ScrollOffsetRowProperty, new OffsetRowObserver(this));
+            _offsetColumnObserver = presenter.AddObserver(ScrollContentPresenter.ScrollOffsetColumnProperty, new OffsetColumnObserver(this));
+
+            SyncFromPresenter();
+        }
+
+        // Bar wiring is code-behind (TemplateBinding is one-way; CD17/C235): a bar's Scroll moves the
+        // offset; the offset mirror moves the bar's Value back.
+        if (_verticalBar is { } vbar)
+        {
+            vbar.Orientation = Orientation.Vertical;
+            vbar.Scroll += OnVerticalScroll;
+        }
+
+        if (_horizontalBar is { } hbar)
+        {
+            hbar.Orientation = Orientation.Horizontal;
+            hbar.Scroll += OnHorizontalScroll;
+        }
+    }
+
+    static ScrollViewer()
+    {
+        // Re-point the SCP when the ScrollViewer's Content changes after template application: an
+        // element content hosts directly (visual-only), a non-element content rides the inner
+        // ContentPresenter (see OnApplyTemplate). The base ContentControl handler runs first
+        // (metadata Changed callbacks chain base-first), so the logical adoption is already applied.
+        ContentProperty.OverrideMetadata<ScrollViewer>(new PropertyMetadata<object?>
+        {
+            Changed = static (sender, _, newValue) =>
+            {
+                if (sender is ScrollViewer { _presenter: { } presenter } viewer)
+                {
+                    if (newValue is UIElement element)
+                    {
+                        viewer._contentHost = null;
+                        presenter.Content = element;
+                    }
+                    else
+                    {
+                        viewer._contentHost ??= new ContentPresenter();
+                        viewer._contentHost.Content = newValue;
+                        presenter.Content = viewer._contentHost;
+                    }
+                }
+            },
+        });
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTemplateDetaching(TemplateInstance old)
+    {
+        // Release the content's visual link from the old SCP before the new template's SCP adopts it
+        // (the content is the ScrollViewer's stable logical child across templates; each template makes
+        // a fresh SCP). Clearing synchronously here avoids a stale visual-parent on the next adopt.
+        if (_presenter is { } presenter)
+            presenter.Content = null;
+        if (_contentHost is { } host)
+            host.Content = null;
+        _contentHost = null;
+        _offsetRowObserver?.Dispose();
+        _offsetColumnObserver?.Dispose();
+        _offsetRowObserver = _offsetColumnObserver = null;
+
+        if (_verticalBar is { } vbar)
+            vbar.Scroll -= OnVerticalScroll;
+        if (_horizontalBar is { } hbar)
+            hbar.Scroll -= OnHorizontalScroll;
+
+        _presenter = null;
+        _verticalBar = null;
+        _horizontalBar = null;
+        base.OnTemplateDetaching(old);
+    }
+
+    // ───────────────────────────── offset mirrors (CD28) ─────────────────────────────
+
+    private void SetVerticalOffset(int value)
+    {
+        if (_presenter is { } presenter)
+            presenter.ScrollOffsetRow = value; // styled offset coerces; the observer mirrors it back
+        else
+            SetAndRaise(VerticalOffsetProperty, ref _verticalOffset, Math.Max(0, value));
+    }
+
+    private void SetHorizontalOffset(int value)
+    {
+        if (_presenter is { } presenter)
+            presenter.ScrollOffsetColumn = value;
+        else
+            SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, Math.Max(0, value));
+    }
+
+    private void SyncFromPresenter()
+    {
+        if (_presenter is not { } presenter)
+            return;
+
+        SetAndRaise(VerticalOffsetProperty, ref _verticalOffset, presenter.ScrollOffsetRow);
+        SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, presenter.ScrollOffsetColumn);
+        SetAndRaise(ExtentProperty, ref _extent, presenter.Extent);
+        SetAndRaise(ViewportProperty, ref _viewport, presenter.Viewport);
+        UpdateBars();
+    }
+
+    /// <summary>Maps the visibility policies onto the SCP's scroll-axis enables (CD28/C230).</summary>
+    private void UpdatePresenterScrollAxes()
+    {
+        if (_presenter is not { } presenter)
+            return;
+
+        presenter.CanScrollVertically = CanScrollVerticalAxis(VerticalScrollBarVisibility);
+        presenter.CanScrollHorizontally = CanScrollHorizontalAxis(HorizontalScrollBarVisibility);
+
+        // v1 bands only the vertical axis (doc §5.7), so horizontal Auto ("show bar on overflow")
+        // cannot be honored and degrades to Disabled — surface that, since it silently swallows intent.
+        if (HorizontalScrollBarVisibility == ScrollBarVisibility.Auto)
+            ControlDiagnostics.HorizontalAutoUnsupported(this);
+    }
+
+    /// <summary>
+    /// The vertical-axis scroll-enable: every policy except <see cref="ScrollBarVisibility.Disabled"/>
+    /// lets the axis scroll (<c>Hidden</c>/<c>Auto</c>/<c>Visible</c> all scroll by wheel/keys; the bar
+    /// visibility is a separate concern, CD28).
+    /// </summary>
+    private static bool CanScrollVerticalAxis(ScrollBarVisibility visibility)
+        => visibility != ScrollBarVisibility.Disabled;
+
+    /// <summary>
+    /// The horizontal-axis scroll-enable: <c>Visible</c> or <c>Hidden</c> scroll by wheel/keys;
+    /// <c>Disabled</c> never scrolls, and v1 treats <c>Auto</c> as <c>Disabled</c> because the
+    /// horizontal axis is unbanded (doc §5.7) — see <see cref="HorizontalScrollBarVisibility"/>.
+    /// </summary>
+    private static bool CanScrollHorizontalAxis(ScrollBarVisibility visibility)
+        => visibility is ScrollBarVisibility.Visible or ScrollBarVisibility.Hidden;
+
+    /// <inheritdoc/>
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var size = base.ArrangeOverride(finalSize);
+        // The SCP published its Extent/Viewport during this arrange pass — mirror them now (the
+        // observers only fire on offset changes, the composite-slide path).
+        SyncFromPresenter();
+        return size;
+    }
+
+    private void UpdateBars()
+    {
+        if (_verticalBar is { } vbar)
+        {
+            vbar.Minimum = 0;
+            vbar.Maximum = Math.Max(0, _extent.Rows - _viewport.Rows);
+            vbar.ViewportSize = _viewport.Rows;
+            vbar.SetValueSilently(_verticalOffset);
+        }
+
+        if (_horizontalBar is { } hbar)
+        {
+            hbar.Minimum = 0;
+            hbar.Maximum = Math.Max(0, _extent.Columns - _viewport.Columns);
+            hbar.ViewportSize = _viewport.Columns;
+            hbar.SetValueSilently(_horizontalOffset);
+        }
+    }
+
+    private void OnVerticalScroll(object? sender, ScrollEventArgs e)
+        => SetVerticalOffset((int)Math.Round(e.NewValue));
+
+    private void OnHorizontalScroll(object? sender, ScrollEventArgs e)
+        => SetHorizontalOffset((int)Math.Round(e.NewValue));
+
+    // ───────────────────────────── ScrollBy / EnsureVisible (C225/C226) ─────────────────────────────
+
+    /// <summary>Scrolls by the cell deltas, coercing into range (the keyboard / wheel scroll primitive).</summary>
+    public void ScrollBy(int columns, int rows)
+    {
+        if (rows != 0)
+            SetVerticalOffset(_verticalOffset + rows);
+        if (columns != 0)
+            SetHorizontalOffset(_horizontalOffset + columns);
+    }
+
+    /// <summary>
+    /// Scrolls minimally to bring an element-local content <paramref name="rect"/> into the viewport
+    /// (C226 — ListBox/TextBox call this at P9). The rect is in content coordinates.
+    /// </summary>
+    public void EnsureVisible(Rect rect)
+    {
+        var vTop = _verticalOffset;
+        var vBottom = vTop + Math.Max(0, _viewport.Rows);
+        if (rect.Row < vTop)
+            SetVerticalOffset(rect.Row);
+        else if (rect.RowEnd > vBottom)
+            SetVerticalOffset(rect.RowEnd - Math.Max(0, _viewport.Rows));
+
+        var hLeft = _horizontalOffset;
+        var hRight = hLeft + Math.Max(0, _viewport.Columns);
+        if (rect.Column < hLeft)
+            SetHorizontalOffset(rect.Column);
+        else if (rect.ColumnEnd > hRight)
+            SetHorizontalOffset(rect.ColumnEnd - Math.Max(0, _viewport.Columns));
+    }
+
+    // ───────────────────────────── wheel + keyboard (CD28 / §12.7) ─────────────────────────────
+
+    /// <inheritdoc/>
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (e.Handled)
+            return;
+
+        var notchLines = e.LinesPerNotch; // default 3 (CD28)
+
+        // Shift+wheel or a horizontal wheel scrolls the horizontal axis.
+        var horizontal = e.WheelDeltaX != 0 || (e.Modifiers & KeyModifiers.Shift) != 0;
+        if (horizontal)
+        {
+            var deltaX = e.WheelDeltaX != 0 ? e.WheelDeltaX : e.WheelDeltaY;
+            var lines = deltaX / 120 * notchLines;
+            if (TryScrollHorizontally(-lines))
+                e.Handled = true;
+            return;
+        }
+
+        var rows = e.WheelDeltaY / 120 * notchLines;
+        if (TryScrollVertically(-rows))
+            e.Handled = true;
+        // An unconsumed wheel (already at the extreme) bubbles to an outer ScrollViewer (C224).
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled)
+            return;
+
+        var viewportRows = Math.Max(1, _viewport.Rows);
+        var maxRow = Math.Max(0, _extent.Rows - _viewport.Rows);
+
+        switch (e.Key)
+        {
+            case Key.UpArrow when e.Modifiers == KeyModifiers.None:
+                if (TryScrollVertically(-1)) e.Handled = true;
+                break;
+            case Key.DownArrow when e.Modifiers == KeyModifiers.None:
+                if (TryScrollVertically(+1)) e.Handled = true;
+                break;
+            case Key.PageUp when e.Modifiers == KeyModifiers.None:
+                if (TryScrollVertically(-viewportRows)) e.Handled = true;
+                break;
+            case Key.PageDown when e.Modifiers == KeyModifiers.None:
+                if (TryScrollVertically(+viewportRows)) e.Handled = true;
+                break;
+            case Key.Home when (e.Modifiers & KeyModifiers.Control) != 0:
+                if (_verticalOffset != 0) { SetVerticalOffset(0); e.Handled = true; }
+                break;
+            case Key.End when (e.Modifiers & KeyModifiers.Control) != 0:
+                if (_verticalOffset != maxRow) { SetVerticalOffset(maxRow); e.Handled = true; }
+                break;
+            case Key.LeftArrow when e.Modifiers == KeyModifiers.None:
+                if (TryScrollHorizontally(-1)) e.Handled = true;
+                break;
+            case Key.RightArrow when e.Modifiers == KeyModifiers.None:
+                if (TryScrollHorizontally(+1)) e.Handled = true;
+                break;
+        }
+    }
+
+    private bool TryScrollVertically(int rows)
+    {
+        if (rows == 0 || _presenter is not { CanScrollVertically: true })
+            return false;
+        var max = Math.Max(0, _extent.Rows - _viewport.Rows);
+        var target = Math.Clamp(_verticalOffset + rows, 0, max);
+        if (target == _verticalOffset)
+            return false;
+        SetVerticalOffset(target);
+        return true;
+    }
+
+    private bool TryScrollHorizontally(int columns)
+    {
+        if (columns == 0 || _presenter is not { CanScrollHorizontally: true })
+            return false;
+        var max = Math.Max(0, _extent.Columns - _viewport.Columns);
+        var target = Math.Clamp(_horizontalOffset + columns, 0, max);
+        if (target == _horizontalOffset)
+            return false;
+        SetHorizontalOffset(target);
+        return true;
+    }
+
+    private static void OnVisibilityChanged(UIObject sender, ScrollBarVisibility oldValue, ScrollBarVisibility newValue)
+    {
+        if (sender is ScrollViewer viewer)
+            viewer.UpdatePresenterScrollAxes(); // single source of truth for the axis enables + the Auto diagnostic
+    }
+
+    // The styled-offset / extent / viewport observers feeding the DirectProperty mirrors (CD28).
+    private sealed class OffsetRowObserver(ScrollViewer viewer) : IValueObserver<int>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, int oldValue, int newValue, BindingPriority priority)
+            => viewer.SyncFromPresenter();
+    }
+
+    private sealed class OffsetColumnObserver(ScrollViewer viewer) : IValueObserver<int>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, int oldValue, int newValue, BindingPriority priority)
+            => viewer.SyncFromPresenter();
+    }
+
+    // Extent/Viewport are mirrored by SyncFromPresenter (the SCP publishes them during arrange, then
+    // ArrangeOverride pulls; the offset observers cover the in-band composite-slide path) — no eager
+    // push observers are needed for those two (CD28).
+}

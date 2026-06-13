@@ -284,6 +284,7 @@ public sealed partial class UIApplication : IAsyncDisposable
                 _focusManager.OnWindowDeactivated(old); // the P1 single-root deactivation (S4 at P7)
                 _renderSystem!.SetRoot(null); // RenderTree.Detach — scenes back to the pool
                 old.DetachRoot();
+                ReleaseRegistryForRoot(old); // S7: drop the root's subscription registry (design doc §11.6)
                 _layoutSystem!.SetRoot(null);
             }
 

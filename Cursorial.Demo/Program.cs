@@ -28,6 +28,7 @@ IReadOnlyList<IDemo> demos =
     new BrushedTextDemo(),
     new UIPrimitivesDemo(),
     new UIPanelsDemo(),
+    new UIControlsDemo(),
     new ImageSceneDemo(),
     new ImageClipDemo(),
     new ImageDemo(),

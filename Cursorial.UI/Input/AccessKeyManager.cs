@@ -27,6 +27,35 @@ namespace Cursorial.UI.Input;
 /// </remarks>
 public sealed class AccessKeyManager
 {
+    /// <summary>
+    /// The access-key cue flag an <c>AccessTextPresenter</c> reads to decide whether to underline its
+    /// mnemonic grapheme (design doc §12.5; default <see langword="false"/>). The end-to-end cue
+    /// <em>route</em> (the theme's <c>:access-keys AccessTextPresenter { ShowUnderline: true }</c> rule,
+    /// driven by the <see cref="InteractionState.AccessKeyCue"/> bit) lands at P9; the presenter
+    /// mechanism that consumes this flag is C0.
+    /// </summary>
+    public static readonly AttachedProperty<bool> ShowUnderlineProperty =
+        UIProperty.RegisterAttached<AccessKeyManager, UIElement, bool>("ShowUnderline");
+
+    static AccessKeyManager()
+    {
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ShowUnderlineProperty);
+    }
+
+    /// <summary>Reads the access-key underline cue flag on <paramref name="element"/>.</summary>
+    public static bool GetShowUnderline(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(ShowUnderlineProperty);
+    }
+
+    /// <summary>Sets the access-key underline cue flag on <paramref name="element"/>.</summary>
+    public static void SetShowUnderline(UIElement element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(ShowUnderlineProperty, value);
+    }
+
     private readonly UIDispatcher _dispatcher;
     private readonly FocusManager _focus;
     private readonly InteractionStateService _interactions;

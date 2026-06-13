@@ -75,8 +75,10 @@ public abstract partial class UIElement
             _lastMeasureConstraint = availableSize;
             _hasMeasured = true;
             IsMeasureValid = true;
+
             if (SetAndRaise(DesiredSizeProperty, ref _desiredSize, Size.Empty))
                 NotifyParentDesiredSizeChanged();
+
             return;
         }
 
@@ -95,12 +97,14 @@ public abstract partial class UIElement
         var margin = Margin;
         var inner = LayoutMath.Sub(availableSize, margin);
         var (minWidth, maxWidth, minHeight, maxHeight) = ResolveMinMax();
+
         var constraint = new Size(
             LayoutMath.Clamp(inner.Columns, minWidth, maxWidth),
             LayoutMath.Clamp(inner.Rows, minHeight, maxHeight));
 
         Size natural;
         _measuring = true;
+
         try
         {
             natural = MeasureOverride(constraint);
@@ -116,6 +120,7 @@ public abstract partial class UIElement
                 LayoutDiagnosticKind.DesiredSizeUnbounded, this,
                 $"MeasureOverride on '{GetType().Name}' returned Unbounded ({natural}); DesiredSize is never " +
                 $"Unbounded (LD2) — clamped to MaxExtent.");
+
             natural = new Size(
                 LayoutMath.IsUnbounded(natural.Columns) ? LayoutMath.MaxExtent : natural.Columns,
                 LayoutMath.IsUnbounded(natural.Rows) ? LayoutMath.MaxExtent : natural.Rows);
@@ -131,6 +136,7 @@ public abstract partial class UIElement
         _naturalSize = natural;
 
         var desired = LayoutMath.Add(natural, margin);
+
         if (LayoutMath.IsUnbounded(desired.Columns) || LayoutMath.IsUnbounded(desired.Rows))
         {
             // A pathological Min/Max (e.g. MinWidth = Unbounded) or saturated overflow; LD2 holds.
@@ -155,11 +161,12 @@ public abstract partial class UIElement
     /// </summary>
     protected virtual Size MeasureOverride(Size availableSize)
     {
-        if (_visualChildren is not { } children)
+        if (_visualChildren is not {} children)
             return Size.Empty;
 
         var columns = 0;
         var rows = 0;
+
         for (var i = 0; i < children.Count; i++)
         {
             var child = children[i];
@@ -261,28 +268,33 @@ public abstract partial class UIElement
         var used = ArrangeOverride(arrangeSize);
         var usedColumns = used.Columns;
         var usedRows = used.Rows;
+
         if (usedColumns is < 0 or > LayoutMath.MaxExtent || usedRows is < 0 or > LayoutMath.MaxExtent)
         {
             LayoutDiagnostics.Emit(
                 LayoutDiagnosticKind.ArrangeRectClamped, this,
                 $"ArrangeOverride on '{GetType().Name}' returned {used}; extents clamp to [0, MaxExtent] " +
                 "before Rect construction (doc §5.2).");
+
             usedColumns = Math.Clamp(usedColumns, 0, LayoutMath.MaxExtent);
             usedRows = Math.Clamp(usedRows, 0, LayoutMath.MaxExtent);
         }
 
-        var offsetColumn = horizontalAlignment switch
-        {
-            HorizontalAlignment.Left => 0,
-            HorizontalAlignment.Right => Math.Max(0, slot.Columns - usedColumns),
-            _ => LayoutMath.CenterOffset(slot.Columns, usedColumns), // Center, and Stretch that cannot fill (LD3)
-        };
-        var offsetRow = verticalAlignment switch
-        {
-            VerticalAlignment.Top => 0,
-            VerticalAlignment.Bottom => Math.Max(0, slot.Rows - usedRows),
-            _ => LayoutMath.CenterOffset(slot.Rows, usedRows),
-        };
+        var offsetColumn =
+            horizontalAlignment switch
+            {
+                HorizontalAlignment.Left  => 0,
+                HorizontalAlignment.Right => Math.Max(0, slot.Columns - usedColumns),
+                _                         => LayoutMath.CenterOffset(slot.Columns, usedColumns), // Center, and Stretch that cannot fill (LD3)
+            };
+
+        var offsetRow =
+            verticalAlignment switch
+            {
+                VerticalAlignment.Top    => 0,
+                VerticalAlignment.Bottom => Math.Max(0, slot.Rows - usedRows),
+                _                        => LayoutMath.CenterOffset(slot.Rows, usedRows),
+            };
 
         // The signed position fold (LD19): margin.Left / margin.Top may be negative, producing a
         // negative origin. The fold itself computes in long — an int fold could wrap (e.g.
@@ -291,12 +303,14 @@ public abstract partial class UIElement
         // pathological inputs can't overflow downstream int arithmetic.
         var column = (long) finalRect.Column + margin.Left + offsetColumn;
         var row = (long) finalRect.Row + margin.Top + offsetRow;
+
         if (column is > LayoutMath.MaxExtent or < -LayoutMath.MaxExtent ||
             row is > LayoutMath.MaxExtent or < -LayoutMath.MaxExtent)
         {
             LayoutDiagnostics.Emit(
                 LayoutDiagnosticKind.ArrangeRectClamped, this,
                 $"Arrange position ({column}, {row}) for '{GetType().Name}' exceeds ±MaxExtent; clamped (doc §5.2).");
+
             column = Math.Clamp(column, -LayoutMath.MaxExtent, LayoutMath.MaxExtent);
             row = Math.Clamp(row, -LayoutMath.MaxExtent, LayoutMath.MaxExtent);
         }
@@ -335,15 +349,21 @@ public abstract partial class UIElement
             return;
 
         if (oldBounds.Size != newBounds.Size)
+        {
             InvalidateVisual();
+        }
         else if (IsEffectiveRenderBoundary)
+        {
             InvalidateComposite();
+        }
         else
             // Non-boundary position-only: the element physically moved within its zone's raster
             // space, so the zone re-rasters WHOLE — there is no partial-raster machinery in v1
             // (the probe-1 verdict). A future dirty-region implementation would narrow this branch
             // first; today it is deliberate, not a fallthrough.
+        {
             InvalidateVisual();
+        }
     }
 
     // ───────────────────────────── invalidation ─────────────────────────────

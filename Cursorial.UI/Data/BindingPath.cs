@@ -63,6 +63,11 @@ internal readonly struct PathSegment
 /// step     := identifier | '(' Type '.' identifier ')'
 /// indexer  := '[' ( integer | string ) ']'
 /// </code>
+/// A non-integer indexer token is a string key, but at resolution time it also coerces to an
+/// <c>Item[SomeEnum]</c> parameter when the source exposes one: <c>[Active]</c> or the qualified
+/// <c>[Status.Active]</c> binds an enum-keyed dictionary / indexer (case-insensitive; see
+/// <c>AccessorCache.ResolveStringIndexer</c>). This is the ergonomic alternative to WPF's
+/// <c>[(local:Status)Active]</c> cast form (the cast lane itself stays deferred, below).
 /// Out (recorded, throw with position): multi-argument indexers, source casts <c>(local:T)x</c>,
 /// slash/XPath, <c>Path=/</c> current-item.
 /// </summary>

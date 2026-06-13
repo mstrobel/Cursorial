@@ -68,22 +68,68 @@ internal static class AccessorCache
         }
     }
 
-    /// <summary>Resolves a string-indexer accessor (dictionary / general <c>Item[string]</c>) — not type-cached (key varies).</summary>
+    /// <summary>
+    /// Resolves a non-integer indexer accessor — string keys (dictionary / general <c>Item[string]</c>)
+    /// and <c>Item[SomeEnum]</c> indexers, whose token is coerced to the enum key (design doc §6.3). Not
+    /// type-cached (the key varies).
+    /// </summary>
     public static PropertyAccessor? ResolveStringIndexer(object instance, string key)
     {
-        if (instance is IDictionary dictionary)
+        var instanceType = instance.GetType();
+
+        if (instance is IDictionary)
         {
-            var indexer = instance.GetType().GetProperty("Item", [typeof(string)])
-                          ?? instance.GetType().GetProperty("Item", [typeof(object)]);
+            var indexer = instanceType.GetProperty("Item", [typeof(string)])
+                          ?? instanceType.GetProperty("Item", [typeof(object)]);
             if (indexer is not null)
                 return new ReflectionIndexerAccessor(indexer, key);
+
+            // A generic dictionary keyed by an enum (e.g. Dictionary<TEnum, T>) is IDictionary but exposes
+            // only Item[TEnum] — bind through that typed indexer with the coerced key rather than the
+            // non-generic string lookup, which would silently miss against enum-keyed entries.
+            if (ResolveEnumIndexer(instanceType, key) is { } enumKeyed)
+                return enumKeyed;
 
             // Non-generic IDictionary without a typed indexer.
             return new DictionaryAccessor(key);
         }
 
-        var stringIndexer = instance.GetType().GetProperty("Item", [typeof(string)]);
-        return stringIndexer is not null ? new ReflectionIndexerAccessor(stringIndexer, key) : null;
+        var stringIndexer = instanceType.GetProperty("Item", [typeof(string)]);
+        if (stringIndexer is not null)
+            return new ReflectionIndexerAccessor(stringIndexer, key);
+
+        // A non-dictionary class exposing Item[SomeEnum].
+        return ResolveEnumIndexer(instanceType, key);
+    }
+
+    /// <summary>
+    /// Resolves a single-argument <c>Item[SomeEnum]</c> indexer by coercing the path token to the enum
+    /// key (design doc §6.3): a bare member (<c>[Active]</c>) or qualified form (<c>[Status.Active]</c>),
+    /// parsed case-insensitively. Returns null when the type exposes no enum indexer whose member the
+    /// token names (so the path stays unresolved rather than binding to a wrong key).
+    /// </summary>
+    private static PropertyAccessor? ResolveEnumIndexer(Type instanceType, string token)
+    {
+        // [Status.Active] → "Active"; a bare [Active] is used as-is. (Integer tokens never reach here —
+        // the path parser routes those to the int indexer.)
+        var name = token;
+        var dot = name.LastIndexOf('.');
+        if (dot >= 0)
+            name = name[(dot + 1)..];
+
+        foreach (var property in instanceType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.Name != "Item")
+                continue;
+            var parameters = property.GetIndexParameters();
+            if (parameters.Length != 1 || !parameters[0].ParameterType.IsEnum)
+                continue;
+
+            if (Enum.TryParse(parameters[0].ParameterType, name, ignoreCase: true, out var value) && value is not null)
+                return new ReflectionIndexerAccessor(property, value);
+        }
+
+        return null;
     }
 
     /// <summary>Test-only cache reset (registrations are process-global; the cache is a pure function so reset is harmless).</summary>

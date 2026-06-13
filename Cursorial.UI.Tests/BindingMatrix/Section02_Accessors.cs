@@ -127,6 +127,57 @@ public class Section02_Accessors
         Assert.Equal(7, accessor.GetValue(vm));
     }
 
+    [Fact]
+    public void B024a_EnumIndexer_OnGenericDictionary_CoercesTokenToEnumKey()
+    {
+        // Dictionary<TEnum, T> is IDictionary but exposes only Item[TEnum]; the bare token coerces to
+        // the enum key rather than silently missing as a string lookup (design doc §6.3).
+        var map = new System.Collections.Generic.Dictionary<Status, string>
+        {
+            [Status.Active] = "on",
+            [Status.Closed] = "off",
+        };
+
+        var bare = AccessorCache.ResolveStringIndexer(map, BindingPath.Parse("[Active]").Segments[0].Name!);
+        Assert.NotNull(bare);
+        Assert.Equal(AccessorKind.ReflectionIndexer, bare!.Kind);
+        Assert.Equal("on", bare.GetValue(map));
+
+        // Qualified form [Status.Closed] strips to the member name.
+        var qualified = AccessorCache.ResolveStringIndexer(map, BindingPath.Parse("[Status.Closed]").Segments[0].Name!);
+        Assert.Equal("off", qualified!.GetValue(map));
+
+        // An unknown token isn't an enum member, so it degrades to the pre-existing IDictionary
+        // string fallback (an accessor that misses at runtime) — not the enum-keyed indexer.
+        var bogus = AccessorCache.ResolveStringIndexer(map, "Bogus");
+        Assert.Null(bogus!.GetValue(map));
+    }
+
+    [Fact]
+    public void B024b_EnumIndexer_OnPlainClass_ResolvesRoundTrips_AndUnknownStaysUnresolved()
+    {
+        var box = new EnumIndexed();
+        var accessor = AccessorCache.ResolveStringIndexer(box, BindingPath.Parse("[Active]").Segments[0].Name!);
+
+        Assert.NotNull(accessor);
+        Assert.Equal(AccessorKind.ReflectionIndexer, accessor!.Kind);
+        accessor.SetValue(box, "live");          // two-way write-back through the enum key
+        Assert.Equal("live", accessor.GetValue(box));
+        Assert.Equal("live", box[Status.Active]);
+
+        // No IDictionary fallback on a plain class: an unknown enum member resolves nothing, so the
+        // path stays unresolved rather than binding to a wrong key.
+        Assert.Null(AccessorCache.ResolveStringIndexer(box, "Bogus"));
+    }
+
+    private enum Status { Active, Closed }
+
+    private sealed class EnumIndexed
+    {
+        private readonly System.Collections.Generic.Dictionary<Status, string?> _store = new();
+        public string? this[Status key] { get => _store.GetValueOrDefault(key); set => _store[key] = value; }
+    }
+
     private static PathSegment ParseSingle(string name)
     {
         var path = BindingPath.Parse(name);

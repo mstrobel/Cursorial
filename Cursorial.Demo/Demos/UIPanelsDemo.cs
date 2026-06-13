@@ -1,3 +1,7 @@
+using System.ComponentModel;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
@@ -5,6 +9,7 @@ using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 using Style = Cursorial.UI.Style; // both Cursorial.Output and Cursorial.UI declare `Style`
@@ -28,7 +33,11 @@ using Style = Cursorial.UI.Style; // both Cursorial.Output and Cursorial.UI decl
 // Hovering any card highlights it live off the any-event-motion hover chain — and, on OSC 22
 // terminals (Kitty/Ghostty/Foot), flips the HOST mouse pointer through UIElement.Cursor (§7.6):
 // the cards request the hand, the glass panel the I-beam, everything else the default. Ctrl+R is a
-// KeyBinding (KeyGesture → ICommand on the root's InputBindings) that resets the showcase. Resize
+// KeyBinding (KeyGesture → ICommand on the root's InputBindings) that resets the showcase.
+// 'b' is the P4 DATA-BINDING canary: a sidebar card whose Label and Visibility are BOUND to an
+// INPC viewmodel (Cursorial.UI.Data) — 'b' flips the VM's `Live` bool (and rewrites its `Banner`
+// text), the bindings carry the change to the card with no manual element writes (the live MVVM
+// round trip — INPC PropertyChanged → bound StyledProperty → AffectsRender repaint). Resize
 // is handled by the loop's resize transaction; q / Esc exit through Shutdown, and an UNHANDLED
 // Ctrl+C exits through the S6 default gesture (the handler deliberately leaves Ctrl-modified keys
 // unhandled — Ctrl+R is consumed by the binding sweep, Ctrl+C falls through to the gesture).
@@ -36,7 +45,7 @@ internal sealed class UIPanelsDemo : IDemo
 {
     public string Name => "uipanels";
     public IReadOnlyList<string> Aliases => ["uip"];
-    public string Description => "Cursorial.UI panel-tree showcase on the real frame loop (arrows slide, v visibility, o opacity, Tab focus, style-rule cards, Ctrl+R reset).";
+    public string Description => "Cursorial.UI panel-tree showcase on the real frame loop (arrows slide, v visibility, o opacity, Tab focus, style-rule cards, b toggles a BOUND MVVM card, Ctrl+R reset).";
 
     public async Task RunAsync(string argument)
     {
@@ -44,7 +53,8 @@ internal sealed class UIPanelsDemo : IDemo
                           "'v' toggles the badge, 'o' cycles the glass opacity, Tab/click focuses the " +
                           "sidebar cards (hover/focus looks come from REAL :pointerover/:focus style " +
                           "rules — the P3 styling engine live; on Kitty-class terminals the mouse pointer " +
-                          "turns to a hand over the cards and an I-beam over the glass), Ctrl+R resets; " +
+                          "turns to a hand over the cards and an I-beam over the glass), 'b' flips a " +
+                          "BOUND MVVM card (the P4 data-binding canary), Ctrl+R resets; " +
                           "q / Esc / Ctrl+C exits.");
 
         var app = UIApplication.CreateBuilder()
@@ -95,6 +105,11 @@ internal sealed class UIPanelsDemo : IDemo
         private Label _status = null!;
         private FocusCard[] _cards = [];
         private int _opacityStep = 1; // start translucent so the glass effect is visible immediately
+
+        // The P4 MVVM canary state: a plain INPC viewmodel. The bound card's Label / Visibility track
+        // these through Cursorial.UI.Data bindings — 'b' is the only thing that touches the VM.
+        private readonly BannerVm _vm = new() { Banner = " ● live banner (b) ", Live = true };
+        private int _bannerCount;
 
         public UIElement BuildTree()
         {
@@ -197,12 +212,25 @@ internal sealed class UIPanelsDemo : IDemo
             }
             sidebar.Children.Add(cardStack);
 
+            // The P4 data-binding canary: a card whose Label and Visibility are BOUND to the INPC
+            // `BannerVm` (DataContext-anchored). 'b' flips the VM — the bindings carry it to the card
+            // with no manual element writes. Label ← Banner (OneWay), Visibility ← Live (OneWay through
+            // a bool→Visibility converter). The DataContext set on the card is the binding anchor.
+            sidebar.Children.Add(new Label(" bound card (b → MVVM):", ChromeText, SidebarBg));
+            var boundCard = new Label("", Color.FromRgb(255, 235, 245), BadgeBg) { Margin = new Margins(2, 0) };
+            boundCard.DataContext = _vm;
+            boundCard.SetBinding(Label.TextProperty, new Binding(nameof(BannerVm.Banner)));
+            boundCard.SetBinding(UIElement.VisibilityProperty,
+                new Binding(nameof(BannerVm.Live)) { Converter = BoolToVisibility.Instance });
+            sidebar.Children.Add(boundCard);
+
             sidebar.Children.Add(new Label(" keys:", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   hover    cards=hand", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("            glass=I-beam", ChromeText, SidebarBg) { Margin = new(0, -1, 0, 0) });
             sidebar.Children.Add(new Label("   ← ↑ ↓ →  slide panel", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   v        toggle badge", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   o        cycle opacity", ChromeText, SidebarBg));
+            sidebar.Children.Add(new Label("   b        flip bound VM", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   Tab      cycle cards", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   Ctrl+R   reset (binding)", ChromeText, SidebarBg));
             sidebar.Children.Add(new Label("   q        quit", ChromeText, SidebarBg));
@@ -327,6 +355,18 @@ internal sealed class UIPanelsDemo : IDemo
                             UpdateStatus();
                             e.Handled = true;
                             return;
+
+                        case 'b':
+                            // The P4 MVVM canary: touch ONLY the viewmodel. INPC PropertyChanged flows
+                            // through the live bindings to the bound card's Label + Visibility — no
+                            // element write, no InvalidateVisual.
+                            _vm.Live = !_vm.Live;
+                            _vm.Banner = _vm.Live
+                                ? $" ● live banner #{++_bannerCount} (b) "
+                                : " ○ hidden (b) ";
+                            UpdateStatus();
+                            e.Handled = true;
+                            return;
                     }
 
                     break;
@@ -349,6 +389,9 @@ internal sealed class UIPanelsDemo : IDemo
             _glass.Opacity = OpacitySteps[_opacityStep];
             _glassReadout.Text = $"   opacity {OpacitySteps[_opacityStep]:0.00}";
             _badge.Visibility = Visibility.Visible;
+            _vm.Live = true;                          // the bound card follows through its bindings
+            _vm.Banner = " ● live banner (b) ";
+            _bannerCount = 0;
             UpdateStatus();
         }
 
@@ -356,9 +399,10 @@ internal sealed class UIPanelsDemo : IDemo
             => _status.Text = $" offset ({_floating.RenderOffsetColumn,3},{_floating.RenderOffsetRow,3})" +
                               $" · opacity {OpacitySteps[_opacityStep]:0.00}" +
                               $" · badge {(_badge.Visibility == Visibility.Visible ? "on " : "off")}" +
+                              $" · bound {(_vm.Live ? "live" : "off ")}" +
                               $" · focus {Array.Find(_cards, static card => card.IsFocused)?.Title ?? "none"}" +
                               $" · rasters: float {_floating.RasterCount}, glass {_glass.RasterCount}" +
-                              " — arrows slide, v badge, o opacity, Tab cards, Ctrl+R reset, q quits";
+                              " — arrows slide, v badge, o opacity, b bound VM, Tab cards, Ctrl+R reset, q quits";
     }
 
     // ───────────────────────────── showcase elements ─────────────────────────────
@@ -486,5 +530,53 @@ internal sealed class UIPanelsDemo : IDemo
         public bool CanExecute(object? parameter) => true;
 
         public void Execute(object? parameter) => execute();
+    }
+
+    // ───────────────────────────── the P4 MVVM canary ─────────────────────────────
+
+    /// <summary>
+    /// The bound viewmodel for the data-binding canary: a plain <see cref="INotifyPropertyChanged"/>
+    /// object (no UI knowledge). The sidebar's bound card binds <c>Label</c> ← <see cref="Banner"/> and
+    /// <c>Visibility</c> ← <see cref="Live"/>; 'b' flips these on the VM and the live Cursorial.UI.Data
+    /// bindings carry the change to the element with no manual element writes.
+    /// </summary>
+    private sealed class BannerVm : INotifyPropertyChanged
+    {
+        private string _banner = "";
+        private bool _live;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string Banner
+        {
+            get => _banner;
+            set => Set(ref _banner, value);
+        }
+
+        public bool Live
+        {
+            get => _live;
+            set => Set(ref _live, value);
+        }
+
+        private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return;
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+
+    /// <summary>A one-way bool → <see cref="Visibility"/> converter (true ⇒ Visible, false ⇒ Collapsed).</summary>
+    private sealed class BoolToVisibility : IValueConverter
+    {
+        public static readonly BoolToVisibility Instance = new();
+
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+            => value is true ? Visibility.Visible : Visibility.Collapsed;
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+            => throw new NotSupportedException();
     }
 }

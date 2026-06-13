@@ -258,6 +258,24 @@ public class Section09_Grid
     }
 
     [Fact]
+    public void L148c_TrackMinExceedsMax_MinWins_OnBothTrackSizeAndChildConstraint()
+    {
+        // LD18: Clamp applies min last, so min wins a min>max conflict — and the Grid track must
+        // resolve it identically on BOTH the track size AND the child measure constraint (a two-step
+        // min-then-max clamp would let max win the constraint, measuring the child at 3 while the
+        // track sizes to 8 — the exact inconsistency this row guards against).
+        var grid = GridWithColumns(GridLength.Auto, GridLength.Star());
+        grid.ColumnDefinitions[0].MinWidth = 8;
+        grid.ColumnDefinitions[0].MaxWidth = 3;
+        var child = new Probe(5, 1);
+        grid.Children.Add(child);
+        Layout(grid, 20, 10);
+
+        Assert.Equal(8, grid.ColumnDefinitions[0].ActualWidth);                 // track: min wins
+        Assert.All(child.MeasureConstraints, c => Assert.Equal(8, c.Columns));  // constraint: min wins too
+    }
+
+    [Fact]
     public void L149_AutoMin_RaisesContent()
     {
         var grid = GridWithColumns(GridLength.Auto, GridLength.Star());

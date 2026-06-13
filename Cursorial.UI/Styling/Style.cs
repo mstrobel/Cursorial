@@ -29,11 +29,15 @@ namespace Cursorial.UI;
 /// </remarks>
 public sealed class Style
 {
+    private static readonly DataCondition[] NoConditions = [];
+
     private SetterCollection? _setters;
+    private WhenCollection? _when;
     private StyleCollection? _children;
     private EdgeActionCollection? _enter;
     private EdgeActionCollection? _exit;
     private CompiledSetter[]? _flattenedSetters;
+    private DataCondition[]? _flattenedWhen;
     private CompiledRule[]? _compiledRules;
 
     /// <summary>Creates a selector-less style (legal as an explicit <see cref="UIElement.Style"/> or a keyed theme entry).</summary>
@@ -71,6 +75,15 @@ public sealed class Style
 
     /// <summary>The style's setters (constants / <see cref="UIProperty.UnsetValue"/> at P3 — SD9).</summary>
     public SetterCollection Setters => _setters ??= new SetterCollection(this);
+
+    /// <summary>
+    /// The style's data-condition conjunction (design doc §3.1 / §3.3): a rule of this style is active
+    /// iff its structural selector matches, all required pseudo-classes are set, <b>and</b> every
+    /// <see cref="DataCondition"/> here holds. Empty = always (the structural/pseudo verdict alone).
+    /// Each condition counts 1 classLike toward specificity (SD5). <c>BasedOn</c> conditions compose
+    /// base-first (all must hold; a derived style is at least as restrictive as its base).
+    /// </summary>
+    public WhenCollection When => _when ??= new WhenCollection(this);
 
     /// <summary>
     /// Adds a type-checked setter and returns <see langword="this"/> for chaining — the low-friction
@@ -134,7 +147,7 @@ public sealed class Style
         // Compile the full flattened rule set (own rule(s) + Children, depth-first). This walks and
         // validates every nested style (and BasedOn chain) and converts every setter exactly once (SD9).
         var rules = new List<CompiledRule>();
-        EmitRules(rules, this, parentBranches: null, isNested: false, this);
+        EmitRules(rules, this, parentBranches: null, parentWhen: NoConditions, isNested: false, this);
         _compiledRules = [.. rules];
 
         LintHoverParity();
@@ -148,6 +161,7 @@ public sealed class Style
             return; // a sealed (immutable) child shares its cached rules by reference — never clear
 
         style._flattenedSetters = null;
+        style._flattenedWhen = null;
         style._compiledRules = null;
 
         if (style._children is { Count: > 0 } children)
@@ -230,7 +244,7 @@ public sealed class Style
                     throw new InvalidOperationException($"Style '{IdentityForDiagnostics}' has not been sealed.");
 
                 var rules = new List<CompiledRule>();
-                EmitRules(rules, this, parentBranches: null, isNested: false, this);
+                EmitRules(rules, this, parentBranches: null, parentWhen: NoConditions, isNested: false, this);
                 _compiledRules = [.. rules];
             }
 
@@ -342,13 +356,46 @@ public sealed class Style
     }
 
     /// <summary>
+    /// The flattened <see cref="When"/> conjunction (base-first, no dedupe — every condition must
+    /// hold; a derived style is at least as restrictive as its base, design doc §3.1). Shared by
+    /// reference across the style's rules; cached after the first compute.
+    /// </summary>
+    private DataCondition[] GetFlattenedWhen()
+    {
+        if (_flattenedWhen is not null)
+            return _flattenedWhen;
+
+        // The common case — no conditions anywhere up the chain — interns the empty array (zero
+        // per-rule cost for the overwhelmingly common unconditional style).
+        if (BasedOn is null && _when is not { Count: > 0 })
+            return _flattenedWhen = NoConditions;
+
+        var flattened = new List<DataCondition>();
+        AppendFlattenedWhen(flattened, this);
+        return _flattenedWhen = flattened.Count == 0 ? NoConditions : [.. flattened];
+    }
+
+    private static void AppendFlattenedWhen(List<DataCondition> flattened, Style style)
+    {
+        // BasedOn conditions compose base-first (the base's are AND-ed in; sealed before this style
+        // flattens — EmitRules order). No dedupe: two conditions over the same binding are legal and
+        // both count toward specificity (SD5).
+        if (style.BasedOn is { } basedOn)
+            flattened.AddRange(basedOn.GetFlattenedWhen());
+
+        if (style._when is { Count: > 0 } when)
+            flattened.AddRange(when);
+    }
+
+    /// <summary>
     /// Emits the depth-first flattened rules of <paramref name="style"/> into
     /// <paramref name="rules"/>: one rule per selector-list member (consecutive indices, shared
     /// setters), then each child of <see cref="Children"/> recursively, AND-composed against this
     /// style's composed branches (doc §3.3; SD5 order).
     /// </summary>
     private static void EmitRules(
-        List<CompiledRule> rules, Style style, SelectorBranch[]? parentBranches, bool isNested, Style ownerStyle)
+        List<CompiledRule> rules, Style style, SelectorBranch[]? parentBranches, DataCondition[] parentWhen,
+        bool isNested, Style ownerStyle)
     {
         style.ThrowOnBasedOnCycle();
         style.BasedOn?.Seal();
@@ -396,11 +443,23 @@ public sealed class Style
 
         var setters = style.GetFlattenedSetters(rules.Count);
 
+        // The rule's data-condition conjunction: the nesting parent's conditions (already flattened)
+        // AND this style's own flattened conditions (own + BasedOn). A composed child rule requires
+        // both — the structural compound was AND-composed, so the gating conditions are too (doc §3.3).
+        var ownWhen = style.GetFlattenedWhen();
+        var combinedWhen = Combine(parentWhen, ownWhen);
+
+        // Each DataCondition counts 1 classLike toward specificity (SD5 — data conditions ARE
+        // specificity; a When-guarded style beats its unguarded base with no extra mechanism). The
+        // StyleSortKey factory saturates the classLike field, so an overlong conjunction never
+        // overflows into a neighbor.
+        var whenSpecificity = combinedWhen.Length;
+
         if (composed is null)
         {
             rules.Add(new CompiledRule(
                           ownerStyle, style, rules.Count, branch: null, selectorText: string.Empty,
-                          names: 0, classLike: 0, types: 0, setters));
+                          names: 0, classLike: whenSpecificity, types: 0, setters, combinedWhen));
         }
         else
         {
@@ -410,15 +469,25 @@ public sealed class Style
 
                 rules.Add(new CompiledRule(
                               ownerStyle, style, rules.Count, branch, branch.ToCanonicalString(),
-                              names, classLike, types, setters));
+                              names, classLike + whenSpecificity, types, setters, combinedWhen));
             }
         }
 
         if (style._children is { Count: > 0 } children)
         {
             foreach (var child in children)
-                EmitRules(rules, child, composed, isNested: true, ownerStyle);
+                EmitRules(rules, child, composed, combinedWhen, isNested: true, ownerStyle: ownerStyle);
         }
+    }
+
+    /// <summary>AND-concatenates two flattened condition lists (parent-first), interning the empty/identity cases.</summary>
+    private static DataCondition[] Combine(DataCondition[] parent, DataCondition[] own)
+    {
+        if (parent.Length == 0)
+            return own;
+        if (own.Length == 0)
+            return parent;
+        return [.. parent, .. own];
     }
 
     /// <summary>

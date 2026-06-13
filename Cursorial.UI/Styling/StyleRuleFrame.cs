@@ -98,6 +98,14 @@ internal sealed class StyleRuleFrame : ValueFrame
     /// </summary>
     internal AncestorStateRequirement[]? AncestorRequirements { get; set; }
 
+    /// <summary>
+    /// The <c>When</c> data-condition requirements armed at arm time (design doc §3.3 / §6.8) — one
+    /// live <see cref="Data.IBindingWatch"/> per condition, or <see langword="null"/> when the rule
+    /// carries no conditions. Disposed at disarm/detach; the watcher lifetime equals the armed rule's
+    /// (ledger B16). The frame keeps its watches across re-match (a survivor keeps live watchers).
+    /// </summary>
+    internal WhenConditionRequirement[]? WhenRequirements { get; set; }
+
     /// <inheritdoc/>
     public override int EntryCount => _entries.Length;
 

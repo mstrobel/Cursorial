@@ -115,6 +115,32 @@ public class StyledProperty<T> : UIProperty
 
     internal override object? GetDefaultValueUntyped(Type forType) => GetMetadata(forType).DefaultValue;
 
+    internal override bool AreValuesEqualUntyped(Type forType, object? a, object? b)
+    {
+        if (ReferenceEquals(a, b))
+            return true;
+
+        // The boxed values are this property's values (T). Honor the effective comparer when both
+        // unbox cleanly; otherwise (a sentinel/mismatched box slipped in) fall back to object.Equals
+        // so the comparison can't throw on the echo-suppression hot path.
+        if (a is T ta && b is T tb)
+            return GetMetadata(forType).EffectiveComparer.Equals(ta, tb);
+
+        // A null on one side: for a reference T, null is a legitimate value, so route it through the
+        // comparer with the typed default (= null) on the null side when the other side is T.
+        if (!typeof(T).IsValueType)
+        {
+            if (a is null && b is T tbn)
+                return GetMetadata(forType).EffectiveComparer.Equals(default!, tbn);
+            if (b is null && a is T tan)
+                return GetMetadata(forType).EffectiveComparer.Equals(tan, default!);
+            if (a is null && b is null)
+                return true;
+        }
+
+        return Equals(a, b);
+    }
+
     internal override object? GetValueUntyped(UIObject host) => host.GetValueBoxed(this);
 
     internal override object? GetValueUntyped(UIObject host, BindingPriority maxPriority) => host.GetValue(this, maxPriority);

@@ -171,6 +171,16 @@ public abstract class UIProperty
     // DirectProperty<TOwner,T> recover the typed context. The base (and therefore the A14
     // sentinel) does not support value access.
 
+    /// <summary>
+    /// Untyped equality for two boxed values of this property, honoring the property's effective
+    /// change-detection comparer (metadata <c>Comparer</c>, else <see cref="EqualityComparer{T}.Default"/>).
+    /// The binding engine's echo suppression (BD8 step 2 / design doc §6.6) discriminates resurfaced
+    /// own values per the same comparer the store uses, so a custom comparer (e.g. case-insensitive)
+    /// does not let a case-only resurfaced value round-trip to the source. Direct properties and the
+    /// sentinel have no comparer metadata and fall back to <see cref="object.Equals(object?, object?)"/>.
+    /// </summary>
+    internal virtual bool AreValuesEqualUntyped(Type forType, object? a, object? b) => Equals(a, b);
+
     /// <summary>The untyped read: the boxed effective value (box-interned for styled properties).</summary>
     internal virtual object? GetValueUntyped(UIObject host)
         => throw new NotSupportedException($"'{this}' does not support untyped value access.");

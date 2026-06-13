@@ -249,10 +249,44 @@ instead of `Unbounded`, so the child wraps/ellipsizes to the space it will get r
 clipping at arrange. Cell tracks already passed their clamped `Size`; min-wins on a `min>max` conflict per LD18.
 Regression row **L148b**.
 
-Recorded P1 gaps: `BindingOperations.TearDown` leg of `UIElement.TearDown()` (P4); palette theming + capability
-rewrite and the S7 surface merge into `UIApplication` (P5); `TerminalSessionOptions.EmergencyRestoreBytes` Core seam
-for signal-path alt-screen restore (doc §10.7 — until it lands, a signal-killed app restores cooked mode but may
-leave the shell on the alt screen).
+**Phase 4 complete** (doc §14 — the S2 data-binding engine; normative spec at
+`docs/ui-layer-design/binding-matrix.md`, 186 rows B1–B186 + the BD pinned-decision ledger, tests in
+`Cursorial.UI.Tests/BindingMatrix/Section01…14`). In `Cursorial.UI/Data/` (namespace `Cursorial.UI.Data`;
+`DataContextProperty`/`NameScope`/`UIElement.FindName` in `Cursorial.UI` per §6.3/§6.4): descriptors
+(`BindingBase`/`AnchoredBinding`/`Binding`/`TemplateBinding`/`CompiledBinding<,>`/`RelativeSource`/`IValueConverter`/
+`BindingMode`/`UpdateSourceTrigger`); `BindingPath.Parse` (span-based, position-carrying errors; property steps,
+int/string indexers, `(Type.Property)` attached segments); `ReflectionBindingExpression` (the runtime — anchoring incl.
+the **DataContext-as-target parent-anchor** special case, Source/ElementName/Self/TemplatedParent/FindAncestor with
+reparent re-resolution; the full §6.6 forward pipeline + reverse lane; echo suppression incl. animation-priority
+filtering; all five modes + read-only-leaf degrade; PropertyChanged/Explicit/**LostFocus** triggers — the routed
+`LostFocusEvent` **and** `InputDispatcher.EditCommitRequested` terminal-focus-out pulse, focus retained;
+cross-thread dirty-bitmask coalescing + `IUIDispatcher` loop-wake; eviction-aware idempotent disposal); the
+**2026-06-11 source-notification ladder** (INPC → convention `[Name]Changed` event without TypeDescriptor leak →
+parent-change one-time-read degradation, INPC wins) over a COW `AccessorCache`; `BindingOperations`
+(`Install`/frame-hosted `Install`/`GetBindingExpression`/`SetBinding`/`ClearBinding`/**`Watch`**/`TearDown`) +
+`BindingRegistry` in `UIObject.BindingHostState` (replace-and-dispose, Explain, the teardown sweep);
+`BindingDiagnostics` ring/sinks/`CURSORIAL_BINDING_TRACE`/`Explain`; the DEBUG `BindingLeakTracker`. `UIElement.TearDown`
+runs `ValueStore.TearDown()` then `BindingOperations.TearDown(this)` bottom-up (**the P1-gap close**, B108/B166).
+
+**The `When`/`DataCondition` styling integration** (P4 — closes the StyleEngine's deliberate P3 Y-stage hole):
+`Style.When` is a `WhenCollection` of public `DataCondition`s (binding + `Equals`-value or predicate, with `Negate`;
+unknown/`UnsetValue` ⇒ unmet, fail-closed even when negated). The collection AND-composes into each `CompiledRule`
+(own + `BasedOn` + nesting-parent conditions), each condition counting **1 classLike** toward specificity (SD5
+realized — a `When`-guarded style beats its unguarded base). The `StyleEngine` arms one `BindingOperations.Watch` per
+condition when a rule structurally matches (`BindWhenRequirements`/`WhenConditionRequirement`, parallel to the
+ancestor-state requirements), gates `ComputeSatisfied` on every condition being met, and reconciles through the same
+queued/fixpoint Phase-2 path on each watch delivery (synchronous when idle — a VM flip reaches layout the same frame,
+invariant 1). Watcher lifetime = armed rule lifetime (ledger B16 — live across deactivation since the watch is the
+re-activation predicate; **no Pause/Resume**; disposed at disarm via `RemoveFrame`→`UnbindWhenRequirements` and at
+detach via `OnElementDetached`; the teardown sweep is the backstop). End-to-end rows are
+`binding-matrix.md` §13a (B162a–B162h, tests in `Cursorial.UI.Tests/StyleMatrix/Section14_When.cs`); the P3
+style-matrix carries a recorded P4 amendment in its §0 scope note.
+
+Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
+`ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
+theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);
+`TerminalSessionOptions.EmergencyRestoreBytes` Core seam for signal-path alt-screen restore (doc §10.7 — until it
+lands, a signal-killed app restores cooked mode but may leave the shell on the alt screen).
 
 Modules landed:
 

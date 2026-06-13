@@ -1017,6 +1017,22 @@ public abstract class UIObject : IInheritanceNode
     protected static void AffectsParentArrange<TOwner>(params ReadOnlySpan<UIProperty> properties) where TOwner : UIObject
         => AddEffects<TOwner>(PropertyEffects.AffectsParentArrange, properties);
 
+    /// <summary>
+    /// Marks <paramref name="properties"/> as <see cref="PropertyEffects.BindsTwoWayByDefault"/> for
+    /// <typeparamref name="TOwner"/> (the binding engine resolves <c>Mode.Default</c> to <c>TwoWay</c>
+    /// from this, BD10). Registered pre-freeze from the owner type's static constructor.
+    /// </summary>
+    protected static void BindsTwoWayByDefault<TOwner>(params ReadOnlySpan<UIProperty> properties) where TOwner : UIObject
+        => AddEffects<TOwner>(PropertyEffects.BindsTwoWayByDefault, properties);
+
+    /// <summary>
+    /// Marks <paramref name="properties"/> as <see cref="PropertyEffects.NotDataBindable"/> for
+    /// <typeparamref name="TOwner"/> (the binding engine rejects installs, BD-B112). Registered
+    /// pre-freeze from the owner type's static constructor.
+    /// </summary>
+    protected static void NotDataBindable<TOwner>(params ReadOnlySpan<UIProperty> properties) where TOwner : UIObject
+        => AddEffects<TOwner>(PropertyEffects.NotDataBindable, properties);
+
     private static void AddEffects<TOwner>(PropertyEffects effects, ReadOnlySpan<UIProperty> properties) where TOwner : UIObject
     {
         foreach (var property in properties)

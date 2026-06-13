@@ -32,10 +32,11 @@ internal sealed class CompiledRule
 {
     private static readonly AncestorStateCompound[] NoAncestorState = [];
     private static readonly string[] NoCustomPseudos = [];
+    private static readonly DataCondition[] NoConditions = [];
 
     internal CompiledRule(
         Style ownerStyle, Style declaringStyle, int ruleIndex, SelectorBranch? branch, string selectorText,
-        int names, int classLike, int types, CompiledSetter[] setters)
+        int names, int classLike, int types, CompiledSetter[] setters, DataCondition[]? whenConditions = null)
     {
         OwnerStyle = ownerStyle;
         DeclaringStyle = declaringStyle;
@@ -46,6 +47,7 @@ internal sealed class CompiledRule
         ClassLike = classLike;
         Types = types;
         Setters = setters;
+        WhenConditions = whenConditions ?? NoConditions;
 
         SubjectCustomPseudoClasses = NoCustomPseudos;
         AncestorStateCompounds = NoAncestorState;
@@ -134,6 +136,16 @@ internal sealed class CompiledRule
     /// (selector-list members share their setters; doc §3.1).
     /// </summary>
     internal CompiledSetter[] Setters { get; }
+
+    /// <summary>
+    /// The flattened <c>When</c> data-condition conjunction (own + <c>BasedOn</c> + the nesting
+    /// parent's; design doc §3.1 / §3.3). Empty = unconditional. The styling engine arms one watch per
+    /// condition when the rule structurally matches; all must hold for the rule to be active.
+    /// </summary>
+    internal DataCondition[] WhenConditions { get; }
+
+    /// <summary>Whether the rule carries any <c>When</c> data conditions (the arm-time watch trigger).</summary>
+    internal bool HasWhenConditions => WhenConditions.Length > 0;
 
     /// <summary>The subject compound's required <see cref="InteractionState"/> bits (the frame's interest mask input).</summary>
     internal InteractionState SubjectStateBits { get; }

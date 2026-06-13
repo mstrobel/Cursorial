@@ -428,16 +428,18 @@ public abstract partial class UIElement : UIObject
     /// </summary>
     /// <remarks>
     /// <para>
-    /// At P1 the sweep runs the value-store leg only; the <c>BindingOperations.TearDown(element)</c>
-    /// leg is a recorded seam that lands with the binding engine (S2, P4). Detaching the subtree
-    /// from its parent is the caller's responsibility.
+    /// Both legs run: <c>ValueStore.TearDown()</c> evicts every store entry (firing
+    /// <c>OnEvicted</c> per entry), then <c>BindingOperations.TearDown(element)</c> disposes the
+    /// remaining registry-tracked binding expressions (DirectProperty targets, watches anchored here)
+    /// — the S2 sweep half that closed the recorded P1 gap (binding-matrix B108/B166). Detaching the
+    /// subtree from its parent is the caller's responsibility.
     /// </para>
     /// <para>
     /// Teardown is deliberately <b>not</b> folded into <c>Children.Remove</c> /
     /// <see cref="RemoveVisualChild"/>: elements are reusable (detach + reattach rebuilds all
     /// single-shot state — doc §5.1), so an automatic sweep on remove would break legal
     /// remove-then-reattach flows. Discarding a subtree is a caller-visible decision; forgetting
-    /// this call leaks nothing at P1 but will pin viewmodel subscriptions alive once S2 lands.
+    /// this call pins viewmodel subscriptions alive (the DEBUG <c>BindingLeakTracker</c> flags it).
     /// </para>
     /// </remarks>
     public void TearDown()
@@ -461,7 +463,7 @@ public abstract partial class UIElement : UIObject
         }
 
         TearDownValueStore();
-        // S2 seam (P4): BindingOperations.TearDown(this) — the second sweep leg (doc §5.1).
+        Cursorial.UI.Data.BindingOperations.TearDown(this); // the second sweep leg (doc §5.1 / §6.5)
     }
 
     // ───────────────────────────── effective IsEnabled (S1-owned) ─────────────────────────────

@@ -482,6 +482,18 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             }
         }
 
+        // When data conditions: every armed condition's watch value must satisfy its verdict
+        // (unresolved ⇒ unmet — doc §3.3). The watches are live (B16); this is a pure read of their
+        // last-delivered values, allocation-free, ordering-immune.
+        if (frame.WhenRequirements is { } whenRequirements)
+        {
+            foreach (var requirement in whenRequirements)
+            {
+                if (!requirement.IsMet)
+                    return false;
+            }
+        }
+
         return true;
     }
 
@@ -735,6 +747,13 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 resulting.Add(frame);
                 addedAny = true;
 
+                // When data conditions (doc §3.3 / §6.8): arm one watch per condition AFTER AddFrame so
+                // the state exists for the callback's reconcile request. The initial synchronous
+                // delivery rides inside Watch (here, _applying > 0) and merely populates each watch's
+                // value; activation is decided by ComputeSatisfied below — no flicker.
+                if (match.Rule.HasWhenConditions)
+                    BindWhenRequirements(element, frame);
+
                 // SD18 arm-time truth: a rule whose requirements already hold activates within the
                 // same arm pass — one notification per affected property, no inactive flicker.
                 if (ComputeSatisfied(frame))
@@ -805,6 +824,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         var wasActive = frame.IsActive;
 
         UnbindAncestorRequirements(frame);
+        UnbindWhenRequirements(frame); // dispose the When watches (watcher lifetime = armed lifetime — B16)
         element.RemoveFrame(frame); // cookie retraction — the store promotes (invariant 4)
 
         if (wasActive)
@@ -918,6 +938,67 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                     candidate.StyleStateInternal = null;
             }
         }
+    }
+
+    // ───────────────────────────── When data conditions (doc §3.3 / §6.8) ─────────────────────────────
+
+    /// <summary>
+    /// Arms one <see cref="Data.BindingOperations.Watch"/> per <c>When</c> <see cref="DataCondition"/>
+    /// on the styled element (the S2 data half), recording the requirements on the frame. The watch
+    /// auto-rebinds on DataContext change and re-delivers; every delivery reconciles the frame so a
+    /// VM-driven flip participates in the same frame (doc §6.8). The initial synchronous delivery
+    /// (inside <c>Watch</c>) merely populates each watch's value — activation is decided by the
+    /// caller's <see cref="ComputeSatisfied"/> with no flicker. Watcher lifetime = armed rule lifetime
+    /// (ledger B16: live across deactivation, disposed at disarm/detach).
+    /// </summary>
+    private void BindWhenRequirements(UIElement element, StyleRuleFrame frame)
+    {
+        var conditions = frame.Rule.WhenConditions;
+        var requirements = new WhenConditionRequirement[conditions.Length];
+
+        for (var i = 0; i < conditions.Length; i++)
+        {
+            var condition = conditions[i];
+            var requirement = new WhenConditionRequirement(condition);
+            requirements[i] = requirement;
+
+            // The watch callback recomputes satisfaction by reconciling the owning frame. During the
+            // synchronous initial delivery (inside Watch) it is a harmless queued no-op — the frame is
+            // not yet activated, and the arm pass decides activation via ComputeSatisfied; after the
+            // frame is removed/detached OnWhenConditionChanged short-circuits.
+            requirement.Watch = Data.BindingOperations.Watch(
+                element, condition.Binding, _ => OnWhenConditionChanged(frame));
+        }
+
+        frame.WhenRequirements = requirements;
+    }
+
+    private static void UnbindWhenRequirements(StyleRuleFrame frame)
+    {
+        if (frame.WhenRequirements is not { } requirements)
+            return;
+
+        frame.WhenRequirements = null;
+        foreach (var requirement in requirements)
+            requirement.Dispose();
+    }
+
+    /// <summary>
+    /// A <c>When</c> watch delivered a new value: reconcile the owning frame so its activation tracks
+    /// the condition (a live <c>When</c> flip — the Phase-2 hot-path equivalent for data conditions).
+    /// Guarded — a removed/disposed frame (store cleared) is skipped; a detached element has no state.
+    /// Reconcile rides the existing queued/fixpoint path (synchronous when idle, queued when
+    /// mid-apply — B167), identical to a pseudo/ancestor flip.
+    /// </summary>
+    private void OnWhenConditionChanged(StyleRuleFrame frame)
+    {
+        if (frame.Store is null || frame.Owner is not { } owner)
+            return; // removed/disarmed since the watch was armed
+
+        if (owner.StyleStateInternal is not { } state)
+            return; // detached — OnElementDetached already retracted (SD15)
+
+        RequestReconcile(owner, state);
     }
 
     /// <summary>

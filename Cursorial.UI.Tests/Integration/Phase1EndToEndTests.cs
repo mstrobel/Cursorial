@@ -232,6 +232,63 @@ public sealed class Phase1EndToEndTests
         Assert.Equal(rootVersion, tree.GetScene(root)!.RasterVersion);
     }
 
+    // ───────────────────────────── (b′) same-size content change re-rasters (lane independence) ─────────────────────────────
+
+    /// <summary>
+    /// The effects lanes are independent (doc §5.5): AffectsMeasure → InvalidateMeasure,
+    /// AffectsRender → InvalidateVisual, with no implication between them, and a re-measure only
+    /// transitively re-rasters when the <i>arranged size</i> changes. A direct text painter
+    /// (<see cref="TextBlock"/>) at a pinned size therefore must register its content properties on
+    /// the render lane too, or a same-size text swap — the canonical "stretched status line" — would
+    /// re-measure to the identical bounds and never repaint. This pins both the registration and the
+    /// end-to-end repaint.
+    /// </summary>
+    [Fact]
+    public void SameSizeTextChange_AtPinnedBounds_ReRastersAndUpdatesCells()
+    {
+        // Registration guard: Text/Markup/TextWrapping carry BOTH lanes (the fix); the alignment/
+        // trimming knobs stay render-only as before.
+        var effects = TextBlock.TextProperty.GetEffects(typeof(TextBlock));
+        Assert.True(effects.HasFlag(PropertyEffects.AffectsMeasure));
+        Assert.True(effects.HasFlag(PropertyEffects.AffectsRender));
+        Assert.True(TextBlock.MarkupProperty.GetEffects(typeof(TextBlock)).HasFlag(PropertyEffects.AffectsRender));
+        Assert.True(TextBlock.TextWrappingProperty.GetEffects(typeof(TextBlock)).HasFlag(PropertyEffects.AffectsRender));
+
+        using var host = UITestHost.Create();
+        var root = new Host();
+        // An explicit size pins the arranged bounds, so a text swap can never change the measured
+        // footprint — the bug's exact condition.
+        var label = new TextBlock("first")
+        {
+            Width = 20,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        root.Add(label);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal("f", host.GetCell(0, 0).Grapheme);
+        Assert.Equal("t", host.GetCell(4, 0).Grapheme);
+
+        var tree = host.Application.RenderSystem!.Tree!;
+        var rootScene = tree.GetScene(root)!;
+        var bounds = label.Bounds;
+        var rootVersion = rootScene.RasterVersion;
+
+        label.Text = "third"; // same 5-column width ⇒ identical DesiredSize ⇒ identical arranged bounds
+        host.RunFrame();
+
+        // The bounds genuinely did not move (so the size-change re-raster path was NOT what saved us)…
+        Assert.Equal(bounds, label.Bounds);
+        // …yet the zone re-rastered and the cells now show the new text.
+        Assert.Equal(rootVersion + 1, tree.GetScene(root)!.RasterVersion);
+        Assert.Equal("t", host.GetCell(0, 0).Grapheme);
+        Assert.Equal("h", host.GetCell(1, 0).Grapheme);
+        Assert.Equal("d", host.GetCell(4, 0).Grapheme);
+    }
+
     // ───────────────────────────── (c) banded scroll across a re-anchor edge ─────────────────────────────
 
     [Fact]

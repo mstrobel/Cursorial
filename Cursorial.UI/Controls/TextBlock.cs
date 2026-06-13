@@ -21,15 +21,15 @@ public class TextBlock : UIElement
     private FormattedText? _cached;
     private CacheKey _cacheKey;
 
-    /// <summary>The literal text content (<c>AffectsMeasure</c>; never access-key-folded — doc §12.7).</summary>
+    /// <summary>The literal text content (<c>AffectsMeasure | AffectsRender</c>; never access-key-folded — doc §12.7).</summary>
     public static readonly StyledProperty<string?> TextProperty =
         UIProperty.Register<TextBlock, string?>(nameof(Text));
 
-    /// <summary>BBCode markup (<c>AffectsMeasure</c>); wins over <see cref="Text"/> when both set (doc §12.7).</summary>
+    /// <summary>BBCode markup (<c>AffectsMeasure | AffectsRender</c>); wins over <see cref="Text"/> when both set (doc §12.7).</summary>
     public static readonly StyledProperty<string?> MarkupProperty =
         UIProperty.Register<TextBlock, string?>(nameof(Markup));
 
-    /// <summary>The wrap mode (<c>AffectsMeasure</c>).</summary>
+    /// <summary>The wrap mode (<c>AffectsMeasure | AffectsRender</c>).</summary>
     public static readonly StyledProperty<WrapMode> TextWrappingProperty =
         UIProperty.Register<TextBlock, WrapMode>(nameof(TextWrapping), defaultValue: WrapMode.NoWrap);
 
@@ -47,8 +47,15 @@ public class TextBlock : UIElement
 
     static TextBlock()
     {
+        // The effects lanes are independent (doc §5.5 / PropertyEffects): AffectsMeasure routes to
+        // InvalidateMeasure, AffectsRender to InvalidateVisual, with NO implication between them. A
+        // re-measure only transitively re-rasters when the *arranged size* changes (UIElement.Layout
+        // SetBoundsAndRoute), so for a direct text painter a same-size content change (a stretched
+        // label, a fixed-width status line) measures identically and would never repaint unless the
+        // content properties are ALSO AffectsRender. Text/Markup/TextWrapping change the painted glyphs
+        // independently of size, so they carry both lanes.
         AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty);
-        AffectsRender<TextBlock>(TextAlignmentProperty, TextTrimmingProperty);
+        AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty, TextTrimmingProperty);
     }
 
     /// <summary>Creates an empty text block.</summary>

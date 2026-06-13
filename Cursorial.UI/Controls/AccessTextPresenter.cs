@@ -18,7 +18,7 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public sealed class AccessTextPresenter : UIElement
 {
-    /// <summary>The access-key label (<c>AffectsMeasure</c>).</summary>
+    /// <summary>The access-key label (<c>AffectsMeasure | AffectsRender</c> — a same-width label swap must repaint; see <see cref="TextBlock"/>).</summary>
     public static readonly StyledProperty<AccessText> TextProperty =
         UIProperty.Register<AccessTextPresenter, AccessText>(nameof(Text));
 
@@ -32,8 +32,11 @@ public sealed class AccessTextPresenter : UIElement
 
     static AccessTextPresenter()
     {
+        // Like TextBlock, this is a direct text painter: a label change that measures to the same size
+        // (e.g. "_Save" → "_Stop") must still repaint, so Text carries AffectsRender as well as
+        // AffectsMeasure (the lanes are independent — doc §5.5).
         AffectsMeasure<AccessTextPresenter>(TextProperty);
-        AffectsRender<AccessTextPresenter>(KeyAttributesProperty);
+        AffectsRender<AccessTextPresenter>(TextProperty, KeyAttributesProperty);
     }
 
     /// <summary>Creates an empty presenter.</summary>

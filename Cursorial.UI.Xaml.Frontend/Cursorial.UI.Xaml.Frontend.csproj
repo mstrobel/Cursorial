@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The XAML parser frontend. netstandard2.0 deliberately: this assembly is shared
+        verbatim with the future X4/X5 source generator (a Roslyn analyzer, which must be
+        netstandard2.0). It owns the node model, the XmlReader-driven parser, the
+        markup-extension grammar, the diagnostic contract, and the type-system abstractions
+        (IXamlTypeMetadataProvider / XamlType / XamlMember / ITypeConverter). It has NO
+        reference to Cursorial.UI — the loader (Cursorial.UI.Xaml, net10.0) supplies the
+        concrete metadata provider at instantiation time. Pure syntax/grammar/whitespace/
+        diagnostic parsing is exercisable with a stub provider and zero framework dependency.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>false</ImplicitUsings>
+        <AssemblyName>Cursorial.UI.Xaml.Frontend</AssemblyName>
+        <RootNamespace>Cursorial.UI.Xaml</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- nullable reference type attributes for netstandard2.0 (MaybeNullWhen, etc.). -->
+        <PackageReference Include="System.Memory" Version="4.6.0" />
+    </ItemGroup>
+
+</Project>

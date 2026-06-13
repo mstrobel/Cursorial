@@ -16,7 +16,7 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Eleven projects:
+Fourteen projects:
 
 - `Cursorial.Core` — input parsing, capability negotiation, terminal session orchestration, byte-level output writers.
 - `Cursorial.Rendering` — cell buffer + diff frame renderer that sits on top of `Cursorial.Core`'s output writers.
@@ -27,10 +27,17 @@ Eleven projects:
 - `Cursorial.UI` — the WPF/Avalonia-style UI framework layer (in progress; design doc at `docs/ui-layer-design.md`,
   phase plan in its §14). Phases 0 (property system) and 1 (element tree + layout + render zones + app spine) are
   complete; see "UI module status" below.
+- `Cursorial.UI.Xaml.Frontend` — the **netstandard2.0** XAML parser frontend shared with the future X4/X5
+  generator: the structure-of-arrays node model (`XamlDocument`), the `XmlReader` parser, the markup-extension
+  grammar, diagnostics (`XamlDiagnostic`/`XamlParseException`, line+col everywhere), and the type-system seams
+  (`IXamlTypeMetadataProvider`/`XamlType`/`XamlMember`/`ITypeConverter`). No `Cursorial.UI` reference.
+- `Cursorial.UI.Xaml` — the net10.0 runtime loader (Fork C): `XamlLoader` (`Parse`/`Load`/`Load<T>`/`LoadComponent`),
+  `ReflectionXamlMetadata`, the converter ladder, `XamlSchemaContext`, markup-extension handlers + resource
+  dictionaries + deferred content/templates. References the frontend + `Cursorial.UI`. See "UI module status".
 - `Cursorial.UI.Testing` — the headless test harness (`UITestHost` + `SyntheticTerminalHost` + capability presets);
   the integration substrate for every UI subsystem — no test needs a TTY.
 - `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests`, `Cursorial.Drawing.Tests`, `Cursorial.Animation.Tests`,
-  `Cursorial.UI.Tests` — xUnit.
+  `Cursorial.UI.Tests`, `Cursorial.UI.Xaml.Tests` — xUnit.
 - `Cursorial.Demo` — interactive REPL for hands-on verification. `dotnet run --project Cursorial.Demo` opens a prompt
   with commands: `negotiate` (dump realized capabilities), `read` (stream input events to stdout), `raw` (dump
   stdin bytes verbatim with no parsing), `trace` (live raw bytes + decoded events side-by-side for protocol
@@ -38,6 +45,9 @@ Eleven projects:
   drawing/animation showcases (`draw`, `animate`, `charts`, `brushtext`, `imagescene`, `imageclip`, `ui`),
   `uipanels` (Cursorial.UI panel-tree showcase on the real `UIApplication` frame loop — arrows slide a render
   boundary composite-only, `v` toggles a Visibility, `o` cycles an Opacity group),
+  `uixaml` (Cursorial.UI.Xaml showcase — the entire control tree is loaded at runtime from an embedded
+  `.xaml` resource: `{StaticResource}` brushes, a `{TemplateBinding}` `ControlTemplate`, access-key
+  `Button`s, `{Binding}` text + status; the live P6 proof that declarative UI works),
   `rasterbench` (headless-capable scene-raster/compositor/diff benchmark — UI design-doc probe 1), `accesskeys`
   (live access-key gate probe: Alt down/up tracking, negotiated Kitty flags, the requirement-6 gate verdict — UI
   design-doc probe 3), `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked
@@ -319,6 +329,56 @@ normative spec at `docs/ui-layer-design/control-matrix.md`, 242 rows C1–C242 +
   cross-`ThemeVariant`-tier rendering, template Detach retraction, DataTemplate-by-type, click via mouse+keyboard,
   the ScrollViewer banded composite-slide, invariant-3 control restyle isolation, and the TextBlock theme-flip
   cache-key; the motion-storm gate re-asserts over templated controls.
+
+**Phase 6 complete** (doc §14 — Fork C X0–X3, the XAML runtime loader; normative spec at
+`docs/ui-layer-design/xaml-matrix.md`, rows X1–X188 + the XD/C-* ledgers, tests in
+`Cursorial.UI.Xaml.Tests/XamlMatrix/Section01…Section14`). Two assemblies (doc §4 / §1.3): the **netstandard2.0
+`Cursorial.UI.Xaml.Frontend`** (shared with the future X4/X5 generator) and the **net10.0 `Cursorial.UI.Xaml`**
+loader.
+
+- **X0 — frontend** (`Cursorial.UI.Xaml.Frontend/`) — the structure-of-arrays `XamlDocument` (depth-first-contiguous
+  records, `SubtreeLength` = O(1) deferred-slice), the single-pass `XmlReader` parser (`DtdProcessing=Prohibit`,
+  element/property-element/attribute/content distinction, xmlns→CLR via `using:`/`clr-namespace:`/the default map,
+  `x:` directives, attached + plain member classification, intrinsic + context-free constant folding, end-of-object
+  `Setter` resolution against the lexical `TargetType`, deferred-slice capture for `ITemplateContent` content, the
+  XD19 whitespace rule), the hand-rolled recursive-descent markup-extension grammar (`{}` escape, `\` escapes,
+  nested MEs, the WPF leading-`{` rule, `{x:Static}` fold placeholder), diagnostics (`XamlDiagnostic`/
+  `XamlParseException`, 1-based line+col, CUR-banded codes, `DidYouMean` Levenshtein), and the type-system seams
+  (`IXamlTypeMetadataProvider`/`XamlType`/`XamlMember`/`ITypeConverter`).
+- **X1 — instantiation** (`Cursorial.UI.Xaml/`) — `XamlLoader` (`Parse`/`Load`/`Load<T>`/`GetOrParse`/
+  `LoadComponent` + `Shared`), `ReflectionXamlMetadata` (the only reflection site — activation/CLR setters/getters/
+  events/`x:Static`, per-type cached, base-walk static-ctor forcing so inherited `UIProperty` registrations
+  populate the registry), `XamlSchemaContext` (the default UI/Controls/Data/Drawing.Media map + app-assembly /
+  default-namespace registration), the `ContentPropertyTable` (the additive `[ContentProperty]` decision —
+  `ContentControl→Content`/`Decorator→Child`/`Panel→Children`/template→Content/`Style→Setters`), the
+  `XamlConverters` ladder (cell/Margins/GridLength/Color/#hex/named-ANSI/Palette/`IBrush`+gradients/`Pen`/
+  `TextAttributes`/`KeyGesture`/enum/bool/double), `x:Name`→document `NameScopeDictionary`, the XD8 `SetValue` at
+  `LocalValue` for `UIProperty`s.
+- **X2/X3 — markup extensions + deferred content + resources + access keys** — the `IXamlMarkupExtensionHandler`
+  (StaticResource eager / DynamicResource live-producer / Binding + TemplateBinding via `BindingOperations` / custom
+  `ProvideValue`; attach through `IDeferredValue.AttachTo`/`SetResourceReference`, never a sentinel through
+  `SetValue`), the public `MarkupExtension` base + `IServiceProvider` seams, the lexical `XamlResourceScopeStack`,
+  `XamlModule` (the C-9 `ResourceDictionary.LoadCallback` module initializer + `IXamlResourceProvider`/
+  `EmbeddedXamlResourceProvider`), `XamlDeferredResourceEntry` (the `IDeferredResourceEntry` node-graph slice,
+  retry-safe), `XamlTemplateContent : ITemplateContent` (fresh subtree per `Build`, template namescope, lexical
+  resource capture, TemplateBinding to the templated parent). **Access-key folding** is applied only to genuinely
+  `AccessText`-typed members; object-typed `Content="_Save"` stays the raw string and the runtime
+  `ContentControl.GetAccessText()` folds on demand (the three-identical-producers rule — loader fold ≡
+  `AccessText.Parse`).
+- **P6 integration** — `Cursorial.UI.Xaml.Tests/Integration/Phase6XamlEndToEndTests` proves the §14 exit criteria
+  end-to-end through `UITestHost`/the real frame loop: (a) a themed `StackPanel`/`Grid` of Buttons + CheckBoxes + a
+  `{Binding}` ScrollViewer + `{StaticResource}` brushes + a `{TemplateBinding}` `ControlTemplate` renders (cell
+  assertions) and the bindings/resources resolve live (incl. a VM-update re-render); (b) a `ResourceDictionary` with
+  `MergedDictionaries` + `ThemeDictionaries` + `{DynamicResource}` consumers updating on a theme-base flip; (c) a
+  `ControlTemplate` expanded per target with independent template namescopes + `Detach` retraction; (d) the
+  access-key fold + Alt-chord activation through the P2/P5 `AccessKeyManager`; (e) error quality (line+col on
+  `XamlParseException`). The **System.Xaml oracle leg** (`SystemXamlOracleTests`, doc §4.10) is reflection-only and
+  Windows-gated (`Assembly.Load("System.Xaml")`; System.Xaml is Windows-Desktop-only — vendoring rejected per
+  doc §4) — it pins the whitespace-collapse (XD19/X32–X34) + `{}` brace-escape (X46/X47) rows against real
+  System.Xaml on Windows CI, and **skips elsewhere with a documented reason**. Its oracle node uses a portable
+  `[TypeConverter]` (System.ComponentModel) rather than the Windows-only WPF `[ContentProperty]`, so the class
+  compiles cross-platform. The **`uixaml` demo** loads its entire control tree from an embedded `.xaml` resource at
+  runtime — the live P6 proof.
 
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette

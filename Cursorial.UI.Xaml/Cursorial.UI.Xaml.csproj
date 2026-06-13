@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The XAML runtime loader. net10.0. References the netstandard2.0 frontend (the parser
+        + node model) and Cursorial.UI (the framework types it instantiates). Stage 2
+        (instantiation, converter ladder, markup-extension live-attach, resource dictionaries,
+        deferred content) lands across X1-X3; X0 ships only the project wiring + the concrete
+        reflection metadata provider seam consumed by frontend parse tests.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
+        <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
+        <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
+    </ItemGroup>
+
+</Project>

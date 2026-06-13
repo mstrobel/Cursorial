@@ -13,11 +13,17 @@
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
     </ItemGroup>
 
     <ItemGroup>
         <EmbeddedResource Include="**/*.png">
             <LogicalName>$([System.String]::new('%(RelativeDir)').Replace('\','/'))%(FileName)%(Extension)</LogicalName>
         </EmbeddedResource>
+        <!-- The uixaml demo loads its UI from this embedded .xaml at runtime. No LogicalName override, so
+             the manifest name is the default <RootNamespace>.<dotted path>:
+             Cursorial.Demo.Resources.uixaml-demo.xaml. -->
+        <EmbeddedResource Include="Resources/*.xaml" />
     </ItemGroup>
 </Project>

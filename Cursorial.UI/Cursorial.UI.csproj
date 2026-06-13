@@ -14,6 +14,8 @@
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.UI.Tests" />
         <InternalsVisibleTo Include="Cursorial.UI.Testing" />
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
     </ItemGroup>
 
     <ItemGroup>

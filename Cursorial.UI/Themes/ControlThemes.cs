@@ -108,11 +108,28 @@ internal static class ControlThemes
     private static ControlTemplate ToggleGlyphTemplate(string glyphKey) => new(ctx =>
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+
+        // The glyph cell overlays a zero-size Caret on the glyph's INNER cell (column 1 — the space
+        // inside [ ] / ( )). A single-cell Grid sizes to the glyph (3×1) and stacks both children there;
+        // the Caret is Left/Top-pinned with a 1-column left margin so it lands on the box's middle cell.
+        // The caret only shows under :focus-visible (the rule in ToggleGlyphTheme), so a resting toggle
+        // is unchanged.
+        var glyphCell = new Grid();
         var glyph = new ToggleGlyph(glyphKey);
         ctx.RegisterName("PART_Glyph", glyph);
+        var caret = new Caret
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Margins(1, 0, 0, 0),
+        };
+        ctx.RegisterName("PART_Caret", caret);
+        glyphCell.Children.Add(glyph);
+        glyphCell.Children.Add(caret);
+
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        row.Children.Add(glyph);
+        row.Children.Add(glyphCell);
         row.Children.Add(presenter);
         return row;
     });
@@ -125,6 +142,12 @@ internal static class ControlThemes
         => new Style { Key = themeKey }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey));
+
+    // The PART_Caret in the toggle template (the focus indicator inside the box) is driven by
+    // ToggleButton.OnInteractionStateChangedCore off the control's :focus-visible bit — NOT a
+    // `^:focus-visible /template/ Caret` style rule: the styling engine documents /template/ combined
+    // with an ancestor-state pseudo as an approximation that does not re-evaluate on the state flip
+    // (StyleEngine §"documented approximation"). Code-driven keeps it faithful to focus-visible and robust.
 
     // ───────────────────────────── ScrollBar / ScrollViewer ─────────────────────────────
 

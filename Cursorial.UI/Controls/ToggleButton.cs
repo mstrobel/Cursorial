@@ -1,3 +1,4 @@
+using Cursorial.UI;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -110,5 +111,47 @@ public class ToggleButton : ButtonBase
     /// <summary>The control-author hook called after <see cref="IsChecked"/> changes, before the routed event (RadioButton group uncheck rides this).</summary>
     private protected virtual void OnIsCheckedChangedCore(bool? oldValue, bool? newValue)
     {
+    }
+
+    // ───────────────────────────── focus caret (the box indicator, design doc §5.9) ─────────────────────────────
+
+    // The optional PART_Caret in the toggle template (a Caret inside the [ ]/( ) box). Driven in code
+    // off the control's :focus-visible bit rather than a `^:focus-visible /template/ Caret` style rule —
+    // the styling engine documents /template/ combined with an ancestor-state pseudo as a non-re-evaluating
+    // approximation. Null when a custom template omits the part.
+    private Caret? _focusCaret;
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _focusCaret = GetTemplatePart<Caret>("PART_Caret");
+        UpdateFocusCaret(); // sync if focus-visible was already set before the template applied
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTemplateDetaching(TemplateInstance old)
+    {
+        if (_focusCaret is { } caret)
+            caret.IsCaretShown = false;
+        _focusCaret = null;
+        base.OnTemplateDetaching(old);
+    }
+
+    /// <inheritdoc/>
+    private protected override void OnInteractionStateChangedCore(InteractionState oldState, InteractionState newState)
+    {
+        base.OnInteractionStateChangedCore(oldState, newState);
+        if (((oldState ^ newState) & InteractionState.FocusVisible) != 0)
+            UpdateFocusCaret();
+    }
+
+    // Show the box caret exactly while the toggle is keyboard-focused (:focus-visible); pointer focus
+    // leaves it hidden. The Caret publishes the real terminal cursor at its arranged origin (the box's
+    // inner cell).
+    private void UpdateFocusCaret()
+    {
+        if (_focusCaret is { } caret)
+            caret.IsCaretShown = (InteractionStateInternal & InteractionState.FocusVisible) != 0;
     }
 }

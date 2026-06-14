@@ -98,11 +98,15 @@ public static class CursorialTheme
             CursorialThemeStyles.AccessKeyCue(),
             CursorialThemeStyles.CapsUnicodeCheckBoxGlyphs(),
             CursorialThemeStyles.CapsUnicodeRadioGlyphs(),
+            // (The caps-nocolor interactive-state layer is deferred — see CursorialThemeStyles; the render
+            // path doesn't yet honor inherited TextElement.TextAttributes.)
         };
 
         // (·,NoColor): every fill/foreground role token resolves to Colors.Default — no stranded RGB. State
-        // distinction on monochrome is carried by TextAttributes (Inverse / Inverse+Bold / Faint), applied by
-        // the control themes' caps-nocolor-gated rules (design doc §11.8a; spec §2/Q5), not by the palette.
+        // distinction on monochrome is INTENDED to ride a caps-nocolor TextAttributes layer (Inverse / Faint),
+        // but that is DEFERRED (review #1): the content-text render path does not yet honor inherited
+        // TextElement.TextAttributes, so focus/pressed/disabled are currently visually identical to rest under
+        // NoColor (design doc §11.8a; spec §2/Q5). Tracked separately.
         var noColor = new ResourceDictionary();
         var defaultBrush = new SolidColorBrush(Colors.Default);
         foreach (var key in RoleTokenKeys)
@@ -146,7 +150,9 @@ public static class CursorialTheme
         rgb[ThemeKeys.PurpleBrush] = new SolidColorBrush(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e"));
         rgb[ThemeKeys.StatusBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
         rgb[ThemeKeys.StatusBarAltBackground] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
-        rgb[ThemeKeys.StatusBarAltForeground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#34548a"));
+        // Branch/alt status text reads on the accent fill → the on-accent ink (was hand-copied from --accent,
+        // making light-tier text invisible; dark was the stale pre-fix on-accent #0d0f19). Review finding #3.
+        rgb[ThemeKeys.StatusBarAltForeground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f18") : Color.FromHex("#e9e9ed"));
         
         // Opt-in chrome (no shipped control reads these by default): border = faint ink, focus ring = accent heavy.
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc"));

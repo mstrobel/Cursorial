@@ -117,9 +117,10 @@ public sealed class Phase5EndToEndTests
     /// legacy 16-color preset. The Button's RGB background is emitted verbatim as a truecolor SGR
     /// (<c>48;2;r;g;b</c>) on the Kitty tier and QUANTIZED to a 16-color background SGR on the Ansi16
     /// tier (the renderer's capability-aware quantizer, proven in the emitted wire bytes — the cell
-    /// buffer itself is tier-agnostic, the quantizer lives at the byte writer); the CheckBox glyph is
-    /// the ASCII default on truecolor and a per-tier <c>ThemeDictionaries</c> glyph swap on Ansi16 (the
-    /// §11.2 variant probe through the live chain).
+    /// buffer itself is tier-agnostic, the quantizer lives at the byte writer); the CheckBox shows the
+    /// caps-unicode checked mark <c>[✓]</c> on BOTH tiers (the <c>ToggleGlyph.GlyphsProperty</c> override
+    /// wins over the glyph-set resource — SD14), so the genuine cross-tier difference is the color
+    /// quantization, not the glyph.
     /// </summary>
     [Theory]
     [InlineData(false)] // KittyTruecolor — RGB survives
@@ -137,7 +138,7 @@ public sealed class Phase5EndToEndTests
             Foreground = new SolidColorBrush(ButtonInk),
             HorizontalAlignment = HorizontalAlignment.Left,
         };
-        var check = new CheckBox { Content = "Enable" };
+        var check = new CheckBox { Content = "Enable", IsChecked = true };
         var scroller = new ScrollViewer
         {
             Width = 12,
@@ -150,14 +151,10 @@ public sealed class Phase5EndToEndTests
         stack.Children.Add(check);
         stack.Children.Add(scroller);
 
-        // A per-tier glyph RESOURCE swap (legacy Ansi16 → "< >"). BUT the cell-faithful caps-unicode bridge
-        // (SD14) sets ToggleGlyph.GlyphsProperty on the CheckBox via the `.caps-unicode CheckBox` theme-
-        // style, and ToggleGlyph PREFERS that override over the glyph-set resource. caps-unicode is
-        // unconditionally stamped at P5, so the per-tier resource swap is SHADOWED on BOTH tiers and the
-        // CheckBox shows the unicode default "[ ]". The genuine cross-tier difference is the COLOR
-        // quantization (asserted above), not the glyph.
-        var legacyGlyphs = new ResourceDictionary { [ThemeKeys.CheckBoxGlyphs] = new GlyphSet("< >", "<x>", "<->") };
-        host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.Ansi16)] = legacyGlyphs;
+        // No per-tier glyph RESOURCE swap is set: the cell-faithful caps-unicode bridge (SD14) sets
+        // ToggleGlyph.GlyphsProperty (read BEFORE the glyph-set resource), and caps-unicode is stamped on
+        // every tier, so the CheckBox always shows the Unicode marks. The genuine cross-tier difference here
+        // is the COLOR quantization (asserted above), not the glyph.
 
         host.ShowRoot(stack);
         Assert.True(host.RunUntilIdle());
@@ -179,10 +176,11 @@ public sealed class Phase5EndToEndTests
         else
             Assert.Equal(ButtonFace, quantizedFace);             // truecolor survives verbatim
 
-        // The CheckBox glyph: the caps-unicode GlyphsProperty override wins over the per-tier resource swap
-        // on BOTH tiers (SD14), so it is the unicode default "[ ]" regardless of color tier.
+        // The CheckBox glyph is the caps-unicode CHECKED mark "[✓]" on BOTH tiers (the GlyphsProperty
+        // override wins over the glyph-set resource; SD14) — distinguishing, since the caps-ascii fallback
+        // would be "[x]"; this fails on a regression of the override mechanism, not merely the color tier.
         var rows = ReadRows(host, 8);
-        Assert.Contains(rows, r => r.Contains("[ ]") && r.Contains("Enable"));
+        Assert.Contains(rows, r => r.Contains("[✓]") && r.Contains("Enable"));
 
         // The ScrollViewer presented its banded content (the 'S' block) inside its viewport.
         Assert.Contains(rows, r => r.Contains("S"));

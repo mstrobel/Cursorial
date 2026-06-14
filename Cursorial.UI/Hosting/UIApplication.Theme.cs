@@ -190,6 +190,11 @@ public sealed partial class UIApplication : IResourceHost
     // default washes out against the opposite background (the light-theme caret-invisibility report). Resolve
     // the accent at the RGB tier (canonical: OSC 12 takes an rgb: value regardless of the effective cell tier);
     // a no-op when the accent does not resolve to an RGB brush. RunTeardown emits OSC 112 to restore.
+    // Whether WriteThemeCursorColor ever actually emitted an OSC 12 (the accent resolved to an RGB brush).
+    // RunTeardown gates its OSC 112 reset on this so an app whose accent is non-RGB (no set was emitted)
+    // does NOT revert a user's terminal-configured cursor color (review finding #9 — set/reset symmetry).
+    private bool _cursorColorEmitted;
+
     internal void WriteThemeCursorColor(System.Buffers.IBufferWriter<byte> output)
     {
         var rgbVariant = new ThemeVariant(_actualThemeVariant.Base, ColorDepth.Truecolor);
@@ -197,6 +202,7 @@ public sealed partial class UIApplication : IResourceHost
             value is Cursorial.Drawing.Media.SolidColorBrush { Color: { Kind: ColorKind.Rgb } accent })
         {
             PaletteWriter.WriteSetCursor(output, accent.Red, accent.Green, accent.Blue);
+            _cursorColorEmitted = true;
         }
     }
 

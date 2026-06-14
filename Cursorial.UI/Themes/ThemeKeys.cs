@@ -116,16 +116,18 @@ public static class ThemeKeys
 
     /// <summary>
     /// The <see cref="Controls.CheckBox"/> glyph triple — a <see cref="GlyphSetCarrier"/> of
-    /// <c>(Unchecked, Checked, Indeterminate)</c> strings (design doc §12.7; spec line 660). The
-    /// true-ASCII default is <c>[ ] [x] [-]</c>; a <c>caps-unicode</c> dictionary may swap to
-    /// <c>☐ ☑ ◪</c>-class glyphs.
+    /// <c>(Unchecked, Checked, Indeterminate)</c> strings (design doc §12.7; spec line 660). This resource
+    /// is the caps-ascii <b>base</b> (<c>[ ] [x] [-]</c>); under <c>.caps-unicode</c> the marks are opted
+    /// UP to colored Unicode (<c>[ ] [✓] [▪]</c>) via <c>ToggleGlyph.GlyphsProperty</c>, which is read
+    /// <b>before</b> this resource and therefore WINS — so shadowing this resource at a nearer scope only
+    /// takes effect on a caps-ascii terminal (caps-unicode is unconditionally stamped at P5; SD14).
     /// </summary>
     public const string CheckBoxGlyphs = "Theme.CheckBoxGlyphs";
 
-    /// <summary>The <see cref="Controls.RadioButton"/> glyph triple (<c>( ) (*) ( )</c> ASCII default; design doc §12.7).</summary>
+    /// <summary>The <see cref="Controls.RadioButton"/> glyph triple (caps-ascii base <c>( ) (*) (-)</c>; caps-unicode opts up to <c>( ) (●) (-)</c> via the attached override — see <see cref="CheckBoxGlyphs"/>; design doc §12.7).</summary>
     public const string RadioGlyphs = "Theme.RadioGlyphs";
 
-    /// <summary>The <see cref="Controls.ScrollBar"/> line-button arrow glyphs (<c>(Up/Left, Down/Right)</c>; ASCII <c>^ v</c> / <c>&lt; &gt;</c>; design doc §12.7).</summary>
+    /// <summary>The <see cref="Controls.ScrollBar"/> line-button arrow glyphs (the reserved ASCII base <c>^ v</c> / <c>&lt; &gt;</c>). NOTE: the BuiltIn ScrollBar template currently hardcodes Unicode arrows (◀▲▶▼) and does NOT yet read this resource — a caps-ascii opt-down is future work (same caps-ascii deferral as the Unicode check/radio marks; design doc §12.7).</summary>
     public const string ScrollArrowGlyphs = "Theme.ScrollArrowGlyphs";
 }
 

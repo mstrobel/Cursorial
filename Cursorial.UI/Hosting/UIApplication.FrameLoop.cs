@@ -737,7 +737,8 @@ public sealed partial class UIApplication
                 _renderer.Close(_scratch);
                 CursorWriter.WriteShow(_scratch);
                 SgrEncoder.WriteReset(_scratch);
-                PaletteWriter.WriteResetCursor(_scratch); // restore the terminal's default cursor color (we set OSC 12 from the theme accent)
+                if (_cursorColorEmitted)
+                    PaletteWriter.WriteResetCursor(_scratch); // restore the default cursor color only if we set OSC 12 (review #9)
 
                 if (_capabilities.Output.Protocol.MouseCursorShape)
                     MouseCursorWriter.WriteSet(_scratch, MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)

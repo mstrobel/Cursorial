@@ -259,9 +259,11 @@ public sealed class Section04_BuiltInAndBuilders
         host.RunFrame();
 
         Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme);
-        // The ignored element-Styles' brush (Vbrush) never became the background. (Post cell-faithful, the
-        // button — first tab stop in a panel root — auto-focuses and shows the theme's :focus fill, so the
-        // background is no longer null; the point is that the IGNORED style's magenta did not win.)
+        // The element-Styles is ignored. Post cell-faithful, the button (first tab stop in a panel root)
+        // auto-focuses and shows the theme's :focus fill — so positively assert that legitimate fill IS
+        // applied (a real SolidColorBrush, not null), and that it is NOT the ignored element-style's magenta.
+        Assert.True(button.IsFocused);
+        Assert.IsType<DrawingMedia.SolidColorBrush>(button.Background);
         Assert.NotSame(Vbrush, button.Background);
     }
 

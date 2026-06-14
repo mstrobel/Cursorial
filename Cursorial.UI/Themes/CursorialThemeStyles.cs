@@ -56,4 +56,12 @@ internal static class CursorialThemeStyles
         style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("( )", "(●)", "(-)")));
         return style;
     }
+
+    // NOTE — the NoColor interactive-state layer is DEFERRED (review finding #1). Under caps-nocolor every
+    // palette role resolves to Colors.Default, so the button family's color brush-pair states are visually
+    // inert. The intended fix is a caps-nocolor theme-styles layer flipping TextElement.TextAttributes
+    // (Inverse for :focus/:pressed/:default, Faint for :disabled) — BUT the text-render path does not yet
+    // honor inherited TextElement.TextAttributes (TextBlock applies only Foreground; AccessTextPresenter
+    // applies attributes only to the mnemonic grapheme), so the rule would have no visual effect. Wiring
+    // inherited TextAttributes into the content-text render path is the prerequisite; tracked separately.
 }

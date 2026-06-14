@@ -248,6 +248,10 @@ public sealed class Section05_VariantFlipReSkin
         host.Application.RequestedColorTier = ColorDepth.Ansi16;
         host.RunFrame();
         Assert.True(rgbScene.RasterVersion > rgbVersion);
+        // Positive: the re-resolution reached the cell buffer (TextBrush → the hand-picked palette index),
+        // and the wire no longer carries the 24-bit RGB ink (a regression dropping fg to Default would fail
+        // the buffer assert rather than silently pass the wire-absence one).
+        Assert.Equal(Color.FromPalette(15), FindForeground(host, "OK"));
         Assert.False(Contains(host.LastFrameBytes, "38;2;192;202;245"u8), "the dark RGB foreground SGR was emitted on an Ansi16 tier");
         var ansi16Version = rgbScene.RasterVersion;
 

@@ -98,15 +98,17 @@ public static class CursorialTheme
             CursorialThemeStyles.AccessKeyCue(),
             CursorialThemeStyles.CapsUnicodeCheckBoxGlyphs(),
             CursorialThemeStyles.CapsUnicodeRadioGlyphs(),
-            // (The caps-nocolor interactive-state layer is deferred — see CursorialThemeStyles; the render
-            // path doesn't yet honor inherited TextElement.TextAttributes.)
+            // The caps-nocolor interactive-state layer: colors collapse to Default under NoColor, so the
+            // button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill +
+            // content text) and disabled dims to Faint.
+            CursorialThemeStyles.CapsNoColorInteractiveInverse(),
+            CursorialThemeStyles.CapsNoColorDisabledFaint(),
         };
 
         // (·,NoColor): every fill/foreground role token resolves to Colors.Default — no stranded RGB. State
-        // distinction on monochrome is INTENDED to ride a caps-nocolor TextAttributes layer (Inverse / Faint),
-        // but that is DEFERRED (review #1): the content-text render path does not yet honor inherited
-        // TextElement.TextAttributes, so focus/pressed/disabled are currently visually identical to rest under
-        // NoColor (design doc §11.8a; spec §2/Q5). Tracked separately.
+        // distinction on monochrome rides a caps-nocolor TextAttributes layer (Inverse for focus/pressed/
+        // default, Faint for disabled) — see CursorialThemeStyles; the inherited TextElement.TextAttributes is
+        // honored by the Border fill + the content text (design doc §11.8a; spec §2/Q5), not by the palette.
         var noColor = new ResourceDictionary();
         var defaultBrush = new SolidColorBrush(Colors.Default);
         foreach (var key in RoleTokenKeys)

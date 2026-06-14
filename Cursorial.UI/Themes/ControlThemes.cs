@@ -27,9 +27,9 @@ internal static class ControlThemes
     // HoverBrush fill, :focus = reverse-video (TextBrush fill + WindowBackground text), :pressed/:default =
     // accent reverse-video (AccentBrush fill + OnAccentBrush text), :disabled = DisabledBackgroundBrush
     // + DisabledForegroundBrush. No FocusPen ring, no Pens.Double :default weight bump. The NoColor
-    // interactive-state distinction (where the brush pairs resolve to Default) is DEFERRED — it needs the
-    // content-text render path to honor inherited TextElement.TextAttributes (review #1; see
-    // CursorialThemeStyles). BorderPen/FocusPen survive only as opt-in chrome (ThemeKeys), unread here.
+    // interactive-state distinction (where the brush pairs resolve to Default) rides the caps-nocolor
+    // theme-styles rules in CursorialThemeStyles (inherited TextElement.TextAttributes — Inverse / Faint —
+    // honored by the Border fill + content text). BorderPen/FocusPen survive only as opt-in chrome, unread here.
 
     internal static void Populate(ResourceDictionary dict)
     {
@@ -88,8 +88,8 @@ internal static class ControlThemes
     // The cell-faithful interactive states shared by the button family (design doc §11.8a): hover = a
     // fill swap; focus = reverse-video (TextBrush fill + WindowBackground text); pressed = accent reverse-video;
     // disabled = disabled fill + muted text. All brush-pair setters are ResourceReferences into the
-    // palette spine (color tiers); the NoColor interactive-state distinction is DEFERRED (review #1 — the
-    // render path doesn't yet honor inherited TextElement.TextAttributes; see CursorialThemeStyles).
+    // palette spine (color tiers); the NoColor interactive-state distinction rides the caps-nocolor
+    // theme-styles rules (inherited TextElement.TextAttributes — Inverse / Faint; see CursorialThemeStyles).
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
     private static Style AddButtonStates(Style theme)
     {

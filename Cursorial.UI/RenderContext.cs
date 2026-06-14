@@ -147,6 +147,15 @@ public sealed class RenderContext
     public void FillOpaque(in Rect region, IBrush brush)
         => Inner.FillOpaque(region, brush);
 
+    /// <summary>
+    /// Fill <paramref name="region"/> opaquely with <paramref name="brush"/>, each occluder cell also
+    /// carrying <paramref name="attributes"/> (e.g. <see cref="TextAttributes.Inverse"/> for a NoColor
+    /// reverse-video face, where the brush color is Default and only the attribute conveys the state). The
+    /// opaque cells composite the attribute — unlike the transparent <see cref="FillRectangle(in Rect, IBrush)"/>.
+    /// </summary>
+    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes)
+        => Inner.FillOpaque(region, brush, attributes);
+
     /// <inheritdoc cref="FillOpaque(in Rect, IBrush)"/>
     public void FillOpaque(in Rect region, Color color)
         => Inner.FillOpaque(region, color);

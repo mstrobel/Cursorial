@@ -73,11 +73,17 @@ public sealed class AccessTextPresenter : UIElement
         if (string.IsNullOrEmpty(label.Text) || context.Bounds.IsEmpty)
             return;
 
+        // The inherited TextElement.TextAttributes ride the content text, so a NoColor reverse-video state
+        // (Inverse) carries onto the glyph cells too — matching the Border fill, for a uniform reversed face
+        // (the caps-nocolor theme layer). None by default ⇒ no change for ordinary content.
+        var inherited = TextElement.GetTextAttributes(this);
+        var baseTextStyle = new CellStyle().WithAttributes(inherited);
+
         var foreground = Foreground;
         if (foreground is { } brush)
-            context.DrawText(0, 0, label.Text, brush);
+            context.DrawText(0, 0, label.Text, brush, baseStyle: baseTextStyle);
         else
-            context.DrawText(0, 0, label.Text, Color.Default);
+            context.DrawText(0, 0, label.Text, Color.Default, baseStyle: baseTextStyle);
 
         // The cue: underline the KeyIndex grapheme when AccessKeyManager.ShowUnderline is set on us.
         // The theme's ':access-keys AccessTextPresenter' rule flips ShowUnderline on EVERY presenter
@@ -91,7 +97,7 @@ public sealed class AccessTextPresenter : UIElement
         if (cluster is null)
             return;
 
-        var style = new CellStyle().WithAttributes(KeyAttributes);
+        var style = new CellStyle().WithAttributes(KeyAttributes | inherited);
         if (foreground is { } fg)
             context.DrawText(column, 0, cluster, fg, baseStyle: style);
         else

@@ -314,6 +314,49 @@ public sealed class Section05_VariantFlipReSkin
         Assert.Equal(DarkFill, FillColor(host, "OK"));
     }
 
+    // ───────────────────────────── C119b — caps-nocolor: the whole face reverse-videos via Inverse ─────────────────────────────
+
+    [Fact] // C119b — under caps-nocolor :focus flips Inverse on the WHOLE face (fill + glyphs), not color (review #1)
+    public void C119b_NoColor_Focus_InvertsWholeFace_NotColor()
+    {
+        // On a NoColor tier every palette role resolves to Colors.Default, so the color brush-pair :focus
+        // state is visually inert. The caps-nocolor theme-styles layer restores the cue with reverse-video —
+        // the inherited TextElement.TextAttributes (Inverse) rides BOTH the Border fill and the content text,
+        // so the entire button face inverts (adoption-spec §Q5).
+        using var host = TruecolorHost();
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.Application.RequestedColorTier = ColorDepth.NoColor;
+
+        // The button must be a DESCENDANT of the caps-nocolor root (the class is stamped on the root): the
+        // theme rule is `.caps-nocolor Button:focus` (descendant combinator), so a button that is itself the
+        // root would never match (it can't be its own ancestor) — wrap it in a panel, as a real app does.
+        var button = new Button { Content = "OK" };
+        var root = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        root.Children.Add(button);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(ColorDepth.NoColor, host.Application.ActualThemeVariant.Tier);
+
+        // The button is the first tab stop in a panel root, so it auto-focuses on activation — clear it to
+        // read the resting state: no Inverse on the glyph or the padding fill.
+        host.Application.FocusManager.ClearFocus();
+        host.RunFrame();
+        Assert.False(CellOf(host, "OK").Style.Attributes.HasFlag(TextAttributes.Inverse));
+        Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Inverse)); // the left-padding fill cell
+
+        // Focus → the caps-nocolor rule flips Inverse on the whole face: the glyph cells AND the padding fill.
+        Assert.True(button.Focus(FocusNavigationMethod.Tab));
+        host.RunFrame();
+        Assert.True(CellOf(host, "OK").Style.Attributes.HasFlag(TextAttributes.Inverse)); // glyph cell (content text)
+        Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Inverse)); // padding fill cell (Border)
+
+        // Blur → the rule retracts → Inverse clears everywhere.
+        host.Application.FocusManager.ClearFocus();
+        host.RunFrame();
+        Assert.False(CellOf(host, "OK").Style.Attributes.HasFlag(TextAttributes.Inverse));
+        Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Inverse));
+    }
+
     // ───────────────────────────── finders ─────────────────────────────
 
     // Whether `haystack` contains the contiguous byte subsequence `needle` (wire-SGR search).

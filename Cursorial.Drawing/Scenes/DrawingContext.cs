@@ -269,7 +269,14 @@ public sealed class DrawingContext
     /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
     /// background so the border sits on the panel rather than punching a transparent hole.
     /// </remarks>
-    public void FillOpaque(in Rect region, IBrush brush)
+    /// <param name="attributes">
+    /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
+    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.
+    /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
+    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
+    /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
+    /// </param>
+    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default)
     {
         ArgumentNullException.ThrowIfNull(brush);
 
@@ -284,7 +291,7 @@ public sealed class DrawingContext
 
             for (int row = lRowStart; row < lRowEnd; row++)
             for (int col = lColStart; col < lColEnd; col++)
-                RawWriteWithCleanup(col + s.Dx, row + s.Dy, OccluderCell(brush.ColorAt(col, row, region)));
+                RawWriteWithCleanup(col + s.Dx, row + s.Dy, OccluderCell(brush.ColorAt(col, row, region), attributes));
             return;
         }
 
@@ -295,10 +302,11 @@ public sealed class DrawingContext
 
         for (int row = rowStart; row < rowEnd; row++)
         for (int col = colStart; col < colEnd; col++)
-            RawWriteWithCleanup(col, row, OccluderCell(brush.ColorAt(col, row, region)));
+            RawWriteWithCleanup(col, row, OccluderCell(brush.ColorAt(col, row, region), attributes));
     }
 
-    private static Cell OccluderCell(Color color) => new(" ", CellKind.Single, Style.Default.WithBackground(color));
+    private static Cell OccluderCell(Color color, TextAttributes attributes = default)
+        => new(" ", CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
 
     // Raw-write a cell (preserving its color alpha for the compositor), first blanking any wide-glyph partner
     // the write would orphan — overwriting a WideContinuation blanks its left half (col−1); overwriting a

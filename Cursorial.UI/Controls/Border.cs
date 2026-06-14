@@ -143,8 +143,13 @@ public class Border : Decorator
         // The surface: FillOpaque for a floating surface, the glyph-transparent FillRectangle tint otherwise.
         if (Background is {} background)
         {
-            if (occludes)
-                context.FillOpaque(bounds, background);
+            // An inherited TextElement.TextAttributes (e.g. the caps-nocolor reverse-video Inverse) needs an
+            // OPAQUE fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
+            // would drop it — so an attribute-bearing (or occluding) face uses FillOpaque; otherwise the
+            // default transparent tint (None ⇒ the ordinary fill path, unchanged).
+            var attrs = TextElement.GetTextAttributes(this);
+            if (occludes || attrs != default)
+                context.FillOpaque(bounds, background, attrs);
             else
                 context.FillRectangle(bounds, background);
         }

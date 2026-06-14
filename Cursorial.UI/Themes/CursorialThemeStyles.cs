@@ -1,3 +1,4 @@
+using Cursorial.Output;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
@@ -57,11 +58,40 @@ internal static class CursorialThemeStyles
         return style;
     }
 
-    // NOTE — the NoColor interactive-state layer is DEFERRED (review finding #1). Under caps-nocolor every
-    // palette role resolves to Colors.Default, so the button family's color brush-pair states are visually
-    // inert. The intended fix is a caps-nocolor theme-styles layer flipping TextElement.TextAttributes
-    // (Inverse for :focus/:pressed/:default, Faint for :disabled) — BUT the text-render path does not yet
-    // honor inherited TextElement.TextAttributes (TextBlock applies only Foreground; AccessTextPresenter
-    // applies attributes only to the mnemonic grapheme), so the rule would have no visual effect. Wiring
-    // inherited TextAttributes into the content-text render path is the prerequisite; tracked separately.
+    /// <summary>
+    /// The caps-nocolor INTERACTIVE-STATE layer (design doc §11.8a / adoption-spec §Q5): under
+    /// <c>.caps-nocolor</c> every palette role resolves to <see cref="Colors.Default"/>, so the button
+    /// family's color brush-pair states (<see cref="ControlThemes"/> <c>:focus</c>/<c>:pressed</c>/
+    /// <c>:default</c>) are visually inert. This restores the distinction with a TEXT ATTRIBUTE instead:
+    /// <see cref="TextAttributes.Inverse"/> reverse-videos the terminal's own default fg/bg. It is set on
+    /// the control as the inherited <see cref="TextElement.TextAttributesProperty"/>, which the template's
+    /// Border fill AND the content text both honor (so the WHOLE face inverts, not just the glyphs). The
+    /// subjects are the EXACT button-family types (Button / RepeatButton / ToggleButton) — CheckBox /
+    /// RadioButton are excluded (they keep their in-box caret focus; a reverse fill would span the row).
+    /// Armed at Theme layer.
+    /// </summary>
+    internal static Style CapsNoColorInteractiveInverse()
+    {
+        var style = new Style(
+            ".caps-nocolor Button:focus, .caps-nocolor Button:pressed, .caps-nocolor Button:default, " +
+            ".caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pressed, " +
+            ".caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pressed")
+        { Key = "Theme.CapsNoColor.Inverse" };
+        style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Inverse));
+        return style;
+    }
+
+    /// <summary>
+    /// The caps-nocolor DISABLED layer (companion to <see cref="CapsNoColorInteractiveInverse"/>): under
+    /// <c>.caps-nocolor</c> the disabled palette resolves to Default, so a disabled control is
+    /// indistinguishable; <see cref="TextAttributes.Faint"/> dims it instead. Subject is
+    /// <c>:is(ButtonBase):disabled</c> — every button-family control INCLUDING CheckBox/RadioButton.
+    /// Armed at Theme layer.
+    /// </summary>
+    internal static Style CapsNoColorDisabledFaint()
+    {
+        var style = new Style(".caps-nocolor :is(ButtonBase):disabled") { Key = "Theme.CapsNoColor.DisabledFaint" };
+        style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Faint));
+        return style;
+    }
 }

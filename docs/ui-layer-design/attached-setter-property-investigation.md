@@ -1,10 +1,14 @@
 # Attached / owner-qualified `<Setter Property>` resolution — investigation
 
-> **Status: DEFERRED — design only, NOT implemented.** This document records the gap, the verified
-> mechanics, the candidate fixes, and a decision-grade recommendation so the work can be scheduled and
-> implemented without re-deriving. Nothing here has landed in the frontend or loader yet. When it lands,
-> the xaml-matrix rows in §7 and the tests in §8 are the acceptance bar, and this banner should be
-> updated (and the doc cross-linked from `ui-layer-design.md` §4 / the §14 phase table).
+> **Status: PHASE 1 IMPLEMENTED (2026-06-14); Phase 2 (prefixed owners) deferred.** Phase 1 — the
+> default-namespace dot-split in `ResolveSetter` via `TryResolveQualifiedSetterMember` + the `CUR2111`
+> (`PrefixedSetterOwnerUnsupported`) deferral diagnostic — has landed in the frontend (`XamlParser.cs`),
+> with the xaml-matrix rows X64a–X64d / X66b–X66d (§7) and the tests in §8 green (`Section05_Folding`
+> frontend rows + `AttachedSetterEndToEndTests` loader end-to-end). It covers every built-in and
+> app-default-namespace attached / owner-qualified Setter (`Grid.Row`, `DockPanel.Dock`,
+> `Control.Foreground`). **Phase 2** — eager capture-time resolution (4B) for `prefix:`-qualified owners
+> (X66d′) plus the shared prefix helper for `ResolveExtensionType` / `ResolveStyleTargetType` — remains
+> deferred (§6.2). §1–§5 are the original investigation; §6 is the recommendation that was adopted.
 
 ---
 

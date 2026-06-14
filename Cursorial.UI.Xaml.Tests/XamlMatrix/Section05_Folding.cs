@@ -77,4 +77,56 @@ public sealed class Section05_Folding : XamlTestBase
         Throws(XamlDiagnosticCodes.MemberNotFound,
             () => Parse("<Style TargetType=\"Button\"><Setter Property=\"Nope\" Value=\"x\"/></Style>"));
     }
+
+    [Fact] // X64a — an ATTACHED Setter property (Grid.Row) resolves the OWNER, not the lexical TargetType
+    public void X064a_SetterAttachedProperty_ResolvesOwner_NotTargetType()
+    {
+        // Button has no "Grid.Row"; resolution must go to owner Grid (the attached "Row" member). The Value
+        // then folds through Grid.Row's int converter — proving owner-resolution (a TargetType lookup on
+        // Button would be CUR2102 and never reach the fold).
+        var doc = Parse("<Style TargetType=\"Button\"><Setter Property=\"Grid.Row\" Value=\"1\"/></Style>");
+        Assert.True(doc.TryFindMember(1, "Value", out var value));
+        Assert.Equal(XamlValueKind.Folded, value.Kind);
+        Assert.Equal(1, doc.FoldedValue(value));
+    }
+
+    [Fact] // X64b — a second attached property (Grid.Column) resolves + folds through its owner's converter
+    public void X064b_SetterAttachedProperty_DockColumn_Folds()
+    {
+        var doc = Parse("<Style TargetType=\"Button\"><Setter Property=\"Grid.Column\" Value=\"2\"/></Style>");
+        Assert.True(doc.TryFindMember(1, "Value", out var value));
+        Assert.Equal(XamlValueKind.Folded, value.Kind);
+        Assert.Equal(2, doc.FoldedValue(value));
+    }
+
+    [Fact] // X64d — the dot-gate regression anchor: an UNqualified Setter property still resolves against TargetType
+    public void X064d_SetterUnqualifiedProperty_StillResolvesAgainstTargetType()
+    {
+        var doc = Parse("<Style TargetType=\"Button\"><Setter Property=\"Height\" Value=\"5\"/></Style>");
+        Assert.True(doc.TryFindMember(1, "Value", out var value));
+        Assert.Equal(XamlValueKind.Folded, value.Kind);
+        Assert.Equal(5, doc.FoldedValue(value)); // Height resolves on Button (the TargetType is the owner)
+    }
+
+    [Fact] // X66b — owner resolves, member does not → CUR2102 naming the OWNER (Grid), not the TargetType
+    public void X066b_SetterAttachedUnknownMember_CUR2102_NamesOwner()
+    {
+        var ex = Throws(XamlDiagnosticCodes.MemberNotFound,
+            () => Parse("<Style TargetType=\"Button\"><Setter Property=\"Grid.Nope\" Value=\"1\"/></Style>"));
+        Assert.Contains("Grid", ex.Message); // names the owner, not Button
+    }
+
+    [Fact] // X66c — owner unresolvable in the default namespace → CUR2002 naming the owner type
+    public void X066c_SetterAttachedUnknownOwner_CUR2002()
+    {
+        Throws(XamlDiagnosticCodes.TypeNotFound,
+            () => Parse("<Style TargetType=\"Button\"><Setter Property=\"Bogus.Row\" Value=\"1\"/></Style>"));
+    }
+
+    [Fact] // X66d — a PREFIXED Setter owner is a v1 deferral (CUR2111), not a misleading CUR2102
+    public void X066d_SetterPrefixedOwner_CUR2111_Deferral()
+    {
+        Throws(XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported,
+            () => Parse("<Style xmlns:my=\"using:Foo\" TargetType=\"Button\"><Setter Property=\"my:Grid.Row\" Value=\"1\"/></Style>"));
+    }
 }

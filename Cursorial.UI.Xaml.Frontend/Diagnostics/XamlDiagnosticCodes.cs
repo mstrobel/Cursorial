@@ -61,6 +61,9 @@ public static class XamlDiagnosticCodes
     /// <summary>A <c>Setter</c> has no resolvable target type (no lexical <c>TargetType</c> / selector context).</summary>
     public const string SetterNoTarget = "CUR2110";
 
+    /// <summary>A prefixed attached/owner-qualified <c>Setter.Property</c> owner (e.g. <c>my:Grid.Row</c>) — a v1 deferral (attached-setter Phase 2, see the investigation doc).</summary>
+    public const string PrefixedSetterOwnerUnsupported = "CUR2111";
+
     /// <summary>A <c>StaticResource</c> key was not found / is a forward reference.</summary>
     public const string ResourceNotFound = "CUR2103";
 

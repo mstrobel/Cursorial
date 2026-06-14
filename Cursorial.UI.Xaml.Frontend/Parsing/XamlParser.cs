@@ -975,12 +975,13 @@ internal sealed class XamlParser
         if (propertyName is null)
             return; // no Property to resolve
 
-        var targetMember = targetType.TryGetMember(propertyName);
+        // A dotted Property name (Owner.Member — an attached property like Grid.Row, or an owner-qualified
+        // plain property like Control.Foreground) resolves the OWNER, NOT the lexical TargetType (matrix
+        // X64a/X64c, XD4); an unqualified name resolves against the TargetType. The helper reports the
+        // diagnostic on failure (and treats a prefixed owner as a v1 deferral).
+        var targetMember = TryResolveQualifiedSetterMember(propertyName, targetType, line, column);
         if (targetMember is null)
-        {
-            ReportMemberNotFound(targetType, propertyName, line, column);
             return;
-        }
 
         // Rewrite the "Property" member to carry the RESOLVED target member (so the loader's Setter build
         // reads the target UIProperty directly, matrix X117/X129) — the value text stays the property name.
@@ -1100,6 +1101,53 @@ internal sealed class XamlParser
     }
 
     // ── Type resolution ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves a Setter <c>Property</c> name that may be <c>Owner.Member</c>-qualified (an attached property
+    /// like <c>Grid.Row</c>, or an owner-qualified plain property like <c>Control.Foreground</c>): a dotted
+    /// name resolves the OWNER xmlns-aware and ignores the lexical Style <c>TargetType</c> (matrix X64a/X64c,
+    /// XD4); an unqualified name resolves against <paramref name="targetType"/> (the only case the TargetType
+    /// is the owner — WPF parity). Returns the resolved member, or <c>null</c> after reporting a diagnostic.
+    /// Phase 1: the owner resolves against the DEFAULT UI namespace, which covers every built-in and
+    /// app-default-namespace owner; a <c>prefix:</c>-qualified owner (<c>my:Grid.Row</c>) is a documented v1
+    /// deferral (<see cref="XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported"/>) because Setter resolution
+    /// runs at end-of-object, after the reader's xmlns scope is gone (Phase 2 captures it at the attribute).
+    /// </summary>
+    private XamlMember? TryResolveQualifiedSetterMember(string propertyName, XamlType targetType, int line, int column)
+    {
+        int dot = propertyName.IndexOf('.'); // first dot — matches the attached-attribute path (X75)
+        if (dot < 0)
+        {
+            // Unqualified: the TargetType is the owner (the only such case — WPF parity). An unknown member
+            // here is CUR2102 against the TargetType (the X66 behavior, preserved).
+            var unqualified = targetType.TryGetMember(propertyName);
+            if (unqualified is null)
+                ReportMemberNotFound(targetType, propertyName, line, column);
+            return unqualified;
+        }
+
+        int colon = propertyName.IndexOf(':');
+        if (colon >= 0 && colon < dot)
+        {
+            _builder.Error(XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported,
+                $"A prefixed attached/qualified Setter owner is not supported in v1 ('{propertyName}'); use an " +
+                "owner in the default namespace, or set the property unqualified against the TargetType.",
+                line, column);
+            return null;
+        }
+
+        string ownerName = propertyName.Substring(0, dot);
+        string memberName = propertyName.Substring(dot + 1);
+
+        var ownerResolution = ResolveType(XmlnsNamespaces.CursorialUi, ownerName, line, column);
+        if (!ownerResolution.IsResolved)
+            return null; // ResolveType already emitted CUR2001/CUR2002 naming the owner
+
+        var member = ownerResolution.Type!.TryGetMember(memberName);
+        if (member is null)
+            ReportMemberNotFound(ownerResolution.Type!, memberName, line, column); // names the OWNER, not the TargetType
+        return member;
+    }
 
     private XamlTypeResolution ResolveType(string ns, string localName, int line, int column)
     {

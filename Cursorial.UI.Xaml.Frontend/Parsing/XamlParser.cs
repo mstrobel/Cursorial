@@ -919,18 +919,25 @@ internal sealed class XamlParser
 
     // ── Setter resolution (X64/X66) ──────────────────────────────────────────────────────────────
 
-    /// <summary>Resolves a Style's <c>TargetType</c> attribute value to a <see cref="XamlType"/>.</summary>
+    /// <summary>
+    /// Resolves a Style's target type for Setter resolution from its explicit <c>TargetType</c> attribute
+    /// (matrix X64/X66). A Style with no <c>TargetType</c> leaves the target unresolved, so any enclosed
+    /// Setter is <c>CUR2110</c> — including a Type-keyed control theme (<c>&lt;Style x:Key="{x:Type T}"&gt;</c>),
+    /// which must carry <c>TargetType="T"</c> alongside the key (the key is the dictionary entry's type;
+    /// <c>TargetType</c> is what binds its Setters — the two are orthogonal, unlike WPF's
+    /// <c>DictionaryKeyProperty(TargetType)</c> collapse).
+    /// </summary>
     private XamlType? ResolveStyleTargetType(List<MemberRecord> members)
     {
         foreach (var m in members)
         {
-            if (m.MemberId < 0 || m.Kind != XamlValueKind.Text)
-                continue;
-            if (!string.Equals(_builder.ResolvedMemberName(m.MemberId), "TargetType", StringComparison.Ordinal))
-                continue;
-            string typeName = _builder.GetString(m.ValueIndex);
-            return ResolveTypeQuiet(XmlnsNamespaces.CursorialUi, typeName).Type;
+            if (m is { MemberId: >= 0, Kind: XamlValueKind.Text } &&
+                string.Equals(_builder.ResolvedMemberName(m.MemberId), "TargetType", StringComparison.Ordinal))
+            {
+                return ResolveTypeQuiet(XmlnsNamespaces.CursorialUi, _builder.GetString(m.ValueIndex)).Type;
+            }
         }
+
         return null;
     }
 
@@ -978,8 +985,13 @@ internal sealed class XamlParser
         // Rewrite the "Property" member to carry the RESOLVED target member (so the loader's Setter build
         // reads the target UIProperty directly, matrix X117/X129) — the value text stays the property name.
         int targetMemberId = _builder.AddResolvedMember(targetMember);
+
         members[propertyMemberSlot] = new MemberRecord(
-            targetMemberId, XamlValueKind.Text, members[propertyMemberSlot].ValueIndex, 0, members[propertyMemberSlot].PackedLineInfo);
+            targetMemberId,
+            XamlValueKind.Text,
+            members[propertyMemberSlot].ValueIndex,
+            0,
+            members[propertyMemberSlot].PackedLineInfo);
 
         // Fold the Value through the target property's converter (if any, context-free).
         for (int i = 0; i < members.Count; i++)
@@ -1002,7 +1014,8 @@ internal sealed class XamlParser
                 break;
             }
 
-            if (_options.FoldConstants && TryFoldLiteral(targetMember, MarkupExtensionParser.UnescapeLiteral(valueText), line, column, out object? folded))
+            if (_options.FoldConstants &&
+                TryFoldLiteral(targetMember, MarkupExtensionParser.UnescapeLiteral(valueText), line, column, out object? folded))
             {
                 int constIndex = _builder.AddConstant(folded);
                 members[i] = new MemberRecord(members[i].MemberId, XamlValueKind.Folded, constIndex, 0, members[i].PackedLineInfo);
@@ -1135,11 +1148,13 @@ internal sealed class XamlParser
     private bool TryFoldLiteral(XamlMember member, string text, int line, int column, out object? folded)
     {
         folded = null;
+
         var converter = member.Converter;
         if (converter is null || !converter.IsContextFree)
             return false;
 
         var ctx = new XamlValueContext(_options.ConverterCulture, member, member.ValueType, _builder.Source, line, column);
+
         try
         {
             folded = converter.ConvertFromString(text, ctx);

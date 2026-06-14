@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
@@ -21,133 +23,156 @@ namespace Cursorial.UI.Themes;
 /// </summary>
 internal static class ControlThemes
 {
-    // :focus escalates to the palette ThemeKeys.FocusPen via a DynamicResource (R2, design doc §11.5):
-    // it is a heavy-weight pen that ALSO carries the per-variant accent color (RGB cyan/blue, Ansi16
-    // palette-14/4, NoColor a brush-less heavy ASCII pen). Wiring it as a resource — not the brush-less
-    // Pens.Heavy constant — means focusing a default-themed control keeps a colored frame (the accent)
-    // and bumps the weight, rather than regressing the border color to the terminal default; and it
-    // re-skins on a dark/light flip through the same spine. (Before R2 this was the local Pens.Heavy
-    // constant, which stranded a brush-less pen → Colors.Default at draw — the P6.1 P2-1 finding.)
-    //
-    // :default (the Enter-default cue) stays the render-only WEIGHT bump Pens.Double: there is no
-    // per-variant DefaultPen palette key, so it intentionally inherits the resting BorderPen weight-
-    // -only semantics. The COLOR-bearing resting setters (Foreground / Background / the resting
-    // BorderPen) are ResourceReferences into the ThemeKeys palette spine — see ApplyPaletteSpine.
-    private static readonly Pen DefaultPen = Pens.Double;
+    // Cell-faithful default look (design doc §11.8a; default-theme-adoption-spec.md): controls are
+    // FILL-BOUNDED, not line-bounded. A control's resting extent is a SurfaceBrush fill (not a stroked
+    // border); the interactive states are brush-pair flips into the palette spine — :pointerover = a
+    // HoverBrush fill, :focus = reverse-video (TextBrush fill + WindowBackground text), :pressed/:default =
+    // accent reverse-video (AccentBrush fill + OnAccentBrush text), :disabled = DisabledBackgroundBrush
+    // + DisabledForegroundBrush. No FocusPen ring, no Pens.Double :default weight bump. The NoColor
+    // Inverse layer (where the brush pairs resolve to Default) rides the caps-nocolor theme-styles rules
+    // in CursorialThemeStyles. BorderPen/FocusPen survive only as opt-in chrome (ThemeKeys), unread here.
 
     internal static void Populate(ResourceDictionary dict)
     {
         dict[typeof(Button)] = ButtonTheme();
         dict[typeof(RepeatButton)] = RepeatButtonTheme();
         dict[typeof(ToggleButton)] = ToggleButtonTheme();
-        dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs);
-        dict[typeof(RadioButton)] = ToggleGlyphTheme("Theme.RadioButton", ThemeKeys.RadioGlyphs);
+        dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.GreenBrush, ThemeKeys.AmberBrush);
+        dict[typeof(RadioButton)] = ToggleGlyphTheme("Theme.RadioButton", ThemeKeys.RadioGlyphs, ThemeKeys.AccentBrush, ThemeKeys.AmberBrush);
         dict[typeof(ScrollBar)] = ScrollBarTheme();
         dict[typeof(ScrollViewer)] = ScrollViewerTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
 
-    // A bordered single-content button (spec line 658): a Border with Padding (1,0) wrapping a
-    // RecognizesAccessKey ContentPresenter that auto-aliases the button's Content. :focus → Heavy
-    // border (render-only, NoColor-safe per the §3.5 escalation), :default → Double, :pressed →
-    // Inverse content attribute, :disabled → Faint (handled by the presenter's effective-enabled read).
+    // A fill-bounded single-content button (design doc §11.8a): a Border with Padding (1,0) wrapping a
+    // RecognizesAccessKey ContentPresenter that auto-aliases the button's Content. The fill IS the button
+    // (no resting border) — Background carries the SurfaceBrush spine and flips per interactive state
+    // (hover/focus/pressed/disabled); the content text inherits Foreground, which the reverse-video focus
+    // and accent pressed/default rules swap. The BorderPen binding stays so an app can opt a frame back in.
     private static ControlTemplate ButtonContentTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Padding = new Margins(1, 0), Child = presenter };
-        // The surface fill follows the button's Background (the WPF default-template wiring): a
-        // TemplateBinding makes Button.Background paint the face, quantized per the negotiated tier.
+        // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
+        // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
+        // the negotiated tier. No resting pen ⇒ no frame ⇒ a 1-row button (content at row 0).
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        // The border stroke follows the control's BorderPen — which the theme root rule resolves from
-        // ThemeKeys.BorderPen (and the :focus/:default rules escalate). So the resting frame re-colors on
-        // a variant flip and a :focus heavy-weight bump rides through the same one TemplateBinding.
+        // Opt-in border: the BorderPen binding is retained (unset by the default theme), so a consumer
+        // that sets Control.BorderPen gets a framed button without a custom template.
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
     private static Style ButtonTheme()
     {
-        var theme = ApplyPaletteSpine(new Style { Key = "Theme.Button" })
-            .Set(Control.TemplateProperty, ButtonContentTemplate());
-        theme.Children.Add(new Style("^:focus").SetResource(Control.BorderPenProperty, ThemeKeys.FocusPen));
-        theme.Children.Add(new Style("^:default").Set(Control.BorderPenProperty, DefaultPen));
+        var theme = AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.Button" })
+            .Set(Control.TemplateProperty, ButtonContentTemplate()));
+        // :default (the Enter-default cue) — a resting accent reverse-video fill so the primary action
+        // stands out; :focus/:pressed override it when the user interacts. The ▸ OK ◂ gutter brackets are
+        // a deferred content nicety (spec §3).
+        theme.Children.Add(new Style("^:default")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         return theme;
     }
 
     private static Style RepeatButtonTheme()
-        => ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" })
-            .Set(Control.TemplateProperty, ButtonContentTemplate());
+        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" })
+            .Set(Control.TemplateProperty, ButtonContentTemplate()));
 
     private static Style ToggleButtonTheme()
+        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" })
+            .Set(Control.TemplateProperty, ButtonContentTemplate()));
+
+    // The cell-faithful interactive states shared by the button family (design doc §11.8a): hover = a
+    // fill swap; focus = reverse-video (TextBrush fill + WindowBackground text); pressed = accent reverse-video;
+    // disabled = disabled fill + muted text. All brush-pair setters are ResourceReferences into the
+    // palette spine (color tiers); the NoColor Inverse layer rides the caps-nocolor theme-styles rules.
+    // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
+    private static Style AddButtonStates(Style theme)
     {
-        var theme = ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" })
-            .Set(Control.TemplateProperty, ButtonContentTemplate());
-        theme.Children.Add(new Style("^:focus").SetResource(Control.BorderPenProperty, ThemeKeys.FocusPen));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:focus")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
+        theme.Children.Add(new Style("^:pressed")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+        theme.Children.Add(new Style("^:disabled")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
         return theme;
     }
 
-    // The R2 palette spine (design doc §11.5 / B10): wire a control theme's resting color setters as
-    // DynamicResources into the ThemeKeys palette so a default-look control (no explicit Foreground /
-    // Background / BorderPen) resolves them per-variant and re-skins on a dark/light flip or a single
-    // ThemeKeys override — with zero template work. The setters arm at the ControlTheme layer (below
-    // LocalValue), so an explicit value the consumer sets always wins. Background stays UNSET by default
-    // (a transparent button face is the WPF/Avalonia default — the surface paints only when the consumer
-    // sets Background); the spine wires Foreground + the resting BorderPen, which every BuiltIn control
-    // reads through inheritance / its template.
+    // The R2 palette spine (design doc §11.5 / §11.8a): a default-look control (no explicit Foreground /
+    // Background) resolves its resting fill + ink from the ThemeKeys palette as DynamicResources, so it
+    // re-skins per-variant on a dark/light flip or a single ThemeKeys override with zero template work.
+    // The setters arm at the ControlTheme layer (below LocalValue), so an explicit value the consumer
+    // sets always wins. Cell-faithful reversal of the WPF transparent-Background default: the resting
+    // SurfaceBrush fill IS the control's extent (no border). The toggle-glyph controls (CheckBox/Radio)
+    // do NOT take this spine — they stay transparent at rest (gallery: their normal fill is the page bg).
     private static Style ApplyPaletteSpine(Style theme)
         => theme
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush);
 
     // ───────────────────────────── CheckBox / RadioButton ─────────────────────────────
 
-    // glyph cell(s) + 1 space + ContentPresenter (spec line 660). The glyph element reads the owning
-    // toggle's IsChecked + the glyph-set resource (ASCII default, overridable). No Border by default.
-    private static ControlTemplate ToggleGlyphTemplate(string glyphKey) => new(ctx =>
-    {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+    // glyph cell + 1 space + ContentPresenter (spec line 660), wrapped in a fill Border. The glyph element
+    // reads the owning toggle's IsChecked + the glyph-set resource (ASCII default, overridable).
+    private static ControlTemplate ToggleGlyphTemplate(string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
+        => new(ctx =>
+               {
+                   var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
 
-        // The glyph cell overlays a zero-size Caret on the glyph's INNER cell (column 1 — the space
-        // inside [ ] / ( )). A single-cell Grid sizes to the glyph (3×1) and stacks both children there;
-        // the Caret is Left/Top-pinned with a 1-column left margin so it lands on the box's middle cell.
-        // The caret only shows under :focus-visible (the rule in ToggleGlyphTheme), so a resting toggle
-        // is unchanged.
-        var glyphCell = new Grid();
-        var glyph = new ToggleGlyph(glyphKey);
-        ctx.RegisterName("PART_Glyph", glyph);
-        var caret = new Caret
-        {
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Margins(1, 0, 0, 0),
-        };
-        ctx.RegisterName("PART_Caret", caret);
-        glyphCell.Children.Add(glyph);
-        glyphCell.Children.Add(caret);
+                   // The glyph cell overlays a zero-size Caret on the glyph's INNER cell (column 1 — the space inside
+                   // [ ] / ( )). A single-cell Grid stacks both; the Caret is Left/Top-pinned with a 1-column left
+                   // margin so it lands on the box's middle cell. It shows only under :focus-visible (driven in code by
+                   // ToggleButton). Check/radio focus is this IN-BOX CARET, not reverse-video: a check/radio stretches
+                   // to its StackPanel's width, so a reverse fill would span the whole row like a selection bar.
+                   var glyphCell = new Grid();
+                   var glyph = new ToggleGlyph(glyphKey, checkedMarkKey, indeterminateMarkKey);
+                   ctx.RegisterName("PART_Glyph", glyph);
 
-        var presenter = new ContentPresenter { RecognizesAccessKey = true };
-        ctx.RegisterName("PART_ContentPresenter", presenter);
-        row.Children.Add(glyphCell);
-        row.Children.Add(presenter);
-        return row;
-    });
+                   var caret = new Caret
+                               {
+                                   HorizontalAlignment = HorizontalAlignment.Left,
+                                   VerticalAlignment = VerticalAlignment.Top,
+                                   Margin = new Margins(1, 0, 0, 0),
+                               };
+
+                   ctx.RegisterName("PART_Caret", caret);
+                   glyphCell.Children.Add(glyph);
+                   glyphCell.Children.Add(caret);
+
+                   var presenter = new ContentPresenter { RecognizesAccessKey = true };
+                   ctx.RegisterName("PART_ContentPresenter", presenter);
+                   row.Children.Add(glyphCell);
+                   row.Children.Add(presenter);
+
+                   // The face follows Control.Background — unset (transparent) at rest and there is no fill setter:
+                   // check/radio never fill (a stretched row would fill full-width like a selection bar). The binding
+                   // stays so a consumer that sets Background still paints. Focus is the in-box caret, not a fill.
+                   var face = new Border { Child = row };
+                   face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                   return face;
+               });
 
     // themeKey is the diagnostic Style.Key (e.g. "Theme.CheckBox"); glyphKey is the ThemeKeys glyph-set
     // resource the ToggleGlyph leaf reads (already a fully-qualified "Theme.*" constant — never re-prefix it).
-    // The toggle has no Border by default; only the Foreground spine applies (the ToggleGlyph + the
-    // content presenter both paint in the inherited Control.Foreground, so a variant flip re-inks them).
-    private static Style ToggleGlyphTheme(string themeKey, string glyphKey)
-        => new Style { Key = themeKey }
+    // No fill at all: transparent at rest AND on hover (a stretched check/radio would fill full-width); the
+    // glyph + content paint in the inherited Foreground, disabled = muted ink, focus = the in-box caret
+    // (driven by ToggleButton), never reverse-video.
+    private static Style ToggleGlyphTheme(string themeKey, string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
+    {
+        var theme = new Style { Key = themeKey }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey));
-
-    // The PART_Caret in the toggle template (the focus indicator inside the box) is driven by
-    // ToggleButton.OnInteractionStateChangedCore off the control's :focus-visible bit — NOT a
-    // `^:focus-visible /template/ Caret` style rule: the styling engine documents /template/ combined
-    // with an ancestor-state pseudo as an approximation that does not re-evaluate on the state flip
-    // (StyleEngine §"documented approximation"). Code-driven keeps it faithful to focus-visible and robust.
+            .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey, checkedMarkKey, indeterminateMarkKey));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
+        return theme;
+    }
 
     // ───────────────────────────── ScrollBar / ScrollViewer ─────────────────────────────
 
@@ -172,11 +197,11 @@ internal static class ControlThemes
         // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
         // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
         // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
-        var lineUp = new RepeatButton { Content = horizontal ? "<" : "^", Template = bareTemplate, Focusable = false, IsTabStop = false };
+        var lineUp = new RepeatButton { Content = horizontal ? "◀" : "▲", Template = bareTemplate, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_LineUpButton", lineUp);
         DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
 
-        var lineDown = new RepeatButton { Content = horizontal ? ">" : "v", Template = bareTemplate, Focusable = false, IsTabStop = false };
+        var lineDown = new RepeatButton { Content = horizontal ? "▶" : "▼", Template = bareTemplate, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_LineDownButton", lineDown);
         DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
 
@@ -233,9 +258,29 @@ internal static class ControlThemes
 internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
 {
     private readonly string _glyphKey;
+    private readonly string? _checkedMarkKey;
+    private readonly string? _indeterminateMarkKey;
     private IDisposable? _checkedObserver;
 
-    internal ToggleGlyph(string glyphKey) => _glyphKey = glyphKey;
+    // The caps-unicode glyph-set override (design doc §12.7 / SD14): CursorialThemeStyles' `.caps-unicode`
+    // rules set this per control type to opt the marks UP from the ASCII resource base to Unicode (✓/▪/●);
+    // ToggleGlyph reads it off its Owner, falling back to the glyph-set resource when unset (a caps-ascii
+    // terminal, or no caps-unicode source). Hosted on ToggleButton so a `.caps-unicode CheckBox`/
+    // `RadioButton` theme-styles rule can set it. AffectsRender — the ASCII↔Unicode marks are equal-width.
+    internal static readonly AttachedProperty<GlyphSetCarrier?> GlyphsProperty =
+        UIProperty.RegisterAttached<ToggleGlyph, ToggleButton, GlyphSetCarrier?>("Glyphs");
+
+    static ToggleGlyph() => UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
+
+    // checkedMarkKey / indeterminateMarkKey: ThemeKeys brush resources that color the INNER mark for the
+    // checked / indeterminate states (CheckBox ✓ = GreenBrush, ▪ = AmberBrush; RadioButton ● = AccentBrush);
+    // null leaves the mark in the inherited foreground. The brackets always paint in the foreground.
+    internal ToggleGlyph(string glyphKey, string? checkedMarkKey = null, string? indeterminateMarkKey = null)
+    {
+        _glyphKey = glyphKey;
+        _checkedMarkKey = checkedMarkKey;
+        _indeterminateMarkKey = indeterminateMarkKey;
+    }
 
     private ToggleButton? Owner => TemplatedParent as ToggleButton;
 
@@ -262,9 +307,18 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         => InvalidateVisual();
 
     private GlyphSetCarrier Glyphs
-        => this.TryFindResource(_glyphKey, out var value) && value is GlyphSetCarrier glyphs
-            ? glyphs
-            : new GlyphSetCarrier("[ ]", "[x]", "[-]");
+    {
+        get
+        {
+            // The .caps-unicode override (set on the Owner by a theme-styles rule) wins; else the glyph-set
+            // resource (the ASCII base, themeable at any scope); else the hard ASCII fallback.
+            if (Owner?.GetValue(GlyphsProperty) is { } unicode)
+                return unicode;
+            return this.TryFindResource(_glyphKey, out var value) && value is GlyphSetCarrier glyphs
+                ? glyphs
+                : new GlyphSetCarrier("[ ]", "[x]", "[-]");
+        }
+    }
 
     // The owner's checked state, defaulting to unchecked only when there is no owner — a null here is
     // the genuine *indeterminate* value, which the '?? false' coalesce must NOT collapse.
@@ -287,10 +341,39 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
             return;
 
         var glyph = Glyphs.ForChecked(CheckedState);
-        var brush = Owner?.Foreground;
+        var foreground = Owner?.Foreground;
+
+        // Bracket-neutral colored mark (gallery idiom): the box "[ ]" / "( )" paints in the inherited
+        // foreground while the inner mark (✓ / ▪ / ●) takes its state color — but only when a mark color
+        // resolves AND the glyph is the canonical open+mark+close triple. Otherwise the whole glyph paints
+        // in the foreground (e.g. unchecked, a custom non-triple glyph, or no mark color configured).
+        if (MarkBrush(CheckedState) is { } mark && glyph.Length >= 3)
+        {
+            var open = glyph[..1];
+            var inner = glyph[1..^1];
+            var openWidth = Cursorial.Text.GraphemeWidth.StringWidth(open);
+            DrawAt(context, 0, open, foreground);
+            DrawAt(context, openWidth, inner, mark);
+            DrawAt(context, openWidth + Cursorial.Text.GraphemeWidth.StringWidth(inner), glyph[^1..], foreground);
+            return;
+        }
+
+        DrawAt(context, 0, glyph, foreground);
+    }
+
+    private static void DrawAt(RenderContext context, int column, string text, IBrush? brush)
+    {
         if (brush is { })
-            context.DrawText(0, 0, glyph, brush);
+            context.DrawText(column, 0, text, brush);
         else
-            context.DrawText(0, 0, glyph, Colors.Default);
+            context.DrawText(column, 0, text, Colors.Default);
+    }
+
+    // The mark color for the checked / indeterminate states (a ThemeKeys brush resource resolved through
+    // the chain); null for the unchecked state, when no key was configured, or when it does not resolve.
+    private IBrush? MarkBrush(bool? state)
+    {
+        var key = state switch { true => _checkedMarkKey, null => _indeterminateMarkKey, _ => null };
+        return key is not null && this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
     }
 }

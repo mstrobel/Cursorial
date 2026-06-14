@@ -99,9 +99,9 @@ public sealed class CaretFocusIndicatorTests
         Assert.True(host.RunUntilIdle());
         Assert.False(host.FrameBuffer.CursorVisible); // button focused, no caret
 
-        // Click the CheckBox's glyph — pointer focus, not focus-visible. The bordered Button is 3 rows
-        // tall, so the CheckBox sits at row 3; its box is at column 1.
-        host.SendClick(1, 3);
+        // Click the CheckBox's glyph — pointer focus, not focus-visible. The cell-faithful Button is 1 row
+        // tall (no border), so the CheckBox sits at row 1; its box is at column 1.
+        host.SendClick(1, 1);
         Assert.True(host.RunUntilIdle());
         Assert.Same(check, host.Application.FocusManager.FocusedElement);
         Assert.False(host.FrameBuffer.CursorVisible, "pointer focus must not show the keyboard caret");

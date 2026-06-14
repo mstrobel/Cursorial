@@ -1,7 +1,22 @@
 # Default-theme gallery adoption — foundation spec (tranches 1 + 2)
 
 **Status: RATIFIED (2026-06-14).** Sign-off decisions: Q1 terse naming = yes; Q2 light `--hover` = **nudge to
-`#bfc0c6`**; Q3 resting-fill reversal = yes; Q4 §7 scope = confirmed (thumb hover/drag deferred). This is a
+`#bfc0c6`**; Q3 resting-fill reversal = yes; Q4 §7 scope = confirmed (thumb hover/drag deferred);
+**Q6 check/radio focus = in-box caret, NOT reverse-video** (refinement, 2026-06-14): a CheckBox/RadioButton
+stretches to its (vertical) StackPanel's width, so a reverse-video focus fill spans the whole row like a
+selection bar instead of cueing the box. Check/radio therefore keep the Task-B caret-in-box focus indicator
+(code-driven off `:focus-visible` in `ToggleButton`); they still get the hover fill + disabled muted ink.
+**Buttons/RepeatButton/ToggleButton keep reverse-video focus** (they are fill-blocks). This is a deliberate
+deviation from the gallery's `.rev` checkbox focus.
+
+**Q5 reverse-video mechanism = explicit brush-pairs** — at color tiers the `:focus`/`:pressed`/`:selected`/
+`:disabled` rules set explicit `Background`/`Foreground` brush pairs (focus = `TextBrush`/`WindowBrush`,
+pressed = `AccentBrush`/`OnAccentBrush`, selected = `SelectionBrush`, disabled =
+`DisabledBackgroundBrush`/`DisabledForegroundBrush`) for pixel-exact gallery fidelity; NoColor visibility comes
+from **`caps-nocolor`-gated rules** that layer `Inverse` (focus/selected/pressed), `Inverse+Bold`
+(pressed/default + focused-list-item) and `Faint` (disabled) on top, since the brush values resolve to
+`Colors.Default` under NoColor. This supersedes §2's "attribute budget *replaces* fills" framing — at color
+tiers the fills are real; the attributes are the NoColor *layer*, not the primary mechanism. This is a
 staging spec, not the design doc. It reconciles the
 Tokyo-Night style gallery (`default-theme-gallery-final.html`, the visual oracle) against the engine and
 pins the *foundation* work the roadmap ratified: tranche 1 (token spine + design-doc amendment) and
@@ -30,7 +45,7 @@ carriers); every other spine key is new and adopts this scheme.
 
 | `ThemeKeys` constant | token | dark RGB | light RGB | ansi16 D/L | NoColor |
 |---|---|---|---|---|---|
-| `Theme.BgBrush` | `--bg` | `#0d0f19` | `#e6e7ec` | 0 / 15 | Default (Inverse *target*) |
+| `Theme.WindowBrush` | `--bg` | `#0d0f18` | `#e6e7ec` | 0 / 15 | Default (Inverse *target*) |
 | `Theme.SurfaceBrush` | `--surface` | `#24283b` | `#cbccd1` | 0 / 7 | Default |
 | `Theme.PanelBrush` | `--panel` | `#222639` | `#e9e9ed` | 0 / 7 | Default |
 | `Theme.WellBrush` | `--well` | `#16161e` | `#f6f6f8` ⚠ | 0 / 15 | Underline |
@@ -44,7 +59,7 @@ carriers); every other spine key is new and adopts this scheme.
 | `Theme.DisabledForegroundBrush` | `--muted` | `#565f89` | `#9699a3` | 8 / 8 | Faint |
 | `Theme.AccentBrush` | `--accent` | `#7aa2f7` | `#34548a` | 12 / 4 | Inverse / Underline |
 | `Theme.Accent2Brush` | `--accent-2` | `#7dcfff` | `#0f4b6e` | 14 / 6 | Underline (+Bold) |
-| `Theme.OnAccentBrush` | `--on-accent` | `#0d0f19` | `#e9e9ed` | 15† / 15 | Default |
+| `Theme.OnAccentBrush` | `--on-accent` | `#0d0f18` | `#e9e9ed` | 15† / 15 | Default |
 | `Theme.GreenBrush` | `--green` | `#9ece6a` | `#485e30` | 2 / 2 | Default+Bold (glyph) |
 | `Theme.AmberBrush` | `--amber` | `#e0af68` | `#8f5e15` | 3 / 3 | Default+Bold (glyph) |
 | `Theme.RedBrush` | `--red` | `#f7768e` | `#8c4351` | 9 / 1 | Bold (glyph) |
@@ -225,7 +240,7 @@ properties — zero bordered assertions).
 
 ## 9. Open decisions for sign-off
 
-- **Q1 — naming:** terse token-mirroring (`Theme.BgBrush`/`PanelBrush`/`SelectionBrush`/`OnAccentBrush`/…).
+- **Q1 — naming:** terse token-mirroring (`Theme.WindowBrush`/`PanelBrush`/`SelectionBrush`/`OnAccentBrush`/…).
   *Recommend: yes* (matches shipped `ThemeKeys.cs`).
 - **Q2 — gallery RGB verbatim vs the light `--hover` nudge** (`#cbccd1`→`#bfc0c6`). The gallery value makes
   light-mode hover invisible as a fill at *every* tier. *Recommend: nudge* (defer the `--well` nudge to TextBox).

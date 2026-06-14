@@ -5,6 +5,9 @@ using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
+using Cursorial.UI;
+
+using Style = Cursorial.Output.Style;
 
 // ReSharper disable RedundantAssignment
 // ReSharper disable CheckNamespace
@@ -24,41 +27,84 @@ internal static class DemoSupport
 
         cts.CancelAfter(TimeSpan.FromSeconds(5));
 
+        // ReSharper disable once MethodSupportsCancellation
         var session = await TerminalSession.OpenAsync();
 
         // Initial size from Console (TIOCGWINSZ-equivalent; safe for read-only queries even though
         // we don't open the Console streams). The SIGWINCH-driven ResizeEvent will correct us once
         // it fires, but starting with the right dimensions avoids a redraw on the first resize.
+        // ReSharper disable once MethodSupportsCancellation
         var size = await session.QueryTerminalSizeAsync();
 
         var capabilities = session.Capabilities;
         var palette = new TerminalPalette(session.Output, capabilities.Output);
 
-        var fg = Color.FromHex("#c0caf5");
-        var bg = Color.FromHex("#0d0f18");
+        Color fg;
+        Color bg;
 
-        Color[] colors =
-        [
-            Color.FromHex("#15161e"),
-            Color.FromHex("#f7768e"),
-            Color.FromHex("#9ece6a"),
-            Color.FromHex("#e0af68"),
-            Color.FromHex("#7aa2f7"),
-            Color.FromHex("#bb9af7"),
-            Color.FromHex("#7dcfff"),
-            Color.FromHex("#a9b1d6"),
-            Color.FromHex("#414868"),
-            Color.FromHex("#ff899d"),
-            Color.FromHex("#9fe044"),
-            Color.FromHex("#faba4a"),
-            Color.FromHex("#8db0ff"),
-            Color.FromHex("#c7a9ff"),
-            Color.FromHex("#a4daff"),
-            Color.FromHex("#c0caf5"),
-            Color.FromHex("#0d0f18"),
-            Color.FromHex("#ff9e64"),
-            Color.FromHex("#db4b4b")
-        ];
+        var themeBase = ThemeVariant.FromCapabilities(capabilities);
+
+        Color[] colors;
+
+        if (themeBase.IsDark)
+        {
+            fg = Color.FromHex("#c0caf5");
+            bg = Color.FromHex("#0d0f18");
+
+            colors =
+            [
+                Color.FromHex("#15161e"),
+                Color.FromHex("#f7768e"),
+                Color.FromHex("#9ece6a"),
+                Color.FromHex("#e0af68"),
+                Color.FromHex("#7aa2f7"),
+                Color.FromHex("#bb9af7"),
+                Color.FromHex("#7dcfff"),
+                Color.FromHex("#a9b1d6"),
+                Color.FromHex("#414868"),
+                Color.FromHex("#ff899d"),
+                Color.FromHex("#9fe044"),
+                Color.FromHex("#faba4a"),
+                Color.FromHex("#8db0ff"),
+                Color.FromHex("#c7a9ff"),
+                Color.FromHex("#a4daff"),
+                Color.FromHex("#c0caf5"),
+                Color.FromHex("#0d0f18"),
+                Color.FromHex("#ff9e64"),
+                Color.FromHex("#db4b4b")
+            ];
+        }
+        else
+        {
+            fg = Color.FromHex("#343b58");
+            bg = Color.FromHex("#e6e7ec");
+
+            // Light (Tokyo-Night-Day-inspired): the dark palette's named hues are too pale to read on a light
+            // background, so darken/saturate them (the gallery's light tokens for red/green/amber/blue/purple/
+            // cyan), keep 0 dark / 15 dark-ink, and a light background entry.
+            colors =
+            [
+                Color.FromHex("#16161e"), // 0  black
+                Color.FromHex("#8c4351"), // 1  red
+                Color.FromHex("#485e30"), // 2  green
+                Color.FromHex("#8f5e15"), // 3  yellow
+                Color.FromHex("#34548a"), // 4  blue
+                Color.FromHex("#5a3e8e"), // 5  magenta
+                Color.FromHex("#0f4b6e"), // 6  cyan
+                Color.FromHex("#565a6e"), // 7  white (mid grey on light)
+                Color.FromHex("#9699a3"), // 8  bright black
+                Color.FromHex("#a14860"), // 9  bright red
+                Color.FromHex("#587539"), // 10 bright green
+                Color.FromHex("#a06a1a"), // 11 bright yellow
+                Color.FromHex("#3a5f9e"), // 12 bright blue
+                Color.FromHex("#6a4a9e"), // 13 bright magenta
+                Color.FromHex("#1a6088"), // 14 bright cyan
+                Color.FromHex("#343b58"), // 15 bright white (dark ink)
+                Color.FromHex("#e6e7ec"), // 16 background
+                Color.FromHex("#b5621f"), // 17 orange
+                Color.FromHex("#c64343")  // 18 red
+            ];
+        }
 
         for (var i = 0; i < colors.Length; i++)
             palette.Set(i, colors[i]);

@@ -9,15 +9,17 @@ namespace Cursorial.UI.Controls;
 /// down the logical tree. Setting <see cref="ForegroundProperty"/> high in the tree colors every
 /// descendant text element that does not override it.
 /// </summary>
-public static class TextElement
+public abstract class TextElement
 {
+    private TextElement() => throw new InvalidOperationException($"Class '{nameof(TextElement)}' is not instantiatable.");
+
     /// <summary>The inherited text foreground brush (<c>Inherits | AffectsRender</c>).</summary>
     public static readonly AttachedProperty<IBrush?> ForegroundProperty =
-        UIProperty.RegisterAttached<UIElement, UIElement, IBrush?>("Foreground", inherits: true);
+        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>("Foreground", inherits: true);
 
     /// <summary>The inherited text attributes (bold/italic/underline/…) (<c>Inherits | AffectsRender</c>).</summary>
     public static readonly AttachedProperty<TextAttributes> TextAttributesProperty =
-        UIProperty.RegisterAttached<UIElement, UIElement, TextAttributes>("TextAttributes", inherits: true);
+        UIProperty.RegisterAttached<TextElement, UIElement, TextAttributes>("TextAttributes", inherits: true);
 
     static TextElement()
     {

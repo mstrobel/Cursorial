@@ -176,6 +176,28 @@ public sealed partial class UIApplication : IResourceHost
         // (reStampClasses == false) does not touch classes.
         if (reStampClasses && tierChanged)
             StyleEngineInternal.OnEffectiveTierChanged(effective.Tier);
+
+        // A RUNTIME variant flip re-emits the theme cursor color out-of-band (the loop is running, so the
+        // wake is correct). The INITIAL color is written into the startup byte sequence (RunLoop's UI-mode
+        // entry), NOT here — so merely constructing an app (no loop) never queues + wakes the dispatcher
+        // (a bare dispatcher must stay unsignaled; UIDispatcher tests rely on it).
+        if (!first)
+            QueueControlSequence(WriteThemeCursorColor);
+    }
+
+    // Give the real terminal caret (TerminalCaretService publishes the terminal cursor, which paints in the
+    // terminal's own cursor color) a theme-driven color so it stays legible across variants — the terminal
+    // default washes out against the opposite background (the light-theme caret-invisibility report). Resolve
+    // the accent at the RGB tier (canonical: OSC 12 takes an rgb: value regardless of the effective cell tier);
+    // a no-op when the accent does not resolve to an RGB brush. RunTeardown emits OSC 112 to restore.
+    internal void WriteThemeCursorColor(System.Buffers.IBufferWriter<byte> output)
+    {
+        var rgbVariant = new ThemeVariant(_actualThemeVariant.Base, ColorDepth.Truecolor);
+        if (ResourceExtensions.WalkApplicationTail(ThemeKeys.AccentBrush, rgbVariant, searched: null, out var value) &&
+            value is Cursorial.Drawing.Media.SolidColorBrush { Color: { Kind: ColorKind.Rgb } accent })
+        {
+            PaletteWriter.WriteSetCursor(output, accent.Red, accent.Green, accent.Blue);
+        }
     }
 
     // ───────────────────────────── subscription registry per root (design doc §11.6) ─────────────────────────────

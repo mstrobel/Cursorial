@@ -1,41 +1,112 @@
 namespace Cursorial.UI.Themes;
 
 /// <summary>
-/// The <c>"Theme.*"</c> resource-key naming convention (design doc §11.8) — string constants that
-/// are typo-proof from C# and verbatim from XAML. S8 adds control-specific keys here as its content
-/// lands.
+/// The <c>"Theme.*"</c> resource-key naming convention (design doc §11.8 / §11.8a) — string constants that
+/// are typo-proof from C# and verbatim from XAML. S8 adds control-specific keys here as its content lands.
 /// <para>
-/// <b>Palette-spine status (R2 — wired):</b> the color-bearing setters in the built-in control themes
-/// (<c>ControlThemes</c>) are <see cref="ResourceReference"/>s into these keys (via
-/// <see cref="Style.SetResource{T}"/>), so overriding a single key at a nearer chain scope — or a
-/// <c>RequestedThemeBase</c>/<c>RequestedColorTier</c> flip — re-skins every default-look control with
-/// zero template work: the styling frame re-resolves the key per element on the resource pulse and the
-/// AffectsRender change re-rasters only the affected zone. The setters arm at the
-/// <c>ControlTheme</c> layer (below <see cref="BindingPriority.LocalValue"/>), so an explicit local
-/// value the consumer sets always wins. Two deliberate exclusions stay constants: the <c>:focus</c> /
-/// <c>:default</c> border-WEIGHT escalation pens (render-only, NoColor-safe — they are weight bumps,
-/// not colors) and a control's resting <c>Background</c> (an unset/transparent face is the
-/// WPF/Avalonia default — the surface paints only when the consumer sets it). The <see cref="GlyphSetCarrier"/>
-/// keys (<see cref="CheckBoxGlyphs"/>/<see cref="RadioGlyphs"/>/<see cref="ScrollArrowGlyphs"/>) have
-/// always been live resource reads.
+/// <b>Cell-faithful role-token spine (design doc §11.8a; <c>default-theme-adoption-spec.md</c>):</b> the
+/// default theme is <i>fill-bounded</i>, not line-bounded. Control identity is carried by these whole-cell
+/// fill/foreground role tokens — never by stroked borders. Each is a <see cref="Cursorial.Drawing.Media.IBrush"/>
+/// authored per <c>(ThemeBase, ColorDepth)</c> variant in <see cref="CursorialTheme"/>; control themes
+/// <see cref="ResourceReference"/> into them via <see cref="Style.SetResource{T}"/>, so overriding one token at a
+/// nearer chain scope — or a <c>RequestedThemeBase</c>/<c>RequestedColorTier</c> flip — re-skins every
+/// default-look control with zero template work (the <b>R2</b> spine wiring is landed). The setters arm at the
+/// <c>ControlTheme</c> layer (below <see cref="BindingPriority.LocalValue"/>), so an explicit local value the
+/// consumer sets always wins.
+/// </para>
+/// <para>
+/// <b>Focus model:</b> reverse-video for pickable controls (a <see cref="TextBrush"/>/<see cref="WindowBackground"/>
+/// brush pair), an intensified <see cref="WellBrush"/> + caret for text controls — both pure paint-only flips,
+/// no sub-cell ring. <see cref="BorderPen"/>/<see cref="FocusPen"/> are <b>opt-in chrome keys only</b> (for
+/// <c>Border</c>/GroupBox/Window frames), not spine members. The <see cref="GlyphSetCarrier"/> keys are live
+/// resource reads.
 /// </para>
 /// </summary>
 public static class ThemeKeys
 {
-    /// <summary>The default surface (panel/window) background brush.</summary>
+    // ───────────────────────────── role tokens (the cell-faithful spine, §11.8a) ─────────────────────────────
+
+    /// <summary>Page/window background; also the reverse-video <i>text</i> color on a focused pick control.</summary>
+    public const string WindowBackground = "Theme.WindowBackground";
+
+    /// <summary>Resting control fill (button, field, header).</summary>
     public const string SurfaceBrush = "Theme.SurfaceBrush";
 
-    /// <summary>The default text/foreground brush.</summary>
+    /// <summary>Popup / list / grid / menu surface fill.</summary>
+    public const string PanelBrush = "Theme.PanelBrush";
+
+    /// <summary>Intensified fill for a focused <i>text</i> field.</summary>
+    public const string WellBrush = "Theme.WellBrush";
+
+    /// <summary>Selection fill (selected item/text).</summary>
+    public const string SelectionBrush = "Theme.SelectionBrush";
+
+    /// <summary>Shared pointer-over (hover) fill.</summary>
+    public const string HoverBrush = "Theme.HoverBrush";
+
+    /// <summary>Primary text / foreground; also the reverse-video <i>fill</i> on a focused pick control.</summary>
     public const string TextBrush = "Theme.TextBrush";
 
-    /// <summary>The accent (selection / emphasis) brush.</summary>
+    /// <summary>Secondary (de-emphasized) text.</summary>
+    public const string TextDimBrush = "Theme.TextDimBrush";
+
+    /// <summary>Tertiary text and glyph ink.</summary>
+    public const string MutedBrush = "Theme.MutedBrush";
+
+    /// <summary>Inactive track / faint glyph (slider/scrollbar track, empty progress segment).</summary>
+    public const string FaintBrush = "Theme.FaintBrush";
+
+    /// <summary>Disabled control fill.</summary>
+    public const string DisabledBackgroundBrush = "Theme.DisabledBackgroundBrush";
+
+    /// <summary>Disabled text/glyph ink.</summary>
+    public const string DisabledForegroundBrush = "Theme.DisabledForegroundBrush";
+
+    /// <summary>Focus accent / links / pressed-or-default fill / today.</summary>
     public const string AccentBrush = "Theme.AccentBrush";
 
-    /// <summary>The focus-ring pen.</summary>
+    /// <summary>Secondary accent (hover-link, folder glyph).</summary>
+    public const string Accent2Brush = "Theme.Accent2Brush";
+
+    /// <summary>Text drawn on an accent/colored fill (pressed-button text, badge text).</summary>
+    public const string OnAccentBrush = "Theme.OnAccentBrush";
+
+    /// <summary>Success / on.</summary>
+    public const string GreenBrush = "Theme.GreenBrush";
+
+    /// <summary>Warning / paused / indeterminate mark.</summary>
+    public const string AmberBrush = "Theme.AmberBrush";
+
+    /// <summary>Error / danger.</summary>
+    public const string RedBrush = "Theme.RedBrush";
+
+    /// <summary>Pressed-slider thumb / visited link / file glyph.</summary>
+    public const string PurpleBrush = "Theme.PurpleBrush";
+
+    /// <summary>Status bar default background.</summary>
+    public const string StatusBarBackground = "Theme.StatusBarBackground";
+
+    /// <summary>Status bar alternate/branch background.</summary>
+    public const string StatusBarAltBackground = "Theme.StatusBarAltBackground";
+
+    /// <summary>Status bar alternate/branch foreground.</summary>
+    public const string StatusBarAltForeground = "Theme.StatusBarAltForeground";
+
+    // ───────────────────────────── opt-in chrome (NOT spine members, §11.8a) ─────────────────────────────
+
+    /// <summary>
+    /// Opt-in focus-ring pen — <b>not</b> the default focus mechanism (focus is reverse-video / well+caret).
+    /// Retained for apps that re-introduce a bordered look; no common control reads it by default.
+    /// </summary>
     public const string FocusPen = "Theme.FocusPen";
 
-    /// <summary>The default border pen.</summary>
+    /// <summary>
+    /// Opt-in border pen — <b>not</b> a spine member (the cell-faithful default is fill-bounded). Survives for
+    /// the line-drawn surfaces (<c>Border</c>/GroupBox/Expander/Window chrome) that genuinely want a frame.
+    /// </summary>
     public const string BorderPen = "Theme.BorderPen";
+
+    // ───────────────────────────── infrastructure (carried over) ─────────────────────────────
 
     /// <summary>The modal-dimming overlay brush (the <c>^.obscured</c> rule, design doc §11.8).</summary>
     public const string ObscuredOverlayBrush = "Theme.ObscuredOverlayBrush";

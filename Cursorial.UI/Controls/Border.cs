@@ -17,6 +17,10 @@ public class Border : Decorator
     public static readonly StyledProperty<IBrush?> BackgroundProperty =
         UIProperty.Register<Border, IBrush?>(nameof(Background));
 
+    /// <summary>The title text brush (<c>AffectsRender</c>; <b>not</b> inherited).</summary>
+    public static readonly StyledProperty<IBrush?> TitleForegroundProperty =
+        UIProperty.Register<Border, IBrush?>(nameof(TitleForeground));
+
     /// <summary>The border stroke (<c>AffectsRender</c> + nullity escalation — doc §12.4).</summary>
     public static readonly StyledProperty<Pen?> BorderPenProperty =
         UIProperty.Register<Border, Pen?>(nameof(BorderPen), changed: OnBorderPenChanged);
@@ -37,14 +41,21 @@ public class Border : Decorator
     public static readonly StyledProperty<bool> OccludesProperty =
         UIProperty.Register<Border, bool>(nameof(Occludes));
 
+    /// <summary>Whether a visible border is present.</summary>
+    public static readonly DirectProperty<Border, bool> HasBorderProperty =
+        UIProperty.RegisterDirect<Border, bool>(nameof(HasBorder), b => b.HasBorder);
+
     static Border()
     {
-        AffectsRender<Border>(BackgroundProperty, BorderPenProperty, TitleProperty, TitlePositionProperty, OccludesProperty);
-        AffectsMeasure<Border>(PaddingProperty);
+        AffectsRender<Border>(BackgroundProperty, TitleForegroundProperty, BorderPenProperty, TitleProperty, TitlePositionProperty, OccludesProperty);
+        AffectsMeasure<Border>(PaddingProperty, BorderPenProperty);
     }
 
     /// <inheritdoc cref="BackgroundProperty"/>
     public IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
+
+    /// <inheritdoc cref="TitleForegroundProperty"/>
+    public IBrush? TitleForeground { get => GetValue(TitleForegroundProperty); set => SetValue(TitleForegroundProperty, value); }
 
     /// <inheritdoc cref="BorderPenProperty"/>
     public Pen? BorderPen { get => GetValue(BorderPenProperty); set => SetValue(BorderPenProperty, value); }
@@ -61,6 +72,9 @@ public class Border : Decorator
     /// <inheritdoc cref="OccludesProperty"/>
     public bool Occludes { get => GetValue(OccludesProperty); set => SetValue(OccludesProperty, value); }
 
+    /// <inheritdoc cref="HasBorderProperty"/>
+    public bool HasBorder => EvaluateHasBorder(BorderPen);
+
     /// <summary>
     /// The whole-edge inset the border + padding consumes: 1 cell per edge when a <see cref="BorderPen"/>
     /// is present; a <see cref="Title"/> with no pen still forces a 1-cell top edge (the GroupBox row,
@@ -71,7 +85,7 @@ public class Border : Decorator
         get
         {
             var padding = Padding;
-            var hasBorder = BorderPen.HasValue;
+            var hasBorder = HasBorder;
             var titled = Title is { Length: > 0 };
             var edge = hasBorder ? 1 : 0;
             var topEdge = hasBorder || titled ? 1 : 0;
@@ -120,13 +134,14 @@ public class Border : Decorator
     protected override void Render(RenderContext context)
     {
         var bounds = context.Bounds;
+
         if (bounds.IsEmpty)
             return;
 
         var occludes = Occludes;
 
         // The surface: FillOpaque for a floating surface, the glyph-transparent FillRectangle tint otherwise.
-        if (Background is { } background)
+        if (Background is {} background)
         {
             if (occludes)
                 context.FillOpaque(bounds, background);
@@ -136,26 +151,48 @@ public class Border : Decorator
 
         // The box: a titled frame is DrawTitledBox; a plain frame is DrawBox. An occluding surface
         // overwrites (the floating-surface recipe); a tint does not.
-        if (BorderPen is { } pen)
+        PanelTitle? optionalTitle = null;
+
+        if (Title is { Length: > 0 } title)
         {
-            if (Title is { Length: > 0 } title)
-                context.DrawTitledBox(bounds, new PanelTitle(title) { Position = TitlePosition }, pen, overwrite: occludes);
+            var panelTitle = new PanelTitle(title) { Position = TitlePosition };
+
+            if (TitleForeground is {} titleBrush)
+                panelTitle = panelTitle with { Brush = titleBrush };
+
+            optionalTitle = panelTitle;
+        }
+
+        if (BorderPen is {} pen)
+        {
+            if (optionalTitle is {} panelTitle)
+                context.DrawTitledBox(bounds, panelTitle, pen, overwrite: occludes);
             else
                 context.DrawBox(bounds, pen, overwrite: occludes);
         }
-        else if (Title is { Length: > 0 } titleNoPen)
+        else if (optionalTitle is {} panelTitle)
         {
             // A title without an explicit pen still draws the framing edge (the GroupBox top row).
-            context.DrawTitledBox(bounds, new PanelTitle(titleNoPen) { Position = TitlePosition }, Pens.Light, overwrite: occludes);
+            context.DrawTitledBox(bounds, panelTitle, Pens.Light, overwrite: occludes);
         }
     }
 
     // ───────────────────────────── nullity / presence escalation (doc §12.4) ─────────────────────────────
 
+    private static bool EvaluateHasBorder(Pen? borderPen) => borderPen is not null;
+
     private static void OnBorderPenChanged(UIObject sender, Pen? oldValue, Pen? newValue)
     {
         if (sender is Border border && oldValue.HasValue != newValue.HasValue)
+        {
             border.InvalidateMeasure(); // ±1 cell/edge geometry flip (C169)
+
+            var hadBorder = EvaluateHasBorder(oldValue);
+            var hasBorder = EvaluateHasBorder(newValue);
+
+            if (hadBorder != hasBorder)
+                border.DispatchPropertyChanged(HasBorderProperty, null, hadBorder, hasBorder, BindingPriority.LocalValue);
+        }
     }
 
     private static void OnTitleChanged(UIObject sender, string? oldValue, string? newValue)

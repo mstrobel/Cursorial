@@ -259,7 +259,10 @@ public sealed class Section04_BuiltInAndBuilders
         host.RunFrame();
 
         Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme);
-        Assert.Null(button.Background); // the ignored Styles never set the background
+        // The ignored element-Styles' brush (Vbrush) never became the background. (Post cell-faithful, the
+        // button — first tab stop in a panel root — auto-focuses and shows the theme's :focus fill, so the
+        // background is no longer null; the point is that the IGNORED style's magenta did not win.)
+        Assert.NotSame(Vbrush, button.Background);
     }
 
     [Fact] // C102 — layer beats specificity: an app style beats a (more specific) theme style — DEFERRED to R2 (Theme layer unconsumed)

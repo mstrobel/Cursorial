@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -12,18 +13,28 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 /// §5 — the R2 palette-spine: a BuiltIn-themed control consumes the per-variant theme palette through
 /// the control theme's <see cref="ResourceReference"/> setters, so a <c>RequestedThemeBase</c> /
 /// <c>RequestedColorTier</c> flip re-resolves the palette AND re-renders the affected control zones
-/// (the bug "cycling the theme has no visible effect"). Rows C113–C116.
+/// (the bug "cycling the theme has no visible effect"). Rows C113–C119.
+///
+/// Cell-faithful model (design doc §11.8a): controls are FILL-BOUNDED, not line-bounded — there is no
+/// resting border to inspect. The button family's resting spine is Foreground = <c>TextBrush</c> on a
+/// Background = <c>SurfaceBrush</c> fill; <c>:focus</c> is REVERSE-VIDEO (Background = <c>TextBrush</c>,
+/// Foreground = <c>WindowBackground</c>). A root-level Button is not auto-focused by
+/// <see cref="UITestHost.ShowRoot"/>, so it renders the resting spine directly; the focus look is reached
+/// by an explicit <see cref="UIElement.Focus"/>.
 /// </summary>
 public sealed class Section05_VariantFlipReSkin
 {
     private static UITestHost TruecolorHost()
         => UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor });
 
-    // The BuiltIn (Dark/Ansi256) vs (Light/Ansi256) palette ink the test pins.
-    private static readonly Color DarkText = Color.FromRgb(0xE0, 0xE0, 0xE0);
-    private static readonly Color LightText = Color.FromRgb(0x20, 0x20, 0x20);
-    private static readonly Color DarkBorder = Color.FromRgb(0x55, 0x55, 0x55);
-    private static readonly Color LightBorder = Color.FromRgb(0xAA, 0xAA, 0xAA);
+    // The cell-faithful BuiltIn palette ink/fill the rows pin (design doc §11.8a; Tokyo Night). Resting
+    // spine: Foreground = TextBrush, Background = SurfaceBrush. Focus = reverse-video (Background = TextBrush,
+    // Foreground = WindowBackground). No border (controls are fill-bounded).
+    private static readonly Color DarkText = Color.FromRgb(0xC0, 0xCA, 0xF5);     // (Dark,Ansi256)  TextBrush
+    private static readonly Color LightText = Color.FromRgb(0x34, 0x3B, 0x58);    // (Light,Ansi256) TextBrush
+    private static readonly Color DarkFill = Color.FromRgb(0x24, 0x28, 0x3B);     // (Dark,Ansi256)  SurfaceBrush
+    private static readonly Color LightFill = Color.FromRgb(0xCB, 0xCC, 0xD1);    // (Light,Ansi256) SurfaceBrush
+    private static readonly Color DarkWindowBg = Color.FromRgb(0x0D, 0x0F, 0x18); // (Dark,Ansi256)  WindowBackground (focus ink)
 
     // ───────────────────────────── C113 — the dark/light flip changes a default-themed control's cells ─────────────────────────────
 
@@ -33,8 +44,9 @@ public sealed class Section05_VariantFlipReSkin
         using var host = TruecolorHost();
         host.Application.RequestedThemeBase = ThemeBase.Dark;
 
-        // A default-themed Button — NO explicit Background/Foreground/BorderPen. Its look must come from
-        // the BuiltIn control theme's per-variant palette (the R2 ResourceReference setters).
+        // A default-themed Button — NO explicit Background/Foreground. Its look must come from the BuiltIn
+        // control theme's per-variant palette spine (the R2 ResourceReference setters). A root-level button
+        // is not auto-focused, so it renders the resting spine.
         var button = new Button
         {
             Content = "OK",
@@ -44,34 +56,36 @@ public sealed class Section05_VariantFlipReSkin
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
 
-        // The themed template rendered: a bordered face with the "OK" content on the inner row.
-        Assert.Contains("OK", host.GetRowText(1));
+        // The fill-bounded template rendered: the "OK" content sits on the TOP row (no border row above it).
+        Assert.Contains("OK", host.GetRowText(0));
 
-        // The dark variant resolved the dark palette: the content ink is the dark TextBrush, the frame
-        // is the dark BorderPen.
+        // The dark variant resolved the dark palette: the content ink is the dark TextBrush, the fill is the
+        // dark SurfaceBrush (the cell-faithful spine — there is no border to inspect).
         var darkInk = FindForeground(host, "OK");
+        var darkFill = FillColor(host, "OK");
         Assert.Equal(DarkText, darkInk);
-        Assert.Equal(DarkBorder, BorderColor(host));
+        Assert.Equal(DarkFill, darkFill);
 
-        // FLIP to Light — the bug repro. The variant flips, the palette re-resolves, and the control's
-        // cells MUST change (this assertion fails before the fix: the control theme wired constant pens
-        // and never read the palette, so the dark ink/border survived the flip).
+        // FLIP to Light — the bug repro. The variant flips, the palette re-resolves, and the control's cells
+        // MUST change (this failed before the R2 spine: the control theme wired constant brushes and never
+        // read the palette, so the dark ink/fill survived the flip).
         host.Application.RequestedThemeBase = ThemeBase.Light;
         host.RunFrame();
 
         Assert.Equal(ThemeBase.Light, host.Application.ActualThemeVariant.Base);
 
         var lightInk = FindForeground(host, "OK");
+        var lightFill = FillColor(host, "OK");
         Assert.Equal(LightText, lightInk);
         Assert.NotEqual(darkInk, lightInk);                 // the ink visibly changed
-        Assert.Equal(LightBorder, BorderColor(host));
-        Assert.NotEqual(DarkBorder, BorderColor(host));     // the border visibly changed
+        Assert.Equal(LightFill, lightFill);
+        Assert.NotEqual(darkFill, lightFill);               // the fill visibly changed
 
         // And back to Dark restores the dark palette (the producer re-resolves both directions).
         host.Application.RequestedThemeBase = ThemeBase.Dark;
         host.RunFrame();
         Assert.Equal(DarkText, FindForeground(host, "OK"));
-        Assert.Equal(DarkBorder, BorderColor(host));
+        Assert.Equal(DarkFill, FillColor(host, "OK"));
     }
 
     // ───────────────────────────── C114 — only the affected zone re-rasters (invariant 3) ─────────────────────────────
@@ -155,10 +169,12 @@ public sealed class Section05_VariantFlipReSkin
         };
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
+
+        // The resting ink is the dark TextBrush (a root-level button is not auto-focused).
         Assert.Equal(DarkText, FindForeground(host, "OK"));
 
-        // Shadow the palette key at app scope — the control theme's ResourceReference setter re-resolves
-        // to the override and the control re-skins with zero template work (the R2 promise).
+        // Shadow the palette key at app scope — the control theme's ResourceReference setter re-resolves to
+        // the override and the control re-skins with zero template work (the R2 promise).
         var custom = Color.FromRgb(0xCC, 0x33, 0x99);
         host.Application.Resources[ThemeKeys.TextBrush] = new SolidColorBrush(custom);
         host.RunFrame();
@@ -193,7 +209,7 @@ public sealed class Section05_VariantFlipReSkin
         Assert.Equal(ColorDepth.Ansi16, host.Application.ActualThemeVariant.Tier);
         var ansi16Ink = FindForeground(host, "OK");
         Assert.Equal(ColorKind.Palette, ansi16Ink.Kind);       // a palette index, not RGB — the KIND changed
-        Assert.Equal(Color.FromPalette(7), ansi16Ink);         // the (Dark,Ansi16) hand-picked TextBrush
+        Assert.Equal(Color.FromPalette(15), ansi16Ink);        // the (Dark,Ansi16) hand-picked TextBrush = Palette(15)
 
         // Clear the override → back to the negotiated truecolor tier → RGB again.
         host.Application.RequestedColorTier = null;
@@ -210,6 +226,8 @@ public sealed class Section05_VariantFlipReSkin
         // terminal is genuinely observable — the FrameRenderer quantizes to the negotiated depth, but on
         // truecolor the (Dark,Ansi256) RGB foreground emits a 24-bit SGR while the (Dark,Ansi16) hand-
         // picked palette index emits a palette SGR. The two byte streams differ, so the pixels change.
+        // Each asserted frame is a flip-INDUCED re-emit (the resting frame is emitted during RunUntilIdle,
+        // so a steady-state frame would be empty — the flips force the relevant cells back onto the wire).
         using var host = UITestHost.Create(new UITestHostOptions
         {
             Capabilities = TestCapabilities.KittyTruecolor,
@@ -224,32 +242,33 @@ public sealed class Section05_VariantFlipReSkin
         var rgbScene = host.Application.RenderSystem!.Tree!.GetScene(button)!;
         var rgbVersion = rgbScene.RasterVersion;
 
-        // The negotiated-truecolor frame emits the dark RGB foreground SGR (38;2;224;224;224 — 24-bit).
-        Assert.True(Contains(host.LastFrameBytes, "38;2;224;224;224"u8), "the dark RGB foreground SGR was not emitted on the truecolor wire");
-
-        // Flip the effective tier to Ansi16 → the palette re-resolves to a hand-picked palette index.
+        // Flip the effective tier to Ansi16 → the palette re-resolves the TextBrush to a hand-picked palette
+        // index. The themed zone re-rasters and the frame emits a PALETTE foreground SGR — never the 24-bit
+        // RGB SGR (the (Dark,Ansi16) TextBrush is Color.FromPalette(15)).
         host.Application.RequestedColorTier = ColorDepth.Ansi16;
         host.RunFrame();
-
-        // The themed zone re-rastered (the flip reached the pixels, not just the resource value).
         Assert.True(rgbScene.RasterVersion > rgbVersion);
+        Assert.False(Contains(host.LastFrameBytes, "38;2;192;202;245"u8), "the dark RGB foreground SGR was emitted on an Ansi16 tier");
+        var ansi16Version = rgbScene.RasterVersion;
 
-        // And the wire no longer carries the 24-bit RGB ink for this content — the foreground SGR
-        // genuinely changed on the wire (the (Dark,Ansi16) TextBrush is Color.FromPalette(7), emitted as
-        // a palette SGR, never as 38;2;224;224;224). The pixels differ on a fixed truecolor terminal.
-        Assert.False(Contains(host.LastFrameBytes, "38;2;224;224;224"u8), "the dark RGB foreground SGR survived a tier flip to Ansi16");
+        // Flip back to the negotiated truecolor tier → the TextBrush re-resolves to RGB and the frame emits
+        // the 24-bit foreground SGR again. The two byte streams genuinely differ on a fixed truecolor
+        // terminal — the tier flip reached the pixels, not just the resource value.
+        host.Application.RequestedColorTier = null;
+        host.RunFrame();
+        Assert.True(rgbScene.RasterVersion > ansi16Version);
+        Assert.True(Contains(host.LastFrameBytes, "38;2;192;202;245"u8), "the dark RGB foreground SGR was not re-emitted on the truecolor wire");
     }
 
-    // ───────────────────────────── C119 — the :focus border carries the palette ACCENT, not terminal-default (P2-1) ─────────────────────────────
+    // ───────────────────────────── C119 — :focus is palette reverse-video, not terminal-default (P2-1) ─────────────────────────────
 
-    [Fact] // C119 — focusing a default-themed button re-skins the frame to the palette FocusPen (accent + heavy), not Default.
-    public void C119_Focus_BorderResolvesAccentColor_NotTerminalDefault()
+    [Fact] // C119 — focusing a default-themed button flips it to the palette reverse-video :focus look (not terminal-default).
+    public void C119_Focus_RendersReverseVideo_PaletteDerived_NotTerminalDefault()
     {
-        // P6.1 P2-1 fix: the :focus escalation was the brush-less Pens.Heavy constant, so focusing a
-        // default-themed button bumped the border weight but stranded the brush → Colors.Default at draw
-        // (the frame went from palette gray to TERMINAL-DEFAULT on focus). The fix wires :focus to the
-        // already-populated ThemeKeys.FocusPen DynamicResource (accent color + heavy weight), so the
-        // focus frame is the palette accent — a colored cue, not a color regression.
+        // Cell-faithful focus (design doc §11.8a): a button has no FocusPen ring — focus is REVERSE-VIDEO,
+        // a brush-pair flip into the palette spine (Background = TextBrush, Foreground = WindowBackground).
+        // The focus cue is therefore palette-derived on BOTH axes, never Color.Default (the old P2-1
+        // regression where a brush-less Pens.Heavy stranded the border at terminal-default).
         using var host = TruecolorHost();
         host.Application.RequestedThemeBase = ThemeBase.Dark;
 
@@ -262,28 +281,33 @@ public sealed class Section05_VariantFlipReSkin
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
 
-        // Resting (unfocused): the frame is the dark resting BorderPen palette gray.
+        // Resting (a root-level button is not auto-focused): TextBrush ink on a SurfaceBrush fill.
         Assert.False(button.IsFocused);
-        Assert.Equal(DarkBorder, BorderColor(host));
+        Assert.Equal(DarkText, FindForeground(host, "OK"));
+        Assert.Equal(DarkFill, FillColor(host, "OK"));
 
-        // FOCUS the button → the :focus rule arms and re-resolves BorderPen to ThemeKeys.FocusPen. The
-        // rendered frame is the dark ACCENT color (0x66,0xD9,0xEF), NOT Color.Default and NOT the resting
-        // gray. This assertion fails before the fix (the constant Pens.Heavy stranded a null brush →
-        // Color.Default reached the wire).
+        // FOCUS the button → the :focus rule arms and flips to reverse-video: the "OK" ink becomes the dark
+        // WindowBackground and the fill becomes the dark TextBrush. Both are palette-derived (not Default)
+        // and visibly distinct from the resting spine. This assertion failed before the cell-faithful model
+        // (the constant Pens.Heavy stranded a null brush → Color.Default reached the wire on focus).
         Assert.True(button.Focus(FocusNavigationMethod.Tab));
         host.RunFrame();
         Assert.True(button.IsFocused);
 
-        var accent = Color.FromRgb(0x66, 0xD9, 0xEF);
-        var focusedBorder = BorderColor(host);
-        Assert.Equal(accent, focusedBorder);                 // the palette accent (the FocusPen brush)
-        Assert.NotEqual(Color.Default, focusedBorder);       // NOT terminal-default (the P2-1 regression)
-        Assert.NotEqual(DarkBorder, focusedBorder);          // and visibly distinct from the resting gray
+        var focusedInk = FindForeground(host, "OK");
+        var focusedFill = FillColor(host, "OK");
+        Assert.Equal(DarkWindowBg, focusedInk);          // reverse-video ink = WindowBackground
+        Assert.Equal(DarkText, focusedFill);             // reverse-video fill = TextBrush
+        Assert.NotEqual(Color.Default, focusedInk);      // NOT terminal-default (the P2-1 regression)
+        Assert.NotEqual(Color.Default, focusedFill);
+        Assert.NotEqual(DarkText, focusedInk);           // distinct from the resting ink
+        Assert.NotEqual(DarkFill, focusedFill);          // distinct from the resting fill
 
-        // Blurring restores the resting palette gray (the :focus rule retracts).
+        // Blurring restores the resting spine (the :focus rule retracts).
         host.Application.FocusManager.ClearFocus();
         host.RunFrame();
-        Assert.Equal(DarkBorder, BorderColor(host));
+        Assert.Equal(DarkText, FindForeground(host, "OK"));
+        Assert.Equal(DarkFill, FillColor(host, "OK"));
     }
 
     // ───────────────────────────── finders ─────────────────────────────
@@ -294,6 +318,14 @@ public sealed class Section05_VariantFlipReSkin
 
     // The foreground of the cell carrying the first char of text (the content ink).
     private static Color FindForeground(UITestHost host, string text)
+        => CellOf(host, text).Style.Foreground;
+
+    // The background fill of the cell carrying the first char of text (the cell-faithful spine has no border;
+    // a control's extent is its fill, so the content cell's background IS the resting/state fill).
+    private static Color FillColor(UITestHost host, string text)
+        => CellOf(host, text).Style.Background;
+
+    private static Cell CellOf(UITestHost host, string text)
     {
         var first = text[0];
         for (var r = 0; r < host.FrameBuffer.Rows; r++)
@@ -302,28 +334,10 @@ public sealed class Section05_VariantFlipReSkin
             {
                 var cell = host.GetCell(c, r);
                 if (cell.Grapheme is { Length: > 0 } g && g[0] == first)
-                    return cell.Style.Foreground;
+                    return cell;
             }
         }
 
-        return Color.Default;
+        return default;
     }
-
-    // The foreground color of a box-drawing border cell (top-left corner of the themed Button frame).
-    private static Color BorderColor(UITestHost host)
-    {
-        for (var r = 0; r < host.FrameBuffer.Rows; r++)
-        {
-            for (var c = 0; c < host.FrameBuffer.Columns; c++)
-            {
-                var cell = host.GetCell(c, r);
-                if (cell.Grapheme is { Length: > 0 } g && IsBoxDrawing(g[0]))
-                    return cell.Style.Foreground;
-            }
-        }
-
-        return Color.Default;
-    }
-
-    private static bool IsBoxDrawing(char ch) => ch is >= '─' and <= '╿';
 }

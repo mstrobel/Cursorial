@@ -44,6 +44,11 @@ public sealed class Section13_Scrolling
         };
     }
 
+    // The default ScrollViewer template's vertical bar (PART_VerticalScrollBar) — present in the tree
+    // regardless of its Visibility, so a Collapsed bar is still found here (CD28).
+    private static ScrollBar VBar(ScrollViewer sv)
+        => (ScrollBar)sv.TemplateInstance!.NameScope.Find("PART_VerticalScrollBar")!;
+
     private static MouseEvent Wheel(int column, int row, int deltaY, int deltaX = 0, KeyModifiers modifiers = KeyModifiers.None) => new()
     {
         Kind = MouseEventKind.Wheel,
@@ -259,7 +264,8 @@ public sealed class Section13_Scrolling
         using var host = Show(sv);
 
         Assert.Equal(0, sv.VerticalOffset);
-        Assert.True(sv.Extent.Rows <= sv.Viewport.Rows); // nothing to scroll
+        Assert.True(sv.Extent.Rows <= sv.Viewport.Rows);            // nothing to scroll
+        Assert.Equal(Visibility.Collapsed, VBar(sv).Visibility);    // …so the Auto bar is collapsed (CD28)
     }
 
     [Fact] // C229 — Auto, content overflows: scrolling is enabled (converges, no oscillation)
@@ -269,34 +275,53 @@ public sealed class Section13_Scrolling
         using var host = Show(sv);
 
         Assert.True(sv.Extent.Rows > sv.Viewport.Rows);
+        Assert.Equal(Visibility.Visible, VBar(sv).Visibility); // the Auto bar appears on overflow (CD28)
         sv.VerticalOffset = 5;
         host.RunFrame();
         Assert.Equal(5, sv.VerticalOffset); // scrollable; the Auto two-pass converged (no oscillation)
     }
 
-    [Fact] // C230 — Visible / Hidden / Disabled axis behavior
+    [Fact] // C230 — Visible / Hidden / Disabled bar visibility + axis behavior (CD28)
     public void C230_Visibility_Modes()
     {
-        // Hidden: not shown but scrollable by wheel/keys.
+        // Visible: the bar is shown ALWAYS, even when the content fits (no overflow needed).
+        var always = new ScrollViewer
+        {
+            Width = 20,
+            Height = 10,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
+            Content = new Block(19, 3), // fits the viewport — yet the bar still shows
+        };
+        using (var host = Show(always))
+        {
+            Assert.True(always.Extent.Rows <= always.Viewport.Rows); // nothing to scroll
+            Assert.Equal(Visibility.Visible, VBar(always).Visibility); // …but Visible keeps the bar shown
+        }
+
+        // Hidden: the bar is collapsed but the axis is still scrollable by wheel/keys.
         var hidden = TallScroller(viewportRows: 8, contentRows: 80);
         hidden.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
         using (var host = Show(hidden))
         {
+            Assert.Equal(Visibility.Collapsed, VBar(hidden).Visibility); // no bar…
             hidden.Focus();
             host.SendKey(Key.DownArrow);
             host.RunFrame();
-            Assert.Equal(1, hidden.VerticalOffset); // still scrollable
+            Assert.Equal(1, hidden.VerticalOffset); // …but still scrollable
         }
 
-        // Disabled: the axis cannot scroll (offset coerced to 0).
+        // Disabled: the bar is collapsed and the axis cannot scroll (offset coerced to 0).
         var disabled = TallScroller(viewportRows: 8, contentRows: 80);
         disabled.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
         using (var host = Show(disabled))
         {
+            Assert.Equal(Visibility.Collapsed, VBar(disabled).Visibility); // no bar…
             disabled.Focus();
             host.SendKey(Key.DownArrow);
             host.RunFrame();
-            Assert.Equal(0, disabled.VerticalOffset); // no scroll on a disabled axis (L203)
+            Assert.Equal(0, disabled.VerticalOffset); // …and no scroll on a disabled axis (L203)
         }
     }
 

@@ -1645,7 +1645,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // Apple Terminal does not implement DECSCUSR (CSI Ps SP q) — it mis-parses the
             // space-intermediate form and prints the literal 'q' terminator. Exclude it so the
             // renderer doesn't emit cursor-shape sequences there (same rationale as ColorControl).
-            ShapeControl: modern && identification.Family is not TerminalFamily.AppleTerminal,
+            ShapeControl: modern,
             VisibilityControl: identification.Family != TerminalFamily.Unknown,
             BlinkControl: modern,
             ColorControl: modern && identification.Family is not TerminalFamily.AppleTerminal);

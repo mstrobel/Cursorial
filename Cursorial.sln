@@ -83,6 +83,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{F3E5B623-2
 		docs\ui-layer-design.md = docs\ui-layer-design.md
 		docs\ui-layer-design\layout-matrix.md = docs\ui-layer-design\layout-matrix.md
 		docs\ui-layer-design\input-matrix.md = docs\ui-layer-design\input-matrix.md
+		docs\ui-layer-design\default-theme-gallery-final.html = docs\ui-layer-design\default-theme-gallery-final.html
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Testing", "Cursorial.UI.Testing\Cursorial.UI.Testing.csproj", "{7ACEF3DF-4A7D-4B54-96F9-D4C1E104D51E}"

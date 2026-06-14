@@ -183,6 +183,7 @@ public sealed partial class UIApplication
         else
             ScreenWriter.WriteClearScreen(writer);
         SgrEncoder.WriteReset(writer);
+        WriteThemeCursorColor(writer); // OSC 12 = the theme accent, so the real terminal caret stays visible across variants (teardown emits OSC 112)
         writer.FlushAsync().AsTask().GetAwaiter().GetResult();
 
         // The Kitty keyboard flag stack is per-screen-buffer: negotiation (during host open) pushed our
@@ -736,6 +737,7 @@ public sealed partial class UIApplication
                 _renderer.Close(_scratch);
                 CursorWriter.WriteShow(_scratch);
                 SgrEncoder.WriteReset(_scratch);
+                PaletteWriter.WriteResetCursor(_scratch); // restore the terminal's default cursor color (we set OSC 12 from the theme accent)
 
                 if (_capabilities.Output.Protocol.MouseCursorShape)
                     MouseCursorWriter.WriteSet(_scratch, MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)

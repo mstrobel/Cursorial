@@ -115,10 +115,12 @@ public class ToggleButton : ButtonBase
 
     // ───────────────────────────── focus caret (the box indicator, design doc §5.9) ─────────────────────────────
 
-    // The optional PART_Caret in the toggle template (a Caret inside the [ ]/( ) box). Driven in code
-    // off the control's :focus-visible bit rather than a `^:focus-visible /template/ Caret` style rule —
-    // the styling engine documents /template/ combined with an ancestor-state pseudo as a non-re-evaluating
-    // approximation. Null when a custom template omits the part.
+    // CheckBox/RadioButton focus is the caret-in-box, NOT reverse-video: a check/radio in a (vertical)
+    // StackPanel stretches to the panel width, so a reverse-video focus fill would span the whole row like
+    // a selection bar instead of cueing the box. The caret is a precise in-box keyboard-focus cue. Driven
+    // in code off the control's :focus-visible bit rather than a `^:focus-visible /template/ Caret` style
+    // rule — the styling engine documents /template/ combined with an ancestor-state pseudo as a
+    // non-re-evaluating approximation. Null when a custom template omits the part.
     private Caret? _focusCaret;
 
     /// <inheritdoc/>

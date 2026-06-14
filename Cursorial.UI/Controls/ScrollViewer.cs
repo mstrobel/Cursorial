@@ -1,6 +1,5 @@
 using Cursorial.Input;
 using Cursorial.Rendering;
-
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -38,7 +37,8 @@ public class ScrollViewer : ContentControl
 
     /// <summary>The vertical scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.</summary>
     public static readonly StyledProperty<ScrollBarVisibility> VerticalScrollBarVisibilityProperty =
-        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(VerticalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto, changed: OnVisibilityChanged);
+        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(VerticalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto,
+                                                               changed: OnVisibilityChanged);
 
     /// <summary>
     /// The horizontal scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.
@@ -53,7 +53,8 @@ public class ScrollViewer : ContentControl
     /// </para>
     /// </summary>
     public static readonly StyledProperty<ScrollBarVisibility> HorizontalScrollBarVisibilityProperty =
-        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(HorizontalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto, changed: OnVisibilityChanged);
+        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(HorizontalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto,
+                                                               changed: OnVisibilityChanged);
 
     /// <summary>The horizontal scroll offset in cells — a two-way mirror of the SCP's styled <c>ScrollOffsetColumn</c> (CD28).</summary>
     public static readonly DirectProperty<ScrollViewer, int> HorizontalOffsetProperty =
@@ -72,16 +73,32 @@ public class ScrollViewer : ContentControl
         UIProperty.RegisterDirect<ScrollViewer, Size>(nameof(Viewport), static s => s._viewport);
 
     /// <inheritdoc cref="VerticalScrollBarVisibilityProperty"/>
-    public ScrollBarVisibility VerticalScrollBarVisibility { get => GetValue(VerticalScrollBarVisibilityProperty); set => SetValue(VerticalScrollBarVisibilityProperty, value); }
+    public ScrollBarVisibility VerticalScrollBarVisibility
+    {
+        get => GetValue(VerticalScrollBarVisibilityProperty);
+        set => SetValue(VerticalScrollBarVisibilityProperty, value);
+    }
 
     /// <inheritdoc cref="HorizontalScrollBarVisibilityProperty"/>
-    public ScrollBarVisibility HorizontalScrollBarVisibility { get => GetValue(HorizontalScrollBarVisibilityProperty); set => SetValue(HorizontalScrollBarVisibilityProperty, value); }
+    public ScrollBarVisibility HorizontalScrollBarVisibility
+    {
+        get => GetValue(HorizontalScrollBarVisibilityProperty);
+        set => SetValue(HorizontalScrollBarVisibilityProperty, value);
+    }
 
     /// <inheritdoc cref="HorizontalOffsetProperty"/>
-    public int HorizontalOffset { get => _horizontalOffset; set => SetHorizontalOffset(value); }
+    public int HorizontalOffset
+    {
+        get => _horizontalOffset;
+        set => SetHorizontalOffset(value);
+    }
 
     /// <inheritdoc cref="VerticalOffsetProperty"/>
-    public int VerticalOffset { get => _verticalOffset; set => SetVerticalOffset(value); }
+    public int VerticalOffset
+    {
+        get => _verticalOffset;
+        set => SetVerticalOffset(value);
+    }
 
     /// <inheritdoc cref="ExtentProperty"/>
     public Size Extent => _extent;
@@ -103,7 +120,7 @@ public class ScrollViewer : ContentControl
         _verticalBar = GetTemplatePart<ScrollBar>(PartVerticalBar);
         _horizontalBar = GetTemplatePart<ScrollBar>(PartHorizontalBar);
 
-        if (_presenter is { } presenter)
+        if (_presenter is {} presenter)
         {
             // The SCP hosts the ScrollViewer's content. A UIElement content already logical-parents to
             // this ScrollViewer (ContentControl, chain ③), so the SCP hosts it visual-only (its Content
@@ -124,16 +141,16 @@ public class ScrollViewer : ContentControl
 
         // Bar wiring is code-behind (TemplateBinding is one-way; CD17/C235): a bar's Scroll moves the
         // offset; the offset mirror moves the bar's Value back.
-        if (_verticalBar is { } vbar)
+        if (_verticalBar is {} vBar)
         {
-            vbar.Orientation = Orientation.Vertical;
-            vbar.Scroll += OnVerticalScroll;
+            vBar.Orientation = Orientation.Vertical;
+            vBar.Scroll += OnVerticalScroll;
         }
 
-        if (_horizontalBar is { } hbar)
+        if (_horizontalBar is {} hBar)
         {
-            hbar.Orientation = Orientation.Horizontal;
-            hbar.Scroll += OnHorizontalScroll;
+            hBar.Orientation = Orientation.Horizontal;
+            hBar.Scroll += OnHorizontalScroll;
         }
     }
 
@@ -143,26 +160,27 @@ public class ScrollViewer : ContentControl
         // element content hosts directly (visual-only), a non-element content rides the inner
         // ContentPresenter (see OnApplyTemplate). The base ContentControl handler runs first
         // (metadata Changed callbacks chain base-first), so the logical adoption is already applied.
-        ContentProperty.OverrideMetadata<ScrollViewer>(new PropertyMetadata<object?>
-        {
-            Changed = static (sender, _, newValue) =>
+        ContentProperty.OverrideMetadata<ScrollViewer>(
+            new PropertyMetadata<object?>
             {
-                if (sender is ScrollViewer { _presenter: { } presenter } viewer)
-                {
-                    if (newValue is UIElement element)
-                    {
-                        viewer._contentHost = null;
-                        presenter.Content = element;
-                    }
-                    else
-                    {
-                        viewer._contentHost ??= new ContentPresenter();
-                        viewer._contentHost.Content = newValue;
-                        presenter.Content = viewer._contentHost;
-                    }
-                }
-            },
-        });
+                Changed = static (sender, _, newValue) =>
+                          {
+                              if (sender is ScrollViewer { _presenter: {} presenter } viewer)
+                              {
+                                  if (newValue is UIElement element)
+                                  {
+                                      viewer._contentHost = null;
+                                      presenter.Content = element;
+                                  }
+                                  else
+                                  {
+                                      viewer._contentHost ??= new ContentPresenter();
+                                      viewer._contentHost.Content = newValue;
+                                      presenter.Content = viewer._contentHost;
+                                  }
+                              }
+                          }
+            });
     }
 
     /// <inheritdoc/>
@@ -171,19 +189,22 @@ public class ScrollViewer : ContentControl
         // Release the content's visual link from the old SCP before the new template's SCP adopts it
         // (the content is the ScrollViewer's stable logical child across templates; each template makes
         // a fresh SCP). Clearing synchronously here avoids a stale visual-parent on the next adopt.
-        if (_presenter is { } presenter)
+        if (_presenter is {} presenter)
             presenter.Content = null;
-        if (_contentHost is { } host)
+
+        if (_contentHost is {} host)
             host.Content = null;
+
         _contentHost = null;
         _offsetRowObserver?.Dispose();
         _offsetColumnObserver?.Dispose();
         _offsetRowObserver = _offsetColumnObserver = null;
 
-        if (_verticalBar is { } vbar)
-            vbar.Scroll -= OnVerticalScroll;
-        if (_horizontalBar is { } hbar)
-            hbar.Scroll -= OnHorizontalScroll;
+        if (_verticalBar is {} vBar)
+            vBar.Scroll -= OnVerticalScroll;
+
+        if (_horizontalBar is {} hBar)
+            hBar.Scroll -= OnHorizontalScroll;
 
         _presenter = null;
         _verticalBar = null;
@@ -195,7 +216,7 @@ public class ScrollViewer : ContentControl
 
     private void SetVerticalOffset(int value)
     {
-        if (_presenter is { } presenter)
+        if (_presenter is {} presenter)
             presenter.ScrollOffsetRow = value; // styled offset coerces; the observer mirrors it back
         else
             SetAndRaise(VerticalOffsetProperty, ref _verticalOffset, Math.Max(0, value));
@@ -203,7 +224,7 @@ public class ScrollViewer : ContentControl
 
     private void SetHorizontalOffset(int value)
     {
-        if (_presenter is { } presenter)
+        if (_presenter is {} presenter)
             presenter.ScrollOffsetColumn = value;
         else
             SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, Math.Max(0, value));
@@ -211,20 +232,21 @@ public class ScrollViewer : ContentControl
 
     private void SyncFromPresenter()
     {
-        if (_presenter is not { } presenter)
+        if (_presenter is not {} presenter)
             return;
 
         SetAndRaise(VerticalOffsetProperty, ref _verticalOffset, presenter.ScrollOffsetRow);
         SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, presenter.ScrollOffsetColumn);
         SetAndRaise(ExtentProperty, ref _extent, presenter.Extent);
         SetAndRaise(ViewportProperty, ref _viewport, presenter.Viewport);
+
         UpdateBars();
     }
 
     /// <summary>Maps the visibility policies onto the SCP's scroll-axis enables (CD28/C230).</summary>
     private void UpdatePresenterScrollAxes()
     {
-        if (_presenter is not { } presenter)
+        if (_presenter is not {} presenter)
             return;
 
         presenter.CanScrollVertically = CanScrollVerticalAxis(VerticalScrollBarVisibility);
@@ -264,28 +286,65 @@ public class ScrollViewer : ContentControl
 
     private void UpdateBars()
     {
-        if (_verticalBar is { } vbar)
+        if (_verticalBar is {} vBar)
         {
-            vbar.Minimum = 0;
-            vbar.Maximum = Math.Max(0, _extent.Rows - _viewport.Rows);
-            vbar.ViewportSize = _viewport.Rows;
-            vbar.SetValueSilently(_verticalOffset);
+            vBar.Minimum = 0;
+            vBar.Maximum = Math.Max(0, _extent.Rows - _viewport.Rows);
+            vBar.ViewportSize = _viewport.Rows;
+            vBar.SetValueSilently(_verticalOffset);
         }
 
-        if (_horizontalBar is { } hbar)
+        if (_horizontalBar is {} hBar)
         {
-            hbar.Minimum = 0;
-            hbar.Maximum = Math.Max(0, _extent.Columns - _viewport.Columns);
-            hbar.ViewportSize = _viewport.Columns;
-            hbar.SetValueSilently(_horizontalOffset);
+            hBar.Minimum = 0;
+            hBar.Maximum = Math.Max(0, _extent.Columns - _viewport.Columns);
+            hBar.ViewportSize = _viewport.Columns;
+            hBar.SetValueSilently(_horizontalOffset);
+        }
+
+        UpdateBarVisibility();
+    }
+
+    /// <summary>
+    /// Resolves each bar's element <see cref="UIElement.Visibility"/> from its policy + current overflow
+    /// (CD28). The policy gated only the axis <em>enable</em> before; the bar's own visibility was never
+    /// driven, so a <c>Visible</c>/<c>Hidden</c>/<c>Disabled</c> request had no effect on the rendered bar.
+    /// <c>Visible</c> always shows; <c>Auto</c> shows only when the axis overflows (<c>Maximum &gt; 0</c>);
+    /// <c>Hidden</c>/<c>Disabled</c> collapse the bar (<c>Hidden</c> still scrolls by wheel/keys — that
+    /// enable is handled in <see cref="UpdatePresenterScrollAxes"/>). The bar is <c>Collapsed</c>, not
+    /// <c>Hidden</c>, so an absent bar reserves no DockPanel track. The horizontal axis is unbanded in v1,
+    /// so its <c>Auto</c> degrades to <c>Disabled</c> (no bar) — see <see cref="HorizontalScrollBarVisibility"/>.
+    /// </summary>
+    private void UpdateBarVisibility()
+    {
+        if (_verticalBar is {} vBar)
+            vBar.Visibility = ResolveBarVisibility(VerticalScrollBarVisibility, vBar.Maximum > 0);
+
+        if (_horizontalBar is {} hBar)
+        {
+            // v1 bands only the vertical axis (doc §5.7): horizontal Auto degrades to Disabled, so its bar
+            // never shows (it would be a non-functional bar — CanScrollHorizontalAxis is false for Auto).
+            var policy = HorizontalScrollBarVisibility == ScrollBarVisibility.Auto
+                             ? ScrollBarVisibility.Disabled
+                             : HorizontalScrollBarVisibility;
+
+            hBar.Visibility = ResolveBarVisibility(policy, hBar.Maximum > 0);
         }
     }
 
+    private static Visibility ResolveBarVisibility(ScrollBarVisibility policy, bool overflowing)
+        => policy switch
+           {
+               ScrollBarVisibility.Visible => Visibility.Visible,
+               ScrollBarVisibility.Auto    => overflowing ? Visibility.Visible : Visibility.Collapsed,
+               _                           => Visibility.Collapsed // Hidden / Disabled
+           };
+
     private void OnVerticalScroll(object? sender, ScrollEventArgs e)
-        => SetVerticalOffset((int)Math.Round(e.NewValue));
+        => SetVerticalOffset((int) Math.Round(e.NewValue));
 
     private void OnHorizontalScroll(object? sender, ScrollEventArgs e)
-        => SetHorizontalOffset((int)Math.Round(e.NewValue));
+        => SetHorizontalOffset((int) Math.Round(e.NewValue));
 
     // ───────────────────────────── ScrollBy / EnsureVisible (C225/C226) ─────────────────────────────
 
@@ -294,6 +353,7 @@ public class ScrollViewer : ContentControl
     {
         if (rows != 0)
             SetVerticalOffset(_verticalOffset + rows);
+
         if (columns != 0)
             SetHorizontalOffset(_horizontalOffset + columns);
     }
@@ -306,6 +366,7 @@ public class ScrollViewer : ContentControl
     {
         var vTop = _verticalOffset;
         var vBottom = vTop + Math.Max(0, _viewport.Rows);
+
         if (rect.Row < vTop)
             SetVerticalOffset(rect.Row);
         else if (rect.RowEnd > vBottom)
@@ -313,6 +374,7 @@ public class ScrollViewer : ContentControl
 
         var hLeft = _horizontalOffset;
         var hRight = hLeft + Math.Max(0, _viewport.Columns);
+
         if (rect.Column < hLeft)
             SetHorizontalOffset(rect.Column);
         else if (rect.ColumnEnd > hRight)
@@ -325,6 +387,7 @@ public class ScrollViewer : ContentControl
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
+
         if (e.Handled)
             return;
 
@@ -332,16 +395,20 @@ public class ScrollViewer : ContentControl
 
         // Shift+wheel or a horizontal wheel scrolls the horizontal axis.
         var horizontal = e.WheelDeltaX != 0 || (e.Modifiers & KeyModifiers.Shift) != 0;
+
         if (horizontal)
         {
             var deltaX = e.WheelDeltaX != 0 ? e.WheelDeltaX : e.WheelDeltaY;
             var lines = deltaX / 120 * notchLines;
+
             if (TryScrollHorizontally(-lines))
                 e.Handled = true;
+
             return;
         }
 
         var rows = e.WheelDeltaY / 120 * notchLines;
+
         if (TryScrollVertically(-rows))
             e.Handled = true;
         // An unconsumed wheel (already at the extreme) bubbles to an outer ScrollViewer (C224).
@@ -351,6 +418,7 @@ public class ScrollViewer : ContentControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
         if (e.Handled)
             return;
 
@@ -362,24 +430,41 @@ public class ScrollViewer : ContentControl
             case Key.UpArrow when e.Modifiers == KeyModifiers.None:
                 if (TryScrollVertically(-1)) e.Handled = true;
                 break;
+
             case Key.DownArrow when e.Modifiers == KeyModifiers.None:
                 if (TryScrollVertically(+1)) e.Handled = true;
                 break;
+
             case Key.PageUp when e.Modifiers == KeyModifiers.None:
                 if (TryScrollVertically(-viewportRows)) e.Handled = true;
                 break;
+
             case Key.PageDown when e.Modifiers == KeyModifiers.None:
                 if (TryScrollVertically(+viewportRows)) e.Handled = true;
                 break;
+
             case Key.Home when (e.Modifiers & KeyModifiers.Control) != 0:
-                if (_verticalOffset != 0) { SetVerticalOffset(0); e.Handled = true; }
+                if (_verticalOffset != 0)
+                {
+                    SetVerticalOffset(0);
+                    e.Handled = true;
+                }
+
                 break;
+
             case Key.End when (e.Modifiers & KeyModifiers.Control) != 0:
-                if (_verticalOffset != maxRow) { SetVerticalOffset(maxRow); e.Handled = true; }
+                if (_verticalOffset != maxRow)
+                {
+                    SetVerticalOffset(maxRow);
+                    e.Handled = true;
+                }
+
                 break;
+
             case Key.LeftArrow when e.Modifiers == KeyModifiers.None:
                 if (TryScrollHorizontally(-1)) e.Handled = true;
                 break;
+
             case Key.RightArrow when e.Modifiers == KeyModifiers.None:
                 if (TryScrollHorizontally(+1)) e.Handled = true;
                 break;
@@ -390,10 +475,13 @@ public class ScrollViewer : ContentControl
     {
         if (rows == 0 || _presenter is not { CanScrollVertically: true })
             return false;
+
         var max = Math.Max(0, _extent.Rows - _viewport.Rows);
         var target = Math.Clamp(_verticalOffset + rows, 0, max);
+
         if (target == _verticalOffset)
             return false;
+
         SetVerticalOffset(target);
         return true;
     }
@@ -402,10 +490,13 @@ public class ScrollViewer : ContentControl
     {
         if (columns == 0 || _presenter is not { CanScrollHorizontally: true })
             return false;
+
         var max = Math.Max(0, _extent.Columns - _viewport.Columns);
         var target = Math.Clamp(_horizontalOffset + columns, 0, max);
+
         if (target == _horizontalOffset)
             return false;
+
         SetHorizontalOffset(target);
         return true;
     }
@@ -413,7 +504,11 @@ public class ScrollViewer : ContentControl
     private static void OnVisibilityChanged(UIObject sender, ScrollBarVisibility oldValue, ScrollBarVisibility newValue)
     {
         if (sender is ScrollViewer viewer)
+        {
             viewer.UpdatePresenterScrollAxes(); // single source of truth for the axis enables + the Auto diagnostic
+            viewer.UpdateBarVisibility();       // and the bar's own Visibility (CD28 — the reported gap)
+            viewer.InvalidateMeasure();         // a collapsed/shown bar reflows the DockPanel track
+        }
     }
 
     // The styled-offset / extent / viewport observers feeding the DirectProperty mirrors (CD28).

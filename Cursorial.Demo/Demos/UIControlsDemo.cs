@@ -1,20 +1,20 @@
-using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
+using Cursorial.Drawing.Media;     // Pens (the opt-in GroupBox border)
 using Cursorial.Input;
-using Cursorial.Output;
-using Cursorial.Rendering;
+using Cursorial.Rendering;          // Margins
+using Cursorial.Output;             // ColorDepth
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
-
-using Style = Cursorial.UI.Style; // both Cursorial.Output and Cursorial.UI declare `Style`
+using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
 
 // Phase-5 Cursorial.UI control showcase: the first S8 controls — Buttons, CheckBoxes, RadioButtons —
-// laid out in a themed Border and scrolled by a ScrollViewer, driven by the REAL UIApplication frame
-// loop against the live terminal. Every control renders through its BuiltIn default theme (template
-// applied at measure, parts wired, content presented). The canary surface:
+// laid out in a titled Border and scrolled by a ScrollViewer, driven by the REAL UIApplication frame
+// loop against the live terminal. The tree carries NO explicit colors: every control draws from the
+// cell-faithful default theme (§11.8a) — a Button's resting SurfaceBrush fill, its reverse-video focus
+// and accent pressed, the hover fill, the check/radio in-box caret — so the demo shows the default look
+// UNMASKED. The canary surface:
 //   Tab / Shift+Tab  cycle focus through the controls (the S3 step-6 navigation tail),
 //   Space / Enter    activate the focused button (Space-on-down, CD23) or toggle the check/radio,
 //   click            focuses + activates (pointer modality),
@@ -22,8 +22,7 @@ using Style = Cursorial.UI.Style; // both Cursorial.Output and Cursorial.UI decl
 //   't'              cycles the theme COLOR TIER live (Truecolor → Ansi256 → Ansi16 → NoColor) via
 //                    UIApplication.RequestedColorTier — the controls re-quantize on the wire and the
 //                    caps-* style classes re-stamp (inversion 6) with no tree rebuild,
-//   'd'              flips the theme BASE (Dark ↔ Light) via RequestedThemeBase — a base flip changes
-//                    resources without re-stamping caps classes,
+//   'd'              flips the theme BASE (Dark ↔ Light) via RequestedThemeBase — the whole tree re-skins,
 //   Ctrl+R           resets the toggles,
 //   q / Esc / Ctrl+C exits.
 // A status line reports the focused control, the last action, and the live ActualThemeVariant.
@@ -31,7 +30,7 @@ internal sealed class UIControlsDemo : IDemo
 {
     public string Name => "uicontrols";
     public IReadOnlyList<string> Aliases => ["uic"];
-    public string Description => "Cursorial.UI control showcase (themed Buttons/CheckBoxes/RadioButtons in a ScrollViewer; Tab focus, Space/Enter activate, 't' cycles color tier, 'd' flips base, Ctrl+R reset).";
+    public string Description => "Cursorial.UI control showcase (default-themed Buttons/CheckBoxes/RadioButtons in a ScrollViewer; Tab focus, Space/Enter activate, 't' cycles color tier, 'd' flips base, Ctrl+R reset).";
 
     public async Task RunAsync(string argument)
     {
@@ -55,18 +54,9 @@ internal sealed class UIControlsDemo : IDemo
         }
     }
 
-    // ───────────────────────────── palette ─────────────────────────────
-
-    private static readonly Color Chrome = Color.FromRgb(30, 33, 44);
-    private static readonly Color ChromeText = Color.FromRgb(150, 160, 200);
-    private static readonly Color Accent = Color.FromRgb(86, 120, 220);
-    private static readonly Color PanelBg = Color.FromRgb(38, 42, 58);
-    private static readonly Color ButtonFace = Color.FromRgb(56, 92, 168);
-    private static readonly Color ButtonHover = Color.FromRgb(80, 124, 210);
-
     private sealed class Controller(UIApplication app)
     {
-        private Label _status = null!;
+        private TextBlock _status = null!;
         private string _lastAction = "(none)";
 
         private CheckBox _airplane = null!;
@@ -77,33 +67,24 @@ internal sealed class UIControlsDemo : IDemo
 
         public UIElement BuildTree()
         {
-            // The control look: a Button:pointerover background flip + a :focus accent border, a
-            // :checked accent foreground on the toggles — all through the P3 styling engine over the
-            // BuiltIn-themed controls (the default templates supply the structure, these app rules the
-            // skin). Every setter is AffectsRender/AffectsComposite, so a flip restyles the control's
-            // zone with no hand-rolled invalidation.
-            var buttonHover = new Style(Selectors.OfType<Button>().PseudoClass("pointerover"));
-            buttonHover.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(ButtonHover)));
-            app.Styles.Add(buttonHover);
-
-            var checkedToggle = new Style(Selectors.Is<ToggleButton>().PseudoClass("checked"));
-            checkedToggle.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(Accent)));
-            app.Styles.Add(checkedToggle);
-
-            var root = new DockPanel { Background = new SolidColorBrush(Chrome) };
+            // No app skin styles: the controls draw entirely from the cell-faithful default theme
+            // (:pointerover / :focus / :pressed all come from the BuiltIn control themes now), so the demo
+            // shows the default look unmasked — and 'd'/'t' re-skin it live.
+            var root = new DockPanel();
+            root.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.WindowBackground);
             root.AddHandler(UIElement.KeyDownEvent, OnRootKeyDown);
             root.InputBindings.Add(new KeyBinding(KeyGesture.Parse("Ctrl+R"), new RelayCommand(ResetToggles)));
             root.AddHandler(UIElement.GotFocusEvent, (_, _) => UpdateStatus());
 
             // Header (docked top).
-            var header = new StackPanel { Background = new SolidColorBrush(Accent), Height = 1 };
-            header.Children.Add(new Label(" Cursorial.UI — Phase 5 control showcase", Color.FromRgb(240, 244, 255), Accent));
+            var header = new StackPanel { Height = 1 };
+            header.Children.Add(new TextBlock { Text = " Cursorial.UI — Phase 5 control showcase" });
             DockPanel.SetDock(header, Dock.Top);
             root.Children.Add(header);
 
             // Status bar (docked bottom).
-            var statusBar = new StackPanel { Background = new SolidColorBrush(Chrome), Height = 1 };
-            _status = new Label("", ChromeText, Chrome);
+            var statusBar = new StackPanel { Height = 1 };
+            _status = new TextBlock();
             statusBar.Children.Add(_status);
             DockPanel.SetDock(statusBar, Dock.Bottom);
             root.Children.Add(statusBar);
@@ -122,7 +103,7 @@ internal sealed class UIControlsDemo : IDemo
 
         private Border BuildControlPanel()
         {
-            var panel = new StackPanel { Background = new SolidColorBrush(PanelBg), Spacing = 1, Margin = new Margins(1) };
+            var panel = new StackPanel { Spacing = 1, Margin = new Margins(1) };
 
             panel.Children.Add(Caption("Buttons (Tab focus, Space/Enter or click activates):"));
             var ok = ThemedButton("_OK");
@@ -137,7 +118,7 @@ internal sealed class UIControlsDemo : IDemo
             buttonRow.Children.Add(apply);
             panel.Children.Add(buttonRow);
 
-            panel.Children.Add(Caption("Check boxes (Space / click toggles; :checked accents):"));
+            panel.Children.Add(Caption("Check boxes (Space / click toggles):"));
             _airplane = ThemedCheck(" Airplane mode");
             _airplane.Click += (_, _) => Action($"Airplane = {_airplane.IsChecked}");
             _wifi = ThemedCheck(" Wi-Fi", isChecked: true);
@@ -160,19 +141,23 @@ internal sealed class UIControlsDemo : IDemo
 
             // A few filler rows so the ScrollViewer actually has something to scroll.
             for (var i = 0; i < 12; i++)
-                panel.Children.Add(new Label($"   row {i + 1} — scroll with the wheel or arrows", ChromeText, PanelBg));
+                panel.Children.Add(new TextBlock { Text = $"   row {i + 1} — scroll with the wheel or arrows" });
 
-            return new Border
-            {
-                BorderPen = Pens.Light,
-                Title = " Settings ",
-                Background = new SolidColorBrush(PanelBg),
-                Padding = new Margins(1),
-                Child = panel,
-            };
+            // The titled Border is the GroupBox story (opt-in line chrome the cell-faithful model keeps,
+            // §11.8a) — a Pen, not a brush; no Background, so the panel is unfilled (theme/terminal default).
+            var border = new Border
+                                    {
+                                        BorderPen = Pens.Light,
+                                        Title = " Settings ",
+                                        Padding = new Margins(1),
+                                        Child = panel,
+                                    };
+
+            border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+            return border;
         }
 
-        private static Label Caption(string text) => new(text, Color.FromRgb(200, 206, 226), PanelBg);
+        private static TextBlock Caption(string text) => new() { Text = text };
 
         private static StackPanel Indent(UIElement child)
         {
@@ -181,12 +166,10 @@ internal sealed class UIControlsDemo : IDemo
             return row;
         }
 
-        // The button keeps an explicit colored face (an intentional accent surface), but its content ink
-        // and the check/radio foreground are LEFT TO THE THEME — no explicit Foreground — so the BuiltIn
-        // control theme's per-variant TextBrush inks them. That makes 'd' (dark/light) a live canary: the
-        // content re-colors on the flip (an explicit Foreground would pin it and win over the theme).
-        private static Button ThemedButton(string content)
-            => new() { Content = content, Background = new SolidColorBrush(ButtonFace) };
+        // Default-themed controls — no explicit Background/Foreground, so the BuiltIn control theme drives
+        // every state (resting fill, hover, reverse-video focus on buttons / in-box caret on check-radio,
+        // accent pressed) and a 'd' / 't' flip re-skins them live.
+        private static Button ThemedButton(string content) => new() { Content = content };
 
         private static CheckBox ThemedCheck(string content, bool isChecked = false)
             => new() { Content = content, IsChecked = isChecked };
@@ -273,39 +256,6 @@ internal sealed class UIControlsDemo : IDemo
             _status.Text = $" focus: {focusName,-10} · last: {_lastAction,-18} · theme: {app.ActualThemeVariant}" +
                            "  —  Tab focus, Space/Enter activate, t tier, d dark/light, Ctrl+R reset, q quit";
         }
-    }
-
-    // ───────────────────────────── a tiny text leaf for captions / status ─────────────────────────────
-
-    /// <summary>A one-line text leaf with explicit colors (the demo's caption/status surface).</summary>
-    private sealed class Label : UIElement
-    {
-        public static readonly StyledProperty<string> TextProperty =
-            UIProperty.Register<Label, string>(nameof(Text), defaultValue: "");
-
-        static Label()
-        {
-            AffectsMeasure<Label>(TextProperty);
-            AffectsRender<Label>(TextProperty);
-        }
-
-        private readonly Color _foreground;
-        private readonly Color? _background;
-
-        public Label(string text, Color foreground, Color? background = null)
-        {
-            _foreground = foreground;
-            _background = background;
-            Text = text;
-        }
-
-        public string Text { get => GetValue(TextProperty); set => SetValue(TextProperty, value); }
-
-        protected override Size MeasureOverride(Size availableSize)
-            => new(Cursorial.Text.GraphemeWidth.StringWidth(Text), 1);
-
-        protected override void Render(RenderContext context)
-            => context.DrawText(0, 0, Text, _foreground, _background);
     }
 
     /// <summary>The minimal <c>ICommand</c> for the Ctrl+R <see cref="KeyBinding"/>.</summary>

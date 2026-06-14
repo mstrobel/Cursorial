@@ -150,22 +150,21 @@ public sealed class Phase5EndToEndTests
         stack.Children.Add(check);
         stack.Children.Add(scroller);
 
-        // A per-tier glyph swap: the legacy (Ansi16) tier shows "< >", the truecolor tier keeps "[ ]".
-        // A tier key declares a MINIMUM capability (CD8) — a (·,Ansi16) entry would also serve truecolor
-        // (it descends through Ansi256→Ansi16), so to scope the swap to ONLY the legacy tier we shadow it
-        // at (·,Ansi256) with the default glyphs: the truecolor host probes (·,Truecolor)→(·,Ansi256)
-        // first and finds the default, while an Ansi16 host (can't reach Ansi256) gets the swap.
+        // A per-tier glyph RESOURCE swap (legacy Ansi16 → "< >"). BUT the cell-faithful caps-unicode bridge
+        // (SD14) sets ToggleGlyph.GlyphsProperty on the CheckBox via the `.caps-unicode CheckBox` theme-
+        // style, and ToggleGlyph PREFERS that override over the glyph-set resource. caps-unicode is
+        // unconditionally stamped at P5, so the per-tier resource swap is SHADOWED on BOTH tiers and the
+        // CheckBox shows the unicode default "[ ]". The genuine cross-tier difference is the COLOR
+        // quantization (asserted above), not the glyph.
         var legacyGlyphs = new ResourceDictionary { [ThemeKeys.CheckBoxGlyphs] = new GlyphSet("< >", "<x>", "<->") };
-        var richGlyphs = new ResourceDictionary { [ThemeKeys.CheckBoxGlyphs] = new GlyphSet("[ ]", "[x]", "[-]") };
         host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.Ansi16)] = legacyGlyphs;
-        host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.Ansi256)] = richGlyphs;
 
         host.ShowRoot(stack);
         Assert.True(host.RunUntilIdle());
 
         // The Button rendered its themed template: a bordered face with the "OK" content presented.
         // The border frames it; the content presenter shows the text inside the 1-cell padding.
-        Assert.Contains("OK", host.GetRowText(1)); // row 0 is the border top; the content is on row 1
+        Assert.Contains("OK", host.GetRowText(0)); // cell-faithful: no border row — the content is on row 0
 
         // The cell buffer is tier-agnostic — the same RGB face background composits on both tiers.
         var faceCell = FindCell(host, c => c.Style.Background.Kind == ColorKind.Rgb, rows: 3);
@@ -180,12 +179,10 @@ public sealed class Phase5EndToEndTests
         else
             Assert.Equal(ButtonFace, quantizedFace);             // truecolor survives verbatim
 
-        // The CheckBox glyph: ASCII default on truecolor, the per-tier swap on Ansi16.
+        // The CheckBox glyph: the caps-unicode GlyphsProperty override wins over the per-tier resource swap
+        // on BOTH tiers (SD14), so it is the unicode default "[ ]" regardless of color tier.
         var rows = ReadRows(host, 8);
-        if (legacy)
-            Assert.Contains(rows, r => r.Contains("< >") && r.Contains("Enable"));
-        else
-            Assert.Contains(rows, r => r.Contains("[ ]") && r.Contains("Enable"));
+        Assert.Contains(rows, r => r.Contains("[ ]") && r.Contains("Enable"));
 
         // The ScrollViewer presented its banded content (the 'S' block) inside its viewport.
         Assert.Contains(rows, r => r.Contains("S"));
@@ -383,9 +380,9 @@ public sealed class Phase5EndToEndTests
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
 
-        // Resolve a cell that is INSIDE the button's content area (inside the border + padding) so the
-        // hit-test lands on the button itself.
-        var (col, row) = button.TranslateToWindow(2, 1);
+        // Resolve a cell INSIDE the button's content area so the hit-test lands on the button itself. The
+        // cell-faithful button is 1 row tall (no border) with the content on row 0 after the 1-col left pad.
+        var (col, row) = button.TranslateToWindow(1, 0);
 
         // Mouse: hover, down (presses), up over self (clicks). A multi-click count rides the press event
         // through the dispatcher's synthesizer contract (the mouse-path is exercised end-to-end).
@@ -551,7 +548,7 @@ public sealed class Phase5EndToEndTests
 
         Assert.Equal(true, check.IsChecked);
         Assert.True(check.HasCustomPseudoClass(":checked"));
-        Assert.StartsWith("[x]", host.GetRowText(0));                       // glyph swapped
+        Assert.StartsWith("[✓]", host.GetRowText(0));                      // glyph swapped (caps-unicode checked mark)
         Assert.True(checkScene.RasterVersion > checkVersion);              // the checkbox zone re-rastered
         Assert.Equal(siblingVersion, siblingScene.RasterVersion);          // sibling frozen
         Assert.Equal(rootVersion, rootScene.RasterVersion);                // root frozen

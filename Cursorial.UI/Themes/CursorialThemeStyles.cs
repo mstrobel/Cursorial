@@ -28,4 +28,32 @@ internal static class CursorialThemeStyles
         style.Setters.Add(new Setter(AccessKeyManager.ShowUnderlineProperty, true));
         return style;
     }
+
+    // NOTE on default text ink: a bare TextBlock takes its foreground from the inherited
+    // TextElement.Foreground, which normally cascades from the root Window. A per-TextBlock theme-style
+    // setting Foreground was rejected — it is a styled value ON the TextBlock and so DEFEATS a consumer's
+    // inherited TextElement.Foreground (matrix C119). The inheritable default is established at the root
+    // (the Window at P7; until then each demo sets TextElement.Foreground on its root element).
+
+    /// <summary>
+    /// The caps-unicode glyph opt-up (design doc §12.7 / SD14): under <c>.caps-unicode</c> (stamped on the
+    /// root), opt the CheckBox marks UP from the ASCII resource base to colored Unicode by setting the
+    /// <see cref="ToggleGlyph.GlyphsProperty"/> override — <c>[ ] / [✓] / [▪]</c>; ToggleGlyph colors the
+    /// inner mark (✓ green / ▪ amber). A caps-ascii terminal never matches this and keeps the ASCII base.
+    /// The genuinely capability-gated swap; armed at <see cref="StyleLayer.Theme"/>.
+    /// </summary>
+    internal static Style CapsUnicodeCheckBoxGlyphs()
+    {
+        var style = new Style(".caps-unicode CheckBox") { Key = "Theme.CapsUnicode.CheckBox" };
+        style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("[ ]", "[✓]", "[▪]")));
+        return style;
+    }
+
+    /// <summary>The caps-unicode RadioButton glyph opt-up (<c>( ) / (●) / (-)</c>; ● accent); see <see cref="CapsUnicodeCheckBoxGlyphs"/>.</summary>
+    internal static Style CapsUnicodeRadioGlyphs()
+    {
+        var style = new Style(".caps-unicode RadioButton") { Key = "Theme.CapsUnicode.RadioButton" };
+        style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("( )", "(●)", "(-)")));
+        return style;
+    }
 }

@@ -72,23 +72,16 @@ internal sealed class UIXamlDemo : IDemo
         private Button _apply = null!;
         private CheckBox _airplane = null!;
         private CheckBox _wifi = null!;
+        private CheckBox _statusCheck = null!;
         private RadioButton _low = null!, _med = null!, _high = null!;
         private string _lastAction = "(none)";
 
         public UIElement BuildTree()
         {
-            // A :pointerover button background flip + a :checked accent on the toggles — the P3 styling
-            // engine over the XAML-built controls (the loader produced the structure, these app rules the
-            // skin; nothing here knows the tree came from XAML).
-            var buttonHover = new Cursorial.UI.Style(Selectors.OfType<Button>().PseudoClass("pointerover"));
-            buttonHover.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(80, 124, 210))));
-            app.Styles.Add(buttonHover);
-
-            var checkedToggle = new Cursorial.UI.Style(Selectors.Is<ToggleButton>().PseudoClass("checked"));
-            checkedToggle.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(86, 120, 220))));
-            app.Styles.Add(checkedToggle);
-
             // ── THE P6 PAYOFF: load the entire tree from the embedded XAML string. ──
+            // No app skin styles: the controls draw entirely from the cell-faithful default theme
+            // (:pointerover / :focus / :pressed all come from the BuiltIn control themes now), so the demo
+            // shows the default look unmasked — and 'd'/'t' re-skin it live.
             var root = (DockPanel)XamlLoader.Shared.Load(LoadEmbeddedXaml());
 
             // The {Binding}s on the status line + the live caption resolve against this view-model.
@@ -107,8 +100,10 @@ internal sealed class UIXamlDemo : IDemo
 
             _airplane = Named<CheckBox>(scope, "Airplane");
             _wifi = Named<CheckBox>(scope, "Wifi");
+            _statusCheck = Named<CheckBox>(scope, "StatusCheck");
             _airplane.Click += (_, _) => Action($"Airplane = {_airplane.IsChecked}");
             _wifi.Click += (_, _) => Action($"Wi-Fi = {_wifi.IsChecked}");
+            _statusCheck.Click += (_, _) => Action($"Status = {_statusCheck.IsChecked?.ToString() ?? "null"}");
 
             _low = Named<RadioButton>(scope, "Low");
             _med = Named<RadioButton>(scope, "Med");

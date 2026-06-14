@@ -381,7 +381,7 @@ internal sealed class XamlObjectGraphBuilder
             // A keyed dictionary item.
             if (addDictionaryItem is not null && TryGetKey(in childRecord, out string key))
             {
-                var keyValue = ConvertDictionaryKey(collection!, type, key);
+                var keyValue = ConvertDictionaryKey(collection!, type, key, line, column);
                 var item = InstantiateObject(childIndex);
                 addDictionaryItem(collection!, keyValue, item);
             }
@@ -616,9 +616,51 @@ internal sealed class XamlObjectGraphBuilder
         return false;
     }
 
-    // A plain ResourceDictionary keeps the literal string key (DictionaryKeyType == object/string);
-    // a themed dictionary collection runs the key through ThemeVariantKey.Parse (X2 / C-8).
-    private object ConvertDictionaryKey(object collection, XamlType type, string key) => key;
+    // A plain ResourceDictionary key is the literal string — UNLESS it is an {x:Type T} / {x:Static M}
+    // markup extension, which resolves to its VALUE at load (a Type / member value). The frontend stores
+    // x:Key verbatim (directives are not ME-folded at parse), so the resolution happens here — what lets a
+    // Type-keyed ControlTheme dictionary author its entries as `<Style x:Key="{x:Type Button}">` (mirrors
+    // the XD7a resource-KEY resolution). A themed dictionary's variant key goes through ThemeVariantKey
+    // (FillThemeDictionaries, C-8), not this path.
+    private object ConvertDictionaryKey(object collection, XamlType type, string key, int line, int column)
+        => ResolveDictionaryKey(key, line, column);
+
+    private object ResolveDictionaryKey(string key, int line, int column)
+    {
+        if (!MarkupExtensionParser.LooksLikeExtension(key))
+            return key;
+
+        MarkupExtensionNode node;
+        try
+        {
+            node = MarkupExtensionParser.Parse(key, _source, line, column);
+        }
+        catch (XamlParseException ex)
+        {
+            throw Fatal(ex.Code, ex.Diagnostics[0].Message, line, column);
+        }
+
+        var name = node.Name;
+        var colon = name.IndexOf(':');
+        if (colon >= 0)
+            name = name[(colon + 1)..];
+        var arg = node.PositionalArguments.Count > 0 ? node.PositionalArguments[0].Text : null;
+
+        if (name == "Type" && arg is { } typeName)
+        {
+            var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
+            if (resolution.IsResolved)
+                return resolution.Type!.ClrType;
+            throw Fatal(XamlDiagnosticCodes.TypeNotFound, $"x:Key {{x:Type {typeName}}} could not be resolved to a type.", line, column);
+        }
+
+        if (name == "Static" && arg is { } memberPath)
+            return ResolveStaticMember(memberPath, line, column)
+                   ?? throw Fatal(XamlDiagnosticCodes.MemberNotFound, $"x:Key {{x:Static {memberPath}}} resolved to null.", line, column);
+
+        throw Fatal(XamlDiagnosticCodes.UnsupportedIntrinsic,
+            $"An x:Key markup extension must be {{x:Type T}} or {{x:Static M}}; '{node.Name}' is not supported as a key.", line, column);
+    }
 
     // ── Resource dictionaries (matrix §11/§12) ─────────────────────────────────────────────────────
 
@@ -844,7 +886,9 @@ internal sealed class XamlObjectGraphBuilder
         object key;
         if (TryGetKey(in child, out string explicitKey))
         {
-            key = explicitKey;
+            // Resolve an {x:Type T} / {x:Static M} key to its value (the deferred-entry path; mirrors the
+            // immediate-add ConvertDictionaryKey) — what makes `<Style x:Key="{x:Type Button}">` a Type key.
+            key = ResolveDictionaryKey(explicitKey, line, column);
         }
         else if (TryGetImplicitKey(childIndex, in child, out var implicitKey))
         {

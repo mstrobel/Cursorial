@@ -166,4 +166,25 @@ public sealed class Section11_ResourceDictionaries : LoaderTestBase
         // Own entry beats merged: A is the #ff0000 TestBrush, not the merged #0000ff one.
         Assert.Equal(Color.FromRgb(255, 0, 0), ((TestBrush)value!).Color);
     }
+
+    [Fact] // PRE-TYPEKEY: x:Key="{x:Type Button}" folds to a typeof(Button) dictionary key (Type-keyed ControlThemes)
+    public void TypeKey_XKeyTypeExtension_ResolvesToTypeDictionaryKey()
+    {
+        var dict = (ResourceDictionary)LoadRaw(
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<TestBrush x:Key=\"{x:Type Button}\" Color=\"Red\"/></ResourceDictionary>");
+
+        Assert.True(dict.ContainsKey(typeof(UIControls.Button)));   // the resolved Type is the key…
+        Assert.False(dict.ContainsKey("{x:Type Button}"));          // …NOT the verbatim extension string
+        Assert.IsType<TestBrush>(dict[typeof(UIControls.Button)]);
+    }
+
+    [Fact] // PRE-TYPEKEY: an unresolvable x:Key type is a positioned diagnostic, not a silent string key
+    public void TypeKey_UnresolvableType_IsDiagnosed()
+    {
+        var ex = Assert.Throws<XamlParseException>(() => LoadRaw(
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<TestBrush x:Key=\"{x:Type Bogus}\" Color=\"Red\"/></ResourceDictionary>"));
+        Assert.Equal(XamlDiagnosticCodes.TypeNotFound, ex.Code);
+    }
 }

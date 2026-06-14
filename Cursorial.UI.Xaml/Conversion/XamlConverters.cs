@@ -318,8 +318,10 @@ public static class XamlConverters
             {
                 if (token.StartsWith("#", StringComparison.Ordinal))
                 {
-                    // color stroke — accepted but folds onto the pen's color where the Pen type supports it.
-                    _ = ColorConverter.Parse(token, ctx);
+                    // Fold the #hex color stroke onto the pen (preserving the preset fields via `with`).
+                    // Previously the parsed color was discarded — an uncolored pen. (Palette / named pen
+                    // colors remain a future extension; the theme's RGB-tier pens use #hex.)
+                    pen = pen.WithColor(ColorConverter.Parse(token, ctx));
                     any = true;
                     continue;
                 }

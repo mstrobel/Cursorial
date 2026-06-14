@@ -156,6 +156,15 @@ public sealed class Section07_Converters : LoaderTestBase
     public void X094_Pen_Presets(string text)
         => Assert.IsType<Pen>(Convert(typeof(Pen), text));
 
+    [Fact] // PRE-PEN: a #hex token folds onto the pen's stroke (previously parsed and discarded)
+    public void X094a_Pen_ColorTokenFolds_PreservingPresets()
+    {
+        var pen = (Pen)Convert(typeof(Pen), "Heavy #66d9ef")!;
+        Assert.Equal(StrokeWeight.Heavy, pen.Weight);                           // preset preserved
+        var brush = Assert.IsType<Cursorial.Drawing.Media.SolidColorBrush>(pen.Brush);
+        Assert.Equal(Cursorial.Output.Color.FromHex("#66d9ef"), brush.Color);   // …and the color folded in
+    }
+
     [Fact]
     public void X095_TextAttributes_Flags()
         => Assert.Equal(TextAttributes.Bold | TextAttributes.Italic, Convert(typeof(TextAttributes), "Bold,Italic"));

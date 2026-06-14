@@ -68,6 +68,7 @@ public static class XamlConverters
         if (underlying == typeof(TextAttributes)) return TextAttributesConverter.Instance;
         if (underlying == typeof(KeyGesture)) return KeyGestureConverter.Instance;
         if (underlying == typeof(Pen)) return PenConverter.Instance;
+        if (underlying == typeof(Selector)) return SelectorConverter.Instance;
         if (underlying == typeof(Type)) return null; // x:Type handles this; no plain text converter
         if (typeof(IBrush).IsAssignableFrom(underlying)) return BrushConverter.Instance;
         if (underlying.IsEnum) return new EnumConverter(underlying);
@@ -401,6 +402,28 @@ public static class XamlConverters
             catch (Exception ex) when (ex is FormatException or ArgumentException)
             {
                 throw Fail($"'{text}' is not a valid key gesture: {ex.Message}", ctx);
+            }
+        }
+    }
+
+    private sealed class SelectorConverter : ITypeConverter
+    {
+        public static readonly SelectorConverter Instance = new();
+
+        // Selector.Parse needs no XAML services (it carries the same default type resolver the code-first
+        // themes use for simple type names) and never touches the tree — context-free. Enables authoring a
+        // control theme's nested state sub-rules as `<Style Selector="^:focus">` inside `<Style.Children>`.
+        public bool IsContextFree => true;
+
+        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            try
+            {
+                return Selector.Parse(text.Trim());
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException)
+            {
+                throw Fail($"'{text}' is not a valid selector: {ex.Message}", ctx);
             }
         }
     }

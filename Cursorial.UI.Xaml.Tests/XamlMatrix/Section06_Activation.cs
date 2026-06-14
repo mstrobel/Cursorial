@@ -33,6 +33,26 @@ public sealed class Section06_Activation : LoaderTestBase
         Assert.IsType<UIControls.Button>(border.Child);
     }
 
+    [Fact] // Selector string->Selector converter (Task #10 prerequisite): <Style Selector="^:focus"> + nested <Style.Children>
+    public void StyleSelectorAttribute_AndNestedChildren_AuthorStateSubRules()
+    {
+        var style = Load<Style>(
+            "<Style TargetType=\"Button\">" +
+              "<Setter Property=\"Background\" Value=\"#111111\"/>" +
+              "<Style.Children>" +
+                "<Style Selector=\"^:focus\" TargetType=\"Button\"><Setter Property=\"Background\" Value=\"#222222\"/></Style>" +
+              "</Style.Children>" +
+            "</Style>");
+
+        // The parent resolved its setter against its TargetType (a type selector). The nested sub-rule carries
+        // a ^:focus Selector (via the new string->Selector converter) plus its own TargetType for setter
+        // resolution — the shape a XAML-authored control theme uses for :focus/:pressed/... state rules.
+        Assert.Single(style.Setters);
+        Assert.Single(style.Children);
+        Assert.NotNull(style.Children[0].Selector);
+        Assert.Single(style.Children[0].Setters);
+    }
+
     [Fact]
     public void X070_ContentProperty_Resolved_AndAbsentRejectsContent()
     {

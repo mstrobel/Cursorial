@@ -342,6 +342,10 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
 
         var glyph = Glyphs.ForChecked(CheckedState);
         var foreground = Owner?.Foreground;
+        // The glyph honors the inherited TextElement.TextAttributes (None for an ordinary control), so a
+        // NoColor disabled check/radio dims with Faint to match its (Faint) content text — the whole control
+        // reads as disabled, not just its label (review #1 follow-up).
+        var attrs = TextElement.GetTextAttributes(this);
 
         // Bracket-neutral colored mark (gallery idiom): the box "[ ]" / "( )" paints in the inherited
         // foreground while the inner mark (✓ / ▪ / ●) takes its state color — but only when a mark color
@@ -352,21 +356,22 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
             var open = glyph[..1];
             var inner = glyph[1..^1];
             var openWidth = Cursorial.Text.GraphemeWidth.StringWidth(open);
-            DrawAt(context, 0, open, foreground);
-            DrawAt(context, openWidth, inner, mark);
-            DrawAt(context, openWidth + Cursorial.Text.GraphemeWidth.StringWidth(inner), glyph[^1..], foreground);
+            DrawAt(context, 0, open, foreground, attrs);
+            DrawAt(context, openWidth, inner, mark, attrs);
+            DrawAt(context, openWidth + Cursorial.Text.GraphemeWidth.StringWidth(inner), glyph[^1..], foreground, attrs);
             return;
         }
 
-        DrawAt(context, 0, glyph, foreground);
+        DrawAt(context, 0, glyph, foreground, attrs);
     }
 
-    private static void DrawAt(RenderContext context, int column, string text, IBrush? brush)
+    private static void DrawAt(RenderContext context, int column, string text, IBrush? brush, TextAttributes attributes)
     {
+        var style = new CellStyle().WithAttributes(attributes);
         if (brush is { })
-            context.DrawText(column, 0, text, brush);
+            context.DrawText(column, 0, text, brush, baseStyle: style);
         else
-            context.DrawText(column, 0, text, Colors.Default);
+            context.DrawText(column, 0, text, Colors.Default, baseStyle: style);
     }
 
     // The mark color for the checked / indeterminate states (a ThemeKeys brush resource resolved through

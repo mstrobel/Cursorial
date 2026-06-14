@@ -357,6 +357,27 @@ public sealed class Section05_VariantFlipReSkin
         Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Inverse));
     }
 
+    // ───────────────────────────── C119c — caps-nocolor: a disabled check/radio dims its glyph too ─────────────────────────────
+
+    [Fact] // C119c — under caps-nocolor a disabled CheckBox dims its GLYPH (Faint), not just its label (review #1 follow-up)
+    public void C119c_NoColor_DisabledCheckBox_DimsGlyph()
+    {
+        using var host = TruecolorHost();
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.Application.RequestedColorTier = ColorDepth.NoColor;
+
+        var check = new CheckBox { Content = "On", IsEnabled = false };
+        var root = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        root.Children.Add(check); // a descendant of the caps-nocolor root, and disabled (so not auto-focused)
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(ColorDepth.NoColor, host.Application.ActualThemeVariant.Tier);
+
+        // The `.caps-nocolor :is(ButtonBase):disabled` rule flips Faint, inherited by the glyph leaf, so the
+        // box glyph "[" dims — matching the (Faint) content label, so the whole control reads as disabled.
+        Assert.True(CellOf(host, "[").Style.Attributes.HasFlag(TextAttributes.Faint));
+    }
+
     // ───────────────────────────── finders ─────────────────────────────
 
     // Whether `haystack` contains the contiguous byte subsequence `needle` (wire-SGR search).

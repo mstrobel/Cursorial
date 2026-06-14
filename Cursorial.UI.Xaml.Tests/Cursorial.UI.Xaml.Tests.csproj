@@ -22,6 +22,7 @@
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Themes.Xaml\Cursorial.UI.Themes.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
     </ItemGroup>
 

@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+
+  <!--
+    The cell-faithful Button control theme (design doc §11.8a), authored declaratively in XAML — the twin of
+    the code-first ControlThemes.ButtonTheme(). A fill-bounded face (no resting border): the R2 DynamicResource
+    palette spine (Foreground = TextBrush on a SurfaceBrush fill) plus the reverse-video interactive states as
+    nested ^:... sub-rules (a Selector for matching + a TargetType for the sub-rule's setter resolution).
+    Keyed by typeof(Button) so it resolves as the control theme; layered over CursorialTheme.BuiltIn.
+  -->
+
+  <ControlTemplate x:Key="ButtonTemplate">
+    <Border Padding="1,0"
+            Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}">
+      <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Button}" TargetType="Button">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
+    <Style.Children>
+      <!-- Ordered hover -> focus -> pressed -> disabled -> default (document order breaks pseudo-class ties,
+           matching AddButtonStates + the :default the code-first ButtonTheme appends). -->
+      <Style Selector="^:pointerover" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:focus" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:pressed" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+      <Style Selector="^:default" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+</ResourceDictionary>

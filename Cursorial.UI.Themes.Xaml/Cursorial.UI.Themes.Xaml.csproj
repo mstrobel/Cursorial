@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        ARCH-1: the data-shipped XAML theme (design doc §4.11 — choosing XAML over a fluent C# DSL is what
+        makes data-shipped themes possible; the code-first CursorialTheme.BuiltIn stays the always-final
+        backstop, §2237). This assembly ships the BuiltIn control themes authored declaratively in XAML,
+        loaded at runtime via Cursorial.UI.Xaml and layered over the BuiltIn through UIApplication.Theme.
+        Phase 1 ships the Button family; the remaining controls extend the same Themes/*.xaml.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The themes load from embedded .xaml at runtime. Manifest name: <RootNamespace>.<dotted path>,
+             e.g. Cursorial.UI.Themes.Xaml.Themes.Controls.xaml. -->
+        <EmbeddedResource Include="Themes\*.xaml" />
+    </ItemGroup>
+
+</Project>

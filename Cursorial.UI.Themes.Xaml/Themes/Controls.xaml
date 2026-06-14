@@ -45,4 +45,52 @@
     </Style.Children>
   </Style>
 
+  <!-- RepeatButton / ToggleButton share the button family's spine + template + interactive states, minus the
+       Button-only :default (matching the code-first Repeat/ToggleButtonTheme = AddButtonStates(spine + template)). -->
+  <Style x:Key="{x:Type RepeatButton}" TargetType="RepeatButton">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="RepeatButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:focus" TargetType="RepeatButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:pressed" TargetType="RepeatButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="RepeatButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <Style x:Key="{x:Type ToggleButton}" TargetType="ToggleButton">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:focus" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:pressed" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
 </ResourceDictionary>

@@ -23,27 +23,37 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 /// </summary>
 public sealed class ArchOneXamlThemeTests
 {
-    [Fact]
-    public void XamlButtonTheme_RendersIdenticallyToCSharpBuiltIn_RestAndFocus()
+    [Theory]
+    [InlineData("Button")]
+    [InlineData("RepeatButton")]
+    [InlineData("ToggleButton")]
+    public void XamlButtonFamilyTheme_RendersIdenticallyToCSharpBuiltIn_RestAndFocus(string control)
     {
-        // The XAML theme (app.Theme) layers over the code-first BuiltIn; the Button entry it carries replaces
-        // BuiltIn's. Compare the rendered cells (glyph + fg + bg) to the BuiltIn oracle, resting and focused.
-        Assert.Equal(RenderButtonCells(xaml: false, focus: false), RenderButtonCells(xaml: true, focus: false));
-        Assert.Equal(RenderButtonCells(xaml: false, focus: true),  RenderButtonCells(xaml: true, focus: true));
+        // The XAML theme (app.Theme) layers over the code-first BuiltIn; the typeof(control) entry it carries
+        // replaces BuiltIn's. Compare the rendered cells (glyph + fg + bg) to the BuiltIn oracle, rest + focus.
+        Assert.Equal(RenderCells(control, xaml: false, focus: false), RenderCells(control, xaml: true, focus: false));
+        Assert.Equal(RenderCells(control, xaml: false, focus: true),  RenderCells(control, xaml: true, focus: true));
     }
 
-    private static (string Glyph, Color Fg, Color Bg)[] RenderButtonCells(bool xaml, bool focus)
+    private static UIControls.Control MakeControl(string control) => control switch
+    {
+        "RepeatButton" => new UIControls.RepeatButton { Content = "OK" },
+        "ToggleButton" => new UIControls.ToggleButton { Content = "OK" },
+        _              => new UIControls.Button { Content = "OK" },
+    };
+
+    private static (string Glyph, Color Fg, Color Bg)[] RenderCells(string control, bool xaml, bool focus)
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });
         if (xaml)
             host.Application.Theme = CursorialXamlTheme.LoadControls();
 
-        var button = new UIControls.Button { Content = "OK" };
-        host.ShowRoot(button);
+        var element = MakeControl(control);
+        host.ShowRoot(element);
         Assert.True(host.RunUntilIdle());
         if (focus)
         {
-            Assert.True(button.Focus(FocusNavigationMethod.Tab));
+            Assert.True(element.Focus(FocusNavigationMethod.Tab));
             host.RunFrame();
         }
 

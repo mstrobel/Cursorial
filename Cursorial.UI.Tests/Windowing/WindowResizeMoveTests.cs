@@ -220,6 +220,82 @@ public sealed class WindowResizeMoveTests
         return -1;
     }
 
+    [Fact] // a resize that clips a window raises the WM fit badge; refitting (or no clip) hides it
+    public void ResizeClippingWindow_ShowsFitBadge()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var w = At(30, 5);
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        Assert.False(wm.IsFitBadgeVisible); // nothing clipped yet
+
+        host.SendResize(40, 20); // window right edge (50) now overhangs 40 → clipped
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(w.IsClippedByViewport);
+        Assert.True(wm.IsFitBadgeVisible); // the badge appeared on the clipping resize
+    }
+
+    [Fact] // a resize that leaves every window fully visible shows no badge
+    public void Resize_NoClip_NoBadge()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var w = At(2, 2);
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        host.SendResize(50, 18); // window (cols 2..21, rows 2..9) still fits
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(w.IsClippedByViewport);
+        Assert.False(wm.IsFitBadgeVisible);
+    }
+
+    [Fact] // the badge's "Fit windows" action refits every clipped window and hides the badge
+    public void FitBadge_FitAll_RefitsAndHides()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var w = At(30, 5);
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        host.SendResize(40, 20);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(wm.IsFitBadgeVisible);
+
+        wm.FitAllWindowsToViewport();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(w.IsClippedByViewport); // pulled fully into the 40-wide viewport
+        Assert.True(w.Left + w.ActualSize.Columns <= 40);
+        Assert.False(wm.IsFitBadgeVisible);  // nothing left to fit
+    }
+
+    [Fact] // dismiss (✕) hides the badge and leaves the windows as-is (still clipped)
+    public void FitBadge_Dismiss_HidesButLeavesWindows()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var w = At(30, 5);
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        host.SendResize(40, 20);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(wm.IsFitBadgeVisible);
+
+        wm.DismissFitBadge();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(wm.IsFitBadgeVisible);
+        Assert.True(w.IsClippedByViewport); // dismiss does not move the window
+    }
+
     private sealed class MeasureHook : UIElement
     {
         private bool _fired;

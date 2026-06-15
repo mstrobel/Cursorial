@@ -4,10 +4,12 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
 // ReSharper disable CheckNamespace
@@ -58,6 +60,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private readonly List<Action> _deferredTopology = []; // §8.8 — mutations requested mid-frame, drained next frame
     private bool _topologyLocked; // true while S6 iterates surfaces (layout / OnLayoutCompleted / render)
     private string? _lastEmittedTitle; // the last title mirrored to the terminal (OSC 2 change detector)
+    private TopLevelSurface? _fitBadgeSurface; // the WM-owned fit-to-viewport badge (top-right; §8.7)
+    private bool _fitBadgeVisible;
 
     /// <summary>
     /// Creates the window manager. <paramref name="guard"/> is the user-code funnel routed to every
@@ -294,6 +298,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             if (_popups[i].PopupSurface is { } surface)
                 PlacePopup(_popups[i], surface);
 
+        // The fit badge appears (or re-evaluates) on a terminal resize: shown only while a non-maximized
+        // window now overhangs the viewport (§8.7 — the user moves+shrinks on demand, no auto-shrink).
+        _fitBadgeVisible = AnyWindowClipped();
+        SyncFitBadge();
+
         for (var i = 0; i < _surfaces.Count; i++)
             _surfaces[i].InvalidateAll();
     }
@@ -505,6 +514,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = windows.Length - 1; i >= 0; i--)
             windows[i].Close(WindowCloseReason.ManagerShutdown);
 
+        _fitBadgeVisible = false;
+        SyncFitBadge();
+
         return Task.CompletedTask;
     }
 
@@ -691,6 +703,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = 0; i < _popups.Count; i++) // the popup band sits above every window (§8.4)
             if (_popups[i].PopupSurface is { } surface)
                 _surfaces.Add(surface);
+        if (_fitBadgeSurface is { } badge) // the fit badge sits above everything (§8.7)
+            _surfaces.Add(badge);
     }
 
     // ── Popup hosting (P7-W4: light-dismiss surfaces in the band above every window) ──────────────────
@@ -808,6 +822,96 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 popup.CloseCore(PopupCloseReason.LightDismiss);
         }
     }
+
+    // ── Fit-to-viewport badge (P7-W5b: the WM-owned affordance for clipped windows after a resize, §8.7) ──
+
+    /// <summary>Whether the fit badge is currently shown (test/diagnostic observability).</summary>
+    public bool IsFitBadgeVisible => _fitBadgeSurface is not null;
+
+    /// <summary>Whether any Normal (non-maximized) window currently overhangs the viewport.</summary>
+    private bool AnyWindowClipped()
+    {
+        for (var i = 0; i < _windows.Count; i++)
+            if (_windows[i].HostSurface is { } surface && IsWindowClipped(_windows[i], surface))
+                return true;
+
+        return false;
+    }
+
+    /// <summary>The fit badge's "Fit windows" action: moves+shrinks every clipped window into view, then hides
+    /// the badge (nothing remains to fit). Public so the demo / code-behind can trigger the same sweep.</summary>
+    public void FitAllWindowsToViewport()
+    {
+        for (var i = 0; i < _windows.Count; i++)
+            if (_windows[i].HostSurface is { } surface && IsWindowClipped(_windows[i], surface))
+                _windows[i].FitToViewport();
+
+        _fitBadgeVisible = false;
+        SyncFitBadge();
+    }
+
+    /// <summary>The fit badge's dismiss (✕) action: hides the badge until the next clipping resize.</summary>
+    public void DismissFitBadge()
+    {
+        _fitBadgeVisible = false;
+        SyncFitBadge();
+    }
+
+    /// <summary>Reconciles the badge surface with <see cref="_fitBadgeVisible"/> (create+place / detach).</summary>
+    private void SyncFitBadge()
+    {
+        if (_fitBadgeVisible)
+        {
+            _fitBadgeSurface ??= new TopLevelSurface(BuildFitBadge(), _scenePool, _capabilities, _guard);
+            PlaceFitBadge(_fitBadgeSurface);
+        }
+        else if (_fitBadgeSurface is { } badge)
+        {
+            badge.Detach();
+            _fitBadgeSurface = null;
+        }
+        else
+        {
+            return; // already hidden — nothing changed
+        }
+
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor();
+        SurfacesChanged?.Invoke();
+    }
+
+    /// <summary>Measures the badge against the screen and pins it to the top-right corner.</summary>
+    private void PlaceFitBadge(TopLevelSurface surface)
+    {
+        surface.Size = _viewport;
+        surface.RunLayoutPass();
+
+        var desired = surface.Root.DesiredSize;
+        var size = new Size(
+            Math.Clamp(desired.Columns, 0, _viewport.Columns),
+            Math.Clamp(desired.Rows, 0, _viewport.Rows));
+        surface.Size = size;
+        surface.Left = Math.Max(0, _viewport.Columns - size.Columns);
+        surface.Top = 0;
+    }
+
+    /// <summary>Builds the interim badge: an occluding bar with a "Fit windows" button + a dismiss ✕ (C4 themes it).</summary>
+    private UIElement BuildFitBadge()
+    {
+        var fit = new Button { Content = "Fit windows", Focusable = false, IsTabStop = false };
+        fit.Click += (_, _) => FitAllWindowsToViewport();
+
+        var dismiss = new Button { Content = "✕", Focusable = false, IsTabStop = false };
+        dismiss.Click += (_, _) => DismissFitBadge();
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(fit);
+        row.Children.Add(dismiss);
+
+        return new Border { Occludes = true, Background = FitBadgeBrush, BorderPen = Pens.Light, Child = row };
+    }
+
+    private static readonly IBrush FitBadgeBrush = SolidColorBrush.FromRgb(0x45, 0x47, 0x5A);
 
     // ── Renegotiation leg (UIApplication calls; mirrors the single-root render system) ───────────────
 

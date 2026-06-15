@@ -27,4 +27,12 @@ public static class AnimationExtensions
     /// <summary>Bounce <paramref name="animation"/> forward-and-back forever (a perpetual ping-pong).</summary>
     public static IAnimation<T> AutoReverse<T>(this IAnimation<T> animation) =>
         new RepeatAnimation<T>(animation, count: null, autoReverse: true);
+
+    /// <summary>Hold <paramref name="animation"/>'s first frame for <paramref name="delay"/>, then play it.</summary>
+    public static IAnimation<T> Delay<T>(this IAnimation<T> animation, TimeSpan delay) =>
+        new DelayAnimation<T>(animation, delay);
+
+    /// <summary>Play <paramref name="next"/> after <paramref name="first"/> finishes (a two-step sequence).</summary>
+    public static IAnimation<T> Then<T>(this IAnimation<T> first, IAnimation<T> next) =>
+        new SequenceAnimation<T>(first, next);
 }

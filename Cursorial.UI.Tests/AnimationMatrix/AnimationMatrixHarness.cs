@@ -22,6 +22,9 @@ internal sealed class Animatable : UIElement
     /// <summary>Reentrancy hook (§7): invoked from V's change notification with the new value (N61/N63/N65).</summary>
     public Action<double>? VChanged;
 
+    /// <summary>Sets V's local base value (for the From-snapshot rows — N105/N120).</summary>
+    public void SetV(double value) => SetValue(VProperty, value);
+
     protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
     {
         base.OnPropertyChanged(in args);

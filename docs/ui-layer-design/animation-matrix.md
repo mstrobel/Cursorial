@@ -233,7 +233,43 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 
 ---
 
-## 10. Storyboards + tracks + ignition (A1) — TBD
-## 11. Edge actions (`BeginStoryboard`/`StopStoryboard`) + `AnimationDiagnostics` (A1) — TBD
+## 10. Storyboards + tracks + ignition (A1) — N102–N121
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| N102 | `Storyboard` with two finite tracks (different durations, different properties) | `Begin(scope)` | both run as independent child instances; each writes its own property; the storyboard completes when the longer finishes | WPF |
+| N103 | a track with `TargetName` naming an element in the scope | `Begin` | resolves the named element via the template-aware `FindName` and targets it | WPF |
+| N104 | a track with `TargetName == null` | `Begin` | targets the `Begin` scope element itself | PIN |
+| N105 | a track with `From` unset | `Begin` | snapshots `GetValue(property)` at track start as `From` (AD4) | WPF |
+| N106 | a track with an explicit `From` | `Begin` | the explicit `From` wins — no snapshot | WPF |
+| N107 | a track with `BeginTime > 0` | frames within `[Begin, Begin+BeginTime)` then past | Delayed (property untouched) during the stagger, then Running | WPF |
+| N108 | all-finite storyboard, `Completed` subscriber | the longest track reaches its end | `StoryboardHandle.Completed` raises once, after the sampling pass | WPF (AD3) |
+| N109 | storyboard with one perpetual (`Loop`) track | any large elapsed | never completes (`Completed` never raises); pins the idle gate | PIN (AD6) |
+| N110 | running storyboard | `StoryboardHandle.Stop()` | every child retracts (bases resurface); state stops; no `Completed` | WPF |
+| N111 | begin the SAME storyboard on the SAME scope twice | second `Begin` | the first `(storyboard, scope)` instance retires (no `Completed`); the second runs (handoff §9.4) | PIN |
+| N112 | begin the same storyboard on two different scopes | both, then `Stop(scopeA)` | two independent instances; scopeB keeps running | PIN |
+| N113 | detach the scope element mid-flight | detach | every scoped child retracts; no `Completed`; idle drops to false (this is A0's N97 realized) | PIN (AD10) |
+| N114 | a `Repeat = Count(3)` track | total elapsed | three cycles then completes; final = `ValueAt(Duration)` | WPF |
+| N115 | a `Source`-based track wrapped by `Repeat` | run | `Repeat`/`AutoReverse` wrap the `Source` uniformly | PIN |
+| N116 | a track whose `T` ≠ the property's value type | `Begin` (seal) | throws at seal — element-independent validation, before first run | PIN (§9.3) |
+| N117 | a track with a `Repeat` that overflows `TimeSpan` | `Begin` (seal) | throws at seal (the `RepeatAnimation` guard) | PIN (AD6) |
+| N118 | `Storyboard.Children` mutated after `Begin` | mutate | throws (sealed) | PIN |
+| N119 | imperative `Begin` with an unresolvable `TargetName` | `Begin` | throws; no partial group left running (rolled back) | PIN (§9.3) |
+| N120 | multi-track storyboard, one track `From` unset + one explicit, both on distinct properties | `Begin` | each track's `From` resolves independently | PIN |
+| N121 | `Storyboard.Stop(scope)` when not running on that scope | call | no-op | PIN |
+
+## 11. Edge actions (`BeginStoryboard`/`StopStoryboard`) + `AnimationDiagnostics` (A1) — N122–N130
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| N122 | a `Style` rule with a `BeginStoryboard` in `Enter` | the rule activates (pseudo-class flip) | the storyboard begins on the matched element (igniter = the `BeginStoryboard` action instance) | WPF |
+| N123 | active rule, `BeginStoryboard.StopOnRetraction == true` | the rule deactivates (exit edge) | the storyboard stops (retracts); no `Completed` | PIN |
+| N124 | active rule, `BeginStoryboard.StopOnRetraction == false` | the rule deactivates | the storyboard keeps running (its `Fill` governs) | PIN |
+| N125 | two rules sharing one `Storyboard` resource, both active on one element | activate both | distinct `(igniter, scope)` instances — they don't fight; each keyed by its own `BeginStoryboard` | PIN (§9.3) |
+| N126 | a `StopStoryboard` (by object reference) in `Enter` | the rule activates | every live instance of that storyboard on the element stops, across igniters | PIN (§9.3) |
+| N127 | an edge-ignited `BeginStoryboard` with an unresolvable `TargetName` | activation | does **not** throw; routes to `AnimationDiagnostics.TrackError`; sibling tracks proceed | PIN (§9.3) |
+| N128 | multiple edge actions in one rule's `Enter` | activation | invoked in rule-document order on the edge (Fork B seam; re-pinned here) | PIN |
+| N129 | the scope detaches while an edge-ignited storyboard runs | detach | retracts; no `Completed` | PIN (AD10) |
+| N130 | `BeginStoryboard.Storyboard == null` / `StopStoryboard.Storyboard == null` | activation | no-op (no throw) | PIN |
 ## 12. `AnimationsEnabled` (reduced motion) full flip semantics (A2) — TBD
 ## 16. Transitions (implicit animations, winning-base observer) (A3) — TBD

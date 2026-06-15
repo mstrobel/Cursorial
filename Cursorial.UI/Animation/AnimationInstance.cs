@@ -5,14 +5,24 @@ using Cursorial.Animation;
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
 
+/// <summary>Something the scheduler's post-sampling drain raises a <c>Completed</c> on (an animation or a storyboard group).</summary>
+internal interface IAnimationCompletion
+{
+    /// <summary>Raises the public handle's <c>Completed</c> (at most once) — the post-sampling drain calls this (AD3).</summary>
+    void RaiseCompleted();
+}
+
 /// <summary>
 /// The non-generic base the scheduler holds in one list and samples polymorphically (design doc §9.2).
 /// One instance owns one (target, property) animation's lifecycle.
 /// </summary>
-internal abstract class AnimationInstance
+internal abstract class AnimationInstance : IAnimationCompletion
 {
     /// <summary>The lifecycle state (§9.2).</summary>
     internal AnimationState State { get; private protected set; }
+
+    /// <summary>The storyboard group this instance belongs to (null ⇒ a standalone <c>BeginAnimation</c> — §9.3).</summary>
+    internal StoryboardInstance? Owner { get; set; }
 
     /// <summary>True while the instance must be sampled / pins the idle gate (Delayed or Running — §9.6).</summary>
     internal bool IsActive => State is AnimationState.Delayed or AnimationState.Running;
@@ -36,7 +46,7 @@ internal abstract class AnimationInstance
     internal abstract void StopFromHandle();
 
     /// <summary>Raises the public handle's <c>Completed</c> (at most once) — the post-sampling drain.</summary>
-    internal abstract void RaiseCompleted();
+    public abstract void RaiseCompleted();
 }
 
 /// <summary>
@@ -135,8 +145,15 @@ internal sealed class AnimationInstance<T> : AnimationInstance
             State = AnimationState.Completed;
         }
 
-        _completionPending = true;
-        _scheduler.EnqueueCompleted(this);    // raised after the whole sampling pass (AD3)
+        if (Owner is not null)
+        {
+            Owner.OnChildCompleted();         // a storyboard child rolls its completion up to the group (§9.3)
+        }
+        else
+        {
+            _completionPending = true;
+            _scheduler.EnqueueCompleted(this); // raised after the whole sampling pass (AD3)
+        }
     }
 
     internal override void Retire()
@@ -148,6 +165,7 @@ internal sealed class AnimationInstance<T> : AnimationInstance
         _handle = null;
         State = AnimationState.Stopped;
         _completionPending = false;   // a retired instance never raises Completed
+        Owner?.OnChildRetired();      // a force-retired child makes its group ineligible to complete (§9.3)
     }
 
     internal override void StopFromHandle()
@@ -159,7 +177,7 @@ internal sealed class AnimationInstance<T> : AnimationInstance
         _scheduler.Remove(this);
     }
 
-    internal override void RaiseCompleted()
+    public override void RaiseCompleted()
     {
         if (!_completionPending)
             return;               // at most once per lifetime (AD3)

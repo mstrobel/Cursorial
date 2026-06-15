@@ -24,7 +24,8 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
 
     private readonly List<UITimer> _timers = [];
     private readonly List<AnimationInstance> _instances = []; // active + holding animation instances (P8 A0)
-    private readonly List<AnimationInstance> _completed = [];  // completions to raise after the sampling pass (AD3)
+    private readonly List<StoryboardInstance> _storyboards = []; // running storyboard groups (P8 A1)
+    private readonly List<IAnimationCompletion> _completed = []; // completions to raise after the sampling pass (AD3)
     private bool _isShutdown;
 
     /// <summary>
@@ -140,6 +141,10 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             _timers[i].Stop();
         _timers.Clear();
 
+        for (var i = 0; i < _storyboards.Count; i++)
+            _storyboards[i].MarkTerminated();
+        _storyboards.Clear();
+
         for (var i = 0; i < _instances.Count; i++)
             _instances[i].Retire();
         _instances.Clear();
@@ -171,9 +176,16 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
     /// <summary>Stops any animation on (<paramref name="target"/>, <paramref name="property"/>) — no <c>Completed</c> (§9.2).</summary>
     internal void StopAnimation(UIObject target, UIProperty property) => RetireMatching(target, property);
 
-    /// <summary>Detach-stop (§9.6): retires + evicts every instance targeting <paramref name="element"/>; no <c>Completed</c>.</summary>
+    /// <summary>Detach-stop (§9.6): retires + evicts every storyboard scoped on <paramref name="element"/> and every
+    /// instance targeting it; no <c>Completed</c>; idempotent against Fork B's own retraction on the same detach.</summary>
     internal void OnElementDetached(UIObject element)
     {
+        // Storyboard groups scoped on this element (retires all their children, whatever they target).
+        for (var i = _storyboards.Count - 1; i >= 0; i--)
+            if (ReferenceEquals(_storyboards[i].Scope, element))
+                RetireStoryboard(_storyboards[i]);
+
+        // Standalone instances (and any surviving storyboard child) targeting this element directly.
         for (var i = _instances.Count - 1; i >= 0; i--)
             if (ReferenceEquals(_instances[i].TargetObject, element))
             {
@@ -182,9 +194,100 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             }
     }
 
-    internal void EnqueueCompleted(AnimationInstance instance) => _completed.Add(instance);
+    internal void EnqueueCompleted(IAnimationCompletion completion) => _completed.Add(completion);
 
     internal void Remove(AnimationInstance instance) => _instances.Remove(instance);
+
+    // ── Storyboards (P8 A1) ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Begins <paramref name="storyboard"/> on <paramref name="scope"/> keyed <c>(igniter, scope)</c> (design doc
+    /// §9.3). Handoff retires any live instance on the same key first. Each track resolves + starts a child;
+    /// on a track failure the imperative path throws (after rolling the partial group back), the edge-ignited
+    /// path routes to <see cref="AnimationDiagnostics"/> and skips the track (siblings proceed).
+    /// </summary>
+    internal StoryboardHandle BeginStoryboard(object igniter, UIElement scope, Storyboard storyboard, HandoffBehavior handoff, bool throwOnFailure)
+    {
+        if (_isShutdown)
+            throw new InvalidOperationException("The animation scheduler is shut down; no new storyboards can begin.");
+
+        RetireStoryboardByKey(igniter, scope); // SnapshotAndReplace at the (igniter, scope) level (§9.4)
+
+        var instance = new StoryboardInstance(this, igniter, scope, storyboard);
+        _storyboards.Add(instance);
+
+        foreach (var track in storyboard.Tracks)
+        {
+            if (track.BeginOn(this, instance, scope, out var failure))
+                continue;
+
+            if (throwOnFailure)
+            {
+                RetireStoryboard(instance); // roll the partial group back before throwing
+                throw new InvalidOperationException(failure);
+            }
+
+            AnimationDiagnostics.RaiseTrackError(new StoryboardTrackError(storyboard, track, scope, failure!));
+        }
+
+        instance.OnAllChildrenStarted();
+        return instance.Handle;
+    }
+
+    /// <summary>Starts one storyboard track's child instance under <paramref name="owner"/> (property-level last-started-wins).</summary>
+    internal void BeginStoryboardChild<T>(StoryboardInstance owner, UIObject target, StyledProperty<T> property, IAnimation<T> animation, in AnimationStartOptions options)
+    {
+        RetireMatching(target, property); // a new animation on the property retires the old (storyboard or standalone)
+
+        var instance = new AnimationInstance<T>(this, target, property, animation, Clock.Now + options.BeginTime, options)
+        {
+            Owner = owner,
+        };
+        _instances.Add(instance);
+        owner.AddChild(animation.Duration == TimeSpan.MaxValue); // count BEFORE the first sample (zero-duration safety)
+        instance.BeginNow(Clock.Now);
+    }
+
+    /// <summary>The public <c>StoryboardHandle.Stop()</c> path — retires this group silently.</summary>
+    internal void StopStoryboard(StoryboardInstance instance) => RetireStoryboard(instance);
+
+    /// <summary>Stops the instance keyed (<paramref name="igniter"/>, <paramref name="scope"/>) — <c>Storyboard.Stop</c> (igniter = the storyboard).</summary>
+    internal void StopStoryboardByKey(object igniter, UIElement scope) => RetireStoryboardByKey(igniter, scope);
+
+    /// <summary>Stops every live instance of <paramref name="storyboard"/> on <paramref name="scope"/> across igniters — <c>StopStoryboard</c> (§9.3).</summary>
+    internal void StopStoryboardOnScope(Storyboard storyboard, UIElement scope)
+    {
+        for (var i = _storyboards.Count - 1; i >= 0; i--)
+        {
+            var sb = _storyboards[i];
+            if (ReferenceEquals(sb.Storyboard, storyboard) && ReferenceEquals(sb.Scope, scope))
+                RetireStoryboard(sb);
+        }
+    }
+
+    private void RetireStoryboardByKey(object igniter, UIElement scope)
+    {
+        for (var i = _storyboards.Count - 1; i >= 0; i--)
+        {
+            var sb = _storyboards[i];
+            if (ReferenceEquals(sb.Igniter, igniter) && ReferenceEquals(sb.Scope, scope))
+                RetireStoryboard(sb);
+        }
+    }
+
+    private void RetireStoryboard(StoryboardInstance instance)
+    {
+        instance.MarkTerminated(); // before retiring children so their OnChildRetired is a no-op past completion
+        for (var i = _instances.Count - 1; i >= 0; i--)
+        {
+            if (!ReferenceEquals(_instances[i].Owner, instance))
+                continue;
+
+            _instances[i].Retire();
+            _instances.RemoveAt(i);
+        }
+        _storyboards.Remove(instance);
+    }
 
     private void RetireMatching(UIObject target, UIProperty property)
     {

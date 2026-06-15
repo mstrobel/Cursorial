@@ -69,7 +69,7 @@ public class Section05_MouseDispatch
         host.RunFrame();
         log.Clear();
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var oracle = tree.HitTest(31, 6);
         Assert.Same(x, oracle); // ZIndex beats document order in composite order
 

@@ -453,7 +453,7 @@ public sealed class Phase5EndToEndTests
         Assert.True(host.RunUntilIdle());
 
         var presenter = sv.Presenter!;
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var bandScene = tree.GetScene(presenter)!;
         var bandVersion = bandScene.RasterVersion;
         var anchorAtStart = presenter.BandStartRow;
@@ -529,7 +529,7 @@ public sealed class Phase5EndToEndTests
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var checkScene = tree.GetScene(check)!;
         var siblingScene = tree.GetScene(sibling)!;
         var rootScene = tree.GetScene(root)!;

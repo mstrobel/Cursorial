@@ -59,8 +59,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     private bool _supportsAltKeyTracking;
     private CellBuffer? _buffer;
     private FrameRenderer? _renderer;
-    private SingleRootRenderSystem? _renderSystem;
-    private SingleRootLayoutSystem? _layoutSystem;
+    private WindowManager? _windowManager;
     private IAsyncInputDevice? _device; // decorated; NEVER disposed by S6 — the host owns transport lifecycle
     private Task? _pumpTask;
     private CancellationTokenSource? _pumpCts;
@@ -281,11 +280,10 @@ public sealed partial class UIApplication : IAsyncDisposable
 
             if (_systemsReady && _rootElement is {} old)
             {
-                _focusManager.OnWindowDeactivated(old); // the P1 single-root deactivation (S4 at P7)
-                _renderSystem!.SetRoot(null); // RenderTree.Detach — scenes back to the pool
+                _focusManager.OnWindowDeactivated(old); // the single-root deactivation (per-window at W2)
+                _windowManager!.SetRootSurface(null); // detaches the root surface's RenderTree — scenes to the pool
                 old.DetachRoot();
                 ReleaseRegistryForRoot(old); // S7: drop the root's subscription registry (design doc §11.6)
-                _layoutSystem!.SetRoot(null);
             }
 
             _rootElement = value;
@@ -377,8 +375,8 @@ public sealed partial class UIApplication : IAsyncDisposable
     internal bool IsIdle
         => _inputQueue.IsEmpty &&
            Dispatcher.JobCount == 0 &&
-           _layoutSystem is not { HasPendingLayout: true } &&
-           _renderSystem is not { HasDirtyVisuals: true } &&
+           _windowManager is not { HasPendingLayout: true } &&
+           _windowManager is not { HasDirtyVisuals: true } &&
            StyleHooks is not { HasPendingActivations: true } &&
            AnimationDriver is not { HasActiveAnimations: true } &&
            Volatile.Read(ref _renderRequested) == 0 &&
@@ -388,16 +386,13 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     internal CellBuffer? FrameBufferInternal => _buffer;
 
-    internal SingleRootRenderSystem? RenderSystem => _renderSystem;
-
-    internal SingleRootLayoutSystem? LayoutSystem => _layoutSystem;
+    internal WindowManager? WindowManager => _windowManager;
 
     internal TimeProvider TimeProviderInternal => _options.TimeProvider;
 
     private void WireRoot(UIElement root)
     {
-        _layoutSystem!.SetRoot(root);  // attaches root under a fresh LayoutManager
-        _renderSystem!.SetRoot(root);  // requires the root attached — ordering matters
+        _windowManager!.SetRootSurface(root);  // attaches the root under a fresh LayoutManager + RenderTree
 
         // The window-root focus convention (doc §7.7, matrix N117): the shown root is a focus
         // scope, set by the harness — S4's window manager owns this per window at P7. Activation

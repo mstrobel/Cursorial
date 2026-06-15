@@ -119,10 +119,11 @@ public interface ILayoutSystem
 
 /// <summary>
 /// The render-system seam (design doc §10.9) — owns the <c>SceneCompositor</c> + <c>ScenePool</c>
-/// and everything between "dirty visuals" and "cells in the target buffer". At P1
-/// <see cref="SingleRootRenderSystem"/> implements it over one root tree; at P7, S4's
-/// <c>WindowManager</c> replaces that implementation (one object implementing this plus
-/// <c>IWindowSystem</c>) with zero frame-loop change.
+/// and everything between "dirty visuals" and "cells in the target buffer". Since P7, S4's
+/// <see cref="WindowManager"/> implements it (one object implementing this plus
+/// <see cref="ILayoutSystem"/>, <see cref="IWindowSystem"/>, and <c>IWindowTopology</c>) over the
+/// surface stack, concatenating each surface's layers in window z-order into one
+/// <c>SceneCompositor.Composite</c>; the frame loop consumes the seam unchanged.
 /// </summary>
 public interface IRenderSystem
 {

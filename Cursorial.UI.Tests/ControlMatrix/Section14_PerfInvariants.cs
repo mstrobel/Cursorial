@@ -101,7 +101,7 @@ public sealed class Section14_PerfInvariants
         host.Application.Styles.Add(rule);
         host.RunFrame();
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var firstScene = tree.GetScene(first)!;
         var secondScene = tree.GetScene(second)!;
         var firstVersion = firstScene.RasterVersion;

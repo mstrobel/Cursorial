@@ -113,7 +113,7 @@ public sealed class Section05_VariantFlipReSkin
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var buttonScene = tree.GetScene(button)!;
         var siblingScene = tree.GetScene(sibling)!;
         var buttonVersion = buttonScene.RasterVersion;
@@ -239,7 +239,7 @@ public sealed class Section05_VariantFlipReSkin
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
 
-        var rgbScene = host.Application.RenderSystem!.Tree!.GetScene(button)!;
+        var rgbScene = host.Application.WindowManager!.Tree!.GetScene(button)!;
         var rgbVersion = rgbScene.RasterVersion;
 
         // Flip the effective tier to Ansi16 → the palette re-resolves the TextBrush to a hand-picked palette

@@ -186,7 +186,7 @@ public sealed class FrameLoopTests
 
         var renders = probe.RenderCount;
         probe.RenderOffsetColumn = 2; // AffectsComposite — parameters-only (invariant 3)
-        Assert.True(host.Application.RenderSystem!.HasDirtyVisuals); // the composite flag gates Phase 6
+        Assert.True(host.Application.WindowManager!.HasDirtyVisuals); // the composite flag gates Phase 6
         host.RunFrame();
 
         Assert.Equal(renders, probe.RenderCount); // zero Render calls — the slide is pure composite

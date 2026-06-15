@@ -196,7 +196,7 @@ public sealed class Phase3EndToEndTests
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var versionRoot = tree.GetScene(root)!.RasterVersion;
         var versionA = tree.GetScene(cardA)!.RasterVersion;
         var versionB = tree.GetScene(cardB)!.RasterVersion;

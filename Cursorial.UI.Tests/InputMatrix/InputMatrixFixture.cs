@@ -304,7 +304,7 @@ public sealed class MouseHost : IDisposable
     public InputDispatcher Dispatcher => Host.Application.InputDispatcher;
 
     /// <summary>The root's render tree (the delegation oracle — N58/N59/N60).</summary>
-    public RenderTree Tree => Host.Application.RenderSystem!.Tree!;
+    public RenderTree Tree => Host.Application.WindowManager!.Tree!;
 
     public static MouseHost Create(bool show = true)
     {

@@ -112,7 +112,7 @@ public class Section13_Perf(ITestOutputHelper output)
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var versionA = tree.GetScene(zoneA)!.RasterVersion;
         var versionB = tree.GetScene(zoneB)!.RasterVersion;
 

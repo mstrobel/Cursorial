@@ -214,8 +214,8 @@ public sealed partial class UIApplication
 
     private void ComposeSystems()
     {
-        _layoutSystem = new SingleRootLayoutSystem(new Size(_buffer!.Columns, _buffer.Rows));
-        _renderSystem = new SingleRootRenderSystem(_capabilities.Output, _caretService, _guard);
+        _windowManager = new WindowManager(_capabilities.Output, _caretService, _guard);
+        _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
         _systemsReady = true;
         if (_rootElement is { } root)
             WireRoot(root);
@@ -275,8 +275,8 @@ public sealed partial class UIApplication
             {
                 var remaining = _options.FrameInterval - time.GetElapsedTime(frameStart);
 
-                bool workPending = _renderSystem is { HasDirtyVisuals: true } ||
-                                   _layoutSystem is { HasPendingLayout: true } ||
+                bool workPending = _windowManager is { HasDirtyVisuals: true } ||
+                                   _windowManager is { HasPendingLayout: true } ||
                                    StyleHooks is { HasPendingActivations: true };
 
                 if (workPending || (AnimationDriver?.HasActiveAnimations ?? false))
@@ -376,7 +376,10 @@ public sealed partial class UIApplication
 
         if (_streamEnded)
             Shutdown(0);
-        // (P7 seam: windowSystem.DrainDeferredTopology() lands at this boundary.)
+
+        // Apply topology mutations (show/close, popup open/close) queued while the previous frame iterated
+        // its surfaces, before this frame's layout (design doc §8.8). Cheap no-op until the W5 queue lands.
+        _windowManager?.DrainDeferredTopology();
 
         // PHASE 2 — dispatcher jobs, SNAPSHOT count: jobs posted during the drain run next frame.
         var jobs = Dispatcher.JobCount;
@@ -438,7 +441,7 @@ public sealed partial class UIApplication
         try
         {
 
-        if (_layoutSystem is { HasPendingLayout: true } layout)
+        if (_windowManager is { HasPendingLayout: true } layout)
         {
             try
             {
@@ -468,7 +471,9 @@ public sealed partial class UIApplication
                     return default;
             }
         }
-        // (P7 seam: windowSystem.OnLayoutCompleted() at this boundary.)
+        // Post-layout window work: SizeToContent resolution + popup anchor reposition (W1/W4) — a
+        // composite-offset-only change, no re-raster. Cheap no-op at W0.
+        _windowManager?.OnLayoutCompleted();
 
         // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
         if (!_renegotiating)
@@ -477,9 +482,9 @@ public sealed partial class UIApplication
             // visuals are already dirty would buy one wasted empty-diff render next frame.
             var renderRequested = Interlocked.Exchange(ref _renderRequested, 0) != 0;
 
-            var renderNeeded = (_renderSystem?.HasDirtyVisuals ?? false) || layoutRan || resized || renderRequested;
+            var renderNeeded = (_windowManager?.HasDirtyVisuals ?? false) || layoutRan || resized || renderRequested;
 
-            if (renderNeeded && _renderSystem is {} renderSystem)
+            if (renderNeeded && _windowManager is {} renderSystem)
             {
                 bool changed;
 
@@ -577,8 +582,7 @@ public sealed partial class UIApplication
         // (full relayout lands in Phase 5 of the SAME frame).
         _buffer!.Resize(resize.Columns, resize.Rows);
         var size = new Size(resize.Columns, resize.Rows);
-        _renderSystem?.OnViewportResized(size);
-        _layoutSystem?.OnViewportResized(size);
+        _windowManager?.OnViewportResized(size);
     }
 
     // ───────────────────────────── renegotiation (design doc §10.6) ─────────────────────────────
@@ -646,7 +650,7 @@ public sealed partial class UIApplication
             _renderer = new FrameRenderer(fresh.Output, new FrameRendererOptions(OrderedDither: _options.OrderedDither));
             _effectiveInputCapabilities = ApplyDecorationProjections(fresh.Input);
             _supportsAltKeyTracking = ComputeAltKeyTracking(fresh.Input);
-            _renderSystem?.OnCapabilitiesChanged(fresh.Output);
+            _windowManager?.OnCapabilitiesChanged(fresh.Output);
 
             // The capability fan-out, in order — the S7 application theme leg first (re-derives the
             // effective variant + re-stamps the effective-tier class, inversion 6), then styling. The

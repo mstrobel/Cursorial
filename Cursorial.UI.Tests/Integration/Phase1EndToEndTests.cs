@@ -155,7 +155,7 @@ public sealed class Phase1EndToEndTests
         AssertStrictlyBetween(Green.Blue, Red.Blue, blended.Blue);
 
         // The boundary published exactly the half opacity (0.5 → byte 128).
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         Assert.Equal(128, tree.GetPublishedParameters(opacityGroup).Opacity);
 
         // The RenderOffset slide (row 11): layout slot columns 20–27, painted at 23–30; the
@@ -206,7 +206,7 @@ public sealed class Phase1EndToEndTests
         Assert.Equal("Z", host.GetCell(1, 0).Grapheme);
         Assert.Equal("Z", host.GetCell(6, 1).Grapheme);
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var probeScene = tree.GetScene(probe);
         Assert.NotNull(probeScene);
         var probeVersion = probeScene.RasterVersion;
@@ -272,7 +272,7 @@ public sealed class Phase1EndToEndTests
         Assert.Equal("f", host.GetCell(0, 0).Grapheme);
         Assert.Equal("t", host.GetCell(4, 0).Grapheme);
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var rootScene = tree.GetScene(root)!;
         var bounds = label.Bounds;
         var rootVersion = rootScene.RasterVersion;
@@ -317,7 +317,7 @@ public sealed class Phase1EndToEndTests
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
 
-        var tree = host.Application.RenderSystem!.Tree!;
+        var tree = host.Application.WindowManager!.Tree!;
         var bandScene = tree.GetScene(presenter);
         Assert.NotNull(bandScene);
         Assert.Equal(30, bandScene.Rows); // band-sized, never extent-sized (LD13)

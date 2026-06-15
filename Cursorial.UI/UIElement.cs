@@ -381,6 +381,7 @@ public abstract partial class UIElement : UIObject
         // top-down; collection mutation invalidates the owner, which is the queue entry).
         element.IsMeasureValid = false;
         element.IsArrangeValid = false;
+        element._hasArrangedVisible = false; // §9.5: a re-attach re-parks transitions until the next real arrange
 
         element.UpdateEffectiveEnabled();
         element.OnAttachedToTree(new TreeAttachmentEventArgs(root, element._visualParent));

@@ -11,6 +11,7 @@ public abstract partial class UIElement
     private Rect _lastArrangeRect;
     private bool _hasMeasured;
     private bool _hasArranged;
+    private bool _hasArrangedVisible; // first NON-collapsed arrange (template + initial base realized — §9.5 transitions)
     private bool _measuring;
 
     /// <summary>The layout-manager queue this element is enqueued in for measure (lazy-deletion marker).</summary>
@@ -40,8 +41,12 @@ public abstract partial class UIElement
     /// <summary>Whether the element's arrange state is current.</summary>
     public bool IsArrangeValid { get; private set; }
 
-    /// <summary>Whether the element has ever been arranged (its initial layout has settled at least once — §9.5 transitions).</summary>
-    internal bool HasBeenArranged => _hasArranged;
+    /// <summary>
+    /// Whether the element has had a NON-collapsed arrange since its current attach — i.e. its template and
+    /// initial base values are realized (§9.5 transitions go-live). A collapsed arrange does not count (it
+    /// skips template expansion); reset on (re-)attach so a re-attached element re-parks.
+    /// </summary>
+    internal bool HasArrangedVisible => _hasArrangedVisible;
 
     /// <summary>The constraint the element was last measured with (valid when <see cref="HasMeasureConstraint"/>).</summary>
     internal Size LastMeasureConstraint => _lastMeasureConstraint;
@@ -240,7 +245,9 @@ public abstract partial class UIElement
             _hasArranged = true;
             IsArrangeValid = true;
             SetBoundsAndRoute(LayoutRect.Empty);
-            Transitions?.OnArranged(); // §9.5 first-arrange go-live trigger (idempotent)
+            // A Collapsed arrange does NOT trigger transition go-live: it skips template expansion, so the
+            // element's initial base values aren't realized yet — going live here would transition the genuine
+            // initial application that arrives when it's later made Visible (§9.5).
             return;
         }
 
@@ -252,8 +259,9 @@ public abstract partial class UIElement
 
         _lastArrangeRect = finalRect;
         _hasArranged = true;
+        _hasArrangedVisible = true;
         IsArrangeValid = true; // before the override — in-flight invalidations stick
-        Transitions?.OnArranged(); // §9.5 first-arrange go-live trigger (idempotent; the initial layout is now settled)
+        Transitions?.OnArranged(); // §9.5 go-live trigger: a real (template-expanded) arrange is now settled (idempotent)
 
         var margin = Margin;
         var slot = LayoutMath.Sub(finalRect.Size, margin);

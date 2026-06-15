@@ -89,8 +89,11 @@ public sealed class Section16_Transitions
         Assert.InRange(mid, 0.1, 9.9);
 
         element.Classes.Remove("hi"); // base back to 0 ⇒ reverse handoff from the live value
-        Assert.InRange(element.V, 0.1, 9.9); // From = the live ~mid value (not snapped to 0 or 10)
-        host.AdvanceTime(Ms(150));
+        host.AdvanceTime(Ms(33));
+        // Discriminates a real reverse (fades DOWN from the live ~mid toward 0) from a wrongly-SKIPPED reverse
+        // (which would leave the original 0→10 run alive and still CLIMBING, V > mid).
+        Assert.True(element.V < mid, $"reverse must fade down from the live value (mid={mid}, now={element.V})");
+        host.AdvanceTime(Ms(200));
         Assert.Equal(0.0, element.V);  // settles back at the base 0
     }
 
@@ -117,11 +120,24 @@ public sealed class Section16_Transitions
         element.SetV(5.0); // LocalValue — outranks Style
         ArmDouble(element);
 
+        // Pin the MECHANISM: the winning-base channel must NOT fire (the effective base never moves, LocalValue
+        // wins) — distinguishing "didn't fire" from "fired equal and was skipped by Ignite's From==To guard".
+        var baseChanges = 0;
+        using var sub = element.AddObserver(Animatable.VProperty,
+            new RecordingBaseObserver(() => baseChanges++), new ObserverOptions { IncludeBaseChanges = true });
+
         host.Application.Styles.Add(new Style(".hi").Set(Animatable.VProperty, 10.0));
         element.Classes.Add("hi"); // Style base moves to 10 but LocalValue 5 still wins ⇒ no winning-base change
 
         Assert.Equal(5.0, element.V);                        // unchanged
+        Assert.Equal(0, baseChanges);                        // OnBaseValueChanged never fired
         Assert.False(host.Scheduler().HasActiveAnimations);  // no transition
+    }
+
+    private sealed class RecordingBaseObserver(Action onBaseChange) : IValueObserver<double>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, double oldValue, double newValue, BindingPriority priority) { }
+        public void OnBaseValueChanged(UIObject source, UIProperty property, double oldBaseValue, double newBaseValue, bool isAnimated) => onBaseChange();
     }
 
     [Fact] // N148: a LocalValue write that moves the effective base transitions
@@ -168,9 +184,51 @@ public sealed class Section16_Transitions
         host.RunUntilIdle();
         Assert.False(host.Scheduler().HasActiveAnimations); // the in-flight run retracted
 
-        root.Children.Add(element);    // re-attach — its re-application (V base→10) must NOT transition (re-parked)
+        // Re-attach, then change the base IMMEDIATELY (before the re-arrange go-live drains). A re-parked manager
+        // must swallow this — NOT transition it. (Bug-A regression: the sticky-arranged latch went live at once.)
+        root.Children.Add(element);
+        element.Classes.Remove("hi"); // base 10→0 right after re-attach
+        Assert.False(host.Scheduler().HasActiveAnimations); // PARKED — the re-application did not transition
         host.RunUntilIdle();
-        Assert.Equal(10.0, element.V);
+        Assert.Equal(0.0, element.V);
+    }
+
+    [Fact] // Bug-B regression: arming while Collapsed must not go live on the Collapsed arrange — the
+    //       initial application that arrives when later made Visible must not transition.
+    public void ArmedWhileCollapsed_DoesNotTransitionInitialApplication()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        using var _ = host;
+        var element = new Animatable { Visibility = Visibility.Collapsed };
+        ArmDouble(element);
+        var root = new StackPanel();
+        root.Children.Add(element);
+        host.Application.Styles.Add(new Style(".hi").Set(Animatable.VProperty, 10.0));
+        host.ShowRoot(root);
+        host.RunUntilIdle(); // the element only ever had a Collapsed arrange ⇒ NOT live
+
+        element.Classes.Add("hi"); // supplies V's base while Collapsed + parked ⇒ no transition
+        Assert.Equal(10.0, element.V);                       // snapped, not faded
         Assert.False(host.Scheduler().HasActiveAnimations);
+    }
+
+    [Fact] // Multiple transitions on one element fade their properties independently
+    public void MultipleTransitions_Independent()
+    {
+        var (host, _, element) = Show();
+        using var _ = host;
+        Transition.SetTransitions(element, new TransitionCollection
+        {
+            new DoubleTransition(Animatable.VProperty) { Duration = Ms(100) },
+            new DoubleTransition(Animatable.WProperty) { Duration = Ms(100) },
+        });
+
+        element.SetV(10.0);
+        element.SetW(20.0);
+        Assert.Equal(0.0, element.V); // both fade from their old bases
+        Assert.Equal(0.0, element.W);
+        host.AdvanceTime(Ms(150));
+        Assert.Equal(10.0, element.V);
+        Assert.Equal(20.0, element.W);
     }
 }

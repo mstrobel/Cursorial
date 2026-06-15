@@ -51,7 +51,13 @@ internal sealed class TransitionManager
     }
 
     /// <summary>Flips the go-live latch (the app's post-layout drain calls this — the FocusManager mirror).</summary>
-    internal void GoLive() => _live = true;
+    /// <remarks>No-op when the manager was disarmed/detached after its go-live request but before the drain
+    /// (the §9.5 ordering hole): a re-attach must re-park, so a stale queued GoLive must not re-arm a parked manager.</remarks>
+    internal void GoLive()
+    {
+        if (_armed is not null && _owner.IsAttachedToTree)
+            _live = true;
+    }
 
     /// <summary>Whether a base change should ignite a transition: live (past the initial application) and motion enabled.</summary>
     internal bool ShouldTransition() => _live && (AnimationScheduler.CurrentOrNull?.AnimationsEnabled ?? false);
@@ -71,10 +77,11 @@ internal sealed class TransitionManager
         foreach (var transition in collection)
             _subscriptions.Add(transition.Subscribe(_owner, this));
 
-        // Arming on an ALREADY-arranged element (runtime SetTransitions on a settled element): its initial
-        // application is in the past — the manager never observed it — so there is nothing to skip. Go live now.
-        // Arming before the first arrange (the at-attach path) stays parked; OnArranged drives go-live then.
-        if (_owner.HasBeenArranged)
+        // Arming on an element that has already had a real (non-collapsed) arrange — runtime SetTransitions on a
+        // settled element — goes live now: its initial application is in the past (the manager never observed it),
+        // nothing to skip. A freshly (re-)attached element has HasArrangedVisible == false (reset on attach), so it
+        // stays PARKED until its next real arrange drives OnArranged → go-live (this is the re-attach re-park).
+        if (_owner.HasArrangedVisible)
             _live = true;
     }
 

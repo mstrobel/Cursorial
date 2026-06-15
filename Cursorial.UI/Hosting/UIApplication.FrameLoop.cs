@@ -486,6 +486,11 @@ public sealed partial class UIApplication
         // composite-offset-only change, no re-raster. Cheap no-op at W0.
         _windowManager?.OnLayoutCompleted();
 
+        // S5 transitions (§9.5): flip the go-live latch on every element whose first arrange completed this
+        // pass — AFTER layout settled their initial base values, so the first post-go-live change transitions.
+        // Runs UNCONDITIONALLY each frame (not gated on HasPendingLayout); empty-set early-out keeps it free.
+        CompletePendingTransitionGoLive();
+
         // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
         if (!_renegotiating)
         {
@@ -888,5 +893,21 @@ public sealed partial class UIApplication
         {
             SynchronizationContext.SetSynchronizationContext(previous);
         }
+    }
+
+    // S5 transitions (§9.5): elements whose first arrange completed this pass, awaiting the go-live flip.
+    private readonly HashSet<TransitionManager> _pendingTransitionGoLive = [];
+
+    internal void RequestTransitionGoLive(TransitionManager manager) => _pendingTransitionGoLive.Add(manager);
+
+    /// <summary>Flips the go-live latch on every newly-arranged transition manager (post-layout boundary; empty-set early-out).</summary>
+    private void CompletePendingTransitionGoLive()
+    {
+        if (_pendingTransitionGoLive.Count == 0)
+            return;
+
+        foreach (var manager in _pendingTransitionGoLive)
+            manager.GoLive();
+        _pendingTransitionGoLive.Clear();
     }
 }

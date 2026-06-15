@@ -40,6 +40,9 @@ public abstract partial class UIElement
     /// <summary>Whether the element's arrange state is current.</summary>
     public bool IsArrangeValid { get; private set; }
 
+    /// <summary>Whether the element has ever been arranged (its initial layout has settled at least once — §9.5 transitions).</summary>
+    internal bool HasBeenArranged => _hasArranged;
+
     /// <summary>The constraint the element was last measured with (valid when <see cref="HasMeasureConstraint"/>).</summary>
     internal Size LastMeasureConstraint => _lastMeasureConstraint;
 
@@ -237,6 +240,7 @@ public abstract partial class UIElement
             _hasArranged = true;
             IsArrangeValid = true;
             SetBoundsAndRoute(LayoutRect.Empty);
+            Transitions?.OnArranged(); // §9.5 first-arrange go-live trigger (idempotent)
             return;
         }
 
@@ -249,6 +253,7 @@ public abstract partial class UIElement
         _lastArrangeRect = finalRect;
         _hasArranged = true;
         IsArrangeValid = true; // before the override — in-flight invalidations stick
+        Transitions?.OnArranged(); // §9.5 first-arrange go-live trigger (idempotent; the initial layout is now settled)
 
         var margin = Margin;
         var slot = LayoutMath.Sub(finalRect.Size, margin);

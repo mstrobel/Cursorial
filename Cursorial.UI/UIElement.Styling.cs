@@ -135,6 +135,9 @@ public abstract partial class UIElement
     internal void SetPseudoClassFromMapping(string pseudoClass, bool active)
         => PseudoClasses.SetInternal(pseudoClass, active);
 
+    /// <summary>The per-element S5 transition manager (§9.5) — null until a <see cref="Transition.TransitionsProperty"/> arms it.</summary>
+    internal TransitionManager? Transitions { get; set; }
+
     /// <summary>The attach walk's styling step (B19 — ordered before the element's first measure).</summary>
     internal void OnStylingAttached() => Engine?.OnElementAttached(this);
 

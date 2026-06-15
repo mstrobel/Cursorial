@@ -393,6 +393,10 @@ public abstract partial class UIElement : UIObject
         // first measure — styles affect layout in the same frame.
         element.OnStylingAttached();
 
+        // S5 transitions (§9.5): arm any attached TransitionCollection now (parked) so the initial style
+        // application that follows in this same synchronous activation is swallowed, not transitioned.
+        TransitionManager.OnElementAttached(element);
+
         if (element._visualChildren is { } children)
         {
             for (var i = 0; i < children.Count; i++)
@@ -443,6 +447,10 @@ public abstract partial class UIElement : UIObject
         // S5 detach-stop (design doc §9.6): retract + evict every animation/storyboard targeting this element;
         // store-owned retraction, no Completed. Idempotent against Fork B's retraction on the same detach.
         AnimationScheduler.CurrentOrNull?.OnElementDetached(element);
+
+        // S5 transitions (§9.5): drop the winning-base subscriptions + re-park (a re-attach must not transition
+        // its initial application). The in-flight transition's animation instance was retracted just above.
+        TransitionManager.OnElementDetached(element);
 
         element.UpdateEffectiveEnabled();
 

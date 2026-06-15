@@ -285,4 +285,29 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 | N138 | a Holding instance | flip true→false, `Tick` | unaffected — stays Holding at the end value | PIN (AD15) |
 | N139 | already flipped false, then false→true | `Begin` a new animation | prospective — the new animation runs normally; already-snapped instances are untouched | PIN (AD15) |
 | N140 | `Begin` while disabled with a `Completed` subscriber | the next completion pass | `Completed` raised exactly once on the next pass, never synchronously from `Begin` | PIN (AD15) |
-## 16. Transitions (implicit animations, winning-base observer) (A3) — TBD
+## 16. Transitions (implicit animations, winning-base observer) (A3) — N141–N153
+
+Go-live design (A3): a `Transition.TransitionsProperty` arms a per-element `TransitionManager` that subscribes
+the Fork A winning-base channel (`IValueObserver<T>.OnBaseValueChanged`, `ObserverOptions.IncludeBaseChanges`).
+A base change transitions only once the element is **live**; the live latch flips at the post-layout boundary
+after the element's first arrange (the `CompletePendingActivationFocus` mirror), so the initial style
+application — base writes at attach and at first-layout template expansion — is swallowed. Arming a manager on
+an already-arranged element goes live at once (its initial application is in the past).
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| N141 | live armed element, no animation in flight, `V` at a settled base | a Style flip moves V's base 0→10 | an Animation-priority run starts `From=oldBase(0) To=newBase(10) Fill.Stop`; **fades from the OLD value** (mid-flight 0<V<10), settling at 10 | PIN (§9.5) — the pinned oracle |
+| N142 | freshly-shown element, transitions set before the first arrange (parked) | the initial style application writes V's base | **no transition** — manager parked until go-live; V snaps to the styled base | PIN |
+| N143 | armed + live element | the base change completes (past Duration) | the transition completes (Fill.Stop retracts), the base value shows | PIN |
+| N144 | armed + live, a fade-in mid-flight | the base changes again (reverse) | `SnapshotAndReplace` handoff: `From=GetValue` (the live interpolated value), reverses smoothly; one live run | PIN (AD4) |
+| N145 | armed, `AnimationsEnabled == false` | a base change | **no transition starts** (the base snaps via Fork A) | PIN (§9.7) |
+| N146 | armed + live, base change where old==new | delivery | equal From/To ⇒ **skipped**, no run | PIN |
+| N147 | a Style flip on V **shadowed by a LocalValue** on V | the Style-lane change | **no transition** — the effective base is unchanged (LocalValue wins); `OnBaseValueChanged` doesn't fire | PIN (§9.5) |
+| N148 | a `LocalValue` SetValue on a live armed property (no shadow) | the local write | **transitions** (effective base moved) `From=oldBase To=newLocal` | PIN |
+| N149 | live armed element, `Transitions` replaced with a new collection | replace | old subs disposed, new collection sealed + armed; the element stays **live** (already past first arrange) | PIN |
+| N151 | live armed element | element detaches mid-transition | the in-flight run retracts silently (detach-stop); manager disarmed; **re-attach re-parks** (its re-application doesn't transition) | PIN (AD10) |
+| N153 | armed `MarginsTransition` on a signed-margin property | base change through negative | interpolates **signed** (no zero-clamp), per LD19 | PIN (LD19) |
+
+(N150/N152/N154 — the delayed-handoff non-ignition, Popup/Window per-element go-live, and BrushTransition
+per-sample allocation — are covered structurally by N38, the per-element latch, and AD8 respectively; added as
+end-to-end rows when the windowing/XAML transition demos land.)

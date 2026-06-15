@@ -49,8 +49,8 @@ public abstract class AnimationTrack
 /// <summary>
 /// A typed property timeline (design doc §9.3). Build inputs are mutually exclusive layers: an explicit
 /// <see cref="Source"/> animation; or <see cref="Keyframes"/>; or the <see cref="From"/>/<see cref="To"/>/
-/// <see cref="Duration"/> two-point form. <see cref="Repeat"/>/<see cref="AutoReverse"/> wrap the result
-/// uniformly via <see cref="RepeatAnimation{T}"/>.
+/// <see cref="Duration"/> two-point form. <see cref="AnimationTrack.Repeat"/>/<see cref="AnimationTrack.AutoReverse"/>
+/// wrap the result uniformly via <see cref="RepeatAnimation{T}"/>.
 /// </summary>
 /// <typeparam name="T">The animated value type.</typeparam>
 public class AnimationTrack<T> : AnimationTrack
@@ -73,7 +73,7 @@ public class AnimationTrack<T> : AnimationTrack
     /// <summary>Keyframes (mutually exclusive with the two-point form and <see cref="Source"/>).</summary>
     public IList<Keyframe<T>>? Keyframes { get; set; }
 
-    /// <summary>A code-built animation escape hatch; <see cref="Repeat"/>/<see cref="AutoReverse"/> wrap it uniformly.</summary>
+    /// <summary>A code-built animation escape hatch; <see cref="AnimationTrack.Repeat"/>/<see cref="AnimationTrack.AutoReverse"/> wrap it uniformly.</summary>
     public IAnimation<T>? Source { get; set; }
 
     private bool _sealed;

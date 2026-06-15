@@ -22,4 +22,11 @@ public interface IStyleEdgeAction
 
     /// <summary>Invoked when the owning rule transitions active → inactive on <paramref name="element"/>, including detach retraction.</summary>
     void OnRetracted(UIElement element);
+
+    /// <summary>
+    /// Invoked when the owning <see cref="Style"/> seals (on attach). Element-independent validation an action
+    /// wants surfaced at attach rather than first activation goes here — e.g. <c>BeginStoryboard</c> seals its
+    /// referenced <see cref="Storyboard"/>, so a track type error throws at attach (§9.3). Default: no-op.
+    /// </summary>
+    void SealReferences() { }
 }

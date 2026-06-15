@@ -557,10 +557,23 @@ public sealed class Style
     {
         style.IsSealed = true;
 
+        // Seal each edge action's references (S5 storyboards surface track type errors at attach — §9.3/§9.10).
+        SealEdgeReferences(style._enter);
+        SealEdgeReferences(style._exit);
+
         if (style._children is { Count: > 0 } children)
         {
             foreach (var child in children)
                 SealSubtree(child);
         }
+    }
+
+    private static void SealEdgeReferences(EdgeActionCollection? actions)
+    {
+        if (actions is not { Count: > 0 })
+            return;
+
+        for (var i = 0; i < actions.Count; i++)
+            actions[i].SealReferences();
     }
 }

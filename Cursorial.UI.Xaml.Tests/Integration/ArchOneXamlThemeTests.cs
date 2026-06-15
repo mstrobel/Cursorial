@@ -3,8 +3,10 @@
 
 using System.Collections.Generic;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.UI;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes.Xaml;
@@ -14,12 +16,14 @@ using UIControls = Cursorial.UI.Controls;
 namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
-/// ARCH-1 (Task #10): the data-shipped <c>Cursorial.UI.Themes.Xaml</c> assembly's Button control theme —
-/// authored in embedded <c>.xaml</c> and loaded via <see cref="CursorialXamlTheme.LoadControls"/> — renders
-/// byte-for-byte identically to the code-first <c>CursorialTheme.BuiltIn</c> Button, at REST and FOCUSED
-/// (exercising the nested <c>^:focus</c> reverse-video sub-rule authored through the Selector converter +
-/// <c>&lt;Style.Children&gt;</c>). The dogfood proof that the declarative theme reproduces the code-first one
-/// end-to-end on the real frame loop.
+/// ARCH-1 (Task #10): the data-shipped <c>Cursorial.UI.Themes.Xaml</c> assembly's control themes —
+/// authored in embedded <c>.xaml</c> and loaded via <see cref="CursorialXamlTheme.LoadControls"/> — render
+/// byte-for-byte identically to the code-first <c>CursorialTheme.BuiltIn</c> ones. The button family is
+/// checked at REST and FOCUSED (exercising the nested <c>^:focus</c> reverse-video sub-rule authored through
+/// the Selector converter + <c>&lt;Style.Children&gt;</c>); the ScrollBar/ScrollViewer at rest (their
+/// <c>Track</c>/arrow/SCP composition through the parameterless <c>Track()</c> + <c>TemplatedParent</c>
+/// owner resolution). The dogfood proof that the declarative theme reproduces the code-first one end-to-end
+/// on the real frame loop.
 /// </summary>
 public sealed class ArchOneXamlThemeTests
 {
@@ -33,8 +37,54 @@ public sealed class ArchOneXamlThemeTests
     {
         // The XAML theme (app.Theme) layers over the code-first BuiltIn; the typeof(control) entry it carries
         // replaces BuiltIn's. Compare the rendered cells (glyph + fg + bg) to the BuiltIn oracle, rest + focus.
-        Assert.Equal(RenderCells(control, xaml: false, focus: false), RenderCells(control, xaml: true, focus: false));
-        Assert.Equal(RenderCells(control, xaml: false, focus: true),  RenderCells(control, xaml: true, focus: true));
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: false, 14, 3, () => MakeControl(control)),
+            CaptureCells(xaml: true,  focus: false, 14, 3, () => MakeControl(control)));
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: true, 14, 3, () => MakeControl(control)),
+            CaptureCells(xaml: true,  focus: true, 14, 3, () => MakeControl(control)));
+    }
+
+    [Fact]
+    public void XamlScrollBarTheme_RendersIdenticallyToCSharpBuiltIn()
+    {
+        // A vertical ScrollBar: ▲ rail+thumb ▼ down the column. The XAML twin authors the arrow RepeatButtons
+        // + Track (parameterless ctor, owner resolved from TemplatedParent) and must match the code-first one.
+        static UIControls.Control MakeScrollBar() => new UIControls.ScrollBar
+        {
+            Orientation = UIControls.Orientation.Vertical,
+            Width = 1,
+            Height = 10,
+            Minimum = 0,
+            Maximum = 90,
+            ViewportSize = 10,
+        };
+
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: false, 2, 12, MakeScrollBar),
+            CaptureCells(xaml: true,  focus: false, 2, 12, MakeScrollBar));
+    }
+
+    [Fact]
+    public void XamlScrollViewerTheme_RendersIdenticallyToCSharpBuiltIn()
+    {
+        // A ScrollViewer over tall content: the SCP fills, a vertical ScrollBar docks right. The XAML twin
+        // composes ScrollBar + ScrollContentPresenter via the parameterless parts and must match.
+        static UIControls.Control MakeScrollViewer() => new UIControls.ScrollViewer
+        {
+            Width = 13,
+            Height = 5,
+            Content = new UIControls.Border
+            {
+                Width = 12,
+                Height = 40,
+                Background = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
+            },
+        };
+
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: false, 14, 6, MakeScrollViewer),
+            CaptureCells(xaml: true,  focus: false, 14, 6, MakeScrollViewer));
     }
 
     private static UIControls.Control MakeControl(string control) => control switch
@@ -46,13 +96,14 @@ public sealed class ArchOneXamlThemeTests
         _              => new UIControls.Button { Content = "OK" },
     };
 
-    private static (string Glyph, Color Fg, Color Bg)[] RenderCells(string control, bool xaml, bool focus)
+    private static (string Glyph, Color Fg, Color Bg)[] CaptureCells(
+        bool xaml, bool focus, int cols, int rows, Func<UIControls.Control> factory)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(cols, rows) });
         if (xaml)
             host.Application.Theme = CursorialXamlTheme.LoadControls();
 
-        var element = MakeControl(control);
+        var element = factory();
         host.ShowRoot(element);
         Assert.True(host.RunUntilIdle());
         if (focus)
@@ -61,9 +112,9 @@ public sealed class ArchOneXamlThemeTests
             host.RunFrame();
         }
 
-        var cells = new List<(string, Color, Color)>(14 * 3);
-        for (var r = 0; r < 3; r++)
-        for (var c = 0; c < 14; c++)
+        var cells = new List<(string, Color, Color)>(cols * rows);
+        for (var r = 0; r < rows; r++)
+        for (var c = 0; c < cols; c++)
         {
             var cell = host.GetCell(c, r);
             cells.Add((cell.Grapheme ?? string.Empty, cell.Style.Foreground, cell.Style.Background));

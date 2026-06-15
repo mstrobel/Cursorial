@@ -20,16 +20,25 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public sealed class Track : UIElement
 {
-    private readonly ScrollBar _owner;
+    private ScrollBar? _ownerOverride;
     private bool _dragging;
     private int _dragGrabOffset;  // cells from the thumb's start edge where the drag grabbed
 
+    /// <summary>Parameterless constructor for XAML; the owning <see cref="ScrollBar"/> is resolved from <c>TemplatedParent</c>.</summary>
+    public Track() { }
+
+    /// <summary>The code-first constructor with an explicit owner (used by the code-first ScrollBar template).</summary>
     internal Track(ScrollBar owner)
     {
-        _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+        _ownerOverride = owner ?? throw new ArgumentNullException(nameof(owner));
     }
 
-    private bool Vertical => _owner.Orientation == Orientation.Vertical;
+    // The owning ScrollBar: the explicit ctor owner (code-first) or the TemplatedParent (XAML template).
+    private ScrollBar Owner => _ownerOverride
+        ?? TemplatedParent as ScrollBar
+        ?? throw new InvalidOperationException("Track requires a ScrollBar owner (the ctor) or a ScrollBar TemplatedParent (XAML).");
+
+    private bool Vertical => Owner.Orientation == Orientation.Vertical;
 
     /// <summary>The long-axis cell length of the track (rows when vertical, columns when horizontal).</summary>
     private int TrackLength => Vertical ? Bounds.Size.Rows : Bounds.Size.Columns;
@@ -53,8 +62,8 @@ public sealed class Track : UIElement
         if (length <= 0)
             return (0, 0);
 
-        var range = _owner.Maximum - _owner.Minimum;
-        var viewport = Math.Max(0, _owner.ViewportSize);
+        var range = Owner.Maximum - Owner.Minimum;
+        var viewport = Math.Max(0, Owner.ViewportSize);
         var extent = range + viewport;
 
         // The proportional thumb length: viewport / extent of the track, at least 1 cell.
@@ -68,7 +77,7 @@ public sealed class Track : UIElement
         if (range <= 0 || travel <= 0)
             return (0, thumbLength);
 
-        var fraction = (_owner.Value - _owner.Minimum) / range;
+        var fraction = (Owner.Value - Owner.Minimum) / range;
         var start = Math.Clamp((int)Math.Round(travel * fraction), 0, travel);
         return (start, thumbLength);
     }
@@ -80,7 +89,7 @@ public sealed class Track : UIElement
         if (bounds.IsEmpty)
             return;
 
-        var pen = _owner.BorderPen ?? Pens.Light;
+        var pen = Owner.BorderPen ?? Pens.Light;
         var length = TrackLength;
 
         // The rail: one stroke down/across the track's center line. The thumb's immediate Set cells
@@ -97,7 +106,7 @@ public sealed class Track : UIElement
         // Any IBrush is honored via IBrush.ColorAt over the thumb's own box, so a gradient thumb tints
         // across its length (a solid brush ignores the coordinates and returns one color).
         var (start, thumbLength) = ThumbGeometry();
-        var brush = _owner.ThumbBrush;
+        var brush = Owner.ThumbBrush;
         var thumbBounds = Vertical
             ? new Rect(0, start, 1, thumbLength)
             : new Rect(start, 0, thumbLength, 1);
@@ -129,20 +138,20 @@ public sealed class Track : UIElement
 
         if (coord < start)
         {
-            _owner.PageBy(-1); // click above/left of the thumb pages back (C233)
+            Owner.PageBy(-1); // click above/left of the thumb pages back (C233)
             return;
         }
 
         if (coord >= start + thumbLength)
         {
-            _owner.PageBy(+1); // click below/right pages forward
+            Owner.PageBy(+1); // click below/right pages forward
             return;
         }
 
         // On the thumb: begin a drag (capture, cell-quantized).
         _dragging = CaptureMouse();
         _dragGrabOffset = coord - start;
-        _owner.OnDragStart();
+        Owner.OnDragStart();
     }
 
     /// <inheritdoc/>
@@ -160,9 +169,9 @@ public sealed class Track : UIElement
             return;
 
         var thumbStart = Math.Clamp(coord - _dragGrabOffset, 0, travel);
-        var range = _owner.Maximum - _owner.Minimum;
-        var value = _owner.Minimum + range * thumbStart / travel;
-        _owner.OnThumbDrag(value);
+        var range = Owner.Maximum - Owner.Minimum;
+        var value = Owner.Minimum + range * thumbStart / travel;
+        Owner.OnThumbDrag(value);
     }
 
     /// <inheritdoc/>
@@ -175,7 +184,7 @@ public sealed class Track : UIElement
         e.Handled = true;
         ReleaseMouseCapture();
         _dragging = false;
-        _owner.OnDragEnd();
+        Owner.OnDragEnd();
     }
 
     /// <inheritdoc/>
@@ -185,7 +194,7 @@ public sealed class Track : UIElement
         if (_dragging)
         {
             _dragging = false;
-            _owner.OnDragEnd();
+            Owner.OnDragEnd();
         }
     }
 }

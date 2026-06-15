@@ -196,13 +196,10 @@ internal sealed class WindowingDemo : IDemo
         {
             var n = ++_windowCount;
             var body = new StackPanel();
-            body.Children.Add(new TextBlock($"  Window #{n}") { Foreground = new SolidColorBrush(WindowText) });
+            body.Children.Add(new TextBlock($"  Window #{n}"));
 
             body.Children.Add(new TextBlock("  Drag the title bar to move me;\n  drag the ◢ corner to resize;\n" +
-                                            "  double-click the title bar to maximize.")
-                              {
-                                  Foreground = new SolidColorBrush(WindowText)
-                              });
+                                            "  double-click the title bar to maximize."));
 
             var close = new Button { Content = "Close" };
 
@@ -210,7 +207,7 @@ internal sealed class WindowingDemo : IDemo
                          {
                              Title = $"Window #{n}",
                              Content = body,
-                             Background = new SolidColorBrush(WindowBg, 0.9),
+                             Background = new SolidColorBrush(WindowBg, 0.95),
                              WindowStartupLocation = WindowStartupLocation.Manual,
                              Left = 6 + n * 3 % 24, // cascade
                              Top = 3 + n * 2 % 12,
@@ -229,8 +226,8 @@ internal sealed class WindowingDemo : IDemo
 
         private async void OpenDialog()
         {
-            var prompt = new StackPanel { Background = new SolidColorBrush(WindowBg) };
-            prompt.Children.Add(new TextBlock("  Save changes before closing?") { Foreground = new SolidColorBrush(WindowText) });
+            var prompt = new StackPanel();
+            prompt.Children.Add(new TextBlock("  Save changes before closing?"));
 
             var buttons = new StackPanel { Orientation = Orientation.Horizontal };
             var ok = new Button { Content = "OK" };
@@ -243,7 +240,7 @@ internal sealed class WindowingDemo : IDemo
                          {
                              Title = "Confirm",
                              Content = prompt,
-                             Background = new SolidColorBrush(WindowBg),
+                             Background = new SolidColorBrush(WindowBg, 0.95),
                              WindowStartupLocation = WindowStartupLocation.CenterScreen,
                              Width = 36,
                              Height = 7,

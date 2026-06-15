@@ -1,7 +1,9 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
@@ -435,7 +437,11 @@ public partial class Window : ContentControl
         }
 
         // Title-bar style: an occluding outline + a background-filled title bar docked above the content.
-        root.BorderPen = Pens.Light;
+        window.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+        window.SetResourceReference(BorderPenProperty, ThemeKeys.BorderPen);
+        
+        root.SetBinding(Border.BorderPenProperty, new Binding(nameof(BorderPen)) { Source = window });
+        root.SetBinding(Border.BackgroundProperty, new Binding(nameof(Background)) { Source = window });
 
         var layout = new DockPanel();
 

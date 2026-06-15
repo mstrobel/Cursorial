@@ -261,7 +261,7 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             Owner = owner,
         };
         _instances.Add(instance);
-        owner.AddChild(animation.Duration == TimeSpan.MaxValue); // count BEFORE the first sample (zero-duration safety)
+        owner.AddChild(instance); // register BEFORE the first sample (a zero-duration child can't underflow the count)
         StartInstance(instance);
     }
 

@@ -10,6 +10,7 @@ namespace Cursorial.UI;
 internal sealed class StoryboardInstance : IAnimationCompletion
 {
     private readonly AnimationScheduler _scheduler;
+    private readonly List<AnimationInstance> _children = []; // for forwarding the timeline ops (Pause/Seek/SkipToEnd)
     private int _childCount;
     private int _finitePending;
     private bool _anyPerpetual;
@@ -42,13 +43,58 @@ internal sealed class StoryboardInstance : IAnimationCompletion
     internal bool IsCompleted => _completed;
 
     /// <summary>Registers a started child (call before the child's first sample so a zero-duration child can't underflow).</summary>
-    internal void AddChild(bool perpetual)
+    internal void AddChild(AnimationInstance child)
     {
+        _children.Add(child);
         _childCount++;
-        if (perpetual)
+        if (child.IsPerpetual)
             _anyPerpetual = true;
         else
             _finitePending++;
+    }
+
+    // ── Storyboard-timeline ops (A2; design doc §9.3) ──────────────────────────────────────────────────
+
+    /// <summary>Pauses every child (the storyboard timeline holds).</summary>
+    internal void Pause()
+    {
+        for (var i = 0; i < _children.Count; i++)
+            _children[i].Pause();
+    }
+
+    /// <summary>Resumes every child from where it paused.</summary>
+    internal void Resume()
+    {
+        for (var i = 0; i < _children.Count; i++)
+            _children[i].Resume();
+    }
+
+    /// <summary>
+    /// Seeks the storyboard timeline to <paramref name="offset"/>: each child seeks to
+    /// <c>offset − BeginTime</c>; a child whose start lies past the seek point rewinds to Delayed
+    /// (its property returns to base, timeline retained).
+    /// </summary>
+    internal void Seek(TimeSpan offset)
+    {
+        for (var i = 0; i < _children.Count; i++)
+        {
+            var child = _children[i];
+            var childElapsed = offset - child.BeginTimeOffset;
+            if (childElapsed >= TimeSpan.Zero)
+                child.Seek(childElapsed);
+            else
+                child.RewindToDelayed(child.BeginTimeOffset - offset);
+        }
+    }
+
+    /// <summary>Skips the whole storyboard to its end — validates all-finite UP FRONT (any perpetual track throws first — AD6).</summary>
+    internal void SkipToEnd()
+    {
+        if (_anyPerpetual)
+            throw new InvalidOperationException("Cannot SkipToEnd a storyboard with a perpetual track (AD6).");
+
+        for (var i = 0; i < _children.Count; i++)
+            _children[i].SkipToEnd();
     }
 
     /// <summary>Called after all tracks have been started — completes immediately if there were no children at all.</summary>
@@ -107,9 +153,9 @@ internal sealed class StoryboardInstance : IAnimationCompletion
 }
 
 /// <summary>
-/// The caller's handle to a running <see cref="Storyboard"/> (design doc §9.3). A1 ships
-/// <see cref="IsCompleted"/>, <see cref="Stop"/>, and <see cref="Completed"/>; the storyboard-timeline ops
-/// (<c>Pause</c>/<c>Resume</c>/<c>Seek</c>/<c>SkipToEnd</c>) land in A2.
+/// The caller's handle to a running <see cref="Storyboard"/> (design doc §9.3). A1 shipped
+/// <see cref="IsCompleted"/>/<see cref="Stop"/>/<see cref="Completed"/>; the storyboard-timeline ops
+/// (<see cref="Pause"/>/<see cref="Resume"/>/<see cref="Seek"/>/<see cref="SkipToEnd"/>) landed in A2.
 /// </summary>
 public sealed class StoryboardHandle
 {
@@ -123,6 +169,18 @@ public sealed class StoryboardHandle
 
     /// <summary>Stops the whole storyboard: every child retracts (bases resurface); no <c>Completed</c>.</summary>
     public void Stop() => _instance.StopFromHandle();
+
+    /// <summary>Pauses every track — the storyboard timeline holds (A2).</summary>
+    public void Pause() => _instance.Pause();
+
+    /// <summary>Resumes every track from where it paused (A2).</summary>
+    public void Resume() => _instance.Resume();
+
+    /// <summary>Seeks the storyboard timeline to <paramref name="offset"/> (per-track <c>offset − BeginTime</c>; A2).</summary>
+    public void Seek(TimeSpan offset) => _instance.Seek(offset);
+
+    /// <summary>Snaps the whole storyboard to its end; throws if any track is perpetual (validated up front — A2/AD6).</summary>
+    public void SkipToEnd() => _instance.SkipToEnd();
 
     /// <summary>Raised once per lifetime, after the sampling pass — never on <c>Stop</c>, detach, or a perpetual track (AD3).</summary>
     public event Action<StoryboardHandle>? Completed;

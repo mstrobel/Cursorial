@@ -187,4 +187,85 @@ public sealed class Section06_PauseSeekSkip
         var handle = a.BeginAnimation(Animatable.VProperty, new DoubleAnimation(0.0, 10.0, Ms(100)).Loop());
         Assert.Throws<InvalidOperationException>(handle.SkipToEnd);
     }
+
+    // ───────────────────────────── StoryboardHandle timeline ops (§6 over storyboards; N60) ─────────────────────────────
+
+    [Fact] // N60: StoryboardHandle.SkipToEnd validates all-finite UP FRONT — a perpetual track throws before touching any
+    public void Storyboard_SkipToEnd_PerpetualTrack_ThrowsUpFront()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 10.0, Duration = Ms(100) });
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 20.0, Duration = Ms(100), Repeat = RepeatBehavior.Forever });
+        var handle = sb.Begin(a);
+
+        Assert.Throws<InvalidOperationException>(handle.SkipToEnd);
+        Assert.Equal(0.0, a.V); // the finite track was NOT snapped — validation ran before any child was touched
+    }
+
+    [Fact] // StoryboardHandle.Pause/Resume holds + continues the whole storyboard
+    public void Storyboard_PauseResume_Continues()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 99.0, Duration = Ms(99) });
+        var handle = sb.Begin(a);
+        host.AdvanceTime(Ms(33));
+        handle.Pause();
+        var held = a.V;
+        host.AdvanceTime(Ms(300));
+        Assert.Equal(held, a.V); // holds
+
+        handle.Resume();
+        host.AdvanceTime(Ms(33));
+        Assert.InRange(a.V, 55.0, 77.0); // continues, no jump
+    }
+
+    [Fact] // StoryboardHandle.Seek maps offset to each track by BeginTime; a pre-start track rewinds to Delayed
+    public void Storyboard_Seek_PerTrackBeginTime()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 100.0, Duration = Ms(100) });                       // BeginTime 0
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 100.0, Duration = Ms(100), BeginTime = Ms(50) });   // staggered
+        var handle = sb.Begin(a);
+
+        handle.Seek(Ms(50));
+        Assert.Equal(50.0, a.V); // V at offset 50
+        Assert.Equal(0.0, a.W);  // W at offset 50−50 = 0 ⇒ From
+
+        handle.Seek(Ms(75));
+        Assert.Equal(75.0, a.V);
+        Assert.Equal(25.0, a.W); // W at 75−50 = 25
+
+        handle.Seek(Ms(25));
+        Assert.Equal(25.0, a.V);
+        Assert.Equal(0.0, a.W);  // 25 < W's BeginTime ⇒ W rewinds to Delayed (base resurfaces)
+    }
+
+    [Fact] // StoryboardHandle.SkipToEnd (all finite) snaps every track to its end and completes
+    public void Storyboard_SkipToEnd_AllFinite()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 10.0, Duration = Ms(100) });
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 20.0, Duration = Ms(150) });
+        var completed = 0;
+        var handle = sb.Begin(a);
+        handle.Completed += _ => completed++;
+
+        handle.SkipToEnd();
+        Assert.Equal(10.0, a.V);
+        Assert.Equal(20.0, a.W);
+        host.RunFrame();
+        Assert.Equal(1, completed);
+    }
 }

@@ -24,6 +24,9 @@ internal abstract class AnimationInstance : IAnimationCompletion
     /// <summary>The storyboard group this instance belongs to (null ⇒ a standalone <c>BeginAnimation</c> — §9.3).</summary>
     internal StoryboardInstance? Owner { get; set; }
 
+    /// <summary>The track's <c>BeginTime</c> stagger — the offset of this child on the storyboard timeline (§9.3 Seek).</summary>
+    internal TimeSpan BeginTimeOffset { get; private protected set; }
+
     /// <summary>True while the instance must be sampled / pins the idle gate (Delayed or Running — §9.6).</summary>
     internal bool IsActive => State is AnimationState.Delayed or AnimationState.Running;
 
@@ -59,6 +62,12 @@ internal abstract class AnimationInstance : IAnimationCompletion
 
     /// <summary>Reduced-motion collapse (§9.7/AD15): finite snaps to its end + completes; perpetual retracts; Holding/finished untouched.</summary>
     internal abstract void ApplyReducedMotion();
+
+    /// <summary>Storyboard backward-seek (§9.3): retracts to Delayed, re-armed to start <paramref name="delayFromNow"/> ahead (timeline retained).</summary>
+    internal abstract void RewindToDelayed(TimeSpan delayFromNow);
+
+    /// <summary>True when this instance's animation never ends (a perpetual track blocks <c>StoryboardHandle.SkipToEnd</c> — AD6).</summary>
+    internal abstract bool IsPerpetual { get; }
 
     /// <summary>Raises the public handle's <c>Completed</c> (at most once) — the post-sampling drain.</summary>
     public abstract void RaiseCompleted();
@@ -97,11 +106,13 @@ internal sealed class AnimationInstance<T> : AnimationInstance
         _duration = animation.Duration;
         _perpetual = _duration == TimeSpan.MaxValue;
         _fill = options.Fill;
+        BeginTimeOffset = options.BeginTime;
         State = options.BeginTime > TimeSpan.Zero ? AnimationState.Delayed : AnimationState.Running;
     }
 
     internal override UIObject TargetObject => _target;
     internal override UIProperty TargetPropertyObject => _property;
+    internal override bool IsPerpetual => _perpetual;
 
     /// <summary>The public handle is wired right after construction (it needs <c>this</c>).</summary>
     internal void BindPublicHandle(AnimationHandle handle) => _publicHandle = handle;
@@ -272,6 +283,18 @@ internal sealed class AnimationInstance<T> : AnimationInstance
         Write(_duration);
         if (State is AnimationState.Running or AnimationState.Delayed or AnimationState.Paused)
             Complete();
+    }
+
+    internal override void RewindToDelayed(TimeSpan delayFromNow)
+    {
+        if (IsFinished)
+            return; // a retired/completed child isn't re-armed by a seek
+
+        _handle?.Dispose();   // retract — the property returns to base while Delayed (untouched semantics)
+        _handle = null;
+        _startTime = _scheduler.Clock.Now + delayFromNow; // re-arm; the built timeline (and baked From) is retained
+        State = AnimationState.Delayed;
+        _completionPending = false;
     }
 
     public override void RaiseCompleted()

@@ -59,13 +59,13 @@ public sealed class DrawingContext
 
     /// <summary>
     /// Push a clip rectangle, given in <b>current-local</b> coordinates (the space draw calls use right
-    /// now — i.e. after any active translate). It is mapped into scene coordinates and intersected with
+    /// now — i.e., after any active translate). It is mapped into scene coordinates and intersected with
     /// the current clip; subsequent draws are bounded to the result until the returned scope is disposed.
     /// Nests. An empty intersection means subsequent draws paint nothing.
     /// </summary>
     /// <remarks>
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
-    /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush)"/>,
+    /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/>,
     /// <see cref="DrawContent"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
@@ -269,9 +269,11 @@ public sealed class DrawingContext
     /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
     /// background so the border sits on the panel rather than punching a transparent hole.
     /// </remarks>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
     /// <param name="attributes">
     /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
-    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.
+    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
     /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
     /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
@@ -292,6 +294,7 @@ public sealed class DrawingContext
             for (int row = lRowStart; row < lRowEnd; row++)
             for (int col = lColStart; col < lColEnd; col++)
                 RawWriteWithCleanup(col + s.Dx, row + s.Dy, OccluderCell(brush.ColorAt(col, row, region), attributes));
+
             return;
         }
 
@@ -604,7 +607,7 @@ public sealed class DrawingContext
     }
 
     // Slice the next line off `remaining` at the first \r\n, \n, or \r. `hasMore` reports whether a
-    // break was consumed — i.e. at least one more line (possibly empty) follows.
+    // break was consumed — i.e., at least one more line (possibly empty) follows.
     private static ReadOnlySpan<char> NextLine(ref ReadOnlySpan<char> remaining, out bool hasMore)
     {
         int i = remaining.IndexOfAny('\r', '\n');
@@ -657,7 +660,7 @@ public sealed class DrawingContext
     /// image / icon that <em>degrades to a glyph</em> picks up the gradient too.
     /// </summary>
     /// <remarks>
-    /// The brush colors cells that <b>inherited</b> the document foreground — i.e. whose foreground is unset
+    /// The brush colors cells that <b>inherited</b> the document foreground — i.e., whose foreground is unset
     /// (<see cref="Color.Default"/>) or equals the document's <see cref="FormattedText.DefaultStyle"/>
     /// foreground. A run's <em>own</em> explicit foreground (a markup color, a content's fallback color — one
     /// that differs from the document default) <b>wins</b> over the brush. So a document that sets a default
@@ -853,7 +856,7 @@ public sealed class DrawingContext
 
     /// <summary>
     /// Begin a figure with explicit, eager brush bounds — the same junction grouping, but pen brushes
-    /// sample against <paramref name="bounds"/> instead of the figure's stroke union (e.g. to color-match
+    /// sample against <paramref name="bounds"/> instead of the figure's stroke union (e.g., to color-match
     /// a partial border to a full box drawn elsewhere). <paramref name="bounds"/> is in current-local
     /// coordinates — the ambient push translate at this call maps it into scene coordinates.
     /// </summary>
@@ -981,8 +984,8 @@ public sealed class DrawingContext
     /// an optional <paramref name="title"/> on the top edge — the one-call "group box". Equivalent to a
     /// <see cref="FillRectangle(in Rect, IBrush)"/> (background-only; lower glyphs show through on composite)
     /// followed by <see cref="DrawTitledBox(in Rect, in PanelTitle, in Pen, bool)"/>. For an <em>opaque</em>
-    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush)"/> + <c>DrawTitledBox</c>
-    /// (overwrite: true) instead.
+    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush, TextAttributes)"/> +
+    /// <c>DrawTitledBox</c> (overwrite: true) instead.
     /// </summary>
     public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)
     {

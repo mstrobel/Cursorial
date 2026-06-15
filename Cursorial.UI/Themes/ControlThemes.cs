@@ -40,6 +40,7 @@ internal static class ControlThemes
         dict[typeof(RadioButton)] = ToggleGlyphTheme("Theme.RadioButton", ThemeKeys.RadioGlyphs, ThemeKeys.AccentBrush, ThemeKeys.AmberBrush);
         dict[typeof(ScrollBar)] = ScrollBarTheme();
         dict[typeof(ScrollViewer)] = ScrollViewerTheme();
+        dict[typeof(ItemsControl)] = ItemsControlTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -76,6 +77,23 @@ internal static class ControlThemes
             .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         return theme;
     }
+
+    // ───────────────────────────── ItemsControl ─────────────────────────────
+
+    // A minimal items host (design doc §12.6 / C2): a Border (opt-in Background/BorderPen via TemplateBindings)
+    // wrapping the PART_ItemsHost ItemsPresenter, which builds the ItemsPanel and lays out the containers.
+    private static ControlTemplate ItemsControlTemplate() => new(ctx =>
+    {
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var border = new Border { Child = host };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        return border;
+    });
+
+    private static Style ItemsControlTheme()
+        => new Style { Key = "Theme.ItemsControl" }.Set(Control.TemplateProperty, ItemsControlTemplate());
 
     private static Style RepeatButtonTheme()
         => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" })

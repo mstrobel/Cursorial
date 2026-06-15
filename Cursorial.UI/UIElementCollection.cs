@@ -59,10 +59,14 @@ public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElem
     public void Insert(int index, UIElement item)
     {
         _owner.VerifyAccess();
-        ValidateAdoptable(item);
+        var visualOnly = _owner.AdoptsChildrenVisualOnly;
+        ValidateAdoptable(item, visualOnly);
 
         _items.Insert(index, item);
-        _owner.AdoptChild(item, index);
+        if (visualOnly)
+            _owner.AddVisualChildOnly(item, index); // items-host panel: logical parent is the ItemsControl (punch 43)
+        else
+            _owner.AdoptChild(item, index);
         _owner.InvalidateMeasure();
     }
 
@@ -73,11 +77,14 @@ public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElem
     /// would leave them inconsistent and the collection permanently wedged. This pre-runs every
     /// guard the adoption path can trip.
     /// </summary>
-    private void ValidateAdoptable(UIElement item)
+    private void ValidateAdoptable(UIElement item, bool visualOnly = false)
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        if (item.VisualParent is not null || item.LogicalParent is not null)
+        // Visual-only adoption (items host): the item legitimately already has a LOGICAL parent (the ItemsControl
+        // that generated it); only a pre-existing VISUAL parent is a conflict. Full adoption rejects either.
+        var conflict = visualOnly ? item.VisualParent : item.VisualParent ?? item.LogicalParent;
+        if (conflict is not null)
         {
             throw new InvalidOperationException(
                 ReferenceEquals(item.VisualParent ?? item.LogicalParent, _owner)
@@ -131,7 +138,10 @@ public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElem
 
         var item = _items[index];
         _items.RemoveAt(index);
-        _owner.DisownChild(item);
+        if (_owner.AdoptsChildrenVisualOnly)
+            _owner.RemoveVisualChildOnly(item); // logical parentage is the ItemsControl's, not ours
+        else
+            _owner.DisownChild(item);
         _owner.InvalidateMeasure();
     }
 
@@ -156,8 +166,14 @@ public sealed class UIElementCollection : IList<UIElement>, IReadOnlyList<UIElem
         // DisownChild detaches tree relationships only — it never touches _items, so this loop is
         // NOT mutating the list it iterates; the single _items.Clear() below empties it. (Backward
         // so detach walks run last-to-first, matching per-item RemoveAt order.)
+        var visualOnly = _owner.AdoptsChildrenVisualOnly;
         for (var i = _items.Count - 1; i >= 0; i--)
-            _owner.DisownChild(_items[i]);
+        {
+            if (visualOnly)
+                _owner.RemoveVisualChildOnly(_items[i]);
+            else
+                _owner.DisownChild(_items[i]);
+        }
 
         _items.Clear();
         _owner.InvalidateMeasure();

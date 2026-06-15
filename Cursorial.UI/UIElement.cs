@@ -203,6 +203,16 @@ public abstract partial class UIElement : UIObject
     /// </summary>
     internal void AddVisualChildOnly(UIElement child, int index = -1) => AddVisualChild(child, index);
 
+    /// <summary>Visual disownment without logical reparenting — the inverse of <see cref="AddVisualChildOnly"/>.</summary>
+    internal void RemoveVisualChildOnly(UIElement child) => RemoveVisualChild(child);
+
+    /// <summary>
+    /// When true, this element's owner-wired <see cref="UIElementCollection"/> adopts children <b>visually only</b>
+    /// (logical parentage is owned elsewhere) — the WPF <c>Panel.IsItemsHost</c> contract: an items-host panel's
+    /// children are generated containers that stay logical children of the <c>ItemsControl</c> (punch 43).
+    /// </summary>
+    internal bool AdoptsChildrenVisualOnly { get; set; }
+
     /// <summary>
     /// Full adoption for owner-wired collections (<see cref="UIElementCollection"/>): logical
     /// parent first (so the attach walk observes the final inheritance topology), then visual

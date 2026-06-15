@@ -19,9 +19,24 @@ public abstract class Panel : UIElement
     public static readonly StyledProperty<IBrush?> BackgroundProperty =
         UIProperty.Register<Panel, IBrush?>(nameof(Background));
 
+    /// <summary>
+    /// Whether this panel hosts an <see cref="ItemsControl"/>'s generated containers (the WPF
+    /// <c>Panel.IsItemsHost</c> contract): when true, <see cref="Children"/> adopts items <b>visually only</b>,
+    /// leaving them logical children of the <c>ItemsControl</c> so inheritance flows from the control (punch 43).
+    /// Set on the items panel inside an items-control template (the <see cref="ItemsPresenter"/> does this).
+    /// </summary>
+    public static readonly StyledProperty<bool> IsItemsHostProperty =
+        UIProperty.Register<Panel, bool>(nameof(IsItemsHost), changed: OnIsItemsHostChanged);
+
     static Panel()
     {
         AffectsRender<Panel>(BackgroundProperty);
+    }
+
+    private static void OnIsItemsHostChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is Panel panel)
+            panel.AdoptsChildrenVisualOnly = newValue;
     }
 
     /// <summary>Creates the panel and its owner-wired <see cref="Children"/> collection.</summary>
@@ -35,6 +50,9 @@ public abstract class Panel : UIElement
 
     /// <inheritdoc cref="BackgroundProperty"/>
     public IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
+
+    /// <inheritdoc cref="IsItemsHostProperty"/>
+    public bool IsItemsHost { get => GetValue(IsItemsHostProperty); set => SetValue(IsItemsHostProperty, value); }
 
     /// <summary>
     /// Paints <see cref="Background"/> over the panel's full bounds via <c>FillOpaque</c> (the doc

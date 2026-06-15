@@ -188,19 +188,21 @@ public sealed class RenderContext
     /// across styles); use the two-argument overload when the document's own runs/markup carry all
     /// the color and nothing should be imposed from outside.
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, TextAttributes baseAttributes = default)
     {
-        Inner.DrawFormattedText(text, bounds, brush, _capabilities);
+        Inner.DrawFormattedText(text, bounds, brush, _capabilities, baseAttributes);
     }
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     /// <remarks>
     /// Renders with the document's <b>own</b> colors (markup spans, run styles) only. See the
-    /// brushed overload's remarks for when to supply an external brush instead.
+    /// brushed overload's remarks for when to supply an external brush instead. <paramref name="baseAttributes"/>
+    /// (default none) union-merges an inherited <see cref="TextAttributes"/> — an ancestor's
+    /// <c>TextElement.TextAttributes</c> — onto every painted cell at paint time.
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, TextAttributes baseAttributes = default)
     {
-        Inner.DrawFormattedText(text, bounds, _capabilities);
+        Inner.DrawFormattedText(text, bounds, _capabilities, baseAttributes);
     }
 
     /// <summary>Paints embedded content (images, sized text) into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>

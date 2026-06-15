@@ -67,7 +67,7 @@ public sealed class DrawingContext
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
     /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
-    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/>,
+    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes)"/>,
     /// <see cref="DrawContent"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
     /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
     /// <em>record</em> time (the draw call), not at flush, so junctions still form in final scene coordinates.
@@ -660,6 +660,7 @@ public sealed class DrawingContext
     /// image / icon that <em>degrades to a glyph</em> picks up the gradient too.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The brush colors cells that <b>inherited</b> the document foreground — i.e., whose foreground is unset
     /// (<see cref="Color.Default"/>) or equals the document's <see cref="FormattedText.DefaultStyle"/>
     /// foreground. A run's <em>own</em> explicit foreground (a markup color, a content's fallback color — one
@@ -668,23 +669,33 @@ public sealed class DrawingContext
     /// <paramref name="capabilities"/> drives protocol selection for embedded content; pass the session's
     /// negotiated capabilities. (Per-run <c>BrushedStyle</c> and inline 1-D wrap-invariant sampling arrive in a
     /// later slice; this is the single document/block brush.)
+    /// </para>
+    /// <para>
+    /// <paramref name="baseAttributes"/> (default none) is the inherited-attribute leg — an ancestor's
+    /// <c>TextElement.TextAttributes</c> — UNION-merged onto every painted cell's style at paint time. A run's own
+    /// attributes (e.g. markup <c>[b]</c>) compose ON TOP via OR, so an inherited <see cref="TextAttributes.Inverse"/>
+    /// or <see cref="TextAttributes.Faint"/> reaches the glyphs without re-laying-out the cached document — the flip
+    /// is honored by a re-paint, not a re-format, so it never goes stale on an attribute-only change.
+    /// </para>
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities, TextAttributes baseAttributes = default)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        DrawFormattedCore(text, bounds, capabilities, brush);
+        DrawFormattedCore(text, bounds, capabilities, brush, baseAttributes);
     }
 
     /// <summary>
     /// Paint <paramref name="text"/> coloring only its <b>per-run</b> brushes (declared via
     /// <c>BrushedRun</c>) — runs without a brush keep their formatted style. Use the
-    /// <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities)"/> overload to add a
-    /// document-wide brush underneath the per-run ones.
+    /// <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes)"/>
+    /// overload to add a document-wide brush underneath the per-run ones. <paramref name="baseAttributes"/>
+    /// (default none) union-merges an inherited <see cref="TextAttributes"/> onto every painted cell at paint
+    /// time — see the brushed overload.
     /// </summary>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities)
-        => DrawFormattedCore(text, bounds, capabilities, documentBrush: null);
+    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities, TextAttributes baseAttributes = default)
+        => DrawFormattedCore(text, bounds, capabilities, documentBrush: null, baseAttributes);
 
-    private void DrawFormattedCore(FormattedText text, in Rect bounds, OutputCapabilities capabilities, IBrush? documentBrush)
+    private void DrawFormattedCore(FormattedText text, in Rect bounds, OutputCapabilities capabilities, IBrush? documentBrush, TextAttributes baseAttributes = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -708,6 +719,7 @@ public sealed class DrawingContext
             // ReSharper disable once RedundantLambdaParameterType
             resolver: (in BrushedTextContext ctx) =>
                       {
+                          Style style;
                           // A run that declares its own brush wins, sampled at its declaration scope.
                           if (ctx.Tag is BrushedStyle bs)
                           {
@@ -720,18 +732,26 @@ public sealed class DrawingContext
                                                      : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
                                                                              bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
 
-                              return ctx.BaseStyle.WithForeground(foreground);
+                              style = ctx.BaseStyle.WithForeground(foreground);
+                          }
+                          else if (documentBrush is null)
+                          {
+                              style = ctx.BaseStyle;
+                          }
+                          else
+                          {
+                              // Otherwise the document brush colors cells that inherited the document
+                              // foreground; an explicit run color (differing from the default) wins.
+                              var fg = ctx.BaseStyle.Foreground;
+                              bool inherited = fg.IsDefault || fg == documentForeground;
+                              style = inherited
+                                          ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
+                                          : ctx.BaseStyle;
                           }
 
-                          // Otherwise the document brush (if any) colors cells that inherited the document
-                          // foreground; an explicit run color (differing from the default) wins.
-                          if (documentBrush is null) return ctx.BaseStyle;
-                          var fg = ctx.BaseStyle.Foreground;
-                          bool inherited = fg.IsDefault || fg == documentForeground;
-
-                          return inherited
-                                     ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
-                                     : ctx.BaseStyle;
+                          // The inherited-attribute leg: OR the ancestor's TextElement.TextAttributes onto the
+                          // run's own attributes (default none = a no-op for every pre-existing caller).
+                          return baseAttributes == default ? style : style.AddAttributes(baseAttributes);
                       });
 
         if (transformed)

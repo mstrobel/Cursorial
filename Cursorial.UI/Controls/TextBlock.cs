@@ -104,10 +104,14 @@ public class TextBlock : UIElement
         if (formatted.Size.Rows == 0)
             return;
 
+        // The inherited text attributes (Bold/Italic/Inverse/Faint/…) cascade via TextElement and merge onto
+        // every painted cell at paint time — NOT baked into the cached FormattedText (TextAttributesProperty
+        // is AffectsRender, so a flip re-paints the cached layout without re-formatting it).
+        var attrs = TextElement.GetTextAttributes(this);
         if (Foreground is { } brush)
-            context.DrawFormattedText(formatted, context.Bounds, brush);
+            context.DrawFormattedText(formatted, context.Bounds, brush, attrs);
         else
-            context.DrawFormattedText(formatted, context.Bounds);
+            context.DrawFormattedText(formatted, context.Bounds, attrs);
     }
 
     private FormattedText GetFormatted(int width)

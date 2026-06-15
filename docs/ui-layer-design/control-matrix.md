@@ -428,6 +428,8 @@ Host-level rows (`app = host.Application`); `RunFrame()` after mutations unless 
 | C164 | the `FormattedText` cache key | format twice at the same `(text/markup identity, width, caps, ver(this), ActualThemeVariant)` | the second format is a cache hit (no re-parse) | PIN (CD16) |
 | C165 | C164, then a resource pulse bumps `ver(this)` | pulse + render | the cache key changes ⇒ the next render re-parses with fresh resolver output; the TextBlock holds **no** `ResourceDictionary.Changed` subscription | PIN (CD16) |
 | C166 | C164, then `renegotiate(caps with a different ColorDepth)` | renegotiate + render | the `caps`/`ActualThemeVariant` component changes ⇒ re-parse (caps change invalidates the cache) | PIN (CD16) |
+| C166b | `TextElement.TextAttributes = Inverse` on a `TextBlock`'s ancestor (`Decorator`) | render | the inherited attribute reaches every painted glyph — `Render` reads `TextElement.GetTextAttributes(this)` and threads it to `DrawFormattedText`'s paint-time `baseAttributes`, OR-merged onto each run's own attributes | PIN (doc §12.7; Task #17) |
+| C166c | C166b, then flip `TextAttributes` after the first frame | set + render | the attribute is applied at **paint** time, not baked into the cached `FormattedText`: the cache key is unchanged (no resource pulse) yet the glyph inverts — `TextAttributesProperty` is `AffectsRender`, so the flip re-paints the cached layout without a re-format | PIN (CD16; Task #17) |
 
 ### 9.2 Border / Decorator
 

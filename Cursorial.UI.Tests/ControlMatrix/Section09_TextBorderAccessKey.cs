@@ -118,6 +118,42 @@ public sealed class Section09_TextBorderAccessKey
         Assert.Equal("H", host.GetCell(0, 0).Grapheme);
     }
 
+    [Fact] // C166b — TextBlock honors the inherited TextElement.TextAttributes on its painted glyphs (Task #17).
+    public void C166b_TextBlockHonorsInheritedTextAttributes()
+    {
+        // The attribute is set on an ANCESTOR (a Decorator) and inherits to the TextBlock via TextElement;
+        // the render path must merge it onto every painted cell.
+        var tb = new TextBlock("Hi");
+        var root = new Decorator { Child = tb };
+        TextElement.SetTextAttributes(root, TextAttributes.Inverse);
+        using var host = Attach(root);
+
+        var (col, row) = tb.TranslateToWindow(0, 0);
+        Assert.True(host.GetCell(col, row).Style.Attributes.HasFlag(TextAttributes.Inverse));      // 'H'
+        Assert.True(host.GetCell(col + 1, row).Style.Attributes.HasFlag(TextAttributes.Inverse));  // 'i'
+    }
+
+    [Fact] // C166c — a TextAttributes flip re-paints the CACHED FormattedText (paint-time merge, no re-format).
+    public void C166c_TextAttributeFlipRepaintsWithoutReformat()
+    {
+        var tb = new TextBlock("Hi");
+        var root = new Decorator { Child = tb };
+        using var host = Attach(root);
+
+        var (col, row) = tb.TranslateToWindow(0, 0);
+        Assert.False(host.GetCell(col, row).Style.Attributes.HasFlag(TextAttributes.Inverse)); // rest
+
+        // The cache key (text/width/caps/version/variant) is unchanged by an attribute-only flip, yet the
+        // glyph inverts — proof the attribute is applied at paint time, not baked into the cached layout.
+        var keyBefore = ResourceServices.GetResourceVersion(tb);
+        TextElement.SetTextAttributes(root, TextAttributes.Inverse); // AffectsRender → re-paint, not re-measure
+        host.RunFrame();
+
+        Assert.Equal(keyBefore, ResourceServices.GetResourceVersion(tb)); // no resource pulse → same cache key
+        Assert.True(host.GetCell(col, row).Style.Attributes.HasFlag(TextAttributes.Inverse));   // flipped on
+        Assert.Equal("H", host.GetCell(col, row).Grapheme);                                     // same glyphs
+    }
+
     // ───────────────────────────── 9.2 Border / Decorator ─────────────────────────────
 
     [Fact] // C167

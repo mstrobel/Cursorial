@@ -325,6 +325,9 @@ public class Window : ContentControl
 
     // ── WM-driven internal hooks ───────────────────────────────────────────────────────────────────
 
+    /// <summary>Sets/clears the transient <c>:modal-attention</c> pseudo-class on this window's root (WM pulse, §8.6).</summary>
+    internal void SetModalAttention(bool active) => SetInteractionState(InteractionState.ModalAttention, active);
+
     /// <summary>Flips <see cref="IsActive"/> and raises <see cref="Activated"/>/<see cref="Deactivated"/> (WM-driven).</summary>
     internal void SetActiveInternal(bool active)
     {

@@ -46,6 +46,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private Size _viewport;
     private TopLevelSurface? _rootSurface;
     private Window? _activeWindow;
+    private UITimer? _modalAttentionTimer;
+    private Window? _modalAttentionGate;
     private TerminalCaretState _lastCaret;
     private bool _caretEverApplied;
 
@@ -483,12 +485,15 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         var window = surface.HostWindow;
         var isPress = mouse.Kind == MouseEventKind.ButtonDown;
 
-        // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate.
-        // The :modal-attention pulse + capture release ride a follow-up W3 slice.
+        // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate
+        // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse).
         if (window is not null && _blocked.Contains(window))
         {
             if (isPress && TopmostModal is { } gate)
+            {
                 ActivateWindow(gate);
+                PulseModalAttention(gate);
+            }
             return false;
         }
 
@@ -501,5 +506,27 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surfaceColumn = mouse.Position.Column - surface.Left;
         surfaceRow = mouse.Position.Row - surface.Top;
         return true;
+    }
+
+    /// <summary>
+    /// Pulses the transient <c>:modal-attention</c> pseudo-class on the gate's root and raises
+    /// <see cref="Window.ModalAttentionEvent"/> for code-behind; a frame-aligned <see cref="UITimer"/>
+    /// clears the cue ~600 ms later (§8.6). A re-pulse re-arms the timer; the prior gate is cleared first.
+    /// </summary>
+    private void PulseModalAttention(Window gate)
+    {
+        if (_modalAttentionGate is { } previous && !ReferenceEquals(previous, gate))
+            previous.SetModalAttention(false);
+
+        _modalAttentionGate = gate;
+        gate.SetModalAttention(true);
+        gate.RaiseEvent(new RoutedEventArgs(Window.ModalAttentionEvent, gate));
+
+        _modalAttentionTimer?.Stop();
+        _modalAttentionTimer = UITimer.Start(TimeSpan.FromMilliseconds(600), () =>
+        {
+            _modalAttentionGate?.SetModalAttention(false);
+            _modalAttentionGate = null;
+        });
     }
 }

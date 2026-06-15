@@ -95,6 +95,24 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// </summary>
     internal void SetWindowTopology(IWindowTopology topology) => _topology = topology;
 
+    /// <summary>
+    /// Releases mouse capture if the holder lies within <paramref name="root"/>'s tree (S4's
+    /// <c>OnWindowBlocked</c> hook, §8.6): a modal opened by keyboard mid-drag must release a capture held
+    /// inside the now-blocked window in the same call.
+    /// </summary>
+    internal void ReleaseCaptureWithin(UIElement root)
+    {
+        if (_captureTarget is not { } holder)
+            return;
+
+        for (var element = (UIElement?)holder; element is not null; element = element.VisualParent ?? element.LogicalParent)
+            if (ReferenceEquals(element, root))
+            {
+                ForceReleaseCapture();
+                return;
+            }
+    }
+
     /// <summary>The element holding mouse capture, or null (capture is routing policy, not OS capture).</summary>
     public UIElement? MouseCaptureTarget => _captureTarget;
 

@@ -1,6 +1,8 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
+using System;
+
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
@@ -73,10 +75,60 @@ public sealed class WindowInputTests
         Assert.False(wm.IsInputEnabled(a)); // A is blocked behind the modal
 
         host.SendClick(5, 4);               // inside the blocked A
-        Assert.True(host.RunUntilIdle());
+        host.RunFrame();                    // process the click (the pulse timer keeps RunUntilIdle non-idle)
 
         Assert.False(a.IsActive);           // swallowed — A did not activate
         Assert.True(dialog.IsActive);       // the gate stays active
         Assert.False(wm.IsInputEnabled(a)); // still blocked
+    }
+
+    [Fact] // a press on a blocked window pulses :modal-attention on the gate, cleared by the ~600ms timer (W3-b)
+    public void ClickBlockedWindow_PulsesModalAttentionOnGate_ClearedAfterTimeout()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var a = At(2, 2);
+        a.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        var dialog = At(30, 2);
+        dialog.Owner = a;
+        var attention = 0;
+        dialog.ModalAttention += (_, _) => attention++;
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+
+        host.SendClick(5, 4); // press the blocked A
+        host.RunFrame();      // process the click → the pulse sets :modal-attention (the 600ms timer is now pending)
+
+        Assert.True((dialog.InteractionStateInternal & InteractionState.ModalAttention) != 0);
+        Assert.Equal(1, attention); // the code-behind ModalAttentionEvent fired once
+
+        host.AdvanceTime(TimeSpan.FromMilliseconds(700)); // past the ~600ms cue lifetime
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True((dialog.InteractionStateInternal & InteractionState.ModalAttention) == 0); // cleared
+    }
+
+    [Fact] // a modal blocking a window releases pointer capture held inside it (mid-gesture modal, W3-b)
+    public void ModalBlock_ReleasesCaptureHeldInsideBlockedWindow()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var a = At(2, 2);
+        a.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(a.CaptureMouse()); // A holds capture (a mid-gesture drag)
+        Assert.Same(a, host.Application.InputDispatcher.MouseCaptureTarget);
+
+        var dialog = At(30, 2);
+        dialog.Owner = a;
+        _ = dialog.ShowDialogAsync();  // blocks A → releases the capture held inside it
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Null(host.Application.InputDispatcher.MouseCaptureTarget);
     }
 }

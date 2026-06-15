@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
 /// Attached / owner-qualified <c>Setter.Property</c> — Phase 1 end-to-end (xaml-matrix X64a/X64c;
-/// <c>docs/ui-layer-design/attached-setter-property-investigation.md</c>): a <see cref="Style"/> authored in
-/// XAML with a DOTTED Setter property resolves the OWNER (not the lexical <c>TargetType</c>) and applies the
-/// real <see cref="UIProperty"/> through the full <c>BuildSetter</c> → <c>StyleRuleFrame</c> →
+/// <c>docs/ui-layer-design/attached-setter-property-investigation.md</c>): a <see cref="Cursorial.UI.Style"/>
+/// authored in XAML with a DOTTED Setter property resolves the OWNER (not the lexical <c>TargetType</c>)
+/// and applies the real <see cref="UIProperty"/> through the full <c>BuildSetter</c> → <c>StyleRuleFrame</c> →
 /// <c>AttachedProperty</c> store path — with zero loader change (the gap was purely producing the right
 /// member at parse time). Proves an ATTACHED value (<c>Grid.Row</c>) reaches the Grid attached property and
 /// an owner-qualified plain value (<c>Control.Foreground</c>) reaches the shared <c>ForegroundProperty</c>,

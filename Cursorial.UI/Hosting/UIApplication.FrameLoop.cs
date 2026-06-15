@@ -220,6 +220,10 @@ public sealed partial class UIApplication
             SurfacesChanged = _inputDispatcher.OnSurfacesChanged,
             // A modal blocking a window releases any pointer capture held inside it (mid-gesture modal, §8.6).
             WindowBlocked = root => _inputDispatcher.ReleaseCaptureWithin(root),
+            // The active window's title mirrors to the terminal via OSC 2 when supported (§8.8).
+            SetTerminalTitle = _capabilities.Output.Window.TitleSet
+                ? title => QueueControlSequence(writer => WindowWriter.WriteTitle(writer, title))
+                : null,
         };
         _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
         _inputDispatcher.SetWindowTopology(_windowManager); // S4 is the real topology now (replaces SingleRootWindowTopology)
@@ -707,7 +711,15 @@ public sealed partial class UIApplication
         Dispatcher.BeginShutdown();
         Dispatcher.DrainJobsCanceled();
 
-        // 1. (P7 seam: windowSystem.CloseAllAsync() — pending ShowDialogAsync complete null.)
+        // 1. Close every window top-down (pending ShowDialogAsync tasks complete as their windows close — §8.8).
+        try
+        {
+            _windowManager?.CloseAllAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+        }
+
         // 2. Animation shutdown — handles released, values revert to base (P8 seam).
         try
         {

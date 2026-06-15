@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 using Cursorial.Drawing;
 using Cursorial.Input;
@@ -33,6 +34,8 @@ namespace Cursorial.UI;
 /// </remarks>
 public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem, IWindowTopology
 {
+    private const int MinVisible = 4; // cells of a window that must stay on-screen so the title bar is grabbable (§8.7)
+
     private readonly ScenePool _scenePool = new();
     private readonly List<TopLevelSurface> _surfaces = [];   // z-order, bottom→top; [0] is the root surface when present
     private readonly List<SceneLayer> _layers = [];          // per-frame scratch (the one concatenated layer span)
@@ -52,6 +55,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private TerminalCaretState _lastCaret;
     private bool _caretEverApplied;
     private (int Column, int Row) _lastPointer; // last screen pointer position (for PlacementMode.Pointer)
+    private readonly List<Action> _deferredTopology = []; // §8.8 — mutations requested mid-frame, drained next frame
+    private bool _topologyLocked; // true while S6 iterates surfaces (layout / OnLayoutCompleted / render)
+    private string? _lastEmittedTitle; // the last title mirrored to the terminal (OSC 2 change detector)
 
     /// <summary>
     /// Creates the window manager. <paramref name="guard"/> is the user-code funnel routed to every
@@ -82,6 +88,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <summary>The active (focused) top-level window, or <see langword="null"/> when none (the root has focus).</summary>
     public Window? ActiveWindow => _activeWindow;
 
+    /// <summary>The current screen (viewport) size in cells (§8.5).</summary>
+    public Size ScreenSize => _viewport;
+
     /// <summary>Raised after <see cref="ActiveWindow"/> changes.</summary>
     public event EventHandler? ActiveWindowChanged;
 
@@ -96,6 +105,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     /// <summary>Invoked when a window becomes blocked so S3 can release pointer capture held inside it (wired at W3).</summary>
     internal Action<Window>? WindowBlocked { get; set; }
+
+    /// <summary>Invoked with the active window's title to mirror it to the terminal (OSC 2 — §8.8); wired by the host.</summary>
+    internal Action<string>? SetTerminalTitle { get; set; }
 
     /// <summary>The root surface's render tree — the W0-compat single-tree accessor (null until a root is set).</summary>
     internal RenderTree? Tree => _rootSurface?.RenderTree;
@@ -117,10 +129,18 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <inheritdoc/>
     public void RunLayoutPass()
     {
-        // Snapshot count: a surface's layout must not see the list mutate mid-pass (topology mutations
-        // are deferred to DrainDeferredTopology — §8.8). W0 has at most the root surface.
-        for (var i = 0; i < _surfaces.Count; i++)
-            _surfaces[i].RunLayoutPass();
+        // Snapshot count: a surface's layout must not see the list mutate mid-pass — topology mutations
+        // requested while we iterate (e.g. a Close() from a MeasureOverride) are deferred (§8.8).
+        _topologyLocked = true;
+        try
+        {
+            for (var i = 0; i < _surfaces.Count; i++)
+                _surfaces[i].RunLayoutPass();
+        }
+        finally
+        {
+            _topologyLocked = false;
+        }
     }
 
     // ── IWindowSystem ──────────────────────────────────────────────────────────────────────────────
@@ -128,23 +148,57 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <inheritdoc/>
     public void DrainDeferredTopology()
     {
-        // W0: no deferred topology queue yet — Show/Close/popup mutations land at W1/W4 and the queue at W5.
+        // §8.8 — apply mutations queued while the previous frame iterated its surfaces, before this
+        // frame's layout. Snapshot + clear first: the lock is off now, so each replayed mutation applies
+        // immediately and must not re-enqueue into the list we are draining.
+        if (_deferredTopology.Count == 0)
+            return;
+
+        var pending = _deferredTopology.ToArray();
+        _deferredTopology.Clear();
+        foreach (var mutation in pending)
+            mutation();
     }
 
     /// <inheritdoc/>
     public void OnLayoutCompleted()
     {
-        // Keep each window's surface anchored to its Left/Top so a programmatic move re-composites
-        // (AffectsComposite on Window.Left/Top). Full SizeToContent re-fit on content change is W5.
-        for (var i = 0; i < _windows.Count; i++)
+        _topologyLocked = true;
+        try
         {
-            var window = _windows[i];
-            if (window.HostSurface is { } surface)
+            // Keep each window's surface anchored to its Left/Top so a programmatic move re-composites
+            // (AffectsComposite on Window.Left/Top), and re-fit SizeToContent windows whose content grew/shrank.
+            for (var i = 0; i < _windows.Count; i++)
             {
-                surface.Left = window.Left;
-                surface.Top = window.Top;
+                var window = _windows[i];
+                if (window.HostSurface is { } surface)
+                {
+                    SyncSurfaceSize(window, surface);
+                    surface.Left = window.Left;
+                    surface.Top = window.Top;
+                    window.SetClippedByViewport(IsWindowClipped(window, surface)); // drives the fit affordance
+                }
             }
+
+            UpdateTerminalTitle();
         }
+        finally
+        {
+            _topologyLocked = false;
+        }
+    }
+
+    /// <summary>Mirrors the active window's title to the terminal (OSC 2 — §8.8) on change. Cheap string compare
+    /// per frame; emits only non-null titles (the root surface / a null-title window leaves the last title).</summary>
+    private void UpdateTerminalTitle()
+    {
+        var title = _activeWindow?.Title;
+        if (title == _lastEmittedTitle)
+            return;
+
+        _lastEmittedTitle = title;
+        if (title is not null)
+            SetTerminalTitle?.Invoke(title);
     }
 
     // ── IRenderSystem ──────────────────────────────────────────────────────────────────────────────
@@ -165,7 +219,19 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     public bool RenderFrame(CellBuffer target, in FrameTime time)
     {
         ArgumentNullException.ThrowIfNull(target);
+        _topologyLocked = true; // a topology mutation from a Render override defers (§8.8)
+        try
+        {
+            return RenderFrameCore(target);
+        }
+        finally
+        {
+            _topologyLocked = false;
+        }
+    }
 
+    private bool RenderFrameCore(CellBuffer target)
+    {
         var changed = false;
 
         // ① raster each surface's dirty zones (z order doesn't matter for rastering — it's per-surface).
@@ -214,7 +280,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         _viewport = newSize;
         _compositor = new SceneCompositor();
 
-        // A resize invalidates every popup's placement; light-dismiss popups close (StaysOpen re-place is W5).
+        // A resize invalidates popup placement: light-dismiss popups close, StaysOpen popups re-place below.
         for (var i = _popups.Count - 1; i >= 0; i--)
             if (!_popups[i].StaysOpen)
                 _popups[i].CloseCore(PopupCloseReason.ScreenResized);
@@ -222,8 +288,83 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (_rootSurface is not null)
             _rootSurface.Size = newSize;
 
+        ReclampWindowsForViewport();
+
+        for (var i = 0; i < _popups.Count; i++) // re-place the surviving (StaysOpen) popups
+            if (_popups[i].PopupSurface is { } surface)
+                PlacePopup(_popups[i], surface);
+
         for (var i = 0; i < _surfaces.Count; i++)
             _surfaces[i].InvalidateAll();
+    }
+
+    /// <summary>
+    /// The §8.7 screen-resize policy: <see cref="WindowState.Maximized"/> windows re-fill; every Normal
+    /// window re-clamps so at least <see cref="MinVisible"/> cells stay visible on <b>both</b> axes (the
+    /// title bar stays grabbable). It deliberately does <b>not</b> auto-shrink — a temporary terminal resize
+    /// must not lose the user's chosen window size; the user moves+shrinks on demand via
+    /// <see cref="Window.FitToViewport"/> (surfaced by the clipped-state affordance). The per-window clipped
+    /// flag is recomputed every frame in <see cref="OnLayoutCompleted"/> (so it tracks drags too).
+    /// </summary>
+    private void ReclampWindowsForViewport()
+    {
+        for (var i = 0; i < _windows.Count; i++)
+        {
+            var window = _windows[i];
+            if (window.HostSurface is not { } surface)
+                continue;
+
+            if (window.WindowState == WindowState.Maximized)
+            {
+                FillScreen(window, surface);
+                continue;
+            }
+
+            var (left, top) = ClampPosition(window.Left, window.Top, surface.Size);
+            if (left != window.Left)
+                window.SetCurrentValue(Window.LeftProperty, left);
+            if (top != window.Top)
+                window.SetCurrentValue(Window.TopProperty, top);
+            surface.Left = left;
+            surface.Top = top;
+        }
+    }
+
+    /// <summary>
+    /// Clamps a window position so at least <see cref="MinVisible"/> cells stay visible on each axis and the
+    /// title bar (top row) is never pushed above the screen — §8.7's "pull MinVisible into view" rule, shared
+    /// by the live move-drag and the screen-resize re-clamp. Never shrinks; see <see cref="Window.FitToViewport"/>.
+    /// </summary>
+    internal (int Left, int Top) ClampPosition(int left, int top, Size windowSize)
+        => (Math.Clamp(left, MinVisible - windowSize.Columns, Math.Max(0, _viewport.Columns - MinVisible)),
+            Math.Clamp(top, 0, Math.Max(0, _viewport.Rows - MinVisible)));
+
+    /// <summary>Whether <paramref name="window"/> overhangs the viewport on any edge (drives the fit affordance).</summary>
+    internal bool IsWindowClipped(Window window, TopLevelSurface surface)
+    {
+        if (window.WindowState == WindowState.Maximized)
+            return false; // fills the viewport exactly
+
+        var size = surface.Size;
+        return surface.Left < 0
+               || surface.Top < 0
+               || surface.Left + size.Columns > _viewport.Columns
+               || surface.Top + size.Rows > _viewport.Rows;
+    }
+
+    /// <summary>Clamps a resize-drag size into <c>[<see cref="MinVisible"/>, viewport]</c> width and <c>[2, viewport]</c> height.</summary>
+    internal Size ClampSize(int width, int height)
+        => new(Math.Clamp(width, MinVisible, _viewport.Columns), Math.Clamp(height, 2, _viewport.Rows));
+
+    /// <summary>Sizes <paramref name="window"/>'s surface to the full viewport at the origin (the maximized fill).</summary>
+    private void FillScreen(Window window, TopLevelSurface surface)
+    {
+        surface.Size = _viewport;
+        surface.Left = 0;
+        surface.Top = 0;
+        window.ActualSize = _viewport;
+        window.SetCurrentValue(Window.LeftProperty, 0);
+        window.SetCurrentValue(Window.TopProperty, 0);
     }
 
     // ── Root surface (the RootElement/ShowRoot path; HostWindow == null) ─────────────────────────────
@@ -235,6 +376,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// </summary>
     internal void SetRootSurface(UIElement? root)
     {
+        if (DeferIfLocked(() => SetRootSurface(root)))
+            return;
+
         if (_rootSurface is not null)
         {
             _surfaces.Remove(_rootSurface);
@@ -255,6 +399,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// (or, if a modal blocks it, leaves it below the gate and activates the gate).</summary>
     internal void ShowWindow(Window window)
     {
+        if (DeferIfLocked(() => ShowWindow(window)))
+            return;
+
         AddWindowSurface(window);
         ComputeBlockedSet();
         FinishShow(_blocked.Contains(window) ? TopmostModal : window);
@@ -263,6 +410,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <summary>Shows <paramref name="window"/> modally: pushes the modal stack, blocks the rest, and activates it.</summary>
     internal void ShowDialog(Window window)
     {
+        if (DeferIfLocked(() => ShowDialog(window)))
+            return;
+
         AddWindowSurface(window);
         _modalStack.Add(window);
         ComputeBlockedSet(); // blocks every window except the modal + its transitively owned subtree
@@ -273,6 +423,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// it is not shown here or is modal-blocked (a blocked activate silently redirects to the gate — no pulse).</summary>
     internal bool ActivateWindow(Window window)
     {
+        // A mid-frame activate defers and reports false now (it lands next frame — §8.8).
+        if (DeferIfLocked(() => ActivateWindow(window)))
+            return false;
+
         if (!_windows.Contains(window))
             return false;
 
@@ -295,6 +449,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// set, and — only if it was active — hands activation off (owner → gate → topmost enabled → null, §8.6).</summary>
     internal void CloseWindow(Window window)
     {
+        if (DeferIfLocked(() => CloseWindow(window)))
+            return;
+
         if (!_windows.Remove(window))
             return;
 
@@ -312,6 +469,43 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             SetActive(ResolveHandoff(window));
 
         SurfacesChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Closes the windows owned by <paramref name="window"/> (recursively, <see cref="WindowCloseReason.OwnerClosed"/>
+    /// — not cancelable) and the popups hosted in its surface (<see cref="PopupCloseReason.HostClosed"/>), before the
+    /// window itself closes (§8.8). Called by <see cref="Window.Close(WindowCloseReason)"/>.
+    /// </summary>
+    internal void CloseOwnedAndHostedOf(Window window)
+    {
+        for (var i = _windows.Count - 1; i >= 0; i--)
+        {
+            var owned = _windows[i];
+            if (ReferenceEquals(owned.Owner, window))
+                owned.Close(WindowCloseReason.OwnerClosed); // recurses into the owned window's own owned/popups
+        }
+
+        if (window.HostSurface is { } surface)
+            for (var i = _popups.Count - 1; i >= 0; i--)
+                if (_popups[i].EffectiveTarget is { } target && ReferenceEquals(SurfaceForElement(target), surface))
+                    _popups[i].CloseCore(PopupCloseReason.HostClosed);
+    }
+
+    /// <summary>
+    /// The shutdown sweep (§8.8): closes every popup (<see cref="PopupCloseReason.HostClosed"/>) then every window
+    /// top→bottom with the non-cancelable <see cref="WindowCloseReason.ManagerShutdown"/> reason. Pending
+    /// <see cref="Window.ShowDialogAsync(System.Threading.CancellationToken)"/> tasks complete as their windows close.
+    /// </summary>
+    public Task CloseAllAsync()
+    {
+        for (var i = _popups.Count - 1; i >= 0; i--)
+            _popups[i].CloseCore(PopupCloseReason.HostClosed);
+
+        var windows = _windows.ToArray(); // snapshot — Close mutates _windows (and cascades to owned)
+        for (var i = windows.Length - 1; i >= 0; i--)
+            windows[i].Close(WindowCloseReason.ManagerShutdown);
+
+        return Task.CompletedTask;
     }
 
     private void AddWindowSurface(Window window)
@@ -437,6 +631,55 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.Opacity = window.Opacity;
     }
 
+    /// <summary>
+    /// Re-derives a window's surface size from its current state, read off the layout pass that just
+    /// completed (§8.5/§8.7): <see cref="WindowState.Maximized"/> ⇒ the full viewport; else, per axis, an
+    /// explicit <c>Width</c>/<c>Height</c> wins, a tracked <see cref="SizeToContent"/> axis follows the
+    /// content desired, and an untracked axis holds. This is the single place a resize-drag, a maximize
+    /// toggle, and a content change all land. Compare-and-skip keeps a stable window idle (no thrash): at
+    /// steady state the derived size equals the surface size, so it is a no-op every frame.
+    /// </summary>
+    private void SyncSurfaceSize(Window window, TopLevelSurface surface)
+    {
+        var size = surface.Size;
+        Size target;
+
+        if (window.WindowState == WindowState.Maximized)
+        {
+            target = _viewport;
+        }
+        else
+        {
+            var stc = window.SizeToContent;
+            var desired = window.DesiredSize; // content-driven, from the pass just completed
+            var width = window.Width
+                        ?? (stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? desired.Columns : size.Columns);
+            var height = window.Height
+                         ?? (stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? desired.Rows : size.Rows);
+            target = new Size(Math.Clamp(width, 0, _viewport.Columns), Math.Clamp(height, 0, _viewport.Rows));
+        }
+
+        if (target == size)
+            return; // steady state — idle holds
+
+        surface.Size = target;     // flips HasPendingLayout → re-layout next frame at the new constraint
+        window.ActualSize = target;
+    }
+
+    /// <summary>
+    /// §8.8 reentrancy guard: while S6 iterates surfaces (layout / OnLayoutCompleted / render) a topology
+    /// mutation is queued for the next frame's <see cref="DrainDeferredTopology"/> instead of mutating the
+    /// stack mid-iteration. Returns true when <paramref name="mutation"/> was deferred (the caller returns).
+    /// </summary>
+    private bool DeferIfLocked(Action mutation)
+    {
+        if (!_topologyLocked)
+            return false;
+
+        _deferredTopology.Add(mutation);
+        return true;
+    }
+
     private void RebuildSurfaceStack()
     {
         _surfaces.Clear();
@@ -457,6 +700,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// reopens when one is set). Called by <c>Popup.OpenCore</c>.</summary>
     internal void OpenPopup(Popup popup)
     {
+        if (DeferIfLocked(() => OpenPopup(popup)))
+            return;
+
         if (popup.Child is not { } child)
             return;
 
@@ -475,6 +721,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// currently hosted is a no-op). Called by <c>Popup.CloseCore</c> / the content-swap path.</summary>
     internal void ClosePopup(Popup popup)
     {
+        if (DeferIfLocked(() => ClosePopup(popup)))
+            return;
+
         if (!_popups.Remove(popup))
             return;
 

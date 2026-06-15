@@ -594,10 +594,15 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     // ───────────────────────────── Phase 1 — structural matching ─────────────────────────────
 
-    private bool IsStylable(UIElement element)
-        => element.IsAttachedToTree
-           && _app.RootElement is {} root
-           && ReferenceEquals(element.VisualRoot, root);
+    // An element is stylable when it is attached under a LIVE surface root — its visual root owns a
+    // LayoutManager. This covers the chrome-less application root AND every shown Window / open Popup
+    // surface uniformly (P7 — the single-root "VisualRoot == app.RootElement" test ignored window/popup
+    // surfaces, leaving their controls untemplated and zero-sized). The LayoutManager is the right signal
+    // (not RenderTreeHost): AttachAsRoot sets it before the styling-attach walk, whereas the RenderTree —
+    // which requires an already-attached root — is constructed only afterward, so RenderTreeHost is still
+    // null when styles must first arm.
+    private static bool IsStylable(UIElement element)
+        => element.IsAttachedToTree && element.GetLayoutManager() is not null;
 
     /// <summary>Re-runs Phase 1 for one element and applies the SD21 identity diff to its armed frames.</summary>
     private void ReMatchElement(UIElement element)

@@ -26,7 +26,7 @@ namespace Cursorial.UI;
 /// template is provided as the <see cref="Control.Template"/> default for <see cref="Window"/> (overridable
 /// by S8's themed control theme at C4, which arms at the higher <c>ControlTheme</c> layer).
 /// </remarks>
-public class Window : ContentControl
+public partial class Window : ContentControl
 {
     /// <summary>The window title (<c>AffectsRender</c>; the active main window mirrors it to OSC 2 — §8.8, W5).</summary>
     public static readonly StyledProperty<string?> TitleProperty =
@@ -77,6 +77,13 @@ public class Window : ContentControl
 
     /// <summary>Whether this window is the active (focused) top-level window — read-only.</summary>
     public static readonly StyledProperty<bool> IsActiveProperty = IsActivePropertyKey.Property;
+
+    private static readonly UIPropertyKey<bool> IsClippedByViewportPropertyKey =
+        UIProperty.RegisterReadOnly<Window, bool>(nameof(IsClippedByViewport));
+
+    /// <summary>Whether the window currently overhangs the viewport on any edge (the WM recomputes it each
+    /// frame) — read-only; the fit-to-viewport affordance keys off it (§8.7).</summary>
+    public static readonly StyledProperty<bool> IsClippedByViewportProperty = IsClippedByViewportPropertyKey.Property;
 
     /// <summary>A code-behind seam fired when a blocked window is poked (the theme flash rides §8.6's pulse, W2).</summary>
     public static readonly RoutedEvent<RoutedEventArgs> ModalAttentionEvent =
@@ -135,6 +142,16 @@ public class Window : ContentControl
 
     /// <inheritdoc cref="IsActiveProperty"/>
     public bool IsActive => GetValue(IsActiveProperty);
+
+    /// <inheritdoc cref="IsClippedByViewportProperty"/>
+    public bool IsClippedByViewport => GetValue(IsClippedByViewportProperty);
+
+    /// <summary>WM-driven: flips <see cref="IsClippedByViewport"/> (recomputed each frame in OnLayoutCompleted).</summary>
+    internal void SetClippedByViewport(bool clipped)
+    {
+        if (IsClippedByViewport != clipped)
+            SetValue(IsClippedByViewportPropertyKey, clipped);
+    }
 
     /// <summary>The owner window. Settable until the window is first shown; throws thereafter.</summary>
     public Window? Owner
@@ -300,6 +317,7 @@ public class Window : ContentControl
             if (closing.CanCancel && closing.Cancel)
                 return; // vetoed
 
+            Manager!.CloseOwnedAndHostedOf(this); // owned windows + hosted popups close first (§8.8)
             Manager!.CloseWindow(this);
             Manager = null;
             IsModal = false;
@@ -364,14 +382,20 @@ public class Window : ContentControl
             return root;
         }
 
-        // Title-bar style: a titled occluding box + a close-button row docked above the content.
+        // Title-bar style: an occluding outline + a background-filled title bar docked above the content.
         root.BorderPen = Pens.Light;
-        root.Title = window.Title;
 
         var layout = new DockPanel();
 
-        var titleBar = new DockPanel();
-        WindowChrome.SetHitTestRole(titleBar, WindowHitTestRole.Drag); // drag-move interaction wires at W5
+        // The title bar is a background-filled Border (so the whole bar is an opaque, hittable Drag grab
+        // area — §8.3). Inside, a DockPanel docks the control button(s) right and lets the title presenter
+        // fill the rest (the last-child-fill). Drag is on the bar; the close button's Close wins as the
+        // innermost role under a press on it.
+        var titleBar = new Border { Background = TitleBarBrush };
+        WindowChrome.SetHitTestRole(titleBar, WindowHitTestRole.Drag);
+        ctx.RegisterName("PART_TitleBar", titleBar);
+
+        var titleBarContent = new DockPanel(); // LastChildFill=true → the title presenter fills the remainder
 
         var closeButton = new Button { Content = "✕", Focusable = false, IsTabStop = false };
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
@@ -381,17 +405,45 @@ public class Window : ContentControl
                 window.Close(WindowCloseReason.ChromeAction);
         };
         DockPanel.SetDock(closeButton, Dock.Right);
-        titleBar.Children.Add(closeButton);
-        ctx.RegisterName("PART_TitleBar", titleBar);
+        titleBarContent.Children.Add(closeButton); // control buttons first, docked right
         ctx.RegisterName("PART_CloseButton", closeButton);
 
+        var titleText = new TextBlock { Text = window.Title ?? string.Empty };
+        titleBarContent.Children.Add(titleText); // last child → fills the drag area and shows the title
+        ctx.RegisterName("PART_Title", titleText);
+
+        titleBar.Child = titleBarContent;
         DockPanel.SetDock(titleBar, Dock.Top);
         layout.Children.Add(titleBar);
-        layout.Children.Add(presenter); // fills the remainder
+
+        if (window.CanResize)
+        {
+            // The ◢ resize grip overlays the content's bottom-right corner (ResizeSE). A single-cell Grid
+            // stacks the grip over the presenter so it costs no layout row (the interim look; C4 themes it).
+            var body = new Grid();
+            body.Children.Add(presenter);
+
+            var grip = new TextBlock
+            {
+                Text = "◢",
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+            };
+            WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
+            ctx.RegisterName("PART_ResizeGrip", grip);
+            body.Children.Add(grip);
+
+            layout.Children.Add(body); // fills the remainder
+        }
+        else
+        {
+            layout.Children.Add(presenter); // fills the remainder
+        }
 
         root.Child = layout;
         return root;
     }
 
-    private static readonly IBrush DefaultSurfaceBrush = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E));
+    private static readonly IBrush DefaultSurfaceBrush = SolidColorBrush.FromRgb(0x1E, 0x1E, 0x2E);
+    private static readonly IBrush TitleBarBrush = SolidColorBrush.FromRgb(0x31, 0x32, 0x44);
 }

@@ -541,12 +541,17 @@ public sealed class InputDispatcher : IInputDispatchTarget
     }
 
     /// <summary>Whether <paramref name="hit"/> is the capture holder or a descendant of it, walking the same
-    /// <c>VisualParent ?? LogicalParent</c> hop the route uses (so a captured popup's items count as inside).</summary>
+    /// <c>VisualParent ?? LogicalParent ?? TemplatedParent</c> hop the route uses (so a captured popup's items —
+    /// and a captured control's template parts — count as inside).</summary>
     private static bool IsInCaptureSubtree(UIElement? hit, UIElement capture)
     {
-        for (var element = hit; element is not null; element = element.VisualParent ?? element.LogicalParent)
+        for (var element = hit; 
+             element is not null; 
+             element = element.VisualParent ?? element.LogicalParent ?? element.TemplatedParent)
+        {
             if (ReferenceEquals(element, capture))
                 return true;
+        }
 
         return false;
     }

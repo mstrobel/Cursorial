@@ -60,4 +60,38 @@ public sealed class SolidColorBrush : IBrush
         double scaled = opacity <= 0.0 ? 0.0 : color.Alpha * opacity;
         return color.WithAlpha((byte) Math.Clamp(Math.Round(scaled), 0, 255));
     }
+    
+    /// <summary>Construct a palette color from a 0–255 index. Indices 0–15 are the ANSI base colors.</summary>
+    public static SolidColorBrush FromPalette(int index)
+    {
+        if (index < 0 || index > byte.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(index), index, "Index must be between 0 and 255.");
+        return new(Color.FromPalette((byte) index));
+    }
+
+    /// <summary>Construct a fully opaque 24-bit truecolor value.</summary>
+    public static SolidColorBrush FromRgb(byte red, byte green, byte blue)
+        => new(Color.FromRgb(red, green, blue));
+
+    /// <summary>Construct a 24-bit truecolor value from a hex code.</summary>
+    public static SolidColorBrush FromHex(in ReadOnlySpan<char> hexCode)
+        => new(Color.FromHex(hexCode));
+
+    /// <summary>
+    /// Construct a 24-bit truecolor value with an explicit alpha channel. <paramref name="alpha"/>
+    /// of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is fully transparent
+    /// (compositing returns the backdrop unchanged). Intermediate values mix the blended source
+    /// color with the backdrop linearly.
+    /// </summary>
+    public static SolidColorBrush FromRgba(byte red, byte green, byte blue, byte alpha)
+        => new(Color.FromRgba(red, green, blue, alpha));
+
+    /// <summary>
+    /// Construct a 24-bit truecolor value from its HSV components with an explicit alpha channel.
+    /// <paramref name="alpha"/> of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is
+    /// fully transparent (compositing returns the backdrop unchanged). Intermediate values mix the
+    /// blended source color with the backdrop linearly.
+    /// </summary>
+    public static SolidColorBrush FromHsv(double hue, double saturation, double value, byte alpha = 255)
+        => new(Color.FromHsv(hue, saturation, value, alpha));
 }

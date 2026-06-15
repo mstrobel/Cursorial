@@ -7,7 +7,6 @@ using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 
 using DrawingMedia = Cursorial.Drawing.Media;
-using MediaBuilders = Cursorial.UI.Media;
 using Style = Cursorial.UI.Style;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
@@ -77,57 +76,10 @@ public sealed class Section04_BuiltInAndBuilders
         Assert.Equal(expectedKind, brush.Color.Kind); // the specific value pinned per tier
     }
 
-    // ───────────────────────────── 4.3 Cursorial.UI.Media builders + ResourceBrushResolver ─────────────────────────────
-
-    [Fact] // C104
-    public void C104_SolidColorBrushBuilder_BuildsImmutableDrawing()
-    {
-        var builder = new MediaBuilders.SolidColorBrush { Color = Color.FromRgb(0x10, 0x20, 0x30), Opacity = 0.5 };
-        var built = builder.Build();
-        var brush = Assert.IsType<DrawingMedia.SolidColorBrush>(built);
-        Assert.Equal(ColorKind.Rgb, brush.Color.Kind);
-    }
-
-    [Fact] // C105
-    public void C105_LinearGradientBuilder_BuildsDrawing()
-    {
-        var builder = new MediaBuilders.LinearGradientBrush
-        {
-            StartPoint = RelativePoint.TopLeft,
-            EndPoint = RelativePoint.BottomRight,
-            Spread = GradientSpread.Reflect,
-        };
-        builder.GradientStops.Add(new MediaBuilders.GradientStop { Offset = 0, Color = Color.FromRgb(0xF9, 0x26, 0x72) });
-        builder.GradientStops.Add(new MediaBuilders.GradientStop { Offset = 1, Color = Color.FromRgb(0x66, 0xD9, 0xEF) });
-
-        var built = Assert.IsType<DrawingMedia.LinearGradientBrush>(builder.Build());
-        Assert.Equal(RelativePoint.BottomRight, built.EndPoint);
-        Assert.Equal(GradientSpread.Reflect, built.Spread);
-    }
-
-    [Fact] // C106
-    public void C106_PenBuilder_ColorXorBrush()
-    {
-        var both = new MediaBuilders.Pen { Color = Color.FromRgb(1, 2, 3), Brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(4, 5, 6)) };
-        Assert.Throws<InvalidOperationException>(() => both.Build());
-
-        var single = new MediaBuilders.Pen { Color = Color.FromRgb(1, 2, 3), Weight = StrokeWeight.Heavy };
-        var built = Assert.IsType<Cursorial.Drawing.Pen>(single.Build());
-        Assert.Equal(StrokeWeight.Heavy, built.Weight);
-    }
-
-    [Fact] // C107
-    public void C107_BuiltValue_ImmutableAndSealedShareable()
-    {
-        var brush = new MediaBuilders.SolidColorBrush { Color = Color.FromRgb(9, 9, 9) }.Build();
-        var d = new ResourceDictionary { ["B"] = brush };
-        d.Seal();
-        // freely shared post-seal (folded-constant-friendly)
-        var d2 = new ResourceDictionary();
-        d2.MergedDictionaries.Add(d);
-        Assert.True(d2.TryGetResource("B", new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor), out var v));
-        Assert.Same(brush, v);
-    }
+    // ───────────────────────────── 4.3 ResourceBrushResolver (R2) ─────────────────────────────
+    // (The Cursorial.UI.Media IResourceValueBuilder twins — former rows C104–C107 — were retired: the real
+    //  Cursorial.Drawing.Media brush/gradient/Pen types are now directly XAML-element-authorable (#5/#20), so
+    //  the never-wired builder shadows were dead weight. See control-matrix C104–C107 (struck) / design §11.9.)
 
     [Fact] // C108
     public void C108_ResourceBrushResolver_ResourceAndInlineShareNamespace()

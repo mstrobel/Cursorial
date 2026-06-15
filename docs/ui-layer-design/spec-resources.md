@@ -346,6 +346,14 @@ public static class ResourceBrushResolver
 
 ### 2.6 XAML-facing media builders (`Cursorial.UI.Media`)
 
+> **RETIRED (#8) — superseded by element-authorable Drawing types.** This section's `Cursorial.UI.Media` builder
+> twins (`SolidColorBrush`/`LinearGradientBrush`/`Pen` + the `IResourceValueBuilder.Build()` loader seam) were
+> never wired into the loader. The simpler resolution was to make the real `Cursorial.Drawing.Media` types directly
+> XAML-element-authorable — parameterless ctors + `init` members + `[ContentProperty]` on the gradient `Stops`
+> (#5), and `Activator.CreateInstance` + `init`-member reflection for the `Pen`/`GradientStop` record structs (#20)
+> — so element syntax (path 2) uses the Drawing types themselves. The twins and the `IResourceValueBuilder` seam
+> are removed; the text below is retained for historical context only. See canonical design §11.9.
+
 The `Cursorial.Drawing` brush/pen types are deliberately XAML-hostile: no parameterless ctors, get-only members, ctor-supplied stop lists, `Pen` a `readonly record struct` — Fork C's instantiator (parameterless-ctor `Activate` + settable members) cannot build them. Two complementary paths, both keeping Drawing untouched (invariant 7):
 
 1. **Attribute text** — Fork C's registered converters already cover it: the `IBrush` converter reuses `BrushMarkup`'s grammar (`"linear:#f92672,#66d9ef"`), the `Pen` converter parses preset+composition text (`"Dashed #888"`). Used for setter values and brush-typed attributes.

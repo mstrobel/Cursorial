@@ -271,5 +271,18 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 | N128 | multiple edge actions in one rule's `Enter` | activation | invoked in rule-document order on the edge (Fork B seam; re-pinned here) | PIN |
 | N129 | the scope detaches while an edge-ignited storyboard runs | detach | retracts; no `Completed` | PIN (AD10) |
 | N130 | `BeginStoryboard.Storyboard == null` / `StopStoryboard.Storyboard == null` | activation | no-op (no throw) | PIN |
-## 12. `AnimationsEnabled` (reduced motion) full flip semantics (A2) — TBD
+## 12. `AnimationsEnabled` (reduced motion) full flip semantics (A2) — N131–N140
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| N131 | `AnimationsEnabled == false` | `Begin` a finite (HoldEnd) animation | attaches + writes `ValueAt(Duration)` synchronously + Holds; `Completed` enqueued for the next pass (NOT raised from `Begin`) | PIN (AD15) |
+| N132 | `AnimationsEnabled == false` | `Begin` a finite `Fill = Stop` animation | end written then retracted (base resurfaces); `Completed` enqueued | PIN (AD15) |
+| N133 | `AnimationsEnabled == false` | `Begin` a perpetual animation | no handle; born `Stopped`; the base shows; no `Completed`; does not pin idle | PIN (AD15) |
+| N134 | a finite Running instance | flip `AnimationsEnabled` true→false, `Tick` | snaps to `ValueAt(Duration)` through the completion branch; `Completed` raised after the pass | PIN (AD15) |
+| N135 | a Delayed instance | flip true→false, `Tick` | snaps to the end (Delayed is included) | PIN (AD15) |
+| N136 | a Paused instance | flip true→false, `Tick` | snaps to the end (Paused is included) | PIN (AD15) |
+| N137 | a perpetual instance | flip true→false, `Tick` | retracts (base resurfaces); no `Completed`; idle drops | PIN (AD15) |
+| N138 | a Holding instance | flip true→false, `Tick` | unaffected — stays Holding at the end value | PIN (AD15) |
+| N139 | already flipped false, then false→true | `Begin` a new animation | prospective — the new animation runs normally; already-snapped instances are untouched | PIN (AD15) |
+| N140 | `Begin` while disabled with a `Completed` subscriber | the next completion pass | `Completed` raised exactly once on the next pass, never synchronously from `Begin` | PIN (AD15) |
 ## 16. Transitions (implicit animations, winning-base observer) (A3) — TBD

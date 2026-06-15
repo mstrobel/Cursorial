@@ -27,6 +27,7 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
     private readonly List<StoryboardInstance> _storyboards = []; // running storyboard groups (P8 A1)
     private readonly List<IAnimationCompletion> _completed = []; // completions to raise after the sampling pass (AD3)
     private bool _isShutdown;
+    private bool _animationsEnabledLast = true; // tracks the AnimationsEnabled edge for the §9.7 flip
 
     /// <summary>
     /// The scheduler installed on the current thread. Throws off the UI/build threads — the
@@ -75,6 +76,22 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
     public void Tick()
     {
         var now = Clock.Now;
+
+        // §9.7/AD15: a true→false AnimationsEnabled flip collapses motion at the next Tick — finite instances
+        // (incl. Delayed/Paused) snap to their end through the completion branch, perpetual instances retract;
+        // Holding is untouched. false→true is prospective (handled at Begin). Snapshot the count first.
+        if (_animationsEnabledLast && !AnimationsEnabled)
+        {
+            var live = _instances.Count;
+            for (var i = 0; i < live; i++)
+            {
+                var state = _instances[i].State;
+                if (state is AnimationState.Delayed or AnimationState.Running or AnimationState.Paused)
+                    _instances[i].ApplyReducedMotion();
+            }
+        }
+        _animationsEnabledLast = AnimationsEnabled;
+
         var timerCount = _timers.Count; // snapshot — callbacks may Start new timers (appended, skipped this frame)
 
         try
@@ -169,7 +186,7 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
         var handle = new AnimationHandle(instance, target, property);
         instance.BindPublicHandle(handle);
         _instances.Add(instance);
-        instance.BeginNow(Clock.Now);
+        StartInstance(instance);
         return handle;
     }
 
@@ -245,7 +262,16 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
         };
         _instances.Add(instance);
         owner.AddChild(animation.Duration == TimeSpan.MaxValue); // count BEFORE the first sample (zero-duration safety)
-        instance.BeginNow(Clock.Now);
+        StartInstance(instance);
+    }
+
+    /// <summary>The §9.7 Begin branch: a normal self-sample when motion is enabled, else the reduced-motion collapse (AD15).</summary>
+    private void StartInstance(AnimationInstance instance)
+    {
+        if (AnimationsEnabled)
+            instance.BeginNow(Clock.Now);
+        else
+            instance.ApplyReducedMotion();
     }
 
     /// <summary>The public <c>StoryboardHandle.Stop()</c> path — retires this group silently.</summary>

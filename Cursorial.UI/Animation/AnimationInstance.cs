@@ -57,6 +57,9 @@ internal abstract class AnimationInstance : IAnimationCompletion
     /// <summary>Skips to the end (A2): finite only (perpetual throws); writes the end value + completes (one pass).</summary>
     internal abstract void SkipToEnd();
 
+    /// <summary>Reduced-motion collapse (§9.7/AD15): finite snaps to its end + completes; perpetual retracts; Holding/finished untouched.</summary>
+    internal abstract void ApplyReducedMotion();
+
     /// <summary>Raises the public handle's <c>Completed</c> (at most once) — the post-sampling drain.</summary>
     public abstract void RaiseCompleted();
 }
@@ -246,6 +249,29 @@ internal sealed class AnimationInstance<T> : AnimationInstance
             return;       // a reentrant Stop from the write's notification skips completion (AD7)
 
         Complete();
+    }
+
+    internal override void ApplyReducedMotion()
+    {
+        if (State is AnimationState.Holding or AnimationState.Completed or AnimationState.Stopped)
+            return; // Holding is unaffected (already at the end value); finished is a no-op (AD15)
+
+        if (_perpetual)
+        {
+            // No motionless pulse rendition: retract so the base (the reduced-motion look) shows; no Completed.
+            _handle?.Dispose();
+            _handle = null;
+            State = AnimationState.Stopped;
+            _completionPending = false;
+            Owner?.OnChildRetired();
+            return;
+        }
+
+        // Finite: snap to the end through the normal completion branch (writes ValueAt(Duration), applies Fill,
+        // enqueues Completed for the next pass — never raised synchronously).
+        Write(_duration);
+        if (State is AnimationState.Running or AnimationState.Delayed or AnimationState.Paused)
+            Complete();
     }
 
     public override void RaiseCompleted()

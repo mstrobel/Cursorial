@@ -449,6 +449,53 @@ Tests: `Cursorial.UI.Tests/Windowing/` (`TopLevelSurfaceTests`, `WindowManagerTe
 `InputMatrix/Section07` subtree-capture rows; the `windows` demo is the live canary (UI suite 1822 green). The
 interim chrome template is replaced by S8's themed control theme at C4.
 
+**Phase 8 complete** (doc §14 — the S5 animation layer; normative spec at
+`docs/ui-layer-design/animation-matrix.md`, rows N1–N153 + the AD pinned-decision ledger, tests in
+`Cursorial.UI.Tests/AnimationMatrix/Section01…Section16`). The mechanism lives in `Cursorial.Animation`
+(time-free `IAnimation<T>`, easings, interpolator registry); the orchestration in `Cursorial.UI/Animation/`.
+
+- **A0 — scheduler core** — `AnimationScheduler` (thread-ambient `Current`, implements `IAnimationFrameDriver`:
+  `BeginFrame`/`Tick`/`TickNewlyStarted`/`HasActiveAnimations`/`Shutdown`), `FrameClock` (frozen per frame),
+  `AnimationInstance<T>` (the Delayed→Running→Holding/Completed/Stopped state machine: self-sample at Begin,
+  final write == `ValueAt(Duration)`, perpetual guard, reentrant-Stop check after the write, HoldEnd keeps the
+  handle vs Stop retracts — invariant 4), the public `AnimationHandle`/`BeginAnimation<T>` surface, completion
+  at-most-once after the sampling pass (`IAnimationCompletion`), SnapshotAndReplace handoff. The
+  `Interpolator.For<T>()`/`Register<T>()` registry (process-global, lock-free reads, thread-agnostic — AD12
+  amended) seeds double/int/`Color` (Animation) + `PointD`/`Size`/`Rect`/`RelativePoint`/`Margins` (signed,
+  LD19)/`CompositeParameters`/`IBrush`/`Pen` (Drawing, via a `[ModuleInitializer]`).
+- **A1 — storyboards** — `Optional<T>`, `RepeatBehavior`, `AnimationTrack`/`AnimationTrack<T>` + sealed
+  `DoubleTrack`/`Int32Track`/`ColorTrack`/`BrushTrack`/`RectTrack`/`SizeTrack`/`MarginsTrack`; `Storyboard`
+  (seal-on-arm `Children`) + `StoryboardInstance` (per-`(igniter, scope)` instancing, group completion roll-up)
+  + `StoryboardHandle`; `BeginStoryboard`/`StopStoryboard` `IStyleEdgeAction`s wired into Fork B's
+  `Style.Enter`/`Exit` edges + `AnimationDiagnostics` (the edge-ignited no-throw `TrackError` sink). **Edge
+  actions are do/undo against the pinned SD16 seam** (Enter entries get `OnActivated`, Exit entries get
+  `OnRetracted`): `BeginStoryboard.OnActivated` begins, `OnRetracted` stops; for begin-on-enter + stop-on-exit
+  put a `StopStoryboard` in `Exit` (or the same `BeginStoryboard` in both). Edge actions on a **nested** child
+  rule fire on the nested rule's edge (`CompiledRule.DeclaringStyle` is the declaring nested style — not the
+  always-active parent). `Style` seal-on-attach seals referenced storyboards via the additive
+  `IStyleEdgeAction.SealReferences()` DIM. Detach-stop evicts scoped storyboards (§9.6).
+- **A2** — `AnimationHandle`/`StoryboardHandle` `Pause`/`Resume`/`Seek`/`SkipToEnd` (Seek anchors to the pause
+  clock while paused; storyboard `Seek` maps per-track `offset − BeginTime`, rewinding pre-start tracks to
+  Delayed); `AnimationsEnabled` reduced-motion flip (AD15 — Begin-while-disabled snaps finite + born-Stopped
+  perpetual; a true→false `Tick` collapses Delayed/Running/Paused); Elastic/Bounce/`CubicBezier` easings +
+  `Easings.TryParse` (catalog + `cubic-bezier(...)`); DEBUG diagnostics (`AnimationDiagnostics.Warning` — the
+  §9.6 never-attached leak tracker + the §9.9 perpetual-on-`AffectsMeasure` warning).
+- **A3 — Transitions** (implicit animations, §9.5) — `Transition`/`Transition<T>` + sealed `Double`/`Int32`/
+  `Color`/`Brush`/`Margins` transitions, `TransitionCollection`, the attached `Transition.TransitionsProperty`,
+  and the per-element `TransitionManager` subscribing the Fork A winning-base channel
+  (`IValueObserver<T>.OnBaseValueChanged` via `ObserverOptions.IncludeBaseChanges`): a base change starts an
+  Animation-priority run `From = isAnimated ? GetValue : oldBase`, `To = newBase`, `Fill.Stop`. **The "initial
+  application doesn't transition" rule is a per-element go-live latch keyed to the element's first NON-collapsed
+  arrange** (`UIElement._hasArrangedVisible`, reset on attach so re-attach re-parks), flipped at the post-layout
+  boundary (`UIApplication.CompletePendingTransitionGoLive`, the `CompletePendingActivationFocus` mirror); arming
+  on an already-visibly-arranged element goes live at once. This is the only siting after both initial
+  base-write points (attach-time own props + first-layout templated parts), which both fire the winning-base
+  observer indistinguishably from a real change.
+
+Each sub-phase was adversarially audited (the audits found and fixed 7 real bugs the green tests missed). The
+`motion` demo (`Cursorial.Demo`) is the live canary: a toast Storyboard (slide + fade, selectable easing), a
+hover Opacity Transition, and an edge-action perpetual pulse. UI suite 1945 green, Animation 113 green.
+
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
 theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);

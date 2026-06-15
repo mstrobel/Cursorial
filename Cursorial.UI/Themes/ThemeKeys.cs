@@ -139,11 +139,35 @@ public static class ThemeKeys
 /// <see cref="ThemeKeys.RadioGlyphs"/> / <see cref="ThemeKeys.ScrollArrowGlyphs"/>. The defaults are
 /// true ASCII (zero ambiguous-width risk; cf. the ambiguous-width project memory).
 /// </summary>
-/// <param name="Unchecked">The first glyph (unchecked box / up-or-left arrow).</param>
-/// <param name="Checked">The second glyph (checked box / down-or-right arrow).</param>
-/// <param name="Indeterminate">The third glyph (the indeterminate box; unused for a two-glyph arrow pair).</param>
-public readonly record struct GlyphSetCarrier(string Unchecked, string Checked, string Indeterminate = "")
+public record GlyphSetCarrier
 {
+    /// <summary>
+    /// A small immutable carrier for a control's themeable glyph strings, such as a <see cref="Cursorial.UI.Controls.CheckBox"/>'s
+    /// <c>(Unchecked, Checked, Indeterminate)</c> triple or a scroll-bar's arrow pair. This allows glyphs to be defined as theme
+    /// resources which can be dynamically swapped using a variant or capability dictionary. These glyphs are accessed using keys
+    /// like <see cref="ThemeKeys.CheckBoxGlyphs"/>, <see cref="ThemeKeys.RadioGlyphs"/>, or <see cref="ThemeKeys.ScrollArrowGlyphs"/>.
+    /// Default glyphs are designed to avoid ambiguous-width risks and typically leverage ASCII.
+    /// </summary>
+    public GlyphSetCarrier() {}
+
+    /// <summary>
+    /// A small immutable carrier for a control's themeable glyph strings — a <see cref="Cursorial.UI.Controls.CheckBox"/>'s
+    /// <c>(Unchecked, Checked, Indeterminate)</c> triple, a scroll-bar's arrow pair (design doc §12.7,
+    /// spec line 660). Glyphs are theme <b>resources</b> so a variant / capability dictionary can swap
+    /// them; the framework keys them under <see cref="ThemeKeys.CheckBoxGlyphs"/> /
+    /// <see cref="ThemeKeys.RadioGlyphs"/> / <see cref="ThemeKeys.ScrollArrowGlyphs"/>. The defaults are
+    /// true ASCII (zero ambiguous-width risk; cf. the ambiguous-width project memory).
+    /// </summary>
+    /// <param name="unchecked">The first glyph (unchecked box / up-or-left arrow).</param>
+    /// <param name="checked">The second glyph (checked box / down-or-right arrow).</param>
+    /// <param name="indeterminate">The third glyph (the indeterminate box; unused for a two-glyph arrow pair).</param>
+    public GlyphSetCarrier(string @unchecked, string @checked, string @indeterminate = "")
+    {
+        Unchecked = @unchecked;
+        Checked = @checked;
+        Indeterminate = @indeterminate;
+    }
+
     /// <summary>
     /// Selects the glyph for a three-state checked value (<see langword="false"/>/<see langword="true"/>/
     /// <see langword="null"/>). When this set carries no third glyph (the two-argument constructor leaves
@@ -153,9 +177,25 @@ public readonly record struct GlyphSetCarrier(string Unchecked, string Checked, 
     /// defaults supply a distinct indeterminate glyph.
     /// </summary>
     public string ForChecked(bool? value) => value switch
+                                             {
+                                                 true => Checked,
+                                                 null => Indeterminate.Length > 0 ? Indeterminate : Unchecked,
+                                                 _    => Unchecked
+                                             };
+
+    /// <summary>The first glyph (unchecked box / up-or-left arrow).</summary>
+    public string Unchecked { get; init; } = "";
+
+    /// <summary>The second glyph (checked box / down-or-right arrow).</summary>
+    public string Checked { get; init; } = "";
+
+    /// <summary>The third glyph (the indeterminate box; unused for a two-glyph arrow pair).</summary>
+    public string Indeterminate { get; init; } = "";
+
+    public void Deconstruct(out string @unchecked, out string @checked, out string indeterminate)
     {
-        true => Checked,
-        null => Indeterminate.Length > 0 ? Indeterminate : Unchecked,
-        _ => Unchecked,
-    };
+        @unchecked = Unchecked;
+        @checked = Checked;
+        indeterminate = Indeterminate;
+    }
 }

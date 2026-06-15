@@ -9,6 +9,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
+using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -85,6 +86,27 @@ public sealed class ArchOneXamlThemeTests
         Assert.Equal(
             CaptureCells(xaml: false, focus: false, 14, 6, MakeScrollViewer),
             CaptureCells(xaml: true,  focus: false, 14, 6, MakeScrollViewer));
+    }
+
+    [Fact]
+    public void XamlGlyphSetCarrierResources_InstantiateFromXaml_WithBuiltInValues()
+    {
+        // GlyphSetCarrier (record class: parameterless ctor + init props) is authored as <GlyphSetCarrier>
+        // resource elements in the theme XAML; prove the loader instantiates them and the dict carries the
+        // same triples as the code-first CursorialTheme.BuiltIn (true-ASCII defaults). The x:Key is an
+        // {x:Static ThemeKeys.*Glyphs} string key.
+        var dict = CursorialXamlTheme.LoadControls();
+
+        AssertGlyphs(dict, ThemeKeys.CheckBoxGlyphs, "[ ]", "[x]", "[-]");
+        AssertGlyphs(dict, ThemeKeys.RadioGlyphs, "( )", "(*)", "(-)");
+        AssertGlyphs(dict, ThemeKeys.ScrollArrowGlyphs, "^", "v", ""); // arrow pair: empty Indeterminate default
+
+        static void AssertGlyphs(ResourceDictionary dict, string key, string unchecked_, string checked_, string indeterminate)
+        {
+            Assert.True(dict.TryGetValue(key, out var value), $"theme dict missing glyph resource '{key}'");
+            var glyphs = Assert.IsType<GlyphSetCarrier>(value);
+            Assert.Equal((unchecked_, checked_, indeterminate), (glyphs.Unchecked, glyphs.Checked, glyphs.Indeterminate));
+        }
     }
 
     private static UIControls.Control MakeControl(string control) => control switch

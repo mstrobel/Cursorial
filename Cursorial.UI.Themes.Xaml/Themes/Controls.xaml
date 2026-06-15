@@ -1,6 +1,16 @@
 <ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
 
   <!--
+    The themeable glyph-set resources (design doc §12.7), authored declaratively as GlyphSetCarrier elements
+    (parameterless ctor + init properties) — the data twin of CursorialTheme's dict[ThemeKeys.*Glyphs] = new
+    GlyphSetCarrier(...). True-ASCII defaults (zero ambiguous-width risk); the caps-unicode opt-up to colored
+    Unicode rides BuiltIn's Theme-layer style channel (R2/B13 — app.Theme.Styles is not yet consumed).
+  -->
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.CheckBoxGlyphs}"    Unchecked="[ ]" Checked="[x]" Indeterminate="[-]"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.RadioGlyphs}"       Unchecked="( )" Checked="(*)" Indeterminate="(-)"/>
+  <GlyphSetCarrier x:Key="{x:Static ThemeKeys.ScrollArrowGlyphs}" Unchecked="^"   Checked="v"/>
+
+  <!--
     The cell-faithful Button control theme (design doc §11.8a), authored declaratively in XAML — the twin of
     the code-first ControlThemes.ButtonTheme(). A fill-bounded face (no resting border): the R2 DynamicResource
     palette spine (Foreground = TextBrush on a SurfaceBrush fill) plus the reverse-video interactive states as

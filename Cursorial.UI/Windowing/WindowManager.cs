@@ -39,6 +39,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private readonly TerminalCaretService _caretService;
     private readonly IUserCodeGuard? _guard;
     private readonly List<Window> _windows = [];            // shown windows, bottom→top z-order (above the root)
+    private readonly List<Popup> _popups = [];              // open popups, in open order (the band above all windows)
     private readonly List<Window> _modalStack = [];         // active modals, bottom→top; the topmost is the gate
     private readonly HashSet<Window> _blocked = [];         // windows currently disabled by a modal (the `obscured` set)
     private SceneCompositor _compositor = new();
@@ -50,6 +51,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private Window? _modalAttentionGate;
     private TerminalCaretState _lastCaret;
     private bool _caretEverApplied;
+    private (int Column, int Row) _lastPointer; // last screen pointer position (for PlacementMode.Pointer)
 
     /// <summary>
     /// Creates the window manager. <paramref name="guard"/> is the user-code funnel routed to every
@@ -73,6 +75,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     /// <summary>The shown windows, bottom→top in z-order (above the root surface).</summary>
     public IReadOnlyList<Window> Windows => _windows;
+
+    /// <summary>The open popups, in open order; their surfaces form the band above all windows (§8.4).</summary>
+    public IReadOnlyList<Popup> Popups => _popups;
 
     /// <summary>The active (focused) top-level window, or <see langword="null"/> when none (the root has focus).</summary>
     public Window? ActiveWindow => _activeWindow;
@@ -208,6 +213,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // same frame's Phase 5 re-lays-out under the new constraint. Windows re-clamp/re-size at W5.
         _viewport = newSize;
         _compositor = new SceneCompositor();
+
+        // A resize invalidates every popup's placement; light-dismiss popups close (StaysOpen re-place is W5).
+        for (var i = _popups.Count - 1; i >= 0; i--)
+            if (!_popups[i].StaysOpen)
+                _popups[i].CloseCore(PopupCloseReason.ScreenResized);
 
         if (_rootSurface is not null)
             _rootSurface.Size = newSize;
@@ -435,6 +445,119 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = 0; i < _windows.Count; i++)
             if (_windows[i].HostSurface is { } surface)
                 _surfaces.Add(surface);
+        for (var i = 0; i < _popups.Count; i++) // the popup band sits above every window (§8.4)
+            if (_popups[i].PopupSurface is { } surface)
+                _surfaces.Add(surface);
+    }
+
+    // ── Popup hosting (P7-W4: light-dismiss surfaces in the band above every window) ──────────────────
+
+    /// <summary>Hosts <paramref name="popup"/>'s child on a new popup surface, places it relative to the target
+    /// (clamped to the screen), and pushes it onto the popup band. A null <c>Child</c> is a no-op (the popup
+    /// reopens when one is set). Called by <c>Popup.OpenCore</c>.</summary>
+    internal void OpenPopup(Popup popup)
+    {
+        if (popup.Child is not { } child)
+            return;
+
+        var surface = new TopLevelSurface(child, _scenePool, _capabilities, _guard) { IsPopup = true };
+        popup.PopupSurface = surface;
+        _popups.Add(popup);
+
+        PlacePopup(popup, surface);
+
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor(); // the layer set changed wholesale
+        SurfacesChanged?.Invoke();
+    }
+
+    /// <summary>Removes <paramref name="popup"/>'s surface from the band and detaches it. Idempotent (a popup not
+    /// currently hosted is a no-op). Called by <c>Popup.CloseCore</c> / the content-swap path.</summary>
+    internal void ClosePopup(Popup popup)
+    {
+        if (!_popups.Remove(popup))
+            return;
+
+        popup.PopupSurface?.Detach();
+        popup.PopupSurface = null;
+
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor();
+        SurfacesChanged?.Invoke();
+    }
+
+    /// <summary>Measures the popup child at the screen, then positions its surface per <see cref="Popup.Placement"/>
+    /// + offsets relative to the effective target's screen rect, clamped into the viewport (§8.4).</summary>
+    private void PlacePopup(Popup popup, TopLevelSurface surface)
+    {
+        // Provisional measure at the screen constraint to read the child's content-driven desired size.
+        surface.Size = _viewport;
+        surface.RunLayoutPass();
+
+        var desired = surface.Root.DesiredSize;
+        var size = new Size(
+            Math.Clamp(desired.Columns, 0, _viewport.Columns),
+            Math.Clamp(desired.Rows, 0, _viewport.Rows));
+        surface.Size = size;
+
+        var anchor = AnchorRect(popup);
+        var (left, top) = popup.Placement switch
+        {
+            PlacementMode.Top => (anchor.Column, anchor.Row - size.Rows),
+            PlacementMode.Right => (anchor.ColumnEnd, anchor.Row),
+            PlacementMode.Left => (anchor.Column - size.Columns, anchor.Row),
+            PlacementMode.Center => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
+            PlacementMode.Pointer => (_lastPointer.Column, _lastPointer.Row),
+            _ => (anchor.Column, anchor.RowEnd), // Bottom (default)
+        };
+
+        left += popup.HorizontalOffset;
+        top += popup.VerticalOffset;
+
+        // Clamp so the whole surface stays on-screen (a content larger than the viewport pins to the origin).
+        surface.Left = Math.Clamp(left, 0, Math.Max(0, _viewport.Columns - size.Columns));
+        surface.Top = Math.Clamp(top, 0, Math.Max(0, _viewport.Rows - size.Rows));
+        surface.Opacity = 1.0;
+    }
+
+    /// <summary>The effective target's bounds in screen space (its surface offset + a live parent-chain walk), or
+    /// a zero rect at the origin when the popup has no resolvable on-surface target.</summary>
+    private LayoutRect AnchorRect(Popup popup)
+    {
+        if (popup.EffectiveTarget is { } target && SurfaceForElement(target) is { } host)
+        {
+            var (wx, wy) = target.TranslateToWindow(0, 0);
+            return new LayoutRect(host.Left + wx, host.Top + wy, target.Bounds.Size);
+        }
+
+        return LayoutRect.Empty;
+    }
+
+    /// <summary>The surface whose render tree owns <paramref name="element"/>, or <see langword="null"/> when it is
+    /// detached / not hosted here.</summary>
+    private TopLevelSurface? SurfaceForElement(UIElement element)
+    {
+        if (element.GetRenderTree() is not { } tree)
+            return null;
+
+        for (var i = 0; i < _surfaces.Count; i++)
+            if (ReferenceEquals(_surfaces[i].RenderTree, tree))
+                return _surfaces[i];
+
+        return null;
+    }
+
+    /// <summary>Light-dismiss (§8.4): an uncaptured press closes every open non-<c>StaysOpen</c> popup except the
+    /// one pressed (<paramref name="hit"/> null = a press in dead space — all dismiss). Full chain semantics is
+    /// W4-b. Iterates back-to-front since <see cref="ClosePopup"/> mutates the list.</summary>
+    private void LightDismissPopups(TopLevelSurface? hit)
+    {
+        for (var i = _popups.Count - 1; i >= 0; i--)
+        {
+            var popup = _popups[i];
+            if (!popup.StaysOpen && !ReferenceEquals(popup.PopupSurface, hit))
+                popup.CloseCore(PopupCloseReason.LightDismiss);
+        }
     }
 
     // ── Renegotiation leg (UIApplication calls; mirrors the single-root render system) ───────────────
@@ -477,13 +600,24 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surfaceColumn = mouse.Position.Column;
         surfaceRow = mouse.Position.Row;
         surfaceRoot = null;
+        _lastPointer = (mouse.Position.Column, mouse.Position.Row); // feeds PlacementMode.Pointer
 
         var surface = SurfaceFromPoint(mouse.Position.Column, mouse.Position.Row);
         if (surface is null)
-            return true; // no surface under the point — routes nowhere (ND5: dropped, no throw)
+        {
+            // A press over no surface still light-dismisses open popups (a click in dead space, §8.4).
+            if (mouse.Kind == MouseEventKind.ButtonDown && _popups.Count > 0)
+                LightDismissPopups(hit: null!);
+            return true; // routes nowhere (ND5: dropped, no throw)
+        }
 
         var window = surface.HostWindow;
         var isPress = mouse.Kind == MouseEventKind.ButtonDown;
+
+        // Light dismiss before activation/routing: a press closes every open light-dismiss popup except the one
+        // pressed (§8.4). Pressing inside a popup keeps it (and routes into it); pressing a window/root dismisses.
+        if (isPress && _popups.Count > 0)
+            LightDismissPopups(surface);
 
         // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate
         // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse).

@@ -68,6 +68,53 @@ public enum WindowCloseReason : byte
     ManagerShutdown,
 }
 
+/// <summary>Where a <c>Popup</c> places its surface relative to its placement target (design doc §8.4). Default <see cref="Bottom"/>.</summary>
+public enum PlacementMode : byte
+{
+    /// <summary>Below the target's bottom edge, left-aligned.</summary>
+    Bottom,
+
+    /// <summary>Above the target's top edge, left-aligned.</summary>
+    Top,
+
+    /// <summary>To the right of the target's right edge, top-aligned.</summary>
+    Right,
+
+    /// <summary>To the left of the target's left edge, top-aligned.</summary>
+    Left,
+
+    /// <summary>Centered over the target.</summary>
+    Center,
+
+    /// <summary>At the last pointer position.</summary>
+    Pointer,
+}
+
+/// <summary>Why a <c>Popup</c> closed — surfaced on <c>PopupClosedEventArgs</c> (design doc §8.4).</summary>
+public enum PopupCloseReason : byte
+{
+    /// <summary>An explicit <c>Close()</c> / <c>IsOpen = false</c>.</summary>
+    Programmatic,
+
+    /// <summary>An uncaptured press landed outside the popup (and its chain).</summary>
+    LightDismiss,
+
+    /// <summary>The Escape key (when <c>CloseOnEscape</c>).</summary>
+    EscapeKey,
+
+    /// <summary>The host window was deactivated.</summary>
+    HostDeactivated,
+
+    /// <summary>The host window became modal-blocked.</summary>
+    HostBlocked,
+
+    /// <summary>The host window closed.</summary>
+    HostClosed,
+
+    /// <summary>The screen was resized (a light-dismiss popup; <c>StaysOpen</c> popups re-place instead).</summary>
+    ScreenResized,
+}
+
 /// <summary>
 /// The behavior a chrome part requests of its host window via <c>WindowChrome.HitTestRole</c> (design doc
 /// §8.3). The window interprets bubbling <c>ButtonDown</c>/drag on a part by its role — never by part name.

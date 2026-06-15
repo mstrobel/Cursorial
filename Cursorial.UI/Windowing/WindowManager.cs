@@ -48,6 +48,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private readonly List<Window> _modalStack = [];         // active modals, bottom→top; the topmost is the gate
     private readonly HashSet<Window> _blocked = [];         // windows currently disabled by a modal (the `obscured` set)
     private SceneCompositor _compositor = new();
+    private bool _needsComposite; // a stack change reset the compositor → force one render so vacated cells repaint
     private OutputCapabilities _capabilities;
     private Size _viewport;
     private TopLevelSurface? _rootSurface;
@@ -212,11 +213,23 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     {
         get
         {
+            if (_needsComposite) // a surface-stack change is pending a full recomposite (e.g. a closed popup)
+                return true;
+
             foreach (var surface in _surfaces)
                 if (surface.HasDirtyVisuals)
                     return true;
             return false;
         }
+    }
+
+    /// <summary>Replaces the compositor (its retained per-slot state is invalid after a layer-set/z change) and
+    /// flags a pending full recomposite so the frame loop renders even when no surface has dirty raster work —
+    /// the cells a closed/moved surface vacated repaint from the layers behind.</summary>
+    private void ResetCompositor()
+    {
+        _compositor = new SceneCompositor();
+        _needsComposite = true;
     }
 
     /// <inheritdoc/>
@@ -252,7 +265,14 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _surfaces[i].CollectLayers(_layers);
 
         if (_surfaces.Count > 0)
-            changed = _compositor.Composite(CollectionsMarshal.AsSpan(_layers), new CellBufferView(target));
+            changed |= _compositor.Composite(CollectionsMarshal.AsSpan(_layers), new CellBufferView(target));
+
+        // A surface-stack change (open/close/z/resize) reset the compositor to force a full recomposite; that
+        // recomposite has now run, so clear the pending flag. (When a popup/window closes, the remaining
+        // surfaces have no dirty raster work — only this flag makes the frame loop render, so the cells the
+        // closed surface vacated get repainted from the layers behind. Without it the closed popup's pixels
+        // would linger though it is no longer hit-testable.)
+        _needsComposite = false;
 
         // ③ caret write (T4 contract). W0: the root surface sits at the origin, so the published caret
         // state passes through unchanged; the focused-surface offset fold lands with Window/Popup (W1+).
@@ -282,7 +302,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // state is sized to the old target) + the root surface re-fits the screen + full re-raster; the
         // same frame's Phase 5 re-lays-out under the new constraint. Windows re-clamp/re-size at W5.
         _viewport = newSize;
-        _compositor = new SceneCompositor();
+        ResetCompositor();
 
         // A resize invalidates popup placement: light-dismiss popups close, StaysOpen popups re-place below.
         for (var i = _popups.Count - 1; i >= 0; i--)
@@ -399,7 +419,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _rootSurface = new TopLevelSurface(root, _scenePool, _capabilities, _guard) { Size = _viewport };
 
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor();
+        ResetCompositor();
     }
 
     // ── Window hosting + modality (P7-W1 show/close; P7-W2 modal stack + blocked set + handoff) ───────
@@ -448,7 +468,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         MoveToTop(window);
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor();
+        ResetCompositor();
         SetActive(window);
         SurfacesChanged?.Invoke();
         return true;
@@ -471,7 +491,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         window.HostSurface = null;
 
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor();
+        ResetCompositor();
         ComputeBlockedSet(); // a closed modal unblocks the windows it was gating
 
         if (wasActive)
@@ -534,7 +554,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             MoveToTop(active); // the active window is the top of its band (W2 owner-DFS banding refines this)
 
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor(); // the layer set changed wholesale
+        ResetCompositor(); // the layer set changed wholesale
         SetActive(active);
         SurfacesChanged?.Invoke();
     }
@@ -742,7 +762,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         PlacePopup(popup, surface);
 
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor(); // the layer set changed wholesale
+        ResetCompositor(); // the layer set changed wholesale
         SurfacesChanged?.Invoke();
     }
 
@@ -760,7 +780,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         popup.PopupSurface = null;
 
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor();
+        ResetCompositor();
         SurfacesChanged?.Invoke();
     }
 
@@ -891,7 +911,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         }
 
         RebuildSurfaceStack();
-        _compositor = new SceneCompositor();
+        ResetCompositor();
         SurfacesChanged?.Invoke();
     }
 
@@ -944,7 +964,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _surfaces[i].InvalidateAll();
         }
 
-        _compositor = new SceneCompositor();
+        ResetCompositor();
     }
 
     // ── IWindowTopology (S3's surface-level gate; replaces SingleRootWindowTopology at P7-W3) ─────────

@@ -1,4 +1,6 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Input;
@@ -182,6 +184,36 @@ public sealed class WindowPopupTests
         Assert.True(popup.IsOpen);
         Assert.Same(popup, Assert.Single(wm.Popups));
         Assert.Same(replacement, popup.PopupSurface!.Root);
+    }
+
+    [Fact] // closing a popup repaints the cells it occupied — the desktop shows through, no lingering artifact
+    public void Close_RepaintsVacatedCells()
+    {
+        var desktop = Color.FromRgb(10, 20, 30);
+        var popupFill = Color.FromRgb(200, 100, 50);
+
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        using var _ = host;
+        var target = new UIControls.Button { Width = 10, Height = 1, Content = "t" };
+        host.ShowRoot(new UIControls.Border { Background = new SolidColorBrush(desktop), Child = target });
+        Assert.True(host.RunUntilIdle());
+
+        var popup = new Popup
+        {
+            PlacementTarget = target,
+            Child = new UIControls.Border { Background = new SolidColorBrush(popupFill), Width = 10, Height = 3 },
+        };
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var s = popup.PopupSurface!;
+        var (col, row) = (s.Left + 1, s.Top + 1);            // a cell well inside the popup
+        Assert.Equal(popupFill, host.GetCell(col, row).Style.Background);
+
+        popup.Close();
+        Assert.True(host.RunUntilIdle());                    // the close must force a render (the fix)
+
+        Assert.Equal(desktop, host.GetCell(col, row).Style.Background); // vacated → desktop, not stale popup fill
     }
 
     [Fact] // open → close → reopen the same popup (the Child surface must fully detach so it can re-host)

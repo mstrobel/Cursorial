@@ -44,10 +44,13 @@ internal sealed class EventRoute
             pool.Push(route);
     }
 
-    /// <summary>Builds the route: target → visual parents → (logical hop at surface roots) → outermost root.</summary>
+    /// <summary>Builds the route: target → visual parents → (the <see cref="UIElement.UIParent"/> bridge hop at
+    /// surface roots — logical/templated parent, or a Popup's placement-target owner) → outermost root. Uses the
+    /// same <c>VisualParent ?? UIParent</c> walk as S3's hit-test/hover/capture so routing honors the same
+    /// tooltip/popup→owner bridge they do (a PlacementTarget-only popup's Escape reaches its owner).</summary>
     internal void Build(UIElement target)
     {
-        for (var node = target; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = target; node is not null; node = node.VisualParent ?? node.UIParent)
             Add(node);
     }
 

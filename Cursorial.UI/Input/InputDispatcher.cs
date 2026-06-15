@@ -106,7 +106,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         if (_captureTarget is not { } holder)
             return;
 
-        for (var element = (UIElement?)holder; element is not null; element = element.VisualParent ?? element.LogicalParent)
+        for (var element = (UIElement?)holder; element is not null; element = element.VisualParent ?? element.UIParent)
             if (ReferenceEquals(element, root))
             {
                 ForceReleaseCapture();
@@ -545,9 +545,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// and a captured control's template parts — count as inside).</summary>
     private static bool IsInCaptureSubtree(UIElement? hit, UIElement capture)
     {
-        for (var element = hit; 
-             element is not null; 
-             element = element.VisualParent ?? element.LogicalParent ?? element.TemplatedParent)
+        for (var element = hit; element is not null; element = element.VisualParent ?? element.UIParent)
         {
             if (ReferenceEquals(element, capture))
                 return true;
@@ -577,7 +575,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         var hit = tree.HitTest(column, row);
 
         while (hit is not null && !hit.IsEffectivelyEnabled)
-            hit = hit.VisualParent ?? hit.LogicalParent; // ND7 — same logical hop as the route walk
+            hit = hit.VisualParent ?? hit.UIParent; // ND7 — same logical hop as the route walk
 
         return hit;
     }
@@ -643,7 +641,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // Build the new chain leaf-first into the scratch, then reverse to root-first.
         var count = 0;
 
-        for (var node = hit; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = hit; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (count == _hoverScratch.Length)
                 Array.Resize(ref _hoverScratch, _hoverScratch.Length * 2);
@@ -796,7 +794,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// <summary>First non-null <see cref="UIElement.Cursor"/> on <paramref name="leaf"/>'s self→root chain (the route walk's parent hop).</summary>
     private static MouseCursorShape? ResolveCursor(UIElement leaf)
     {
-        for (var node = (UIElement?)leaf; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = (UIElement?)leaf; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (node.GetValue(UIElement.CursorProperty) is {} cursor)
                 return cursor;

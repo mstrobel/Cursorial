@@ -43,7 +43,7 @@ public class Popup : UIElement
 
     /// <summary>The placement anchor (default: the logical parent).</summary>
     public static readonly StyledProperty<UIElement?> PlacementTargetProperty =
-        UIProperty.Register<Popup, UIElement?>(nameof(PlacementTarget));
+        UIProperty.Register<Popup, UIElement?>(nameof(PlacementTarget), changed: OnPlacementTargetChanged);
 
     /// <summary>A target-local anchor rect override (W4-b; reserved).</summary>
     public static readonly StyledProperty<Rect?> PlacementRectProperty =
@@ -131,6 +131,16 @@ public class Popup : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize) => default; // logical-only: zero in the host layout
 
+    /// <summary>
+    /// The bridge hop (§8.4): when the popup has no logical/templated parent, its owner is the
+    /// <see cref="PlacementTarget"/> — so styling, resources, inheritance, and routed events all reach the
+    /// owner. The target is honored only while it is attached to a live tree: a detached / never-attached
+    /// target is not a valid parent and would otherwise let the parent-chain walks traverse stale topology
+    /// (or, if it pointed back into this popup's subtree, cycle — these walks carry no visited-set).
+    /// </summary>
+    protected internal override UIElement? UIParent
+        => base.UIParent ?? (PlacementTarget is { IsAttachedToTree: true } target ? target : null);
+
     /// <inheritdoc/>
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -151,6 +161,7 @@ public class Popup : UIElement
         _open = false;
         _manager?.ClosePopup(this);
         _manager = null;
+        SyncOwnerInheritanceBridge(); // drop the owner bridge now that we're closed
         if (IsOpen)
             SetCurrentValue(IsOpenProperty, false); // write-back; _open is already false so this does not re-enter
         Closed?.Invoke(this, new PopupClosedEventArgs(reason));
@@ -167,7 +178,27 @@ public class Popup : UIElement
 
         _open = true;
         _manager.OpenPopup(this);
+        SyncOwnerInheritanceBridge(); // bridge DataContext/inherited props to the owner (standalone case)
         Opened?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void OnPlacementTargetChanged(UIObject sender, UIElement? oldValue, UIElement? newValue)
+        => ((Popup)sender).SyncOwnerInheritanceBridge();
+
+    /// <summary>
+    /// Bridges the property-system inheritance parent (DataContext + inherited properties) to the
+    /// <see cref="PlacementTarget"/> owner while the popup is open AND has no tree parent — the placement-
+    /// target-only popup/tooltip case <see cref="UIParent"/> exists for; the inheritance graph is bidirectional,
+    /// so the owner's later DataContext changes propagate to the popup's <c>Child</c> live. When the popup is in
+    /// the logical/visual tree the tree owns its inheritance parent (LogicalParent wins; WPF/Avalonia parity),
+    /// so this is a no-op there.
+    /// </summary>
+    private void SyncOwnerInheritanceBridge()
+    {
+        if (LogicalParent is not null || VisualParent is not null)
+            return; // in-tree: the tree manages the inheritance parent
+
+        SetInheritanceParent(_open && PlacementTarget is { IsAttachedToTree: true } target ? target : null);
     }
 
     private static void OnIsOpenChanged(UIObject sender, bool oldValue, bool newValue)

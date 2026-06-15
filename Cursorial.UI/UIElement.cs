@@ -40,6 +40,9 @@ public abstract partial class UIElement : UIObject
 
     // ───────────────────────────── tree surface ─────────────────────────────
 
+    /// <summary>The element's logical parent equivalent (logical parent, templated parent, or control-specific override).</summary>
+    protected internal virtual UIElement? UIParent => LogicalParent ?? TemplatedParent;
+
     /// <summary>The element's parent in the visual tree, set by <see cref="AddVisualChild"/>.</summary>
     public UIElement? VisualParent => _visualParent;
 
@@ -135,7 +138,7 @@ public abstract partial class UIElement : UIObject
 
         InvalidateZOrder();
         child._visualParent = this;
-        child.SetInheritanceParent(child._logicalParent ?? this);
+        child.SetInheritanceParent(child.UIParent ?? this); // UIParent ?? VisualParent — matches StylingParent + bridges popups
         child.OnVisualParentChanged(null, this);
 
         if (IsAttachedToTree)
@@ -183,7 +186,7 @@ public abstract partial class UIElement : UIObject
         }
 
         child._visualParent = null;
-        child.SetInheritanceParent(child._logicalParent);
+        child.SetInheritanceParent(child.UIParent); // UIParent (?? null) — LogicalParent/TemplatedParent/PlacementTarget bridge
         child.OnVisualParentChanged(this, null);
         child.UpdateEffectiveEnabled();
     }
@@ -281,7 +284,7 @@ public abstract partial class UIElement : UIObject
             throw new InvalidOperationException($"'{child.GetType().Name}' is not a logical child of this '{GetType().Name}'.");
 
         child._logicalParent = null;
-        child.SetInheritanceParent(child._visualParent);
+        child.SetInheritanceParent(child.UIParent ?? child._visualParent); // bridge (TemplatedParent/PlacementTarget) before VisualParent
         child.UpdateEffectiveEnabled();
         child.DetachedFromLogicalTree?.Invoke(child, new LogicalTreeAttachmentEventArgs(child, oldParent: this, newParent: null));
     }

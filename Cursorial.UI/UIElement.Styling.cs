@@ -120,8 +120,13 @@ public abstract partial class UIElement
     /// </summary>
     internal virtual Styles? TemplateStylesForArming => null;
 
-    /// <summary>The styling-parent chain hop (SD7): <c>LogicalParent ?? VisualParent</c> — the tree's inheritance fallback.</summary>
-    internal UIElement? StylingParent => LogicalParent ?? VisualParent;
+    /// <summary>The styling-parent chain hop (SD7): <c>UIParent ?? VisualParent</c> — the same chain as the
+    /// property-system inheritance parent and the event route. <see cref="UIParent"/> is
+    /// <c>LogicalParent ?? TemplatedParent</c> (plus a Popup's placement-target), so this equals the historical
+    /// <c>LogicalParent ?? VisualParent</c> for every in-tree/template element (a template part keeps its
+    /// in-template LogicalParent; a template root's TemplatedParent == its VisualParent) and additionally
+    /// bridges a placement-target-only popup/tooltip to its owner.</summary>
+    internal UIElement? StylingParent => UIParent ?? VisualParent;
 
     /// <summary>Whether <paramref name="pseudoClass"/> (with leading colon) is set in the custom pseudo set.</summary>
     internal bool HasCustomPseudoClass(string pseudoClass) => _pseudoClasses?.ContainsCustom(pseudoClass) ?? false;

@@ -1,6 +1,7 @@
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 using UIControls = Cursorial.UI.Controls;
@@ -202,6 +203,59 @@ public sealed class WindowPopupTests
         Assert.Empty(wm.Popups);
         Assert.Null(popup.PopupSurface);
         Assert.Equal(PopupCloseReason.Programmatic, reason);
+    }
+
+    [Fact] // a placement-target-only popup (no logical parent) routes keys to its owner via the UIParent bridge
+    public void StandalonePopup_RoutesKeysToOwner()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        // The popup is NOT in the logical tree — its only link to the owner is PlacementTarget.
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+
+        var ownerSawKey = false;
+        owner.AddHandler(UIElement.KeyDownEvent, (object? _, KeyEventArgs _) => ownerSawKey = true);
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Key.F1); // a plain key, left unhandled — bubbles the full route
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(ownerSawKey); // routed across the PlacementTarget bridge (EventRoute uses UIParent)
+    }
+
+    [Fact] // a placement-target-only popup's child inherits the owner's DataContext — initially and on live change
+    public void StandalonePopup_ChildInheritsOwnerDataContext()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner", DataContext = "ctx-1" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal("ctx-1", inner.DataContext);  // inherited across the bridge: inner → popup → owner
+
+        owner.DataContext = "ctx-2";                // live eager-notify through the bidirectional inheritance graph
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal("ctx-2", inner.DataContext);
     }
 
     [Fact] // closing via IsOpen = false tears the surface down and writes back through the property

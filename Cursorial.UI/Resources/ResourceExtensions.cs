@@ -85,7 +85,7 @@ public static class ResourceExtensions
                 continue;
             }
 
-            node = node.LogicalParent;
+            node = node.UIParent;
         }
 
         return WalkApplicationTail(key, variant, searched, out value);

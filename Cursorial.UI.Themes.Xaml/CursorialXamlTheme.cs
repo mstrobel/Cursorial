@@ -16,7 +16,9 @@ namespace Cursorial.UI.Themes.Xaml;
 public static class CursorialXamlTheme
 {
     private const string ControlsResource = "Cursorial.UI.Themes.Xaml.Themes.Controls.xaml";
+    private const string PaletteResource = "Cursorial.UI.Themes.Xaml.Themes.Palette.xaml";
     private static readonly Uri ControlsSource = new("cursorial-themes://controls.xaml");
+    private static readonly Uri PaletteSource = new("cursorial-themes://palette.xaml");
 
     /// <summary>
     /// Loads the XAML control themes into a fresh <see cref="ResourceDictionary"/> (suitable for
@@ -24,6 +26,29 @@ public static class CursorialXamlTheme
     /// </summary>
     public static ResourceDictionary LoadControls()
         => (ResourceDictionary)XamlLoader.Shared.Load(ReadResource(ControlsResource), ControlsSource);
+
+    /// <summary>
+    /// Loads the XAML palette spine — the (ThemeBase × ColorDepth) <c>ThemeDictionaries</c> of role-token
+    /// brushes + chrome pens (the data twin of <see cref="CursorialTheme"/>'s tier palette). Throws if the
+    /// embedded resource is missing or the XAML fails to parse.
+    /// </summary>
+    public static ResourceDictionary LoadPalette()
+        => (ResourceDictionary)XamlLoader.Shared.Load(ReadResource(PaletteResource), PaletteSource);
+
+    /// <summary>
+    /// The complete data-shipped theme: the <see cref="LoadPalette"/> spine merged under the
+    /// <see cref="LoadControls"/> templates/glyphs (later-merged wins, so controls override nothing the palette
+    /// owns). Assign to <c>UIApplication.Theme</c> for a XAML-authored theme that does not lean on
+    /// <see cref="CursorialTheme"/> <c>BuiltIn</c> for its palette or controls (the Theme-layer caps-* style
+    /// channel still falls through to BuiltIn until R2/B13 lands).
+    /// </summary>
+    public static ResourceDictionary LoadTheme()
+    {
+        var theme = new ResourceDictionary();
+        theme.MergedDictionaries.Add(LoadPalette());
+        theme.MergedDictionaries.Add(LoadControls());
+        return theme;
+    }
 
     private static string ReadResource(string name)
     {

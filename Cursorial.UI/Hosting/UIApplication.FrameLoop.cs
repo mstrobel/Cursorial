@@ -770,6 +770,9 @@ public sealed partial class UIApplication
         }
 
         // 11. Only now is Console.WriteLine safe. Clear the thread-local Current + scheduler on this thread.
+        //     Also drop the theme-styles re-match hook so a theme dictionary the caller still references
+        //     does not keep this app's StyleEngine (and the app) reachable after teardown (R2/B13 leak).
+        _theme?.ThemeStylesReMatchHook = null;
         if (ReferenceEquals(_current, this))
             _current = null;
         AnimationScheduler.Uninstall(_animationScheduler);

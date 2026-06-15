@@ -226,23 +226,101 @@ public sealed class Section04_BuiltInAndBuilders
         Assert.Same(beforeTheme, CursorialTheme.BuiltIn[typeof(Button)]);
     }
 
-    [Fact] // C100 — app.Theme.Styles arm at Theme(2) — DEFERRED to R2 (the theme-styles channel is not consumed in P5)
-    public void C100_AppThemeStyles_ArmAtThemeLayer_R2Deferred()
+    [Fact] // C100 — a populated app.Theme.Styles arms matched selector styles at Theme(2) (R2/B13)
+    public void C100_AppThemeStyles_ArmAtThemeLayer()
     {
         using var host = UITestHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
         host.RunFrame();
 
-        // The R2 contract: a populated app.Theme.Styles arms matched selector styles at Theme(2). P5
-        // does not consume the theme-styles channel (StyleEngine gathers App/Scoped/Template/ControlTheme/
-        // Explicit only), so a Theme-layer rule never arms — assert the absence so the row is bound.
         var theme = CursorialTheme.CreateDefault();
         theme.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, Vbrush) };
         host.Application.Theme = theme;
         host.RunFrame();
 
+        // The theme rule arms at Theme(2) (the R2/B13 consumption) and wins the Background over the BuiltIn
+        // control theme's ControlTheme(0) setter (Theme(2) is the stronger layer).
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Same(Vbrush, button.Background);
+    }
+
+    [Fact] // C100b — reassigning app.Theme retracts the old theme's rules and arms the new theme's (live re-match)
+    public void C100b_ThemeReassignment_RetractsOldArmsNew()
+    {
+        var brush1 = new DrawingMedia.SolidColorBrush(Color.FromRgb(10, 20, 30));
+        var brush2 = new DrawingMedia.SolidColorBrush(Color.FromRgb(40, 50, 60));
+
+        using var host = UITestHost.Create();
+        var button = new Button { Content = "OK" };
+        host.ShowRoot(button);
+
+        var theme1 = CursorialTheme.CreateDefault();
+        theme1.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, brush1) };
+        host.Application.Theme = theme1;
+        host.RunFrame();
+        Assert.Same(brush1, button.Background);
+
+        var theme2 = CursorialTheme.CreateDefault();
+        theme2.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, brush2) };
+        host.Application.Theme = theme2;
+        host.RunFrame();
+
+        // The old theme's frame retracted (owner = theme1, no longer gathered) and the new one armed: exactly
+        // one Theme-layer rule, the value is the new theme's, and NO dormant theme frame survived the swap.
+        Assert.Same(brush2, button.Background);
+        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && !r.IsActive);
+    }
+
+    [Fact] // C100c — mutating the live app.Theme.Styles re-reads on the theme-origin pulse (C100 "re-read on pulse")
+    public void C100c_ThemeStylesMutation_ReReadsLive()
+    {
+        var brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(7, 8, 9));
+
+        using var host = UITestHost.Create();
+        var button = new Button { Content = "OK" };
+        host.ShowRoot(button);
+
+        var theme = CursorialTheme.CreateDefault();
+        theme.Styles = new Styles(); // empty at assignment
+        host.Application.Theme = theme;
+        host.RunFrame();
         Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme);
+
+        // Mutate the live theme's Styles — the theme-origin pulse re-matches the Theme(2) leg.
+        theme.Styles.Add(new Style("Button").Set(Control.BackgroundProperty, brush));
+        host.RunFrame();
+
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Same(brush, button.Background);
+    }
+
+    [Fact] // C100e — CD15: a variant flip stays resource-only — the theme-style frame survives (no retract / no double-arm)
+    public void C100e_VariantFlip_DoesNotReMatchThemeStyles()
+    {
+        var brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(1, 2, 3));
+
+        using var host = UITestHost.Create();
+        var button = new Button { Content = "OK" };
+        host.ShowRoot(button);
+
+        var theme = CursorialTheme.CreateDefault();
+        theme.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, brush) };
+        host.Application.Theme = theme;
+        host.RunFrame();
+        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+
+        // Flip the theme base (a genuine variant change — assert it took effect). Per CD15 the flip is
+        // resource-only: the theme-style frame is neither retracted nor re-armed — exactly one Theme rule
+        // remains, still active, value intact.
+        var beforeBase = host.Application.ActualThemeVariant.Base;
+        host.Application.RequestedThemeBase = beforeBase == ThemeBase.Dark ? ThemeBase.Light : ThemeBase.Dark;
+        host.RunFrame();
+        Assert.NotEqual(beforeBase, host.Application.ActualThemeVariant.Base); // the variant actually flipped
+
+        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Same(brush, button.Background);
     }
 
     [Fact] // C101 — a populated Styles on a non-theme (element) dictionary is ignored in v1 (only app.Theme.Styles is consumed)
@@ -267,21 +345,62 @@ public sealed class Section04_BuiltInAndBuilders
         Assert.NotSame(Vbrush, button.Background);
     }
 
-    [Fact] // C102 — layer beats specificity: an app style beats a (more specific) theme style — DEFERRED to R2 (Theme layer unconsumed)
-    public void C102_LayerBeatsSpecificity_AppBeatsTheme_R2Deferred()
+    [Fact] // C102 — layer beats specificity: a LESS-specific App(3) rule beats a MORE-specific Theme(2) rule
+    public void C102_LayerBeatsSpecificity_AppBeatsTheme()
     {
+        var themeBrush = new DrawingMedia.SolidColorBrush(Color.FromRgb(99, 0, 0));
+
         using var host = UITestHost.Create();
         var button = new Button { Content = "OK" };
+        button.Classes.Add("primary");
         host.ShowRoot(button);
 
-        // The app style arms at App(3); the theme-styles channel (Theme(2)) is unconsumed in P5, so the
-        // app style trivially wins. Assert the app style arms and wins the background — the R2 flip adds
-        // the competing theme rule and the App-beats-Theme ordering assertion.
+        // A MORE-specific theme rule (Button.primary, classLike=1) at Theme(2) competes with a LESS-specific
+        // app rule (Button, classLike=0) at App(3). Layer beats specificity (C102): the app rule wins.
+        var theme = CursorialTheme.CreateDefault();
+        theme.Styles = new Styles { new Style("Button.primary").Set(Control.BackgroundProperty, themeBrush) };
+        host.Application.Theme = theme;
         host.Application.Styles.Add(new Style("Button").Set(Control.BackgroundProperty, Vbrush));
         host.RunFrame();
 
+        // Both armed — but the App-layer (less specific) wins.
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
         Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.App && r.IsActive);
         Assert.Same(Vbrush, button.Background);
+    }
+
+    [Fact] // C100f — END-TO-END (the #19 shape): a theme rule's TextElement.TextAttributes setter reaches a focused button
+    public void C100f_ThemeRule_TextAttributesReachesElement()
+    {
+        using var host = UITestHost.Create();
+
+        // A panel root so its child Button is the first tab stop (auto-focused on activation).
+        var root = new StackPanel { Name = "Root" };
+        var button = new Button { Content = "OK" };
+        root.Children.Add(button);
+
+        // A PLAIN `Button:focus` rule at the default (color) tier. BuiltIn's only TextAttributes rules are
+        // `.caps-nocolor`-gated, which never match here (no caps-nocolor class at a color tier) — so the
+        // Inverse below is UNAMBIGUOUSLY this theme rule, not a BuiltIn duplicate (isolates the channel).
+        var theme = CursorialTheme.CreateDefault();
+        theme.Styles = new Styles
+        {
+            new Style("Button:focus").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse),
+        };
+        host.Application.Theme = theme;
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        // The theme rule armed at Theme(2) and, with the button focused, flipped the inherited
+        // TextElement.TextAttributes to Inverse — the exact mechanism #19 will author in XAML.
+        Assert.True(button.IsFocused);
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Equal(TextAttributes.Inverse, TextElement.GetTextAttributes(button));
+        // Sanity: at a color tier the inherited attribute is the theme rule's doing — clearing the theme
+        // removes it (proves it was not some always-on default).
+        host.Application.Theme = null;
+        host.RunFrame();
+        Assert.Equal(default, TextElement.GetTextAttributes(button));
     }
 
     [Fact] // C103 — control-theme nearest-scope ordering: a nearer chain scope's Type-keyed theme wins (both at ControlTheme(0))

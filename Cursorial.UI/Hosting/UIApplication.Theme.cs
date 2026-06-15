@@ -89,8 +89,17 @@ public sealed partial class UIApplication : IResourceHost
             if (ReferenceEquals(_theme, value))
                 return;
 
+            // Hand the theme-styles re-match hook from the old theme to the new (R2/B13 / C100): while a
+            // dictionary is the active theme, a mutation of its Styles slot re-matches the Theme(2) leg.
+            // Only an UNSEALED theme gets the hook — a sealed dictionary's Styles can never mutate (CD4), and
+            // the process-shared sealed CursorialTheme.BuiltIn must never be polluted with one app's engine.
+            _theme?.ThemeStylesReMatchHook = null;
             _theme = value;
-            RaiseApplicationCatchAll();
+            if (_theme is { IsSealed: false })
+                _theme.ThemeStylesReMatchHook = StyleEngineInternal.OnThemeStylesInvalidated;
+
+            RaiseApplicationCatchAll();                     // resource leg: DynamicResource re-resolve + ResourcesChanged
+            StyleEngineInternal.OnThemeStylesInvalidated(); // style leg: re-match the Theme(2) channel against the new theme
         }
     }
 

@@ -288,6 +288,30 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         }
     }
 
+    /// <summary>
+    /// The application <see cref="UIApplication.Theme"/> was reassigned, or its <c>Styles</c> slot mutated
+    /// (R2/B13 / C100): coarse re-match so the Theme(2) leg re-reads the new theme rules. The SD21 identity
+    /// diff (owner = the theme dictionary) retracts the previous theme's frames and arms the new ones; a
+    /// BuiltIn rule the new theme does not itself redefine survives untouched. Distinct from a variant flip,
+    /// which stays resource-only (CD15). Re-entrancy-safe like the app.Styles path: a theme.Styles mutation
+    /// raised by user code during a re-match defers and drains at the structural fixpoint (SD24).
+    /// </summary>
+    internal void OnThemeStylesInvalidated()
+    {
+        if (_app.RootElement is not {} root || !IsStylable(root))
+            return;
+
+        BeginStructuralPass();
+        try
+        {
+            ReMatchSubtree(root, includeSelf: true);
+        }
+        finally
+        {
+            EndStructuralPass();
+        }
+    }
+
     // ───────────────────────────── structural-pass scope (SD24 re-entrancy fence) ─────────────────────────────
 
     /// <summary>Opens a structural-mutation pass. Nested structural mutations defer; the outermost close drains them to fixpoint, then the reconcile queue.</summary>
@@ -646,21 +670,29 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             if (_app.StylesOrNull is { Count: > 0 } appStyles)
                 appStyles.GetOrBuildIndex(StyleLayer.App, 0).GatherCandidates(element, candidates, _app);
 
-            // Theme(2) — the FRAMEWORK leg of the theme-styles channel (design doc §11.8 #3): the BuiltIn
-            // theme's own ResourceDictionary.Styles, armed below App so an app style always wins. This is
-            // the minimal slice that delivers requirement 6's access-key cue rule; the user-facing
-            // UIApplication.Theme.Styles consumption (and the re-read-on-pulse / version-compare machinery)
-            // remains the deferred R2/B13 work item (the C100/C102 rows pin that deferral). The BuiltIn
-            // dictionary is sealed, so its rules are static — its (Theme, 0) index is warmed once in
-            // CursorialTheme's static init, and a one-time gather at match is exact.
+            // Theme(2) — the theme-styles channel (design doc §11.8 #3 / C100 / CD30), two legs both armed
+            // below App so an app style always wins (C102). The BuiltIn FRAMEWORK leg first: it is the
+            // always-present fallback (sealed, its (Theme, 0) index warmed once in CursorialTheme's static
+            // init — a one-time gather at match is exact), so its infrastructure rules (requirement 6's
+            // access-key cue, the caps-* layers) survive even under a partial custom theme.
             if (Themes.CursorialTheme.BuiltIn.Styles is { Count: > 0 } builtInStyles)
                 builtInStyles.GetOrBuildIndex(StyleLayer.Theme, 0).GatherCandidates(element, candidates, Themes.CursorialTheme.BuiltIn);
 
+            // Then the user-facing app.Theme leg (R2/B13): UIApplication.Theme's own Styles slot, gathered
+            // AFTER BuiltIn so an app-theme rule that redefines an identical BuiltIn rule WINS the exact-key
+            // tie (the store breaks equal-key ties by later-added frame) — the intended "custom theme layers
+            // over BuiltIn" override. A BuiltIn rule the theme does NOT redefine is unaffected (no competing
+            // candidate). The owner is the theme dictionary itself — the SD21 frame-identity component,
+            // distinct from BuiltIn so a theme swap retracts the right frames. Re-armed on theme reassignment
+            // / theme.Styles mutation via OnThemeStylesInvalidated; CD15 keeps a variant flip resource-only
+            // (it never re-matches here). Styles in the theme's own slot are consumed; Styles nested in its
+            // MergedDictionaries are not flattened in v1.
+            if (_app.Theme?.Styles is { Count: > 0 } themeStyles)
+                themeStyles.GetOrBuildIndex(StyleLayer.Theme, 0).GatherCandidates(element, candidates, _app.Theme);
+
             // Template(1): the owning control template's Styles, scoped to the templated parent (CD30,
             // doc §12.2 step 3). Gathered only for template parts (TemplatedParent != null with a
-            // template-styles slot); the rules carry the /template/ hop so they survive the barrier
-            // below. Theme(2) is the app-theme Styles channel (R2 content); this gathers the
-            // structurally-armed Template layer P5 templates depend on.
+            // template-styles slot); the rules carry the /template/ hop so they survive the barrier below.
             if (element.TemplatedParent is {} templatedParent &&
                 templatedParent.TemplateStylesForArming is { Count: > 0 } templateStyles)
             {

@@ -393,8 +393,21 @@ public sealed class ResourceDictionary : IEnumerable<KeyValuePair<object, object
         Changed?.Invoke(this, new ResourcesChangedEventArgs(kind, key));
     }
 
+    /// <summary>
+    /// A style re-match hook the owning <see cref="UIApplication"/> installs while this dictionary is the
+    /// active <c>UIApplication.Theme</c> (R2/B13 / C100 — "re-read on theme-origin pulses"): a Styles-slot
+    /// mutation on the active theme re-matches the Theme(2) leg. Null when this dictionary is not the app
+    /// theme (element/window theme slots are ignored — C101), so a non-theme dictionary's Styles mutation
+    /// stays a pure resource pulse.
+    /// </summary>
+    internal Action? ThemeStylesReMatchHook { get; set; }
+
     /// <summary>The Styles-slot mutation pulse path (the theme-styles channel, C25); routed from <c>Styles.NotifyChanged</c>.</summary>
-    internal void OnStylesMutated() => Pulse(ResourceChangeKind.CatchAll, null);
+    internal void OnStylesMutated()
+    {
+        ThemeStylesReMatchHook?.Invoke(); // re-match the Theme(2) leg before the resource pulse (only when this is app.Theme)
+        Pulse(ResourceChangeKind.CatchAll, null);
+    }
 
     private void ThrowIfSealed()
     {

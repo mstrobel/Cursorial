@@ -24,10 +24,11 @@ internal sealed class StyleScopeIndex
     private readonly Dictionary<string, List<ScopeRule>>? _byClass;
     private readonly List<ScopeRule>? _universal;
 
-    internal StyleScopeIndex(StyleLayer layer, int scopeDepth, List<ScopeRule> rules)
+    internal StyleScopeIndex(StyleLayer layer, int scopeDepth, int orderBase, List<ScopeRule> rules)
     {
         Layer = layer;
         ScopeDepth = scopeDepth;
+        OrderBase = orderBase;
         Rules = rules;
 
         HashSet<string>? ancestorClasses = null;
@@ -94,6 +95,10 @@ internal sealed class StyleScopeIndex
 
     /// <summary>The scope depth baked into the rules' keys (SD6; 0 for non-Scoped layers).</summary>
     internal int ScopeDepth { get; }
+
+    /// <summary>The DFS order base baked into the rules' keys — non-zero only for the app-theme leg, so its
+    /// rules sort ABOVE the BuiltIn framework leg within <see cref="StyleLayer.Theme"/> (app.Theme overrides BuiltIn).</summary>
+    internal int OrderBase { get; }
 
     /// <summary>The scope's full DFS rule list (keys packed).</summary>
     internal List<ScopeRule> Rules { get; }

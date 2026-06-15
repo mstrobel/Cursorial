@@ -1,0 +1,41 @@
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+
+  <!--
+    The theme-styles channel (design doc §11.8 #3 / C100), authored declaratively as <ResourceDictionary.Styles>
+    — the data twin of CursorialThemeStyles. Consumed only from UIApplication.Theme at Theme(2) (R2/B13, landed):
+    selector rules (no x:Key), armed below App so an app style always wins. These layer over BuiltIn's identical
+    framework rules (gathered first); authoring them here proves the caps-* channel is fully data-shippable.
+
+    NOTE — AccessKeyCue (`:access-keys AccessTextPresenter` -> AccessKeyManager.ShowUnderline) is intentionally
+    NOT ported: it is pure requirement-6 infrastructure that BuiltIn's always-present framework leg supplies
+    regardless of app.Theme, and its setter owner (AccessKeyManager) lives in Cursorial.UI.Input, which is not in
+    the default xmlns map (a prefixed Setter owner is a v1 deferral). It needs no data twin to function.
+  -->
+  <ResourceDictionary.Styles>
+
+    <!-- caps-unicode glyph opt-up (design doc §12.7 / SD14): under .caps-unicode set the ToggleGlyph.Glyphs
+         attached override to colored Unicode marks; a caps-ascii terminal never matches and keeps the ASCII base.
+         The glyph triple is the '|'-separated "unchecked|checked|indeterminate" GlyphSetCarrier form. -->
+    <Style Selector=".caps-unicode CheckBox">
+      <Setter Property="ToggleGlyph.Glyphs" Value="[ ]|[✓]|[▪]"/>
+    </Style>
+
+    <Style Selector=".caps-unicode RadioButton">
+      <Setter Property="ToggleGlyph.Glyphs" Value="( )|(●)|(-)"/>
+    </Style>
+
+    <!-- caps-nocolor interactive-state layer (design doc §11.8a): colors collapse to Default under NoColor, so the
+         button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill + content
+         text); the selector list spans the exact button-family types (CheckBox/RadioButton excluded — in-box caret). -->
+    <Style Selector=".caps-nocolor Button:focus, .caps-nocolor Button:pressed, .caps-nocolor Button:default, .caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pressed, .caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pressed">
+      <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+    </Style>
+
+    <!-- caps-nocolor disabled layer: a disabled button-family control (incl. CheckBox/RadioButton via :is(ButtonBase))
+         dims to Faint when its palette would otherwise resolve to Default. -->
+    <Style Selector=".caps-nocolor :is(ButtonBase):disabled">
+      <Setter Property="TextElement.TextAttributes" Value="Faint"/>
+    </Style>
+
+  </ResourceDictionary.Styles>
+</ResourceDictionary>

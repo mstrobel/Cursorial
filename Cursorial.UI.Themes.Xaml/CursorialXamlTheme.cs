@@ -17,8 +17,10 @@ public static class CursorialXamlTheme
 {
     private const string ControlsResource = "Cursorial.UI.Themes.Xaml.Themes.Controls.xaml";
     private const string PaletteResource = "Cursorial.UI.Themes.Xaml.Themes.Palette.xaml";
+    private const string StylesResource = "Cursorial.UI.Themes.Xaml.Themes.Styles.xaml";
     private static readonly Uri ControlsSource = new("cursorial-themes://controls.xaml");
     private static readonly Uri PaletteSource = new("cursorial-themes://palette.xaml");
+    private static readonly Uri StylesSource = new("cursorial-themes://styles.xaml");
 
     /// <summary>
     /// Loads the XAML control themes into a fresh <see cref="ResourceDictionary"/> (suitable for
@@ -36,15 +38,24 @@ public static class CursorialXamlTheme
         => (ResourceDictionary)XamlLoader.Shared.Load(ReadResource(PaletteResource), PaletteSource);
 
     /// <summary>
-    /// The complete data-shipped theme: the <see cref="LoadPalette"/> spine merged under the
-    /// <see cref="LoadControls"/> templates/glyphs (later-merged wins, so controls override nothing the palette
-    /// owns). Assign to <c>UIApplication.Theme</c> for a XAML-authored theme that does not lean on
-    /// <see cref="CursorialTheme"/> <c>BuiltIn</c> for its palette or controls (the Theme-layer caps-* style
-    /// channel still falls through to BuiltIn until R2/B13 lands).
+    /// Loads the theme-styles channel (design doc §11.8 #3) — the caps-unicode / caps-nocolor selector styles
+    /// authored in <c>&lt;ResourceDictionary.Styles&gt;</c>, consumed from <c>UIApplication.Theme</c> at
+    /// <c>Theme(2)</c> (R2/B13). The returned dictionary's <c>Styles</c> slot is the channel;
+    /// <see cref="LoadTheme"/> loads it as the theme root so the slot is top-level.
+    /// </summary>
+    public static ResourceDictionary LoadStyles()
+        => (ResourceDictionary)XamlLoader.Shared.Load(ReadResource(StylesResource), StylesSource);
+
+    /// <summary>
+    /// The complete data-shipped theme: the <see cref="LoadStyles"/> theme-styles channel as the ROOT (so its
+    /// <c>Styles</c> slot is the one the StyleEngine reads at <c>Theme(2)</c>), with the <see cref="LoadPalette"/>
+    /// spine and <see cref="LoadControls"/> templates/glyphs merged under it. Assign to <c>UIApplication.Theme</c>
+    /// for a XAML-authored theme that supplies its own palette, controls, AND caps-* styles. BuiltIn remains the
+    /// final fallback (its framework rules — e.g. the access-key cue — still apply where the data theme is silent).
     /// </summary>
     public static ResourceDictionary LoadTheme()
     {
-        var theme = new ResourceDictionary();
+        var theme = LoadStyles();                    // ROOT: carries the top-level Styles slot the engine reads
         theme.MergedDictionaries.Add(LoadPalette());
         theme.MergedDictionaries.Add(LoadControls());
         return theme;

@@ -38,6 +38,12 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 {
     private readonly UIApplication _app;
 
+    // The DFS-order base for the app.Theme leg of the Theme(2) channel: large enough to exceed any BuiltIn
+    // framework theme-style count, so every app-theme rule sorts above every BuiltIn rule of equal
+    // layer/specificity (app.Theme overrides BuiltIn — R2/B13). 2^16 ≫ BuiltIn's handful of theme styles, and
+    // ≪ the 27-bit order field, so it never saturates.
+    private const int AppThemeOrderBase = 1 << 16;
+
     // The pending-reconcile queue (retained lists, swap-drained — zero steady-state allocation).
     private List<UIElement> _pending = [];
     private List<UIElement> _drainScratch = [];
@@ -678,17 +684,17 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             if (Themes.CursorialTheme.BuiltIn.Styles is { Count: > 0 } builtInStyles)
                 builtInStyles.GetOrBuildIndex(StyleLayer.Theme, 0).GatherCandidates(element, candidates, Themes.CursorialTheme.BuiltIn);
 
-            // Then the user-facing app.Theme leg (R2/B13): UIApplication.Theme's own Styles slot, gathered
-            // AFTER BuiltIn so an app-theme rule that redefines an identical BuiltIn rule WINS the exact-key
-            // tie (the store breaks equal-key ties by later-added frame) — the intended "custom theme layers
-            // over BuiltIn" override. A BuiltIn rule the theme does NOT redefine is unaffected (no competing
-            // candidate). The owner is the theme dictionary itself — the SD21 frame-identity component,
-            // distinct from BuiltIn so a theme swap retracts the right frames. Re-armed on theme reassignment
-            // / theme.Styles mutation via OnThemeStylesInvalidated; CD15 keeps a variant flip resource-only
-            // (it never re-matches here). Styles in the theme's own slot are consumed; Styles nested in its
-            // MergedDictionaries are not flattened in v1.
+            // Then the user-facing app.Theme leg (R2/B13): UIApplication.Theme's own Styles slot. It is gathered
+            // with AppThemeOrderBase so its rules' DFS order sorts ABOVE every BuiltIn framework rule within the
+            // Theme layer — the resource model's "app.Theme layers over BuiltIn" applied to styles: an app-theme
+            // rule that redefines an identical BuiltIn rule WINS (larger key), while a BuiltIn rule the theme
+            // does NOT redefine is unaffected (no competing candidate). The owner is the theme dictionary itself
+            // — the SD21 frame-identity component, distinct from BuiltIn so a theme swap retracts the right
+            // frames. Re-armed on theme reassignment / theme.Styles mutation via OnThemeStylesInvalidated; CD15
+            // keeps a variant flip resource-only. Styles in the theme's own slot are consumed; Styles nested in
+            // its MergedDictionaries are not flattened in v1.
             if (_app.Theme?.Styles is { Count: > 0 } themeStyles)
-                themeStyles.GetOrBuildIndex(StyleLayer.Theme, 0).GatherCandidates(element, candidates, _app.Theme);
+                themeStyles.GetOrBuildIndex(StyleLayer.Theme, 0, AppThemeOrderBase).GatherCandidates(element, candidates, _app.Theme);
 
             // Template(1): the owning control template's Styles, scoped to the templated parent (CD30,
             // doc §12.2 step 3). Gathered only for template parts (TemplatedParent != null with a

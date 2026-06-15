@@ -948,14 +948,6 @@ internal sealed class XamlParser
     /// </summary>
     private void ResolveSetter(List<MemberRecord> members, int line, int column)
     {
-        var targetType = _styleTargetStack.Count > 0 ? _styleTargetStack.Peek() : null;
-        if (targetType is null)
-        {
-            _builder.Error(XamlDiagnosticCodes.SetterNoTarget,
-                "Setter has no resolvable target type (no enclosing Style TargetType).", line, column);
-            return;
-        }
-
         // Find the Property name and its member index.
         string? propertyName = null;
         int propertyMemberSlot = -1;
@@ -975,10 +967,12 @@ internal sealed class XamlParser
         if (propertyName is null)
             return; // no Property to resolve
 
-        // A dotted Property name (Owner.Member — an attached property like Grid.Row, or an owner-qualified
-        // plain property like Control.Foreground) resolves the OWNER, NOT the lexical TargetType (matrix
-        // X64a/X64c, XD4); an unqualified name resolves against the TargetType. The helper reports the
-        // diagnostic on failure (and treats a prefixed owner as a v1 deferral).
+        // A dotted Property name (Owner.Member — an attached property like Grid.Row / TextElement.TextAttributes,
+        // or an owner-qualified plain property like Control.Foreground) resolves the OWNER, NOT the lexical
+        // TargetType (matrix X64a/X64c, XD4) — and so needs NO enclosing Style TargetType. An unqualified name
+        // resolves against the TargetType (CUR2110 when absent). The TargetType is therefore optional here; the
+        // helper enforces it only on the unqualified path (and treats a prefixed owner as a v1 deferral).
+        var targetType = _styleTargetStack.Count > 0 ? _styleTargetStack.Peek() : null;
         var targetMember = TryResolveQualifiedSetterMember(propertyName, targetType, line, column);
         if (targetMember is null)
             return;
@@ -1113,13 +1107,21 @@ internal sealed class XamlParser
     /// deferral (<see cref="XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported"/>) because Setter resolution
     /// runs at end-of-object, after the reader's xmlns scope is gone (Phase 2 captures it at the attribute).
     /// </summary>
-    private XamlMember? TryResolveQualifiedSetterMember(string propertyName, XamlType targetType, int line, int column)
+    private XamlMember? TryResolveQualifiedSetterMember(string propertyName, XamlType? targetType, int line, int column)
     {
         int dot = propertyName.IndexOf('.'); // first dot — matches the attached-attribute path (X75)
         if (dot < 0)
         {
-            // Unqualified: the TargetType is the owner (the only such case — WPF parity). An unknown member
-            // here is CUR2102 against the TargetType (the X66 behavior, preserved).
+            // Unqualified: the TargetType is the owner (the only such case — WPF parity). With no enclosing
+            // Style TargetType there is no owner to resolve against — CUR2110. An unknown member is CUR2102
+            // against the TargetType (the X66 behavior, preserved).
+            if (targetType is null)
+            {
+                _builder.Error(XamlDiagnosticCodes.SetterNoTarget,
+                    "Setter has no resolvable target type (no enclosing Style TargetType).", line, column);
+                return null;
+            }
+
             var unqualified = targetType.TryGetMember(propertyName);
             if (unqualified is null)
                 ReportMemberNotFound(targetType, propertyName, line, column);

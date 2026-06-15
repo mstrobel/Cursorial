@@ -191,11 +191,11 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     /// or when the owner's styling depth changed since the build (reattachment at another depth).
     /// Mutation clears the cache (SD21).
     /// </summary>
-    internal StyleScopeIndex GetOrBuildIndex(StyleLayer layer, int scopeDepth)
+    internal StyleScopeIndex GetOrBuildIndex(StyleLayer layer, int scopeDepth, int orderBase = 0)
     {
         var index = _cachedIndex;
-        if (index is null || index.Layer != layer || index.ScopeDepth != scopeDepth)
-            _cachedIndex = index = new StyleScopeIndex(layer, scopeDepth, BuildScopeRules(layer, scopeDepth));
+        if (index is null || index.Layer != layer || index.ScopeDepth != scopeDepth || index.OrderBase != orderBase)
+            _cachedIndex = index = new StyleScopeIndex(layer, scopeDepth, orderBase, BuildScopeRules(layer, scopeDepth, orderBase));
 
         return index;
     }
@@ -208,10 +208,11 @@ public sealed class Styles : IList<Style>, IReadOnlyList<Style>
     /// </summary>
     /// <param name="layer">The channel layer of this scope (App or Scoped at P3).</param>
     /// <param name="scopeDepth">The scope owner's styling-parent depth (Scoped only; 0 otherwise — SD6).</param>
-    internal List<ScopeRule> BuildScopeRules(StyleLayer layer, int scopeDepth)
+    /// <param name="orderBase">The DFS-order start index (non-zero only for the app-theme leg, so its rules sort above the BuiltIn theme leg within <see cref="StyleLayer.Theme"/> — R2/B13).</param>
+    internal List<ScopeRule> BuildScopeRules(StyleLayer layer, int scopeDepth, int orderBase = 0)
     {
         var rules = new List<ScopeRule>();
-        var order = 0;
+        var order = orderBase;
 
         foreach (var style in _items)
         {

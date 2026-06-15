@@ -69,6 +69,7 @@ public static class XamlConverters
         if (underlying == typeof(KeyGesture)) return KeyGestureConverter.Instance;
         if (underlying == typeof(Pen)) return PenConverter.Instance;
         if (underlying == typeof(Selector)) return SelectorConverter.Instance;
+        if (underlying == typeof(Themes.GlyphSetCarrier)) return GlyphSetCarrierConverter.Instance;
         if (underlying == typeof(Type)) return null; // x:Type handles this; no plain text converter
         if (typeof(IBrush).IsAssignableFrom(underlying)) return BrushConverter.Instance;
         if (underlying.IsEnum) return new EnumConverter(underlying);
@@ -425,6 +426,26 @@ public static class XamlConverters
             {
                 throw Fail($"'{text}' is not a valid selector: {ex.Message}", ctx);
             }
+        }
+    }
+
+    private sealed class GlyphSetCarrierConverter : ITypeConverter
+    {
+        public static readonly GlyphSetCarrierConverter Instance = new();
+
+        // A theme glyph triple authored as a compact '|'-separated string: "unchecked|checked[|indeterminate]"
+        // (a glyph run never contains '|'; spaces inside a run — e.g. the "[ ]" unchecked box — are preserved,
+        // so the parts are NOT trimmed). The 2-part form leaves Indeterminate empty (the two-arg carrier). Used
+        // by the caps-unicode theme styles' ToggleGlyph.Glyphs setter. Context-free.
+        public bool IsContextFree => true;
+
+        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            var parts = text.Split('|');
+            if (parts.Length is < 2 or > 3)
+                throw Fail($"'{text}' is not a valid glyph set: expected 'unchecked|checked' or 'unchecked|checked|indeterminate'.", ctx);
+
+            return new Themes.GlyphSetCarrier(parts[0], parts[1], parts.Length == 3 ? parts[2] : string.Empty);
         }
     }
 

@@ -770,6 +770,10 @@ internal sealed class XamlObjectGraphBuilder
                     FillThemeDictionaries(dict, in member, mLine, mColumn);
                     break;
 
+                case "Styles":
+                    FillStyles(dict, in member, mLine, mColumn);
+                    break;
+
                 default:
                     // A directive (x:Key on the dictionary element itself when nested) or a keyed entry
                     // run is the implicit content; otherwise ignore.
@@ -836,6 +840,23 @@ internal sealed class XamlObjectGraphBuilder
         else if (member.Kind == XamlValueKind.Object)
         {
             dict.MergedDictionaries.Add((ResourceDictionary)InstantiateObject(member.ValueIndex));
+        }
+    }
+
+    // The theme-styles channel (design doc §11.8 #3 / C100): <ResourceDictionary.Styles> populates the
+    // dictionary's Styles collection — selector styles, NOT keyed entries (no x:Key). Each <Style> attaches
+    // (seal-on-attach). Consumed only from UIApplication.Theme by the StyleEngine at Theme(2).
+    private void FillStyles(ResourceDictionary dict, in MemberRecord member, int line, int column)
+    {
+        var styles = dict.Styles ??= new Styles();
+        if (member.Kind is XamlValueKind.Items)
+        {
+            foreach (int idx in EnumerateItems(member.ValueIndex, member.ItemCount))
+                styles.Add((Cursorial.UI.Style)InstantiateObject(idx));
+        }
+        else if (member.Kind == XamlValueKind.Object)
+        {
+            styles.Add((Cursorial.UI.Style)InstantiateObject(member.ValueIndex));
         }
     }
 

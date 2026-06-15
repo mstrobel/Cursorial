@@ -225,7 +225,8 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
             parsedExtensions: Array.Empty<MarkupExtensionNode?>(),
             resolvedTypes: Array.Empty<XamlType?>(),
             resolvedMembers: Array.Empty<XamlMember?>(),
-            diagnostics: Array.Empty<XamlDiagnostic>());
+            diagnostics: Array.Empty<XamlDiagnostic>(),
+            namespaces: new Dictionary<string, string>());
 
         var ex = Assert.Throws<XamlParseException>(() => Loader.Load(empty));
         Assert.Equal(XamlDiagnosticCodes.EmptyDocument, ex.Code);

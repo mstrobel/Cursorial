@@ -182,8 +182,9 @@ internal sealed class XamlParser
         var members = new List<MemberRecord>();
         bool hasName = false, hasKey = false;
 
-        // Parse attributes (members + directives + xmlns are already consumed by the reader's NS handling).
-        ParseAttributes(type, localName, ns, members, parentInDeferred, ref hasName, ref hasKey, reportLine, reportColumn);
+        // Parse attributes (members + directives; xmlns declarations are captured on the root and rejected
+        // elsewhere — the top-level-only policy, CUR2004).
+        ParseAttributes(type, localName, ns, members, parentInDeferred, isRoot, ref hasName, ref hasKey, reportLine, reportColumn);
 
         if (hasName) flags |= ObjectFlags.HasName;
         if (hasKey) flags |= ObjectFlags.HasKey;
@@ -253,6 +254,7 @@ internal sealed class XamlParser
         string elementNamespace,
         List<MemberRecord> members,
         bool inDeferred,
+        bool isRoot,
         ref bool hasName,
         ref bool hasKey,
         int elementLine,
@@ -277,9 +279,20 @@ internal sealed class XamlParser
             // P6 review P2-2); a multi-line value still lands on the attribute's line.
             int valueColumn = attrColumn + _reader.Name.Length + 2;
 
-            // xmlns declarations are handled by the reader; skip them.
+            // xmlns declarations: capture them on the ROOT element into the document prefix table (the
+            // loader's namespace-aware selector resolver consults it for 'prefix|Type' tokens + prefixed
+            // TargetTypes); a declaration on any non-root element is CUR2004 — the top-level-only policy
+            // (Avalonia parity) that keeps the table unambiguous.
             if (attrPrefix == "xmlns" || (attrPrefix.Length == 0 && attrLocal == "xmlns"))
+            {
+                if (isRoot)
+                    _builder.AddNamespaceDeclaration(attrPrefix == "xmlns" ? attrLocal : string.Empty, value);
+                else
+                    _builder.Error(XamlDiagnosticCodes.NamespaceNotOnRoot,
+                        $"xmlns declarations are only allowed on the root element; '{_reader.Name}' is declared on " +
+                        $"'{ownerLocalName}'. Move all namespace declarations to the document root.", attrLine, attrColumn);
                 continue;
+            }
 
             // xml:space etc. are handled in the body walk; skip the attribute here.
             if (string.Equals(attrPrefix, "xml", StringComparison.Ordinal))

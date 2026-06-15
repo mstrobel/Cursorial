@@ -30,6 +30,10 @@ internal sealed class XamlObjectGraphBuilder
     private readonly XamlMarkupExtensionHandler _extensionHandler;
     private readonly IXamlDeferredContentFactory _deferredContentFactory;
 
+    // The namespace-aware selector resolver (lazy — only Styles need it): binds 'prefix|Type' selector
+    // tokens + prefixed TargetTypes against the document's root xmlns table (#23).
+    private XamlSelectorTypeResolver? _selectorResolver;
+
     // The object whose member set is currently in progress and the document root (the
     // IRootObjectProvider surface — matrix X125).
     private object? _currentObject;
@@ -160,39 +164,92 @@ internal sealed class XamlObjectGraphBuilder
     }
 
     /// <summary>
-    /// Activates an object, handling the <c>Style TargetType</c> ⇒ type-selector mapping (matrix
-    /// X139/DEV): the styling object uses an <c>init</c>-only <see cref="Selector"/>, so a
-    /// <c>TargetType="Button"</c> reconstructs the <see cref="Style"/> from <c>Selector.Parse</c>.
+    /// Activates an object, handling the <c>Style</c> ⇒ <c>init</c>-only <see cref="Selector"/> mapping
+    /// (matrix X139/DEV, #23): a <c>TargetType="Button"</c> reconstructs the <see cref="Style"/> from an
+    /// EXACT-type selector (the resolved CLR type, namespace-aware), and an explicit <c>Selector="..."</c>
+    /// is parsed with the namespace-aware resolver (so a <c>prefix|Type</c> token binds the document xmlns).
     /// </summary>
     private object ActivateSpecialOrDefault(int objectIndex, in ObjectRecord record, XamlType type, int line, int column)
     {
-        if (type.ClrType == typeof(Style) && TryGetStyleTargetType(in record, out string targetTypeName))
+        if (type.ClrType == typeof(Style))
         {
-            // A prefix-qualified TargetType (my:Foo) carries an xmlns prefix the frontend already honored for
-            // Setter resolution (#22); strip it before Selector.Parse, whose grammar reads ':' as the
-            // pseudo-class separator. The simple name then resolves through the same DefaultSelectorTypeResolver
-            // an unprefixed TargetType uses — the selector system matches types by simple name by design.
-            int colon = targetTypeName.IndexOf(':');
-            if (colon > 0)
-                targetTypeName = targetTypeName.Substring(colon + 1);
-            var selector = Selector.Parse(targetTypeName);
-            return new Style(selector);
+            // An explicit Selector is the matcher and WINS; a co-present TargetType is only the frontend's
+            // Setter-property resolution hint (already consumed at parse), not a second selector. TargetType
+            // alone synthesizes the exact-type selector.
+            if (TryGetStyleStringMember(in record, "Selector", out string selectorText))
+                return new Style(BuildSelector(selectorText, line, column));
+
+            if (TryGetStyleStringMember(in record, "TargetType", out string targetTypeName))
+                return new Style(BuildTargetTypeSelector(targetTypeName, line, column));
         }
 
         return Activate(type, line, column);
     }
 
-    private bool TryGetStyleTargetType(in ObjectRecord record, out string targetTypeName)
+    /// <summary>The namespace-aware selector resolver over the document's root xmlns table + loader metadata.</summary>
+    private XamlSelectorTypeResolver SelectorResolver
+        => _selectorResolver ??= new XamlSelectorTypeResolver(_doc.Namespaces, _options.MetadataProvider);
+
+    /// <summary>
+    /// Builds a Style's selector from its <c>TargetType</c> as an EXACT-type selector (the resolved CLR type),
+    /// namespace-aware via the document xmlns table + metadata. A <c>prefix:</c>-qualified name MUST bind a
+    /// declared (root) xmlns — an unbound prefix is a positioned error (CUR2003), mirroring the
+    /// <c>prefix|Type</c> selector form and never silently stripping to the default namespace; an unresolvable
+    /// prefixed type is CUR2002. An UNprefixed name resolves in the document's default xmlns (honoring a root
+    /// re-declaration), falling back to a simple-name parse (the default selector resolver — registry-known /
+    /// exported element types) for a name the metadata cannot resolve.
+    /// </summary>
+    private Selector BuildTargetTypeSelector(string targetTypeName, int line, int column)
     {
-        targetTypeName = string.Empty;
+        int colon = targetTypeName.IndexOf(':');
+        if (colon > 0)
+        {
+            string prefix = targetTypeName.Substring(0, colon);
+            string local = targetTypeName.Substring(colon + 1);
+            if (!_doc.Namespaces.TryGetValue(prefix, out var ns))
+                throw Fatal(XamlDiagnosticCodes.UndeclaredPrefix,
+                    $"Unbound xmlns prefix '{prefix}' in Style TargetType '{targetTypeName}'.", line, column);
+
+            var prefixed = _options.MetadataProvider.TryGetType(ns, local);
+            if (prefixed.IsResolved)
+                return Selectors.OfType(null, prefixed.Type!.ClrType);
+
+            throw Fatal(XamlDiagnosticCodes.TypeNotFound,
+                $"Style TargetType '{targetTypeName}' was not found in namespace '{ns}'.", line, column);
+        }
+
+        string defaultNs = _doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSchemaContext.CursorialUiNamespace;
+        var resolution = _options.MetadataProvider.TryGetType(defaultNs, targetTypeName);
+        if (resolution.IsResolved)
+            return Selectors.OfType(null, resolution.Type!.ClrType);
+
+        return BuildSelector(targetTypeName, line, column); // simple-name fallback, errors wrapped as XAML diagnostics
+    }
+
+    /// <summary>Parses an explicit <c>Selector="..."</c> with the namespace-aware resolver, surfacing a parse failure as a XAML diagnostic.</summary>
+    private Selector BuildSelector(string text, int line, int column)
+    {
+        try
+        {
+            return Selector.Parse(text.Trim(), SelectorResolver);
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        {
+            throw Fatal(XamlDiagnosticCodes.ConversionFailed, $"'{text}' is not a valid selector: {ex.Message}", line, column);
+        }
+    }
+
+    private bool TryGetStyleStringMember(in ObjectRecord record, string memberName, out string value)
+    {
+        value = string.Empty;
         for (int i = 0; i < record.MemberCount; i++)
         {
             var member = _doc.Members[record.MemberStart + i];
             if (member.MemberId < 0 || member.Kind != XamlValueKind.Text)
                 continue;
-            if (_doc.ResolvedMembers[member.MemberId]?.Name == "TargetType")
+            if (_doc.ResolvedMembers[member.MemberId]?.Name == memberName)
             {
-                targetTypeName = _doc.Strings[member.ValueIndex];
+                value = _doc.Strings[member.ValueIndex];
                 return true;
             }
         }
@@ -232,8 +289,9 @@ internal sealed class XamlObjectGraphBuilder
                     break;
 
                 case XamlValueKind.Text:
-                    // Style.TargetType was consumed at activation (the type-selector mapping, X139).
-                    if (instance is Style && IsMemberNamed(in member, "TargetType"))
+                    // Style.TargetType and Style.Selector were consumed at activation (the type-selector
+                    // mapping + the namespace-aware selector parse, X139/#23).
+                    if (instance is Style && (IsMemberNamed(in member, "TargetType") || IsMemberNamed(in member, "Selector")))
                         break;
                     ApplyTextMember(in member, instance, type, _doc.Strings[member.ValueIndex], line, column);
                     break;
@@ -943,7 +1001,7 @@ internal sealed class XamlObjectGraphBuilder
         if (type is null)
             return false;
 
-        if (type.ClrType == typeof(Style) && TryGetStyleTargetType(in child, out string targetTypeName))
+        if (type.ClrType == typeof(Style) && TryGetStyleStringMember(in child, "TargetType", out string targetTypeName))
         {
             // The implicit Style key is the target-type selector (the styling engine matches on Selector;
             // the dictionary key is the type-selector form, matrix X137).

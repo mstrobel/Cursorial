@@ -26,6 +26,11 @@ internal sealed class XamlDocumentBuilder
 
     private readonly Dictionary<string, int> _stringInterning = new(StringComparer.Ordinal);
 
+    // The document-level xmlns prefix → namespace table (the top-level-only policy guarantees one binding
+    // per prefix). The default xmlns is stored under the empty-string prefix. The loader's namespace-aware
+    // selector resolver consults this to resolve a 'prefix|Type' token / a prefixed Style TargetType.
+    private readonly Dictionary<string, string> _namespaces = new(StringComparer.Ordinal);
+
     public XamlDocumentBuilder(XamlDiagnosticMode mode, Uri? source)
     {
         _mode = mode;
@@ -51,6 +56,9 @@ internal sealed class XamlDocumentBuilder
     public void SetObject(int index, ObjectRecord record) => _objects[index] = record;
 
     public ObjectRecord GetObject(int index) => _objects[index];
+
+    /// <summary>Records a root-element xmlns declaration (<paramref name="prefix"/> = "" for the default xmlns).</summary>
+    public void AddNamespaceDeclaration(string prefix, string namespaceUri) => _namespaces[prefix] = namespaceUri;
 
     public int AddMember(MemberRecord record)
     {
@@ -154,5 +162,6 @@ internal sealed class XamlDocumentBuilder
             _parsedExtensions.ToArray(),
             _resolvedTypes.ToArray(),
             _resolvedMembers.ToArray(),
-            _diagnostics.ToArray());
+            _diagnostics.ToArray(),
+            _namespaces);
 }

@@ -49,6 +49,9 @@ public static class XamlDiagnosticCodes
     /// <summary>An undeclared xmlns prefix.</summary>
     public const string UndeclaredPrefix = "CUR2003";
 
+    /// <summary>An xmlns declaration on a non-root element (the top-level-only policy — Avalonia parity).</summary>
+    public const string NamespaceNotOnRoot = "CUR2004";
+
     /// <summary>No member of the given name exists on the target type (carries the member list).</summary>
     public const string MemberNotFound = "CUR2102";
 

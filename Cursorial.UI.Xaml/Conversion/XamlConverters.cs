@@ -412,10 +412,11 @@ public static class XamlConverters
     {
         public static readonly SelectorConverter Instance = new();
 
-        // Selector.Parse needs no XAML services (it carries the same default type resolver the code-first
-        // themes use for simple type names) and never touches the tree — context-free. Enables authoring a
-        // control theme's nested state sub-rules as `<Style Selector="^:focus">` inside `<Style.Children>`.
-        public bool IsContextFree => true;
+        // NOT context-free: a 'prefix|Type' token needs the document's xmlns table to bind the prefix, which
+        // only exists at the loader (#23). A Style's Selector is therefore built at activation with the
+        // namespace-aware resolver (XamlObjectGraphBuilder.BuildSelector) — this converter remains the fallback
+        // for any non-Style Selector-typed member and resolves simple names via the default resolver.
+        public bool IsContextFree => false;
 
         public object? ConvertFromString(string text, in XamlValueContext ctx)
         {

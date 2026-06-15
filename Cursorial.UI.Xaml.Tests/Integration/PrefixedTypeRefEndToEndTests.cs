@@ -61,13 +61,88 @@ public sealed class PrefixedTypeRefEndToEndTests
         // The typed App-layer style matched the custom type and applied the Setter through the store.
         Assert.Equal(42, target.GetValue(XamlPrefixTarget.MarkerProperty));
     }
+
+    [Fact] // Selector="t|Foo" — the | namespace form (':' is the pseudo-class separator); exact-type match
+    public void Selector_QualifiedExactType_MatchesViaCapturedNamespace()
+    {
+        _ = XamlPrefixTarget.MarkerProperty;
+
+        using var host = UITestHost.Create();
+
+        // The Selector's `t|XamlPrefixTarget` binds the custom `t` namespace from the document table; the Setter's
+        // owner-qualified `t:XamlPrefixTarget.Marker` resolves via the captured ns (the attached/styled member).
+        var style = Loader.Load<Cursorial.UI.Style>(
+            "<Style" + Ns + TestClrNs + " Selector=\"t|XamlPrefixTarget\">" +
+              "<Setter Property=\"t:XamlPrefixTarget.Marker\" Value=\"7\"/>" +
+            "</Style>");
+        host.Application.Styles.Add(style);
+
+        var panel = new UIControls.StackPanel();
+        var baseEl = new XamlPrefixTarget();
+        var derived = new XamlPrefixDerived();
+        panel.Children.Add(baseEl);
+        panel.Children.Add(derived);
+        host.ShowRoot(panel);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(7, baseEl.GetValue(XamlPrefixTarget.MarkerProperty));   // exact CLR-type match
+        Assert.Equal(0, derived.GetValue(XamlPrefixTarget.MarkerProperty));  // a derived type is NOT an exact match
+    }
+
+    [Fact] // Selector=":is(t|Base)" — the user's case: a namespaced base type resolved through the | form, assignable match
+    public void Selector_QualifiedIs_AssignableMatch_IncludesDerived()
+    {
+        _ = XamlPrefixTarget.MarkerProperty;
+
+        using var host = UITestHost.Create();
+
+        var style = Loader.Load<Cursorial.UI.Style>(
+            "<Style" + Ns + TestClrNs + " Selector=\":is(t|XamlPrefixTarget)\">" +
+              "<Setter Property=\"t:XamlPrefixTarget.Marker\" Value=\"9\"/>" +
+            "</Style>");
+        host.Application.Styles.Add(style);
+
+        var panel = new UIControls.StackPanel();
+        var baseEl = new XamlPrefixTarget();
+        var derived = new XamlPrefixDerived();
+        panel.Children.Add(baseEl);
+        panel.Children.Add(derived);
+        host.ShowRoot(panel);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(9, baseEl.GetValue(XamlPrefixTarget.MarkerProperty));
+        Assert.Equal(9, derived.GetValue(XamlPrefixTarget.MarkerProperty)); // :is(t|Base) matches the derived type too
+    }
+
+    [Fact] // An UNBOUND prefix in a Style TargetType is a loud, positioned error — parity with the prefix|Type selector form
+    public void StyleTargetType_UnboundPrefix_IsXamlDiagnostic()
+    {
+        var ex = Assert.Throws<XamlParseException>(() => Loader.Load<Cursorial.UI.Style>(
+            "<Style" + Ns + " TargetType=\"undeclared:Button\"/>"));
+
+        Assert.Equal(XamlDiagnosticCodes.UndeclaredPrefix, ex.Code); // never a silent strip-to-default-namespace
+        Assert.True(ex.Line > 0 && ex.Column > 0);
+    }
+
+    [Fact] // An unresolvable Style TargetType surfaces as a positioned XAML diagnostic, not a raw SelectorParseException
+    public void StyleTargetType_UnknownType_IsXamlDiagnostic_NotRaw()
+    {
+        var ex = Assert.Throws<XamlParseException>(() => Loader.Load<Cursorial.UI.Style>(
+            "<Style" + Ns + " TargetType=\"NoSuchControlType\"/>"));
+
+        Assert.True(ex.Line > 0 && ex.Column > 0); // line+col present (a XamlParseException, not a leaked library exception)
+    }
 }
 
 /// <summary>A test-only <see cref="UIElement"/> that lives OUTSIDE the Cursorial.UI namespaces — the probe for
 /// prefix-qualified type references (Style <c>TargetType</c> / <c>{x:Type}</c>): it resolves only if the
 /// prefix's captured namespace is honored.</summary>
-public sealed class XamlPrefixTarget : UIElement
+public class XamlPrefixTarget : UIElement
 {
     public static readonly StyledProperty<int> MarkerProperty =
         UIProperty.Register<XamlPrefixTarget, int>("Marker");
 }
+
+/// <summary>A subtype of <see cref="XamlPrefixTarget"/> — the probe for <c>:is(t|Base)</c> assignable matching
+/// vs <c>t|Base</c> exact matching through the namespace-qualified selector form.</summary>
+public sealed class XamlPrefixDerived : XamlPrefixTarget;

@@ -6,7 +6,8 @@ using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
 namespace Cursorial.Tests.UI.StyleMatrix;
 
-/// <summary>Style matrix §1 — selector grammar: parse, round-trip, the fence (S1–S23).</summary>
+/// <summary>Style matrix §1 — selector grammar: parse, round-trip, the fence (S1–S23), plus the
+/// namespace-qualified type token <c>prefix|Local</c> (S23a–S23e).</summary>
 public class Section01_Grammar
 {
     [Fact]
@@ -358,5 +359,66 @@ public class Section01_Grammar
 
         Assert.Equal(parsed, built);
         Assert.Equal(canonical, built.ToString());
+    }
+
+    // ── Namespace-qualified type tokens (prefix|Local) — the CSS/Avalonia form (':' is the pseudo-class
+    //    separator). Recognized only in type-token position; resolved by a namespace-aware resolver. ──
+
+    [Fact] // S23a — a bare prefix|Local type token parses, resolves the local via the qualified resolver, round-trips
+    public void S023a_QualifiedType_Bare_ParsesExact_AndRoundTrips()
+    {
+        var selector = Selector.Parse("ui|Widget", QualifiedResolver);
+
+        var compound = Assert.Single(Assert.Single(selector.Branches).Compounds);
+        Assert.Same(typeof(Widget), compound.Type);
+        Assert.False(compound.IsAssignableType);
+        Assert.Equal("ui|Widget", selector.ToString()); // the authored prefix is preserved in the canonical form
+    }
+
+    [Fact] // S23b — :is(prefix|Local) carries the qualified token into the assignable-type test
+    public void S023b_QualifiedType_InIs_ParsesAssignable_AndRoundTrips()
+    {
+        var selector = Selector.Parse(":is(ui|Widget)", QualifiedResolver);
+
+        var compound = Assert.Single(Assert.Single(selector.Branches).Compounds);
+        Assert.Same(typeof(Widget), compound.Type);
+        Assert.True(compound.IsAssignableType);
+        Assert.Equal(":is(ui|Widget)", selector.ToString());
+    }
+
+    [Fact] // S23c — a qualified type still composes with simples + combinators (the pipe is confined to the type token)
+    public void S023c_QualifiedType_ComposesWithSimplesAndCombinators()
+    {
+        var selector = Selector.Parse("ui|Pane > ui|Widget.primary:focus", QualifiedResolver);
+
+        Assert.Equal([SelectorCombinator.Child], Assert.Single(selector.Branches).Combinators);
+        var leaf = Assert.Single(selector.Branches).Compounds[1];
+        Assert.Same(typeof(Widget), leaf.Type);
+        Assert.Equal(
+        [
+            new SimpleSelector(SimpleSelectorKind.Class, "primary"),
+            new SimpleSelector(SimpleSelectorKind.PseudoClass, "focus")
+        ], leaf.Simples);
+        Assert.Equal("ui|Pane > ui|Widget.primary:focus", selector.ToString());
+    }
+
+    [Fact] // S23d — the default (non-qualified-aware) resolver rejects a prefix|Local token with a targeted message
+    public void S023d_QualifiedType_NonAwareResolver_IsParseError_WithHint()
+    {
+        var ex = Assert.Throws<SelectorParseException>(() => Selector.Parse("ui|Widget", Resolver));
+
+        Assert.Equal(0, ex.Position);
+        Assert.Contains("ui|Widget", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("namespace-aware", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory] // S23e — the pipe is invalid outside a type token: after a class, and with no local name after '|'
+    [InlineData(".foo|bar", 4)]   // '|' is not a combinator → "Unexpected character '|'" at the pipe
+    [InlineData("Widget|", 7)]    // '|' with no local type name following
+    [InlineData("ui|", 3)]        // same, qualified head present
+    public void S023e_Pipe_OutsideTypeToken_OrDangling_IsParseError(string text, int position)
+    {
+        var ex = Assert.Throws<SelectorParseException>(() => Selector.Parse(text, QualifiedResolver));
+        Assert.Equal(position, ex.Position);
     }
 }

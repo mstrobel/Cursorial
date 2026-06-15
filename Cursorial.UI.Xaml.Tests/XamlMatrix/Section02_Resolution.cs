@@ -14,6 +14,24 @@ public sealed class Section02_Resolution : XamlTestBase
         Assert.Equal(typeof(UIControls.Button), doc.RootType);
     }
 
+    [Fact] // #23 — root xmlns declarations are captured into the document table (the loader's selector-resolver source)
+    public void X013b_RootNamespaceDeclarations_AreCaptured()
+    {
+        var doc = ParseRaw("<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+                           "xmlns:c=\"clr-namespace:My.Ns;assembly=My\"/>");
+
+        Assert.Equal("clr-namespace:My.Ns;assembly=My", doc.Namespaces["c"]);
+        Assert.Equal("https://cursorial.dev/ui", doc.Namespaces[""]); // the default xmlns under the empty-string key
+    }
+
+    [Fact] // CUR2004 — an xmlns declaration on a NON-root element is a parse error (top-level-only, Avalonia parity)
+    public void X013c_NamespaceOnNonRootElement_CUR2004()
+    {
+        Throws(XamlDiagnosticCodes.NamespaceNotOnRoot,
+            () => ParseRaw("<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+                           "<Button xmlns:c=\"https://cursorial.dev/ui\"/></StackPanel>"));
+    }
+
     [Fact] // X14
     public void X014_DefaultXmlns_ResolvesData_Binding()
     {

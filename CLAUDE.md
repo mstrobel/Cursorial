@@ -232,7 +232,10 @@ has shipped; Rendering/Drawing/Animation accept first-class changes):
 `docs/ui-layer-design/style-matrix.md`, 180+ rows S1–S184 + the SD pinned-decision ledger, tests in
 `Cursorial.UI.Tests/StyleMatrix/Section01…Section13`). In `Cursorial.UI/Styling/` (namespace `Cursorial.UI`):
 `Selector`/`SelectorParser`/`Selectors` (the full §3.1 grammar — type/`.class`/`#name`/`:pseudo-class`/child `>`/
-descendant/`/template/`/lists/`^`-nesting/`:is()`, the `+ ~ :not :nth-*` NO-fence with "unsupported by design"
+descendant/`/template/`/lists/`^`-nesting/`:is()`, the namespace-qualified type token `prefix|Type` (SD25 — CSS/Avalonia
+`|` form, type-token position only; resolved by a namespace-aware `ISelectorTypeResolver`, the XAML loader's
+`XamlSelectorTypeResolver` over the document root xmlns; `Selector.DefaultTypeResolver` does simple-name only and
+rejects `|`), the `+ ~ :not :nth-*` NO-fence with "unsupported by design"
 errors, `ISelectorTypeResolver` simple-name resolution), `Style`/`Setter`/`Styles` (BasedOn flatten + cycle check,
 seal-on-attach naming the style/rule/property, `StyleSetterConverter` constant ladder, `Style.Set<T>` fluent),
 `StyleSortKey.Create` (bit-exact packed `[layer][names][classLike][types][scopeDepth][order]`, min-wins ties via
@@ -353,7 +356,12 @@ loader.
   `ContentControl→Content`/`Decorator→Child`/`Panel→Children`/template→Content/`Style→Setters`), the
   `XamlConverters` ladder (cell/Margins/GridLength/Color/#hex/named-ANSI/Palette/`IBrush`+gradients/`Pen`/
   `TextAttributes`/`KeyGesture`/enum/bool/double), `x:Name`→document `NameScopeDictionary`, the XD8 `SetValue` at
-  `LocalValue` for `UIProperty`s.
+  `LocalValue` for `UIProperty`s. **Namespace-aware Styles (XD26/#23):** root-only xmlns is enforced (a non-root
+  declaration is `CUR2004`) and captured into `XamlDocument.Namespaces`; a Style's `Selector` is built at activation
+  (not folded — `SelectorConverter.IsContextFree==false`) with `XamlSelectorTypeResolver` so a `prefix|Type` token binds
+  the document xmlns (the `:is(t|Base)` case), an explicit `Selector` winning over a co-present (Setter-resolution-only)
+  `TargetType`; `TargetType` itself now builds an **exact-type** selector (`Selectors.OfType(resolvedType)` via the
+  metadata, simple-name `Selector.Parse` fallback).
 - **X2/X3 — markup extensions + deferred content + resources + access keys** — the `IXamlMarkupExtensionHandler`
   (StaticResource eager / DynamicResource live-producer / Binding + TemplateBinding via `BindingOperations` / custom
   `ProvideValue`; attach through `IDeferredValue.AttachTo`/`SetResourceReference`, never a sentinel through

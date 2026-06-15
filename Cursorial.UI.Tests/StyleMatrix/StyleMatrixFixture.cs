@@ -122,6 +122,13 @@ public static class StyleMatrixFixture
     /// <summary>A resolver that knows nothing — the S17 fixture.</summary>
     public static readonly ISelectorTypeResolver NullResolver = new NullTypeResolver();
 
+    /// <summary>
+    /// A namespace-aware resolver: a <c>prefix|Local</c> token resolves <c>Local</c> via the simple-name map
+    /// (any prefix accepted — it stands in for an xmlns-binding resolver like the XAML loader's), proving the
+    /// grammar carries the qualified token through to the resolver. Bare names resolve as the fixture resolver.
+    /// </summary>
+    public static readonly ISelectorTypeResolver QualifiedResolver = new QualifiedTypeResolver();
+
     /// <summary>Forces the fixture property registrations (static field touch) for default-resolver rows.</summary>
     public static void EnsureRegistered()
     {
@@ -200,7 +207,7 @@ public static class StyleMatrixFixture
 
     private sealed class FixtureResolver : ISelectorTypeResolver
     {
-        private static readonly Dictionary<string, Type> Map =
+        internal static readonly Dictionary<string, Type> Map =
             new(StringComparer.Ordinal)
             {
                 ["Widget"] = typeof(Widget),
@@ -223,6 +230,17 @@ public static class StyleMatrixFixture
         {
             ambiguousCandidates = null;
             return null;
+        }
+    }
+
+    private sealed class QualifiedTypeResolver : ISelectorTypeResolver
+    {
+        public Type? Resolve(string typeName, out IReadOnlyList<Type>? ambiguousCandidates)
+        {
+            ambiguousCandidates = null;
+            int pipe = typeName.IndexOf('|');
+            string local = pipe >= 0 ? typeName[(pipe + 1)..] : typeName;
+            return FixtureResolver.Map.GetValueOrDefault(local);
         }
     }
 }

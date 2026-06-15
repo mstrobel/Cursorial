@@ -39,6 +39,14 @@ public sealed class Selector : IEquatable<Selector>
     internal SelectorCombinator? PendingCombinator => _pendingCombinator;
 
     /// <summary>
+    /// The framework default <see cref="ISelectorTypeResolver"/> (SD1: registry-known + exported element
+    /// types, matched by simple name) — the resolver <see cref="Parse(string, ISelectorTypeResolver?)"/>
+    /// uses when passed <see langword="null"/>. Exposed so a custom resolver can compose with it (e.g. the
+    /// XAML loader's namespace-aware resolver delegates bare, unqualified type tokens here).
+    /// </summary>
+    public static ISelectorTypeResolver DefaultTypeResolver => DefaultSelectorTypeResolver.Instance;
+
+    /// <summary>
     /// Parses selector text over the §3.1 grammar. Type tokens are simple (undotted) identifiers
     /// resolved through <paramref name="resolver"/>; <see langword="null"/> selects the framework
     /// default (registry-known + exported element types — SD1). All matching and lexing is ordinal

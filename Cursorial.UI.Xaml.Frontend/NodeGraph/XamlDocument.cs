@@ -25,7 +25,8 @@ public sealed class XamlDocument
         MarkupExtensionNode?[] parsedExtensions,
         XamlType?[] resolvedTypes,
         XamlMember?[] resolvedMembers,
-        IReadOnlyList<XamlDiagnostic> diagnostics)
+        IReadOnlyList<XamlDiagnostic> diagnostics,
+        IReadOnlyDictionary<string, string> namespaces)
     {
         SourceUri = sourceUri;
         _rootType = rootType;
@@ -39,6 +40,7 @@ public sealed class XamlDocument
         ResolvedTypes = resolvedTypes;
         ResolvedMembers = resolvedMembers;
         Diagnostics = diagnostics;
+        Namespaces = namespaces;
     }
 
     private readonly Type? _rootType;
@@ -73,6 +75,14 @@ public sealed class XamlDocument
     internal MarkupExtensionNode?[] ParsedExtensions { get; }
     internal XamlType?[] ResolvedTypes { get; }
     internal XamlMember?[] ResolvedMembers { get; }
+
+    /// <summary>
+    /// The document-level xmlns prefix → namespace table captured from the ROOT element (the top-level-only
+    /// policy makes it unambiguous — CUR2004 rejects a non-root declaration). The default xmlns is keyed by
+    /// the empty string. The loader's namespace-aware selector resolver consults this for a <c>prefix|Type</c>
+    /// selector token and a prefixed Style <c>TargetType</c>.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> Namespaces { get; }
 
     /// <summary>The root object record (index 0), or a default when the document is empty.</summary>
     internal ref readonly ObjectRecord Root => ref Objects[0];

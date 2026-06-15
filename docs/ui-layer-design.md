@@ -360,12 +360,13 @@ public sealed class DataCondition
 selector-list := selector ( ',' selector )*            // supported; each member compiles to its own rule
 selector      := compound ( (' ' | '>' | '/template/') compound )*
 compound      := [ '^' ] [ type | ':is(' type ')' ] ( '.' class | '#' name | ':' pseudo )*
+type          := name | prefix '|' name                 // 'prefix|Name' = CSS/Avalonia namespace form ('|', not ':')
 pseudo        := focus | focus-within | focus-visible | pointerover | pressed | disabled | checked
                | indeterminate | selected | active-window | access-keys | modal-attention
                | any control-registered custom pseudo-class
 ```
 
-Bare type = exact match; `:is(T)` = T or derived. `Selector.Parse`/`ToString` round-trip; fluent builders in `Selectors` (`OfType<T>`, `Is<T>`, `.Class/.Name/.PseudoClass/.Child/.Descendant/.Template/.Nesting`). Each member of a selector list shares the style's setters/`When` but carries its own specificity (CSS semantics). **Explicitly absent by decision:** `:not()`, `:nth-child()`/positional, sibling combinators, attribute and property-value selectors (§3.10). There is no `Or` in `When` — disjunction is two styles via `BasedOn` or a selector list.
+Bare type = exact match; `:is(T)` = T or derived. A type token may be **namespace-qualified** as `prefix|Name` (the CSS/Avalonia form — `:` is taken by pseudo-classes), recognized only in type-token position (bare or inside `:is(...)`), never on a `.class`/`#name`/`:pseudo`. The qualifier is resolved by a namespace-aware `ISelectorTypeResolver`: a XAML-loaded selector binds `prefix` against the document's **root** xmlns declarations (the top-level-only policy — a non-root xmlns is `CUR2004`; see Fork C §4) and resolves `Name` through the schema context; the default code-first resolver matches simple names only and rejects a qualified token. `Selector.Parse`/`ToString` round-trip (the qualified token is preserved verbatim); fluent builders in `Selectors` (`OfType<T>`, `Is<T>`, `.Class/.Name/.PseudoClass/.Child/.Descendant/.Template/.Nesting`) already carry the exact CLR type, so they need no qualifier. Each member of a selector list shares the style's setters/`When` but carries its own specificity (CSS semantics). **Explicitly absent by decision:** `:not()`, `:nth-child()`/positional, sibling combinators, attribute and property-value selectors (§3.10). There is no `Or` in `When` — disjunction is two styles via `BasedOn` or a selector list.
 
 ### §3.2 Element surface and interaction state
 

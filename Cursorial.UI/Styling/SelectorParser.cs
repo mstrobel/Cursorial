@@ -143,14 +143,14 @@ internal static class SelectorParser
             if (IsIdentifierStart(c))
             {
                 compound.TypeTokenPosition = position;
-                compound.TypeName = ParseIdentifier(text, ref position);
+                compound.TypeName = ParseTypeToken(text, ref position);
             }
             else if (c == ':' && text.AsSpan(position).StartsWith(":is(", StringComparison.Ordinal))
             {
                 position += 4;
                 SkipWhitespace(text, ref position);
                 compound.TypeTokenPosition = position;
-                compound.TypeName = ParseIdentifier(text, ref position);
+                compound.TypeName = ParseTypeToken(text, ref position);
                 compound.IsAssignableType = true;
                 SkipWhitespace(text, ref position);
 
@@ -240,6 +240,33 @@ internal static class SelectorParser
 
     // ───────────────────────────── lexing (SD2) ─────────────────────────────
 
+    /// <summary>
+    /// Reads a type token: a bare identifier, optionally namespace-qualified as <c>prefix|Local</c>. The
+    /// pipe is the CSS / Avalonia namespace-selector separator (<c>:</c> is reserved for pseudo-classes), so
+    /// it is recognized ONLY in type-token position — never in a <c>.class</c>/<c>#name</c>/<c>:pseudo</c>
+    /// token. A qualified token is resolved by a namespace-aware <see cref="ISelectorTypeResolver"/> (the
+    /// XAML loader supplies one binding the prefix to its xmlns); the default resolver matches simple names
+    /// only and rejects a qualified token as unknown.
+    /// </summary>
+    private static string ParseTypeToken(string text, ref int position)
+    {
+        var name = ParseIdentifier(text, ref position);
+
+        if (position < text.Length && text[position] == '|')
+        {
+            position++;
+            if (position >= text.Length || !IsIdentifierStart(text[position]))
+            {
+                throw new SelectorParseException(
+                    "Expected a local type name after '|' in a namespace-qualified selector type.", position);
+            }
+
+            return name + "|" + ParseIdentifier(text, ref position);
+        }
+
+        return name;
+    }
+
     private static string ParseIdentifier(string text, ref int position)
     {
         if (position >= text.Length || !IsIdentifierStart(text[position]))
@@ -306,7 +333,11 @@ internal static class SelectorParser
                     if (type is null)
                     {
                         throw new SelectorParseException(
-                            $"Unknown selector type token '{typeName}' — the resolver knows no element type by that name.",
+                            typeName.Contains('|', StringComparison.Ordinal)
+                                ? $"Unknown namespace-qualified selector type '{typeName}' — the prefix is unbound or " +
+                                  "the type does not exist in its namespace (a 'prefix|Type' token needs a " +
+                                  "namespace-aware resolver; the default resolver matches simple names)."
+                                : $"Unknown selector type token '{typeName}' — the resolver knows no element type by that name.",
                             compound.TypeTokenPosition);
                     }
                 }

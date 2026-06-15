@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using Cursorial.Drawing;
+using Cursorial.Input;
+using Cursorial.Input.Events;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.UI.Input;
 
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
@@ -28,7 +31,7 @@ namespace Cursorial.UI;
 /// <c>IWindowTopology</c> gating + light dismiss (W3), <c>Popup</c>s (W4), and drag/resize/shutdown
 /// (W5) layer on top. The S3 topology stays <c>SingleRootWindowTopology</c> until W3.
 /// </remarks>
-public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
+public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem, IWindowTopology
 {
     private readonly ScenePool _scenePool = new();
     private readonly List<TopLevelSurface> _surfaces = [];   // z-order, bottom→top; [0] is the root surface when present
@@ -449,5 +452,54 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
         }
 
         _compositor = new SceneCompositor();
+    }
+
+    // ── IWindowTopology (S3's surface-level gate; replaces SingleRootWindowTopology at P7-W3) ─────────
+
+    /// <summary>The topmost non-hit-test-transparent surface containing the screen point, or <see langword="null"/>.</summary>
+    public TopLevelSurface? SurfaceFromPoint(int column, int row)
+    {
+        for (var i = _surfaces.Count - 1; i >= 0; i--) // top→bottom in z-order
+        {
+            var surface = _surfaces[i];
+            if (!surface.IsHitTestTransparent && surface.Contains(column, row))
+                return surface;
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow)
+    {
+        surfaceColumn = mouse.Position.Column;
+        surfaceRow = mouse.Position.Row;
+        surfaceRoot = null;
+
+        var surface = SurfaceFromPoint(mouse.Position.Column, mouse.Position.Row);
+        if (surface is null)
+            return true; // no surface under the point — routes nowhere (ND5: dropped, no throw)
+
+        var window = surface.HostWindow;
+        var isPress = mouse.Kind == MouseEventKind.ButtonDown;
+
+        // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate.
+        // The :modal-attention pulse + capture release ride a follow-up W3 slice.
+        if (window is not null && _blocked.Contains(window))
+        {
+            if (isPress && TopmostModal is { } gate)
+                ActivateWindow(gate);
+            return false;
+        }
+
+        // Activation-on-press for an inactive but enabled window (§8.6). Topology mutations during the input
+        // drain apply immediately (§8.8); the z-reorder doesn't move the surface, so the local coords below hold.
+        if (isPress && window is not null && !ReferenceEquals(_activeWindow, window))
+            ActivateWindow(window);
+
+        surfaceRoot = surface.Root;
+        surfaceColumn = mouse.Position.Column - surface.Left;
+        surfaceRow = mouse.Position.Row - surface.Top;
+        return true;
     }
 }

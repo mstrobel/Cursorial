@@ -220,6 +220,7 @@ public sealed partial class UIApplication
             SurfacesChanged = _inputDispatcher.OnSurfacesChanged,
         };
         _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
+        _inputDispatcher.SetWindowTopology(_windowManager); // S4 is the real topology now (replaces SingleRootWindowTopology)
         _systemsReady = true;
         if (_rootElement is { } root)
             WireRoot(root);

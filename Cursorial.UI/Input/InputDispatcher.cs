@@ -38,7 +38,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     private readonly FocusManager _focus;
     private readonly AccessKeyManager _accessKeys;
     private readonly InteractionStateService _interactions;
-    private readonly IWindowTopology _topology;
+    private IWindowTopology _topology;
     private TerminalCapabilities _capabilities = TerminalCapabilities.None;
     private UIElement? _captureTarget;
 
@@ -88,6 +88,12 @@ public sealed class InputDispatcher : IInputDispatchTarget
         _interactions = interactions;
         _topology = topology;
     }
+
+    /// <summary>
+    /// Swaps the window-topology seam (matrix ND5): the P2 <see cref="SingleRootWindowTopology"/> is replaced
+    /// by S4's <c>WindowManager</c> once it is composed (P7-W3), with no other dispatcher change.
+    /// </summary>
+    internal void SetWindowTopology(IWindowTopology topology) => _topology = topology;
 
     /// <summary>The element holding mouse capture, or null (capture is routing policy, not OS capture).</summary>
     public UIElement? MouseCaptureTarget => _captureTarget;

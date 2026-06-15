@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — terminal IDE shell (Actipro-style)</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --editor-bg:#16161e; --curline:#1e2030; --gutter:#13141c;
+    --k-kw:#bb9af7; --k-bi:#7dcfff; --k-id:#c0caf5; --k-cm:#565f89;
+    --k-str:#9ece6a; --k-num:#ff9e64; --k-op:#89ddff; --k-dec:#e0af68;
+    --mm-kw:#6d5a9c; --mm-bi:#4a7d99; --mm-id:#5a6080; --mm-cm:#363b54;
+    --mm-str:#5e7a40; --mm-num:#9c6038; --mm-op:#4a7d8c; --mm-dec:#8c6a40;
+    --dock-preview:#2d4a8a; --compass:#2a2e42; --crumb-dd:#2f3550;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --editor-bg:#f6f6f8; --curline:#e9e9ed; --gutter:#dedee3;
+    --k-kw:#5a3e8e; --k-bi:#0f4b6e; --k-id:#343b58; --k-cm:#9699a3;
+    --k-str:#485e30; --k-num:#a8521a; --k-op:#2d6a8a; --k-dec:#8f5e15;
+    --mm-kw:#a896c8; --mm-bi:#7aa0b8; --mm-id:#9a9fb5; --mm-cm:#c4c5cc;
+    --mm-str:#9ab07e; --mm-num:#c89878; --mm-op:#88aebc; --mm-dec:#c0a878;
+    --dock-preview:#a8bce0; --compass:#cbccd1; --crumb-dd:#cdced6;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1180px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:26px 0 10px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:8px;max-width:860px;line-height:1.6;}
+
+  /* ---- IDE shell frame ---- */
+  .ide{width:max-content;max-width:100%;background:var(--surface);}
+  /* menu + toolbar */
+  .menubar{display:flex;background:var(--panel);color:var(--text-dim);}
+  .menubar .m{padding:0 10px;cursor:pointer;} .menubar .m:hover{background:var(--hover);color:var(--text);}
+  .menubar .m u{text-decoration-thickness:1px;text-underline-offset:2px;}
+  .toolstrip{display:flex;align-items:center;gap:0;background:var(--surface);color:var(--text-dim);}
+  .toolstrip .tb{padding:0 7px;cursor:pointer;} .toolstrip .tb:hover{background:var(--hover);color:var(--text);}
+  .toolstrip .tb.run{color:var(--green);} .toolstrip .vsep{color:var(--faint);padding:0 3px;}
+  .toolstrip .cfg{margin-left:6px;background:var(--bg);color:var(--text);padding:0 8px;display:flex;gap:6px;}
+  .toolstrip .cfg .dd{color:var(--accent);}
+
+  /* breadcrumb */
+  .breadcrumb{display:flex;align-items:center;background:var(--bg);color:var(--text-dim);}
+  .breadcrumb .seg{padding:0 7px;cursor:pointer;} .breadcrumb .seg:hover{background:var(--hover);color:var(--text);}
+  .breadcrumb .seg .sg{color:var(--accent-2);}
+  .breadcrumb .sepc{color:var(--muted);}
+  .breadcrumb .seg.cur{color:var(--text);}
+  .breadcrumb .seg .dd{color:var(--crumb-dd);margin-left:2px;}
+  .breadcrumb .seg:hover .dd{color:var(--accent);}
+
+  /* dock workspace: left tools | center editor | right (props) ; bottom panel */
+  .workspace{display:flex;background:var(--bg);}
+  .leftdock{display:flex;}
+  /* auto-hidden pinned strip on far left */
+  .pinstrip{display:flex;flex-direction:column;background:var(--surface);color:var(--text-dim);width:3ch;}
+  .pinstrip .vtab{writing-mode:vertical-rl;text-orientation:mixed;padding:8px 0;cursor:pointer;white-space:nowrap;}
+  .pinstrip .vtab:hover{background:var(--hover);color:var(--text);}
+  .pinstrip .vtab.acc{color:var(--accent);}
+
+  .panel-col{display:flex;flex-direction:column;}
+  .toolwin{background:var(--panel);display:flex;flex-direction:column;}
+  .tw-tabs{display:flex;background:var(--surface);}
+  .tw-tabs .twt{padding:0 9px;color:var(--text-dim);cursor:pointer;display:flex;gap:5px;align-items:center;}
+  .tw-tabs .twt.active{background:var(--panel);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent);}
+  .tw-tabs .twt:hover:not(.active){background:var(--hover);color:var(--text);}
+  .tw-tabs .twt .x{color:var(--muted);}
+  .tw-tabs .twspace{flex:1;}
+  .tw-tabs .twbtn{padding:0 6px;color:var(--muted);cursor:pointer;}
+  .tw-tabs .twbtn:hover{color:var(--accent);}
+  .tw-body{padding:2px 0;color:var(--text-dim);min-width:26ch;}
+
+  /* solution explorer tree */
+  .slntree .row{display:flex;align-items:center;gap:5px;padding:0 8px;cursor:pointer;white-space:nowrap;}
+  .slntree .row:hover{background:var(--hover);color:var(--text);}
+  .slntree .row.sel{background:var(--sel);color:var(--text);}
+  .slntree .tw{color:var(--muted);width:1ch;display:inline-block;text-align:center;}
+  .slntree .ic-proj{color:var(--accent);} .slntree .ic-folder{color:var(--accent-2);}
+  .slntree .ic-cs{color:var(--green);} .slntree .ic-py{color:var(--amber);} .slntree .ic-cfg{color:var(--muted);}
+  .slntree .ind1{padding-left:14px;} .slntree .ind2{padding-left:26px;} .slntree .ind3{padding-left:38px;}
+
+  /* center: editor tab well */
+  .editor-col{display:flex;flex-direction:column;flex:1;min-width:0;}
+  .doctabs{display:flex;background:var(--surface);}
+  .doctabs .dt{padding:0 9px;color:var(--text-dim);cursor:pointer;display:flex;gap:6px;align-items:center;}
+  .doctabs .dt.active{background:var(--editor-bg);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent);}
+  .doctabs .dt:hover:not(.active){background:var(--hover);color:var(--text);}
+  .doctabs .dt .mod{color:var(--amber);} .doctabs .dt .x{color:var(--muted);}
+  .doctabs .dt.active .x:hover{color:var(--red);}
+  .doctabs .ovf{padding:0 7px;color:var(--muted);cursor:pointer;margin-left:auto;}
+  .doctabs .newt{padding:0 7px;color:var(--muted);cursor:pointer;}
+
+  .editor-area{display:flex;background:var(--editor-bg);}
+  .code{display:flex;flex-direction:column;flex:1;min-width:54ch;padding:1px 0;}
+  .eln{display:flex;align-items:center;line-height:1.5;}
+  .eln .lnum{color:var(--muted);width:3ch;text-align:right;padding-right:6px;background:var(--gutter);user-select:none;}
+  .eln .fold{color:var(--muted);width:2ch;text-align:center;background:var(--gutter);cursor:pointer;}
+  .eln .bp{color:var(--red);width:2ch;text-align:center;background:var(--gutter);}
+  .eln .etext{padding:0 8px;color:var(--text);white-space:pre;}
+  .eln .etext.curline{background:var(--curline);flex:1;}
+  .caret{background:var(--accent);color:var(--accent);}
+  .k-kw{color:var(--k-kw);font-weight:bold;} .k-bi{color:var(--k-bi);} .k-id{color:var(--k-id);}
+  .k-cm{color:var(--k-cm);font-style:italic;} .k-str{color:var(--k-str);} .k-num{color:var(--k-num);}
+  .k-op{color:var(--k-op);} .k-dec{color:var(--k-dec);font-style:italic;}
+
+  /* minimap */
+  .minimap{background:var(--editor-bg);padding:2px 3px;width:14ch;overflow:hidden;border-left:1px solid var(--gutter);}
+  .mmrow{line-height:3px;font-size:7px;white-space:pre;height:4px;overflow:hidden;}
+  .mmb{} .mmsp{color:transparent;}
+  .mmcur{background:var(--curline);}
+  .mmview{background:rgba(122,162,247,0.12);}
+
+  /* right dock: property grid */
+  .rightdock{display:flex;flex-direction:column;}
+  .propgrid{background:var(--panel);min-width:30ch;}
+  .pg-toolbar{display:flex;background:var(--surface);color:var(--muted);}
+  .pg-toolbar .pgb{padding:0 7px;cursor:pointer;} .pg-toolbar .pgb:hover{background:var(--hover);color:var(--text);}
+  .pg-toolbar .pgb.on{color:var(--accent);}
+  .pg-cat{display:flex;align-items:center;gap:5px;padding:0 8px;background:var(--surface);color:var(--text);cursor:pointer;}
+  .pg-cat .tw{color:var(--muted);}
+  .pg-prop{display:flex;color:var(--text-dim);}
+  .pg-prop:hover{background:var(--hover);}
+  .pg-prop.sel{background:var(--sel);color:var(--text);}
+  .pg-prop .pname{width:14ch;padding:0 8px 0 20px;color:var(--text-dim);white-space:nowrap;overflow:hidden;}
+  .pg-prop.sel .pname{color:var(--text);}
+  .pg-prop .pval{flex:1;padding:0 8px;color:var(--text);background:var(--bg);display:flex;justify-content:space-between;gap:6px;white-space:nowrap;}
+  .pg-prop .pval .dd{color:var(--accent);}
+  .pg-prop .pval.editing{background:var(--well);}
+  .pg-prop .pval .caret{background:var(--accent);color:var(--accent);}
+  .pg-prop .swatch{display:inline-flex;align-items:center;gap:6px;}
+  .pg-prop .chip{width:2ch;}
+  .pg-prop .bool{color:var(--accent);}
+  .pg-prop .expand{color:var(--muted);width:1ch;display:inline-block;}
+  .pg-desc{background:var(--surface);color:var(--muted);padding:2px 8px;min-height:0;}
+  .pg-desc .dtitle{color:var(--text);}
+
+  /* bottom dock: output/error tabs */
+  .bottomdock{background:var(--panel);}
+  .bd-tabs{display:flex;background:var(--surface);}
+  .bd-tabs .bdt{padding:0 9px;color:var(--text-dim);cursor:pointer;display:flex;gap:5px;align-items:center;}
+  .bd-tabs .bdt.active{background:var(--panel);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent);}
+  .bd-tabs .bdt .cnt{color:var(--muted);}
+  .bd-tabs .bdt.active .cnt.err{color:var(--red);}
+  .bd-body{padding:2px 10px;color:var(--text-dim);font-size:12px;}
+  .bd-body .erow{display:flex;gap:10px;} .bd-body .erow .sev-e{color:var(--red);} .bd-body .erow .sev-w{color:var(--amber);}
+  .bd-body .erow .loc{color:var(--muted);margin-left:auto;}
+
+  /* statusbar */
+  .ide-status{display:flex;align-items:center;background:var(--accent);color:var(--on-accent);}
+  .ide-status .s{padding:0 8px;} .ide-status .grow1{flex:1;}
+  .ide-status .vs{opacity:.4;}
+
+  /* ---- dock drag compass overlay (separate demo) ---- */
+  .dockdemo{position:relative;width:max-content;background:var(--bg);}
+  .ddgrid{display:flex;}
+  .ddpanel{background:var(--panel);color:var(--text-dim);padding:6px 10px;min-width:20ch;min-height:9ch;}
+  .ddpanel .pt{color:var(--accent);margin-bottom:3px;}
+  .ddcenter{position:relative;background:var(--editor-bg);min-width:56ch;min-height:15ch;display:flex;align-items:center;justify-content:center;}
+  /* preview shading where the panel would land (left half here) */
+  .dockpreview{position:absolute;top:0;left:0;width:45%;height:100%;background:var(--dock-preview);opacity:.32;border-right:2px solid var(--accent);}
+  /* compass diamond */
+  .compass{position:relative;display:grid;grid-template-columns:repeat(3,4ch);grid-template-rows:repeat(3,1.5em);gap:2px;z-index:3;}
+  .compass .cz{background:var(--compass);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .compass .cz.hot{background:var(--accent);color:var(--on-accent);}
+  .compass .cz.blank{background:transparent;cursor:default;}
+  .compass-wrap{position:absolute;top:50%;left:22%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;z-index:3;}
+  .compass-label{background:var(--surface);color:var(--text);padding:0 6px;font-size:11px;}
+  /* floating window being dragged */
+  .floatwin{position:absolute;top:10%;left:52%;background:var(--panel);box-shadow:0 0 0 1px var(--accent);z-index:4;opacity:.96;}
+  .floatwin .fwtitle{background:var(--accent);color:var(--on-accent);padding:0 8px;display:flex;justify-content:space-between;gap:14px;}
+  .floatwin .fwbody{padding:3px 10px;color:var(--text-dim);min-width:18ch;}
+  .dockdemo .edge-targets .et{position:absolute;background:var(--compass);color:var(--accent);padding:0 4px;z-index:3;}
+  .et.left{left:2px;top:50%;transform:translateY(-50%);}
+  .et.right{right:2px;top:50%;transform:translateY(-50%);}
+  .et.top{top:2px;left:50%;transform:translateX(-50%);}
+  .et.bottom{bottom:2px;left:50%;transform:translateX(-50%);}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — terminal IDE shell — 132×46</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+
+  <div class="legend">
+    <b>Actipro-style IDE shell → cells:</b> a docking workspace (pinned tool strip · tabbed tool windows · solution tree),
+    a SyntaxEditor with line-number/fold/breakpoint gutter, current-line highlight, and a <b>minimap</b> (each line a row of
+    dim token-colored blocks with a viewport band) · a categorized PropertyGrid with per-type value editors · closable doc tabs ·
+    breadcrumb · output/error dock · and the docking <b>drag compass</b> shown separately below.
+  </div>
+
+  <h2 class="sec">▸ Full IDE shell — docking workspace, SyntaxEditor, minimap, property grid</h2>
+  <div class="ide">
+    <div class="menubar">
+      <span class="m"><u>F</u>ile</span><span class="m"><u>E</u>dit</span><span class="m"><u>V</u>iew</span>
+      <span class="m"><u>P</u>roject</span><span class="m"><u>B</u>uild</span><span class="m"><u>D</u>ebug</span><span class="m">Help</span>
+    </div>
+    <div class="toolstrip">
+      <span class="tb run">▶ Run</span><span class="tb">▦ Build</span><span class="vsep">│</span>
+      <span class="tb">↶</span><span class="tb">↷</span><span class="vsep">│</span>
+      <span class="tb">⛯ Debug</span><span class="tb">▣</span><span class="tb">⊘</span>
+      <span class="cfg">Debug <span class="dd">▾</span></span>
+      <span class="cfg">x64 <span class="dd">▾</span></span>
+    </div>
+    <div class="breadcrumb">
+      <span class="seg"><span class="sg">▣</span> SalesApp <span class="dd">▾</span></span><span class="sepc">▸</span>
+      <span class="seg"><span class="sg"></span> services <span class="dd">▾</span></span><span class="sepc">▸</span>
+      <span class="seg cur"><span class="sg"></span> order_service.py <span class="dd">▾</span></span><span class="sepc">▸</span>
+      <span class="seg">OrderService <span class="dd">▾</span></span><span class="sepc">▸</span>
+      <span class="seg">total() <span class="dd">▾</span></span>
+    </div>
+
+    <div class="workspace">
+      <!-- left dock -->
+      <div class="leftdock">
+        <div class="pinstrip">
+          <span class="vtab acc">Solution</span>
+          <span class="vtab">Git</span>
+        </div>
+        <div class="toolwin">
+          <div class="tw-tabs">
+            <span class="twt active"> Solution <span class="x">✕</span></span>
+            <span class="twt"> Classes</span>
+            <span class="twspace"></span>
+            <span class="twbtn" title="collapse all">⊟</span>
+            <span class="twbtn" title="pin">⊠</span>
+          </div>
+          <div class="tw-body slntree">
+            <div class="row"><span class="tw">▾</span><span class="ic-proj">▣</span> SalesApp</div>
+            <div class="row ind1"><span class="tw">▾</span><span class="ic-folder"></span> services</div>
+            <div class="row ind2 sel"><span class="tw">&nbsp;</span><span class="ic-py"></span> order_service.py</div>
+            <div class="row ind2"><span class="tw">&nbsp;</span><span class="ic-py"></span> repo.py</div>
+            <div class="row ind1"><span class="tw">▸</span><span class="ic-folder"></span> models</div>
+            <div class="row ind1"><span class="tw">▸</span><span class="ic-folder"></span> tests</div>
+            <div class="row ind1"><span class="tw">&nbsp;</span><span class="ic-cfg"></span> pyproject.toml</div>
+            <div class="row ind1"><span class="tw">&nbsp;</span><span class="ic-cfg"></span> README.md</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- center editor -->
+      <div class="editor-col">
+        <div class="doctabs">
+          <span class="dt active"> order_service.py <span class="x">✕</span></span>
+          <span class="dt"> repo.py <span class="mod">●</span></span>
+          <span class="dt"> models.py <span class="x">✕</span></span>
+          <span class="ovf">» 2</span>
+        </div>
+        <div class="editor-area">
+          <div class="code">
+<div class="eln"><span class="lnum">1</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext"><span class="k-kw">import</span>&nbsp;<span class="k-id">asyncio</span></span></div>
+<div class="eln"><span class="lnum">2</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext"><span class="k-kw">from</span>&nbsp;<span class="k-id">typing</span>&nbsp;<span class="k-kw">import</span>&nbsp;<span class="k-id">Optional</span></span></div>
+<div class="eln"><span class="lnum">3</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;</span></div>
+<div class="eln"><span class="lnum">4</span><span class="fold">▾</span><span class="bp">&nbsp;</span><span class="etext"><span class="k-kw">class</span>&nbsp;<span class="k-id">OrderService</span><span class="k-op">:</span></span></div>
+<div class="eln"><span class="lnum">5</span><span class="fold">·</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-str">&quot;&quot;</span><span class="k-str">&quot;Processes sales orders.&quot;</span><span class="k-str">&quot;&quot;</span></span></div>
+<div class="eln"><span class="lnum">6</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;</span></div>
+<div class="eln"><span class="lnum">7</span><span class="fold">▾</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">def</span>&nbsp;<span class="k-id">__init__</span><span class="k-op">(</span><span class="k-bi">self</span><span class="k-op">,</span>&nbsp;<span class="k-id">repo</span><span class="k-op">,</span>&nbsp;<span class="k-id">rate</span><span class="k-op">=</span><span class="k-num">0.08</span><span class="k-op">)</span><span class="k-op">:</span></span></div>
+<div class="eln"><span class="lnum">8</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-bi">self</span><span class="k-op">.</span><span class="k-id">repo</span>&nbsp;<span class="k-op">=</span>&nbsp;<span class="k-id">repo</span></span></div>
+<div class="eln"><span class="lnum">9</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-bi">self</span><span class="k-op">.</span><span class="k-id">rate</span>&nbsp;<span class="k-op">=</span>&nbsp;<span class="k-id">rate</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-cm"># tax</span></span></div>
+<div class="eln"><span class="lnum">10</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;</span></div>
+<div class="eln"><span class="lnum">11</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-dec">@cached</span></span></div>
+<div class="eln"><span class="lnum">12</span><span class="fold">▾</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">async</span>&nbsp;<span class="k-kw">def</span>&nbsp;<span class="k-id">total</span><span class="k-op">(</span><span class="k-bi">self</span><span class="k-op">,</span>&nbsp;<span class="k-id">order_id</span><span class="k-op">:</span>&nbsp;<span class="k-bi">int</span><span class="k-op">)</span>&nbsp;<span class="k-op">-&gt;</span>&nbsp;<span class="k-bi">float</span><span class="k-op">:</span></span></div>
+<div class="eln"><span class="lnum">13</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext curline">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-id">order</span>&nbsp;<span class="k-op">=</span>&nbsp;<span class="k-kw">await</span>&nbsp;<span class="k-bi">self</span><span class="k-op">.</span><span class="k-id">repo</span><span class="k-op">.</span><span class="k-id">get</span><span class="k-op">(</span><span class="k-id">order_id</span><span class="k-op">)</span><span class="caret">|</span></span></div>
+<div class="eln"><span class="lnum">14</span><span class="fold">&nbsp;</span><span class="bp">●</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">if</span>&nbsp;<span class="k-id">order</span>&nbsp;<span class="k-kw">is</span>&nbsp;<span class="k-kw">None</span><span class="k-op">:</span></span></div>
+<div class="eln"><span class="lnum">15</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">raise</span>&nbsp;<span class="k-id">KeyError</span><span class="k-op">(</span><span class="k-id">order_id</span><span class="k-op">)</span></span></div>
+<div class="eln"><span class="lnum">16</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-id">subtotal</span>&nbsp;<span class="k-op">=</span>&nbsp;<span class="k-bi">sum</span><span class="k-op">(</span><span class="k-id">li</span><span class="k-op">.</span><span class="k-id">amount</span>&nbsp;<span class="k-kw">for</span>&nbsp;<span class="k-id">li</span>&nbsp;<span class="k-kw">in</span>&nbsp;<span class="k-id">order</span><span class="k-op">.</span><span class="k-id">lines</span><span class="k-op">)</span></span></div>
+<div class="eln"><span class="lnum">17</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">return</span>&nbsp;<span class="k-id">subtotal</span>&nbsp;<span class="k-op">*</span>&nbsp;<span class="k-op">(</span><span class="k-num">1</span>&nbsp;<span class="k-op">+</span>&nbsp;<span class="k-bi">self</span><span class="k-op">.</span><span class="k-id">rate</span><span class="k-op">)</span></span></div>
+<div class="eln"><span class="lnum">18</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;</span></div>
+<div class="eln"><span class="lnum">19</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">def</span>&nbsp;<span class="k-id">summary</span><span class="k-op">(</span><span class="k-bi">self</span><span class="k-op">)</span><span class="k-op">:</span></span></div>
+<div class="eln"><span class="lnum">20</span><span class="fold">&nbsp;</span><span class="bp">&nbsp;</span><span class="etext">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k-kw">return</span>&nbsp;<span class="k-op">[</span><span class="k-id">o</span><span class="k-op">.</span><span class="k-id">id</span>&nbsp;<span class="k-kw">for</span>&nbsp;<span class="k-id">o</span>&nbsp;<span class="k-kw">in</span>&nbsp;<span class="k-bi">self</span><span class="k-op">.</span><span class="k-id">repo</span><span class="k-op">.</span><span class="k-id">all</span><span class="k-op">(</span><span class="k-op">)</span><span class="k-op">]</span></span></div>
+          </div>
+          <div class="minimap">
+<div class="mmrow"><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀</span></div>
+<div class="mmrow"><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span></div>
+<div class="mmrow"></div>
+<div class="mmrow"><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-str)">▀▀</span><span class="mmb" style="color:var(--mm-str)">▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-str)">▀▀</span></div>
+<div class="mmrow"></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-num)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-cm)">▀▀▀▀▀</span></div>
+<div class="mmrow"></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-dec)">▀▀▀▀▀▀▀</span></div>
+<div class="mmrow mmcur"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow mmcur"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow mmcur"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow mmcur"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow mmcur"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow mmcur"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-num)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow"></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+<div class="mmrow"><span class="mmsp">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-id)">▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-kw)">▀▀</span><span class="mmsp">&nbsp;</span><span class="mmb" style="color:var(--mm-bi)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-id)">▀▀▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-op)">▀</span><span class="mmb" style="color:var(--mm-op)">▀</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- right dock: property grid -->
+      <div class="rightdock">
+        <div class="propgrid">
+          <div class="tw-tabs">
+            <span class="twt active"> Properties</span>
+            <span class="twspace"></span>
+            <span class="twbtn">✕</span>
+          </div>
+          <div class="pg-toolbar">
+            <span class="pgb on" title="categorized">▦ Categorized</span>
+            <span class="pgb" title="alphabetical">↓₁ A-Z</span>
+            <span class="pgb">⛭</span>
+          </div>
+          <div class="pg-cat"><span class="tw">▾</span> Appearance</div>
+          <div class="pg-prop"><span class="pname">Background</span><span class="pval"><span class="swatch"><span class="chip" style="background:var(--accent)">&nbsp;</span>#7AA2F7</span><span class="dd">▾</span></span></div>
+          <div class="pg-prop sel"><span class="pname">FontFamily</span><span class="pval editing">Cascadia Code<span class="caret">|</span><span class="dd">▾</span></span></div>
+          <div class="pg-prop"><span class="pname">FontSize</span><span class="pval">13<span class="dd">▾</span></span></div>
+          <div class="pg-prop"><span class="pname">Opacity</span><span class="pval">1.0<span class="dd">▾</span></span></div>
+          <div class="pg-cat"><span class="tw">▾</span> Layout</div>
+          <div class="pg-prop"><span class="pname">Width</span><span class="pval">Auto<span class="dd">▾</span></span></div>
+          <div class="pg-prop"><span class="pname">Height</span><span class="pval">NaN<span class="dd">▾</span></span></div>
+          <div class="pg-prop"><span class="pname"><span class="expand">▸</span>Margin</span><span class="pval">4,4,4,4<span class="dd">▾</span></span></div>
+          <div class="pg-cat"><span class="tw">▾</span> Behavior</div>
+          <div class="pg-prop"><span class="pname">IsEnabled</span><span class="pval"><span class="bool">☑</span> True</span></div>
+          <div class="pg-prop"><span class="pname">TabIndex</span><span class="pval">0<span class="dd">▾</span></span></div>
+          <div class="pg-prop"><span class="pname">Visibility</span><span class="pval">Visible<span class="dd">▾</span></span></div>
+          <div class="pg-desc">
+            <div class="dtitle">FontFamily</div>
+            <div>Gets or sets the font family for rendered text.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- bottom dock -->
+    <div class="bottomdock">
+      <div class="bd-tabs">
+        <span class="bdt active"> Error List <span class="cnt err">2 ✕ · 1 ⚠</span></span>
+        <span class="bdt"> Output</span>
+        <span class="bdt"> Terminal</span>
+        <span class="bdt"> Debug Console</span>
+      </div>
+      <div class="bd-body">
+        <div class="erow"><span class="sev-e">✕</span><span>Unexpected indent</span><span class="loc">order_service.py · Ln 9, Col 9</span></div>
+        <div class="erow"><span class="sev-e">✕</span><span>Undefined name 'cached'</span><span class="loc">order_service.py · Ln 11, Col 6</span></div>
+        <div class="erow"><span class="sev-w">⚠</span><span>Unused import 'asyncio'</span><span class="loc">order_service.py · Ln 1, Col 8</span></div>
+      </div>
+    </div>
+
+    <div class="ide-status">
+      <span class="s">▶ Ready</span><span class="vs">│</span>
+      <span class="s">Ln 13, Col 9</span><span class="vs">│</span><span class="s">Spaces: 4</span><span class="vs">│</span><span class="s">UTF-8</span><span class="vs">│</span><span class="s">Python</span>
+      <span class="grow1"></span>
+      <span class="s"> main ↑2</span><span class="vs">│</span><span class="s">2 ✕ 1 ⚠</span><span class="vs">│</span><span class="s">⛯ 1 bp</span>
+    </div>
+  </div>
+  <div class="caption">A full docking shell. Left: a pinned tool strip (vertical auto-hide tabs) beside a tabbed tool window holding the solution tree. Center: closable document tabs (one modified, shown by <span style="color:var(--amber)">●</span>) over the <b>SyntaxEditor</b> — gutter with line numbers, fold arrows (▾) and a breakpoint dot (●), current-line highlight with caret, full token coloring, and the <b>minimap</b> at the right edge rendering every line as dim token-colored blocks with a viewport band over the visible region. Right: the property grid. Below: the error/output dock with severity rows, and the accent status bar. The breadcrumb up top is a clickable path with per-segment <span style="color:var(--muted)">▾</span> dropdowns.</div>
+
+  <h2 class="sec">▸ Docking — drag compass &amp; dock preview</h2>
+  <div class="dockdemo">
+    <div class="ddgrid">
+      <div class="ddpanel"><div class="pt"> Solution</div>tree…<br>nodes…</div>
+      <div class="ddcenter">
+        <div class="dockpreview"></div>
+        <!-- edge dock targets -->
+        <div class="edge-targets">
+          <span class="et left">◧</span><span class="et right">◨</span>
+          <span class="et top">⬒</span><span class="et bottom">⬓</span>
+        </div>
+        <!-- center compass diamond -->
+        <div class="compass-wrap">
+          <div class="compass">
+            <div class="cz blank"></div><div class="cz">⬒</div><div class="cz blank"></div>
+            <div class="cz hot">◧</div><div class="cz">▣</div><div class="cz">◨</div>
+            <div class="cz blank"></div><div class="cz">⬓</div><div class="cz blank"></div>
+          </div>
+          <div class="compass-label">Dock Left</div>
+        </div>
+        <!-- floating window being dragged -->
+        <div class="floatwin">
+          <div class="fwtitle"><span> Properties</span><span>▢ ✕</span></div>
+          <div class="fwbody">FontFamily…<br>FontSize…</div>
+        </div>
+      </div>
+      <div class="ddpanel"><div class="pt"> Output</div>build log…</div>
+    </div>
+  </div>
+  <div class="caption">Mid-drag docking. A floating window (Properties) is being dragged over the editor; a five-zone <b>compass</b> diamond appears at center — dock <span style="color:var(--accent)">left/right/top/bottom</span> around a center <span style="color:var(--accent)">▣</span> (tabbed-document) target — with the hovered zone (<b>Dock Left</b>, ◧) lit in accent. Four <b>edge targets</b> (◧◨⬒⬓) sit against the workspace borders for docking to the outer edge. The shaded <span style="color:var(--accent)">preview rectangle</span> fills the left ~45% to show exactly where the panel will land if dropped now. Releasing over the lit zone docks it there; over the center ▣ makes it a tab.</div>
+
+</div>
+
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+    tt.textContent=(light?'tokyo-night-light':'tokyo-night')+' — terminal IDE shell — 132×46';
+  });
+</script>
+</body>
+</html>

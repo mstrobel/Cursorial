@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — terminal rich editors</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --chip:#2e3354; --chip-hot:#33467c;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --chip:#c2cae0; --chip-hot:#a8aecb;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1080px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:26px 0 10px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:8px;max-width:840px;line-height:1.6;}
+  .row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .lbl{color:var(--muted);width:16ch;display:inline-block;flex:none;}
+  .lbl.sm{width:12ch;}
+
+  /* ===== tag / token input ===== */
+  .taginput{display:flex;flex-wrap:wrap;align-items:center;gap:3px;background:var(--well);padding:2px 6px;min-width:46ch;max-width:60ch;box-shadow:inset 0 0 0 1px var(--faint);}
+  .taginput.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .chip{display:inline-flex;align-items:center;gap:5px;background:var(--chip);color:var(--text);padding:0 3px 0 7px;}
+  .chip .x{color:var(--muted);cursor:pointer;} .chip .x:hover{color:var(--red);}
+  .chip.hot{background:var(--chip-hot);box-shadow:0 0 0 1px var(--accent);}
+  .chip.ic-pre{padding-left:5px;} .chip .ci{color:var(--accent-2);}
+  .chip.dup{box-shadow:0 0 0 1px var(--red);}
+  .chip.dup .x{color:var(--red);}
+  .taginput .tcaret{display:inline-flex;align-items:center;color:var(--text);min-width:6ch;}
+  .taginput .tcaret .ph{color:var(--muted);}
+  .taginput .tcaret .caret{background:var(--accent);color:var(--accent);}
+  .taginput.full{box-shadow:inset 0 0 0 1px var(--amber);}
+
+  /* token completion dropdown */
+  .tagpop{background:var(--panel);width:max-content;min-width:30ch;box-shadow:0 0 0 1px var(--faint);margin-top:2px;}
+  .tagpop .tphead{background:var(--surface);color:var(--muted);padding:0 8px;display:flex;justify-content:space-between;gap:16px;}
+  .tagpop .tprow{display:flex;align-items:center;gap:7px;padding:0 8px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+  .tagpop .tprow:hover{background:var(--hover);color:var(--text);}
+  .tagpop .tprow.sel{background:var(--sel);color:var(--text);}
+  .tagpop .tprow .ci{color:var(--accent-2);width:1ch;display:inline-block;text-align:center;}
+  .tagpop .tprow .match{color:var(--accent);font-weight:bold;}
+  .tagpop .tprow.sel .match{color:var(--accent-2);}
+  .tagpop .tprow .cnt{margin-left:auto;color:var(--muted);font-size:11px;padding-left:16px;}
+  .tagpop .tprow.create{color:var(--green);}
+  .tagpop .tprow.create .match{color:var(--green);}
+  .tagpop .tpfoot{background:var(--surface);color:var(--muted);font-size:11px;padding:0 8px;display:flex;gap:12px;}
+  .tagpop .tpfoot .k{color:var(--text-dim);}
+  .msg{font-size:11px;margin-top:2px;} .msg.err{color:var(--red);} .msg.warn{color:var(--amber);} .msg.ok{color:var(--green);}
+
+  /* ===== masked input ===== */
+  .masked{display:inline-flex;background:var(--well);padding:0 8px;box-shadow:inset 0 0 0 1px var(--faint);color:var(--text);min-width:20ch;}
+  .masked.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .masked .filled{color:var(--text);} .masked .slot{color:var(--muted);} .masked .lit{color:var(--muted);}
+  .masked .caret{background:var(--accent);color:var(--accent);}
+  .masked.bad{box-shadow:inset 0 0 0 1px var(--red);}
+
+  /* ===== part editor (date/time segments) ===== */
+  .parts{display:inline-flex;align-items:center;background:var(--well);padding:0 6px;box-shadow:inset 0 0 0 1px var(--faint);color:var(--text);}
+  .parts.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .parts .pt{padding:0 1px;} .parts .pt.sel{background:var(--accent);color:var(--on-accent);}
+  .parts .psep{color:var(--muted);}
+  .parts .spin{display:inline-flex;flex-direction:column;line-height:.7;margin-left:4px;color:var(--accent);font-size:9px;}
+  .parts .ampm{color:var(--accent-2);margin-left:3px;}
+
+  /* ===== numeric drag ===== */
+  .numdrag{display:inline-flex;align-items:center;background:var(--well);padding:0 6px;box-shadow:inset 0 0 0 1px var(--faint);color:var(--text);min-width:12ch;justify-content:space-between;gap:8px;}
+  .numdrag.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .numdrag .grip{color:var(--muted);cursor:ew-resize;} .numdrag.dragging .grip{color:var(--accent);}
+  .numdrag .nv{color:var(--text);} .numdrag .unit{color:var(--muted);}
+  .numdrag .spin{display:inline-flex;flex-direction:column;line-height:.7;color:var(--accent);font-size:9px;}
+  .scrubhint{color:var(--muted);font-size:11px;}
+
+  /* ===== rating ===== */
+  .rating{display:inline-flex;gap:1px;}
+  .rating .st{color:var(--amber);} .rating .st.empty{color:var(--faint);} .rating .st.half{color:var(--amber);}
+  .rating.hover .st.preview{color:var(--accent-2);}
+  .rateval{color:var(--muted);margin-left:8px;}
+
+  /* ===== slider w/ ticks ===== */
+  .tslider{display:inline-flex;flex-direction:column;min-width:32ch;}
+  .tslider .track{color:var(--faint);}
+  .tslider .track .fill{color:var(--accent);} .tslider .track .thumb{color:var(--text);}
+  .tslider .ticks{color:var(--muted);display:flex;justify-content:space-between;font-size:10px;}
+  .tslider .ticks span{width:0;}
+
+  /* ===== tag input — disabled & readonly variants ===== */
+  .taginput.disabled{box-shadow:inset 0 0 0 1px var(--faint);background:var(--disabled-bg);}
+  .taginput.disabled .chip{background:var(--disabled-bg);color:var(--muted);box-shadow:0 0 0 1px var(--faint);}
+  .taginput.disabled .chip .x{color:var(--faint);}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — terminal rich editors — 96×40</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+
+  <div class="legend">
+    <b>Rich input editors → cells:</b> a tag/token input with chips, completion, and validation states · masked text (phone/date/IP/card) ·
+    part editors with individually-spinnable date/time segments · a drag-to-scrub numeric · rating · and a ticked slider.
+  </div>
+
+  <h2 class="sec">▸ Tag / token input — chips, completion, validation</h2>
+  <div class="row" style="align-items:flex-start">
+    <span class="lbl">Editing (focused)</span>
+    <div>
+      <div class="taginput focus">
+        <span class="chip ic-pre"><span class="ci"></span>design<span class="x">✕</span></span>
+        <span class="chip ic-pre"><span class="ci"></span>frontend<span class="x">✕</span></span>
+        <span class="chip"><span class="ci" style="color:var(--green)">●</span>urgent<span class="x">✕</span></span>
+        <span class="tcaret">acce<span class="caret">|</span></span>
+      </div>
+      <div class="tagpop">
+        <div class="tphead"><span>matching "acce"</span><span>3 of 28 tags</span></div>
+        <div class="tprow sel"><span class="ci"></span><span><span class="match">acce</span>ssibility</span><span class="cnt">142 uses</span></div>
+        <div class="tprow"><span class="ci"></span><span><span class="match">acce</span>ptance</span><span class="cnt">37</span></div>
+        <div class="tprow"><span class="ci"></span><span>un<span class="match">acce</span>ptable</span><span class="cnt">5 · fuzzy</span></div>
+        <div class="tprow create"><span class="ci">＋</span><span>Create "<span class="match">acce</span>"</span><span class="cnt">new tag</span></div>
+        <div class="tpfoot"><span><span class="k">↵/Tab</span> add</span><span><span class="k">↑↓</span> pick</span><span><span class="k">⌫</span> remove last</span><span><span class="k">,</span> delimiter</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="row" style="align-items:flex-start;margin-top:6px">
+    <span class="lbl">Duplicate attempt</span>
+    <div>
+      <div class="taginput focus">
+        <span class="chip ic-pre"><span class="ci"></span>design<span class="x">✕</span></span>
+        <span class="chip dup ic-pre"><span class="ci"></span>design<span class="x">✕</span></span>
+        <span class="tcaret"><span class="caret">|</span></span>
+      </div>
+      <div class="msg err">✕ "design" is already added — duplicate highlighted in red</div>
+    </div>
+  </div>
+  <div class="row" style="align-items:flex-start;margin-top:6px">
+    <span class="lbl">Max reached</span>
+    <div>
+      <div class="taginput full">
+        <span class="chip">react<span class="x">✕</span></span><span class="chip">vue<span class="x">✕</span></span>
+        <span class="chip">svelte<span class="x">✕</span></span><span class="chip">solid<span class="x">✕</span></span>
+        <span class="chip">angular<span class="x">✕</span></span>
+        <span class="tcaret ph" style="color:var(--muted)">max 5</span>
+      </div>
+      <div class="msg warn">⚠ tag limit reached (5/5) — input disabled until one is removed</div>
+    </div>
+  </div>
+  <div class="row" style="align-items:flex-start;margin-top:6px">
+    <span class="lbl">Chip selected (⌫)</span>
+    <div class="taginput focus">
+      <span class="chip ic-pre"><span class="ci"></span>design<span class="x">✕</span></span>
+      <span class="chip hot ic-pre"><span class="ci"></span>frontend<span class="x">✕</span></span>
+      <span class="tcaret"><span class="caret">|</span></span>
+    </div>
+  </div>
+  <div class="row" style="align-items:flex-start;margin-top:6px">
+    <span class="lbl">Disabled</span>
+    <div class="taginput disabled">
+      <span class="chip">design<span class="x">✕</span></span><span class="chip">frontend<span class="x">✕</span></span>
+    </div>
+  </div>
+  <div class="caption">The tag input holds committed values as <b>chips</b> (icon + label + ✕ remove) with a live <b>text caret</b> after the last chip. Typing filters a <b>completion dropdown</b> with match-highlighting, usage counts, fuzzy hits, and a "<span style="color:var(--green)">Create</span>" row for new tags; Enter/Tab/comma commit. Validation states: a re-entered value flags as a <span style="color:var(--red)">duplicate</span> (red outline), hitting the cap switches the frame <span style="color:var(--amber)">amber</span> and disables input, Backspace on an empty caret selects the last chip (<span style="color:var(--accent)">highlighted</span>) for deletion, and a disabled control greys its chips.</div>
+
+  <h2 class="sec">▸ Masked text inputs</h2>
+  <div class="row"><span class="lbl sm">Phone</span><span class="masked focus">(<span class="filled">415</span>)&nbsp;<span class="filled">555</span>-<span class="filled">01</span><span class="caret">|</span><span class="slot">__</span></span><span class="scrubhint">mask (___)&nbsp;___-____ · digits fill slots L→R</span></div>
+  <div class="row"><span class="lbl sm">Date</span><span class="masked"><span class="filled">2026</span>/<span class="filled">06</span>/<span class="slot">DD</span></span><span class="scrubhint">YYYY/MM/DD · unfilled slots show placeholder letters</span></div>
+  <div class="row"><span class="lbl sm">IP address</span><span class="masked"><span class="filled">192</span>.<span class="filled">168</span>.<span class="filled">1</span>.<span class="slot">___</span></span><span class="scrubhint">octet groups, dots are literal mask chars</span></div>
+  <div class="row"><span class="lbl sm">Card</span><span class="masked bad"><span class="filled">4242</span>&nbsp;<span class="filled">4242</span>&nbsp;<span class="filled">4242</span>&nbsp;<span class="filled">42</span><span class="slot">__</span></span><span class="msg err" style="margin:0">✕ fails Luhn check</span></div>
+  <div class="caption">Masked inputs render the <b>mask template</b> inline: literal characters (parentheses, slashes, dots, spaces) are fixed, fillable positions show as <span style="color:var(--muted)">slot placeholders</span> (underscores or letter hints) until typed, and entered characters land left-to-right with the caret at the next open slot. A failed format/checksum (here a card failing Luhn) flips the frame <span style="color:var(--red)">red</span>.</div>
+
+  <h2 class="sec">▸ Part editors — spinnable date / time segments</h2>
+  <div class="row"><span class="lbl sm">Date</span><span class="parts focus"><span class="pt sel">2026</span><span class="psep">-</span><span class="pt">06</span><span class="psep">-</span><span class="pt">13</span><span class="spin"><span>▲</span><span>▼</span></span></span><span class="scrubhint">year segment selected · ↑↓ spins just that part · ←→ moves between parts</span></div>
+  <div class="row"><span class="lbl sm">Time</span><span class="parts"><span class="pt">09</span><span class="psep">:</span><span class="pt sel">30</span><span class="psep">:</span><span class="pt">00</span><span class="ampm">AM</span><span class="spin"><span>▲</span><span>▼</span></span></span><span class="scrubhint">minute segment selected · AM/PM toggles with ↑↓ when focused</span></div>
+  <div class="row"><span class="lbl sm">Duration</span><span class="parts"><span class="pt">02</span><span class="psep">h</span><span class="pt sel">45</span><span class="psep">m</span><span class="pt">30</span><span class="psep">s</span><span class="spin"><span>▲</span><span>▼</span></span></span><span class="scrubhint">unit-labelled parts (h/m/s) · overflow carries into the next part</span></div>
+  <div class="caption">Part editors split a structured value into independently-focusable <b>segments</b>. Exactly one part is selected (accent fill); ↑↓ spins only that part (with carry/overflow into neighbours), ←→ or typing the separator moves between parts, and direct digit entry overwrites the focused segment. The shared <span style="color:var(--accent)">▲▼</span> spinner acts on whichever part holds focus — so a date, clock time, and an h/m/s duration all use the same interaction.</div>
+
+  <h2 class="sec">▸ Numeric drag, rating, ticked slider</h2>
+  <div class="row"><span class="lbl sm">Numeric (scrub)</span><span class="numdrag dragging"><span class="grip">⋮⋮</span><span class="nv">1.45</span><span class="unit">×</span><span class="spin"><span>▲</span><span>▼</span></span></span><span class="scrubhint">drag the ⋮⋮ grip left/right to scrub · Shift = fine, Ctrl = coarse</span></div>
+  <div class="row"><span class="lbl sm">Rating</span><span class="rating hover"><span class="st">★</span><span class="st">★</span><span class="st">★</span><span class="st half">⯨</span><span class="st empty preview">★</span></span><span class="rateval">3.5 / 5</span></div>
+  <div class="row" style="align-items:flex-start"><span class="lbl sm">Slider + ticks</span>
+    <div class="tslider">
+      <span class="track"><span class="fill">━━━━━━</span><span class="thumb">●</span><span>──────────────</span></span>
+      <span class="ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></span>
+    </div>
+  </div>
+  <div class="caption">The <b>numeric editor</b> scrubs by dragging its <span style="color:var(--muted)">⋮⋮</span> grip horizontally (modifier keys change the step), with a spinner fallback. The <b>rating</b> supports half-steps (⯨) and previews the hovered value in <span style="color:var(--accent-2)">cyan</span> ahead of the committed amber stars. The <b>slider</b> carries a labelled tick scale beneath the filled track, the thumb a single cell on the rail.</div>
+
+</div>
+
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+    tt.textContent=(light?'tokyo-night-light':'tokyo-night')+' — terminal rich editors — 96×40';
+  });
+</script>
+</body>
+</html>

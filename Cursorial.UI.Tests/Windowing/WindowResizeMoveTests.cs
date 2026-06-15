@@ -3,8 +3,10 @@
 
 using System;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
@@ -332,6 +334,37 @@ public sealed class WindowResizeMoveTests
         // The default test host negotiates KittyTruecolor → the window root carries the truecolor tier class
         // (the StyleEngine stamps every surface root, not just the app root).
         Assert.True(w.Classes.Contains("caps-truecolor"));
+    }
+
+    [Fact] // shrinking a window repaints the cells it vacated (the desktop shows through — no stale artifacts)
+    public void ShrinkingWindow_RepaintsVacatedCells()
+    {
+        var desktop = Color.FromRgb(10, 20, 30);
+        var windowFill = Color.FromRgb(200, 100, 50);
+
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+        host.ShowRoot(new UIControls.Border { Background = new SolidColorBrush(desktop) });
+        Assert.True(host.RunUntilIdle());
+        var wm = host.Application.WindowManager!;
+
+        var w = new Window
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 2, Top = 2, Width = 20, Height = 8,
+            Background = new SolidColorBrush(windowFill),
+        };
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        // (15,7) sits well inside the 20×8 window (cols 2..21, rows 2..9) — not the desktop.
+        Assert.NotEqual(desktop, host.GetCell(15, 7).Style.Background);
+
+        w.Width = 8;   // shrink so (15,7) is now outside the window (cols 2..9, rows 2..5)
+        w.Height = 4;
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(desktop, host.GetCell(15, 7).Style.Background); // vacated → desktop, not stale window fill
     }
 
     private sealed class MeasureHook : UIElement

@@ -84,6 +84,34 @@ public class SceneCompositorTests
         Assert.Equal(Blue, buffer[5, 0].Style.Background);   // uncovered → base
     }
 
+    [Fact] // regression: a layer's scene SHRINKING must reset the cells it vacated to base (no stale artifacts)
+    public void SceneShrinks_VacatedCells_ResetToBase()
+    {
+        var buffer = new CellBuffer(10, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        // Frame 1: an 8-wide Red scene covers columns [0,8) (the "large window").
+        var large = Scene.Create(8, 1);
+        Fill(large, new SolidColorBrush(Red));
+        var layers = new[] { new SceneLayer(large) };
+        Assert.True(compositor.Composite(layers, view));
+        var redOverBlue = Color.Composite(Red, Blue, BlendingModes.Default);
+        Assert.Equal(redOverBlue, buffer[7, 0].Style.Background);
+
+        // Frame 2: the same layer slot now holds a SMALLER 4-wide scene (the window resized down — the pool
+        // rents an exact-size scene, so this is a scene swap). Columns [4,8) were vacated and must show base.
+        var small = Scene.Create(4, 1);
+        Fill(small, new SolidColorBrush(Red));
+        layers[0] = new SceneLayer(small);
+        Assert.True(compositor.Composite(layers, view));
+
+        Assert.Equal(redOverBlue, buffer[0, 0].Style.Background); // still covered
+        Assert.Equal(redOverBlue, buffer[3, 0].Style.Background); // last covered column of the smaller scene
+        Assert.Equal(Blue, buffer[4, 0].Style.Background);        // VACATED → base (was the artifact)
+        Assert.Equal(Blue, buffer[7, 0].Style.Background);        // VACATED → base
+    }
+
     [Fact]
     public void Transparent_UnpaintedSceneCells_LeaveBaseShowing()
     {

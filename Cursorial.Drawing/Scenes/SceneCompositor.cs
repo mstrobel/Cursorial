@@ -37,6 +37,12 @@ public sealed class SceneCompositor
     private Scene?[] _lastScenes = [];
     private long[] _lastVersions = [];
     private CompositeParameters[] _lastParams = [];
+    // The scene dimensions at the last composite — the vacated footprint must be computed from the OLD
+    // size, not the current one: a scene that SHRANK (e.g. a window resized smaller) would otherwise leave
+    // the cells beyond its new bounds un-reset (stale artifacts), since both footprints would read the new
+    // smaller size. (A move keeps the size, so this matches the old behavior there.)
+    private int[] _lastColumns = [];
+    private int[] _lastRows = [];
 
     // Target anchors of the fragments this compositor registered last work-frame — removed and rebuilt each
     // work-frame so a scene's fragments (images, sized text) ride the cell pass and move/disappear correctly.
@@ -86,8 +92,10 @@ public sealed class SceneCompositor
                                layers[i].Parameters != _lastParams[i];
                 if (!changed) continue;
 
-                if (TryFootprint(layers[i].Scene, layers[i].Parameters, target.Columns, target.Rows, out var nf)) Union(nf);
-                if (TryFootprint(layers[i].Scene, _lastParams[i], target.Columns, target.Rows, out var of)) Union(of);
+                if (TryFootprint(layers[i].Scene.Columns, layers[i].Scene.Rows, layers[i].Parameters, target.Columns, target.Rows, out var nf)) Union(nf);
+                // Vacated footprint at the PRIOR scene size + prior params — covers a shrink (the new size
+                // would miss the cells the larger scene used to occupy) and a move (size unchanged).
+                if (TryFootprint(_lastColumns[i], _lastRows[i], _lastParams[i], target.Columns, target.Rows, out var of)) Union(of);
             }
         }
 
@@ -119,7 +127,7 @@ public sealed class SceneCompositor
         for (int li = 0; li < n; li++)
         {
             var p = layers[li].Parameters;
-            if (!TryFootprint(layers[li].Scene, p, target.Columns, target.Rows, out var fp)) continue;
+            if (!TryFootprint(layers[li].Scene.Columns, layers[li].Scene.Rows, p, target.Columns, target.Rows, out var fp)) continue;
 
             int fcS = Math.Max(fp.Column, colStart), frS = Math.Max(fp.Row, rowStart);
             int fcE = Math.Min(fp.ColumnEnd, colEnd), frE = Math.Min(fp.RowEnd, rowEnd);
@@ -249,12 +257,12 @@ public sealed class SceneCompositor
     private static Color ScaleAlpha(Color color, byte opacity) =>
         color.Kind == ColorKind.Rgb ? color.WithAlpha((byte) (color.Alpha * opacity / 255)) : color;
 
-    private static bool TryFootprint(Scene scene, in CompositeParameters p, int targetColumns, int targetRows, out Rect rect)
+    private static bool TryFootprint(int sceneColumns, int sceneRows, in CompositeParameters p, int targetColumns, int targetRows, out Rect rect)
     {
         int colStart = Math.Max(0, p.OffsetColumn);
         int rowStart = Math.Max(0, p.OffsetRow);
-        int colEnd = Math.Min(targetColumns, p.OffsetColumn + scene.Columns);
-        int rowEnd = Math.Min(targetRows, p.OffsetRow + scene.Rows);
+        int colEnd = Math.Min(targetColumns, p.OffsetColumn + sceneColumns);
+        int rowEnd = Math.Min(targetRows, p.OffsetRow + sceneRows);
 
         if (p.Clip is { } clip)
         {
@@ -282,6 +290,8 @@ public sealed class SceneCompositor
             _lastScenes = new Scene?[n];
             _lastVersions = new long[n];
             _lastParams = new CompositeParameters[n];
+            _lastColumns = new int[n];
+            _lastRows = new int[n];
         }
 
         for (int i = 0; i < n; i++)
@@ -289,6 +299,8 @@ public sealed class SceneCompositor
             _lastScenes[i] = layers[i].Scene;
             _lastVersions[i] = layers[i].Scene.RasterVersion;
             _lastParams[i] = layers[i].Parameters;
+            _lastColumns[i] = layers[i].Scene.Columns;
+            _lastRows[i] = layers[i].Scene.Rows;
         }
     }
 }

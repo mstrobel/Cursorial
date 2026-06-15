@@ -121,10 +121,17 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider
     {
         if (clrType.IsAbstract || clrType.IsInterface)
             return null;
-        var ctor = clrType.GetConstructor(Type.EmptyTypes);
-        if (ctor is null)
+        // Nullable<T> is a value type but Activator.CreateInstance boxes its default to a null reference (the
+        // thunk's ! would hand a null downstream); it can't be an element target anyway, so reject it.
+        if (Nullable.GetUnderlyingType(clrType) is not null)
             return null;
-        return () => Activator.CreateInstance(clrType)!;
+        // A value type's implicit parameterless constructor is NOT surfaced by GetConstructor(Type.EmptyTypes)
+        // (it returns null), but Activator.CreateInstance always default-constructs one. Record structs (e.g.
+        // Drawing.Pen) are thus element-authorable; their init members are set via reflection SetValue on the
+        // boxed instance the builder holds, which mutates the box in place (boxed-struct-safe).
+        if (clrType.IsValueType || clrType.GetConstructor(Type.EmptyTypes) is not null)
+            return () => Activator.CreateInstance(clrType)!;
+        return null;
     }
 
     // ── Collections / dictionaries ─────────────────────────────────────────────────────────────────

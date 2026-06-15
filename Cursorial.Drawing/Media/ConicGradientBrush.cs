@@ -32,11 +32,15 @@ public sealed class ConicGradientBrush : GradientBrush
                               double angleDegrees = 0.0, double opacity = 1.0)
         : this([new(0.0, start), new(1.0, end)], center, angleDegrees, opacity) { }
 
+    /// <summary>Parameterless constructor for XAML element authoring: add <c>&lt;GradientStop&gt;</c> children
+    /// and set <see cref="Center"/>/<see cref="AngleDegrees"/>/<c>Opacity</c> via init.</summary>
+    public ConicGradientBrush() { }
+
     /// <summary>The sweep center, relative to the paint bounds (default: centered).</summary>
-    public RelativePoint Center { get; }
+    public RelativePoint Center { get; init; } = RelativePoint.Center;
 
     /// <summary>The rotation of the sweep, in degrees clockwise from 12 o'clock (default: 0).</summary>
-    public double AngleDegrees { get; }
+    public double AngleDegrees { get; init; }
 
     protected override double ComputeOffset(double px, double py, double width, double height)
     {

@@ -33,11 +33,15 @@ public sealed class LinearGradientBrush : GradientBrush
                                GradientSpread spread = GradientSpread.Pad, double opacity = 1.0)
         : this([new(0.0, start), new(1.0, end)], startPoint, endPoint, spread, opacity) { }
 
+    /// <summary>Parameterless constructor for XAML element authoring: add <c>&lt;GradientStop&gt;</c> children
+    /// and set <see cref="StartPoint"/>/<see cref="EndPoint"/>/<c>Spread</c>/<c>Opacity</c> via init.</summary>
+    public LinearGradientBrush() { }
+
     /// <summary>The gradient's start point, relative to the paint bounds (default: top-left).</summary>
-    public RelativePoint StartPoint { get; }
+    public RelativePoint StartPoint { get; init; } = RelativePoint.TopLeft;
 
     /// <summary>The gradient's end point, relative to the paint bounds (default: top-right).</summary>
-    public RelativePoint EndPoint { get; }
+    public RelativePoint EndPoint { get; init; } = RelativePoint.TopRight;
 
     protected override double ComputeOffset(double px, double py, double width, double height)
     {

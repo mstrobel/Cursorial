@@ -15,6 +15,15 @@ namespace Cursorial.Drawing.Media;
 public abstract class GradientBrush : IBrush
 {
     private protected const double Epsilon = 1e-9;
+    private double _opacity = 1.0;
+
+    /// <summary>Parameterless constructor for XAML element authoring: <see cref="Stops"/> starts empty and is
+    /// populated by the loader (the content property), <see cref="Spread"/>/<see cref="Opacity"/> via init.
+    /// Stops added this way are NOT sorted — <see cref="SampleStops"/> is order-agnostic.</summary>
+    protected GradientBrush()
+    {
+        Stops = new List<GradientStop>();
+    }
 
     protected GradientBrush(IReadOnlyList<GradientStop> stops, GradientSpread spread, double opacity)
     {
@@ -24,21 +33,33 @@ public abstract class GradientBrush : IBrush
         if (!double.IsFinite(opacity))
             throw new ArgumentOutOfRangeException(nameof(opacity), opacity, "Opacity must be a finite value.");
 
-        var sorted = stops.ToArray();
-        Array.Sort(sorted, static (a, b) => a.Offset.CompareTo(b.Offset));
-        Stops = sorted;
+        // The code-first ctor keeps Stops sorted ascending (the documented contract + GradientBrushTests);
+        // SampleStops no longer DEPENDS on it (it is order-agnostic), so element-authored stops need no sort.
+        var list = new List<GradientStop>(stops);
+        list.Sort(static (a, b) => a.Offset.CompareTo(b.Offset));
+        Stops = list;
         Spread = spread;
-        Opacity = Math.Clamp(opacity, 0.0, 1.0);
+        Opacity = opacity;
     }
 
-    /// <summary>Stops, sorted ascending by offset.</summary>
-    public IReadOnlyList<GradientStop> Stops { get; }
+    /// <summary>The gradient stops. Code-first construction sorts them ascending by offset; element-authored
+    /// stops are in declaration order — either way <see cref="SampleStops"/> resolves them order-agnostically.</summary>
+    public IList<GradientStop> Stops { get; init; }
 
     /// <summary>Behavior outside the [0, 1] parameter range.</summary>
-    public GradientSpread Spread { get; }
+    public GradientSpread Spread { get; init; }
 
-    /// <summary>Whole-gradient opacity (0–1), folded into each sampled color's alpha.</summary>
-    public double Opacity { get; }
+    /// <summary>Whole-gradient opacity (0–1, clamped), folded into each sampled color's alpha.</summary>
+    public double Opacity
+    {
+        get => _opacity;
+        init
+        {
+            if (!double.IsFinite(value))
+                throw new ArgumentOutOfRangeException(nameof(value), value, "Opacity must be a finite value.");
+            _opacity = Math.Clamp(value, 0.0, 1.0);
+        }
+    }
 
     /// <inheritdoc/>
     public Color ColorAt(int column, int row, Rect bounds)
@@ -67,19 +88,28 @@ public abstract class GradientBrush : IBrush
             _                      => Math.Clamp(t, 0.0, 1.0)
         };
 
-    /// <summary>Evaluate the stops at <paramref name="position"/> in [0, 1] (premultiplied lerp).</summary>
+    /// <summary>
+    /// Evaluate the stops at <paramref name="position"/> in [0, 1] (premultiplied lerp). Order-agnostic: it
+    /// scans for the nearest stop at-or-below and the nearest above <paramref name="position"/> regardless of
+    /// the stops' order, so element-authored (unsorted) stops resolve identically to code-first (sorted) ones.
+    /// </summary>
     protected Color SampleStops(double position)
     {
+        if (Stops.Count == 0)
+            return Colors.Default; // a degenerate (stop-less) gradient paints the terminal default
+
         GradientStop? before = null;
         GradientStop? after = null;
         foreach (var stop in Stops)
         {
             if (stop.Offset <= position)
-                before = stop;
-            else
+            {
+                if (before is null || stop.Offset > before.Value.Offset)
+                    before = stop;
+            }
+            else if (after is null || stop.Offset < after.Value.Offset)
             {
                 after = stop;
-                break;
             }
         }
 

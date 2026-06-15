@@ -40,17 +40,23 @@ public sealed class RadialGradientBrush : GradientBrush
                                GradientSpread spread = GradientSpread.Pad, double opacity = 1.0)
         : this([new(0.0, centerColor), new(1.0, edgeColor)], center, radiusX, radiusY, gradientOrigin, spread, opacity) { }
 
+    /// <summary>Parameterless constructor for XAML element authoring: add <c>&lt;GradientStop&gt;</c> children
+    /// and set <see cref="Center"/>/<see cref="RadiusX"/>/<see cref="RadiusY"/>/<see cref="GradientOrigin"/> via init.</summary>
+    public RadialGradientBrush() { }
+
     /// <summary>The ellipse center, relative to the paint bounds (default: centered).</summary>
-    public RelativePoint Center { get; }
+    public RelativePoint Center { get; init; } = RelativePoint.Center;
 
     /// <summary>The horizontal radius as a fraction of the bounds width (default: 0.5).</summary>
-    public double RadiusX { get; }
+    public double RadiusX { get; init; } = 0.5;
 
     /// <summary>The vertical radius as a fraction of the bounds height (default: 0.5).</summary>
-    public double RadiusY { get; }
+    public double RadiusY { get; init; } = 0.5;
 
-    /// <summary>The focal point the gradient emanates from, relative to the bounds (default: the center).</summary>
-    public RelativePoint GradientOrigin { get; }
+    private readonly RelativePoint? _gradientOrigin;
+
+    /// <summary>The focal point the gradient emanates from, relative to the bounds (default: the <see cref="Center"/>).</summary>
+    public RelativePoint GradientOrigin { get => _gradientOrigin ?? Center; init => _gradientOrigin = value; }
 
     /// <summary>
     /// Width-to-height pixel ratio of a terminal cell (e.g. ~0.5, a cell being about half as wide as it is

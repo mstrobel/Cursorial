@@ -64,6 +64,7 @@ public static class XamlConverters
         if (underlying == typeof(string)) return StringPassthroughConverter.Instance;
         if (underlying == typeof(Margins)) return MarginsConverter.Instance;
         if (underlying == typeof(GridLength)) return GridLengthConverter.Instance;
+        if (underlying == typeof(RelativePoint)) return RelativePointConverter.Instance;
         if (underlying == typeof(Color)) return ColorConverter.Instance;
         if (underlying == typeof(TextAttributes)) return TextAttributesConverter.Instance;
         if (underlying == typeof(KeyGesture)) return KeyGestureConverter.Instance;
@@ -426,6 +427,27 @@ public static class XamlConverters
             {
                 throw Fail($"'{text}' is not a valid selector: {ex.Message}", ctx);
             }
+        }
+    }
+
+    private sealed class RelativePointConverter : ITypeConverter
+    {
+        public static readonly RelativePointConverter Instance = new();
+
+        // A bounds-relative point authored as "x,y" fractions (e.g. StartPoint="0,0" EndPoint="1,1" on a
+        // gradient brush). Named points (TopLeft/Center/…) are reachable via {x:Static RelativePoint.Center}.
+        public bool IsContextFree => true;
+
+        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            var parts = text.Split(',');
+            if (parts.Length == 2
+                && double.TryParse(parts[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+                && double.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
+                && double.IsFinite(x) && double.IsFinite(y)) // mirror GradientBrush's RequireFinite (no NaN/Infinity geometry)
+                return new RelativePoint(x, y);
+
+            throw Fail($"'{text}' is not a valid relative point (expected finite 'x,y', e.g. '0,0' or '0.5,1').", ctx);
         }
     }
 

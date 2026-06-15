@@ -64,12 +64,25 @@ public sealed class BrushInterpolator : IInterpolator<IBrush>
                };
     }
 
-    private static GradientStop[] LerpStops(IReadOnlyList<GradientStop> a, IReadOnlyList<GradientStop> b, double t)
+    private static GradientStop[] LerpStops(IList<GradientStop> a, IList<GradientStop> b, double t)
     {
-        var stops = new GradientStop[a.Count];
-        for (int i = 0; i < a.Count; i++)
-            stops[i] = new GradientStop(Lerp(a[i].Offset, b[i].Offset, t), Color.Lerp(a[i].Color, b[i].Color, t));
+        // Order-agnostic: pair stops by ascending offset, so two gradients with the same stop COUNT but
+        // different declaration order (an element-authored brush need not be sorted) still blend correctly.
+        var sa = OrderByOffset(a);
+        var sb = OrderByOffset(b);
+        var stops = new GradientStop[sa.Length];
+        for (int i = 0; i < sa.Length; i++)
+            stops[i] = new GradientStop(Lerp(sa[i].Offset, sb[i].Offset, t), Color.Lerp(sa[i].Color, sb[i].Color, t));
         return stops;
+    }
+
+    private static GradientStop[] OrderByOffset(IList<GradientStop> stops)
+    {
+        var copy = new GradientStop[stops.Count];
+        for (int i = 0; i < stops.Count; i++)
+            copy[i] = stops[i];
+        Array.Sort(copy, static (x, y) => x.Offset.CompareTo(y.Offset));
+        return copy;
     }
 
     private static RelativePoint LerpPoint(RelativePoint a, RelativePoint b, double t) =>

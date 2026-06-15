@@ -5,18 +5,20 @@ namespace Cursorial.Drawing.Media;
 /// <summary>A color placed at a normalized offset (0–1) along a gradient.</summary>
 public readonly record struct GradientStop
 {
+    private readonly double _offset;
+
     /// <summary>Create a stop. <paramref name="offset"/> is clamped to [0, 1].</summary>
     public GradientStop(double offset, Color color)
     {
-        Offset = Math.Clamp(offset, 0.0, 1.0);
+        Offset = offset;
         Color = color;
     }
 
-    /// <summary>Position along the gradient, 0–1.</summary>
-    public double Offset { get; }
+    /// <summary>Position along the gradient, 0–1 (clamped); settable via init for XAML element authoring.</summary>
+    public double Offset { get => _offset; init => _offset = Math.Clamp(value, 0.0, 1.0); }
 
-    /// <summary>The color at this offset.</summary>
-    public Color Color { get; }
+    /// <summary>The color at this offset; settable via init for XAML element authoring.</summary>
+    public Color Color { get; init; }
 
     /// <summary>
     /// Convenience conversion from an <c>(offset, color)</c> tuple, so a stop list can be written as

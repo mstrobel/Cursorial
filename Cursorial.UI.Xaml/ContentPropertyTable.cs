@@ -27,6 +27,7 @@ internal static class ContentPropertyTable
         (typeof(ControlTemplate), "Content"),
         (typeof(DataTemplate), "Content"),
         (typeof(Style), nameof(Style.Setters)),     // <Style>'s implicit content is its Setters (WPF parity)
+        (typeof(Drawing.Media.GradientBrush), nameof(Drawing.Media.GradientBrush.Stops)), // <LinearGradientBrush><GradientStop/>…
     };
 
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Reads a [ContentProperty]-shaped attribute by name on a resolved XAML type.")]

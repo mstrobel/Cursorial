@@ -148,6 +148,33 @@ public interface IRenderSystem
 }
 
 /// <summary>
+/// S4's windowing seam (design doc §10.9; lands at P7). The frame loop calls
+/// <see cref="DrainDeferredTopology"/> at the end of the input/job drain — so Show/Close/popup-open/close
+/// mutations requested by handlers apply atomically before this frame's layout — and
+/// <see cref="OnLayoutCompleted"/> right after the layout pass (SizeToContent resolution + popup anchor
+/// reposition, which are composite-offset-only changes). At P1 there is no implementation; S4's
+/// <c>WindowManager</c> implements it at P7 alongside <see cref="ILayoutSystem"/> and
+/// <see cref="IRenderSystem"/> (one object, three seams + <c>IWindowTopology</c>), with no frame-loop
+/// change beyond the two calls. Both methods must be cheap no-ops when nothing is pending.
+/// </summary>
+public interface IWindowSystem
+{
+    /// <summary>
+    /// Applies topology mutations (show/close, popup open/close, z/activation changes) that were queued
+    /// while the previous frame iterated its surfaces, leaving the surface list + layer scratch stable
+    /// during that iteration (design doc §8.8). Called before layout; cheap when the queue is empty.
+    /// </summary>
+    void DrainDeferredTopology();
+
+    /// <summary>
+    /// Post-layout hook (Phase 5): resolve each window's <c>SizeToContent</c> and reposition any popup
+    /// whose placement anchor moved — a parameters-only (composite-offset) change, no re-raster. Cheap
+    /// when nothing changed.
+    /// </summary>
+    void OnLayoutCompleted();
+}
+
+/// <summary>
 /// The user-code exception funnel S6 hands to S1/S4 at composition (design doc §10.8): S6 cannot
 /// guard code it never calls, so draw delegates run through <see cref="Run{TState}"/>, which
 /// applies the <see cref="UIApplication.DispatcherUnhandledException"/> policy.

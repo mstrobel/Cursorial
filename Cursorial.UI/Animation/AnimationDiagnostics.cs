@@ -32,11 +32,19 @@ public sealed class StoryboardTrackError
     public override string ToString() => $"Storyboard track error on {Scope}: {Message}";
 }
 
-/// <summary>Diagnostics sink for storyboard ignition (design doc §9.3) — edge-ignited track failures route here.</summary>
+/// <summary>Diagnostics sink for the animation subsystem (design doc §9.3/§9.6/§9.9).</summary>
 public static class AnimationDiagnostics
 {
     /// <summary>Raised (on the UI thread) when an edge-ignited storyboard track fails to resolve or build.</summary>
     public static event Action<StoryboardTrackError>? TrackError;
 
+    /// <summary>
+    /// A DEBUG-only authoring warning (design doc §9.6/§9.9): a perpetual animation on a layout-affecting
+    /// property, or an animation whose target never entered the tree (a probable leak). Never raised in Release.
+    /// </summary>
+    public static event Action<string>? Warning;
+
     internal static void RaiseTrackError(StoryboardTrackError error) => TrackError?.Invoke(error);
+
+    internal static void RaiseWarning(string message) => Warning?.Invoke(message);
 }

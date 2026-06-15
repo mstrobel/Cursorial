@@ -16,8 +16,14 @@ internal sealed class Animatable : UIElement
     public static readonly StyledProperty<double> VProperty = UIProperty.Register<Animatable, double>(nameof(V));
     public static readonly StyledProperty<double> WProperty = UIProperty.Register<Animatable, double>(nameof(W));
 
+    /// <summary>A layout-affecting double property — for the perpetual-on-AffectsMeasure DEBUG warning (§9.9).</summary>
+    public static readonly StyledProperty<double> MProperty = UIProperty.Register<Animatable, double>(nameof(M));
+
+    static Animatable() => AffectsMeasure<Animatable>(MProperty);
+
     public double V => GetValue(VProperty);
     public double W => GetValue(WProperty);
+    public double M => GetValue(MProperty);
 
     /// <summary>Reentrancy hook (§7): invoked from V's change notification with the new value (N61/N63/N65).</summary>
     public Action<double>? VChanged;

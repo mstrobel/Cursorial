@@ -117,6 +117,9 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
 
         DrainCompleted();   // raise completions AFTER the whole pass — frame-N values are coherent first (AD3)
         SweepFinished();
+#if DEBUG
+        TrackLeaks();
+#endif
     }
 
     /// <summary>
@@ -186,6 +189,9 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
         var handle = new AnimationHandle(instance, target, property);
         instance.BindPublicHandle(handle);
         _instances.Add(instance);
+#if DEBUG
+        WarnIfPerpetualLayout(target, property, animation);
+#endif
         StartInstance(instance);
         return handle;
     }
@@ -262,6 +268,9 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
         };
         _instances.Add(instance);
         owner.AddChild(instance); // register BEFORE the first sample (a zero-duration child can't underflow the count)
+#if DEBUG
+        WarnIfPerpetualLayout(target, property, animation);
+#endif
         StartInstance(instance);
     }
 
@@ -343,6 +352,46 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             if (_instances[i].IsFinished)   // Stopped/Completed — Holding/Delayed/Running/Paused stay registered
                 _instances.RemoveAt(i);
     }
+
+#if DEBUG
+    private const int LeakWarnFrames = 120; // ~2s at 60fps of a never-attached target before we suspect a leak (§9.6)
+
+    /// <summary>Warns once if a perpetual animation targets a layout-affecting property — it forces measure/arrange forever (§9.9).</summary>
+    private static void WarnIfPerpetualLayout<T>(UIObject target, StyledProperty<T> property, IAnimation<T> animation)
+    {
+        if (animation.Duration != TimeSpan.MaxValue)
+            return;
+        if ((property.GetEffects(target.GetType()) & PropertyEffects.AffectsMeasure) == 0)
+            return;
+
+        AnimationDiagnostics.RaiseWarning(
+            $"Perpetual animation on layout-affecting property '{property}' of {target.GetType().Name} forces a " +
+            "measure/arrange every frame forever (design doc §9.9 — prefer a composite-shaped target).");
+    }
+
+    /// <summary>The §9.6 leak tracker: an animation whose target never enters the tree for many frames is a probable leak.</summary>
+    private void TrackLeaks()
+    {
+        for (var i = 0; i < _instances.Count; i++)
+        {
+            var instance = _instances[i];
+            if (instance.TargetObject is UIElement { IsAttachedToTree: true })
+            {
+                instance.EverAttached = true;
+                instance.UnattachedFrames = 0;
+                continue;
+            }
+
+            if (instance.EverAttached)
+                continue; // attached then detached ⇒ the detach-stop path owns it, not a leak
+
+            if (++instance.UnattachedFrames == LeakWarnFrames)
+                AnimationDiagnostics.RaiseWarning(
+                    $"Animation on a never-attached {instance.TargetObject.GetType().Name} has run {LeakWarnFrames} " +
+                    "frames without its target entering the tree (probable leak — design doc §9.6).");
+        }
+    }
+#endif
 
     /// <summary>Arms <paramref name="timer"/> into the registry (no-op after <see cref="Shutdown"/>).</summary>
     /// <returns>Whether the timer was armed.</returns>

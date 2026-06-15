@@ -27,6 +27,14 @@ internal abstract class AnimationInstance : IAnimationCompletion
     /// <summary>The track's <c>BeginTime</c> stagger — the offset of this child on the storyboard timeline (§9.3 Seek).</summary>
     internal TimeSpan BeginTimeOffset { get; private protected set; }
 
+#if DEBUG
+    /// <summary>Consecutive frames the (never-yet-attached) target has gone untracked (the §9.6 leak tracker).</summary>
+    internal int UnattachedFrames;
+
+    /// <summary>True once the target has been seen attached — a later detach is the detach-stop path, not a leak.</summary>
+    internal bool EverAttached;
+#endif
+
     /// <summary>True while the instance must be sampled / pins the idle gate (Delayed or Running — §9.6).</summary>
     internal bool IsActive => State is AnimationState.Delayed or AnimationState.Running;
 

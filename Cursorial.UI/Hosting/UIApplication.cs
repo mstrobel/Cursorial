@@ -281,8 +281,7 @@ public sealed partial class UIApplication : IAsyncDisposable
             if (_systemsReady && _rootElement is {} old)
             {
                 _focusManager.OnWindowDeactivated(old); // the single-root deactivation (per-window at W2)
-                _windowManager!.SetRootSurface(null); // detaches the root surface's RenderTree — scenes to the pool
-                old.DetachRoot();
+                _windowManager!.SetRootSurface(null); // detaches the root surface — scenes to the pool AND DetachRoot
                 ReleaseRegistryForRoot(old); // S7: drop the root's subscription registry (design doc §11.6)
             }
 

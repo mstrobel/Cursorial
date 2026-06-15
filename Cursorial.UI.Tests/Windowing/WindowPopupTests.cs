@@ -184,6 +184,30 @@ public sealed class WindowPopupTests
         Assert.Same(replacement, popup.PopupSurface!.Root);
     }
 
+    [Fact] // open → close → reopen the same popup (the Child surface must fully detach so it can re-host)
+    public void Reopen_AfterClose_RehostsTheSameChild()
+    {
+        var (host, wm, popup, _, inner) = Setup();
+        using var _ = host;
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.Same(popup, Assert.Single(wm.Popups));
+
+        popup.Close();
+        Assert.True(host.RunUntilIdle());
+        Assert.Empty(wm.Popups);
+        Assert.False(inner.IsAttachedToTree); // the child must be fully detached, not half-attached
+
+        popup.Open(); // reopen the SAME popup with the SAME child
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(popup.IsOpen);
+        Assert.Same(popup, Assert.Single(wm.Popups));
+        Assert.Same(inner, popup.PopupSurface!.Root);
+        Assert.True(inner.IsAttachedToTree);
+    }
+
     [Fact] // clearing Child while open closes the popup cleanly (write-back + Closed, nothing left to show)
     public void ChildClearedWhileOpen_ClosesCleanly()
     {

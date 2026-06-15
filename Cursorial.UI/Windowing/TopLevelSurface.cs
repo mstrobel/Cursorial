@@ -32,6 +32,7 @@ public sealed class TopLevelSurface
     private readonly LayoutManager _layout;
     private Size _size;
     private bool _needsLayout = true;
+    private bool _detached;
 
     internal TopLevelSurface(UIElement root, ScenePool scenePool, OutputCapabilities capabilities, IUserCodeGuard? guard)
     {
@@ -111,6 +112,19 @@ public sealed class TopLevelSurface
     /// <summary>Re-rasters everything (the resize / renegotiate leg).</summary>
     internal void InvalidateAll() => RenderTree.InvalidateAll();
 
-    /// <summary>Returns the surface's scenes to the pool (detach).</summary>
-    internal void Detach() => RenderTree.Detach();
+    /// <summary>
+    /// Fully detaches the surface's root: returns its scenes to the pool (<see cref="RenderTree.Detach"/>)
+    /// AND reverses <c>AttachAsRoot</c> (detach walk → clears the root's <c>VisualRoot</c>/LayoutManager), so
+    /// the root is no longer attached and can be re-hosted on a fresh surface — a popup reopen. Dropping only
+    /// the render tree (the prior behavior) left the root half-attached, and re-hosting it threw "already
+    /// attached to a tree". Idempotent.
+    /// </summary>
+    internal void Detach()
+    {
+        if (_detached)
+            return;
+
+        _detached = true;
+        Root.DetachRoot(); // DetachRoot calls RenderTree.Detach itself, then detaches the element
+    }
 }

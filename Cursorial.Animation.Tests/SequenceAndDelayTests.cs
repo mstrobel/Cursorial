@@ -86,6 +86,14 @@ public class SequenceAndDelayTests
     public void Sequence_Empty_Throws()
         => Assert.Throws<ArgumentException>(() => new SequenceAnimation<double>());
 
+    [Fact] // N70: finite children whose durations sum past TimeSpan.MaxValue are checked — throws, never wraps
+    public void Sequence_FiniteSumOverflow_Throws()
+    {
+        // Two finite (non-MaxValue, so no perpetual short-circuit) children whose tick sum overflows long.
+        var half = new Animation<double>(0.0, 1.0, TimeSpan.FromTicks(long.MaxValue / 2 + 1), DoubleInterpolator.Instance);
+        Assert.Throws<OverflowException>(() => new SequenceAnimation<double>(half, half));
+    }
+
     [Fact] // N88: .Then composes equivalently to the constructor
     public void Then_Chains_ThreeSteps()
     {

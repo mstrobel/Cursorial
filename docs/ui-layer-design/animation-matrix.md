@@ -50,10 +50,14 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 - **AD11 — idle gate = Delayed + Running + running UITimers.** Excludes Paused/Holding/Completed
   (Holding costs nothing per frame — the Animation slot holds the value statically). Delayed pins the
   flag so S6 can't sleep through a `BeginTime`.
-- **AD12 — interpolator registry is process-global, lock-free reads.** `Interpolator.For<T>()` throws a
-  "register or specify" message for unknown `T`; `Register<T>()` at startup on the UI thread
-  (DEBUG-asserted); immutable-snapshot reads. Pre-seeded: double/int/`Color` (Animation);
-  `PointD`/`Size`/`Rect`/`RelativePoint`/`IBrush`/`CompositeParameters`/`Margins` (Drawing).
+- **AD12 — interpolator registry is process-global, thread-agnostic, lock-free reads.** `Interpolator.For<T>()`
+  throws a "register or specify" message for unknown `T`; `Register<T>()` is copy-on-write under a write lock,
+  reads are lock-free immutable-snapshot. **Amended (2026-06-15):** the registry lives in the pure
+  `Cursorial.Animation` layer, which has no UI-thread / `Dispatcher` concept, so there is **no UI-thread DEBUG
+  assertion** — `Register` is safe from any thread by construction (the original "startup on the UI thread,
+  DEBUG-asserted" note was an authoring convention for the UI layer's seeding, not a runtime contract). Pre-seeded:
+  double/int/`Color` (Animation); `PointD`/`Size`/`Rect`/`RelativePoint`/`IBrush`/`CompositeParameters`/`Margins`
+  (Drawing).
 - **AD13 — `MarginsInterpolator` is signed** (LD19): per-side linear, rounded, **no zero-clamp** —
   tracks may interpolate through negative side values.
 - **AD14 — Begin overload arity.** `target.BeginAnimation<T>(StyledProperty<T>, IAnimation<T>, opts)`
@@ -187,7 +191,7 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 | N75 | `Register<T>(custom)` at startup | `For<T>()` | returns the registered one | PIN (AD12) |
 | N76 | `MarginsInterpolator` From `(2,-1,0,3)` To `(6,3,0,-1)` | interpolate at 0.5 | per-side linear, rounded, **signed** (negative sides preserved) | PIN (AD13) |
 | N77 | track with an explicit `Interpolator` | — | the explicit one wins over `For<T>()` | PIN |
-| N78 | `Register<T>` off the UI thread (DEBUG) | call | DEBUG assertion fires (startup-on-UI-thread contract); reads stay lock-free | PIN (AD12) |
+| N78 | `Register<T>` off any thread | call concurrently with `For<T>()` reads | succeeds (COW under a write lock); reads stay lock-free and see a consistent snapshot. *Resolved 2026-06-15:* the pure registry is thread-agnostic — no UI-thread DEBUG assertion (AD12 amended); the substantive contract is thread-safe registration + lock-free reads | PIN (AD12) |
 
 ## 13. Mechanism combinators — `Cursorial.Animation` (A0) — N79–N88
 

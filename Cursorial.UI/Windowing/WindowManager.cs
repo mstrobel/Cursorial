@@ -613,6 +613,21 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     private void SizeAndPositionWindow(Window window, TopLevelSurface surface)
     {
+        // A window shown already maximized fills the viewport from the origin; ApplyMaximizeState snapshots
+        // the restore bounds and clears its explicit Width/Height so the element stretches to the surface.
+        if (window.WindowState == WindowState.Maximized)
+        {
+            window.ApplyMaximizeState(WindowState.Maximized);
+            surface.Size = _viewport;
+            window.ActualSize = _viewport;
+            window.SetCurrentValue(Window.LeftProperty, 0);
+            window.SetCurrentValue(Window.TopProperty, 0);
+            surface.Left = 0;
+            surface.Top = 0;
+            surface.Opacity = window.Opacity;
+            return;
+        }
+
         // Provisional measure at the screen constraint to read the window's content-driven desired size,
         // then fit per SizeToContent / explicit Width-Height. (W5 adds frame-converged re-fit on changes.)
         surface.Size = _viewport;

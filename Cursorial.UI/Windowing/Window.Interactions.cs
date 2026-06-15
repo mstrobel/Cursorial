@@ -122,32 +122,42 @@ public partial class Window
         ReleaseMouseCapture();
     }
 
-    /// <summary>Toggles between <see cref="WindowState.Normal"/> and <see cref="WindowState.Maximized"/>,
-    /// snapshotting the bounds to restore (the WM's <c>SyncSurfaceSize</c> applies the new size next frame).</summary>
+    /// <summary>Toggles between <see cref="WindowState.Normal"/> and <see cref="WindowState.Maximized"/>; the
+    /// bounds snapshot/restore + element-fill ride <see cref="OnWindowStateChanged"/>, so a direct
+    /// <c>WindowState = Maximized</c> assignment behaves identically to the double-click gesture.</summary>
     private void ToggleMaximize()
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private static void OnWindowStateChanged(UIObject sender, WindowState oldState, WindowState newState)
     {
-        if (WindowState == WindowState.Maximized)
+        // Only a SHOWN window mutates bounds here; pre-show, SizeAndPositionWindow applies the state at show.
+        if (sender is Window { IsShown: true } window)
+            window.ApplyMaximizeState(newState);
+    }
+
+    /// <summary>
+    /// Applies the layout side of a window-state transition (any path — the gesture, a direct
+    /// <c>WindowState</c> assignment, or the WM's show of an already-maximized window): on maximize, snapshot
+    /// the restore bounds and clear the origin + explicit Width/Height (so the element fills the maximized
+    /// surface — its Width/Height would otherwise pin it inside); on restore, put them back.
+    /// </summary>
+    internal void ApplyMaximizeState(WindowState state)
+    {
+        if (state == WindowState.Maximized)
         {
-            WindowState = WindowState.Normal;
-            if (_restoreBounds is { } restore)
-            {
-                _restoreBounds = null;
-                SetCurrentValue(LeftProperty, restore.Left);
-                SetCurrentValue(TopProperty, restore.Top);
-                SetCurrentValue(WidthProperty, restore.Width);
-                SetCurrentValue(HeightProperty, restore.Height);
-            }
-        }
-        else
-        {
-            _restoreBounds = (Left, Top, Width, Height);
-            WindowState = WindowState.Maximized;
+            _restoreBounds ??= (Left, Top, Width, Height);
             SetCurrentValue(LeftProperty, 0); // maximized fills from the origin …
             SetCurrentValue(TopProperty, 0);
-            // … and the element stretches to the whole surface — its explicit Width/Height would otherwise
-            // pin it inside the maximized surface (the WM sizes the surface to the viewport regardless).
-            SetCurrentValue(WidthProperty, (int?)null);
+            SetCurrentValue(WidthProperty, (int?)null); // … and stretches to the whole surface
             SetCurrentValue(HeightProperty, (int?)null);
+        }
+        else if (_restoreBounds is { } restore)
+        {
+            _restoreBounds = null;
+            SetCurrentValue(LeftProperty, restore.Left);
+            SetCurrentValue(TopProperty, restore.Top);
+            SetCurrentValue(WidthProperty, restore.Width);
+            SetCurrentValue(HeightProperty, restore.Height);
         }
     }
 

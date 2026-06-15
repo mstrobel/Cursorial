@@ -54,7 +54,7 @@ public partial class Window : ContentControl
 
     /// <summary>Normal vs maximized.</summary>
     public static readonly StyledProperty<WindowState> WindowStateProperty =
-        UIProperty.Register<Window, WindowState>(nameof(WindowState));
+        UIProperty.Register<Window, WindowState>(nameof(WindowState), changed: OnWindowStateChanged);
 
     /// <summary>Where the window first appears when shown.</summary>
     public static readonly StyledProperty<WindowStartupLocation> WindowStartupLocationProperty =

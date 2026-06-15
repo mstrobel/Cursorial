@@ -296,6 +296,44 @@ public sealed class WindowResizeMoveTests
         Assert.True(w.IsClippedByViewport); // dismiss does not move the window
     }
 
+    [Fact] // setting WindowState=Maximized directly (not via the gesture) fills + restores like the gesture
+    public void WindowStateMaximized_SetDirectly_FillsAndRestores()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var w = At(10, 5);
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        w.WindowState = WindowState.Maximized; // direct property assignment, not a double-click
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(new Size(60, 20), w.ActualSize); // fills the viewport (element stretches — Width/Height nulled)
+        Assert.Equal(0, w.Left);
+        Assert.Equal(0, w.Top);
+
+        w.WindowState = WindowState.Normal;
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(new Size(20, 8), w.ActualSize); // restored to the pre-maximize bounds
+        Assert.Equal(10, w.Left);
+        Assert.Equal(5, w.Top);
+    }
+
+    [Fact] // a shown window's root gets the caps-* capability classes stamped (P7 multi-surface styling)
+    public void WindowSurface_GetsCapabilityClasses()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var w = At(10, 5);
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        // The default test host negotiates KittyTruecolor → the window root carries the truecolor tier class
+        // (the StyleEngine stamps every surface root, not just the app root).
+        Assert.True(w.Classes.Contains("caps-truecolor"));
+    }
+
     private sealed class MeasureHook : UIElement
     {
         private bool _fired;

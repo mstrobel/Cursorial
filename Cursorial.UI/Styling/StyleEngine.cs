@@ -94,7 +94,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // ordinary class-change re-match path within the same tick (B4 P3 slice, SD14).
         _capabilities = capabilities;
 
-        if (_app.RootElement is {} root && IsStylable(root))
+        foreach (var root in StylableSurfaceRoots()) // app root + every shown window/popup/chrome surface (P7)
             StampCapabilityClasses(root);
     }
 
@@ -149,8 +149,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (!IsStylable(element))
             return;
 
-        // SD14: capability classes stamp on the shown root at visual-root attachment.
-        if (element.VisualParent is null && ReferenceEquals(element, _app.RootElement))
+        // SD14: capability classes stamp on a surface root at its visual-root attachment. ANY surface root
+        // (the app root, a shown Window, an open Popup, WM chrome) — not just app.RootElement — so window/
+        // popup content can match caps-* selectors (P7 multi-surface). At this point IsStylable(element) holds,
+        // so VisualParent == null ⇒ this element is a surface root.
+        if (element.VisualParent is null)
             StampCapabilityClasses(element);
 
         BeginStructuralPass();
@@ -280,13 +283,15 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// <summary>The application <see cref="UIApplication.Styles"/> collection changed (SD21).</summary>
     internal void OnAppStylesInvalidated()
     {
-        if (_app.RootElement is not {} root || !IsStylable(root))
+        var roots = StylableSurfaceRoots();
+        if (roots.Count == 0)
             return;
 
         BeginStructuralPass();
         try
         {
-            ReMatchSubtree(root, includeSelf: true);
+            foreach (var root in roots) // app styles affect every surface (P7 multi-surface)
+                ReMatchSubtree(root, includeSelf: true);
         }
         finally
         {
@@ -304,13 +309,15 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// </summary>
     internal void OnThemeStylesInvalidated()
     {
-        if (_app.RootElement is not {} root || !IsStylable(root))
+        var roots = StylableSurfaceRoots();
+        if (roots.Count == 0)
             return;
 
         BeginStructuralPass();
         try
         {
-            ReMatchSubtree(root, includeSelf: true);
+            foreach (var root in roots) // theme styles affect every surface (P7 multi-surface)
+                ReMatchSubtree(root, includeSelf: true);
         }
         finally
         {
@@ -603,6 +610,31 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     // null when styles must first arm.
     private static bool IsStylable(UIElement element)
         => element.IsAttachedToTree && element.GetLayoutManager() is not null;
+
+    /// <summary>
+    /// Every currently-stylable surface root — the chrome-less application root plus every shown Window, open
+    /// Popup, and WM-chrome surface (P7 multi-surface). Capability-class stamping and app/theme-wide re-match
+    /// must cover all of them, not just <see cref="UIApplication.RootElement"/>. (At an app root's own attach
+    /// the WM has not registered its surface yet, so <see cref="OnElementAttached"/> stamps the attaching root
+    /// directly; this enumerates the post-registration set for the rarer caps/styles/theme-change events.)
+    /// </summary>
+    private List<UIElement> StylableSurfaceRoots()
+    {
+        var roots = new List<UIElement>();
+        if (_app.WindowManager is { } wm)
+        {
+            var surfaces = wm.Surfaces;
+            for (var i = 0; i < surfaces.Count; i++)
+                if (IsStylable(surfaces[i].Root))
+                    roots.Add(surfaces[i].Root);
+        }
+        else if (_app.RootElement is { } root && IsStylable(root))
+        {
+            roots.Add(root); // pre-compose fallback (no window manager yet)
+        }
+
+        return roots;
+    }
 
     /// <summary>Re-runs Phase 1 for one element and applies the SD21 identity diff to its armed frames.</summary>
     private void ReMatchElement(UIElement element)
@@ -1364,7 +1396,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// </summary>
     internal void OnEffectiveTierChanged(ColorDepth tier)
     {
-        if (_app.RootElement is {} root && IsStylable(root))
+        foreach (var root in StylableSurfaceRoots()) // re-stamp the tier class on every surface (P7)
             StampCapabilityClasses(root);
     }
 

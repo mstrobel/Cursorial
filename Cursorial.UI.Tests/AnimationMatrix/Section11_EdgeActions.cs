@@ -218,6 +218,31 @@ public sealed class Section11_EdgeActions
         Assert.False(host.Scheduler().HasActiveAnimations);
     }
 
+    [Fact] // Edge actions on a NESTED child rule fire on the CHILD rule's edge (not the always-active parent) —
+    //       the begin-on-Enter / stop-on-Exit pairing the 'motion' demo's hover pulse relies on.
+    public void NestedRule_EdgeActions_FireOnNestedActivation()
+    {
+        var (host, element) = ShowStylable();
+        using var _ = host;
+
+        var sb = StoryboardFor(Animatable.VProperty, 10.0, 100);
+        var parent = new Style(".box");                              // matches whenever .box is present (always)
+        var child = new Style(Selectors.Nesting().Class("active"));  // ^.active ⇒ requires .box AND .active
+        child.Enter.Add(new BeginStoryboard { Storyboard = sb });    // begins when the CHILD rule activates
+        child.Exit.Add(new StopStoryboard { Storyboard = sb });      // stops when the CHILD rule deactivates
+        parent.Children.Add(child);
+        host.Application.Styles.Add(parent);
+
+        element.Classes.Add("box");    // parent matches; child does NOT (no .active) ⇒ nothing begins
+        Assert.False(host.Scheduler().HasActiveAnimations);
+
+        element.Classes.Add("active"); // the child rule activates ⇒ its Enter BeginStoryboard begins the storyboard
+        Assert.True(host.Scheduler().HasActiveAnimations);
+
+        element.Classes.Remove("active"); // the child rule deactivates ⇒ its Exit StopStoryboard stops it
+        Assert.False(host.Scheduler().HasActiveAnimations);
+    }
+
     [Fact] // N130: a null Storyboard on an edge action is a no-op (no throw)
     public void NullStoryboard_NoOp()
     {

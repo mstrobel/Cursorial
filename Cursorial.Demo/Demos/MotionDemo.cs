@@ -21,9 +21,9 @@ using Style = Cursorial.UI.Style; // both Cursorial.Output and Cursorial.UI decl
 //   hover the FADE CARD → a TRANSITION (§9.5): its Opacity has a DoubleTransition, and a
 //            `:pointerover` style rule drops the base Opacity; the change FADES instead of snapping
 //            (and fades back on leave) — an implicit animation driven purely by the hover pseudo-class.
-//   hover the PULSE BOX → an EDGE-ACTION storyboard (§9.3): a `:pointerover` style carries a
-//            BeginStoryboard (in Enter AND Exit — do/undo) that runs a perpetual AutoReverse Opacity
-//            ping-pong while hovered and stops on leave.
+//   hover the PULSE BOX → an EDGE-ACTION storyboard (§9.3): the `:pointerover` rule carries a
+//            BeginStoryboard in its Enter and a StopStoryboard in its Exit, so a perpetual AutoReverse
+//            Opacity ping-pong runs while hovered and stops on leave.
 // The loop idles when nothing is animating (HasActiveAnimations gates Phase 7) and wakes the instant
 // a storyboard/transition begins. q / Esc / Ctrl+C exit.
 internal sealed class MotionDemo : IDemo
@@ -142,9 +142,9 @@ internal sealed class MotionDemo : IDemo
             Canvas.SetTop(fadeCard, 11);
             stage.Children.Add(fadeCard);
 
-            // The pulse box — an EDGE-ACTION storyboard (§9.3). A `:pointerover` style carries a
-            // BeginStoryboard (in Enter AND Exit — do/undo) running a perpetual AutoReverse Opacity
-            // ping-pong while hovered; leaving stops it (the Exit OnRetracted) and the base resurfaces.
+            // The pulse box — an EDGE-ACTION storyboard (§9.3). The `:pointerover` rule carries a
+            // BeginStoryboard in its Enter and a StopStoryboard in its Exit, so hovering begins a perpetual
+            // AutoReverse Opacity ping-pong and leaving stops it (the base Opacity resurfaces).
             stage.Children.Add(Hint("edge-action storyboard (hover):", 4, 15));
             var pulse = new FillBox(PulseBg, " hover me — pulses ", Color.FromRgb(250, 235, 245))
             {
@@ -161,13 +161,12 @@ internal sealed class MotionDemo : IDemo
                 AutoReverse = true,
                 Repeat = RepeatBehavior.Forever,
             });
-            var begin = new BeginStoryboard { Storyboard = pulseStoryboard };
             var pulseStyle = new Style(Selectors.OfType<FillBox>().Class("pulsebox"));
+            // The edge actions live on the :pointerover CHILD rule, so they fire on the HOVER activate/deactivate
+            // edges (not the always-active parent): Enter begins the pulse, Exit stops it (the begin/stop pairing).
             var pulseHover = new Style(Selectors.Nesting().PseudoClass("pointerover"));
-            pulseStyle.Enter.Add(begin);  // OnActivated ⇒ begin the pulse
-            pulseStyle.Exit.Add(begin);   // OnRetracted ⇒ stop it (do/undo)
-            // The hover rule itself need carry no setters — the edge actions live on the parent style and
-            // fire on its :pointerover activation edge; a no-op child keeps the selector explicit.
+            pulseHover.Enter.Add(new BeginStoryboard { Storyboard = pulseStoryboard }); // hover-enter ⇒ begin
+            pulseHover.Exit.Add(new StopStoryboard { Storyboard = pulseStoryboard });   // hover-leave ⇒ stop
             pulseStyle.Children.Add(pulseHover);
             app.Styles.Add(pulseStyle);
             pulse.Classes.Add("pulsebox");

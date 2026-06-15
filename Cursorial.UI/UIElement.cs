@@ -440,6 +440,10 @@ public abstract partial class UIElement : UIObject
         // interaction bits against dropped state.
         element.OnStylingDetached();
 
+        // S5 detach-stop (design doc §9.6): retract + evict every animation/storyboard targeting this element;
+        // store-owned retraction, no Completed. Idempotent against Fork B's retraction on the same detach.
+        AnimationScheduler.CurrentOrNull?.OnElementDetached(element);
+
         element.UpdateEffectiveEnabled();
 
         // S3 detach fan-in (doc §7.10): capture force-release, focus hygiene (hover/pressed

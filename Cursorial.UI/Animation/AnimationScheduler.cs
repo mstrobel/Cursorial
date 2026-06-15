@@ -1,3 +1,5 @@
+using Cursorial.Animation;
+
 // ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
@@ -21,6 +23,8 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
     private static AnimationScheduler? _current;
 
     private readonly List<UITimer> _timers = [];
+    private readonly List<AnimationInstance> _instances = []; // active + holding animation instances (P8 A0)
+    private readonly List<AnimationInstance> _completed = [];  // completions to raise after the sampling pass (AD3)
     private bool _isShutdown;
 
     /// <summary>
@@ -70,11 +74,11 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
     public void Tick()
     {
         var now = Clock.Now;
-        var count = _timers.Count; // snapshot — callbacks may Start new timers (appended, skipped this frame)
+        var timerCount = _timers.Count; // snapshot — callbacks may Start new timers (appended, skipped this frame)
 
         try
         {
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < timerCount; i++)
                 _timers[i].TickIfDue(now);
         }
         finally
@@ -85,36 +89,130 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
                     _timers.RemoveAt(i);
             }
         }
+
+        // Sample the active animation instances at the frozen clock (§9.1). Count snapshot: an instance begun
+        // inside a sample callback appends and is skipped this frame (it self-sampled at Begin — AD2/N4).
+        var count = _instances.Count;
+        for (var i = 0; i < count; i++)
+            if (_instances[i].IsActive)
+                _instances[i].Sample(now);
+
+        DrainCompleted();   // raise completions AFTER the whole pass — frame-N values are coherent first (AD3)
+        SweepFinished();
     }
 
-    /// <summary>Cheap no-op until storyboards land at P8.</summary>
+    /// <summary>
+    /// After the post-Tick styling flush (§9.1): completion processing for instances ignited on that edge
+    /// (e.g. animation-driven pseudo flips → storyboards begun after Tick's snapshot). They self-sampled at
+    /// Begin, so this only drains their pending completions. Cheap no-op when nothing started.
+    /// </summary>
     public void TickNewlyStarted()
     {
+        if (_completed.Count > 0)
+            DrainCompleted();
+        SweepFinished();
     }
 
-    /// <summary>The idle gate (doc §10.5 Phase 7): running timers count — S6 never parks while one is pending.</summary>
+    /// <summary>The idle gate (doc §10.5 Phase 7 / §9.6): running timers + Delayed/Running instances count — S6
+    /// never parks while one is pending. Paused/Holding/Completed/Stopped do not (Holding costs nothing).</summary>
     public bool HasActiveAnimations
     {
         get
         {
             for (var i = 0; i < _timers.Count; i++)
-            {
                 if (_timers[i].IsRunning)
                     return true;
-            }
+
+            for (var i = 0; i < _instances.Count; i++)
+                if (_instances[i].IsActive)
+                    return true;
 
             return false;
         }
     }
 
-    /// <summary>Teardown (doc §9.6): stops every timer; idempotent, then inert (new timers never arm).</summary>
+    /// <summary>Teardown (doc §9.6): stops every timer and retracts every live animation handle (bases resurface
+    /// for one final restore frame) with no <c>Completed</c>; idempotent, then inert (subsequent Begin throws).</summary>
     public void Shutdown()
     {
         _isShutdown = true;
         for (var i = 0; i < _timers.Count; i++)
             _timers[i].Stop();
-
         _timers.Clear();
+
+        for (var i = 0; i < _instances.Count; i++)
+            _instances[i].Retire();
+        _instances.Clear();
+        _completed.Clear();
+    }
+
+    // ── Animation instances (P8 A0) ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Begins an animation on <paramref name="target"/>.<paramref name="property"/> (design doc §9.2). Handoff
+    /// (SnapshotAndReplace): any live instance on the same (target, property) is retired silently first; the new
+    /// instance self-samples now when its <c>BeginTime</c> is zero (frame coherence — AD2).
+    /// </summary>
+    internal AnimationHandle Begin<T>(UIObject target, StyledProperty<T> property, IAnimation<T> animation, in AnimationStartOptions options)
+    {
+        if (_isShutdown)
+            throw new InvalidOperationException("The animation scheduler is shut down; no new animations can begin.");
+
+        RetireMatching(target, property);   // SnapshotAndReplace — retire the running one (no Completed, §9.4)
+
+        var instance = new AnimationInstance<T>(this, target, property, animation, Clock.Now + options.BeginTime, options);
+        var handle = new AnimationHandle(instance, target, property);
+        instance.BindPublicHandle(handle);
+        _instances.Add(instance);
+        instance.BeginNow(Clock.Now);
+        return handle;
+    }
+
+    /// <summary>Stops any animation on (<paramref name="target"/>, <paramref name="property"/>) — no <c>Completed</c> (§9.2).</summary>
+    internal void StopAnimation(UIObject target, UIProperty property) => RetireMatching(target, property);
+
+    /// <summary>Detach-stop (§9.6): retires + evicts every instance targeting <paramref name="element"/>; no <c>Completed</c>.</summary>
+    internal void OnElementDetached(UIObject element)
+    {
+        for (var i = _instances.Count - 1; i >= 0; i--)
+            if (ReferenceEquals(_instances[i].TargetObject, element))
+            {
+                _instances[i].Retire();
+                _instances.RemoveAt(i);
+            }
+    }
+
+    internal void EnqueueCompleted(AnimationInstance instance) => _completed.Add(instance);
+
+    internal void Remove(AnimationInstance instance) => _instances.Remove(instance);
+
+    private void RetireMatching(UIObject target, UIProperty property)
+    {
+        for (var i = _instances.Count - 1; i >= 0; i--)
+        {
+            var instance = _instances[i];
+            if (ReferenceEquals(instance.TargetObject, target) && ReferenceEquals(instance.TargetPropertyObject, property))
+            {
+                instance.Retire();
+                _instances.RemoveAt(i);
+            }
+        }
+    }
+
+    private void DrainCompleted()
+    {
+        // index-over-live-Count: a Completed handler may Begin a zero-duration animation that self-completes and
+        // enqueues here mid-drain — same-frame delivery (AD7).
+        for (var i = 0; i < _completed.Count; i++)
+            _completed[i].RaiseCompleted();
+        _completed.Clear();
+    }
+
+    private void SweepFinished()
+    {
+        for (var i = _instances.Count - 1; i >= 0; i--)
+            if (_instances[i].IsFinished)   // Stopped/Completed — Holding/Delayed/Running/Paused stay registered
+                _instances.RemoveAt(i);
     }
 
     /// <summary>Arms <paramref name="timer"/> into the registry (no-op after <see cref="Shutdown"/>).</summary>

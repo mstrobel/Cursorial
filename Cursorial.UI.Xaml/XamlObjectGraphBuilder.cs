@@ -168,6 +168,13 @@ internal sealed class XamlObjectGraphBuilder
     {
         if (type.ClrType == typeof(Style) && TryGetStyleTargetType(in record, out string targetTypeName))
         {
+            // A prefix-qualified TargetType (my:Foo) carries an xmlns prefix the frontend already honored for
+            // Setter resolution (#22); strip it before Selector.Parse, whose grammar reads ':' as the
+            // pseudo-class separator. The simple name then resolves through the same DefaultSelectorTypeResolver
+            // an unprefixed TargetType uses — the selector system matches types by simple name by design.
+            int colon = targetTypeName.IndexOf(':');
+            if (colon > 0)
+                targetTypeName = targetTypeName.Substring(colon + 1);
             var selector = Selector.Parse(targetTypeName);
             return new Style(selector);
         }

@@ -123,6 +123,19 @@ public sealed class Section05_Folding : XamlTestBase
             () => Parse("<Style TargetType=\"Button\"><Setter Property=\"Bogus.Row\" Value=\"1\"/></Style>"));
     }
 
+    [Fact] // X64e — a PREFIXED Style TargetType resolves via the captured prefix so its enclosed Setter folds
+    public void X064e_StyleTargetType_PrefixedOwner_ResolvesViaCapturedNamespace()
+    {
+        // c: binds the default UI namespace; TargetType="c:Button" previously failed (the value "c:Button" was
+        // resolved verbatim → null target → the unqualified Setter would be CUR2110). Now the prefix binds from
+        // the live Style scope, the TargetType resolves, and the unqualified Height Setter folds against it.
+        var doc = Parse("<Style xmlns:c=\"https://cursorial.dev/ui\" TargetType=\"c:Button\">" +
+                        "<Setter Property=\"Height\" Value=\"5\"/></Style>");
+        Assert.True(doc.TryFindMember(1, "Value", out var value));
+        Assert.Equal(XamlValueKind.Folded, value.Kind);
+        Assert.Equal(5, doc.FoldedValue(value));
+    }
+
     [Fact] // X66d' — a PREFIXED Setter owner now RESOLVES via the parse-time captured namespace (Phase 2 / 4C)
     public void X066d_SetterPrefixedOwner_ResolvesViaCapturedNamespace()
     {

@@ -43,13 +43,13 @@ public sealed class XamlThemeStylesTests
         Assert.Equal("TextAttributes", Assert.Single(style.Setters).Property.Name);
     }
 
-    [Fact] // LoadStyles populates the Styles slot with the four caps-* rules (the caps-nocolor inverse is a 7-branch list).
-    public void LoadStyles_PopulatesFourCapsStyles()
+    [Fact] // LoadStyles populates the Styles slot with all five theme rules (the caps-nocolor inverse is a 7-branch list).
+    public void LoadStyles_PopulatesAllThemeStyles()
     {
         var dict = CursorialXamlTheme.LoadStyles();
 
         Assert.NotNull(dict.Styles);
-        Assert.Equal(4, dict.Styles!.Count);
+        Assert.Equal(5, dict.Styles!.Count);
         // The caps-nocolor interactive-state rule is the 7-member selector list — assert its CONTENT, not just
         // the branch count (a wrong selector could also have 7 branches).
         var inverseRule = Assert.Single(dict.Styles!, s => s.Selector is { } sel && sel.Branches.Length == 7);
@@ -57,8 +57,16 @@ public sealed class XamlThemeStylesTests
         Assert.Contains("caps-nocolor", inverseText);
         Assert.Contains("Button:focus", inverseText);
         Assert.Contains("ToggleButton:pressed", inverseText);
-        // The rest are single-branch (the two caps-unicode glyph rules + the caps-nocolor disabled rule).
-        Assert.Equal(3, dict.Styles!.Count(s => s.Selector is { } sel && sel.Branches.Length == 1));
+        // The rest are single-branch (two caps-unicode glyph rules + the caps-nocolor disabled rule + AccessKeyCue).
+        Assert.Equal(4, dict.Styles!.Count(s => s.Selector is { } sel && sel.Branches.Length == 1));
+
+        // The ported AccessKeyCue rule's Setter resolved its PREFIXED owner (input:AccessKeyManager, in
+        // Cursorial.UI.Input — outside the default xmlns map) to the real ShowUnderline attached UIProperty via
+        // the captured-namespace path (#22). A failed prefix resolution would have been CUR2002 at load.
+        var cue = Assert.Single(dict.Styles!, s => s.Selector is { } sel && sel.ToString().Contains("access-keys"));
+        var cueSetter = Assert.Single(cue.Setters);
+        Assert.Equal(Cursorial.UI.Input.AccessKeyManager.ShowUnderlineProperty, cueSetter.Property);
+        Assert.Equal(true, cueSetter.Value);
     }
 
     [Theory] // The data theme reproduces BuiltIn byte-for-byte AND genuinely matches (non-fallback) — not vacuous.

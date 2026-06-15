@@ -639,14 +639,15 @@ internal sealed class XamlParser
 
         if (kind == ExtensionKind.Type)
         {
-            // x:Type Button → typeof(Button) resolved through the default xmlns.
-            var resolution = ResolveType(XmlnsNamespaces.CursorialUi, arg, node.Line, node.Column);
+            // {x:Type my:Button} → typeof(Button) — the argument may be prefix-qualified; bind the prefix from
+            // the live reader scope (an unprefixed name uses the in-scope default xmlns).
+            var resolution = ResolveQualifiedType(arg, appendExtensionSuffix: false, node.Line, node.Column, report: true);
             if (resolution.IsResolved)
             {
                 folded = resolution.Type!.ClrType;
                 return true;
             }
-            return false; // ResolveType reported the miss
+            return false; // ResolveQualifiedType reported the miss
         }
 
         // x:Static — resolved by the loader's metadata provider (reflection). The frontend has no
@@ -658,21 +659,9 @@ internal sealed class XamlParser
 
     private void ResolveExtensionType(MarkupExtensionNode node, int line, int column)
     {
-        // Strip a namespace prefix for resolution; default xmlns for an unprefixed name.
-        string name = node.Name;
-        string ns = XmlnsNamespaces.CursorialUi;
-        int colon = name.IndexOf(':');
-        if (colon > 0)
-            name = name.Substring(colon + 1);
-
-        // Custom extensions conventionally end in "Extension"; try both.
-        var resolution = ResolveTypeQuiet(ns, name);
-        if (!resolution.IsResolved)
-            resolution = ResolveTypeQuiet(ns, name + "Extension");
-        if (!resolution.IsResolved)
-        {
-            ReportTypeNotFound(ns, name, node.Line, node.Column);
-        }
+        // A custom extension name may be prefix-qualified (my:FooExtension); bind the prefix from the live
+        // reader scope and try the conventional "Extension" suffix. Reports CUR2002 on a miss (X53).
+        _ = ResolveQualifiedType(node.Name, appendExtensionSuffix: true, node.Line, node.Column, report: true);
     }
 
     // ── Element body parsing (content + property elements + collections) ──────────────────────────
@@ -953,7 +942,11 @@ internal sealed class XamlParser
             if (m is { MemberId: >= 0, Kind: XamlValueKind.Text } &&
                 string.Equals(_builder.ResolvedMemberName(m.MemberId), "TargetType", StringComparison.Ordinal))
             {
-                return ResolveTypeQuiet(XmlnsNamespaces.CursorialUi, _builder.GetString(m.ValueIndex)).Type;
+                // The reader is still on the Style element here (ParseAttributes left it via MoveToElement),
+                // so a prefix-qualified TargetType (my:Foo) binds its prefix from the live scope. Quiet — an
+                // unresolvable TargetType leaves the target null, making enclosed Setters CUR2110 (X64/X66).
+                return ResolveQualifiedType(_builder.GetString(m.ValueIndex), appendExtensionSuffix: false,
+                    LineInfo.Line(m.PackedLineInfo), LineInfo.Column(m.PackedLineInfo), report: false).Type;
             }
         }
 
@@ -1192,6 +1185,47 @@ internal sealed class XamlParser
 
     private XamlTypeResolution ResolveTypeQuiet(string ns, string localName)
         => _options.MetadataProvider?.TryGetType(ns, localName) ?? XamlTypeResolution.NotFound();
+
+    /// <summary>
+    /// Resolves a possibly <c>prefix:</c>-qualified type reference (a Style <c>TargetType</c>, an
+    /// <c>{x:Type}</c> argument, or a custom markup-extension name) to its <see cref="XamlType"/>, binding the
+    /// prefix from the LIVE reader scope — so <c>my:Foo</c> resolves against whatever xmlns the surrounding
+    /// element declares for <c>my</c>, and an unprefixed name uses the in-scope default xmlns (falling back to
+    /// the UI default when the reader cannot bind it). The reader MUST be positioned within the declaring
+    /// element's scope — true at every call site (the Style element for <c>TargetType</c>; the live
+    /// attribute/content node for a markup extension). With <paramref name="appendExtensionSuffix"/> a failed
+    /// non-ambiguous lookup retries with the markup-extension <c>"Extension"</c> suffix convention. When
+    /// <paramref name="report"/> is set, an unresolved name emits CUR2002 (did-you-mean) or CUR2003 (ambiguous)
+    /// at the given position; otherwise resolution is silent and the caller owns the diagnostic.
+    /// </summary>
+    private XamlTypeResolution ResolveQualifiedType(string maybeQualified, bool appendExtensionSuffix, int line, int column, bool report)
+    {
+        string name = maybeQualified;
+        string prefix = string.Empty;
+        int colon = name.IndexOf(':');
+        if (colon > 0)
+        {
+            prefix = name.Substring(0, colon);
+            name = name.Substring(colon + 1);
+        }
+
+        string ns = _reader.LookupNamespace(prefix) is { Length: > 0 } bound ? bound : XmlnsNamespaces.CursorialUi;
+
+        var resolution = ResolveTypeQuiet(ns, name);
+        if (!resolution.IsResolved && !resolution.IsAmbiguous && appendExtensionSuffix)
+            resolution = ResolveTypeQuiet(ns, name + "Extension");
+
+        if (!resolution.IsResolved && report)
+        {
+            if (resolution.IsAmbiguous)
+                _builder.Error(XamlDiagnosticCodes.AmbiguousType,
+                    $"Ambiguous type '{name}': {string.Join(", ", resolution.AmbiguousCandidates!)}.", line, column);
+            else
+                ReportTypeNotFound(ns, name, line, column);
+        }
+
+        return resolution;
+    }
 
     private void ReportTypeNotFound(string ns, string localName, int line, int column)
     {

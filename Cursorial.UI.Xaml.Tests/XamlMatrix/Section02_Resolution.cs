@@ -107,6 +107,18 @@ public sealed class Section02_Resolution : XamlTestBase
         Assert.Equal(typeof(UIControls.Button), doc.FoldedValue(m));
     }
 
+    [Fact] // X24b — {x:Type prefix:Button} strips + resolves via the captured prefix (the arg previously kept its prefix)
+    public void X024b_XType_PrefixedArg_FoldsViaCapturedNamespace()
+    {
+        // c: is an explicit prefix bound to the default UI namespace; the x:Type argument carries it. Previously
+        // the whole arg ("c:Button") was resolved verbatim against the default ns and missed; now the prefix binds
+        // from the live reader scope. (A prefix to a NON-default CLR namespace is proven end-to-end by the loader.)
+        var doc = Parse("<Button xmlns:c=\"https://cursorial.dev/ui\" Width=\"{x:Type c:Button}\"/>");
+        Assert.True(doc.TryFindMember(0, "Width", out var m));
+        Assert.Equal(XamlValueKind.Folded, m.Kind);
+        Assert.Equal(typeof(UIControls.Button), doc.FoldedValue(m));
+    }
+
     [Fact] // X25
     public void X025_XNull_FoldsToNull()
     {

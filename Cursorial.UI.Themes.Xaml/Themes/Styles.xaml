@@ -1,17 +1,23 @@
-<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
+                    xmlns:input="clr-namespace:Cursorial.UI.Input;assembly=Cursorial.UI">
 
   <!--
     The theme-styles channel (design doc §11.8 #3 / C100), authored declaratively as <ResourceDictionary.Styles>
     — the data twin of CursorialThemeStyles. Consumed only from UIApplication.Theme at Theme(2) (R2/B13, landed):
     selector rules (no x:Key), armed below App so an app style always wins. These layer over BuiltIn's identical
-    framework rules (gathered first); authoring them here proves the caps-* channel is fully data-shippable.
-
-    NOTE — AccessKeyCue (`:access-keys AccessTextPresenter` -> AccessKeyManager.ShowUnderline) is intentionally
-    NOT ported: it is pure requirement-6 infrastructure that BuiltIn's always-present framework leg supplies
-    regardless of app.Theme, and its setter owner (AccessKeyManager) lives in Cursorial.UI.Input, which is not in
-    the default xmlns map (a prefixed Setter owner is a v1 deferral). It needs no data twin to function.
+    framework rules (gathered first); authoring them here proves the whole theme-styles channel is data-shippable.
   -->
   <ResourceDictionary.Styles>
+
+    <!-- AccessKeyCue (requirement 6, design doc §7.8/§11.8): the :access-keys pseudo-class binds the ANCESTOR
+         scope/window root the AccessKeyManager stamps with InteractionState.AccessKeyCue; every AccessTextPresenter
+         underneath flips ShowUnderline (AffectsRender) while the cue is up, underlining the mnemonic. The setter
+         owner AccessKeyManager lives in Cursorial.UI.Input — a prefixed Setter owner, resolved via the captured
+         `input:` namespace (attached-Setter Phase 2). BuiltIn supplies the identical framework rule; authoring it
+         here proves even the Input-namespace owner is fully data-shippable. -->
+    <Style Selector=":access-keys AccessTextPresenter">
+      <Setter Property="input:AccessKeyManager.ShowUnderline" Value="true"/>
+    </Style>
 
     <!-- caps-unicode glyph opt-up (design doc §12.7 / SD14): under .caps-unicode set the ToggleGlyph.Glyphs
          attached override to colored Unicode marks; a caps-ascii terminal never matches and keeps the ASCII base.

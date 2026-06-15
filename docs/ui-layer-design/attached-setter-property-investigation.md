@@ -1,14 +1,17 @@
 # Attached / owner-qualified `<Setter Property>` resolution — investigation
 
-> **Status: PHASE 1 IMPLEMENTED (2026-06-14); Phase 2 (prefixed owners) deferred.** Phase 1 — the
-> default-namespace dot-split in `ResolveSetter` via `TryResolveQualifiedSetterMember` + the `CUR2111`
-> (`PrefixedSetterOwnerUnsupported`) deferral diagnostic — has landed in the frontend (`XamlParser.cs`),
-> with the xaml-matrix rows X64a–X64d / X66b–X66d (§7) and the tests in §8 green (`Section05_Folding`
-> frontend rows + `AttachedSetterEndToEndTests` loader end-to-end). It covers every built-in and
-> app-default-namespace attached / owner-qualified Setter (`Grid.Row`, `DockPanel.Dock`,
-> `Control.Foreground`). **Phase 2** — eager capture-time resolution (4B) for `prefix:`-qualified owners
-> (X66d′) plus the shared prefix helper for `ResolveExtensionType` / `ResolveStyleTargetType` — remains
-> deferred (§6.2). §1–§5 are the original investigation; §6 is the recommendation that was adopted.
+> **Status: PHASE 1 + PHASE 2 (prefixed owners) IMPLEMENTED.** Phase 1 (2026-06-14) — the default-namespace
+> dot-split in `ResolveSetter` via `TryResolveQualifiedSetterMember` — covers every built-in and
+> app-default-namespace attached / owner-qualified Setter (`Grid.Row`, `DockPanel.Dock`, `Control.Foreground`).
+> **Phase 2 (2026-06-15)** — `prefix:`-qualified owners (`my:Owner.Member`) now resolve via parse-time namespace
+> capture (the 4C variant: `HandleMemberAttribute` stashes the owner's namespace — `_reader.LookupNamespace` for a
+> value-embedded prefix, the in-scope default otherwise — in the `Property` member's `ItemCount`; `ResolveSetter`
+> reads it back to resolve the owner). The `CUR2111` deferral is retired. Rows X64a–X64e / X66b–X66d; tests in §8
+> green plus `AttachedSetterEndToEndTests.PrefixedSetterOwner_OutsideUiNamespace…` (a custom attached property
+> OUTSIDE Cursorial.UI, resolved only because the captured ns is honored). **Still deferred (separate follow-up,
+> §6):** the shared prefix helper for `ResolveExtensionType` (`{x:Type my:Foo}`) and `ResolveStyleTargetType`
+> (`TargetType="my:X"`) — they need their own ns capture (the `{x:Type}` leg a `MarkupExtensionNode` ns field).
+> §1–§5 are the original investigation; §6 is the recommendation that was adopted.
 
 ---
 

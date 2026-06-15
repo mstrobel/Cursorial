@@ -423,7 +423,26 @@ internal sealed class XamlParser
         {
             var setterMember = type?.TryGetMember(memberName);
             int setterMemberId = setterMember is null ? -1 : _builder.AddResolvedMember(setterMember);
-            members.Add(new MemberRecord(setterMemberId, XamlValueKind.Text, _builder.InternString(value), 0, lineInfo));
+
+            // Attached-Setter Phase 2 (4C): for a dotted Property name capture the OWNER's namespace now, while
+            // the reader's xmlns scope is live — a prefixed owner (my:Owner.Member) resolves its prefix via
+            // LookupNamespace, an unprefixed dotted owner uses the in-scope default ns. Stashed as
+            // (internedNsId + 1) in the otherwise-unused Text ItemCount slot (0 = no capture); end-of-object
+            // ResolveSetter reads it back to resolve the owner (the reader is dead by then).
+            int ownerNsToken = 0;
+            if (string.Equals(memberName, "Property", StringComparison.Ordinal))
+            {
+                int dot = value.IndexOf('.');
+                if (dot > 0)
+                {
+                    int colon = value.IndexOf(':');
+                    string prefix = colon >= 0 && colon < dot ? value.Substring(0, colon) : string.Empty;
+                    if (_reader.LookupNamespace(prefix) is { Length: > 0 } ownerNs)
+                        ownerNsToken = _builder.InternString(ownerNs) + 1;
+                }
+            }
+
+            members.Add(new MemberRecord(setterMemberId, XamlValueKind.Text, _builder.InternString(value), ownerNsToken, lineInfo));
             return;
         }
 
@@ -971,9 +990,12 @@ internal sealed class XamlParser
         // or an owner-qualified plain property like Control.Foreground) resolves the OWNER, NOT the lexical
         // TargetType (matrix X64a/X64c, XD4) — and so needs NO enclosing Style TargetType. An unqualified name
         // resolves against the TargetType (CUR2110 when absent). The TargetType is therefore optional here; the
-        // helper enforces it only on the unqualified path (and treats a prefixed owner as a v1 deferral).
+        // helper enforces it only on the unqualified path. The owner namespace captured at parse time (Phase 2 /
+        // 4C, stashed in ItemCount) resolves a prefixed (my:Owner.Member) or in-scope-default dotted owner.
         var targetType = _styleTargetStack.Count > 0 ? _styleTargetStack.Peek() : null;
-        var targetMember = TryResolveQualifiedSetterMember(propertyName, targetType, line, column);
+        int ownerNsToken = members[propertyMemberSlot].ItemCount;
+        string? capturedOwnerNs = ownerNsToken > 0 ? _builder.GetString(ownerNsToken - 1) : null;
+        var targetMember = TryResolveQualifiedSetterMember(propertyName, capturedOwnerNs, targetType, line, column);
         if (targetMember is null)
             return;
 
@@ -1102,12 +1124,12 @@ internal sealed class XamlParser
     /// name resolves the OWNER xmlns-aware and ignores the lexical Style <c>TargetType</c> (matrix X64a/X64c,
     /// XD4); an unqualified name resolves against <paramref name="targetType"/> (the only case the TargetType
     /// is the owner — WPF parity). Returns the resolved member, or <c>null</c> after reporting a diagnostic.
-    /// Phase 1: the owner resolves against the DEFAULT UI namespace, which covers every built-in and
-    /// app-default-namespace owner; a <c>prefix:</c>-qualified owner (<c>my:Grid.Row</c>) is a documented v1
-    /// deferral (<see cref="XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported"/>) because Setter resolution
-    /// runs at end-of-object, after the reader's xmlns scope is gone (Phase 2 captures it at the attribute).
+    /// The owner resolves against <paramref name="capturedOwnerNs"/> — the namespace captured at the attribute
+    /// (Phase 2 / 4C) by resolving the value-embedded prefix (<c>my:Owner.Member</c>) or the in-scope default
+    /// for an unprefixed dotted name — falling back to the default UI namespace when none was captured. This
+    /// covers built-in, app-default-namespace, AND <c>prefix:</c>-qualified owners.
     /// </summary>
-    private XamlMember? TryResolveQualifiedSetterMember(string propertyName, XamlType? targetType, int line, int column)
+    private XamlMember? TryResolveQualifiedSetterMember(string propertyName, string? capturedOwnerNs, XamlType? targetType, int line, int column)
     {
         int dot = propertyName.IndexOf('.'); // first dot — matches the attached-attribute path (X75)
         if (dot < 0)
@@ -1128,20 +1150,16 @@ internal sealed class XamlParser
             return unqualified;
         }
 
-        int colon = propertyName.IndexOf(':');
-        if (colon >= 0 && colon < dot)
-        {
-            _builder.Error(XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported,
-                $"A prefixed attached/qualified Setter owner is not supported in v1 ('{propertyName}'); use an " +
-                "owner in the default namespace, or set the property unqualified against the TargetType.",
-                line, column);
-            return null;
-        }
-
-        string ownerName = propertyName.Substring(0, dot);
+        // The owner part may carry a value-embedded prefix (my:Owner) — strip it; its namespace was captured at
+        // parse time into capturedOwnerNs (Phase 2). An unprefixed dotted owner resolves against the captured
+        // in-scope default (or the UI default when nothing was captured).
+        string ownerPart = propertyName.Substring(0, dot);
         string memberName = propertyName.Substring(dot + 1);
+        int colon = ownerPart.IndexOf(':');
+        string ownerName = colon >= 0 ? ownerPart.Substring(colon + 1) : ownerPart;
+        string ownerNs = capturedOwnerNs ?? XmlnsNamespaces.CursorialUi;
 
-        var ownerResolution = ResolveType(XmlnsNamespaces.CursorialUi, ownerName, line, column);
+        var ownerResolution = ResolveType(ownerNs, ownerName, line, column);
         if (!ownerResolution.IsResolved)
             return null; // ResolveType already emitted CUR2001/CUR2002 naming the owner
 

@@ -56,4 +56,40 @@ public sealed class AttachedSetterEndToEndTests
         var brush = Assert.IsType<SolidColorBrush>(button.Foreground);
         Assert.Equal(Color.FromRgb(0xFF, 0x88, 0x00), brush.Color);
     }
+
+    [Fact] // X64e (Phase 2) — a PREFIXED Setter owner OUTSIDE the Cursorial.UI namespaces resolves via the captured ns
+    public void PrefixedSetterOwner_OutsideUiNamespace_ResolvesAndApplies()
+    {
+        _ = XamlPhase2Attached.MarkerProperty; // force the attached registration (the type's static ctor)
+
+        using var host = UITestHost.Create();
+
+        // `t:` maps (clr-namespace) to the TEST namespace — outside Cursorial.UI. The Setter owner
+        // `t:XamlPhase2Attached.Marker` therefore resolves ONLY if the prefix's namespace, captured at the
+        // attribute while the reader was live (Phase 2 / 4C), is honored — the Phase-1 default-namespace
+        // resolution would never find XamlPhase2Attached. The prefix is on the Setter VALUE, not the attribute.
+        var style = Loader.Load<Cursorial.UI.Style>(
+            "<Style" + Ns + " xmlns:t=\"clr-namespace:Cursorial.Tests.UI.Xaml.Integration;assembly=Cursorial.UI.Xaml.Tests\" TargetType=\"Button\">" +
+              "<Setter Property=\"t:XamlPhase2Attached.Marker\" Value=\"42\"/>" +
+            "</Style>");
+        host.Application.Styles.Add(style);
+
+        var button = new UIControls.Button { Content = "OK" };
+        host.ShowRoot(button);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(42, XamlPhase2Attached.GetMarker(button));
+    }
+}
+
+/// <summary>A test-only attached property that lives OUTSIDE the Cursorial.UI namespaces — the probe for
+/// attached-Setter Phase 2: a prefixed Setter owner resolves it only if the prefix's captured namespace is
+/// honored (it is invisible to the default Cursorial.UI resolution).</summary>
+public sealed class XamlPhase2Attached
+{
+    public static readonly AttachedProperty<int> MarkerProperty =
+        UIProperty.RegisterAttached<XamlPhase2Attached, UIElement, int>("Marker");
+
+    public static int GetMarker(UIElement element) => element.GetValue(MarkerProperty);
+    public static void SetMarker(UIElement element, int value) => element.SetValue(MarkerProperty, value);
 }

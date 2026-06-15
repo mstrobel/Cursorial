@@ -123,10 +123,18 @@ public sealed class Section05_Folding : XamlTestBase
             () => Parse("<Style TargetType=\"Button\"><Setter Property=\"Bogus.Row\" Value=\"1\"/></Style>"));
     }
 
-    [Fact] // X66d — a PREFIXED Setter owner is a v1 deferral (CUR2111), not a misleading CUR2102
-    public void X066d_SetterPrefixedOwner_CUR2111_Deferral()
+    [Fact] // X66d' — a PREFIXED Setter owner now RESOLVES via the parse-time captured namespace (Phase 2 / 4C)
+    public void X066d_SetterPrefixedOwner_ResolvesViaCapturedNamespace()
     {
-        Throws(XamlDiagnosticCodes.PrefixedSetterOwnerUnsupported,
-            () => Parse("<Style xmlns:my=\"using:Foo\" TargetType=\"Button\"><Setter Property=\"my:Grid.Row\" Value=\"1\"/></Style>"));
+        // c: is an explicit prefix for the default UI namespace; the prefix's namespace is captured at the
+        // attribute while the reader is live (the colon is stripped from the owner), so c:Grid.Row resolves
+        // the attached Grid.Row owner and the Value folds through its converter (a v1 deferral / CUR2102 would
+        // never reach the fold). A prefix to a non-default CLR namespace is exercised end-to-end by the loader
+        // (AttachedSetterEndToEndTests) where assembly resolution is wired.
+        var doc = Parse("<Style xmlns:c=\"https://cursorial.dev/ui\" TargetType=\"Button\">" +
+                        "<Setter Property=\"c:Grid.Row\" Value=\"1\"/></Style>");
+        Assert.True(doc.TryFindMember(1, "Value", out var value));
+        Assert.Equal(XamlValueKind.Folded, value.Kind);
+        Assert.Equal(1, doc.FoldedValue(value));
     }
 }

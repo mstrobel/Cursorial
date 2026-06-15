@@ -259,10 +259,17 @@ public class Window : ContentControl
         return tcs.Task;
     }
 
-    /// <summary>The typed <see cref="ShowDialogAsync(CancellationToken)"/> — the result is the <see cref="DialogResult"/> cast to <typeparamref name="TResult"/>.</summary>
+    /// <summary>
+    /// The typed <see cref="ShowDialogAsync(CancellationToken)"/>: cancellation <b>throws</b>
+    /// (an <see cref="OperationCanceledException"/> propagates through the await — the outer task is
+    /// Canceled, never a default return); a normal close returns the <see cref="DialogResult"/> cast to
+    /// <typeparamref name="TResult"/>, or <c>default(TResult)</c> when it is null or not a <typeparamref name="TResult"/>.
+    /// </summary>
     public async Task<TResult?> ShowDialogAsync<TResult>(CancellationToken cancellationToken = default)
     {
-        var result = await ShowDialogAsync(cancellationToken).ConfigureAwait(true);
+        // ConfigureAwait(false): the projection below is a pure cast — it needs no UI-thread affinity, and the
+        // caller's own await re-captures their context. (The cancellation rethrow happens at the await above.)
+        var result = await ShowDialogAsync(cancellationToken).ConfigureAwait(false);
         return result is TResult typed ? typed : default;
     }
 

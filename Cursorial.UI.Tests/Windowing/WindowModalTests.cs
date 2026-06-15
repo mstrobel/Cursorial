@@ -1,6 +1,7 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -116,5 +117,78 @@ public sealed class WindowModalTests
         Assert.True(task.IsCanceled);
         Assert.False(dialog.IsShown);
         Assert.Empty(wm.Windows);
+    }
+
+    // ── Cancellation semantics: await THROWS (it does not return default) — verified both ways ──────
+
+    [Fact] // non-generic: a canceled modal makes `await ShowDialogAsync()` throw OperationCanceledException
+    public async Task ShowDialogAsync_Cancellation_AwaitThrows()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        using var cts = new CancellationTokenSource();
+        var dialog = new Window { Width = 20, Height = 6 };
+        var task = dialog.ShowDialogAsync(cts.Token);
+        Assert.True(host.RunUntilIdle());
+
+        cts.Cancel();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(task.IsCanceled);                 // Canceled state — NOT RanToCompletion with a value
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await task);
+    }
+
+    [Fact] // typed: cancellation THROWS through the await — it does NOT return default(TResult)
+    public async Task ShowDialogAsync_Typed_Cancellation_Throws_NotDefault()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        using var cts = new CancellationTokenSource();
+        var dialog = new Window { Width = 20, Height = 6 };
+        var task = dialog.ShowDialogAsync<int>(cts.Token);
+        Assert.True(host.RunUntilIdle());
+
+        cts.Cancel();
+        Assert.True(host.RunUntilIdle());
+
+        // The OCE propagates out of the async wrapper → the await THROWS (it does not return default(int)).
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await task);
+        Assert.True(task.IsCanceled); // settled after the await: Canceled, never RanToCompletion with a value
+    }
+
+    [Fact] // typed: a normal close with a matching DialogResult returns the cast value
+    public async Task ShowDialogAsync_Typed_Close_ReturnsResult()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var dialog = new Window { Width = 20, Height = 6 };
+        var task = dialog.ShowDialogAsync<int>();
+        Assert.True(host.RunUntilIdle());
+
+        dialog.Close(42);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(42, await task);
+    }
+
+    [Fact] // typed: a normal close with NO (or mismatched) result returns default(TResult) — and does NOT throw
+    public async Task ShowDialogAsync_Typed_CloseWithoutResult_ReturnsDefault_NoThrow()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var dialog = new Window { Width = 20, Height = 6 };
+        var task = dialog.ShowDialogAsync<string>();   // reference type ⇒ default is unambiguously null
+        Assert.True(host.RunUntilIdle());
+
+        dialog.Close();                                // DialogResult stays null (no value set)
+        Assert.True(host.RunUntilIdle());
+
+        var result = await task;                       // completes successfully (the cancellation path is what throws)
+        Assert.True(task.IsCompletedSuccessfully);
+        Assert.Null(result);
     }
 }

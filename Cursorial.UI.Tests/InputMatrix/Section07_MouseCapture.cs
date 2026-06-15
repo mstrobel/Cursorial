@@ -1,5 +1,6 @@
 using Cursorial.Input;
 using Cursorial.UI;
+using Cursorial.UI.Input;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -166,6 +167,58 @@ public class Section07_MouseCapture
 
         Assert.Same(fixture.A, fixture.Dispatcher.MouseCaptureTarget); // release is control logic
         Assert.DoesNotContain(fixture.Log, static entry => entry.Contains("LostMouseCapture"));
+    }
+
+    [Fact] // SubTree capture: a press over a descendant routes to the HIT (D stays interactive), not the holder
+    public void N095_SubTreeCapture_InsideSubtree_RoutesToHit()
+    {
+        using var fixture = MouseHost.Create();
+        Assert.True(fixture.A.CaptureMouse(CaptureMode.SubTree));
+        Assert.Same(fixture.A, fixture.Dispatcher.MouseCaptureTarget);
+        Assert.Equal(CaptureMode.SubTree, fixture.Dispatcher.CaptureMode);
+        fixture.Log.Clear();
+
+        fixture.Down(13, 7); // over D, a descendant of A — routes to D (D → A → Root bubble)
+
+        Assert.Contains("D.OnMouseDown", fixture.Log);   // the hit target, not redirected to A
+        Assert.Contains("A.OnMouseDown", fixture.Log);   // A still sees it as a bubble node
+    }
+
+    [Fact] // SubTree capture: a press outside the holder's subtree redirects to the holder; hover stays honest
+    public void N096_SubTreeCapture_OutsideSubtree_RedirectsToHolder_HoverHonest()
+    {
+        using var fixture = MouseHost.Create();
+        Assert.True(fixture.A.CaptureMouse(CaptureMode.SubTree));
+        fixture.Log.Clear();
+
+        fixture.Move(31, 6); // hover over B (outside A's subtree)
+        Assert.True(Over(fixture.B));                        // :pointerover still tracks the hit (§7.6)
+        Assert.False(Over(fixture.A));
+        Assert.Contains("A.OnMouseMove", fixture.Log);       // move redirected to the holder
+        Assert.DoesNotContain("B.OnMouseMove", fixture.Log);
+
+        fixture.Log.Clear();
+        fixture.Down(31, 6); // press over B — outside A's subtree → redirects to A
+
+        Assert.Contains("A.OnMouseDown", fixture.Log);
+        Assert.DoesNotContain("B.OnMouseDown", fixture.Log); // B is not on A's route
+    }
+
+    [Fact] // re-capturing by the current holder just swaps the mode — no transfer, no LostMouseCapture
+    public void N097_Recapture_BySameHolder_SwitchesModeWithoutNotify()
+    {
+        using var fixture = MouseHost.Create();
+        Assert.True(fixture.A.CaptureMouse()); // Element by default
+        Assert.Equal(CaptureMode.Element, fixture.Dispatcher.CaptureMode);
+        fixture.Log.Clear();
+
+        Assert.True(fixture.A.CaptureMouse(CaptureMode.SubTree));
+        Assert.Equal(CaptureMode.SubTree, fixture.Dispatcher.CaptureMode);
+        Assert.Empty(fixture.Log); // no LostMouseCapture on a same-holder mode change
+
+        // a press over D now routes to the hit (the SubTree policy is live)
+        fixture.Down(13, 7);
+        Assert.Contains("D.OnMouseDown", fixture.Log);
     }
 
     [Fact]

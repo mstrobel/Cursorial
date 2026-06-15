@@ -41,6 +41,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     private IWindowTopology _topology;
     private TerminalCapabilities _capabilities = TerminalCapabilities.None;
     private UIElement? _captureTarget;
+    private CaptureMode _captureMode = CaptureMode.Element; // meaningful only while _captureTarget is set (§7.6)
 
     // The pressed-holder set (ND12, styling contract C8): identity-keyed, entered/left through the
     // SetInteractionState(Pressed, …) fan-in — live membership, never deferred to a batch flush —
@@ -288,12 +289,17 @@ public sealed class InputDispatcher : IInputDispatchTarget
         });
     }
 
+    /// <summary>The capture mode currently in force, meaningful only while <see cref="MouseCaptureTarget"/> is non-null (§7.6).</summary>
+    public CaptureMode CaptureMode => _captureMode;
+
     /// <summary>
-    /// Grants mouse capture to <paramref name="element"/> (attached + effectively visible only).
-    /// An existing holder is force-released first (Direct <c>LostMouseCapture</c>).
+    /// Grants mouse capture to <paramref name="element"/> (attached + effectively visible only) in
+    /// <paramref name="mode"/> (default <see cref="CaptureMode.Element"/>). An existing holder is
+    /// force-released first (Direct <c>LostMouseCapture</c>); re-capturing the current holder just
+    /// updates the mode.
     /// </summary>
     /// <returns>Whether capture is held by <paramref name="element"/> when the call returns.</returns>
-    public bool CaptureMouse(UIElement element)
+    public bool CaptureMouse(UIElement element, CaptureMode mode = CaptureMode.Element)
     {
         ArgumentNullException.ThrowIfNull(element);
         _dispatcher.VerifyAccess();
@@ -302,10 +308,14 @@ public sealed class InputDispatcher : IInputDispatchTarget
             return false;
 
         if (ReferenceEquals(_captureTarget, element))
+        {
+            _captureMode = mode; // a re-capture by the holder just changes the redirect policy
             return true;
+        }
 
         ForceReleaseCapture(); // transfer notifies the old holder
         _captureTarget = element;
+        _captureMode = mode;
         UpdateEffectiveCursorShape(); // §7.6 — the capture target's resolved cursor wins immediately
         return true;
     }
@@ -458,7 +468,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
                 UpdateHoverChain(hit, mouse);
 
-                return (_captureTarget ?? hit) is {} target
+                return RouteTargetUnderCapture(hit) is {} target
                     ? ToResult(RaiseMousePair<MouseEventArgs>(UIElement.PreviewMouseMoveEvent, UIElement.MouseMoveEvent, target, mouse))
                     : InputDispatchResult.DispatchedUnhandled;
             }
@@ -468,11 +478,18 @@ public sealed class InputDispatcher : IInputDispatchTarget
             {
                 var isDown = mouse.Kind == MouseEventKind.ButtonDown;
 
-                return (_captureTarget ?? HitTestForEvent(mouse)) is {} target
+                // Element capture short-circuits the hit test (so a captured gesture never triggers the
+                // window manager's press-time light-dismiss / activation in FilterMouseEvent); SubTree and
+                // the uncaptured path both need the hit to resolve the route target.
+                var target = _captureTarget is {} capture && _captureMode == CaptureMode.Element
+                    ? capture
+                    : RouteTargetUnderCapture(HitTestForEvent(mouse));
+
+                return target is {} routed
                     ? ToResult(RaiseMousePair<MouseButtonEventArgs>(
                         isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
                         isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
-                        target,
+                        routed,
                         mouse))
                     : InputDispatchResult.DispatchedUnhandled;
             }
@@ -509,6 +526,30 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
     private static InputDispatchResult ToResult(bool handled)
         => handled ? InputDispatchResult.DispatchedHandled : InputDispatchResult.DispatchedUnhandled;
+
+    /// <summary>
+    /// Applies the capture redirect policy (§7.6) to a hit-tested target: no capture ⇒ the hit;
+    /// <see cref="CaptureMode.Element"/> ⇒ always the holder; <see cref="CaptureMode.SubTree"/> ⇒ the hit
+    /// when it lies within the holder's (visual-then-logical) subtree, else the holder (a miss redirects too).
+    /// </summary>
+    private UIElement? RouteTargetUnderCapture(UIElement? hit)
+    {
+        if (_captureTarget is not {} capture)
+            return hit;
+
+        return _captureMode == CaptureMode.SubTree && IsInCaptureSubtree(hit, capture) ? hit : capture;
+    }
+
+    /// <summary>Whether <paramref name="hit"/> is the capture holder or a descendant of it, walking the same
+    /// <c>VisualParent ?? LogicalParent</c> hop the route uses (so a captured popup's items count as inside).</summary>
+    private static bool IsInCaptureSubtree(UIElement? hit, UIElement capture)
+    {
+        for (var element = hit; element is not null; element = element.VisualParent ?? element.LogicalParent)
+            if (ReferenceEquals(element, capture))
+                return true;
+
+        return false;
+    }
 
     /// <summary>
     /// The surface-level scan + intra-surface descent for one mouse event (doc §7.6): the
@@ -839,6 +880,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
             return;
 
         _captureTarget = null; // cleared before the raise — handlers observe the post-release state
+        _captureMode = CaptureMode.Element; // back to the default for the next capture
 
         var args = EventArgsPool<RoutedEventArgs>.Rent();
         args.Initialize(UIElement.LostMouseCaptureEvent, target);

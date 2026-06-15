@@ -409,12 +409,12 @@ public abstract partial class UIElement : IInteractionStateSink
         => UIApplication.Current?.FocusManager.SetFocus(this, method) ?? false;
 
     /// <summary>
-    /// Requests mouse capture (routing policy, not OS capture — doc §7.6). Granted only to
-    /// attached, effectively visible elements. THE capture surface — there is no separate
-    /// capture interface.
+    /// Requests mouse capture in <paramref name="mode"/> (routing policy, not OS capture — doc §7.6;
+    /// default <see cref="CaptureMode.Element"/>). Granted only to attached, effectively visible
+    /// elements. THE capture surface — there is no separate capture interface.
     /// </summary>
-    public bool CaptureMouse()
-        => UIApplication.Current?.InputDispatcher.CaptureMouse(this) ?? false;
+    public bool CaptureMouse(CaptureMode mode = CaptureMode.Element)
+        => UIApplication.Current?.InputDispatcher.CaptureMouse(this, mode) ?? false;
 
     /// <summary>Releases mouse capture when this element holds it (only the holder releases).</summary>
     public void ReleaseMouseCapture()

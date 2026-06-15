@@ -224,7 +224,12 @@ Tree: `Root` (Canvas 80×24) with `A` at (10,5,10×4), `B` at (30,5,10×4), `D` 
 
 ---
 
-## 7. Mouse capture (I2) — N85–N94, N207
+## 7. Mouse capture (I2) — N85–N97, N207
+
+**P7 amendment (subtree capture pulled into v1).** The P2 deferral of subtree capture (doc §7.6 once read
+"element-only") is reversed alongside S4's windowing: `CaptureMouse` takes a `CaptureMode { Element, SubTree }`
+(default `Element`). `Element` is the unchanged N85 behavior; `SubTree` routes by hit while the pointer is inside
+the holder's visual-then-logical subtree and redirects to the holder only outside it. Rows N95–N97.
 
 | # | Setup | Operation | Expected | Oracle |
 |---|---|---|---|---|
@@ -238,6 +243,9 @@ Tree: `Root` (Canvas 80×24) with `A` at (10,5,10×4), `B` at (30,5,10×4), `D` 
 | N92 | A holds capture, pointer over B | `wheel(31,6, dy:120)` | wheel targets **B** (the hit element) — the one mouse event capture does not redirect | PIN (doc §7.6) |
 | N93 | A holds capture | `focusEvt(false)` | force-release + `LostMouseCapture` (N49/N52 cluster cross-check at unit level) | PIN |
 | N94 | A holds capture | `up` completes; capture **not** auto-released | capture survives MouseUp (release is control logic, not framework policy — ButtonBase releases explicitly) | WPF |
+| N95 | A holds `SubTree` capture, D is a child of A | `down(13,6)` over D | routes to **D** (the hit, since D ∈ A's subtree) — D and A both on the bubble route; the descendant stays interactive | WPF (`CaptureMode.SubTree`) |
+| N96 | A holds `SubTree` capture, pointer over sibling B | `move`/`down(31,6)` over B | redirects to **A** (B ∉ A's subtree); hover/`PointerOver` still track B (hit honest) | WPF (`CaptureMode.SubTree`) |
+| N97 | A holds `Element` capture | `A.CaptureMouse(SubTree)` | same-holder mode swap: returns true, `CaptureMode == SubTree`, **no** `LostMouseCapture`; the SubTree policy is immediately live | PIN (doc §7.6) |
 | N207 | A holds capture | `dispatcher.OnSurfacesChanged()` with A attached + visible; then again after `A.Visibility = Collapsed` | first call: no-op, capture retained; second: force-release + Direct `LostMouseCapture` at A — the P2 semantics of the S4 seam (capture re-validation; surface-stack/modal validation joins at P7 — ND5); the hover refresh rides the per-frame `UpdateHover` | PIN (ND5, doc §7.4) |
 
 ---

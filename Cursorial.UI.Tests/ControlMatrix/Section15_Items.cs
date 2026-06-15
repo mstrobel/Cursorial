@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -85,6 +87,19 @@ public sealed class Section15_Items
         Assert.NotSame(ic, container.VisualParent);
     }
 
+    [Fact] // C2.6/C2.7 payoff: resources resolve UP through the container to the ItemsControl (logical parentage works)
+    public void Container_ResolvesResourcesThroughControl()
+    {
+        var ic = new ItemsControl { ItemsSource = new[] { "a" } };
+        ic.Resources["K"] = "value-from-control"; // a resource on the control, reachable via the container's logical ancestry
+        var (host, _) = Show(ic);
+        using var _ = host;
+
+        var container = Gen(ic).ContainerFromIndex(0)!;
+        Assert.True(container.TryFindResource("K", out var v)); // the punch-43 logical-parentage payoff, end-to-end
+        Assert.Equal("value-from-control", v);
+    }
+
     [Fact] // C2.8: Add at an index realizes one container; later indices shift
     public void AddAtIndex_RealizesAndShifts()
     {
@@ -100,20 +115,80 @@ public sealed class Section15_Items
         Assert.NotNull(Gen(ic).ContainerFromIndex(2));   // "c" shifted to 2
     }
 
-    [Fact] // C2.9: Remove unrealizes — the container's logical parent is cleared (the 4-step retraction ran)
-    public void Remove_Unrealizes_ClearsLogicalParent()
+    [Fact] // C2.9: Remove runs the full 4-step retraction — ClearContainer (step 1) AND the visual+logical detach
+    public void Remove_Unrealizes_RunsFullRetraction()
     {
         var source = new ObservableCollection<string> { "a", "b" };
-        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source, ItemContainerStyle = new Style() });
         using var _ = host;
-        var removed = Gen(ic).ContainerFromIndex(0)!;
+        var removed = (ContentPresenter)Gen(ic).ContainerFromIndex(0)!;
+        Assert.True(removed.IsSet(ContentPresenter.ContentProperty)); // baseline: prepared
 
         source.RemoveAt(0);
         host.RunUntilIdle();
-        Assert.Null(removed.LogicalParent);              // logical detach ran
-        Assert.Null(removed.VisualParent);               // visual detach ran
+
+        // Step 1 (ClearContainer): Content/ContentTemplate cleared and the ItemContainerStyle dropped.
+        Assert.False(removed.IsSet(ContentPresenter.ContentProperty));
+        Assert.False(removed.IsSet(ContentPresenter.ContentTemplateProperty));
+        Assert.Null(removed.Style);
+        // Steps 2-3 (visual + logical detach):
+        Assert.Null(removed.LogicalParent);
+        Assert.Null(removed.VisualParent);
+        // Step 4 (DataContext clear) + the item↔container stamp cleared:
+        Assert.Null(removed.DataContext);
+        Assert.Null(Gen(ic).ItemFromContainer(removed));
+        // …and it is evicted, the survivor shifts up:
         Assert.Equal(-1, Gen(ic).IndexFromContainer(removed));
-        Assert.NotNull(Gen(ic).ContainerFromIndex(0));   // "b" survived at 0
+        Assert.NotNull(Gen(ic).ContainerFromIndex(0)); // "b" survived at 0
+    }
+
+    [Fact] // C2.9b (CD-P9-3 ordering): ClearContainer + the visual detach precede the logical removal
+    public void Remove_RetractionOrdering_VisualDetachAndClearPrecedeLogicalRemove()
+    {
+        var source = new ObservableCollection<string> { "a", "b" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source, ItemContainerStyle = new Style() });
+        using var _ = host;
+        var removed = (ContentPresenter)Gen(ic).ContainerFromIndex(0)!;
+
+        UIElement? visualParentAtLogicalDetach = removed; // sentinel ≠ null
+        var contentClearedAtLogicalDetach = false;
+        var styleNullAtLogicalDetach = false;
+        var fired = false;
+        removed.DetachedFromLogicalTree += (_, _) =>
+        {
+            fired = true;
+            visualParentAtLogicalDetach = removed.VisualParent;                       // expect already null
+            contentClearedAtLogicalDetach = !removed.IsSet(ContentPresenter.ContentProperty);
+            styleNullAtLogicalDetach = removed.Style is null;
+        };
+
+        source.RemoveAt(0);
+        host.RunUntilIdle();
+
+        Assert.True(fired);
+        Assert.Null(visualParentAtLogicalDetach);     // visual detach ran BEFORE logical removal (the store-retraction trigger)
+        Assert.True(contentClearedAtLogicalDetach);    // ClearContainer (bindings live) ran BEFORE the detach
+        Assert.True(styleNullAtLogicalDetach);
+    }
+
+    [Fact] // C2.10: an own-container is left untouched by ClearContainer (its user-set Style survives), but is still detached
+    public void Remove_OwnContainer_StyleUntouched()
+    {
+        var own = new TextBlock("x");
+        var userStyle = new Style();
+        own.Style = userStyle;
+        var source = new ObservableCollection<object> { own, "b" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        using var _ = host;
+        Assert.Same(own, Gen(ic).ContainerFromIndex(0)); // own-container in use
+
+        source.RemoveAt(0);
+        host.RunUntilIdle();
+
+        Assert.Same(userStyle, own.Style); // ClearContainer SKIPPED the own-container — the user's Style is preserved
+        Assert.Null(own.LogicalParent);     // …but it was still detached (logical + visual)
+        Assert.Null(own.VisualParent);
+        Assert.Equal(-1, Gen(ic).IndexFromContainer(own));
     }
 
     [Fact] // C2.11: Move reorders the same containers (no realize/unrealize)
@@ -131,16 +206,39 @@ public sealed class Section15_Items
         Assert.Same(a, Gen(ic).ContainerFromIndex(2));   // a at the end — same instance, not re-realized
     }
 
+    [Fact] // C2.12: Replace unrealizes the old container and realizes a NEW one in place; neighbors + count unchanged
+    public void Replace_UnrealizesOld_RealizesNew()
+    {
+        var source = new ObservableCollection<string> { "a", "b", "c" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        using var _ = host;
+        var a = Gen(ic).ContainerFromIndex(0)!;
+        var oldB = Gen(ic).ContainerFromIndex(1)!;
+
+        source[1] = "B";
+        host.RunUntilIdle();
+
+        var newAt1 = Gen(ic).ContainerFromIndex(1)!;
+        Assert.NotSame(oldB, newAt1);                    // re-realized (new instance), not re-prepared in place
+        Assert.Null(oldB.LogicalParent);                 // the old container was unrealized
+        Assert.Same(a, Gen(ic).ContainerFromIndex(0));   // neighbor unchanged
+        Assert.NotNull(Gen(ic).ContainerFromIndex(2));   // count preserved (3)
+        Assert.Null(Gen(ic).ContainerFromIndex(3));
+    }
+
     [Fact] // C2.13: Reset (clear) unrealizes everything
     public void Reset_UnrealizesAll()
     {
         var source = new ObservableCollection<string> { "a", "b" };
         var (host, ic) = Show(new ItemsControl { ItemsSource = source });
         using var _ = host;
+        var c0 = Gen(ic).ContainerFromIndex(0)!;
 
         source.Clear();
         host.RunUntilIdle();
         Assert.Null(Gen(ic).ContainerFromIndex(0));
+        Assert.Null(c0.LogicalParent); // the staged teardown ran (CD-P9-3) even on the wholesale reset
+        Assert.Null(c0.VisualParent);
     }
 
     [Fact] // C2.14: ItemContainerStyle applies to each container at the Explicit layer
@@ -150,6 +248,26 @@ public sealed class Section15_Items
         var (host, ic) = Show(new ItemsControl { ItemsSource = new[] { "a" }, ItemContainerStyle = style });
         using var _ = host;
         Assert.Same(style, Gen(ic).ContainerFromIndex(0)!.Style);
+    }
+
+    [Fact] // C2.14b (CD-P9-5): the ItemContainerStyle is the EXPLICIT layer — it beats an app type-selector style,
+    // which still composes underneath it on properties the Explicit style leaves alone.
+    public void ItemContainerStyle_ExplicitLayer_BeatsTypeSelector_TypeStillComposes()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        using var _ = host;
+        host.Application.Styles.Add(new Style(Selectors.OfType<ContentPresenter>())
+            .Set(UIElement.MinWidthProperty, 5)    // contested with the Explicit ItemContainerStyle
+            .Set(UIElement.MinHeightProperty, 7)); // uncontested — only the type layer sets it
+
+        var icStyle = new Style().Set(UIElement.MinWidthProperty, 20); // Explicit (container.Style)
+        var ic = new ItemsControl { ItemsSource = new[] { "a" }, ItemContainerStyle = icStyle };
+        host.ShowRoot(ic);
+        host.RunUntilIdle();
+
+        var container = Gen(ic).ContainerFromIndex(0)!;
+        Assert.Equal(20, container.GetValue(UIElement.MinWidthProperty));  // Explicit wins over the Style layer
+        Assert.Equal(7, container.GetValue(UIElement.MinHeightProperty));  // …the type-selector layer still contributes underneath
     }
 
     [Fact] // C2.15: a runtime ItemTemplate change re-realizes (the v1 Reset policy — containers are replaced)
@@ -165,6 +283,55 @@ public sealed class Section15_Items
         Assert.NotNull(Gen(ic).ContainerFromIndex(1));
     }
 
+    [Fact] // C2.16: setting ItemsSource → null reverts to the direct Items lane (the inverse of CD-P9-4)
+    public void ItemsSourceToNull_RevertsToDirectItemsLane()
+    {
+        var ic = new ItemsControl { ItemsSource = new ObservableCollection<string> { "a", "b" } };
+        var (host, _) = Show(ic);
+        using var __ = host;
+        Assert.True(ic.HasItemsSource);
+
+        ic.ItemsSource = null;
+        host.RunUntilIdle();
+        Assert.False(ic.HasItemsSource);
+        Assert.Null(Gen(ic).ContainerFromIndex(0)); // containers dropped
+
+        ic.Items.Add("z"); // mutation no longer throws — the lane reverted to direct Items
+        host.RunUntilIdle();
+        Assert.NotNull(Gen(ic).ContainerFromIndex(0)); // …and the direct lane realizes
+    }
+
+    [Fact] // C2.17: the item↔container stamp — ItemFromContainer round-trips (own-container ⇒ the item itself)
+    public void ItemFromContainer_RoundTrips()
+    {
+        var leaf = new TextBlock("inline");
+        var (host, ic) = Show(new ItemsControl { ItemsSource = new object[] { "a", leaf } });
+        using var _ = host;
+
+        var generated = Gen(ic).ContainerFromIndex(0)!;
+        var own = Gen(ic).ContainerFromIndex(1)!;
+        Assert.Equal("a", Gen(ic).ItemFromContainer(generated)); // generated ⇒ the data item
+        Assert.Same(leaf, Gen(ic).ItemFromContainer(own));       // own-container ⇒ the container itself
+    }
+
+    [Fact] // C2.19 (CD-P9-7): a runtime ItemsPanel change re-hosts the SAME containers in a new panel (no re-realize, no dup)
+    public void RuntimeItemsPanelChange_ReHostsSameContainers()
+    {
+        var (host, ic) = Show(new ItemsControl { ItemsSource = new[] { "a", "b" } });
+        using var _ = host;
+        var c0 = Gen(ic).ContainerFromIndex(0)!;
+        var oldPanel = c0.VisualParent;
+
+        ic.ItemsPanel = new FuncTemplateContent(_ => new StackPanel());
+        host.RunUntilIdle();
+
+        Assert.Same(c0, Gen(ic).ContainerFromIndex(0)); // SAME container instance — re-hosted, not re-realized
+        var newPanel = c0.VisualParent;
+        Assert.NotSame(oldPanel, newPanel);             // …in a freshly-built panel
+        Assert.IsType<StackPanel>(newPanel);
+        Assert.Equal(2, ((Panel)newPanel!).Children.Count); // exactly the two containers — no double-adoption
+    }
+
     [Fact] // C2.18: HeaderedItemsControl exposes Header + the items host (MenuItem's base — smoke)
     public void HeaderedItemsControl_HasHeaderAndItems()
     {
@@ -172,5 +339,171 @@ public sealed class Section15_Items
         hic.Items.Add("Open");
         Assert.Equal("File", hic.Header);
         Assert.NotNull(hic.ItemContainerGenerator.ContainerFromIndex(0));
+    }
+
+    [Fact] // C2.21: an idle frame with a REALIZED items tree present adds no per-frame allocation — the items
+    // pipeline is event-driven (Realize/Unrealize/Move/SyncAll fire on collection-change/attach/template change,
+    // never on a clean frame), so its mere presence must not wire any per-frame churn (a stray timer / per-frame
+    // SyncAll would trip this). Steady-state items *mutations* allocate (a new container) and are not in scope here.
+    [Trait("Category", "Benchmark")]
+    public void StaticItemsTree_IdleFrameAddsNoAllocation()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        using var _ = host;
+        var ic = new ItemsControl { ItemsSource = new[] { "a", "b", "c", "d" } };
+        host.ShowRoot(ic);
+        host.RunUntilIdle();
+        host.RunFrames(64); // warm
+        Assert.Equal(4, Gen(ic).ContainerCount); // non-vacuous: the tree is actually realized + laid out
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        host.RunFrames(1_000);
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before); // 0 B idle frames with the items tree present
+    }
+
+    [Fact] // C2.11b: a FORWARD multi-item Move keeps the PANEL's visual order in lockstep with the generator's
+    // logical order (the case the per-slot reorder got wrong — visual/render order diverged from data order).
+    public void MultiItemMove_PanelOrderMatchesGeneratorOrder()
+    {
+        var source = new MovableList("a", "b", "c", "d", "e", "f");
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        using var _ = host;
+        var panel = (Panel)Gen(ic).ContainerFromIndex(0)!.VisualParent!;
+
+        source.RaiseMove(oldIndex: 0, newIndex: 3, count: 2); // generator order ⇒ c,d,e,a,b,f
+        host.RunUntilIdle();
+
+        Assert.Equal(6, panel.Children.Count);
+        for (var i = 0; i < 6; i++)
+            Assert.Same(Gen(ic).ContainerFromIndex(i), panel.Children[i]); // panel visual order == generator logical order
+    }
+
+    [Fact] // C2.16b (ItemsSourceView): an IList source that is NOT INotifyCollectionChanged is live-by-index but static
+    public void NonNotifyingIList_IsStatic()
+    {
+        var list = new List<string> { "a", "b" }; // List<T> is IList, not INotifyCollectionChanged
+        var (host, ic) = Show(new ItemsControl { ItemsSource = list });
+        using var _ = host;
+        Assert.Equal(2, Gen(ic).ContainerCount);
+
+        list.Add("c"); // mutate underneath — no INCC, so the generator cannot and must not react
+        host.RunUntilIdle();
+        Assert.Equal(2, Gen(ic).ContainerCount); // unchanged (static — no subscription)
+    }
+
+    [Fact] // C2.16c (ItemsSourceView): an INCC source that is NOT an IList is a FROZEN snapshot (no subscription)
+    public void NotifyingNonIList_IsSnapshotNotSubscribed()
+    {
+        var src = new NotifyingEnumerable("a", "b"); // INotifyCollectionChanged but NOT IList
+        var (host, ic) = Show(new ItemsControl { ItemsSource = src });
+        using var _ = host;
+        Assert.Equal(2, Gen(ic).ContainerCount);
+
+        src.RaiseReset(); // later notifications are ignored — it was snapshotted, never subscribed
+        host.RunUntilIdle();
+        Assert.Equal(2, Gen(ic).ContainerCount); // unchanged (frozen snapshot)
+    }
+
+    [Fact] // teardown: TearDown releases the bound source so a live external collection no longer pins the control
+    public void TearDown_ReleasesItemsSourceSubscription()
+    {
+        var source = new ObservableCollection<string> { "a", "b" };
+        var ic = new ItemsControl { ItemsSource = source };
+        Assert.NotNull(Gen(ic).ContainerFromIndex(1)); // realized eagerly (no host needed for the generator)
+
+        ic.TearDown();
+
+        source.Add("c"); // mutate after teardown — the generator must NOT react (source released via OnTearDown)
+        Assert.Null(Gen(ic).ContainerFromIndex(2)); // no new container realized
+        Assert.Equal(2, Gen(ic).ContainerCount);
+    }
+
+    [Fact] // ItemsSource A→B swap: old containers unrealized + old source released; new realized
+    public void ItemsSourceSwap_RealizesNew_ReleasesOldSource()
+    {
+        var a = new ObservableCollection<string> { "a1", "a2" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = a });
+        using var _ = host;
+        var oldC0 = Gen(ic).ContainerFromIndex(0)!;
+
+        ic.ItemsSource = new ObservableCollection<string> { "b1", "b2", "b3" };
+        host.RunUntilIdle();
+        Assert.Null(oldC0.LogicalParent);            // old containers unrealized
+        Assert.Equal(3, Gen(ic).ContainerCount);     // new source realized
+
+        a.Add("a4"); // the OLD source was disposed on swap — no reaction
+        host.RunUntilIdle();
+        Assert.Equal(3, Gen(ic).ContainerCount); // still the B generation
+    }
+
+    [Fact] // presenter lifecycle: detach then re-attach re-adopts the SAME containers exactly once (no double-adoption)
+    public void DetachReattach_ReadoptsContainersOnce()
+    {
+        var ic = new ItemsControl { ItemsSource = new[] { "a", "b" } };
+        var wrap = new StackPanel();
+        wrap.Children.Add(ic);
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        using var _ = host;
+        host.ShowRoot(wrap);
+        host.RunUntilIdle();
+        var c0 = Gen(ic).ContainerFromIndex(0)!;
+
+        wrap.Children.Remove(ic); // detach (presenter clears its panel + unsubscribes)
+        host.RunUntilIdle();
+        wrap.Children.Add(ic);    // re-attach (presenter rebuilds + re-adopts the control-lifetime containers)
+        host.RunUntilIdle();
+
+        Assert.Same(c0, Gen(ic).ContainerFromIndex(0));          // same instances — generator is control-lifetime
+        var panel = (Panel)Gen(ic).ContainerFromIndex(0)!.VisualParent!;
+        Assert.Equal(2, panel.Children.Count);                   // exactly two — no duplicate adoption
+    }
+
+    /// <summary>A minimal <see cref="IList"/> + <see cref="INotifyCollectionChanged"/> source that can raise a
+    /// multi-item <see cref="NotifyCollectionChangedAction.Move"/> (which <see cref="ObservableCollection{T}"/>
+    /// never does — it only moves one element at a time).</summary>
+    private sealed class MovableList(params object?[] items) : IList, INotifyCollectionChanged
+    {
+        private readonly List<object?> _inner = [.. items];
+
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
+
+        public void RaiseMove(int oldIndex, int newIndex, int count)
+        {
+            var moved = _inner.GetRange(oldIndex, count);
+            _inner.RemoveRange(oldIndex, count);
+            _inner.InsertRange(newIndex, moved);
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Move, moved, newIndex, oldIndex));
+        }
+
+        public int Count => _inner.Count;
+        public object? this[int index] { get => _inner[index]; set => _inner[index] = value; }
+        public int IndexOf(object? value) => _inner.IndexOf(value);
+        public bool Contains(object? value) => _inner.Contains(value);
+        public IEnumerator GetEnumerator() => _inner.GetEnumerator();
+        public void CopyTo(Array array, int index) => ((ICollection)_inner).CopyTo(array, index);
+        public int Add(object? value) { _inner.Add(value); return _inner.Count - 1; }
+        public void Insert(int index, object? value) => _inner.Insert(index, value);
+        public void Remove(object? value) => _inner.Remove(value);
+        public void RemoveAt(int index) => _inner.RemoveAt(index);
+        public void Clear() => _inner.Clear();
+        public bool IsFixedSize => false;
+        public bool IsReadOnly => false;
+        public bool IsSynchronized => false;
+        public object SyncRoot => _inner;
+    }
+
+    /// <summary>An <see cref="INotifyCollectionChanged"/> source that is deliberately NOT an <see cref="IList"/> —
+    /// it must be snapshotted (never subscribed) by <c>ItemsSourceView</c>.</summary>
+    private sealed class NotifyingEnumerable(params object?[] items) : IEnumerable<object?>, INotifyCollectionChanged
+    {
+        private readonly List<object?> _inner = [.. items];
+
+        public event NotifyCollectionChangedEventHandler? CollectionChanged;
+
+        public void RaiseReset() => CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+
+        public IEnumerator<object?> GetEnumerator() => _inner.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => _inner.GetEnumerator();
     }
 }

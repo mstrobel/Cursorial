@@ -89,8 +89,10 @@ public class ItemsControl : Control
         }
     }
 
-    /// <summary>Undoes <see cref="PrepareContainerForItemOverride"/> before the container is detached (unhook while bindings are live).</summary>
-    protected virtual void ClearContainerForItemOverride(UIElement container)
+    /// <summary>Undoes <see cref="PrepareContainerForItemOverride"/> before the container is detached (unhook while
+    /// bindings are live). <paramref name="item"/> is the source item the container was prepared for (so subclasses
+    /// can unhook item-specific state — WPF parity).</summary>
+    protected virtual void ClearContainerForItemOverride(UIElement container, object? item)
     {
         if (container is ContentPresenter presenter)
         {
@@ -122,12 +124,15 @@ public class ItemsControl : Control
         }
     }
 
-    internal void ClearContainerForItem(UIElement container)
+    internal void ClearContainerForItem(UIElement container, object? item)
     {
-        if (IsItemItsOwnContainer(container))
-            return; // an own-container is the user's element — leave it untouched
+        // Own-container ⇒ container IS the item (CreateContainer returned the item itself); leave the user's element
+        // untouched. Identity is the only reliable signal — the container's type is always UIElement, and its
+        // DataContext can't distinguish the cases (an own-container's DataContext is never set to the item).
+        if (ReferenceEquals(container, item))
+            return;
 
-        ClearContainerForItemOverride(container);
+        ClearContainerForItemOverride(container, item);
         container.Style = null; // drop the Explicit-layer ItemContainerStyle (Style is a plain property)
     }
 
@@ -179,6 +184,13 @@ public class ItemsControl : Control
     {
         base.OnApplyTemplate();
         ItemsHost = GetTemplatePart<ItemsPresenter>("PART_ItemsHost");
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTearDown()
+    {
+        base.OnTearDown();
+        ItemContainerGenerator.ReleaseSource(); // unhook a live ItemsSource so it no longer pins this control
     }
 }
 

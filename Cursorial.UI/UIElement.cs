@@ -516,8 +516,20 @@ public abstract partial class UIElement : UIObject
             }
         }
 
+        OnTearDown(); // subclass-owned release of non-binding external subscriptions (e.g. ItemsControl's source view)
         TearDownValueStore();
         Cursorial.UI.Data.BindingOperations.TearDown(this); // the second sweep leg (doc §5.1 / §6.5)
+    }
+
+    /// <summary>
+    /// Releases subclass-owned resources during <see cref="TearDown"/> — raw external subscriptions a control holds
+    /// across attach/detach that bindings don't cover (the canonical case: <c>ItemsControl</c> unhooking its bound
+    /// <c>ItemsSource</c>'s collection-changed handler so a live viewmodel collection no longer pins the control).
+    /// Runs after the child sweep and before the value-store/binding sweep. <b>Not</b> called on transient detach —
+    /// detach + re-attach must rebuild this state (doc §5.1).
+    /// </summary>
+    protected virtual void OnTearDown()
+    {
     }
 
     // ───────────────────────────── effective IsEnabled (S1-owned) ─────────────────────────────

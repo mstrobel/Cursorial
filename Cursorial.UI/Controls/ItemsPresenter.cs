@@ -111,14 +111,23 @@ public sealed class ItemsPresenter : UIElement
                 break;
 
             case ContainersChangedAction.Moved:
-                if (_generator.ContainerFromIndex(e.StartIndex) is {} moved)
-                {
-                    var from = _panel.Children.IndexOf(moved);
-                    if (from >= 0)
-                        _panel.Children.Move(from, e.StartIndex);
-                }
+            {
+                // Mirror the generator's block move exactly: lift the moved containers OUT of the panel, then
+                // re-insert them contiguously at the new index. A per-slot in-place Move() is wrong for a forward
+                // multi-item move — UIElementCollection.Move is remove-then-insert, so placing the 2nd block element
+                // past the already-placed 1st shifts the 1st back. (After removal the non-moved children keep their
+                // relative order — identical to the generator — so Insert(StartIndex + i) reproduces its order.)
+                var block = new UIElement[e.Count];
+                for (var i = 0; i < e.Count; i++)
+                    block[i] = _generator.ContainerFromIndex(e.StartIndex + i)!;
+
+                foreach (var container in block)
+                    _panel.Children.Remove(container);
+                for (var i = 0; i < block.Length; i++)
+                    _panel.Children.Insert(e.StartIndex + i, block[i]);
 
                 break;
+            }
 
             default:
             case ContainersChangedAction.Reset:
@@ -134,11 +143,11 @@ public sealed class ItemsPresenter : UIElement
         if (_generator is null || _panel is null)
             return;
 
-        var target = _generator.Containers;
-
-        for (var i = 0; i < target.Count; i++)
+        for (var i = 0; i < _generator.ContainerCount; i++)
         {
-            var container = target[i];
+            if (_generator.ContainerFromIndex(i) is not {} container)
+                continue;
+
             var current = _panel.Children.IndexOf(container);
 
             if (current < 0)

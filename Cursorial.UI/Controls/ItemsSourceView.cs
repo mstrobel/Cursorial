@@ -19,14 +19,22 @@ internal sealed class ItemsSourceView : IDisposable
 
     internal ItemsSourceView(IEnumerable source)
     {
-        // IList is used directly (so a bound ObservableCollection<T> indexes live); a non-list enumerable is
-        // snapshotted (it can't change-notify meaningfully without IList indices anyway).
-        _list = source as IList ?? Snapshot(source);
-
-        if (source is INotifyCollectionChanged incc)
+        // A live IList source is used directly (a bound ObservableCollection<T> indexes live) and, if it also
+        // change-notifies, its events forward. A non-IList enumerable is snapshotted and stays STATIC — we do not
+        // subscribe even if it implements INotifyCollectionChanged, because its indexed change args can't be applied
+        // against a snapshot whose indices it doesn't share (that would desync the generator).
+        if (source is IList list)
         {
-            _incc = incc;
-            _incc.CollectionChanged += OnSourceCollectionChanged;
+            _list = list;
+            if (source is INotifyCollectionChanged incc)
+            {
+                _incc = incc;
+                _incc.CollectionChanged += OnSourceCollectionChanged;
+            }
+        }
+        else
+        {
+            _list = Snapshot(source);
         }
     }
 

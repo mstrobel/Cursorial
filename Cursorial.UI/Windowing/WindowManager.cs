@@ -35,10 +35,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
     private readonly List<SceneLayer> _layers = [];          // per-frame scratch (the one concatenated layer span)
     private readonly TerminalCaretService _caretService;
     private readonly IUserCodeGuard? _guard;
+    private readonly List<Window> _windows = [];            // shown windows, bottom→top z-order (above the root)
     private SceneCompositor _compositor = new();
     private OutputCapabilities _capabilities;
     private Size _viewport;
     private TopLevelSurface? _rootSurface;
+    private Window? _activeWindow;
     private TerminalCaretState _lastCaret;
     private bool _caretEverApplied;
 
@@ -61,6 +63,15 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
 
     /// <summary>The chrome-less application-root surface, or <see langword="null"/> until a root is set.</summary>
     public TopLevelSurface? RootSurface => _rootSurface;
+
+    /// <summary>The shown windows, bottom→top in z-order (above the root surface).</summary>
+    public IReadOnlyList<Window> Windows => _windows;
+
+    /// <summary>The active (focused) top-level window, or <see langword="null"/> when none (the root has focus).</summary>
+    public Window? ActiveWindow => _activeWindow;
+
+    /// <summary>Raised after <see cref="ActiveWindow"/> changes.</summary>
+    public event EventHandler? ActiveWindowChanged;
 
     /// <summary>The root surface's render tree — the W0-compat single-tree accessor (null until a root is set).</summary>
     internal RenderTree? Tree => _rootSurface?.RenderTree;
@@ -99,7 +110,17 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
     /// <inheritdoc/>
     public void OnLayoutCompleted()
     {
-        // W0: SizeToContent resolution (W1) and popup anchor reposition (W4) land with those surfaces.
+        // Keep each window's surface anchored to its Left/Top so a programmatic move re-composites
+        // (AffectsComposite on Window.Left/Top). Full SizeToContent re-fit on content change is W5.
+        for (var i = 0; i < _windows.Count; i++)
+        {
+            var window = _windows[i];
+            if (window.HostSurface is { } surface)
+            {
+                surface.Left = window.Left;
+                surface.Top = window.Top;
+            }
+        }
     }
 
     // ── IRenderSystem ──────────────────────────────────────────────────────────────────────────────
@@ -193,12 +214,107 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
         }
 
         if (root is not null)
-        {
             _rootSurface = new TopLevelSurface(root, _scenePool, _capabilities, _guard) { Size = _viewport };
-            _surfaces.Insert(0, _rootSurface); // bottom of the stack
-        }
 
+        RebuildSurfaceStack();
         _compositor = new SceneCompositor();
+    }
+
+    // ── Window hosting (P7-W1: modeless show/close + shown-order z; owner-banding + modality at W2) ───
+
+    /// <summary>Shows <paramref name="window"/> on its own surface above the root, sizes/positions it, and activates it.</summary>
+    internal void ShowWindow(Window window)
+    {
+        var surface = new TopLevelSurface(window, _scenePool, _capabilities, _guard) { HostWindow = window };
+        window.HostSurface = surface;
+        _windows.Add(window); // top of z-order
+
+        SizeAndPositionWindow(window, surface);
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor(); // the layer set changed wholesale
+        SetActive(window);
+    }
+
+    /// <summary>Brings <paramref name="window"/> to the top of the window band and activates it. Returns false when it is not shown here.</summary>
+    internal bool ActivateWindow(Window window)
+    {
+        if (!_windows.Remove(window))
+            return false;
+
+        _windows.Add(window); // raise to the top of the z-order
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor();
+        SetActive(window);
+        return true;
+    }
+
+    /// <summary>Removes <paramref name="window"/>'s surface and re-activates the next-topmost window (or the root).</summary>
+    internal void CloseWindow(Window window)
+    {
+        if (!_windows.Remove(window))
+            return;
+
+        window.HostSurface?.Detach();
+        window.HostSurface = null;
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor();
+
+        if (ReferenceEquals(_activeWindow, window))
+            SetActive(_windows.Count > 0 ? _windows[^1] : null); // W2 refines the owner→gate→topmost handoff
+    }
+
+    private void SetActive(Window? window)
+    {
+        if (ReferenceEquals(_activeWindow, window))
+            return;
+
+        var previous = _activeWindow;
+        _activeWindow = window;
+        previous?.SetActiveInternal(false);
+        window?.SetActiveInternal(true);
+        ActiveWindowChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SizeAndPositionWindow(Window window, TopLevelSurface surface)
+    {
+        // Provisional measure at the screen constraint to read the window's content-driven desired size,
+        // then fit per SizeToContent / explicit Width-Height. (W5 adds frame-converged re-fit on changes.)
+        surface.Size = _viewport;
+        surface.RunLayoutPass();
+
+        var desired = window.DesiredSize;
+        var stc = window.SizeToContent;
+        var width = window.Width ?? (stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? desired.Columns : _viewport.Columns);
+        var height = window.Height ?? (stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? desired.Rows : _viewport.Rows);
+
+        var size = new Size(Math.Clamp(width, 0, _viewport.Columns), Math.Clamp(height, 0, _viewport.Rows));
+        surface.Size = size;
+        window.ActualSize = size;
+
+        var (left, top) = window.WindowStartupLocation switch
+        {
+            WindowStartupLocation.CenterScreen =>
+                ((_viewport.Columns - size.Columns) / 2, (_viewport.Rows - size.Rows) / 2),
+            WindowStartupLocation.CenterOwner when window.Owner?.HostSurface is { } owner =>
+                (owner.Left + (owner.Size.Columns - size.Columns) / 2, owner.Top + (owner.Size.Rows - size.Rows) / 2),
+            _ => (window.Left, window.Top),
+        };
+
+        window.SetCurrentValue(Window.LeftProperty, left); // user-gesture-style write: bindings survive (§8.2)
+        window.SetCurrentValue(Window.TopProperty, top);
+        surface.Left = left;
+        surface.Top = top;
+        surface.Opacity = window.Opacity;
+    }
+
+    private void RebuildSurfaceStack()
+    {
+        _surfaces.Clear();
+        if (_rootSurface is not null)
+            _surfaces.Add(_rootSurface);
+        for (var i = 0; i < _windows.Count; i++)
+            if (_windows[i].HostSurface is { } surface)
+                _surfaces.Add(surface);
     }
 
     // ── Renegotiation leg (UIApplication calls; mirrors the single-root render system) ───────────────

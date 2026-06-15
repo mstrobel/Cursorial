@@ -50,8 +50,8 @@ public sealed class TopLevelSurface
     /// <summary>The surface's render tree (one <see cref="Scene"/> per render boundary, §8.5).</summary>
     public RenderTree RenderTree { get; }
 
-    /// <summary>The shown <c>Window</c> hosting this surface, or <see langword="null"/> for the chrome-less application root (set at P7-W1).</summary>
-    public object? HostWindow { get; internal set; }
+    /// <summary>The shown <see cref="Window"/> hosting this surface, or <see langword="null"/> for the chrome-less application root.</summary>
+    public Window? HostWindow { get; internal set; }
 
     /// <summary>The surface's screen-space left column (0 for the application root).</summary>
     public int Left { get; internal set; }

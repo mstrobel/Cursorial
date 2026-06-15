@@ -25,8 +25,9 @@ Fourteen projects:
 - `Cursorial.Animation` — pure, time-free animation primitives (`IAnimation<T>`: elapsed → value; the consumer owns
   the clock).
 - `Cursorial.UI` — the WPF/Avalonia-style UI framework layer (in progress; design doc at `docs/ui-layer-design.md`,
-  phase plan in its §14). Phases 0 (property system) and 1 (element tree + layout + render zones + app spine) are
-  complete; see "UI module status" below.
+  phase plan in its §14). Phases 0–7 complete (property system → element tree/layout/render/app spine → input/focus
+  → styling → data binding → resources/theming + first controls → XAML loader → S4 windowing); see "UI module
+  status" below.
 - `Cursorial.UI.Xaml.Frontend` — the **netstandard2.0** XAML parser frontend shared with the future X4/X5
   generator: the structure-of-arrays node model (`XamlDocument`), the `XmlReader` parser, the markup-extension
   grammar, diagnostics (`XamlDiagnostic`/`XamlParseException`, line+col everywhere), and the type-system seams
@@ -48,6 +49,9 @@ Fourteen projects:
   `uixaml` (Cursorial.UI.Xaml showcase — the entire control tree is loaded at runtime from an embedded
   `.xaml` resource: `{StaticResource}` brushes, a `{TemplateBinding}` `ControlTemplate`, access-key
   `Button`s, `{Binding}` text + status; the live P6 proof that declarative UI works),
+  `windows` (Cursorial.UI S4 windowing showcase — `n` opens draggable/resizable/maximizable Windows,
+  `d` a modal `ShowDialogAsync` dialog, `m` a light-dismiss Popup menu, `f` fit-all, `c` close-all;
+  shrink the terminal while a window overhangs for the WM fit badge — the live P7 proof),
   `rasterbench` (headless-capable scene-raster/compositor/diff benchmark — UI design-doc probe 1), `accesskeys`
   (live access-key gate probe: Alt down/up tracking, negotiated Kitty flags, the requirement-6 gate verdict — UI
   design-doc probe 3), `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked
@@ -403,6 +407,47 @@ first-tab-stop walk found nothing and gave up; `FocusManager` now **parks** the 
 it at the post-layout boundary (`CompletePendingActivationFocus`), so the first focusable auto-focuses the same frame
 its subtree materializes. (The XAML loader was exonerated — a hand-vs-loader diff proved both trees hit the identical
 latent timing bug.)
+
+**Phase 7 complete** (doc §14 — the S4 windowing layer, in `Cursorial.UI/Windowing/`). The `WindowManager`
+*is* the window system (no OS HWNDs): it owns the `ScenePool` + `SceneCompositor`, implements the frame-loop
+seams (`ILayoutSystem`/`IRenderSystem`/`IWindowSystem`) **and** S3's `IWindowTopology`, and replaces the P1
+single-root stand-ins with no frame-loop change. A `TopLevelSurface` wraps one S1 `RenderTree` at a screen
+offset; surfaces stack root → windows → popup band → fit badge, concatenated into one composite per frame.
+
+- **W0–W2** — `TopLevelSurface` + the surface stack; `Window : ContentControl` (interim occluding chrome
+  template — a background-filled title bar that drags, a docked ✕, a ◢ resize grip; `WindowStyle.None` is
+  chrome-less) with modeless `Show`/`Activate`/`Close` + owner immutability; the modal stack + blocked
+  (`obscured`) set + activation handoff (owner→gate→topmost→null only when `wasActive`); **`ShowDialogAsync`
+  is `Task`-based with the frame loop as the pump — cancellation THROWS `OperationCanceledException` (never a
+  default return), marshaled to the UI thread**.
+- **W3** — the WM as the real `IWindowTopology`: `FilterMouseEvent` does surface scan → light-dismiss sweep →
+  blocked-host swallow + `:modal-attention` pulse (a frame-aligned `UITimer`) + capture release →
+  activation-on-press → surface-local route; `dispatcher.OnSurfacesChanged()` on every topology change.
+- **W4** — `Popup : UIElement` (light-dismiss primitive): lives in the host's LOGICAL tree (Child inherits
+  context; the Escape route crosses the surface root back through the logical parent), `Child` roots its own
+  surface in the band above all windows; two-way `IsOpen` write-back, flip-then-clamp placement, light dismiss,
+  content-swap-while-open re-host.
+- **W5 + W5b** — chrome drag/resize/maximize (role-keyed via `WindowChrome.HitTestRole`, screen-anchored
+  deltas, `WindowState` maximize/restore through `OnWindowStateChanged`→`ApplyMaximizeState` so the gesture
+  AND a direct assignment behave identically); the **no-auto-shrink screen-resize policy** (a terminal resize
+  clamps ≥ `MinVisible` cells onto both axes but never shrinks — user choice) with the WM-owned **fit badge**
+  (top-right, appears after a clipping resize, `FitAllWindowsToViewport` + dismiss); `SizeToContent` re-fit
+  (`SyncSurfaceSize`); the §8.8 **deferred-topology queue** (mutations during layout/render defer to the next
+  `DrainDeferredTopology`); Title → OSC 2 on the active window; `CloseAllAsync` shutdown sweep (owner cascade
+  + hosted-popup close) wired into teardown; `WindowDiagnostics.DumpZOrder`. `UIApplication.WindowManager` is
+  public.
+- **Subtree mouse capture pulled into v1** (the P2 "element-only" deferral reversed): `CaptureMode {Element,
+  SubTree}` on `CaptureMouse` (input-matrix N95–N97).
+- **P7 review fix (multi-surface styling)** — the P3 StyleEngine assumed a single root (`VisualRoot ==
+  app.RootElement`), so NO window/popup content was styled or themed (controls measured 0×0). `IsStylable` is
+  now "attached under any live surface root" (its `VisualRoot` owns a `LayoutManager` — the signal available
+  before the `RenderTree` exists); capability-class stamping and app/theme-wide re-match iterate
+  `StylableSurfaceRoots()` (the app root + every window/popup/chrome surface).
+
+Tests: `Cursorial.UI.Tests/Windowing/` (`TopLevelSurfaceTests`, `WindowManagerTests`, `WindowTests`,
+`WindowDataTests`, `WindowModalTests`, `WindowInputTests`, `WindowPopupTests`, `WindowResizeMoveTests`) +
+`InputMatrix/Section07` subtree-capture rows; the `windows` demo is the live canary (UI suite 1822 green). The
+interim chrome template is replaced by S8's themed control theme at C4.
 
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette

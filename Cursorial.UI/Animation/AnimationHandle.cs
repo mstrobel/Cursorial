@@ -4,8 +4,8 @@ using System;
 namespace Cursorial.UI;
 
 /// <summary>
-/// The caller's handle to a running animation (design doc §9.2). <c>Stop()</c> and <c>Completed</c> ship in
-/// A0; <c>Pause</c>/<c>Resume</c>/<c>Seek</c>/<c>SkipToEnd</c> land in A2.
+/// The caller's handle to a running animation (design doc §9.2). <c>Stop()</c> and <c>Completed</c> shipped in
+/// A0; <c>Pause</c>/<c>Resume</c>/<c>Seek</c>/<c>SkipToEnd</c> in A2.
 /// </summary>
 public sealed class AnimationHandle
 {
@@ -36,6 +36,18 @@ public sealed class AnimationHandle
 
     /// <summary>Stops the animation: the store handle is disposed ⇒ the base resurfaces (invariant 4); no <c>Completed</c>.</summary>
     public void Stop() => _instance.StopFromHandle();
+
+    /// <summary>Pauses the animation — legal from Delayed/Running; the value holds; it drops out of the idle gate (A2).</summary>
+    public void Pause() => _instance.Pause();
+
+    /// <summary>Resumes a paused animation from where it paused (no time jump — A2).</summary>
+    public void Resume() => _instance.Resume();
+
+    /// <summary>Seeks to <paramref name="offset"/> on the animation's own timeline (clamped); works while paused (A2).</summary>
+    public void Seek(TimeSpan offset) => _instance.Seek(offset);
+
+    /// <summary>Snaps to the end value and completes; throws for a perpetual animation (A2).</summary>
+    public void SkipToEnd() => _instance.SkipToEnd();
 
     /// <summary>Raises <see cref="Completed"/> at most once (the scheduler's post-sampling drain calls this).</summary>
     internal void RaiseCompleted()

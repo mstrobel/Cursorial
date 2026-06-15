@@ -45,6 +45,18 @@ internal abstract class AnimationInstance : IAnimationCompletion
     /// <summary>The public <c>AnimationHandle.Stop()</c> path: retire + drop from the scheduler registry.</summary>
     internal abstract void StopFromHandle();
 
+    /// <summary>Pauses (A2): legal from Delayed/Running; captures the pre-pause state; the value holds; drops out of idle.</summary>
+    internal abstract void Pause();
+
+    /// <summary>Resumes (A2): restores the captured state and shifts <c>StartTime</c> by the pause span (no time jump).</summary>
+    internal abstract void Resume();
+
+    /// <summary>Seeks (A2): jumps to <c>ValueAt(offset)</c> on the animation's own timeline (clamped); works while Paused.</summary>
+    internal abstract void Seek(TimeSpan offset);
+
+    /// <summary>Skips to the end (A2): finite only (perpetual throws); writes the end value + completes (one pass).</summary>
+    internal abstract void SkipToEnd();
+
     /// <summary>Raises the public handle's <c>Completed</c> (at most once) — the post-sampling drain.</summary>
     public abstract void RaiseCompleted();
 }
@@ -60,13 +72,15 @@ internal sealed class AnimationInstance<T> : AnimationInstance
     private readonly UIObject _target;
     private readonly StyledProperty<T> _property;
     private readonly IAnimation<T> _animation;
-    private readonly TimeSpan _startTime;   // T_N + BeginTime (the animation's own t=0 lands here)
+    private TimeSpan _startTime;             // T_N + BeginTime (the animation's own t=0 lands here); shifts on pause/seek
     private readonly TimeSpan _duration;
     private readonly bool _perpetual;        // captured once — keeps TimeSpan.MaxValue out of arithmetic (AD6)
     private readonly FillBehavior _fill;
     private AnimatedValueHandle<T>? _handle;
     private AnimationHandle? _publicHandle;
     private bool _completionPending;
+    private AnimationState _stateBeforePause; // restored by Resume (A2)
+    private TimeSpan _pauseClock;             // the frozen clock at Pause (A2)
 
     internal AnimationInstance(
         AnimationScheduler scheduler, UIObject target, StyledProperty<T> property,
@@ -175,6 +189,63 @@ internal sealed class AnimationInstance<T> : AnimationInstance
 
         Retire();
         _scheduler.Remove(this);
+    }
+
+    internal override void Pause()
+    {
+        if (State is not (AnimationState.Delayed or AnimationState.Running))
+            return; // only an in-flight instance is pausable (Paused/Holding/Completed/Stopped ignored)
+
+        _stateBeforePause = State;
+        _pauseClock = _scheduler.Clock.Now;
+        State = AnimationState.Paused;
+    }
+
+    internal override void Resume()
+    {
+        if (State != AnimationState.Paused)
+            return;
+
+        _startTime += _scheduler.Clock.Now - _pauseClock; // shift t=0 forward by the pause span — no time jump
+        State = _stateBeforePause;
+    }
+
+    internal override void Seek(TimeSpan offset)
+    {
+        if (IsFinished)
+            return; // Stopped/Completed — a seek is a no-op
+
+        var clamped = offset < TimeSpan.Zero ? TimeSpan.Zero
+            : (!_perpetual && offset > _duration ? _duration : offset);
+
+        // Anchor t=0 so elapsed == clamped at the reference clock. While Paused, anchor to the frozen pause
+        // clock so a later Resume continues from the sought position (no jump).
+        var reference = State == AnimationState.Paused ? _pauseClock : _scheduler.Clock.Now;
+        _startTime = reference - clamped;
+
+        if (State == AnimationState.Delayed)
+            State = AnimationState.Running;                          // a seek ≥ 0 starts a Delayed instance
+        else if (State == AnimationState.Holding && !_perpetual && clamped < _duration)
+            State = AnimationState.Running;                          // re-enter Running WITHOUT re-raising Completed (AD3 — the handle guards)
+        else if (State == AnimationState.Paused)
+            _stateBeforePause = AnimationState.Running;              // resume as Running from the sought offset
+
+        Write(clamped); // reflect the sought value immediately (works while Paused too)
+    }
+
+    internal override void SkipToEnd()
+    {
+        if (_perpetual)
+            throw new InvalidOperationException("Cannot SkipToEnd a perpetual animation (it has no end — AD6).");
+
+        if (State is AnimationState.Holding or AnimationState.Completed or AnimationState.Stopped)
+            return; // already at/past the end — no-op
+
+        Write(_duration); // Delayed/Running/Paused ⇒ snap to the end value
+        if (State is not (AnimationState.Running or AnimationState.Delayed or AnimationState.Paused))
+            return;       // a reentrant Stop from the write's notification skips completion (AD7)
+
+        Complete();
     }
 
     public override void RaiseCompleted()

@@ -1,10 +1,4 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -105,40 +99,84 @@ public partial class Window : ContentControl
     }
 
     /// <summary>Creates a window.</summary>
-    public Window() { }
+    public Window() {}
 
     /// <inheritdoc cref="TitleProperty"/>
-    public string? Title { get => GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
+    public string? Title
+    {
+        get => GetValue(TitleProperty);
+        set => SetValue(TitleProperty, value);
+    }
 
     /// <inheritdoc cref="WindowStyleProperty"/>
-    public WindowStyle WindowStyle { get => GetValue(WindowStyleProperty); set => SetValue(WindowStyleProperty, value); }
+    public WindowStyle WindowStyle
+    {
+        get => GetValue(WindowStyleProperty);
+        set => SetValue(WindowStyleProperty, value);
+    }
 
     /// <inheritdoc cref="ShadowProperty"/>
-    public WindowShadow Shadow { get => GetValue(ShadowProperty); set => SetValue(ShadowProperty, value); }
+    public WindowShadow Shadow
+    {
+        get => GetValue(ShadowProperty);
+        set => SetValue(ShadowProperty, value);
+    }
 
     /// <inheritdoc cref="LeftProperty"/>
-    public int Left { get => GetValue(LeftProperty); set => SetValue(LeftProperty, value); }
+    public int Left
+    {
+        get => GetValue(LeftProperty);
+        set => SetValue(LeftProperty, value);
+    }
 
     /// <inheritdoc cref="TopProperty"/>
-    public int Top { get => GetValue(TopProperty); set => SetValue(TopProperty, value); }
+    public int Top
+    {
+        get => GetValue(TopProperty);
+        set => SetValue(TopProperty, value);
+    }
 
     /// <inheritdoc cref="SizeToContentProperty"/>
-    public SizeToContent SizeToContent { get => GetValue(SizeToContentProperty); set => SetValue(SizeToContentProperty, value); }
+    public SizeToContent SizeToContent
+    {
+        get => GetValue(SizeToContentProperty);
+        set => SetValue(SizeToContentProperty, value);
+    }
 
     /// <inheritdoc cref="WindowStateProperty"/>
-    public WindowState WindowState { get => GetValue(WindowStateProperty); set => SetValue(WindowStateProperty, value); }
+    public WindowState WindowState
+    {
+        get => GetValue(WindowStateProperty);
+        set => SetValue(WindowStateProperty, value);
+    }
 
     /// <inheritdoc cref="WindowStartupLocationProperty"/>
-    public WindowStartupLocation WindowStartupLocation { get => GetValue(WindowStartupLocationProperty); set => SetValue(WindowStartupLocationProperty, value); }
+    public WindowStartupLocation WindowStartupLocation
+    {
+        get => GetValue(WindowStartupLocationProperty);
+        set => SetValue(WindowStartupLocationProperty, value);
+    }
 
     /// <inheritdoc cref="CanMoveProperty"/>
-    public bool CanMove { get => GetValue(CanMoveProperty); set => SetValue(CanMoveProperty, value); }
+    public bool CanMove
+    {
+        get => GetValue(CanMoveProperty);
+        set => SetValue(CanMoveProperty, value);
+    }
 
     /// <inheritdoc cref="CanResizeProperty"/>
-    public bool CanResize { get => GetValue(CanResizeProperty); set => SetValue(CanResizeProperty, value); }
+    public bool CanResize
+    {
+        get => GetValue(CanResizeProperty);
+        set => SetValue(CanResizeProperty, value);
+    }
 
     /// <inheritdoc cref="CanCloseProperty"/>
-    public bool CanClose { get => GetValue(CanCloseProperty); set => SetValue(CanCloseProperty, value); }
+    public bool CanClose
+    {
+        get => GetValue(CanCloseProperty);
+        set => SetValue(CanCloseProperty, value);
+    }
 
     /// <inheritdoc cref="IsActiveProperty"/>
     public bool IsActive => GetValue(IsActiveProperty);
@@ -161,6 +199,7 @@ public partial class Window : ContentControl
         {
             if (IsShown)
                 throw new InvalidOperationException("Window.Owner is immutable once the window has been shown.");
+
             _owner = value;
         }
     }
@@ -210,6 +249,7 @@ public partial class Window : ContentControl
         var manager = _owner?.Manager
                       ?? UIApplication.Current?.WindowManager
                       ?? throw new InvalidOperationException("No window manager is available to show the window (the application is not running).");
+
         Show(manager);
     }
 
@@ -217,6 +257,7 @@ public partial class Window : ContentControl
     public void Show(WindowManager manager)
     {
         ArgumentNullException.ThrowIfNull(manager);
+
         if (IsShown)
         {
             Activate();
@@ -230,8 +271,9 @@ public partial class Window : ContentControl
     /// <summary>Activates the window (brings it to the top of its band). Returns false when no manager hosts it (or it is modal-blocked).</summary>
     public bool Activate()
     {
-        if (Manager is not { } manager)
+        if (Manager is not {} manager)
             return false;
+
         return manager.ActivateWindow(this);
     }
 
@@ -245,12 +287,13 @@ public partial class Window : ContentControl
     {
         if (IsShown)
             throw new InvalidOperationException("The window is already shown.");
+
         if (cancellationToken.IsCancellationRequested)
             return Task.FromCanceled<object?>(cancellationToken);
 
-        var manager = _owner?.Manager
-                      ?? UIApplication.Current?.WindowManager
-                      ?? throw new InvalidOperationException("No window manager is available to show the dialog.");
+        var manager = _owner?.Manager ??
+                      UIApplication.Current?.WindowManager ??
+                      throw new InvalidOperationException("No window manager is available to show the dialog.");
 
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _dialogTcs = tcs;
@@ -262,15 +305,19 @@ public partial class Window : ContentControl
         if (cancellationToken.CanBeCanceled)
         {
             // Close mutates WM/styling state — marshal it to the UI thread (never the canceling thread).
-            _dialogRegistration = cancellationToken.Register(static self =>
-            {
-                var window = (Window)self!;
-                UIApplication.Current?.Dispatcher.Post(() =>
+            _dialogRegistration = cancellationToken.Register(
+                static self =>
                 {
-                    if (window.IsShown)
-                        window.Close(WindowCloseReason.Programmatic);
-                });
-            }, this);
+                    var window = (Window) self!;
+
+                    UIApplication.Current?.Dispatcher.Post(
+                        () =>
+                        {
+                            if (window.IsShown)
+                                window.Close(WindowCloseReason.Programmatic);
+                        });
+                },
+                this);
         }
 
         return tcs.Task;
@@ -311,9 +358,11 @@ public partial class Window : ContentControl
 
         var closing = new WindowClosingEventArgs(reason);
         _closing = true;
+
         try
         {
             Closing?.Invoke(this, closing);
+
             if (closing.CanCancel && closing.Cancel)
                 return; // vetoed
 
@@ -326,9 +375,11 @@ public partial class Window : ContentControl
 
             // Complete the modal task (if any): canceled when the close was cancellation-driven, else the result.
             _dialogRegistration.Dispose();
-            if (_dialogTcs is { } tcs)
+
+            if (_dialogTcs is {} tcs)
             {
                 _dialogTcs = null;
+
                 if (_dialogCancellation.IsCancellationRequested)
                     tcs.TrySetCanceled(_dialogCancellation);
                 else
@@ -351,6 +402,7 @@ public partial class Window : ContentControl
     {
         if (IsActive == active)
             return;
+
         SetValue(IsActivePropertyKey, active);
         (active ? Activated : Deactivated)?.Invoke(this, EventArgs.Empty);
     }
@@ -361,8 +413,8 @@ public partial class Window : ContentControl
 
     private static UIElement BuildInterimChrome(TemplateBuildContext ctx)
     {
-        var window = (Window)(ctx.TemplatedParent
-                              ?? throw new InvalidOperationException("The window chrome template requires a templated parent."));
+        var window = (Window) (ctx.TemplatedParent
+                               ?? throw new InvalidOperationException("The window chrome template requires a templated parent."));
 
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
@@ -370,10 +422,10 @@ public partial class Window : ContentControl
         // The occluding root: windows must OVERWRITE what they cover, not tint it (the drawing-core
         // occluding-panel idiom — FillOpaque). A default opaque surface fill until S8's themed brush (C4).
         var root = new Border
-        {
-            Occludes = true,
-            Background = window.Background ?? DefaultSurfaceBrush,
-        };
+                   {
+                       // Occludes = true,
+                       Background = window.Background ?? DefaultSurfaceBrush,
+                   };
 
         if (window.WindowStyle == WindowStyle.None)
         {
@@ -399,11 +451,13 @@ public partial class Window : ContentControl
 
         var closeButton = new Button { Content = "✕", Focusable = false, IsTabStop = false };
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
+
         closeButton.Click += (_, _) =>
-        {
-            if (window.CanClose)
-                window.Close(WindowCloseReason.ChromeAction);
-        };
+                             {
+                                 if (window.CanClose)
+                                     window.Close(WindowCloseReason.ChromeAction);
+                             };
+
         DockPanel.SetDock(closeButton, Dock.Right);
         titleBarContent.Children.Add(closeButton); // control buttons first, docked right
         ctx.RegisterName("PART_CloseButton", closeButton);
@@ -424,11 +478,12 @@ public partial class Window : ContentControl
             body.Children.Add(presenter);
 
             var grip = new TextBlock
-            {
-                Text = "◢",
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
-            };
+                       {
+                           Text = "◢",
+                           HorizontalAlignment = HorizontalAlignment.Right,
+                           VerticalAlignment = VerticalAlignment.Bottom,
+                       };
+
             WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
             ctx.RegisterName("PART_ResizeGrip", grip);
             body.Children.Add(grip);

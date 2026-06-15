@@ -19,6 +19,15 @@ namespace Cursorial.Drawing.Media;
 public interface IBrush
 {
     /// <summary>
+    /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt"/> (RGB
+    /// only). Clamped to [0, 1].
+    /// </summary>
+    double Opacity => 1.0;
+
+    /// <summary>Whether the brush's opacity is 1.0 (opaque).</summary>'
+    bool IsOpaque => Math.Abs(Opacity - 1.0) < double.Epsilon;
+    
+    /// <summary>
     /// The color for the cell at (<paramref name="column"/>, <paramref name="row"/>) — scene-local cell
     /// coordinates, with the origin at <paramref name="bounds"/>'s <see cref="Rect.Position"/> and units
     /// in cells. Position-dependent brushes (gradients) sample the <em>cell center</em>, i.e.

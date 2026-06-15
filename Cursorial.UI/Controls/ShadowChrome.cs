@@ -39,7 +39,13 @@ public class ShadowChrome : Decorator
     /// <summary>Color of the shadow. Default <see cref="Colors.Black"/>.</summary>
     public static readonly StyledProperty<Color> ShadowColorProperty =
         UIProperty.Register<ShadowChrome, Color>(nameof(ShadowColor), Colors.Black);
-    
+
+
+    static ShadowChrome()
+    {
+        AffectsRender<ShadowChrome>(RadiusProperty, OffsetColumnProperty, OffsetRowProperty, StrengthProperty, EdgesProperty, ShadowColorProperty);
+    }
+
     /// <inheritdoc cref="RadiusProperty"/>
     public int Radius
     {

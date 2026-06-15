@@ -216,14 +216,16 @@ public sealed class SceneCompositor
 
         var dst = target[column, row];
         var sourceStyle = opacity == 255 ? source.Style : ScaleSourceAlpha(source.Style, opacity);
-        var mergedBackground = Color.Composite(sourceStyle.Background, dst.Style.Background, mode);
+        var targetStyle = dst.Style;
+        var mergedBackground = Color.Composite(sourceStyle.Background, targetStyle.Background, mode);
 
         if (string.IsNullOrEmpty(source.Grapheme))
         {
+            var blendedForeground = Color.Composite(sourceStyle.Background, targetStyle.Foreground, mode);
             // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge bg.
             // Raw indexer — the compositor already ran Color.Composite, so routing through Set
             // (which composites again) would double-composite.
-            target[column, row] = dst with { Style = dst.Style with { Background = mergedBackground } };
+            target[column, row] = dst with { Style = dst.Style with { Foreground = blendedForeground, Background = mergedBackground } };
             return;
         }
 
@@ -243,7 +245,9 @@ public sealed class SceneCompositor
                 target.Set(column, row, source.Grapheme, in style);   // Set cleans up the orphaned neighbor
         }
         else
+        {
             target[column, row] = new Cell(source.Grapheme, source.Kind, style);
+        }
     }
 
     private static Style ScaleSourceAlpha(Style style, byte opacity) =>

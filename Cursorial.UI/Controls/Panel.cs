@@ -42,7 +42,12 @@ public abstract class Panel : UIElement
     /// </summary>
     protected override void Render(RenderContext context)
     {
-        if (Background is { } background && !context.Bounds.IsEmpty)
+        if (context.Bounds.IsEmpty || Background is not {} background)
+            return;
+
+        if (background.IsOpaque)
             context.FillOpaque(context.Bounds, background);
+        else
+            context.FillRectangle(context.Bounds, background);
     }
 }

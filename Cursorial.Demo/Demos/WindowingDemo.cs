@@ -21,7 +21,9 @@ internal sealed class WindowingDemo : IDemo
 {
     public string Name => "windows";
     public IReadOnlyList<string> Aliases => ["win", "windowing"];
-    public string Description => "Cursorial.UI S4 windowing showcase (n new window, d modal dialog, m popup menu, f fit-all, c close-all; drag/resize/maximize chrome; resize the terminal for the fit badge).";
+
+    public string Description =>
+        "Cursorial.UI S4 windowing showcase (n new window, d modal dialog, m popup menu, f fit-all, c close-all; drag/resize/maximize chrome; resize the terminal for the fit badge).";
 
     public async Task RunAsync(string argument)
     {
@@ -31,6 +33,7 @@ internal sealed class WindowingDemo : IDemo
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
         var controller = new Controller(app);
+
         try
         {
             await app.RunAsync(controller.BuildDesktop);
@@ -64,13 +67,14 @@ internal sealed class WindowingDemo : IDemo
             AttachHotkeys(root);
 
             _header = new Border
-            {
-                Background = new SolidColorBrush(HeaderBg),
-                Child = new TextBlock(" Cursorial.UI — S4 windowing  ·  n new · d dialog · m menu · f fit-all · c close-all · q quit")
-                {
-                    Foreground = new SolidColorBrush(HeaderText),
-                },
-            };
+                      {
+                          Background = new SolidColorBrush(HeaderBg),
+                          Child = new TextBlock(" Cursorial.UI — S4 windowing  ·  n new · d dialog · m menu · f fit-all · c close-all · q quit")
+                                  {
+                                      Foreground = new SolidColorBrush(HeaderText)
+                                  }
+                      };
+
             DockPanel.SetDock(_header, Dock.Top);
             root.Children.Add(_header);
 
@@ -81,13 +85,14 @@ internal sealed class WindowingDemo : IDemo
             root.Children.Add(statusBar);
 
             var hint = new TextBlock(
-                "\n   Press 'n' to open a window, then drag its title bar to move it, drag the ◢ corner to" +
-                "\n   resize, or double-click the title bar to maximize. 'd' opens a modal dialog; 'm' a" +
-                "\n   light-dismiss menu. Shrink the terminal while a window overhangs → the fit badge" +
-                "\n   appears top-right (your window size is preserved — click it or press 'f' to refit).")
-            {
-                Foreground = new SolidColorBrush(WindowText),
-            };
+                           "\n   Press 'n' to open a window, then drag its title bar to move it, drag the ◢ corner to" +
+                           "\n   resize, or double-click the title bar to maximize. 'd' opens a modal dialog; 'm' a" +
+                           "\n   light-dismiss menu. Shrink the terminal while a window overhangs → the fit badge" +
+                           "\n   appears top-right (your window size is preserved — click it or press 'f' to refit).")
+                       {
+                           Foreground = new SolidColorBrush(WindowText)
+                       };
+
             root.Children.Add(hint); // DockPanel last child fills the desktop
 
             // The popup menu lives in the desktop's logical tree (so Escape routes back here and it inherits
@@ -109,25 +114,27 @@ internal sealed class WindowingDemo : IDemo
             items.Children.Add(MenuItem("Close all windows", CloseAll));
 
             return new Popup
-            {
-                Placement = PlacementMode.Bottom,
-                Child = new Border
-                {
-                    Background = new SolidColorBrush(MenuBg),
-                    BorderPen = Pens.Light,
-                    Occludes = true,
-                    Child = items,
-                },
-            };
+                   {
+                       Placement = PlacementMode.Bottom,
+                       Child = new Border
+                               {
+                                   Background = new SolidColorBrush(MenuBg, 0.85),
+                                   BorderPen = Pens.Light,
+                                   // Occludes = true,
+                                   Child = items
+                               }
+                   };
 
             Button MenuItem(string label, Action action)
             {
                 var button = new Button { Content = label };
+
                 button.Click += (_, _) =>
-                {
-                    _menu.Close();
-                    action();
-                };
+                                {
+                                    _menu.Close();
+                                    action();
+                                };
+
                 return button;
             }
         }
@@ -152,37 +159,65 @@ internal sealed class WindowingDemo : IDemo
 
             switch (char.ToLowerInvariant(e.Text.Span[0]))
             {
-                case 'q': app.Shutdown(); e.Handled = true; break;
-                case 'n': OpenWindow(); e.Handled = true; break;
-                case 'd': OpenDialog(); e.Handled = true; break;
-                case 'm': _menu.PlacementTarget = _header; _menu.IsOpen = !_menu.IsOpen; e.Handled = true; break;
-                case 'f': app.WindowManager!.FitAllWindowsToViewport(); e.Handled = true; break;
-                case 'c': CloseAll(); e.Handled = true; break;
+                case 'q':
+                    app.Shutdown();
+                    e.Handled = true;
+                    break;
+
+                case 'n':
+                    OpenWindow();
+                    e.Handled = true;
+                    break;
+
+                case 'd':
+                    OpenDialog();
+                    e.Handled = true;
+                    break;
+
+                case 'm':
+                    _menu.PlacementTarget = _header;
+                    _menu.IsOpen = !_menu.IsOpen;
+                    e.Handled = true;
+                    break;
+
+                case 'f':
+                    app.WindowManager!.FitAllWindowsToViewport();
+                    e.Handled = true;
+                    break;
+
+                case 'c':
+                    CloseAll();
+                    e.Handled = true;
+                    break;
             }
         }
 
         private void OpenWindow()
         {
             var n = ++_windowCount;
-            var body = new StackPanel { Background = new SolidColorBrush(WindowBg) };
+            var body = new StackPanel();
             body.Children.Add(new TextBlock($"  Window #{n}") { Foreground = new SolidColorBrush(WindowText) });
-            body.Children.Add(new TextBlock("  Drag the title bar to move me;\n  drag the ◢ corner to resize;\n  double-click the title bar to maximize.")
-            {
-                Foreground = new SolidColorBrush(WindowText),
-            });
+
+            body.Children.Add(new TextBlock("  Drag the title bar to move me;\n  drag the ◢ corner to resize;\n" +
+                                            "  double-click the title bar to maximize.")
+                              {
+                                  Foreground = new SolidColorBrush(WindowText)
+                              });
+
             var close = new Button { Content = "Close" };
 
             var window = new Window
-            {
-                Title = $"Window #{n}",
-                Content = body,
-                Background = new SolidColorBrush(WindowBg),
-                WindowStartupLocation = WindowStartupLocation.Manual,
-                Left = 6 + n * 3 % 24, // cascade
-                Top = 3 + n * 2 % 12,
-                Width = 34,
-                Height = 9,
-            };
+                         {
+                             Title = $"Window #{n}",
+                             Content = body,
+                             Background = new SolidColorBrush(WindowBg, 0.85),
+                             WindowStartupLocation = WindowStartupLocation.Manual,
+                             Left = 6 + n * 3 % 24, // cascade
+                             Top = 3 + n * 2 % 12,
+                             Width = 34,
+                             Height = 9
+                         };
+
             close.Click += (_, _) => window.Close();
             body.Children.Add(close);
             AttachHotkeys(body); // keys route to the focused surface — the window carries the hotkeys too
@@ -205,15 +240,16 @@ internal sealed class WindowingDemo : IDemo
             prompt.Children.Add(buttons);
 
             var dialog = new Window
-            {
-                Title = "Confirm",
-                Content = prompt,
-                Background = new SolidColorBrush(WindowBg),
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                Width = 36,
-                Height = 7,
-                CanResize = false,
-            };
+                         {
+                             Title = "Confirm",
+                             Content = prompt,
+                             Background = new SolidColorBrush(WindowBg),
+                             WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                             Width = 36,
+                             Height = 7,
+                             CanResize = false
+                         };
+
             ok.Click += (_, _) => dialog.Close("OK");
             cancel.Click += (_, _) => dialog.Close("Cancel");
             AttachHotkeys(prompt);
@@ -234,6 +270,7 @@ internal sealed class WindowingDemo : IDemo
         private void UpdateStatus()
         {
             var wm = app.WindowManager!;
+
             _status.Text = $" windows: {wm.Windows.Count}  ·  active: {wm.ActiveWindow?.Title ?? "(desktop)"}  ·  " +
                            $"last dialog: {_lastResult}  ·  badge: {(wm.IsFitBadgeVisible ? "shown" : "hidden")}  " +
                            "—  n new · d dialog · m menu · f fit · c close-all · q quit";

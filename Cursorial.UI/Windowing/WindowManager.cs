@@ -36,6 +36,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
     private readonly TerminalCaretService _caretService;
     private readonly IUserCodeGuard? _guard;
     private readonly List<Window> _windows = [];            // shown windows, bottom→top z-order (above the root)
+    private readonly List<Window> _modalStack = [];         // active modals, bottom→top; the topmost is the gate
+    private readonly HashSet<Window> _blocked = [];         // windows currently disabled by a modal (the `obscured` set)
     private SceneCompositor _compositor = new();
     private OutputCapabilities _capabilities;
     private Size _viewport;
@@ -72,6 +74,18 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
 
     /// <summary>Raised after <see cref="ActiveWindow"/> changes.</summary>
     public event EventHandler? ActiveWindowChanged;
+
+    /// <summary>The topmost modal window (the modal gate), or <see langword="null"/> when no modal is active.</summary>
+    public Window? TopmostModal => _modalStack.Count > 0 ? _modalStack[^1] : null;
+
+    /// <summary>Whether <paramref name="window"/> is in the enabled set (not blocked by a modal). The W3 input gate.</summary>
+    public bool IsInputEnabled(Window window) => !_blocked.Contains(window);
+
+    /// <summary>Invoked when surfaces/z/modality change so S3 re-evaluates hover against the new stack (wired by the host).</summary>
+    internal Action? SurfacesChanged { get; set; }
+
+    /// <summary>Invoked when a window becomes blocked so S3 can release pointer capture held inside it (wired at W3).</summary>
+    internal Action<Window>? WindowBlocked { get; set; }
 
     /// <summary>The root surface's render tree — the W0-compat single-tree accessor (null until a root is set).</summary>
     internal RenderTree? Tree => _rootSurface?.RenderTree;
@@ -220,47 +234,148 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem
         _compositor = new SceneCompositor();
     }
 
-    // ── Window hosting (P7-W1: modeless show/close + shown-order z; owner-banding + modality at W2) ───
+    // ── Window hosting + modality (P7-W1 show/close; P7-W2 modal stack + blocked set + handoff) ───────
 
-    /// <summary>Shows <paramref name="window"/> on its own surface above the root, sizes/positions it, and activates it.</summary>
+    /// <summary>Shows <paramref name="window"/> modelessly on its own surface above the root, then activates it
+    /// (or, if a modal blocks it, leaves it below the gate and activates the gate).</summary>
     internal void ShowWindow(Window window)
     {
-        var surface = new TopLevelSurface(window, _scenePool, _capabilities, _guard) { HostWindow = window };
-        window.HostSurface = surface;
-        _windows.Add(window); // top of z-order
-
-        SizeAndPositionWindow(window, surface);
-        RebuildSurfaceStack();
-        _compositor = new SceneCompositor(); // the layer set changed wholesale
-        SetActive(window);
+        AddWindowSurface(window);
+        ComputeBlockedSet();
+        FinishShow(_blocked.Contains(window) ? TopmostModal : window);
     }
 
-    /// <summary>Brings <paramref name="window"/> to the top of the window band and activates it. Returns false when it is not shown here.</summary>
+    /// <summary>Shows <paramref name="window"/> modally: pushes the modal stack, blocks the rest, and activates it.</summary>
+    internal void ShowDialog(Window window)
+    {
+        AddWindowSurface(window);
+        _modalStack.Add(window);
+        ComputeBlockedSet(); // blocks every window except the modal + its transitively owned subtree
+        FinishShow(window);
+    }
+
+    /// <summary>Brings <paramref name="window"/> to the top of the window band and activates it. Returns false when
+    /// it is not shown here or is modal-blocked (a blocked activate silently redirects to the gate — no pulse).</summary>
     internal bool ActivateWindow(Window window)
     {
-        if (!_windows.Remove(window))
+        if (!_windows.Contains(window))
             return false;
 
-        _windows.Add(window); // raise to the top of the z-order
+        if (_blocked.Contains(window))
+        {
+            if (TopmostModal is { } gate && !ReferenceEquals(gate, window))
+                ActivateWindow(gate); // programmatic redirect, no attention pulse (§8.6)
+            return false;
+        }
+
+        MoveToTop(window);
         RebuildSurfaceStack();
         _compositor = new SceneCompositor();
         SetActive(window);
+        SurfacesChanged?.Invoke();
         return true;
     }
 
-    /// <summary>Removes <paramref name="window"/>'s surface and re-activates the next-topmost window (or the root).</summary>
+    /// <summary>Removes <paramref name="window"/>'s surface, pops it from the modal stack, recomputes the blocked
+    /// set, and — only if it was active — hands activation off (owner → gate → topmost enabled → null, §8.6).</summary>
     internal void CloseWindow(Window window)
     {
         if (!_windows.Remove(window))
             return;
 
+        var wasActive = ReferenceEquals(_activeWindow, window);
+        _modalStack.Remove(window);
+        _blocked.Remove(window);
         window.HostSurface?.Detach();
         window.HostSurface = null;
+
         RebuildSurfaceStack();
         _compositor = new SceneCompositor();
+        ComputeBlockedSet(); // a closed modal unblocks the windows it was gating
 
-        if (ReferenceEquals(_activeWindow, window))
-            SetActive(_windows.Count > 0 ? _windows[^1] : null); // W2 refines the owner→gate→topmost handoff
+        if (wasActive)
+            SetActive(ResolveHandoff(window));
+
+        SurfacesChanged?.Invoke();
+    }
+
+    private void AddWindowSurface(Window window)
+    {
+        var surface = new TopLevelSurface(window, _scenePool, _capabilities, _guard) { HostWindow = window };
+        window.HostSurface = surface;
+        _windows.Add(window);
+        SizeAndPositionWindow(window, surface);
+    }
+
+    private void FinishShow(Window? active)
+    {
+        if (active is not null)
+            MoveToTop(active); // the active window is the top of its band (W2 owner-DFS banding refines this)
+
+        RebuildSurfaceStack();
+        _compositor = new SceneCompositor(); // the layer set changed wholesale
+        SetActive(active);
+        SurfacesChanged?.Invoke();
+    }
+
+    private void MoveToTop(Window window)
+    {
+        _windows.Remove(window);
+        _windows.Add(window);
+    }
+
+    private void ComputeBlockedSet()
+    {
+        var enabled = new HashSet<Window>();
+        if (TopmostModal is { } gate)
+        {
+            enabled.Add(gate);
+            foreach (var window in _windows) // the gate's transitively owned subtree stays enabled
+                for (var owner = window.Owner; owner is not null; owner = owner.Owner)
+                    if (ReferenceEquals(owner, gate))
+                    {
+                        enabled.Add(window);
+                        break;
+                    }
+        }
+        else
+        {
+            foreach (var window in _windows)
+                enabled.Add(window);
+        }
+
+        foreach (var window in _windows)
+            SetBlocked(window, !enabled.Contains(window));
+    }
+
+    private void SetBlocked(Window window, bool blocked)
+    {
+        if (blocked == _blocked.Contains(window))
+            return;
+
+        if (blocked)
+        {
+            _blocked.Add(window);
+            window.Classes.Add("obscured");   // Fork B composite-dim recipe (Window.obscured { Opacity: 0.7 })
+            WindowBlocked?.Invoke(window);     // S3 releases capture held inside (wired at W3)
+        }
+        else
+        {
+            _blocked.Remove(window);
+            window.Classes.Remove("obscured");
+        }
+    }
+
+    private Window? ResolveHandoff(Window closed)
+    {
+        if (closed.Owner is { } owner && _windows.Contains(owner) && !_blocked.Contains(owner))
+            return owner;
+        if (TopmostModal is { } gate)
+            return gate;
+        for (var i = _windows.Count - 1; i >= 0; i--)
+            if (!_blocked.Contains(_windows[i]))
+                return _windows[i];
+        return null;
     }
 
     private void SetActive(Window? window)

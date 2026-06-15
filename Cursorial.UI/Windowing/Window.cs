@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
@@ -82,6 +84,9 @@ public class Window : ContentControl
 
     private Window? _owner;
     private bool _closing; // reentrancy guard
+    private TaskCompletionSource<object?>? _dialogTcs;
+    private CancellationToken _dialogCancellation;
+    private CancellationTokenRegistration _dialogRegistration;
 
     static Window()
     {
@@ -152,8 +157,8 @@ public class Window : ContentControl
     /// <summary>Whether the window is currently shown.</summary>
     public bool IsShown => Manager is not null;
 
-    /// <summary>Whether the window is shown modally (always false at W1; modality lands at W2).</summary>
-    public bool IsModal => false;
+    /// <summary>Whether the window is shown modally (set by <see cref="ShowDialogAsync(CancellationToken)"/>).</summary>
+    public bool IsModal { get; private set; }
 
     /// <summary>The realized content size (excludes shadow); valid while shown.</summary>
     public Size ActualSize { get; internal set; }
@@ -205,12 +210,60 @@ public class Window : ContentControl
         manager.ShowWindow(this);
     }
 
-    /// <summary>Activates the window (brings it to the top of its band). Returns false when no manager hosts it.</summary>
+    /// <summary>Activates the window (brings it to the top of its band). Returns false when no manager hosts it (or it is modal-blocked).</summary>
     public bool Activate()
     {
         if (Manager is not { } manager)
             return false;
         return manager.ActivateWindow(this);
+    }
+
+    /// <summary>
+    /// Shows the window <b>modally</b> and returns a task that completes with its <see cref="DialogResult"/>
+    /// when it closes. The running frame loop is the pump (no nested dispatcher loop — §8.9): <c>await</c>ing
+    /// this does not block the UI thread. Cancellation posts a forced close to the UI thread (invariant 6) and
+    /// completes the task canceled; a pre-canceled token returns a canceled task with no side effects.
+    /// </summary>
+    public Task<object?> ShowDialogAsync(CancellationToken cancellationToken = default)
+    {
+        if (IsShown)
+            throw new InvalidOperationException("The window is already shown.");
+        if (cancellationToken.IsCancellationRequested)
+            return Task.FromCanceled<object?>(cancellationToken);
+
+        var manager = _owner?.Manager
+                      ?? UIApplication.Current?.WindowManager
+                      ?? throw new InvalidOperationException("No window manager is available to show the dialog.");
+
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _dialogTcs = tcs;
+        _dialogCancellation = cancellationToken;
+        IsModal = true;
+        Manager = manager;
+        manager.ShowDialog(this);
+
+        if (cancellationToken.CanBeCanceled)
+        {
+            // Close mutates WM/styling state — marshal it to the UI thread (never the canceling thread).
+            _dialogRegistration = cancellationToken.Register(static self =>
+            {
+                var window = (Window)self!;
+                UIApplication.Current?.Dispatcher.Post(() =>
+                {
+                    if (window.IsShown)
+                        window.Close(WindowCloseReason.Programmatic);
+                });
+            }, this);
+        }
+
+        return tcs.Task;
+    }
+
+    /// <summary>The typed <see cref="ShowDialogAsync(CancellationToken)"/> — the result is the <see cref="DialogResult"/> cast to <typeparamref name="TResult"/>.</summary>
+    public async Task<TResult?> ShowDialogAsync<TResult>(CancellationToken cancellationToken = default)
+    {
+        var result = await ShowDialogAsync(cancellationToken).ConfigureAwait(true);
+        return result is TResult typed ? typed : default;
     }
 
     /// <summary>Closes the window (a cancelable <see cref="WindowCloseReason.Programmatic"/> close).</summary>
@@ -242,8 +295,20 @@ public class Window : ContentControl
 
             Manager!.CloseWindow(this);
             Manager = null;
+            IsModal = false;
             SetActiveInternal(false);
             Closed?.Invoke(this, EventArgs.Empty);
+
+            // Complete the modal task (if any): canceled when the close was cancellation-driven, else the result.
+            _dialogRegistration.Dispose();
+            if (_dialogTcs is { } tcs)
+            {
+                _dialogTcs = null;
+                if (_dialogCancellation.IsCancellationRequested)
+                    tcs.TrySetCanceled(_dialogCancellation);
+                else
+                    tcs.TrySetResult(DialogResult);
+            }
         }
         finally
         {

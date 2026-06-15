@@ -214,7 +214,11 @@ public sealed partial class UIApplication
 
     private void ComposeSystems()
     {
-        _windowManager = new WindowManager(_capabilities.Output, _caretService, _guard);
+        _windowManager = new WindowManager(_capabilities.Output, _caretService, _guard)
+        {
+            // S3 re-evaluates hover against the new stack on every show/close/modal/z change (§8.6).
+            SurfacesChanged = _inputDispatcher.OnSurfacesChanged,
+        };
         _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
         _systemsReady = true;
         if (_rootElement is { } root)

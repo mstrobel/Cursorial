@@ -30,6 +30,7 @@ IReadOnlyList<IDemo> demos =
     new UIPanelsDemo(),
     new UIControlsDemo(),
     new UIXamlDemo(),
+    new WindowingDemo(),
     new ImageSceneDemo(),
     new ImageClipDemo(),
     new ImageDemo(),

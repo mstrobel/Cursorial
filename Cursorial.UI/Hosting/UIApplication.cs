@@ -386,7 +386,11 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     internal CellBuffer? FrameBufferInternal => _buffer;
 
-    internal WindowManager? WindowManager => _windowManager;
+    /// <summary>S4's window manager (design doc §8.5) — the window/popup system, available while the application
+    /// is running. Apps usually drive windows through <see cref="Window.Show()"/> / <see cref="Window.ShowDialogAsync(System.Threading.CancellationToken)"/>
+    /// and <see cref="Popup"/>; this exposes the manager-level surface (the window list, active window, fit
+    /// affordance, shutdown). <see langword="null"/> before the systems are composed.</summary>
+    public WindowManager? WindowManager => _windowManager;
 
     internal TimeProvider TimeProviderInternal => _options.TimeProvider;
 

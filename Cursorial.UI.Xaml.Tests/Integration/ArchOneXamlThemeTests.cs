@@ -27,7 +27,9 @@ public sealed class ArchOneXamlThemeTests
     [InlineData("Button")]
     [InlineData("RepeatButton")]
     [InlineData("ToggleButton")]
-    public void XamlButtonFamilyTheme_RendersIdenticallyToCSharpBuiltIn_RestAndFocus(string control)
+    [InlineData("CheckBox")]    // unchecked: "[ ]" in both ASCII + caps-unicode, so byte-identity is tier-robust
+    [InlineData("RadioButton")] // unchecked: "( )" likewise
+    public void XamlControlTheme_RendersIdenticallyToCSharpBuiltIn_RestAndFocus(string control)
     {
         // The XAML theme (app.Theme) layers over the code-first BuiltIn; the typeof(control) entry it carries
         // replaces BuiltIn's. Compare the rendered cells (glyph + fg + bg) to the BuiltIn oracle, rest + focus.
@@ -39,6 +41,8 @@ public sealed class ArchOneXamlThemeTests
     {
         "RepeatButton" => new UIControls.RepeatButton { Content = "OK" },
         "ToggleButton" => new UIControls.ToggleButton { Content = "OK" },
+        "CheckBox"     => new UIControls.CheckBox { Content = "OK" },
+        "RadioButton"  => new UIControls.RadioButton { Content = "OK" },
         _              => new UIControls.Button { Content = "OK" },
     };
 

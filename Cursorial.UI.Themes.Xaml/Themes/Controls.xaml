@@ -93,4 +93,58 @@
     </Style.Children>
   </Style>
 
+  <!-- CheckBox / RadioButton (design doc §12.7): a glyph cell (ToggleGlyph + an in-box focus Caret in a Grid)
+       beside the content. NO fill (transparent at rest + hover — a stretched check/radio would fill its whole
+       StackPanel row); the glyph + content paint in the inherited Foreground, disabled = muted ink, focus = the
+       in-box caret (driven by ToggleButton). The declarative twin of ControlThemes.ToggleGlyphTheme(). -->
+  <ControlTemplate x:Key="CheckBoxTemplate">
+    <Border Background="{TemplateBinding Background}">
+      <StackPanel Orientation="Horizontal" Spacing="1">
+        <Grid>
+          <ToggleGlyph x:Name="PART_Glyph"
+                       GlyphKey="{x:Static ThemeKeys.CheckBoxGlyphs}"
+                       CheckedMarkKey="{x:Static ThemeKeys.GreenBrush}"
+                       IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}"/>
+          <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
+        </Grid>
+        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+      </StackPanel>
+    </Border>
+  </ControlTemplate>
+
+  <ControlTemplate x:Key="RadioButtonTemplate">
+    <Border Background="{TemplateBinding Background}">
+      <StackPanel Orientation="Horizontal" Spacing="1">
+        <Grid>
+          <ToggleGlyph x:Name="PART_Glyph"
+                       GlyphKey="{x:Static ThemeKeys.RadioGlyphs}"
+                       CheckedMarkKey="{x:Static ThemeKeys.AccentBrush}"
+                       IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}"/>
+          <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
+        </Grid>
+        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+      </StackPanel>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type CheckBox}" TargetType="CheckBox">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource CheckBoxTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:disabled" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <Style x:Key="{x:Type RadioButton}" TargetType="RadioButton">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource RadioButtonTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:disabled" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
 </ResourceDictionary>

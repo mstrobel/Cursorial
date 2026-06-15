@@ -249,37 +249,51 @@ internal static class ControlThemes
 
 /// <summary>
 /// The check/radio glyph cell of a <see cref="CheckBox"/>/<see cref="RadioButton"/> default template
-/// (design doc §12.7, spec line 660): an internal leaf that reads the owning toggle's
+/// (design doc §12.7, spec line 660): a leaf that reads the owning toggle's
 /// <see cref="ToggleButton.IsChecked"/> and the glyph-set resource (<see cref="ThemeKeys.CheckBoxGlyphs"/>
 /// / <see cref="ThemeKeys.RadioGlyphs"/>; ASCII <c>[ ] [x] [-]</c> / <c>( ) (*)</c> by default,
 /// overridable at any chain scope) and draws the matching glyph. The glyph is foreground text in the
-/// toggle's <see cref="Control.Foreground"/> (inherited).
+/// toggle's <see cref="Control.Foreground"/> (inherited). Public + XAML-authorable so the control themes
+/// can be authored declaratively (Cursorial.UI.Themes.Xaml): set <see cref="GlyphKey"/> /
+/// <see cref="CheckedMarkKey"/> / <see cref="IndeterminateMarkKey"/> in the template.
 /// </summary>
-internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
+public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
 {
-    private readonly string _glyphKey;
-    private readonly string? _checkedMarkKey;
-    private readonly string? _indeterminateMarkKey;
     private IDisposable? _checkedObserver;
+
+    /// <summary>The <see cref="ThemeKeys"/> glyph-set resource key (the <c>(Unchecked, Checked, Indeterminate)</c> <see cref="GlyphSetCarrier"/> base).</summary>
+    public string? GlyphKey { get; set; }
+
+    /// <summary>The <see cref="ThemeKeys"/> brush key coloring the CHECKED inner mark (e.g. GreenBrush ✓ / AccentBrush ●); <c>null</c> leaves it in the foreground.</summary>
+    public string? CheckedMarkKey { get; set; }
+
+    /// <summary>The <see cref="ThemeKeys"/> brush key coloring the INDETERMINATE inner mark (e.g. AmberBrush ▪); <c>null</c> leaves it in the foreground.</summary>
+    public string? IndeterminateMarkKey { get; set; }
 
     // The caps-unicode glyph-set override (design doc §12.7 / SD14): CursorialThemeStyles' `.caps-unicode`
     // rules set this per control type to opt the marks UP from the ASCII resource base to Unicode (✓/▪/●);
     // ToggleGlyph reads it off its Owner, falling back to the glyph-set resource when unset (a caps-ascii
     // terminal, or no caps-unicode source). Hosted on ToggleButton so a `.caps-unicode CheckBox`/
     // `RadioButton` theme-styles rule can set it. AffectsRender — the ASCII↔Unicode marks are equal-width.
-    internal static readonly AttachedProperty<GlyphSetCarrier?> GlyphsProperty =
+    public static readonly AttachedProperty<GlyphSetCarrier?> GlyphsProperty =
         UIProperty.RegisterAttached<ToggleGlyph, ToggleButton, GlyphSetCarrier?>("Glyphs");
 
     static ToggleGlyph() => UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
 
-    // checkedMarkKey / indeterminateMarkKey: ThemeKeys brush resources that color the INNER mark for the
-    // checked / indeterminate states (CheckBox ✓ = GreenBrush, ▪ = AmberBrush; RadioButton ● = AccentBrush);
-    // null leaves the mark in the inherited foreground. The brackets always paint in the foreground.
-    internal ToggleGlyph(string glyphKey, string? checkedMarkKey = null, string? indeterminateMarkKey = null)
+    /// <summary>Parameterless constructor for XAML; set <see cref="GlyphKey"/> + the mark keys via properties.</summary>
+    public ToggleGlyph() { }
+
+    /// <summary>
+    /// The code-first constructor. <paramref name="checkedMarkKey"/> / <paramref name="indeterminateMarkKey"/>
+    /// are ThemeKeys brush resources that color the INNER mark for the checked / indeterminate states
+    /// (CheckBox ✓ = GreenBrush, ▪ = AmberBrush; RadioButton ● = AccentBrush); null leaves the mark in the
+    /// inherited foreground. The brackets always paint in the foreground.
+    /// </summary>
+    public ToggleGlyph(string glyphKey, string? checkedMarkKey = null, string? indeterminateMarkKey = null)
     {
-        _glyphKey = glyphKey;
-        _checkedMarkKey = checkedMarkKey;
-        _indeterminateMarkKey = indeterminateMarkKey;
+        GlyphKey = glyphKey;
+        CheckedMarkKey = checkedMarkKey;
+        IndeterminateMarkKey = indeterminateMarkKey;
     }
 
     private ToggleButton? Owner => TemplatedParent as ToggleButton;
@@ -314,7 +328,7 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
             // resource (the ASCII base, themeable at any scope); else the hard ASCII fallback.
             if (Owner?.GetValue(GlyphsProperty) is { } unicode)
                 return unicode;
-            return this.TryFindResource(_glyphKey, out var value) && value is GlyphSetCarrier glyphs
+            return GlyphKey is { } key && this.TryFindResource(key, out var value) && value is GlyphSetCarrier glyphs
                 ? glyphs
                 : new GlyphSetCarrier("[ ]", "[x]", "[-]");
         }
@@ -378,7 +392,7 @@ internal sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     // the chain); null for the unchecked state, when no key was configured, or when it does not resolve.
     private IBrush? MarkBrush(bool? state)
     {
-        var key = state switch { true => _checkedMarkKey, null => _indeterminateMarkKey, _ => null };
+        var key = state switch { true => CheckedMarkKey, null => IndeterminateMarkKey, _ => null };
         return key is not null && this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
     }
 }

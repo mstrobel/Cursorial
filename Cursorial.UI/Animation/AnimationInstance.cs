@@ -300,9 +300,17 @@ internal sealed class AnimationInstance<T> : AnimationInstance
 
         _handle?.Dispose();   // retract — the property returns to base while Delayed (untouched semantics)
         _handle = null;
-        _startTime = _scheduler.Clock.Now + delayFromNow; // re-arm; the built timeline (and baked From) is retained
-        State = AnimationState.Delayed;
         _completionPending = false;
+
+        // Anchor the re-armed start to the pause clock while Paused so a later Resume honors the delay (and the
+        // track stays Paused — NOT active — so it doesn't re-pin the idle gate or run while the storyboard is held).
+        var reference = State == AnimationState.Paused ? _pauseClock : _scheduler.Clock.Now;
+        _startTime = reference + delayFromNow;
+
+        if (State == AnimationState.Paused)
+            _stateBeforePause = AnimationState.Delayed; // Resume → Delayed, honoring the re-armed window
+        else
+            State = AnimationState.Delayed;
     }
 
     public override void RaiseCompleted()

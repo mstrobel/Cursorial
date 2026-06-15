@@ -62,6 +62,50 @@ public sealed class Section06_PauseSeekSkip
         Assert.Equal(99.0, a.V); // runs to its end
     }
 
+    [Fact] // N50/N51: pausing a Delayed instance then resuming restores Delayed (the delay window resumes, no jump)
+    public void Resume_FromPausedDelayed_RestoresDelayed()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var handle = a.BeginAnimation(Animatable.VProperty, new DoubleAnimation(2.0, 12.0, Ms(99)),
+            new AnimationStartOptions(BeginTime: Ms(99)));
+        Assert.Equal(AnimationState.Delayed, handle.State);
+
+        handle.Pause();
+        Assert.Equal(AnimationState.Paused, handle.State);
+        host.AdvanceTime(Ms(300)); // the delay window is held while paused
+
+        handle.Resume();
+        Assert.Equal(AnimationState.Delayed, handle.State); // restored to Delayed (not Running, not jumped past BeginTime)
+        Assert.Equal(0.0, a.V);                             // still untouched within the shifted delay window
+
+        host.AdvanceTime(Ms(99)); // cross the shifted BeginTime
+        Assert.Equal(AnimationState.Running, handle.State);
+        Assert.Equal(2.0, a.V);                             // first sample at elapsed 0 ⇒ From
+    }
+
+    [Fact] // N58 (Completed substate): SkipToEnd on a Fill.Stop-completed instance is a no-op (no re-complete, state holds)
+    public void SkipToEnd_Completed_NoOp()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var completed = 0;
+        var handle = a.BeginAnimation(Animatable.VProperty, new DoubleAnimation(0.0, 10.0, Ms(100)),
+            new AnimationStartOptions(Fill: FillBehavior.Stop));
+        handle.Completed += _ => completed++;
+        host.AdvanceTime(Ms(150));
+        Assert.Equal(AnimationState.Completed, handle.State);
+        Assert.Equal(1, completed); // the natural Fill.Stop completion
+
+        handle.SkipToEnd(); // no-op
+        host.RunFrame();
+        Assert.Equal(1, completed);                          // no second completion
+        Assert.Equal(AnimationState.Completed, handle.State);
+        Assert.Equal(0.0, a.V);                              // stays retracted
+    }
+
     [Fact] // N52: Seek jumps to ValueAt(offset), clamped; works while Paused
     public void Seek_JumpsClamped_WorksPaused()
     {
@@ -231,22 +275,46 @@ public sealed class Section06_PauseSeekSkip
         var (host, _, a) = Shown();
         using var _ = host;
 
+        // W's From (70) differs from its base default (0) so the final rewind discriminates rewind-to-Delayed
+        // (handle disposed ⇒ base 0 resurfaces) from a mere clamp-to-From (which would leave 70).
         var sb = new Storyboard();
-        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 100.0, Duration = Ms(100) });                       // BeginTime 0
-        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 100.0, Duration = Ms(100), BeginTime = Ms(50) });   // staggered
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 100.0, Duration = Ms(100) });                        // BeginTime 0
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 70.0, To = 100.0, Duration = Ms(100), BeginTime = Ms(50) });   // staggered
         var handle = sb.Begin(a);
 
         handle.Seek(Ms(50));
         Assert.Equal(50.0, a.V); // V at offset 50
-        Assert.Equal(0.0, a.W);  // W at offset 50−50 = 0 ⇒ From
+        Assert.Equal(70.0, a.W); // W at offset 50−50 = 0 ⇒ From
 
         handle.Seek(Ms(75));
         Assert.Equal(75.0, a.V);
-        Assert.Equal(25.0, a.W); // W at 75−50 = 25
+        Assert.Equal(77.5, a.W); // W at 75−50 = 25 ⇒ 70 + 30*0.25
 
         handle.Seek(Ms(25));
         Assert.Equal(25.0, a.V);
-        Assert.Equal(0.0, a.W);  // 25 < W's BeginTime ⇒ W rewinds to Delayed (base resurfaces)
+        Assert.Equal(0.0, a.W);  // 25 < W's BeginTime ⇒ W rewinds to Delayed, base 0 resurfaces (NOT clamped to From 70)
+    }
+
+    [Fact] // Regression: a backward Seek of a staggered track on a PAUSED storyboard keeps the track paused (not active)
+    public void Storyboard_Seek_BackwardWhilePaused_StaysPaused()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 100.0, Duration = Ms(100) });                        // BeginTime 0
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 100.0, Duration = Ms(100), BeginTime = Ms(50) });   // staggered
+        var handle = sb.Begin(a);
+        host.AdvanceTime(Ms(66)); // both running
+        handle.Pause();
+        Assert.False(host.Scheduler().HasActiveAnimations); // paused ⇒ idle clears
+
+        handle.Seek(Ms(25)); // backward, before W's BeginTime ⇒ W must rewind WITHOUT going active
+        Assert.False(host.Scheduler().HasActiveAnimations); // STILL paused — the rewound track did not re-pin the gate
+        var wAfterSeek = a.W;
+
+        host.AdvanceTime(Ms(300));
+        Assert.Equal(wAfterSeek, a.W); // W held — it did not start running despite the rewind
     }
 
     [Fact] // StoryboardHandle.SkipToEnd (all finite) snaps every track to its end and completes
@@ -267,5 +335,23 @@ public sealed class Section06_PauseSeekSkip
         Assert.Equal(20.0, a.W);
         host.RunFrame();
         Assert.Equal(1, completed);
+    }
+
+    [Fact] // Regression: once a perpetual track is force-retired (preempted on its property), SkipToEnd no longer throws
+    public void Storyboard_SkipToEnd_AfterPerpetualTrackPreempted_DoesNotThrow()
+    {
+        var (host, _, a) = Shown();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 10.0, Duration = Ms(100) });
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 20.0, Duration = Ms(100), Repeat = RepeatBehavior.Forever });
+        var handle = sb.Begin(a);
+
+        // Preempt the perpetual W track at the property level (a standalone animation on W retires the group's W child).
+        a.BeginAnimation(Animatable.WProperty, new DoubleAnimation(0.0, 5.0, Ms(50)));
+
+        handle.SkipToEnd();      // the dead perpetual track must no longer block this (_anyPerpetual recomputed)
+        Assert.Equal(10.0, a.V); // the surviving finite track snapped to its end
     }
 }

@@ -89,26 +89,37 @@ public sealed class Section11_EdgeActions
         Assert.Equal(10.0, element.V); // ran to its end regardless
     }
 
-    [Fact] // N125: two rules sharing one storyboard resource keep distinct (igniter, scope) instances
-    public void TwoRules_ShareStoryboard_DistinctInstances()
+    [Fact] // N125: rules with distinct BeginStoryboard igniters keep independent (igniter, scope) instances
+    public void TwoRules_DistinctIgniters_IndependentInstances()
     {
         var (host, element) = ShowStylable();
         using var _ = host;
 
-        var sb = StoryboardFor(Animatable.VProperty, 10.0, 100);
+        // Distinct igniters on DIFFERENT properties so the per-(igniter,scope) keying is observable (a single
+        // shared instance would be torn down by stopping either rule). A's BeginStoryboard is do/undo (Enter+Exit).
+        var sbA = StoryboardFor(Animatable.VProperty, 10.0, 200);
+        var sbB = StoryboardFor(Animatable.WProperty, 20.0, 200);
+        var beginA = new BeginStoryboard { Storyboard = sbA };
         var styleA = new Style(".a");
-        styleA.Enter.Add(new BeginStoryboard { Storyboard = sb });
+        styleA.Enter.Add(beginA);
+        styleA.Exit.Add(beginA); // do/undo ⇒ Classes.Remove("a") stops A's instance
         var styleB = new Style(".b");
-        styleB.Enter.Add(new BeginStoryboard { Storyboard = sb });
+        styleB.Enter.Add(new BeginStoryboard { Storyboard = sbB });
         host.Application.Styles.Add(styleA);
         host.Application.Styles.Add(styleB);
 
-        element.Classes.Add("a"); // instance A (igniter = A's BeginStoryboard)
-        element.Classes.Add("b"); // instance B (distinct igniter) takes over V at the property level
-        element.Classes.Remove("a"); // stops A's instance only — B is keyed by its own igniter
+        element.Classes.Add("a"); // instance A (igniter beginA) animates V
+        element.Classes.Add("b"); // instance B (distinct igniter) animates W
+        host.AdvanceTime(Ms(66));
+        Assert.InRange(element.V, 0.0, 10.0);
+        Assert.InRange(element.W, 0.0, 20.0);
 
-        host.AdvanceTime(Ms(150));
-        Assert.Equal(10.0, element.V); // B kept running ⇒ removing A did not stop the value animation
+        element.Classes.Remove("a"); // stops ONLY A's instance (its own igniter key); B is untouched
+        Assert.Equal(0.0, element.V);                       // A retracted
+        Assert.True(host.Scheduler().HasActiveAnimations);  // B still running
+
+        host.AdvanceTime(Ms(200));
+        Assert.Equal(20.0, element.W);                      // B ran independently to its end
     }
 
     [Fact] // N126: a StopStoryboard (by reference) stops every live instance of that storyboard on the element

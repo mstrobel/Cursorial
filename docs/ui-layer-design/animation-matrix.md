@@ -265,7 +265,7 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 | N122 | a `Style` rule with a `BeginStoryboard` in `Enter` | the rule activates (pseudo-class flip) | the storyboard begins on the matched element (igniter = the `BeginStoryboard` action instance) | WPF |
 | N123 | the SAME `BeginStoryboard` in BOTH `Enter` and `Exit` (do/undo — the SD16 seam delivers `OnActivated` to `Enter` entries, `OnRetracted` to `Exit` entries) | activate then deactivate | begins on activate, stops (retracts) on deactivate; no `Completed` | PIN |
 | N124 | a `BeginStoryboard` in `Enter` only | the rule deactivates | the storyboard keeps running (no `Exit` undo; its `Fill` governs) | PIN |
-| N125 | two rules sharing one `Storyboard` resource, both active on one element | activate both | distinct `(igniter, scope)` instances — they don't fight; each keyed by its own `BeginStoryboard` | PIN (§9.3) |
+| N125 | two rules with distinct `BeginStoryboard` igniters active on one element (a shared resource never fights — each `BeginStoryboard` keys its own `(igniter, scope)` instance) | activate both, then stop one rule | the stopped rule's instance retracts; the other keeps running independently | PIN (§9.3) |
 | N126 | a `StopStoryboard` (by object reference) in `Enter` | the rule activates | every live instance of that storyboard on the element stops, across igniters | PIN (§9.3) |
 | N127 | an edge-ignited `BeginStoryboard` with an unresolvable `TargetName` | activation | does **not** throw; routes to `AnimationDiagnostics.TrackError`; sibling tracks proceed | PIN (§9.3) |
 | N128 | multiple edge actions in one rule's `Enter` | activation | invoked in rule-document order on the edge (Fork B seam; re-pinned here) | PIN |

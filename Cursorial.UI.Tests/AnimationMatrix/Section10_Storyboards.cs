@@ -139,6 +139,29 @@ public sealed class Section10_Storyboards
         Assert.Equal(2.0, scope.V); // From, elapsed 0
     }
 
+    [Fact] // Regression: a zero-duration track ordered BEFORE a finite track must NOT complete the group early
+    public void ZeroDurationTrackBeforeFinite_DoesNotCompleteEarly()
+    {
+        var (host, scope) = ShowScope();
+        using var _ = host;
+
+        var sb = new Storyboard();
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 10.0, Duration = TimeSpan.Zero });   // completes at Begin
+        sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 0.0, To = 100.0, Duration = Ms(200) });        // still mid-flight
+        var completed = 0;
+        var handle = sb.Begin(scope);
+        handle.Completed += _ => completed++;
+
+        host.RunFrame();
+        Assert.Equal(10.0, scope.V);        // the zero-duration track reached its end
+        Assert.False(handle.IsCompleted);   // but the group must NOT have completed — W is still running
+        Assert.Equal(0, completed);
+
+        host.AdvanceTime(Ms(250));          // finish W
+        Assert.True(handle.IsCompleted);
+        Assert.Equal(1, completed);
+    }
+
     [Fact] // N108: an all-finite storyboard raises Completed once, after the pass
     public void AllFinite_CompletesOnce()
     {

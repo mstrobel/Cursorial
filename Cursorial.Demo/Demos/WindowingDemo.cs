@@ -118,7 +118,7 @@ internal sealed class WindowingDemo : IDemo
                        Placement = PlacementMode.Bottom,
                        Child = new Border
                                {
-                                   Background = new SolidColorBrush(MenuBg, 0.85),
+                                   Background = new SolidColorBrush(MenuBg, 0.9),
                                    BorderPen = Pens.Light,
                                    // Occludes = true,
                                    Child = items
@@ -210,7 +210,7 @@ internal sealed class WindowingDemo : IDemo
                          {
                              Title = $"Window #{n}",
                              Content = body,
-                             Background = new SolidColorBrush(WindowBg, 0.85),
+                             Background = new SolidColorBrush(WindowBg, 0.9),
                              WindowStartupLocation = WindowStartupLocation.Manual,
                              Left = 6 + n * 3 % 24, // cascade
                              Top = 3 + n * 2 % 12,

@@ -212,8 +212,10 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
         for (var i = _instances.Count - 1; i >= 0; i--)
             if (ReferenceEquals(_instances[i].TargetObject, element))
             {
-                _instances[i].Retire();
+                var removed = _instances[i];
+                removed.Retire();
                 _instances.RemoveAt(i);
+                removed.Owner?.OnChildRemoved(removed); // a TargetName child detaching independently of its scope
             }
     }
 
@@ -333,6 +335,7 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             {
                 instance.Retire();
                 _instances.RemoveAt(i);
+                instance.Owner?.OnChildRemoved(instance); // a storyboard child preempted at the property level
             }
         }
     }
@@ -349,8 +352,20 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
     private void SweepFinished()
     {
         for (var i = _instances.Count - 1; i >= 0; i--)
-            if (_instances[i].IsFinished)   // Stopped/Completed — Holding/Delayed/Running/Paused stay registered
-                _instances.RemoveAt(i);
+        {
+            if (!_instances[i].IsFinished)   // Stopped/Completed — Holding/Delayed/Running/Paused stay registered
+                continue;
+
+            var removed = _instances[i];
+            _instances.RemoveAt(i);
+            removed.Owner?.OnChildRemoved(removed); // keep the owning group's live-child set in sync
+        }
+
+        // Drop storyboard groups that are finished (terminated/completed) with no live children left — covers a
+        // group whose only child was force-retired by another storyboard's per-property handoff (the §9.3 leak).
+        for (var i = _storyboards.Count - 1; i >= 0; i--)
+            if (_storyboards[i].IsRetirable)
+                _storyboards.RemoveAt(i);
     }
 
 #if DEBUG

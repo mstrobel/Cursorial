@@ -336,6 +336,30 @@ public sealed class Section16_Selection
         Assert.Equal(3, m.SelectedIndex);
     }
 
+    [Fact] // C3.29: ItemsMoved carries the selection with the moved item (a pure permutation; no event)
+    public void C3_29_ItemsMoved_SelectionFollows()
+    {
+        var (m, events) = WithEvents(Multiple());
+        m.Toggle(0);
+        m.Toggle(2); // lead = 2, selected {0,2}
+        events.Clear();
+        m.ItemsMoved(0, 3, 2); // [A,B] (indices 0,1) move so they start at 3 → 0→3, 2→0
+        Assert.Equal([0, 3], m.SelectedIndexes); // item that was at 0 → 3; item at 2 → 0
+        Assert.Equal(0, m.SelectedIndex);        // lead (was 2) → 0
+        Assert.Empty(events);                    // membership unchanged
+    }
+
+    [Fact] // C3.30: a single-element ItemsMoved (ObservableCollection.Move) relocates a selected index
+    public void C3_30_ItemsMoved_SingleElement()
+    {
+        var m = Multiple();
+        m.Toggle(1);
+        m.Toggle(4); // {1,4}, lead 4
+        m.ItemsMoved(4, 0, 1); // move index 4 to the front → 4→0, 1→2
+        Assert.Equal([0, 2], m.SelectedIndexes);
+        Assert.Equal(0, m.SelectedIndex); // lead followed the moved item
+    }
+
     [Fact] // C3.28: out-of-range structural hooks are no-ops (no negative leak); SelectedIndexes is read-only
     public void C3_28_OutOfRange_NoOp_AndReadOnly()
     {

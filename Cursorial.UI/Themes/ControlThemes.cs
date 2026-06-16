@@ -41,6 +41,8 @@ internal static class ControlThemes
         dict[typeof(ScrollBar)] = ScrollBarTheme();
         dict[typeof(ScrollViewer)] = ScrollViewerTheme();
         dict[typeof(ItemsControl)] = ItemsControlTheme();
+        dict[typeof(ListBox)] = ListBoxTheme();
+        dict[typeof(ListBoxItem)] = ListBoxItemTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -94,6 +96,52 @@ internal static class ControlThemes
 
     private static Style ItemsControlTheme()
         => new Style { Key = "Theme.ItemsControl" }.Set(Control.TemplateProperty, ItemsControlTemplate());
+
+    // ───────────────────────────── ListBox / ListBoxItem ─────────────────────────────
+
+    // A well-fill ListBox (design doc §11.8a): a Border (opt-in BorderPen) over a ScrollViewer whose content is the
+    // PART_ItemsHost ItemsPresenter — so a long list scrolls (the SCP band, C3). The items host stays in the
+    // ListBox's template namescope even nested under the ScrollViewer, so GetTemplatePart finds it.
+    private static ControlTemplate ListBoxTemplate() => new(ctx =>
+    {
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var border = new Border { Child = host };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        return border;
+    });
+
+    private static Style ListBoxTheme()
+        => new Style { Key = "Theme.ListBox" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListBoxTemplate());
+
+    // A list item is a full-width selection bar: a Border filling its row, content at row 0 (no frame). Per the
+    // default-theme gallery mockup (.item.sel/.hov/.dis): selected = SelectionBrush fill + TextBrush ink (NOT the
+    // OnAccent pair — selection is milder than pressed; adoption-spec line 14), hover = HoverBrush + TextBrush,
+    // disabled = MutedBrush ink. Ordered hover → selected so a hovered-selected item reads as selected (document
+    // order). The keyboard focus-row reverse-video cue (gallery .item.rev / Inverse+Bold) lands with P9.3b.
+    private static ControlTemplate ListBoxItemTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        return border;
+    });
+
+    private static Style ListBoxItemTheme()
+    {
+        var theme = new Style { Key = "Theme.ListBoxItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListBoxItemTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
 
     private static Style RepeatButtonTheme()
         => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" })

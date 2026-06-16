@@ -100,11 +100,12 @@ public sealed class ItemsPresenter : UIElement
                 break;
 
             case ContainersChangedAction.Unrealized:
-                // Fired BEFORE the generator drops the range (the visual detach IS the retraction trigger and must
-                // precede the logical removal), so the containers are still index-addressable.
-                for (var i = e.Count - 1; i >= 0; i--)
+                // The generator has already dropped the range from its index list, so remove the carried instances
+                // directly (the visual detach IS the store-retraction trigger and still precedes the logical removal,
+                // which the generator runs after this event — CD-P9-3).
+                if (e.RemovedContainers is {} removed)
                 {
-                    if (_generator.ContainerFromIndex(e.StartIndex + i) is {} container)
+                    foreach (var container in removed)
                         _panel.Children.Remove(container);
                 }
 

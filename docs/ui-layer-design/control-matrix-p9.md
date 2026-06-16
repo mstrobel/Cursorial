@@ -126,6 +126,27 @@ rendering assertions (when a styled item renders through the chain — exercised
   `Select(-1)`; valid input never produces a negative index (`x ≥ end ⇒ x − count ≥ index ≥ 0`). (c)
   `SelectedIndexes` returns a `ReadOnlyCollection<int>`, never the live backing array (no external mutation via a
   downcast). Rows C3.25–C3.28.
+- **CD-P9-13 — `ItemsMoved` fixup (P9.3-driven).** The doc §12.6 model lists only Inserted/Removed/Reset, but a
+  collection `Move` must carry selection with the item (else a moved selected item desyncs). `ItemsMoved(old, new,
+  count)` remaps the selected indices by the same block-move permutation the generator applies (post-removal
+  `newIndex`, matching `ObservableCollection.Move`); membership is unchanged so it raises no event. Rows C3.29/C3.30.
+- **CD-P9-14 — the selection base is `SelectingItemsControl`, not `Selector` (P9.3).** WPF's `Selector` name would
+  collide with the styling `Cursorial.UI.Selector` for any consumer importing both `Cursorial.UI` and
+  `Cursorial.UI.Controls` (the common case). Following Avalonia, the selection-aware `ItemsControl` base is named
+  `SelectingItemsControl`. `SelectedIndex`/`SelectedItem` are two-way `DirectProperty`s mirroring the model;
+  `ListBoxItem`/`TabItem` selection rides `ISelectableContainer` (`SetCurrentValue` so a two-way `IsSelected`
+  binding survives — design doc §12.6).
+- **CD-P9-15 — the generator trims before `Unrealized` (synchronous selection reconcile).** `RemoveRange` now
+  drops the range from its index list *before* firing `Unrealized`, and the event carries the removed container
+  instances (`RemovedContainers`) so the host detaches them directly rather than by a now-stale index. The
+  CD-P9-3 ordering is preserved (ClearContainer → visual detach → logical remove). The payoff: a
+  `SelectingItemsControl` reconciles against a *settled* generator inside the event — `ContainerCount`/
+  `ItemFromIndex` are accurate — so `SelectedItem` never goes stale after a removal-before-the-lead, the
+  re-target/empty handling is synchronous (no dispatcher hop, no-app-safe), and a re-source/Reset can't spuriously
+  re-select index 0 (the whole-generation removal sees `ContainerCount == 0`). `SelectingItemsControl` additionally:
+  (a) **clamps an out-of-range `SelectedIndex` to −1** so `SelectedIndex`/`SelectedItem` never disagree; (b) on
+  (re)realization, **folds a pre-selected own-container** (`new ListBoxItem { IsSelected = true }`) into the model.
+  Rows C4.21–C4.26.
 
 ## §C3 — SelectionModel (P9.2) — tests in `Section16_Selection`
 
@@ -167,3 +188,58 @@ CD-P9 decision.
 | C3.26 | Multiple | anchor 2 lead 2 → `ItemsRemoved(2,1)` | anchor was in the removed range → re-anchors to the (relocated) lead | PIN (CD-P9-12) |
 | C3.27 | Multiple | `Select(2)` (anchor 2) → `ItemsInserted(0,1)` | anchor shifts 2→3 (with the lead) | PIN (CD-P9-12) |
 | C3.28 | any | `ItemsRemoved(-1,1)` / `SelectedIndexes` downcast | out-of-range hook is a no-op (no negative leak); `SelectedIndexes` is not an `int[]` | PIN (CD-P9-12) |
+| C3.29 | Multiple | `{0,2}` lead 2 → `ItemsMoved(0,3,2)` | selection follows the items (0→3, 2→0), lead→0; no event (a permutation) | PIN (CD-P9-13) |
+| C3.30 | Multiple | `{1,4}` lead 4 → `ItemsMoved(4,0,1)` | single-element move relocates the selected index (4→0, 1→2) | PIN (CD-P9-13) |
+
+---
+
+## §C4 — ListBox / Selector / ListBoxItem (P9.3) — tests in `Section17_ListBox`
+
+`SelectingItemsControl : ItemsControl` is the selection-aware base (shared with TabControl at P9.5; named after
+Avalonia's — WPF's `Selector` would collide with the styling `Cursorial.UI.Selector`, CD-P9-14): it owns a
+`SelectionModel`, projects it onto two-way `SelectedIndex`/`SelectedItem` `DirectProperty`s + the containers'
+`IsSelected` (via `ISelectableContainer`/`SetCurrentValue`), forwards the generator's structural changes to the
+model, and raises `ItemActivated`. `ListBox : SelectingItemsControl` uses `ListBoxItem` containers; `ListBoxItem.IsSelected`
+two-way mirrors the model (`:selected` via `PseudoClassMapping`). The pointer gesture maps Ctrl = toggle, Shift =
+range, plain = replace. **P9.3a = selection core (mouse + model wiring + theme); P9.3b = keyboard navigation.**
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| C4.1 | `ListBox` bound to 3 strings | shown | containers are `ListBoxItem`s (not `ContentPresenter`) | WPF |
+| C4.2 | item that IS a `ListBoxItem` | shown | used as its own container | WPF |
+| C4.3 | Single `ListBox` | click item 1 | `SelectedIndex=1`, `SelectedItem`=item, container `IsSelected`+`:selected` | WPF |
+| C4.4 | Single, item 1 selected | click item 2 | selection replaces → only item 2 selected | WPF |
+| C4.5 | Multiple | Ctrl-click 0, Ctrl-click 2 | both selected (`SelectedItems` = {0,2}) | WPF |
+| C4.6 | Multiple | click 1, Shift-click 3 | range {1,2,3} selected | WPF |
+| C4.7 | Single | set `SelectedIndex=2` | item 2's container `IsSelected` true; `:selected` on | WPF |
+| C4.8 | Single | set `SelectedItem`=item | its index becomes `SelectedIndex`; container selected | WPF |
+| C4.9 | Single | click item 2 | `SelectedIndex`/`SelectedItem` `DirectProperty`s update (binding surface) | WPF |
+| C4.10 | Single | set `ListBoxItem.IsSelected=true` directly | folds into the model → `SelectedIndex` updates | WPF |
+| C4.11 | Single, selected | deselect (select another) | the old container's `:selected` clears | WPF |
+| C4.12 | Single, bound `ObservableCollection`, item 1 selected | remove item 1 | selection re-targets to the nearest survivor (`SelectedIndex` stays valid) | PIN (CD-P9-9) |
+| C4.13 | Single, last item selected | remove it | selection re-targets to the new last item | PIN (CD-P9-9) |
+| C4.14 | `ListBox` | double-click item 2 | `ItemActivated` fires with that item + index | WPF |
+| C4.15 | `ListBox`, subscribe | click item 1 | `SelectionChanged` fires | WPF |
+| C4.16 | Multiple, {0,1,2} | set `SelectionMode=Single` | collapses to the lead | PIN (CD-P9-10) |
+| C4.17 | Single, bound, item 2 selected | insert at 0 | `SelectedIndex` follows the item (→3) | PIN |
+| C4.18 | Single `ListBox` shown | click item 1 | the selected row paints the `SelectionBrush` fill (cell assertion) | PIN |
+| C4.19 | `ListBox` | inspect | `ListBox.IsTabStop` false; `ListBoxItem.Focusable` true | WPF |
+| C4.20 | Multiple, bound, {0,2} | `ObservableCollection.Move(0,2)` | selection follows the moved items | PIN (CD-P9-13) |
+
+**P9.3a theme** (default-theme gallery mockup — `default-theme-gallery-final.html` `.item.*`): the `ListBox` is a
+`WellBrush` well; a `ListBoxItem` is a full-width bar — `:selected` = `SelectionBrush` fill keeping the inherited
+`TextBrush` ink (milder than pressed's accent pair, adoption-spec line 14), `:pointerover` = `HoverBrush`,
+`:disabled` = `MutedBrush`.
+
+**Deferred from P9.3a (noted, not silently dropped):** (1) **`ScrollViewer` integration** — nesting the
+`ItemsPresenter` inside a `ScrollViewer` in the ListBox template left the presenter unhosted (0×0, unattached); the
+P9.3a template is a plain `Border` › `ItemsPresenter` (like `ItemsControl`), and ScrollViewer-over-items is a
+focused follow-up (the SCP↔ItemsPresenter hosting/hit-test interaction needs its own tests). (2) **keyboard
+navigation** (arrows/Space/Home/End/Ctrl+A, `TabNavigation.Once` traversal, the focus-row reverse-video cue =
+gallery `.item.rev` / Inverse+Bold) — **P9.3b**. (3) `:alternate` row-striping — with the generator at P9 tail.
+| C4.21 | Single, bound | remove an UNSELECTED item before the lead | `SelectedItem` stays aligned with `SelectedIndex` (no stale-by-count) | PIN (CD-P9-15) |
+| C4.22 | own-container `new ListBoxItem{IsSelected=true}` in the source | shown | folds into the model — `SelectedIndex`=0, `SelectedItem`=the leaf; single-mode click elsewhere clears it | PIN (CD-P9-15) |
+| C4.23 | Single | `SelectedIndex = 99` (out of range) | clamps to −1; `SelectedItem` null (consistent) | PIN (CD-P9-15) |
+| C4.24 | Multiple, bound, {1,3} | remove a NON-selected item (index 0) | selection shifts to {0,2}, survivors stay selected; **no** `SelectionChanged` | PIN (CD-P9-11) |
+| C4.25 | Multiple, bound, {1,3} | remove ONE selected item (index 1) | just it drops; `SelectionChanged` fires once; the other survives selected | WPF |
+| C4.26 | Single, item 0 selected | swap `ItemsSource` | selection clears (`SelectedIndex`=−1) — never spuriously re-selects index 0 | PIN (CD-P9-15) |

@@ -79,13 +79,21 @@ public class ItemsControl : Control
     /// <summary>Whether <paramref name="item"/> is already its own container (a <see cref="UIElement"/> is — no presenter wrapper).</summary>
     protected virtual bool IsItemItsOwnContainer(object? item) => item is UIElement;
 
-    /// <summary>Prepares a freshly-realized container for its item (DataContext + content). Override to extend.</summary>
+    /// <summary>Prepares a freshly-realized container for its item (DataContext + content). Override to extend.
+    /// Handles both a bare <see cref="ContentPresenter"/> (the default container) and a <see cref="ContentControl"/>
+    /// container (e.g. <c>ListBoxItem</c>/<c>TabItem</c>) — both get the item as content + the item template.</summary>
     protected virtual void PrepareContainerForItemOverride(UIElement container, object? item)
     {
-        if (container is ContentPresenter presenter)
+        switch (container)
         {
-            presenter.Content = item;
-            presenter.ContentTemplate = ItemTemplate;
+            case ContentPresenter presenter:
+                presenter.Content = item;
+                presenter.ContentTemplate = ItemTemplate;
+                break;
+            case ContentControl control:
+                control.Content = item;
+                control.ContentTemplate = ItemTemplate;
+                break;
         }
     }
 
@@ -94,10 +102,16 @@ public class ItemsControl : Control
     /// can unhook item-specific state — WPF parity).</summary>
     protected virtual void ClearContainerForItemOverride(UIElement container, object? item)
     {
-        if (container is ContentPresenter presenter)
+        switch (container)
         {
-            presenter.ClearValue(ContentPresenter.ContentProperty);
-            presenter.ClearValue(ContentPresenter.ContentTemplateProperty);
+            case ContentPresenter presenter:
+                presenter.ClearValue(ContentPresenter.ContentProperty);
+                presenter.ClearValue(ContentPresenter.ContentTemplateProperty);
+                break;
+            case ContentControl control:
+                control.ClearValue(ContentControl.ContentProperty);
+                control.ClearValue(ContentControl.ContentTemplateProperty);
+                break;
         }
     }
 

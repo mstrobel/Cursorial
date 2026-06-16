@@ -195,6 +195,29 @@ public sealed class SelectionModel
         }
     }
 
+    /// <summary>Index-fixup hook: a contiguous block of <paramref name="count"/> items moved from
+    /// <paramref name="oldIndex"/> to <paramref name="newIndex"/> (post-removal index, matching
+    /// <c>ObservableCollection.Move</c>) — remaps the selected indices so the same items stay selected (a pure
+    /// permutation; no <see cref="SelectionChanged"/>).</summary>
+    public void ItemsMoved(int oldIndex, int newIndex, int count)
+    {
+        if (oldIndex < 0 || newIndex < 0 || count <= 0 || oldIndex == newIndex)
+            return;
+
+        Reindex(x => MapMove(x, oldIndex, newIndex, count));
+    }
+
+    // The post-move position of index x under a block move [old, old+count) → newIndex (post-removal space).
+    private static int MapMove(int x, int oldIndex, int newIndex, int count)
+    {
+        var hi = oldIndex + count;
+        if (x >= oldIndex && x < hi)
+            return newIndex + (x - oldIndex); // a moved element
+
+        var shifted = x >= hi ? x - count : x;          // close the gap the block left
+        return shifted >= newIndex ? shifted + count : shifted; // open the gap the block lands in
+    }
+
     /// <summary>Index-fixup hook: the source was reset (cleared / wholesale-replaced) — clears the selection.</summary>
     public void Reset()
     {

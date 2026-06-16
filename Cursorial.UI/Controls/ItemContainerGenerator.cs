@@ -108,24 +108,25 @@ public sealed class ItemContainerGenerator
         if (count <= 0)
             return;
 
-        // Phase 1 — ClearContainer on each (unhook while bindings are still live), THEN fire Unrealized so the
-        // host removes them visually (the subtree detach is the store-retraction trigger), THEN finish each
-        // container's logical detach + DataContext clear. ClearContainer must precede the detach (step order §12.6).
+        // Capture the removed instances up front so the index list can be trimmed BEFORE the event — selection
+        // hosts then reconcile against a settled (post-trim) generator (no stale ContainerCount / ItemFromIndex).
+        var removed = new UIElement[count];
         for (var i = 0; i < count; i++)
-        {
-            var container = _containers[start + i];
-            _owner.ClearContainerForItem(container, ItemFromContainer(container));
-        }
+            removed[i] = _containers[start + i];
 
-        ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Unrealized, start, count));
+        // Step order (§12.6 / CD-P9-3): ClearContainer on each (unhook while bindings are still live) → trim the
+        // index list → fire Unrealized so the host visually detaches THESE instances (the subtree detach is the
+        // store-retraction trigger) → finish each container's logical detach + stamp clear (after the visual detach).
+        for (var i = 0; i < count; i++)
+            _owner.ClearContainerForItem(removed[i], ItemFromContainer(removed[i]));
+
+        _containers.RemoveRange(start, count); // trim first: ContainerCount/ContainerFromIndex are now post-removal
+
+        ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(
+            ContainersChangedAction.Unrealized, start, count, removedContainers: removed));
 
         for (var i = 0; i < count; i++)
-        {
-            var container = _containers[start + i];
-            FinishUnrealize(container, ItemFromContainer(container)); // stamp still set — read the item before clearing it
-        }
-
-        _containers.RemoveRange(start, count);
+            FinishUnrealize(removed[i], ItemFromContainer(removed[i])); // stamp still set — read the item before clearing it
     }
 
     private void MoveRange(int oldIndex, int newIndex, int count)
@@ -141,7 +142,7 @@ public sealed class ItemContainerGenerator
 
         _containers.RemoveRange(oldIndex, count);
         _containers.InsertRange(newIndex, block);
-        ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Moved, newIndex, count));
+        ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Moved, newIndex, count, oldStartIndex: oldIndex));
     }
 
     private void ResetFromSource()

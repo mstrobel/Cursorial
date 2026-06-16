@@ -55,6 +55,13 @@ public sealed class ContextMenu : ItemsControl
         ArgumentNullException.ThrowIfNull(target);
 
         _popup ??= CreatePopup();
+
+        // Re-opening must relocate: a Popup re-places its surface only on the closed→open edge (OpenCore →
+        // PlacePopup), so setting IsOpen=true on an already-open popup is a no-op and would strand it at the
+        // old position. Close first, then re-open at the new placement.
+        if (_popup.IsOpen)
+            _popup.SetCurrentValue(Popup.IsOpenProperty, false);
+
         _popup.PlacementTarget = target;
 
         if (position is { } p)

@@ -412,9 +412,13 @@ router default + the `Popup` light-dismiss.
 | C7.7 | open menu, leaf + `Command` | focus leaf, Enter | the command runs **and** the menu dismisses (a leaf invoke closes the whole menu) + popup released | PIN (CD-P9-20) |
 | C7.8 | open menu | Escape | the menu closes (`Popup.CloseOnEscape`) | WPF |
 | C7.9 | open menu | click far outside | light-dismiss closes it | WPF |
-| C7.10 | open menu | `Open` again elsewhere | exactly one popup surface (relocate, not stack) | WPF |
+| C7.10 | open menu | `Open` again with a new offset | one popup surface (relocate, not stack), the new offset is applied, **and a fresh surface is placed** (re-open relocates — CD-P9-20 audit fix) | PIN (CD-P9-20) |
 | C7.11 | menu with a submenu header | open, open the nested header | the nested submenu hosts its grandchild items (two popup surfaces) | WPF |
 | C7.12 | open menu | `Close()` | the menu closes; the popup surface is released | WPF |
+| C7.13 | child element inside an element carrying `ContextMenu.Menu` | right-click the child | the router walks the `UIParent` chain to the ancestor and opens its menu | PIN (CD-P9-20) |
+| C7.14 | element carrying a menu, a `PreviewMouseUp` handler sets `Handled` | right-click | the menu does **not** open — the router default respects the handled mark | PIN (CD-P9-20) |
+| C7.15 | right-click-opened (Pointer placement) menu | click far outside | light-dismiss closes it (the right-click path, not just programmatic Bottom open) | WPF |
+| C7.16 | focused element with **no** `ContextMenu.Menu` | `Key.Menu` | nothing opens (the key-path parent-chain walk finds no menu) | PIN (CD-P9-20) |
 
 **CD-P9-20 (P9.4d) — ContextMenu hosting + the router default.** A `ContextMenu` owns an internal `Popup` whose
 `Child` is the menu itself, so its items realize in the popup surface and inherit DataContext/resources through the
@@ -427,3 +431,14 @@ invoke dismisses the whole menu via `MenuItem.CloseMenuChain`, which now termina
 (it is not a `MenuItem`). `CursorialTheme.BuiltIn` keys an occluding `Theme.ContextMenu` panel (`PanelBrush` +
 `BorderPen`) hosting the `PART_ItemsHost` `ItemsPresenter`. **Deferred:** clicking a popup-surface item by screen
 coordinate (the harness limitation noted in §C6 — covered here by keyboard + the direct `Open`/`IsSubmenuOpen` API).
+
+**CD-P9-20 audit (P9.4d-1 follow-up).** An adversarial audit (8 confirmed findings) caught a real HIGH correctness
+bug: **re-opening an already-open `ContextMenu` did not relocate the popup.** A `Popup` re-places its surface only
+on the closed→open edge (`OpenCore`→`PlacePopup`), so `SetCurrentValue(IsOpenProperty, true)` on an already-open
+popup is a no-op and stranded the menu at the old position; the offset/placement property writes had no re-placement
+trigger. Fixed in `ContextMenu.Open`: close first when already open, then re-open at the new placement (a fresh
+surface is placed). The audit also caught the first-cut C7.3/C7.9/C7.10 as false-greens (they asserted only
+`IsOpen`/popup-count, never the placement mode or offsets) and coverage gaps (the `UIParent` ancestor walk, the
+`Handled`-suppresses-menu branch, the right-click-then-dismiss path, the key-path no-menu walk). Rows C7.3/C7.10 were
+strengthened (assert `PlacementMode.Pointer` / the applied offset / a fresh `PopupSurface` — the last
+mutation-verified to fail without the relocation fix) and rows C7.13–C7.16 added.

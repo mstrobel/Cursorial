@@ -1,6 +1,8 @@
 using System.Windows.Input;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -82,6 +84,7 @@ public sealed class Section20_ContextMenu
 
         Assert.True(menu.IsOpen);
         Assert.Equal(1, Popups(host));
+        Assert.Equal(PlacementMode.Pointer, host.Application.WindowManager!.Popups[0].Placement); // right-click → at the cursor
     }
 
     [Fact] // C7.4: a right-click over an element with NO ContextMenu opens nothing
@@ -190,22 +193,26 @@ public sealed class Section20_ContextMenu
         Assert.False(menu.IsOpen);
     }
 
-    [Fact] // C7.10: re-opening an open menu keeps exactly one popup surface (relocate, not stack)
+    [Fact] // C7.10: re-opening relocates — one popup surface, the new offset is applied, a fresh surface is placed
     public void C7_10_ReopenRelocates()
     {
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu);
         using var _h = host;
+        var wm = host.Application.WindowManager!;
 
         menu.Open(owner, new CellPosition(0, 0));
         host.RunUntilIdle();
         Assert.Equal(1, Popups(host));
+        var firstSurface = wm.Popups[0].PopupSurface;
 
-        menu.Open(owner, new CellPosition(2, 2)); // re-open elsewhere
+        menu.Open(owner, new CellPosition(0, 4)); // re-open lower
         host.RunUntilIdle();
         Assert.True(menu.IsOpen);
-        Assert.Equal(1, Popups(host)); // not two
+        Assert.Equal(1, Popups(host));                    // not two — relocated, not stacked
+        Assert.Equal(4, wm.Popups[0].VerticalOffset);     // the new offset was applied (not stale)
+        Assert.NotSame(firstSurface, wm.Popups[0].PopupSurface); // re-placed on a fresh surface (close→reopen)
     }
 
     [Fact] // C7.11: a submenu header inside the context menu opens its own submenu (nested popup)
@@ -244,6 +251,70 @@ public sealed class Section20_ContextMenu
         menu.Close();
         host.RunUntilIdle();
         Assert.False(menu.IsOpen);
+        Assert.Equal(0, Popups(host));
+    }
+
+    [Fact] // C7.13: the router walks the UIParent chain — a right-click on a child opens an ANCESTOR's menu
+    public void C7_13_RightClickWalksToAncestorMenu()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem { Header = "Cut" });
+        var (host, owner, _) = RootWithMenu(menu); // owner (Border) carries the menu, centered (cols 5-35, rows 3-13)
+        using var _h = host;
+        var child = new Border { Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)) }; // fills owner, hittable, NO menu
+        owner.Child = child;
+        host.RunUntilIdle();
+
+        host.SendClick(10, 6, MouseButton.Right); // right-click ON the child (inside the owner)
+        host.RunUntilIdle();
+        Assert.True(menu.IsOpen); // opened only if the walk climbed from the child to the owner (the child carries no menu)
+    }
+
+    [Fact] // C7.14: a routed handler that consumes the right-button-up suppresses the context menu (Handled wins)
+    public void C7_14_HandledRightUpSuppressesMenu()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem { Header = "Cut" });
+        var (host, owner, _) = RootWithMenu(menu);
+        using var _h = host;
+        owner.AddHandler(UIElement.PreviewMouseUpEvent, (_, e) => e.Handled = true); // consume the event
+
+        host.SendClick(5, 4, MouseButton.Right);
+        host.RunUntilIdle();
+        Assert.False(menu.IsOpen); // the router default respects the handled mark
+        Assert.Equal(0, Popups(host));
+    }
+
+    [Fact] // C7.15: a right-click-opened (Pointer placement) menu light-dismisses on an outside click
+    public void C7_15_RightClickThenOutsideDismisses()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem { Header = "Cut" });
+        var (host, _, _) = RootWithMenu(menu);
+        using var _h = host;
+
+        host.SendClick(10, 6, MouseButton.Right); // open at the pointer (inside the centered owner)
+        host.RunUntilIdle();
+        Assert.True(menu.IsOpen);
+
+        host.SendClick(38, 15); // click far outside the menu → light-dismiss
+        host.RunUntilIdle();
+        Assert.False(menu.IsOpen);
+    }
+
+    [Fact] // C7.16: Key.Menu over an element with no ContextMenu opens nothing (the key-path walk finds none)
+    public void C7_16_MenuKeyNoMenuNoOp()
+    {
+        var host = Host();
+        using var _h = host;
+        var owner = new Button { Content = "target" }; // focusable, but no ContextMenu.Menu attached
+        host.ShowRoot(owner);
+        host.RunUntilIdle();
+        owner.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Menu);
+        host.RunUntilIdle();
         Assert.Equal(0, Popups(host));
     }
 }

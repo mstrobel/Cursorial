@@ -50,6 +50,7 @@ internal static class ControlThemes
         dict[typeof(ToolTip)] = ToolTipTheme();
         dict[typeof(TabControl)] = TabControlTheme();
         dict[typeof(TabItem)] = TabItemTheme();
+        dict[typeof(ProgressBar)] = ProgressBarTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -243,6 +244,19 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
         theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
+
+    // ───────────────────────────── ProgressBar ─────────────────────────────
+
+    // ProgressBar paints itself (no template): the track is the recessed WellBrush, the determinate fill is green,
+    // and the indeterminate sweep is accent (the gallery mockup — green determinate, accent indeterminate).
+    private static Style ProgressBarTheme()
+    {
+        var theme = new Style { Key = "Theme.ProgressBar" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
+            .SetResource(ProgressBar.FillProperty, ThemeKeys.GreenBrush);
+        theme.Children.Add(new Style("^:indeterminate").SetResource(ProgressBar.FillProperty, ThemeKeys.AccentBrush));
         return theme;
     }
 

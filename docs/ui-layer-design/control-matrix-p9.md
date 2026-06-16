@@ -532,3 +532,30 @@ bugs**, and the "no double-hosting" claim was verified sound by mutation) added 
 first cut missed (each mutation-verified): the `!ctrl` arrow/Home/End guards (C9.11), the Ctrl-gated PageUp/PageDown
 (C9.12), **UIElement** (non-string) content switching without double-hosting (C9.13), the empty-TabControl `count==0`
 guard against a `DivideByZero` on the cycle (C9.14), and the idempotent re-click (C9.15).
+
+## §C10 — ProgressBar (P9.7) — tests in `Section23_ProgressBar`
+
+`ProgressBar : Control` paints itself in `Render` (no template): the track is `Background`, the determinate fill
+is `Fill` across `round((Value−Min)/(Max−Min) · width)` cells, the indeterminate sweep is a block at
+`IndeterminateOffset`.
+
+| # | Setup | Action | Expectation | Source |
+|---|-------|--------|-------------|--------|
+| C10.1 | `Max=100` | `Value=50` / `25` | `FilledFraction` = 0.5 / 0.25 | WPF |
+| C10.2 | `[0,100]` | `Value=150` / `−10` | coerced to 100 / 0 | WPF |
+| C10.3 | `[0,100]` | `Value=Min` / `Max` | `FilledFraction` 0 / 1 | WPF |
+| C10.4 | `Min==Max` | inspect | `FilledFraction` 0 (no divide-by-zero) | PIN (CD-P9-23) |
+| C10.5 | `[10,20]` | `Value=15` | `FilledFraction` 0.5 (offset range) | WPF |
+| C10.6 | `IsIndeterminate` true→false | inspect | `:indeterminate` flips | PIN (CD-P9-23) |
+| C10.7 | 30% of a 10-wide bar | render | cells 0–2 are filled, cell 5 is track (the fill differs from the track) | PIN (CD-P9-23) |
+| C10.8 | full / empty bar | render | uniformly filled / uniformly track | WPF |
+
+**CD-P9-23 (P9.7) — ProgressBar paints in `Render`.** A terminal progress bar is a row of solid cells, so
+`ProgressBar` overrides `Render` and `FillRectangle`s the track (`Background`) then the determinate fill (`Fill`)
+across `round(FilledFraction · width)` cells — no template, no per-cell child layout. `Value` is coerced into
+`[Minimum, Maximum]`; `FilledFraction` clamps to `[0,1]` and returns 0 on an empty range (no divide-by-zero).
+`IsIndeterminate` → `:indeterminate` via `PseudoClassMapping`; `CursorialTheme.BuiltIn` keys `Theme.ProgressBar`
+(`WellBrush` track, `GreenBrush` determinate fill, `AccentBrush` on `:indeterminate` — the gallery mockup). All
+geometry/paint properties are `AffectsRender`. **Deferred:** the animated indeterminate sweep as a
+storyboard-ignited, composite-only persistent highlight layer (design doc §3.9 resolution 1 — `IndeterminateOffset`
+as an `AffectsComposite` target); v1 draws the offset block in `Render` (a consumer can animate the offset).

@@ -172,11 +172,11 @@ public static class CursorialTheme
         // distinguishability under reverse-video: --text/--bg at the extremes (15/0), --accent/--on-accent on
         // real blue, resting fills→0 vs interactive fills→8 (dark), status hues kept true.
         var ansi16 = new ResourceDictionary();
-        rgb[ThemeKeys.ElevationWell] = Palette(15);
-        rgb[ThemeKeys.ElevationDesktop] = Palette(dark ? 0 : 7);
-        rgb[ThemeKeys.ElevationWindow] = Palette(dark ? 0 : 15);
-        rgb[ThemeKeys.ElevationRaised] = Palette(dark ? 0 : 7);
-        rgb[ThemeKeys.ElevationHighest] = Palette(dark ? 7 : 15);
+        ansi16[ThemeKeys.ElevationWell] = Palette(15);
+        ansi16[ThemeKeys.ElevationDesktop] = Palette(dark ? 0 : 7);
+        ansi16[ThemeKeys.ElevationWindow] = Palette(dark ? 0 : 15);
+        ansi16[ThemeKeys.ElevationRaised] = Palette(dark ? 0 : 7);
+        ansi16[ThemeKeys.ElevationHighest] = Palette(dark ? 7 : 15);
         ansi16[ThemeKeys.WindowBackground] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 0 : 7);

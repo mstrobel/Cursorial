@@ -35,4 +35,18 @@ public sealed class GetSetPropertiesTests
 
         Assert.Empty(border.GetSetProperties());
     }
+
+    [Fact] // a cleared property leaves a retained (EffectivePriority == Unset) store entry that is EXCLUDED (M115)
+    public void GetSetProperties_ExcludesClearedEntry()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 6) });
+        var button = new Button { Width = 10 };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+        Assert.Contains(UIElement.WidthProperty, button.GetSetProperties()); // present while set
+
+        button.ClearValue(UIElement.WidthProperty); // the entry is retained but goes Unset (M115)
+        host.RunUntilIdle();
+        Assert.DoesNotContain(UIElement.WidthProperty, button.GetSetProperties()); // the != Unset filter excludes it
+    }
 }

@@ -242,6 +242,12 @@ internal sealed class InspectorDemo : IDemo
                 if (choice.IsFile)
                 {
                     label = Path.GetFileName(choice.Value);
+                    if (Directory.Exists(choice.Value))
+                    {
+                        ShowError($"\"{choice.Value}\" is a directory, not a .xaml file.");
+                        return;
+                    }
+
                     xaml = File.ReadAllText(choice.Value);
                 }
                 else
@@ -315,7 +321,18 @@ internal sealed class InspectorDemo : IDemo
             {
                 // The winning derivation line (StyleDiagnostics.Explain is one line per contributor, strongest
                 // first): "<prop> = <value> <- <Layer>(n) \"<selector>\" … -- winning" (or "<- LocalValue").
-                var winning = StyleDiagnostics.Explain(element, property).Split('\n', 2)[0];
+                // Guarded: a diagnostic must never crash the thing it inspects — a pathological value ToString()
+                // in an arbitrarily-loaded tree degrades to an error line, not an unhandled hover-handler throw.
+                string winning;
+                try
+                {
+                    winning = StyleDiagnostics.Explain(element, property).Split('\n', 2)[0];
+                }
+                catch (Exception ex)
+                {
+                    winning = $"{property.Name} = (error: {ex.GetType().Name})";
+                }
+
                 _inspectorContent.Children.Add(new TextBlock(winning));
             }
         }

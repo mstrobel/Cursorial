@@ -549,6 +549,7 @@ is `Fill` across `round((Value−Min)/(Max−Min) · width)` cells, the indeterm
 | C10.6 | `IsIndeterminate` true→false | inspect | `:indeterminate` flips | PIN (CD-P9-23) |
 | C10.7 | 30% of a 10-wide bar | render | cells 0–2 are filled, cell 5 is track (the fill differs from the track) | PIN (CD-P9-23) |
 | C10.8 | full / empty bar | render | uniformly filled / uniformly track | WPF |
+| C10.9 | indeterminate, `IndeterminateOffset=5` | render | the sweep block draws at the offset (distinct from the track on both sides) | PIN (CD-P9-23) |
 
 **CD-P9-23 (P9.7) — ProgressBar paints in `Render`.** A terminal progress bar is a row of solid cells, so
 `ProgressBar` overrides `Render` and `FillRectangle`s the track (`Background`) then the determinate fill (`Fill`)

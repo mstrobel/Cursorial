@@ -118,4 +118,25 @@ public sealed class Section23_ProgressBar
             Assert.Equal(c0, c7); // uniformly track — nothing filled
         }
     }
+
+    [Fact] // C10.9: the indeterminate sweep draws a block at IndeterminateOffset (distinct from the track on both sides)
+    public void C10_9_IndeterminateBlockAtOffset()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 6) });
+        using var _ = host;
+        var bar = new ProgressBar
+        {
+            IsIndeterminate = true, IndeterminateOffset = 5, // block (~width/3) starts at column 5
+            Width = 12, Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(bar);
+        host.RunUntilIdle();
+        var o = bar.TranslateToWindow(0, 0);
+
+        var track = host.GetCell(o.Column, o.Row).Style.Background;          // column 0 — before the block
+        var block = host.GetCell(o.Column + 5, o.Row).Style.Background;      // column 5 — in the block
+        Assert.NotEqual(track, block);                                       // the sweep block is visible
+        Assert.Equal(track, host.GetCell(o.Column + 11, o.Row).Style.Background); // column 11 — track again (after the block)
+    }
 }

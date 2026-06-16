@@ -340,6 +340,18 @@ mouse-driven structural core + theme.
 | C6.28 | focused leaf | Right (unhandled by the leaf) | does NOT hijack the ancestor header (no bar jump, submenu not stranded) | PIN (CD-P9-18c) |
 | C6.29 | open submenu | Down | the focused item is `:highlighted`, others not (highlight follows focus) | PIN (CD-P9-18c) |
 | C6.30 | submenu `[item, Separator, item]` | Down ×3 | skips the Separator, then wraps | WPF |
+| C6.31 | bar header `Header="_File"` | Alt-down then Alt+F **through the dispatcher** | the manager finds the attach-registered folded `f`, opens the submenu | PIN (CD-P9-19) |
+| C6.32 | leaf `Header="_Quit"` + `Command` | Alt+Q through the dispatcher | single match → focus + `Invoke` → the command runs once | PIN (CD-P9-19) |
+| C6.33 | two items `_Save`/`_Send` (both fold to `s`) | focus `_Save`, Alt+S through the dispatcher | a real multi-match → focus cycles to `_Send`, **neither** command invoked (ND18) | PIN (CD-P9-19) |
+| C6.34 | a `Menu` shown | inspect `AccessKeys.MainMenu` | the menu registered itself as the app main menu on attach (`IMainMenu`) | WPF |
+| C6.35 | a `Menu` with a focusable top item | `OnEnterMenuMode()` | focus moves to the first top-level item (Alt/F10 entry) | WPF |
+| C6.36 | disabled leaf (`Command` CanExecute false) | check eligibility + Alt+Q through the dispatcher | not access-key eligible **and** the manager skips it — the command never runs | WPF |
+| C6.37 | attached leaf `Header="_Quit"` + `Command` | reassign `Header="_Exit"`, then Alt+Q / Alt+E | `OnHeaderChanged` re-folds: the stale `q` activates nothing, the new `e` invokes | PIN (CD-P9-19) |
+| C6.38 | leaf `_Quit` + `Command` | Alt+Q (runs), `Items.Remove`, Alt+Q again | attach registered the mnemonic; detach unregistered it — the second activation is a no-op | PIN (CD-P9-19) |
+| C6.39 | a `Menu` shown then root swapped out | inspect `MainMenu` | detach releases the `IMainMenu` registration (`ReferenceEquals`-guarded clear) — no leak | PIN (CD-P9-19) |
+| C6.40 | two menus (last-wins `MainMenu`) | detach the non-owner, then the owner | the non-owner detach leaves `MainMenu` intact; only the owner's detach clears it | PIN (CD-P9-19) |
+| C6.41 | checkable leaf `Header="_Wrap"` | Alt+W through the dispatcher | the access-key activation toggles `IsChecked` (Invoke's `SetCurrentValue`) + `:checked` | WPF |
+| C6.42 | settled leaf | reassign `Header` | `IsMeasureValid` flips false — the `HeaderProperty` `OverrideMetadata` preserved the inherited `AffectsMeasure` | PIN (CD-P9-19) |
 
 **Landed in P9.4b:** 250 ms hover-open + immediate sibling-switch when the menu is active (rows C6.16–C6.21;
 **CD-P9-18c (P9.4c) — keyboard navigation + highlight-follows-focus.** `MenuItem` is focusable; highlight =
@@ -358,9 +370,27 @@ bar menu (a no-op today); a `Menu`-level helper lands with the SubTree-capture s
 **Landed in P9.4c:** keyboard navigation (Left/Right/Down/Up/Enter) + Esc-close + highlight-follows-focus
 (CD-P9-18c, rows C6.22–C6.30).
 
+**CD-P9-19 (P9.4c-2) — access-key folding + menu-mode entry.** `MenuItem : HeaderedItemsControl, IAccessKeyTarget`
+(it cannot also inherit `ButtonBase` — single inheritance — so it carries its own `Click`/`Command` coupling,
+mirroring `ButtonBase`). The static ctor does `HeaderProperty.OverrideMetadata<MenuItem>(… ParsesAccessKeyLiterals
+= true, Changed: OnHeaderChanged)`: the loader/`GetAccessText()` folds an `AccessText`-typed `Header` literal
+(`"_Quit"`→mnemonic `q`), and the metadata merge **preserves** the inherited `AffectsMeasure(HeaderProperty)`
+(effects live in a separate per-type registry, independent of `PropertyMetadata` — row C6.42 pins this). The item
+registers its folded mnemonic with the `AccessKeyManager` on attach (`OnAttachedToTree→RegisterAccessKey`),
+re-registers on a live `Header` change (`OnHeaderChanged`, drop-old-then-add-new), and unregisters on detach. Single
+match → focus + `OnAccessKey` (HasItems ⇒ open submenu, else Invoke); multi-match → the manager cycles focus only,
+never invoking (ND18). `Menu : ItemsControl, IMainMenu` registers as `AccessKeys.MainMenu` on attach (last-wins) and
+clears it on detach **only when it is still the owner** (`ReferenceEquals` guard); `OnEnterMenuMode` (Alt-tap/F10)
+focuses the first top-level item. **Tests drive end-to-end through the real `AccessKeyManager`** (Alt-down +
+Alt+`<char>` via `InputDispatcher.ProcessEvent`, mirroring `InputMatrix/Section12`) so the whole registration spine
+is exercised — not the `IAccessKeyTarget.OnAccessKey` reaction body in isolation (rows C6.31–C6.42; an audit found
+the first-cut C6.31–C6.33 were false-green against a no-op registration and they were rewritten).
+
 **Still deferred to P9.4c-2/d (noted, not silently dropped):** re-click-on-header toggle-close + sibling-switch by
 *click* + Right/Left-on-a-submenu-leaf jumping to the adjacent bar menu (all need the SubTree-capture menu-session
 model — the press is otherwise swallowed by light-dismiss); sub-item invoke + nested-header hover *via a
 popup-surface click* (the test harness needs screen-absolute popup coords — the mechanism is covered by the
-keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns; **access-key folding + menu-mode entry
-(Alt/F10 + `IMainMenu`) — P9.4c-2**; `ContextMenu` + `ToolTip` — **P9.4d**.
+keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns; `ContextMenu` + `ToolTip` — **P9.4d**.
+
+**Landed in P9.4c-2:** access-key folding + registration lifecycle (attach/Header-change/detach) + menu-mode entry
+(Alt/F10 + `IMainMenu`), driven end-to-end through the `AccessKeyManager` (CD-P9-19, rows C6.31–C6.42).

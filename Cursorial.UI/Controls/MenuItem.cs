@@ -3,7 +3,6 @@ using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.UI.Input;
 
-// ReSharper disable CheckNamespace
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -13,9 +12,9 @@ namespace Cursorial.UI.Controls;
 /// submenu <see cref="Popup"/> instead. Derives from <see cref="HeaderedItemsControl"/> (the header is the label,
 /// the items are the submenu); it cannot also extend <see cref="ButtonBase"/> (single inheritance), so it carries
 /// its own click/command surface. <c>:highlighted</c>/<c>:open</c> are <c>DirectProperty</c>-backed (flipped via
-/// <see cref="PseudoClasses"/>); <c>:checked</c> mirrors <see cref="IsChecked"/> via <see cref="PseudoClassMapping"/>.
+/// <see cref="UIElement.PseudoClasses"/>); <c>:checked</c> mirrors <see cref="IsChecked"/> via <see cref="PseudoClassMapping"/>.
 /// </summary>
-public class MenuItem : HeaderedItemsControl
+public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 {
     /// <summary>The command invoked when a leaf item is clicked/activated.</summary>
     public static readonly StyledProperty<ICommand?> CommandProperty =
@@ -54,10 +53,16 @@ public class MenuItem : HeaderedItemsControl
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
     private bool _isPointerOver;
+    private char _registeredAccessKey;
     private Popup? _popup;
     private UITimer? _hoverTimer;
 
-    static MenuItem() => PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
+    static MenuItem()
+    {
+        PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
+        // MenuItem.Header folds access-key literals ("_File" → mnemonic 'F') — the per-type flag (doc §12.5 ②).
+        HeaderProperty.OverrideMetadata<MenuItem>(new PropertyMetadata<object?>(Changed: OnHeaderChanged) { ParsesAccessKeyLiterals = true });
+    }
 
     /// <summary>Creates a menu item (focusable — keyboard navigation lands focus on the highlighted item).</summary>
     public MenuItem() => Focusable = true;
@@ -107,6 +112,7 @@ public class MenuItem : HeaderedItemsControl
     {
         base.OnAttachedToTree(in e);
         SubscribeCanExecute(); // CD25: a live CanExecuteChanged must re-gate IsEnabledCore (matches ButtonBase)
+        RegisterAccessKey();   // register the Header mnemonic with the AccessKeyManager (doc §12.5)
     }
 
     /// <inheritdoc/>
@@ -115,6 +121,7 @@ public class MenuItem : HeaderedItemsControl
         StopHoverTimer();       // owners stop timers on detach (§12.2)
         SetSubmenuOpen(false);  // close the submenu so its Popup surface doesn't leak on detach
         UnsubscribeCanExecute();
+        UnregisterAccessKey();
         base.OnDetachedFromTree(in e);
     }
 
@@ -402,6 +409,57 @@ public class MenuItem : HeaderedItemsControl
     }
 
     private void OnCanExecuteChanged(object? sender, EventArgs e) => InvalidateIsEnabledCore();
+
+    // ── access keys (doc §12.5; mnemonic source is Header, not Content) ────────────────────────────────
+
+    bool IAccessKeyTarget.IsAccessKeyEligible => IsEffectivelyEnabled && IsEffectivelyVisible;
+
+    void IAccessKeyTarget.OnAccessKey(AccessKeyEventArgs e) => OnAccessKey(e);
+
+    /// <summary>Access-key reaction: a multi-match only focuses (the manager already did); a unique match opens the
+    /// submenu (header) or invokes (leaf).</summary>
+    protected virtual void OnAccessKey(AccessKeyEventArgs e)
+    {
+        if (e.IsMultiMatch)
+            return; // the manager focused us; cycling among matches never invokes
+
+        if (HasItems)
+            OpenSubmenuWithFocus();
+        else
+            Invoke();
+    }
+
+    private AccessText GetAccessText()
+        => Header is string s && HeaderProperty.GetMetadata(GetType()).ParsesAccessKeyLiterals == true ? AccessText.Parse(s) : default;
+
+    private void RegisterAccessKey()
+    {
+        if (UIApplication.Current?.AccessKeys is not { } manager)
+            return;
+
+        var access = GetAccessText();
+        if (!access.HasKey)
+            return;
+
+        _registeredAccessKey = access.Key;
+        manager.Register(access.Key, this);
+    }
+
+    private void UnregisterAccessKey()
+    {
+        if (_registeredAccessKey != '\0' && UIApplication.Current?.AccessKeys is { } manager)
+            manager.Unregister(_registeredAccessKey, this);
+        _registeredAccessKey = '\0';
+    }
+
+    private static void OnHeaderChanged(UIObject sender, object? oldValue, object? newValue)
+    {
+        if (sender is MenuItem { IsAttachedToTree: true } item) // re-fold + re-register the mnemonic
+        {
+            item.UnregisterAccessKey();
+            item.RegisterAccessKey();
+        }
+    }
 
     private static void OnCommandChanged(UIObject sender, ICommand? oldValue, ICommand? newValue)
     {

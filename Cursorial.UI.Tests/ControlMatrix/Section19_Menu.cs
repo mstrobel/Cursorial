@@ -1,9 +1,11 @@
 using System.Windows.Input;
 
 using Cursorial.Input;
+using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.ControlMatrix;
@@ -245,6 +247,236 @@ public sealed class Section19_Menu
     }
 
     private static MenuItem Sub(MenuItem item, int index) => (MenuItem)item.ItemContainerGenerator.ContainerFromIndex(index)!;
+
+    // ── access-key drivers: end-to-end through the real AccessKeyManager (mirrors InputMatrix/Section12) ──
+    // UITestHost's default KittyTruecolor caps gate the manager into AccessKeyMode.AltHeld, so an Alt-down
+    // primes the cue window and a following Alt+<char> activates the folded mnemonic. These exercise the
+    // whole registration spine (OnAttachedToTree→RegisterAccessKey, the Header literal fold, the manager's
+    // registry + scope resolution + Invoke), not just the IAccessKeyTarget.OnAccessKey reaction body.
+    private static KeyEvent KeyEvt(Key key, KeyModifiers modifiers = KeyModifiers.None, string? text = null)
+        => new()
+        {
+            Key = key,
+            Modifiers = modifiers,
+            Kind = KeyEventKind.Down,
+            Text = (text ?? string.Empty).AsMemory(),
+            Timestamp = DateTimeOffset.UnixEpoch,
+        };
+
+    // Activate a folded mnemonic through the manager. A fresh Alt-down precedes each char so the cue window
+    // is open (a bare char with Alt held would trip the manager's stale-Alt inference and close it).
+    private static void ActivateAccessKey(UITestHost host, char mnemonic)
+    {
+        var dispatcher = host.Application.InputDispatcher;
+        dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.Alt));                          // Alt down → cue up
+        dispatcher.ProcessEvent(KeyEvt(Key.Character, KeyModifiers.Alt, mnemonic.ToString()));   // Alt+<char>
+        host.RunUntilIdle();
+    }
+
+    [Fact] // C6.31: a folded Header access key opens the submenu header — end-to-end through the manager
+    public void C6_31_AccessKeyOpensSubmenuHeader()
+    {
+        var file = new MenuItem { Header = "_File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        ActivateAccessKey(host, 'f'); // Alt+F — registration ran on attach, folded "_File"→'f', manager dispatched
+        Assert.True(file.IsSubmenuOpen);
+    }
+
+    [Fact] // C6.32: a folded Header access key invokes a leaf — end-to-end through the manager
+    public void C6_32_AccessKeyInvokesLeaf()
+    {
+        var command = new TestCommand();
+        var leaf = new MenuItem { Header = "_Quit", Command = command };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        ActivateAccessKey(host, 'q'); // Alt+Q — single match → focus + Invoke → command runs once
+        Assert.Equal(1, command.Runs);
+    }
+
+    [Fact] // C6.33: two items sharing a mnemonic — the manager produces a multi-match → focus cycles, never invokes (ND18)
+    public void C6_33_MultiMatchFocusesOnly()
+    {
+        var save = new TestCommand();
+        var send = new TestCommand();
+        var saveItem = new MenuItem { Header = "_Save", Command = save };
+        var sendItem = new MenuItem { Header = "_Send", Command = send }; // both fold to 's' → a real collision
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(saveItem);
+        menu.Items.Add(sendItem);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        saveItem.Focus(); // anchor focus on the first match so the cycle target is observable
+        host.RunUntilIdle();
+
+        ActivateAccessKey(host, 's'); // two eligible matches → cycle focus to the NEXT match, never invoke
+        Assert.Equal(0, save.Runs);
+        Assert.Equal(0, send.Runs);
+        Assert.Same(sendItem, host.Application.FocusManager.FocusedElement); // cycled past the focused saveItem
+    }
+
+    [Fact] // C6.34: the Menu registers as the app main menu (IMainMenu)
+    public void C6_34_RegistersAsMainMenu()
+    {
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(new MenuItem { Header = "_File" });
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        Assert.Same(menu, (object?)host.Application.AccessKeys.MainMenu);
+    }
+
+    [Fact] // C6.35: menu-mode entry focuses the first top-level item
+    public void C6_35_EnterMenuModeFocusesFirst()
+    {
+        var file = new MenuItem { Header = "_File" };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        ((IMainMenu)menu).OnEnterMenuMode();
+        host.RunUntilIdle();
+        Assert.True(file.IsFocused);
+    }
+
+    [Fact] // C6.36: a disabled MenuItem is not access-key eligible — and the manager actually skips it
+    public void C6_36_DisabledNotEligible()
+    {
+        var command = new TestCommand { CanRun = false };
+        var leaf = new MenuItem { Header = "_Quit", Command = command };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Assert.False(((IAccessKeyTarget)leaf).IsAccessKeyEligible);
+        ActivateAccessKey(host, 'q'); // the manager's CollectEligibleMatches skips the ineligible target
+        Assert.Equal(0, command.Runs); // never invoked — exclusion holds end-to-end
+    }
+
+    [Fact] // C6.37: changing Header while attached re-registers the NEW mnemonic and drops the OLD (OnHeaderChanged)
+    public void C6_37_HeaderChangeReRegistersAccessKey()
+    {
+        var command = new TestCommand();
+        var leaf = new MenuItem { Header = "_Quit", Command = command };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        leaf.Header = "_Exit"; // re-folds to 'e'; the old 'q' registration must drop
+        host.RunUntilIdle();
+
+        ActivateAccessKey(host, 'q'); // the stale mnemonic activates nothing
+        Assert.Equal(0, command.Runs);
+
+        ActivateAccessKey(host, 'e'); // the re-registered mnemonic invokes
+        Assert.Equal(1, command.Runs);
+    }
+
+    [Fact] // C6.38: attach registers the mnemonic; removing the item from Items unregisters it (detach backstop)
+    public void C6_38_AttachRegistersDetachUnregisters()
+    {
+        var command = new TestCommand();
+        var leaf = new MenuItem { Header = "_Quit", Command = command };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        ActivateAccessKey(host, 'q'); // attach-time RegisterAccessKey ran with the folded 'q'
+        Assert.Equal(1, command.Runs);
+
+        menu.Items.Remove(leaf); // unrealize → detach → UnregisterAccessKey
+        host.RunUntilIdle();
+        ActivateAccessKey(host, 'q'); // the mnemonic is gone — no further invoke
+        Assert.Equal(1, command.Runs);
+    }
+
+    [Fact] // C6.39: detaching the Menu releases its IMainMenu registration (symmetric clear, ReferenceEquals-guarded)
+    public void C6_39_MenuDetachClearsMainMenu()
+    {
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(new MenuItem { Header = "_File" });
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        Assert.Same(menu, (object?)host.Application.AccessKeys.MainMenu);
+
+        host.ShowRoot(new StackPanel()); // swap the root out → the old menu detaches
+        host.RunUntilIdle();
+        Assert.Null(host.Application.AccessKeys.MainMenu); // released, not leaked
+    }
+
+    [Fact] // C6.40: detaching a non-owner menu leaves the last-wins MainMenu intact (the ReferenceEquals guard)
+    public void C6_40_NonOwnerDetachKeepsMainMenu()
+    {
+        var first = new Menu();
+        first.Items.Add(new MenuItem { Header = "_File" });
+        var second = new Menu();
+        second.Items.Add(new MenuItem { Header = "_Edit" });
+        var root = new StackPanel();
+        root.Children.Add(first);
+        root.Children.Add(second);
+        using var host = Host();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        Assert.Same(second, (object?)host.Application.AccessKeys.MainMenu); // last attach wins
+
+        root.Children.Remove(first); // the NON-owner detaches — must NOT clear second's registration
+        host.RunUntilIdle();
+        Assert.Same(second, (object?)host.Application.AccessKeys.MainMenu);
+
+        root.Children.Remove(second); // the owner detaches — now it clears
+        host.RunUntilIdle();
+        Assert.Null(host.Application.AccessKeys.MainMenu);
+    }
+
+    [Fact] // C6.41: an access key activates a checkable leaf — toggles IsChecked through Invoke's SetCurrentValue
+    public void C6_41_AccessKeyTogglesCheckable()
+    {
+        var leaf = new MenuItem { Header = "_Wrap", IsCheckable = true };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        ActivateAccessKey(host, 'w');
+        Assert.True(leaf.IsChecked);
+        Assert.True(leaf.HasCustomPseudoClass(":checked"));
+    }
+
+    [Fact] // C6.42: the MenuItem HeaderProperty metadata override preserves the inherited AffectsMeasure effect
+    public void C6_42_HeaderChangeStillInvalidatesMeasure()
+    {
+        var leaf = new MenuItem { Header = "Quit" };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        Assert.True(leaf.IsMeasureValid); // settled
+
+        leaf.Header = "Exit"; // AffectsMeasure(HeaderProperty) must survive the OverrideMetadata merge
+        Assert.False(leaf.IsMeasureValid);
+    }
 
     [Fact] // C6.22: Down on a focused bar header opens its submenu + moves focus to the first sub-item
     public void C6_22_DownOpensAndFocusesFirst()

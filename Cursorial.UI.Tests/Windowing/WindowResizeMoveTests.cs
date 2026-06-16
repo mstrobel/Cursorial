@@ -64,8 +64,8 @@ public sealed class WindowResizeMoveTests
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        // The bordered chrome insets content by 1; the title bar sits at inner row Top+1.
-        Drag(host, (12, 6), (15, 9)); // press the title bar, drag +3,+3
+        // Borderless chrome: no border inset, so the title bar band is the window's top row (Top).
+        Drag(host, (12, 5), (15, 8)); // press the title bar, drag +3,+3
         Assert.True(host.RunUntilIdle());
 
         Assert.Equal(13, w.Left);
@@ -82,8 +82,8 @@ public sealed class WindowResizeMoveTests
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        // Inside the 1-cell border, the grip sits at inner (Left+W-2, Top+H-2) = (28,11); drag +3,+2.
-        Drag(host, (28, 11), (31, 13));
+        // Borderless chrome: the ◢ grip sits at the window's bottom-right corner (Left+W-1, Top+H-1) = (29,12); drag +3,+2.
+        Drag(host, (29, 12), (32, 14));
         Assert.True(host.RunUntilIdle());
 
         Assert.Equal(23, w.Width);
@@ -100,14 +100,14 @@ public sealed class WindowResizeMoveTests
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        host.SendClick(12, 6, clickCount: 2); // title bar at inner row Top+1
+        host.SendClick(12, 5, clickCount: 2); // borderless: the title bar band is the window's top row (Top)
         Assert.True(host.RunUntilIdle());
         Assert.Equal(WindowState.Maximized, w.WindowState);
         Assert.Equal(new Size(60, 20), w.ActualSize); // fills the viewport
         Assert.Equal(0, w.Left);
         Assert.Equal(0, w.Top);
 
-        host.SendClick(2, 1, clickCount: 2); // maximized: title bar at inner (1,1)
+        host.SendClick(2, 0, clickCount: 2); // maximized: the title bar band is row 0
         Assert.True(host.RunUntilIdle());
         Assert.Equal(WindowState.Normal, w.WindowState);
         Assert.Equal(new Size(20, 8), w.ActualSize); // restored

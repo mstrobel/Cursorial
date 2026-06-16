@@ -45,7 +45,7 @@ public readonly record struct TerminalCaretState(bool Visible, int Column, int R
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Transform timing.</b> <see cref="GetCaretState"/> runs the transform <b>live</b> via
+/// <b>Transform timing.</b> <see cref="GetCaretState(int, int)"/> runs the transform <b>live</b> via
 /// <see cref="UIElement.TranslateToWindow"/> — call it during frame assembly, after the layout pass
 /// and after <see cref="RenderTree.RunRenderPass"/>'s boundary walk, so arranged bounds, render
 /// offsets, scroll offsets, and the refreshed boundary clips are all current. A caret outside its

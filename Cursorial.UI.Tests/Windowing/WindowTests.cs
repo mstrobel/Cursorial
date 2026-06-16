@@ -89,6 +89,44 @@ public sealed class WindowTests
             $"cursor row {host.FrameBuffer.CursorRow} should be at/after the window Top {window.Top}");
     }
 
+    [Fact] // borderless chrome: the active window's title band is the accent fill — distinct from its body, and it re-colours when deactivated
+    public void Chrome_ActiveTitleBand_DiffersFromBody_AndReColoursOnDeactivate()
+    {
+        var (host, wm) = ShownRoot();
+        using var _ = host;
+
+        var a = new Window
+        {
+            Title = "A",
+            Content = "body",
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 5, Top = 3, Width = 20, Height = 8,
+        };
+        a.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(a.IsActive);
+
+        // The title band (row Top) is the accent fill; the body row (Top+1) is the window surface — distinct
+        // fills, no drawn border between them (the borderless tonal seam).
+        var activeTitleBg = host.GetCell(7, 3).Style.Background; // inside the title band, left of the controls
+        var bodyBg = host.GetCell(7, 4).Style.Background;        // the body row below it
+        Assert.NotEqual(activeTitleBg, bodyBg);
+
+        // A second window steals activation → A's band re-colours (accent → the recessed inactive surface).
+        var b = new Window
+        {
+            Title = "B",
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 30, Top = 3, Width = 20, Height = 8,
+        };
+        b.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        Assert.False(a.IsActive);
+
+        var inactiveTitleBg = host.GetCell(7, 3).Style.Background;
+        Assert.NotEqual(activeTitleBg, inactiveTitleBg);
+    }
+
     [Fact]
     public void Close_RemovesSurface_AndRaisesClosed()
     {

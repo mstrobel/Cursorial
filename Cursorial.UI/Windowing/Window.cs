@@ -422,65 +422,90 @@ public partial class Window : ContentControl
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
 
-        // The occluding root: windows must OVERWRITE what they cover, not tint it (the drawing-core
-        // occluding-panel idiom — FillOpaque). A default opaque surface fill until S8's themed brush (C4).
-        var root = new Border
-                   {
-                       // Occludes = true,
-                       Background = window.Background ?? DefaultSurfaceBrush
-                   };
+        // Borderless, fill-bounded windows (the tokyo-night "borderless windows" model): a window separates
+        // from the desktop by tonal ELEVATION, not a drawn frame. The root is an opaque occluding fill (so a
+        // window overwrites what it covers — the drawing-core occluding-panel idiom) with NO resting pen; the
+        // body defaults to the themed PanelBrush surface (re-skins on a theme flip) unless the consumer set
+        // Background, and an explicit BorderPen still opts a frame back in. Drop-shadow elevation is deferred
+        // (a render boundary cannot paint its own shadow — §8 / W5).
+        if (window.Background is null)
+            window.SetResourceReference(BackgroundProperty, ThemeKeys.PanelBrush);
+        window.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+
+        var root = new Border();
+        root.SetBinding(Border.BackgroundProperty, new Binding(nameof(Background)) { Source = window });
+        root.SetBinding(Border.BorderPenProperty, new Binding(nameof(BorderPen)) { Source = window }); // opt-in frame only
 
         if (window.WindowStyle == WindowStyle.None)
         {
-            // Chrome-less but still opaque: just the occluding frame around the content.
-            root.Child = presenter;
+            root.Child = presenter; // chrome-less, still an opaque occluding fill
             return root;
         }
 
-        // Title-bar style: an occluding outline + a background-filled title bar docked above the content.
-        window.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
-        window.SetResourceReference(BorderPenProperty, ThemeKeys.BorderPen);
-        
-        root.SetBinding(Border.BorderPenProperty, new Binding(nameof(BorderPen)) { Source = window });
-        root.SetBinding(Border.BackgroundProperty, new Binding(nameof(Background)) { Source = window });
-
         var layout = new DockPanel();
 
-        // The title bar is a background-filled Border (so the whole bar is an opaque, hittable Drag grab
-        // area — §8.3). Inside, a DockPanel docks the control button(s) right and lets the title presenter
-        // fill the rest (the last-child-fill). Drag is on the bar; the close button's Close wins as the
-        // innermost role under a press on it.
-        var titleBar = new Border { Background = TitleBarBrush };
+        // The title bar is a filled band that doubles as the Drag grab area (§8.3). Its fill + ink track the
+        // window's ACTIVE state (ApplyActiveLook below): an accent band + on-accent ink when active, a recessed
+        // surface band + dim ink when inactive — the borderless focus cue is the band colour, not a border.
+        var titleBar = new Border { Padding = new Margins(1, 0) };
         WindowChrome.SetHitTestRole(titleBar, WindowHitTestRole.Drag);
         ctx.RegisterName("PART_TitleBar", titleBar);
 
-        var titleBarContent = new DockPanel(); // LastChildFill=true → the title presenter fills the remainder
+        var titleBarContent = new DockPanel(); // LastChildFill → the title fills the remainder
 
-        var closeButton = new Button { Content = "✕", Focusable = false, IsTabStop = false };
+        // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's
+        // surface/hover fills, so it reads as a glyph, not a button face. Close stays the button's own Click
+        // (Window.Interactions intentionally leaves Close off the role switch).
+        var closeButton = new Button { Content = "✕", Background = Brushes.Transparent, Focusable = false, IsTabStop = false };
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
-
         closeButton.Click += (_, _) =>
                              {
                                  if (window.CanClose)
                                      window.Close(WindowCloseReason.ChromeAction);
                              };
-
         DockPanel.SetDock(closeButton, Dock.Right);
-        titleBarContent.Children.Add(closeButton); // control buttons first, docked right
+        titleBarContent.Children.Add(closeButton); // docked right → rightmost control
         ctx.RegisterName("PART_CloseButton", closeButton);
 
+        // Maximize ▢ — a bare role-driven glyph (its press bubbles to the window, which toggles Maximized via
+        // the Maximize role, exactly like the ◢ grip's ResizeSE). Only when the window can resize.
+        TextBlock? maximizeGlyph = null;
+        if (window.CanResize)
+        {
+            maximizeGlyph = new TextBlock { Text = "▢" };
+            WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
+            DockPanel.SetDock(maximizeGlyph, Dock.Right);
+            titleBarContent.Children.Add(maximizeGlyph); // docked right → left of the close glyph
+            ctx.RegisterName("PART_MaximizeButton", maximizeGlyph);
+        }
+
         var titleText = new TextBlock { Text = window.Title ?? string.Empty };
-        titleBarContent.Children.Add(titleText); // last child → fills the drag area and shows the title
+        titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
         ctx.RegisterName("PART_Title", titleText);
 
         titleBar.Child = titleBarContent;
         DockPanel.SetDock(titleBar, Dock.Top);
         layout.Children.Add(titleBar);
 
+        // The active-state look, driven in code off Activated/Deactivated — the interim chrome's equivalent of
+        // a `Window:active-window /template/ …` rule (C4's themed Window control theme replaces this).
+        void ApplyActiveLook(bool active)
+        {
+            titleBar.SetResourceReference(Border.BackgroundProperty, active ? ThemeKeys.AccentBrush : ThemeKeys.SurfaceBrush);
+            var ink = active ? ThemeKeys.OnAccentBrush : ThemeKeys.TextDimBrush;
+            titleText.SetResourceReference(TextElement.ForegroundProperty, ink);
+            closeButton.SetResourceReference(TextElement.ForegroundProperty, ink);
+            maximizeGlyph?.SetResourceReference(TextElement.ForegroundProperty, ink);
+        }
+
+        ApplyActiveLook(window.IsActive);
+        window.Activated += (_, _) => ApplyActiveLook(true);
+        window.Deactivated += (_, _) => ApplyActiveLook(false);
+
         if (window.CanResize)
         {
-            // The ◢ resize grip overlays the content's bottom-right corner (ResizeSE). A single-cell Grid
-            // stacks the grip over the presenter so it costs no layout row (the interim look; C4 themes it).
+            // The ◢ resize grip overlays the content's bottom-right corner (ResizeSE), stacked over the
+            // presenter in a single-cell Grid so it costs no layout row.
             var body = new Grid();
             body.Children.Add(presenter);
 
@@ -490,7 +515,7 @@ public partial class Window : ContentControl
                            HorizontalAlignment = HorizontalAlignment.Right,
                            VerticalAlignment = VerticalAlignment.Bottom
                        };
-
+            grip.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
             WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
             ctx.RegisterName("PART_ResizeGrip", grip);
             body.Children.Add(grip);
@@ -505,7 +530,4 @@ public partial class Window : ContentControl
         root.Child = layout;
         return root;
     }
-
-    private static readonly IBrush DefaultSurfaceBrush = SolidColorBrush.FromRgb(0x1E, 0x1E, 0x2E);
-    private static readonly IBrush TitleBarBrush = SolidColorBrush.FromRgb(0x31, 0x32, 0x44);
 }

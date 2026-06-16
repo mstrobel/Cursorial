@@ -243,3 +243,39 @@ gallery `.item.rev` / Inverse+Bold) — **P9.3b**. (3) `:alternate` row-striping
 | C4.24 | Multiple, bound, {1,3} | remove a NON-selected item (index 0) | selection shifts to {0,2}, survivors stay selected; **no** `SelectionChanged` | PIN (CD-P9-11) |
 | C4.25 | Multiple, bound, {1,3} | remove ONE selected item (index 1) | just it drops; `SelectionChanged` fires once; the other survives selected | WPF |
 | C4.26 | Single, item 0 selected | swap `ItemsSource` | selection clears (`SelectedIndex`=−1) — never spuriously re-selects index 0 | PIN (CD-P9-15) |
+
+---
+
+## §C5 — ListBox keyboard navigation (P9.3b) — tests in `Section18_ListBoxKeyboard`
+
+The "current" item is the keyboard cursor (the focused container's index), tracked via `ListBoxItem.OnGotFocus`,
+distinct from selection. Arrows/Home/End move it and focus the target with `FocusNavigationMethod.Directional`
+(⇒ `:focus-visible`, the reverse-video focus-row cue — gallery `.item.rev`); selection follows per mode +
+modifiers; Space toggles/selects the current; Enter activates it. **Deferred:** PageUp/PageDown (needs the
+viewport row count) and Ctrl+A select-all — noted for a later pass.
+
+| # | Mode | Setup → key | Expected | Oracle |
+|---|---|---|---|---|
+| C5.1 | Single | focus item 0 → Down | current+selection → 1; item 1 focused | WPF |
+| C5.2 | Single | focus item 2 → Up | → 1 | WPF |
+| C5.3 | Single | focus last → Down | clamps at last | WPF |
+| C5.4 | Single | focus 0 → Up | clamps at 0 | WPF |
+| C5.5 | Single | focus 2 → Home | → 0 | WPF |
+| C5.6 | Single | focus 0 → End | → last | WPF |
+| C5.7 | Single | Down | selection-follows-focus (current == selected) | WPF |
+| C5.8 | Multiple | select 1 → Down (plain) | selection replaced → only 2 | WPF |
+| C5.9 | Multiple | select 0 → Ctrl+Down | focus moves to 1, selection unchanged (still 0) | WPF |
+| C5.10 | Multiple | focus 1, Space (anchor 1) → Shift+Down | range extends → {1,2} | WPF |
+| C5.11 | Single | focus 1 → Space | selects current (1) | WPF |
+| C5.12 | Multiple | focus 1 → Space | toggles current selected | WPF |
+| C5.13 | any | focus 1 → Enter | `ItemActivated` fires for item 1 | WPF |
+| C5.14 | Single | keyboard-nav focus vs mouse-click | the keyboard current row renders `:focus-visible` reverse-video, distinct from a mouse-selected row | PIN |
+| C5.15 | Single, ObservableCollection | focus item 1, remove item 0, then Down | lands on the contiguous item (no stale-cursor skip) | PIN (CD-P9-16) |
+| C5.16 | Single, ObservableCollection | focus item 1, insert at 0, then Down | Down still advances by one (no stall) | PIN (CD-P9-16) |
+
+- **CD-P9-16 — the keyboard cursor is the live focused item, not a cached index (P9.3b, audit).** `ListBox.OnKeyDown`
+  resolves the "current" item by walking up from the routed event's `OriginalSource` to the owning container — so it
+  is always the container that actually holds focus, correct after any insert/remove/move (the cached `_currentIndex`
+  it replaced went stale because nothing reindexed it). When focus is outside the items it falls back to the selected
+  index, and to −1 (no anchor) when there is none: the first arrow then enters at item 0 (not index 1), and Enter/Space
+  no-op rather than phantom-activating index 0. Rows C5.15/C5.16.

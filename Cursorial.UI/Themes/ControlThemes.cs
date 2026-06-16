@@ -139,6 +139,12 @@ internal static class ControlThemes
             .Set(Control.TemplateProperty, ListBoxItemTemplate());
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
         theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        // The keyboard focus-row cue (gallery .item.rev): reverse-video — ordered AFTER :selected so a
+        // focused+selected current item reads as focused (adoption-spec lines 108-110). :focus-visible (not :focus)
+        // so a mouse click — Pointer modality — shows :selected, while keyboard nav shows the reverse row.
+        theme.Children.Add(new Style("^:focus-visible")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
         return theme;
     }

@@ -176,4 +176,100 @@ public sealed class Section22_TabControl
         Assert.True(b.HasCustomPseudoClass(":selected"));
         Assert.False(c.HasCustomPseudoClass(":selected"));
     }
+
+    [Fact] // C9.11: Ctrl+arrow / Ctrl+Home / Ctrl+End do NOT navigate (the !ctrl guards fall through unhandled)
+    public void C9_11_CtrlArrowsDoNotNavigate()
+    {
+        var (host, tabs, _, b, _) = ThreeTabs();
+        using var _h = host;
+        tabs.SelectedIndex = 1; // middle, so a wrong move in either direction is observable
+        host.RunUntilIdle();
+        b.Focus();
+        host.RunUntilIdle();
+
+        foreach (var key in (Key[])[Key.LeftArrow, Key.RightArrow, Key.Home, Key.End])
+        {
+            host.SendKey(key, KeyModifiers.Control);
+            host.RunUntilIdle();
+            Assert.Equal(1, tabs.SelectedIndex); // unchanged — Ctrl is reserved for PageUp/PageDown
+        }
+    }
+
+    [Fact] // C9.12: PageUp/PageDown WITHOUT Ctrl do NOT navigate (the cycle is Ctrl-gated)
+    public void C9_12_PlainPageKeysDoNotNavigate()
+    {
+        var (host, tabs, _, b, _) = ThreeTabs();
+        using var _h = host;
+        tabs.SelectedIndex = 1;
+        host.RunUntilIdle();
+        b.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.PageUp);
+        host.RunUntilIdle();
+        Assert.Equal(1, tabs.SelectedIndex);
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+        Assert.Equal(1, tabs.SelectedIndex);
+    }
+
+    [Fact] // C9.13: UIElement (non-string) content switches between tabs without double-hosting (single visual parent)
+    public void C9_13_UIElementContentSwitches()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        using var _h = host;
+        var bodyA = new Border { Child = new TextBlock { Text = "A-body" } };
+        var bodyB = new Border { Child = new TextBlock { Text = "B-body" } };
+        var a = new TabItem { Header = "A", Content = bodyA };
+        var b = new TabItem { Header = "B", Content = bodyB };
+        var tabs = new TabControl();
+        tabs.Items.Add(a);
+        tabs.Items.Add(b);
+        host.ShowRoot(tabs);
+        host.RunUntilIdle();
+
+        Assert.Same(bodyA, tabs.SelectedContent); // tab A auto-selected → its UIElement content shows
+        Assert.True(bodyA.IsAttachedToTree);       // hosted (in the content host, not the strip)
+
+        tabs.SelectedIndex = 1;                    // switch to B (must not throw a double-visual-parent error)
+        host.RunUntilIdle();
+        Assert.Same(bodyB, tabs.SelectedContent);
+
+        tabs.SelectedIndex = 0;                    // switch back to A — re-hosts cleanly
+        host.RunUntilIdle();
+        Assert.Same(bodyA, tabs.SelectedContent);
+        Assert.True(bodyA.IsAttachedToTree);
+    }
+
+    [Fact] // C9.14: keyboard navigation on an empty TabControl is a safe no-op (the count==0 guard; no DivideByZero on Ctrl+Page)
+    public void C9_14_EmptyTabControlKeyboardNoOp()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        using var _h = host;
+        var tabs = new TabControl { Focusable = true }; // no items
+        host.ShowRoot(tabs);
+        host.RunUntilIdle();
+        tabs.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.PageDown, KeyModifiers.Control); // % count with count==0 would throw without the guard
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.Equal(-1, tabs.SelectedIndex); // nothing selected, no exception
+    }
+
+    [Fact] // C9.15: clicking the already-selected tab keeps it selected (idempotent)
+    public void C9_15_ClickSelectedTabIdempotent()
+    {
+        var (host, tabs, _, b, _) = ThreeTabs();
+        using var _h = host;
+        tabs.SelectedIndex = 1;
+        host.RunUntilIdle();
+        Assert.True(b.IsSelected);
+
+        Click(host, b); // click B again
+        Assert.Equal(1, tabs.SelectedIndex);
+        Assert.True(b.IsSelected);
+    }
 }

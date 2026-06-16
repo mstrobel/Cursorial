@@ -509,6 +509,11 @@ containers. The themed template hosts the tab strip (`PART_TabStrip`, the header
 | C9.8 | three tabs | set `SelectedIndex` | `SelectedItem` is the selected container | WPF |
 | C9.9 | three tabs | set a `TabItem.IsSelected = true` | folds into the single-selection model — the old selection clears | WPF |
 | C9.10 | three tabs | set `SelectedIndex` | exactly one tab carries `:selected` | WPF |
+| C9.11 | selected middle tab | Ctrl+Left / Ctrl+Right / Ctrl+Home / Ctrl+End | selection unchanged — Ctrl is reserved for the cycle (CD-P9-22 audit) | PIN (CD-P9-22) |
+| C9.12 | selected middle tab | PageUp / PageDown **without** Ctrl | selection unchanged — the cycle is Ctrl-gated | PIN (CD-P9-22) |
+| C9.13 | tabs with **UIElement** content | switch A→B→A | the content switches cleanly (single visual parent — no double-hosting) | PIN (CD-P9-22) |
+| C9.14 | **empty** TabControl | Ctrl+PageDown / arrow | safe no-op (the `count==0` guard; no `DivideByZero` on the cycle `% count`) | PIN (CD-P9-22) |
+| C9.15 | selected tab | click it again | stays selected (idempotent) | WPF |
 
 **CD-P9-22 (P9.5) — TabControl on the selection base.** `TabControl` reuses `SelectingItemsControl` (single mode)
 unchanged — `SelectedIndex`/`SelectedItem`/`SelectionModel`/the `ISelectableContainer` mirror all come from P9.3.
@@ -521,3 +526,9 @@ content host, so a UIElement content is never double-hosted. `CursorialTheme.Bui
 (DockPanel: strip top + bordered body) and `Theme.TabItem` (fill-bounded header, `:selected` = `SelectionBrush`).
 **Deferred:** `TabItem` access-key folding (Alt+mnemonic selects the tab — the `IAccessKeyTarget` + Header-fold
 treatment like `MenuItem`); selection by click/keyboard is the v1 behavior.
+
+**CD-P9-22 audit (P9.5 follow-up).** An adversarial audit (5 confirmed findings — **all coverage gaps; no correctness
+bugs**, and the "no double-hosting" claim was verified sound by mutation) added the negative-case + edge tests the
+first cut missed (each mutation-verified): the `!ctrl` arrow/Home/End guards (C9.11), the Ctrl-gated PageUp/PageDown
+(C9.12), **UIElement** (non-string) content switching without double-hosting (C9.13), the empty-TabControl `count==0`
+guard against a `DivideByZero` on the cycle (C9.14), and the idempotent re-click (C9.15).

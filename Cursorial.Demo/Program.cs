@@ -33,6 +33,7 @@ IReadOnlyList<IDemo> demos =
     new UIXamlDemo(),
     new WindowingDemo(),
     new SaveDialogDemo(),
+    new InspectorDemo(),
     new ImageSceneDemo(),
     new ImageClipDemo(),
     new ImageDemo(),

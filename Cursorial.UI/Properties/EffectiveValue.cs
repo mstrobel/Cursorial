@@ -86,6 +86,9 @@ internal abstract class EffectiveValueBase
 
     /// <summary>The boxed raw (pre-coercion) local value, or <see langword="null"/> when no local contribution exists.</summary>
     public abstract object? GetRawLocalBoxedValue();
+
+    /// <summary>The property this entry stores values for — the untyped handle the diagnostics enumeration needs.</summary>
+    public abstract UIProperty PropertyUntyped { get; }
 }
 
 /// <summary>
@@ -103,6 +106,9 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
 {
     /// <summary>The typed property identity this entry stores values for.</summary>
     public readonly StyledProperty<T> Property;
+
+    /// <inheritdoc/>
+    public override UIProperty PropertyUntyped => Property;
 
     /// <summary>The post-coercion effective value; valid while <see cref="EffectiveValueBase.EffectivePriority"/> is not <c>Unset</c>.</summary>
     public T Value = default!;

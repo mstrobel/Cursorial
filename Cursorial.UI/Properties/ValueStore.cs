@@ -62,6 +62,14 @@ internal sealed class ValueStore
         return index >= 0 ? _entries[index] : null;
     }
 
+    /// <summary>Appends each property with a live (non-<see cref="BindingPriority.Unset"/>) store contribution — the diagnostics enumeration the style inspector walks.</summary>
+    internal void CollectSetProperties(List<UIProperty> into)
+    {
+        for (var i = 0; i < _entryCount; i++)
+            if (_entries[i].EffectivePriority != BindingPriority.Unset)
+                into.Add(_entries[i].PropertyUntyped);
+    }
+
     /// <summary>
     /// The local-lane write — plain <c>SetValue</c>, <c>SetCurrentValue</c>'s as-Local graft, and
     /// local binding-entry pushes (<paramref name="writer"/> non-null) all land here; within the

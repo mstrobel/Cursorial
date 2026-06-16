@@ -231,6 +231,23 @@ public abstract class UIObject : IInheritanceNode
         return results;
     }
 
+    /// <summary>
+    /// The properties with a live, non-default contribution on this element (local / style / animation —
+    /// the store entries), the enumeration the style-inspector overlay walks (design doc §3.9). Pair each
+    /// with <see cref="GetValueSource"/> / <c>StyleDiagnostics.Explain</c> for provenance. Inherited-only
+    /// values are excluded — they are not <em>set</em> on this element. Cold path; store-id order.
+    /// </summary>
+    public IReadOnlyList<UIProperty> GetSetProperties()
+    {
+        VerifyAccess();
+        if (_store is not { } store)
+            return [];
+
+        var result = new List<UIProperty>();
+        store.CollectSetProperties(result);
+        return result;
+    }
+
     internal object? GetValueBoxed<T>(StyledProperty<T> property)
     {
         if (_store is { } store)

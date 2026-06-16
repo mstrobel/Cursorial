@@ -43,6 +43,9 @@ internal static class ControlThemes
         dict[typeof(ItemsControl)] = ItemsControlTheme();
         dict[typeof(ListBox)] = ListBoxTheme();
         dict[typeof(ListBoxItem)] = ListBoxItemTheme();
+        dict[typeof(Menu)] = MenuTheme();
+        dict[typeof(MenuItem)] = MenuItemTheme();
+        dict[typeof(Separator)] = SeparatorTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -133,6 +136,84 @@ internal static class ControlThemes
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         return border;
     });
+
+    // ───────────────────────────── Menu / MenuItem / Separator ─────────────────────────────
+
+    // The horizontal menu bar: a SurfaceBrush strip hosting the top-level items (the Menu's ItemsPanel is a
+    // horizontal StackPanel — set in its ctor).
+    private static ControlTemplate MenuTemplate() => new(ctx =>
+    {
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var border = new Border { Child = host };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        return border;
+    });
+
+    private static Style MenuTheme()
+        => new Style { Key = "Theme.Menu" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, MenuTemplate());
+
+    // A menu item: a fill-bounded header row [header … gesture], plus the submenu Popup (PART_Popup) whose Child is
+    // an occluding PanelBrush surface hosting the sub-items (PART_ItemsHost). The Popup contributes no layout to the
+    // row (a Grid cell stacks it behind the face at 0×0). :highlighted = SelectionBrush fill; :disabled = muted.
+    private static ControlTemplate MenuItemTemplate() => new(ctx =>
+    {
+        var header = new ContentPresenter { RecognizesAccessKey = true };
+        ctx.RegisterName("PART_ContentPresenter", header);
+        header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+
+        var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
+        gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(MenuItem.InputGestureTextProperty));
+        gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+        DockPanel.SetDock(gesture, Dock.Right);
+
+        var row = new DockPanel();
+        row.Children.Add(gesture); // docked right (faint gesture hint)
+        row.Children.Add(header);  // fills the remaining width
+
+        var face = new Border { Padding = new Margins(1, 0), Child = row };
+        face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+        var itemsHost = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", itemsHost);
+        var submenu = new Border { Occludes = true, Child = itemsHost };
+        submenu.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        submenu.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        var popup = new Popup { Child = submenu };
+        ctx.RegisterName("PART_Popup", popup);
+
+        var root = new Grid(); // the Popup adds no layout (0×0); the face fills the cell
+        root.Children.Add(face);
+        root.Children.Add(popup);
+        return root;
+    });
+
+    private static Style MenuItemTheme()
+    {
+        var theme = new Style { Key = "Theme.MenuItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, MenuItemTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:highlighted").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
+
+    // A 1-row muted rule between items.
+    private static Style SeparatorTheme()
+        => new Style { Key = "Theme.Separator" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.MutedBrush)
+            .Set(UIElement.HeightProperty, (int?)1)
+            .Set(Control.TemplateProperty, new ControlTemplate(_ =>
+            {
+                var rule = new Border();
+                rule.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                return rule;
+            }));
 
     private static Style ListBoxItemTheme()
     {

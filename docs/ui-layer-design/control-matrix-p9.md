@@ -282,9 +282,52 @@ viewport row count) and Ctrl+A select-all — noted for a later pass.
   it replaced went stale because nothing reindexed it). When focus is outside the items it falls back to the selected
   index, and to −1 (no anchor) when there is none: the first arrow then enters at item 0 (not index 1), and Enter/Space
   no-op rather than phantom-activating index 0. Rows C5.15/C5.16.
-- **CD-P9-17 — `ItemsPresenter` resolves its owner up the visual tree (P9.3c, ScrollViewer integration).** The
-  ListBox template hosts the `ItemsPresenter` inside a `ScrollViewer` so long lists scroll. A `ScrollContentPresenter`
-  hosting the presenter as its `Content` **clears the presenter's `TemplatedParent`**, so relying on `TemplatedParent`
-  alone left the presenter ownerless (no panel, 0×0). `ItemsPresenter` now finds its owner WPF-style
-  (`ItemsControl.GetItemsOwner`): `TemplatedParent` if it is an `ItemsControl`, else the nearest `ItemsControl`
-  visual ancestor. Row C4.27.
+- **CD-P9-17 — `ItemsPresenter` resolves its owner across hosting boundaries (P9.3c ScrollViewer / P9.4 menu).** A
+  content host that adopts the presenter as its `Content` — the ListBox's `ScrollContentPresenter`, or a MenuItem's
+  submenu `Popup` — **clears the presenter's `TemplatedParent`**, so relying on `TemplatedParent` alone left it
+  ownerless (no panel, 0×0). `ItemsPresenter` now finds its owner WPF-style (`ItemsControl.GetItemsOwner`):
+  `TemplatedParent` if it is an `ItemsControl`, else walk the **`UIParent` bridge** (`LogicalParent ?? TemplatedParent`;
+  a `Popup` overrides it to `PlacementTarget`) up to the first `ItemsControl`. The `UIParent` chain crosses a popup
+  **surface boundary** back to the owning control (a submenu's presenter resolves to its `MenuItem`), where a
+  visual-tree walk dead-ends at the popup root. Rows C4.27 (scroll), C6.6 (submenu hosts).
+- **CD-P9-18 — menus on `Popup` (P9.4a).** `Menu` is a horizontal `ItemsControl` (top-level `MenuItem`s); `MenuItem`
+  derives from `HeaderedItemsControl` (header = label, items = submenu) and — since it can't also extend `ButtonBase`
+  (single inheritance) — carries its own click/command surface. A **leaf** (no sub-items) invokes on click (raise
+  `Click`, toggle `IsChecked` if `IsCheckable`, execute `Command`, dismiss the chain); a **submenu header** toggles
+  its submenu `Popup` (`PART_Popup`, manually two-way-synced with `IsSubmenuOpen` so light-dismiss/Esc write back).
+  `:highlighted`/`:open` are `DirectProperty`-backed (flipped via `PseudoClasses.Set`); `:checked` via
+  `PseudoClassMapping`. Placement: top-level → `Bottom`, nested → `Right`. `Separator` is a non-focusable own-container
+  rule. **P9.4a ships the mouse-driven structural core**; keyboard cycling + hover-open (P9.4b), access keys +
+  menu-mode + focus scope (P9.4c), `ContextMenu` + `ToolTip` (P9.4d) follow. **Audit fixes:** `MenuItem` mirrors
+  ButtonBase's CD25 command coupling — subscribes `Command.CanExecuteChanged` on attach, re-points on Command change,
+  unsubscribes on detach, and re-gates on `CommandParameter` change (a live CanExecute flip now re-enables the item,
+  row C6.13); and it closes its submenu on detach so an open submenu's `Popup` surface never leaks (row C6.14).
+
+---
+
+## §C6 — Menu / MenuItem / Separator (P9.4a) — tests in `Section19_Menu`
+
+`Menu` (horizontal bar) / `MenuItem : HeaderedItemsControl` / `Separator`, on S4's `Popup`. P9.4a = the
+mouse-driven structural core + theme.
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| C6.1 | `Menu` with a `MenuItem` | shown | the MenuItem is its own container | WPF |
+| C6.2 | submenu with a `Separator` | shown | the Separator is its own container; not focusable | WPF |
+| C6.3 | a header MenuItem + a leaf MenuItem | — | `HasItems` true for the header, false for the leaf | WPF |
+| C6.4 | leaf with a `Command` | click it | `Click` raised + `Command` executed (with parameter) | WPF |
+| C6.5 | `IsCheckable` leaf | click it twice | `IsChecked` toggles; `:checked` mirrors | WPF |
+| C6.6 | submenu header | click it | `IsSubmenuOpen` + `:open`; the submenu `Popup` opens + hosts the sub-items | WPF |
+| C6.7 | open submenu | click far outside | light-dismiss closes it (`IsSubmenuOpen` false) | WPF |
+| C6.8 | MenuItem | hover it | `IsHighlighted` + `:highlighted` | WPF |
+| C6.10 | leaf with `Command` (CanExecute false) | click it | disabled (event-transparent) — `Command` never runs | WPF (CD25) |
+| C6.12 | top-level header + nested header | open | top-level submenu placement `Bottom`, nested `Right` | PIN (CD-P9-18) |
+| C6.13 | leaf, `Command` CanExecute false | raise `CanExecuteChanged` (now true) | the item re-enables (live command coupling, not one-shot) | WPF (CD25) |
+| C6.14 | open submenu | detach the menu from the tree | the submenu closes; its `Popup` surface is released (no leak) | PIN (CD-P9-18) |
+| C6.15 | 2-level nested submenu | open File then Recent | the nested submenu hosts its grandchild items | WPF |
+
+**Deferred to P9.4b/c (noted, not silently dropped):** re-click-on-header toggle-close (the light-dismiss/reopen
+race — needs press coordination); sub-item invoke + chain-close *via a popup-surface click* (the test harness needs
+screen-absolute popup coords); Esc-closes-submenu (depends on focus moving into the menu — the P9.4c focus scope);
+keyboard cycling (Left/Right/Down/Up/Enter); 250 ms hover-open; the check-glyph + submenu-▸ glyph columns;
+access-key folding + menu-mode entry; `ContextMenu` + `ToolTip` (P9.4d).

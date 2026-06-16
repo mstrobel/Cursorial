@@ -31,15 +31,16 @@ public sealed class ItemsPresenter : UIElement
     }
 
     // The owning ItemsControl: normally this presenter's TemplatedParent, but a content host (ScrollViewer's
-    // ScrollContentPresenter) clears TemplatedParent when it adopts the presenter as Content — so fall back to the
-    // nearest ItemsControl visual ancestor (WPF's ItemsControl.GetItemsOwner). The first ItemsControl up the visual
-    // tree owns this presenter (ListBox › ScrollViewer › … › ItemsPresenter resolves to the ListBox).
+    // ScrollContentPresenter, or a MenuItem's submenu Popup) clears TemplatedParent when it adopts the presenter as
+    // its content — so fall back to walking the UIParent bridge (LogicalParent ?? TemplatedParent; a Popup overrides
+    // it to PlacementTarget). That chain crosses a popup surface boundary back to the owning control (the menu's
+    // submenu ItemsPresenter resolves to its MenuItem), where a visual-tree walk would dead-end at the popup root.
     private ItemsControl? FindOwner()
     {
         if (TemplatedParent is ItemsControl templatedOwner)
             return templatedOwner;
 
-        for (UIElement? node = VisualParent; node is not null; node = node.VisualParent)
+        for (var node = UIParent; node is not null; node = node.UIParent)
             if (node is ItemsControl owner)
                 return owner;
 

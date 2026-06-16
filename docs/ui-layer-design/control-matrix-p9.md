@@ -231,18 +231,21 @@ range, plain = replace. **P9.3a = selection core (mouse + model wiring + theme);
 `TextBrush` ink (milder than pressed's accent pair, adoption-spec line 14), `:pointerover` = `HoverBrush`,
 `:disabled` = `MutedBrush`.
 
-**Deferred from P9.3a (noted, not silently dropped):** (1) **`ScrollViewer` integration** — nesting the
-`ItemsPresenter` inside a `ScrollViewer` in the ListBox template left the presenter unhosted (0×0, unattached); the
-P9.3a template is a plain `Border` › `ItemsPresenter` (like `ItemsControl`), and ScrollViewer-over-items is a
-focused follow-up (the SCP↔ItemsPresenter hosting/hit-test interaction needs its own tests). (2) **keyboard
-navigation** (arrows/Space/Home/End/Ctrl+A, `TabNavigation.Once` traversal, the focus-row reverse-video cue =
-gallery `.item.rev` / Inverse+Bold) — **P9.3b**. (3) `:alternate` row-striping — with the generator at P9 tail.
+**Landed since P9.3a:** (1) **`ScrollViewer` integration (P9.3c)** — the ListBox template wraps the
+`ItemsPresenter` in a `ScrollViewer` so a long list scrolls (row C4.27). The presenter had gone unhosted because
+the `ScrollContentPresenter`'s content-hosting clears the `ItemsPresenter`'s `TemplatedParent`; the fix
+(CD-P9-17) is that `ItemsPresenter` resolves its owner the WPF way — `TemplatedParent`, else the nearest
+`ItemsControl` visual ancestor. (2) **keyboard navigation (P9.3b)** — §C5.
+
+**Still deferred:** PageUp/PageDown + Ctrl+A select-all (P9.3b notes); `:alternate` row-striping — with the
+generator at the P9 tail.
 | C4.21 | Single, bound | remove an UNSELECTED item before the lead | `SelectedItem` stays aligned with `SelectedIndex` (no stale-by-count) | PIN (CD-P9-15) |
 | C4.22 | own-container `new ListBoxItem{IsSelected=true}` in the source | shown | folds into the model — `SelectedIndex`=0, `SelectedItem`=the leaf; single-mode click elsewhere clears it | PIN (CD-P9-15) |
 | C4.23 | Single | `SelectedIndex = 99` (out of range) | clamps to −1; `SelectedItem` null (consistent) | PIN (CD-P9-15) |
 | C4.24 | Multiple, bound, {1,3} | remove a NON-selected item (index 0) | selection shifts to {0,2}, survivors stay selected; **no** `SelectionChanged` | PIN (CD-P9-11) |
 | C4.25 | Multiple, bound, {1,3} | remove ONE selected item (index 1) | just it drops; `SelectionChanged` fires once; the other survives selected | WPF |
 | C4.26 | Single, item 0 selected | swap `ItemsSource` | selection clears (`SelectedIndex`=−1) — never spuriously re-selects index 0 | PIN (CD-P9-15) |
+| C4.27 | `ListBox` of 20 items in a small viewport | scroll the `ScrollViewer` | all 20 realized (eager); the items host through the ScrollViewer and scroll (item 0 slides up out of view) | PIN (CD-P9-17) |
 
 ---
 
@@ -279,3 +282,9 @@ viewport row count) and Ctrl+A select-all — noted for a later pass.
   it replaced went stale because nothing reindexed it). When focus is outside the items it falls back to the selected
   index, and to −1 (no anchor) when there is none: the first arrow then enters at item 0 (not index 1), and Enter/Space
   no-op rather than phantom-activating index 0. Rows C5.15/C5.16.
+- **CD-P9-17 — `ItemsPresenter` resolves its owner up the visual tree (P9.3c, ScrollViewer integration).** The
+  ListBox template hosts the `ItemsPresenter` inside a `ScrollViewer` so long lists scroll. A `ScrollContentPresenter`
+  hosting the presenter as its `Content` **clears the presenter's `TemplatedParent`**, so relying on `TemplatedParent`
+  alone left the presenter ownerless (no panel, 0×0). `ItemsPresenter` now finds its owner WPF-style
+  (`ItemsControl.GetItemsOwner`): `TemplatedParent` if it is an `ItemsControl`, else the nearest `ItemsControl`
+  visual ancestor. Row C4.27.

@@ -21,13 +21,29 @@ public sealed class ItemsPresenter : UIElement
     {
         base.OnAttachedToTree(in e);
 
-        if (TemplatedParent is not ItemsControl owner)
+        if (FindOwner() is not {} owner)
             return;
 
         _generator = owner.ItemContainerGenerator;
         EnsurePanel(owner);
         _generator.ContainersChanged += OnContainersChanged;
         SyncAll(); // adopt whatever is already realized (the generator may have run before this part existed)
+    }
+
+    // The owning ItemsControl: normally this presenter's TemplatedParent, but a content host (ScrollViewer's
+    // ScrollContentPresenter) clears TemplatedParent when it adopts the presenter as Content — so fall back to the
+    // nearest ItemsControl visual ancestor (WPF's ItemsControl.GetItemsOwner). The first ItemsControl up the visual
+    // tree owns this presenter (ListBox › ScrollViewer › … › ItemsPresenter resolves to the ListBox).
+    private ItemsControl? FindOwner()
+    {
+        if (TemplatedParent is ItemsControl templatedOwner)
+            return templatedOwner;
+
+        for (UIElement? node = VisualParent; node is not null; node = node.VisualParent)
+            if (node is ItemsControl owner)
+                return owner;
+
+        return null;
     }
 
     /// <inheritdoc/>
@@ -53,7 +69,7 @@ public sealed class ItemsPresenter : UIElement
     /// <summary>Rebuilds the items panel after <see cref="ItemsControl.ItemsPanel"/> changes (v1: full re-host).</summary>
     internal void RebuildPanel()
     {
-        if (TemplatedParent is not ItemsControl owner || !IsAttachedToTree)
+        if (!IsAttachedToTree || FindOwner() is not {} owner)
             return;
 
         if (_panel is not null)
@@ -161,7 +177,7 @@ public sealed class ItemsPresenter : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
-        if (_panel is null && TemplatedParent is ItemsControl owner)
+        if (_panel is null && FindOwner() is {} owner)
             EnsurePanel(owner);
 
         if (_panel is null)

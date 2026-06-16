@@ -106,7 +106,9 @@ internal static class ControlThemes
     {
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
-        var border = new Border { Child = host };
+        var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
+        ctx.RegisterName("PART_ScrollViewer", scroll);
+        var border = new Border { Child = scroll };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;

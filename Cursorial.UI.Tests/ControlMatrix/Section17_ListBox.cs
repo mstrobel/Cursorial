@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 
 using Cursorial.Input;
 using Cursorial.Rendering;
@@ -373,6 +374,34 @@ public sealed class Section17_ListBox
         Assert.Equal(1, events);
         Assert.True(Item(lb, 2).IsSelected); // d survives at 2, still selected
         Assert.Single(lb.SelectedItems);
+    }
+
+    [Fact] // C4.27: a long list realizes all items (eager) AND scrolls — the ItemsPresenter hosts through the ScrollViewer
+    public void C4_27_LongList_ScrollsThroughViewer()
+    {
+        var (host, lb) = Show(new ListBox { ItemsSource = Enumerable.Range(0, 20).Select(i => $"item{i}").ToArray() });
+        using var _ = host;
+
+        Assert.Equal(20, Gen(lb).ContainerCount); // eager: every item realized
+        var scroll = FindDescendant<ScrollViewer>(lb);
+        Assert.NotNull(scroll); // the ListBox template hosts the items in a ScrollViewer
+
+        var rowBefore = Item(lb, 0).TranslateToWindow(0, 0).Row;
+        scroll!.VerticalOffset = 5;
+        host.RunUntilIdle();
+        var rowAfter = Item(lb, 0).TranslateToWindow(0, 0).Row;
+        Assert.True(rowAfter < rowBefore); // scrolling down moved item 0 up (out of the viewport) — the SCP slid the band
+    }
+
+    private static T? FindDescendant<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            return match;
+        if (root.VisualChildrenList is { } children)
+            foreach (var child in children)
+                if (FindDescendant<T>(child) is { } found)
+                    return found;
+        return null;
     }
 
     [Fact] // C4.26: swapping ItemsSource clears the selection — never spuriously selects index 0 (re-source/reset)

@@ -325,9 +325,20 @@ mouse-driven structural core + theme.
 | C6.13 | leaf, `Command` CanExecute false | raise `CanExecuteChanged` (now true) | the item re-enables (live command coupling, not one-shot) | WPF (CD25) |
 | C6.14 | open submenu | detach the menu from the tree | the submenu closes; its `Popup` surface is released (no leak) | PIN (CD-P9-18) |
 | C6.15 | 2-level nested submenu | open File then Recent | the nested submenu hosts its grandchild items | WPF |
+| C6.16 | submenu header | hover, wait 250 ms | opens on the hover-open `UITimer` (not before the delay) | WPF |
+| C6.17 | submenu header | hover, leave before 250 ms | the pending hover-open is cancelled | WPF |
+| C6.18 | two bar headers, one open | hover the other | switches immediately (no delay), closes the first | WPF |
+| C6.19 | submenu header | hover (arm timer), detach the menu | the parked timer is stopped — never fires post-detach (no popup) | PIN (CD-P9-18b) |
+| C6.20 | leaf (no sub-items) | hover, wait 250 ms | arms no timer, opens nothing | WPF |
+| C6.21 | open header | re-hover it | stays open, no churn (one popup) | WPF |
 
-**Deferred to P9.4b/c (noted, not silently dropped):** re-click-on-header toggle-close (the light-dismiss/reopen
-race — needs press coordination); sub-item invoke + chain-close *via a popup-surface click* (the test harness needs
-screen-absolute popup coords); Esc-closes-submenu (depends on focus moving into the menu — the P9.4c focus scope);
-keyboard cycling (Left/Right/Down/Up/Enter); 250 ms hover-open; the check-glyph + submenu-▸ glyph columns;
-access-key folding + menu-mode entry; `ContextMenu` + `ToolTip` (P9.4d).
+**Landed in P9.4b:** 250 ms hover-open + immediate sibling-switch when the menu is active (rows C6.16–C6.21;
+**CD-P9-18b** — each submenu-header MenuItem owns a `UITimer` armed on hover-enter, cancelled on leave/detach;
+`OpenSubmenu` closes sibling submenus via the owner generator; a sibling already open ⇒ open immediately).
+
+**Still deferred to P9.4c/d (noted, not silently dropped):** re-click-on-header toggle-close + sibling-switch by
+*click* (both need the SubTree-capture menu-session model — the press is otherwise swallowed by light-dismiss);
+sub-item invoke *via a popup-surface click* (the test harness needs screen-absolute popup coords); nested-header
+hover-open (same harness limit); Esc-closes-submenu + keyboard cycling (Left/Right/Down/Up/Enter — depend on focus
+moving into the menu, the P9.4c focus scope); the check-glyph + submenu-▸ glyph columns; access-key folding +
+menu-mode entry (P9.4c); `ContextMenu` + `ToolTip` (P9.4d).

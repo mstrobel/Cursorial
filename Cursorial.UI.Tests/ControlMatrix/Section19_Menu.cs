@@ -244,6 +244,133 @@ public sealed class Section19_Menu
         Assert.Equal(0, host.Application.WindowManager!.Popups.Count); // the submenu Popup surface was released
     }
 
+    private static void Hover(UITestHost host, UIElement element)
+    {
+        var origin = element.TranslateToWindow(0, 0);
+        host.SendMouseMove(origin.Column + 1, origin.Row);
+        host.RunFrame();
+    }
+
+    [Fact] // C6.16: hovering a submenu header opens it after the 250 ms hover delay
+    public void C6_16_HoverOpensAfterDelay()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Hover(host, file);
+        Assert.False(file.IsSubmenuOpen); // pending — the delay hasn't elapsed
+
+        host.AdvanceTime(TimeSpan.FromMilliseconds(300));
+        host.RunFrame();
+        Assert.True(file.IsSubmenuOpen); // opened on the hover timer
+    }
+
+    [Fact] // C6.17: leaving before the delay cancels the pending hover-open
+    public void C6_17_HoverLeaveCancels()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Hover(host, file);
+        host.SendMouseMove(30, 12); // leave File before the delay elapses
+        host.RunFrame();
+        host.AdvanceTime(TimeSpan.FromMilliseconds(300));
+        host.RunFrame();
+        Assert.False(file.IsSubmenuOpen); // the timer was cancelled
+    }
+
+    [Fact] // C6.18: once a menu is active, hovering a sibling header switches immediately (closing the open one)
+    public void C6_18_HoverSwitchesSiblingsImmediately()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        var edit = new MenuItem { Header = "Edit" };
+        edit.Items.Add(new MenuItem { Header = "Copy" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        menu.Items.Add(edit);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Click(host, file); // open File's submenu (menu is now active)
+        Assert.True(file.IsSubmenuOpen);
+
+        Hover(host, edit); // immediate switch — no delay
+        Assert.True(edit.IsSubmenuOpen);
+        Assert.False(file.IsSubmenuOpen);
+    }
+
+    [Fact] // C6.19: detaching the menu while a hover-open timer is pending stops it (no fire-after-detach)
+    public void C6_19_DetachStopsPendingHoverTimer()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        var menu = new Menu();
+        menu.Items.Add(file);
+        var root = new StackPanel();
+        root.Children.Add(menu);
+        using var host = Host();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Hover(host, file);                // arm the 250 ms hover-open timer
+        Assert.False(file.IsSubmenuOpen); // pending
+        root.Children.Remove(menu);       // detach before it fires → StopHoverTimer
+        host.RunFrame();
+        host.AdvanceTime(TimeSpan.FromMilliseconds(300));
+        host.RunFrame();
+        Assert.False(file.IsSubmenuOpen);                               // the parked timer was stopped — never fired
+        Assert.Equal(0, host.Application.WindowManager!.Popups.Count);  // no popup surface materialized post-detach
+    }
+
+    [Fact] // C6.20: hovering a leaf (no sub-items) arms no timer + opens nothing
+    public void C6_20_LeafHoverNoOpen()
+    {
+        var leaf = new MenuItem { Header = "Quit" };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(leaf);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Hover(host, leaf);
+        host.AdvanceTime(TimeSpan.FromMilliseconds(300));
+        host.RunFrame();
+        Assert.False(leaf.IsSubmenuOpen);
+        Assert.Equal(0, host.Application.WindowManager!.Popups.Count);
+    }
+
+    [Fact] // C6.21: re-hovering an already-open header doesn't churn it (early-return on _isSubmenuOpen)
+    public void C6_21_ReHoverOpenHeaderNoOp()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Click(host, file); // open
+        Assert.True(file.IsSubmenuOpen);
+        Hover(host, file); // re-enter the already-open header
+        host.AdvanceTime(TimeSpan.FromMilliseconds(300));
+        host.RunFrame();
+        Assert.True(file.IsSubmenuOpen); // stays open, no flicker
+        Assert.Equal(1, host.Application.WindowManager!.Popups.Count); // exactly one popup (no churn)
+    }
+
     [Fact] // C6.15: a nested (2-level) submenu opens + hosts its grandchild items
     public void C6_15_NestedSubmenuHosts()
     {

@@ -49,9 +49,12 @@ public class MenuItem : HeaderedItemsControl
     public static readonly RoutedEvent<ClickEventArgs> ClickEvent =
         RoutedEvent<ClickEventArgs>.Register(nameof(Click), RoutingStrategy.Bubble, typeof(MenuItem));
 
+    private static readonly TimeSpan HoverOpenDelay = TimeSpan.FromMilliseconds(250);
+
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
     private Popup? _popup;
+    private UITimer? _hoverTimer;
 
     static MenuItem() => PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
 
@@ -105,6 +108,7 @@ public class MenuItem : HeaderedItemsControl
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
+        StopHoverTimer();       // owners stop timers on detach (§12.2)
         SetSubmenuOpen(false);  // close the submenu so its Popup surface doesn't leak on detach
         UnsubscribeCanExecute();
         base.OnDetachedFromTree(in e);
@@ -136,9 +140,16 @@ public class MenuItem : HeaderedItemsControl
             return;
 
         if (HasItems)
-            SetSubmenuOpen(!_isSubmenuOpen); // a submenu header toggles its submenu
+        {
+            if (_isSubmenuOpen)
+                SetSubmenuOpen(false); // toggle closed
+            else
+                OpenSubmenu();         // open (closing any sibling submenu)
+        }
         else
+        {
             Invoke(); // a leaf invokes + dismisses
+        }
 
         e.Handled = true;
     }
@@ -148,6 +159,14 @@ public class MenuItem : HeaderedItemsControl
     {
         base.OnMouseEnter(e);
         SetHighlighted(true);
+
+        if (!HasItems || _isSubmenuOpen)
+            return;
+
+        if (MenuIsActive())
+            OpenSubmenu();      // a sibling submenu is already open ⇒ switch immediately (no delay)
+        else
+            StartHoverTimer();  // otherwise open after the hover delay
     }
 
     /// <inheritdoc/>
@@ -155,6 +174,7 @@ public class MenuItem : HeaderedItemsControl
     {
         base.OnMouseLeave(e);
         SetHighlighted(false);
+        StopHoverTimer(); // cancel a pending hover-open (an already-open submenu stays open)
     }
 
     /// <summary>Invokes a leaf item: raise <see cref="Click"/>, toggle <see cref="IsChecked"/> (if checkable),
@@ -170,6 +190,48 @@ public class MenuItem : HeaderedItemsControl
             command.Execute(CommandParameter);
 
         CloseMenuChain();
+    }
+
+    // Opens this submenu, first closing any sibling submenu (only one branch of a level is open at a time).
+    private void OpenSubmenu()
+    {
+        StopHoverTimer();
+        CloseSiblings();
+        SetSubmenuOpen(true);
+    }
+
+    private void StartHoverTimer()
+    {
+        StopHoverTimer();
+        _hoverTimer = UITimer.Start(HoverOpenDelay, OpenSubmenu); // leave cancels it before it fires
+    }
+
+    private void StopHoverTimer()
+    {
+        _hoverTimer?.Stop();
+        _hoverTimer = null;
+    }
+
+    // Whether any sibling at this level already has its submenu open (the menu is "active").
+    private bool MenuIsActive()
+    {
+        if (OwnerItemsControl is not { } owner)
+            return false;
+
+        for (var i = 0; i < owner.ItemContainerGenerator.ContainerCount; i++)
+            if (owner.ItemContainerGenerator.ContainerFromIndex(i) is MenuItem { _isSubmenuOpen: true })
+                return true;
+        return false;
+    }
+
+    private void CloseSiblings()
+    {
+        if (OwnerItemsControl is not { } owner)
+            return;
+
+        for (var i = 0; i < owner.ItemContainerGenerator.ContainerCount; i++)
+            if (owner.ItemContainerGenerator.ContainerFromIndex(i) is MenuItem { _isSubmenuOpen: true } sibling && !ReferenceEquals(sibling, this))
+                sibling.SetSubmenuOpen(false);
     }
 
     private void SetSubmenuOpen(bool value)

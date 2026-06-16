@@ -1,6 +1,8 @@
 using Cursorial.Output;
 using Cursorial.UI.Input;
 
+// ReSharper disable EventNeverSubscribedTo.Global
+
 namespace Cursorial.UI;
 
 public abstract partial class UIElement : IInteractionStateSink
@@ -423,101 +425,197 @@ public abstract partial class UIElement : IInteractionStateSink
     // ───────────────────────────── the class-handler stage (ND1) ─────────────────────────────
     // The On* virtuals ARE the class-handler stage: invoked at every route node before that node's
     // instance handlers, skipped once Handled. There is no open class-handler registry in v1.
+    // The CLR events add or remove routed event handlers to the element's registration list.
+
+    /// <inheritdoc cref="PreviewKeyDownEvent"/>
+    public event EventHandler<KeyEventArgs> PreviewKeyDown
+    {
+        add => AddHandler(PreviewKeyDownEvent, value);
+        remove => RemoveHandler(PreviewKeyDownEvent, value);
+    }
+
+    /// <inheritdoc cref="KeyDownEvent"/>
+    public event EventHandler<KeyEventArgs> KeyDown
+    {
+        add => AddHandler(KeyDownEvent, value);
+        remove => RemoveHandler(KeyDownEvent, value);
+    }
+
+    /// <inheritdoc cref="PreviewKeyUpEvent"/>
+    public event EventHandler<KeyEventArgs> PreviewKeyUp
+    {
+        add => AddHandler(PreviewKeyUpEvent, value);
+        remove => RemoveHandler(PreviewKeyUpEvent, value);
+    }
+
+    /// <inheritdoc cref="KeyUpEvent"/>
+    public event EventHandler<KeyEventArgs> KeyUp
+    {
+        add => AddHandler(KeyUpEvent, value);
+        remove => RemoveHandler(KeyUpEvent, value);
+    }
+
+    /// <inheritdoc cref="PreviewTextInputEvent"/>
+    public event EventHandler<TextInputEventArgs> PreviewTextInput
+    {
+        add => AddHandler(PreviewTextInputEvent, value);
+        remove => RemoveHandler(PreviewTextInputEvent, value);
+    }
+
+    /// <inheritdoc cref="TextInputEvent"/>
+    public event EventHandler<TextInputEventArgs> TextInput
+    {
+        add => AddHandler(TextInputEvent, value);
+        remove => RemoveHandler(TextInputEvent, value);
+    }
+
+    /// <inheritdoc cref="PreviewMouseDownEvent"/>
+    public event EventHandler<MouseButtonEventArgs> PreviewMouseDown
+    {
+        add => AddHandler(PreviewMouseDownEvent, value);
+        remove => RemoveHandler(PreviewMouseDownEvent, value);
+    }
+
+    /// <inheritdoc cref="MouseDownEvent"/>
+    public event EventHandler<MouseButtonEventArgs> MouseDown
+    {
+        add => AddHandler(MouseDownEvent, value);
+        remove => RemoveHandler(MouseDownEvent, value);
+    }
+
+    /// <inheritdoc cref="PreviewMouseUpEvent"/>
+    public event EventHandler<MouseButtonEventArgs> PreviewMouseUp
+    {
+        add => AddHandler(PreviewMouseUpEvent, value);
+        remove => RemoveHandler(PreviewMouseUpEvent, value);
+    }
+
+    /// <inheritdoc cref="MouseUpEvent"/>
+    public event EventHandler<MouseButtonEventArgs> MouseUp
+    {
+        add => AddHandler(MouseUpEvent, value);
+        remove => RemoveHandler(MouseUpEvent, value);
+    }
+
+    /// <inheritdoc cref="PreviewMouseMoveEvent"/>
+    public event EventHandler<MouseEventArgs> PreviewMouseMove
+    {
+        add => AddHandler(PreviewMouseMoveEvent, value);
+        remove => RemoveHandler(PreviewMouseMoveEvent, value);
+    }
+
+    /// <inheritdoc cref="MouseMoveEvent"/>
+    public event EventHandler<MouseEventArgs> MouseMove
+    {
+        add => AddHandler(MouseMoveEvent, value);
+        remove => RemoveHandler(MouseMoveEvent, value);
+    }
+
+    /// <inheritdoc cref="PreviewMouseWheelEvent"/>
+    public event EventHandler<MouseWheelEventArgs> PreviewMouseWheel
+    {
+        add => AddHandler(PreviewMouseWheelEvent, value);
+        remove => RemoveHandler(PreviewMouseWheelEvent, value);
+    }
+
+    /// <inheritdoc cref="MouseWheelEvent"/>
+    public event EventHandler<MouseWheelEventArgs> MouseWheel
+    {
+        add => AddHandler(MouseWheelEvent, value);
+        remove => RemoveHandler(MouseWheelEvent, value);
+    }
+
+    /// <inheritdoc cref="MouseEnterEvent"/>
+    public event EventHandler<MouseEventArgs> MouseEnter
+    {
+        add => AddHandler(MouseEnterEvent, value);
+        remove => RemoveHandler(MouseEnterEvent, value);
+    }
+
+    /// <inheritdoc cref="MouseLeaveEvent"/>
+    public event EventHandler<MouseEventArgs> MouseLeave
+    {
+        add => AddHandler(MouseLeaveEvent, value);
+        remove => RemoveHandler(MouseLeaveEvent, value);
+    }
+
+    /// <inheritdoc cref="GotFocusEvent"/>
+    public event EventHandler<FocusChangedEventArgs> GotFocus
+    {
+        add => AddHandler(GotFocusEvent, value);
+        remove => RemoveHandler(GotFocusEvent, value);
+    }
+
+    /// <inheritdoc cref="LostFocusEvent"/>
+    public event EventHandler<FocusChangedEventArgs> LostFocus
+    {
+        add => AddHandler(LostFocusEvent, value);
+        remove => RemoveHandler(LostFocusEvent, value);
+    }
+
+    /// <inheritdoc cref="LostMouseCaptureEvent"/>
+    public event EventHandler<RoutedEventArgs> LostMouseCapture
+    {
+        add => AddHandler(LostMouseCaptureEvent, value);
+        remove => RemoveHandler(LostMouseCaptureEvent, value);
+    }
 
     /// <summary>Class stage for <see cref="PreviewKeyDownEvent"/> at every tunnel node.</summary>
-    protected virtual void OnPreviewKeyDown(KeyEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewKeyDown(KeyEventArgs e) {}
 
     /// <summary>Class stage for <see cref="KeyDownEvent"/> at every bubble node. Controls activate on Down (doc §13.2).</summary>
-    protected virtual void OnKeyDown(KeyEventArgs e)
-    {
-    }
+    protected virtual void OnKeyDown(KeyEventArgs e) {}
 
     /// <summary>Class stage for <see cref="PreviewKeyUpEvent"/>.</summary>
-    protected virtual void OnPreviewKeyUp(KeyEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewKeyUp(KeyEventArgs e) {}
 
     /// <summary>Class stage for <see cref="KeyUpEvent"/>. Framework code never activates on key-up.</summary>
-    protected virtual void OnKeyUp(KeyEventArgs e)
-    {
-    }
+    protected virtual void OnKeyUp(KeyEventArgs e) {}
 
     /// <summary>Class stage for <see cref="PreviewTextInputEvent"/>.</summary>
-    protected virtual void OnPreviewTextInput(TextInputEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewTextInput(TextInputEventArgs e) {}
 
     /// <summary>Class stage for <see cref="TextInputEvent"/>.</summary>
-    protected virtual void OnTextInput(TextInputEventArgs e)
-    {
-    }
+    protected virtual void OnTextInput(TextInputEventArgs e) {}
 
     /// <summary>Class stage for <see cref="PreviewMouseDownEvent"/>.</summary>
-    protected virtual void OnPreviewMouseDown(MouseButtonEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewMouseDown(MouseButtonEventArgs e) {}
 
     /// <summary>Class stage for <see cref="MouseDownEvent"/> (double-click logic belongs here — counts ride MouseDown).</summary>
-    protected virtual void OnMouseDown(MouseButtonEventArgs e)
-    {
-    }
+    protected virtual void OnMouseDown(MouseButtonEventArgs e) {}
 
     /// <summary>Class stage for <see cref="PreviewMouseUpEvent"/>.</summary>
-    protected virtual void OnPreviewMouseUp(MouseButtonEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewMouseUp(MouseButtonEventArgs e) {}
 
     /// <summary>Class stage for <see cref="MouseUpEvent"/>.</summary>
-    protected virtual void OnMouseUp(MouseButtonEventArgs e)
-    {
-    }
+    protected virtual void OnMouseUp(MouseButtonEventArgs e) {}
 
     /// <summary>Class stage for <see cref="PreviewMouseMoveEvent"/> (any-event motion — keep it allocation-free).</summary>
-    protected virtual void OnPreviewMouseMove(MouseEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewMouseMove(MouseEventArgs e) {}
 
     /// <summary>Class stage for <see cref="MouseMoveEvent"/>.</summary>
-    protected virtual void OnMouseMove(MouseEventArgs e)
-    {
-    }
+    protected virtual void OnMouseMove(MouseEventArgs e) {}
 
     /// <summary>Class stage for <see cref="PreviewMouseWheelEvent"/>.</summary>
-    protected virtual void OnPreviewMouseWheel(MouseWheelEventArgs e)
-    {
-    }
+    protected virtual void OnPreviewMouseWheel(MouseWheelEventArgs e) {}
 
     /// <summary>Class stage for <see cref="MouseWheelEvent"/>.</summary>
-    protected virtual void OnMouseWheel(MouseWheelEventArgs e)
-    {
-    }
+    protected virtual void OnMouseWheel(MouseWheelEventArgs e) {}
 
     /// <summary>Class stage for <see cref="MouseEnterEvent"/> (Direct).</summary>
-    protected virtual void OnMouseEnter(MouseEventArgs e)
-    {
-    }
+    protected virtual void OnMouseEnter(MouseEventArgs e) {}
 
     /// <summary>Class stage for <see cref="MouseLeaveEvent"/> (Direct).</summary>
-    protected virtual void OnMouseLeave(MouseEventArgs e)
-    {
-    }
+    protected virtual void OnMouseLeave(MouseEventArgs e) {}
 
     /// <summary>Class stage for <see cref="GotFocusEvent"/>.</summary>
-    protected virtual void OnGotFocus(FocusChangedEventArgs e)
-    {
-    }
+    protected virtual void OnGotFocus(FocusChangedEventArgs e) {}
 
     /// <summary>Class stage for <see cref="LostFocusEvent"/>.</summary>
-    protected virtual void OnLostFocus(FocusChangedEventArgs e)
-    {
-    }
+    protected virtual void OnLostFocus(FocusChangedEventArgs e) {}
 
     /// <summary>Class stage for <see cref="LostMouseCaptureEvent"/> (Direct) — release pressed visuals here.</summary>
-    protected virtual void OnLostMouseCapture(RoutedEventArgs e)
-    {
-    }
+    protected virtual void OnLostMouseCapture(RoutedEventArgs e) {}
 
     private static RoutedEvent<TArgs> RegisterClassEvent<TArgs>(
         string name,

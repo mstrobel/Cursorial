@@ -2,6 +2,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Terminal;
+using Cursorial.UI.Controls;
 
 // ReSharper disable RedundantTypeArgumentsOfMethod
 
@@ -426,6 +427,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
             if (!handled)
                 handled = TryNavigate(key);
 
+            // Step 6b — the context-menu key (Key.Menu) opens the focused element's ContextMenu below it.
+            if (!handled && key is { Key: Key.Menu, Modifiers: KeyModifiers.None })
+                handled = TryOpenContextMenu(target, new CellPosition(0, 0));
+
             // Step 7 — TextInput synthesis: unhandled printable Down, Shift-only modifiers.
             if (!handled && key is { Key: Key.Character, Text.Length: > 0 } && (key.Modifiers & TextInputChordMask) == KeyModifiers.None)
                 handled = RaiseTextInput(key.Text, fromPaste: false);
@@ -481,17 +486,26 @@ public sealed class InputDispatcher : IInputDispatchTarget
                 // Element capture short-circuits the hit test (so a captured gesture never triggers the
                 // window manager's press-time light-dismiss / activation in FilterMouseEvent); SubTree and
                 // the uncaptured path both need the hit to resolve the route target.
+                var hit = HitTestForEvent(mouse);
                 var target = _captureTarget is {} capture && _captureMode == CaptureMode.Element
                     ? capture
-                    : RouteTargetUnderCapture(HitTestForEvent(mouse));
+                    : RouteTargetUnderCapture(hit);
 
-                return target is {} routed
+                var result = target is {} routed
                     ? ToResult(RaiseMousePair<MouseButtonEventArgs>(
                         isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
                         isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
                         routed,
                         mouse))
                     : InputDispatchResult.DispatchedUnhandled;
+
+                // Router default (doc §12.7): an uncaptured right-button release over an element carrying
+                // ContextMenu.Menu opens it at the pointer — unless the routed event already handled it.
+                if (!isDown && mouse.Button == MouseButton.Right && result != InputDispatchResult.DispatchedHandled
+                    && _captureTarget is null && TryOpenContextMenu(hit, position: null))
+                    result = InputDispatchResult.DispatchedHandled;
+
+                return result;
             }
 
             case MouseEventKind.Wheel:
@@ -523,6 +537,24 @@ public sealed class InputDispatcher : IInputDispatchTarget
                { Key: Key.RightArrow, Modifiers: KeyModifiers.None } => _focus.MoveFocus(FocusNavigationDirection.Right),
                _                                                     => false
            };
+
+    /// <summary>
+    /// The context-menu router default (doc §12.7): walks the styling/event parent chain from
+    /// <paramref name="from"/> for the nearest element carrying a <see cref="ContextMenu.MenuProperty"/>
+    /// and opens it — at the pointer (<paramref name="position"/> null, the right-click case) or below the
+    /// element (a keyboard-key offset). Returns whether a menu opened.
+    /// </summary>
+    private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
+    {
+        for (var node = from; node is not null; node = node.UIParent)
+            if (ContextMenu.GetMenu(node) is {} menu)
+            {
+                menu.Open(node, position);
+                return true;
+            }
+
+        return false;
+    }
 
     private static InputDispatchResult ToResult(bool handled)
         => handled ? InputDispatchResult.DispatchedHandled : InputDispatchResult.DispatchedUnhandled;

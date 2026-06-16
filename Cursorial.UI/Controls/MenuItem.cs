@@ -377,11 +377,17 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetSubmenuOpen(false); // light-dismiss / Esc
 
     // Walk up the menu ownership chain closing every open submenu so a leaf invoke dismisses the whole menu.
+    // The walk terminates at an owning ContextMenu (which is not a MenuItem), closing it so a leaf invoke
+    // inside a context menu dismisses the whole popup.
     private void CloseMenuChain()
     {
         for (UIElement? node = this; node is not null; node = (node as MenuItem)?.OwnerItemsControl)
+        {
             if (node is MenuItem item && item._isSubmenuOpen)
                 item.SetSubmenuOpen(false);
+            else if (node is ContextMenu context)
+                context.Close();
+        }
     }
 
     // The ItemsControl (Menu or parent MenuItem) that generated this container — its logical parent (punch 43).

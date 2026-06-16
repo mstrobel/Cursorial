@@ -45,6 +45,7 @@ internal static class ControlThemes
         dict[typeof(ListBoxItem)] = ListBoxItemTheme();
         dict[typeof(Menu)] = MenuTheme();
         dict[typeof(MenuItem)] = MenuItemTheme();
+        dict[typeof(ContextMenu)] = ContextMenuTheme();
         dict[typeof(Separator)] = SeparatorTheme();
     }
 
@@ -155,6 +156,23 @@ internal static class ControlThemes
             .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, MenuTemplate());
+
+    // A ContextMenu: a popup-rooted occluding panel (overwrites the content it floats over) hosting the
+    // PART_ItemsHost ItemsPresenter; the default vertical StackPanel stacks its MenuItems (design doc §12.7).
+    private static ControlTemplate ContextMenuTemplate() => new(ctx =>
+    {
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var border = new Border { Occludes = true, Child = host };
+        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        return border;
+    });
+
+    private static Style ContextMenuTheme()
+        => new Style { Key = "Theme.ContextMenu" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ContextMenuTemplate());
 
     // A menu item: a fill-bounded header row [header … gesture], plus the submenu Popup (PART_Popup) whose Child is
     // an occluding PanelBrush surface hosting the sub-items (PART_ItemsHost). The Popup contributes no layout to the

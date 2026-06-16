@@ -390,7 +390,40 @@ the first-cut C6.31–C6.33 were false-green against a no-op registration and th
 *click* + Right/Left-on-a-submenu-leaf jumping to the adjacent bar menu (all need the SubTree-capture menu-session
 model — the press is otherwise swallowed by light-dismiss); sub-item invoke + nested-header hover *via a
 popup-surface click* (the test harness needs screen-absolute popup coords — the mechanism is covered by the
-keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns; `ContextMenu` + `ToolTip` — **P9.4d**.
+keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns; `ToolTip` / `ToolTipService` — **P9.4d**.
 
 **Landed in P9.4c-2:** access-key folding + registration lifecycle (attach/Header-change/detach) + menu-mode entry
 (Alt/F10 + `IMainMenu`), driven end-to-end through the `AccessKeyManager` (CD-P9-19, rows C6.31–C6.42).
+
+## §C7 — ContextMenu (P9.4d) — tests in `Section20_ContextMenu`
+
+`ContextMenu : ItemsControl` — a popup-rooted vertical menu shown on right-click / the `Key.Menu` context key.
+Reuses `MenuItem` (containers, invoke, submenus, access keys — §C6). Tests drive the **real `InputDispatcher`**
+router default + the `Popup` light-dismiss.
+
+| # | Setup | Action | Expectation | Source |
+|---|-------|--------|-------------|--------|
+| C7.1 | `ContextMenu` with a `MenuItem` + a data item | open | the MenuItem is its own container; the data item is wrapped in a `MenuItem` | WPF |
+| C7.2 | element | `SetMenu`/`GetMenu` | the attached `ContextMenu.Menu` property round-trips | WPF |
+| C7.3 | element carrying `ContextMenu.Menu` | right-click it (through the dispatcher) | the menu opens at the pointer (`IsOpen`, one popup surface) — the router default | PIN (CD-P9-20) |
+| C7.4 | element with no `ContextMenu.Menu` | right-click it | nothing opens (the parent-chain walk finds no menu) | PIN (CD-P9-20) |
+| C7.5 | focused element carrying a menu | `Key.Menu` | the focused element's context menu opens (the keyboard context key) | PIN (CD-P9-20) |
+| C7.6 | open menu, two items | open, then Down | opening focuses the first item; Down moves focus to the next (keyboard nav is live) | WPF |
+| C7.7 | open menu, leaf + `Command` | focus leaf, Enter | the command runs **and** the menu dismisses (a leaf invoke closes the whole menu) + popup released | PIN (CD-P9-20) |
+| C7.8 | open menu | Escape | the menu closes (`Popup.CloseOnEscape`) | WPF |
+| C7.9 | open menu | click far outside | light-dismiss closes it | WPF |
+| C7.10 | open menu | `Open` again elsewhere | exactly one popup surface (relocate, not stack) | WPF |
+| C7.11 | menu with a submenu header | open, open the nested header | the nested submenu hosts its grandchild items (two popup surfaces) | WPF |
+| C7.12 | open menu | `Close()` | the menu closes; the popup surface is released | WPF |
+
+**CD-P9-20 (P9.4d) — ContextMenu hosting + the router default.** A `ContextMenu` owns an internal `Popup` whose
+`Child` is the menu itself, so its items realize in the popup surface and inherit DataContext/resources through the
+placement target (the standalone-popup inheritance bridge, §8.4). `Open(target, position)` places at the pointer
+(`PlacementMode.Pointer`) when `position` is null — the right-click case — else below the target offset by
+`position`. The **router default** lives in `InputDispatcher` (S3 owns the trigger, §12.7): an uncaptured
+right-button **release** over an element carrying `ContextMenu.Menu` (walked up the styling/event parent chain) and
+the focused element's menu on `Key.Menu` both open it; a routed handler that already consumed the event wins. A leaf
+invoke dismisses the whole menu via `MenuItem.CloseMenuChain`, which now terminates at an owning `ContextMenu`
+(it is not a `MenuItem`). `CursorialTheme.BuiltIn` keys an occluding `Theme.ContextMenu` panel (`PanelBrush` +
+`BorderPen`) hosting the `PART_ItemsHost` `ItemsPresenter`. **Deferred:** clicking a popup-surface item by screen
+coordinate (the harness limitation noted in §C6 — covered here by keyboard + the direct `Open`/`IsSubmenuOpen` API).

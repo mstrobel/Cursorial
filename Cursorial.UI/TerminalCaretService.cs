@@ -59,11 +59,12 @@ public readonly record struct TerminalCaretState(bool Visible, int Column, int R
 /// terminal cursor.
 /// </para>
 /// <para>
-/// At P1 the consumer is the upcoming S6 frame loop (it writes the <c>CellBuffer</c> cursor state
-/// in <c>RenderFrame</c>); at P7, S4 folds the per-window surface offset via
-/// <see cref="GetCaretState"/>'s <c>surfaceOffsetColumn</c>/<c>surfaceOffsetRow</c> parameters when
-/// assembling multiple windows. "Only the focused window's publication wins" is S4's leg of the
-/// contract — at P1 there is one window and the most recent publication wins.
+/// The consumer is the S6 frame loop's render system (it writes the <c>CellBuffer</c> cursor state after
+/// compositing). With S4 windowing, the render system passes the <c>surfaceOffsetResolver</c> overload so
+/// the winning publication's window-local caret is folded by its owning surface's screen offset — a caret
+/// in a window/popup lands at the right absolute cell, not at the screen origin. "Only the focused window's
+/// publication wins" is S4's leg of the contract — focus follows window activation, so the focused editor's
+/// publication is the most recent one.
 /// </para>
 /// </remarks>
 public sealed class TerminalCaretService : ITerminalCaretService
@@ -127,6 +128,23 @@ public sealed class TerminalCaretService : ITerminalCaretService
     /// refreshed zone clip, then folds the surface offset (S4's leg; 0 at P1). Allocation-free.
     /// </summary>
     public TerminalCaretState GetCaretState(int surfaceOffsetColumn = 0, int surfaceOffsetRow = 0)
+        => GetCaretStateCore(surfaceOffsetColumn, surfaceOffsetRow, surfaceOffsetResolver: null);
+
+    /// <summary>
+    /// Assembles the caret, folding a <b>per-owner</b> surface offset (S4's leg): the winning publication's
+    /// owner is mapped to its top-level surface's screen offset by <paramref name="surfaceOffsetResolver"/>,
+    /// and that offset is added <em>after</em> the element→window-local transform — translating a caret
+    /// published inside a window/popup surface from window-local cells to absolute screen cells. The resolver
+    /// is invoked at most once per call (only when a live publication wins), so it must be allocation-free.
+    /// </summary>
+    public TerminalCaretState GetCaretState(Func<UIElement, (int Column, int Row)> surfaceOffsetResolver)
+    {
+        ArgumentNullException.ThrowIfNull(surfaceOffsetResolver);
+        return GetCaretStateCore(0, 0, surfaceOffsetResolver);
+    }
+
+    private TerminalCaretState GetCaretStateCore(int baseOffsetColumn, int baseOffsetRow,
+                                                 Func<UIElement, (int Column, int Row)>? surfaceOffsetResolver)
     {
         for (var i = _publications.Count - 1; i >= 0; i--)
         {
@@ -140,7 +158,10 @@ public sealed class TerminalCaretService : ITerminalCaretService
 
             var (column, row) = owner.TranslateToWindow(publication.Column, publication.Row);
             var visible = owner.IsEffectivelyVisible && IsInsideZoneClip(owner, column, row);
-            return new TerminalCaretState(visible, column + surfaceOffsetColumn, row + surfaceOffsetRow, publication.Shape);
+            var (offsetColumn, offsetRow) = surfaceOffsetResolver is not null
+                ? surfaceOffsetResolver(owner)        // the owning surface's screen offset (S4)
+                : (baseOffsetColumn, baseOffsetRow);  // the constant-offset / origin path (P1 / tests)
+            return new TerminalCaretState(visible, column + offsetColumn, row + offsetRow, publication.Shape);
         }
 
         return TerminalCaretState.Hidden;

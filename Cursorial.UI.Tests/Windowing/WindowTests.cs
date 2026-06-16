@@ -56,6 +56,39 @@ public sealed class WindowTests
         Assert.Same(window, wm.Surfaces[1].HostWindow);
     }
 
+    [Fact] // a caret published inside a window is folded by the window's screen offset (window-local → absolute screen cell)
+    public void Caret_InsideWindow_FoldsSurfaceOffset()
+    {
+        var (host, wm) = ShownRoot();
+        using var _ = host;
+
+        var box = new UIControls.TextBox { Text = "hi", Width = 14 };
+        var window = new Window
+        {
+            Content = box,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Width = 24,
+            Height = 6,
+            Left = 12,
+            Top = 5,
+        };
+        window.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        box.Focus();
+        box.CaretIndex = 2; // caret at the end of "hi"
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.FrameBuffer.CursorVisible);
+        // The presenter publishes the caret in window-LOCAL cells; the WM folds the window's screen offset,
+        // so the absolute cursor lands inside the window's screen region (Left=12, Top=5) — NOT near the
+        // origin, which is the bug this guards (a window-local caret leaking through unoffset).
+        Assert.True(host.FrameBuffer.CursorColumn >= window.Left,
+            $"cursor column {host.FrameBuffer.CursorColumn} should be at/after the window Left {window.Left}");
+        Assert.True(host.FrameBuffer.CursorRow >= window.Top,
+            $"cursor row {host.FrameBuffer.CursorRow} should be at/after the window Top {window.Top}");
+    }
+
     [Fact]
     public void Close_RemovesSurface_AndRaisesClosed()
     {

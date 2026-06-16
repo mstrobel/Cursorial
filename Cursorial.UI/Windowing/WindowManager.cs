@@ -271,9 +271,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // would linger though it is no longer hit-testable.)
         _needsComposite = false;
 
-        // ③ caret write (T4 contract). W0: the root surface sits at the origin, so the published caret
-        // state passes through unchanged; the focused-surface offset fold lands with Window/Popup (W1+).
-        var caret = _caretService.GetCaretState();
+        // ③ caret write (T4 contract): the caret service transforms the winning publication to its owning
+        // surface's WINDOW-LOCAL cell; here we fold that surface's screen offset so a caret published inside
+        // a window/popup lands at the right ABSOLUTE cell (a centered dialog's caret is at Left+col, not col).
+        var caret = _caretService.GetCaretState(_resolveSurfaceOffset ??= ResolveSurfaceOffset);
         if (!_caretEverApplied || caret != _lastCaret)
         {
             _caretEverApplied = true;
@@ -290,6 +291,23 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         }
 
         return changed;
+    }
+
+    private Func<UIElement, (int Column, int Row)>? _resolveSurfaceOffset;
+
+    // Maps a caret owner to its top-level surface's screen offset (③). An element's VisualRoot is the
+    // surface's Root (the root element / a Window / a Popup child — see the TopLevelSurface ctor sites), so
+    // a reference match finds the owning surface. Cached as a field so the per-frame caret call allocates no
+    // delegate, and the body itself is allocation-free (a value tuple over the surface list) — a blinking
+    // caret keeps the frame clean. Falls back to the origin for a detached owner / no matching surface.
+    private (int Column, int Row) ResolveSurfaceOffset(UIElement owner)
+    {
+        var root = owner.VisualRoot;
+        for (var i = 0; i < _surfaces.Count; i++)
+            if (ReferenceEquals(_surfaces[i].Root, root))
+                return (_surfaces[i].Left, _surfaces[i].Top);
+
+        return (0, 0);
     }
 
     /// <inheritdoc/>

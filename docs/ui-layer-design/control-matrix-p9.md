@@ -92,6 +92,78 @@ P9.5 TabControl · P9.6 TextBox · P9.7 ProgressBar + chrome · P9.8 inspector d
 | C2.21 | static bound source | run idle frames | 0 B steady-state allocation (no per-frame generator/presenter churn) | PIN |
 
 **Deferred to later sub-phases (noted, not silently dropped):** `:alternate` row-striping (P9.3 ListBox — only
-visible with striping rules); a non-vertical/scrolling `ItemsPanel` (P9.3); the `SelectionModel.ItemsInserted/
-Removed/Reset` index-fixup hooks the generator forwards to (P9.2); per-container DataTemplate-by-type rendering
-assertions (when a styled item renders through the chain — exercised end-to-end at P9.3).
+visible with striping rules); a non-vertical/scrolling `ItemsPanel` (P9.3); per-container DataTemplate-by-type
+rendering assertions (when a styled item renders through the chain — exercised end-to-end at P9.3).
+
+---
+
+## CD-P9 ledger — SelectionModel (P9.2)
+
+- **CD-P9-8 — pure index-based model, count-agnostic.** `SelectionModel` (design doc §12.6) holds NO element
+  references and does NOT track the total item count. `Select`/`Toggle`/`SelectRangeFromAnchor` are the
+  non-structural operations; `ItemsInserted`/`ItemsRemoved`/`Reset` are the structural index-fixup hooks the
+  generator forwards to. The model is reused verbatim by ListBox (P9.3) and TabControl (P9.5).
+- **CD-P9-9 — the model/ListBox boundary on removal.** `ItemsRemoved(index, count)` does pure index math: drop
+  selected indices in `[index, index+count)`, shift selected indices `≥ index+count` down by `count`, and if the
+  **lead** (`SelectedIndex`) was dropped, relocate it to the nearest *surviving selected* index (tie → smaller),
+  or `−1` if no selection survives. The model **never auto-selects a previously-unselected item** — the doc's
+  "removing selected items moves selection to the nearest surviving **item**" (which needs the item count) is a
+  **ListBox policy** (P9.3), layered on top: when the model's selection empties on a removal, the ListBox re-selects
+  the nearest surviving item index.
+- **CD-P9-10 — `SelectionMode { Single, Multiple }`; mode caps cardinality.** Single mode caps the selection at one
+  index across every operation (`Toggle`/`SelectRangeFromAnchor` collapse to ≤1; range collapses to its endpoint).
+  Switching `Multiple → Single` with several selected collapses to the lead. WPF's `Extended` is not a distinct
+  mode — its modifier policy (plain-click = `Select`/replace, Ctrl = `Toggle`, Shift = `SelectRangeFromAnchor`) is
+  the ListBox input layer's mapping onto these three model primitives (P9.3).
+- **CD-P9-11 — `SelectionChanged` fires on membership change only.** The event fires when the set of selected
+  *items* changes — `AddedIndexes`/`RemovedIndexes` are a clean set-diff for the non-structural ops (same index
+  space). A pure shift (`ItemsInserted`, or `ItemsRemoved` of unselected indices) is **not** a membership change →
+  no event, even though indices move (the same items stay selected — WPF parity). An idempotent op (re-`Select` the
+  same index) raises nothing.
+- **CD-P9-12 — hardening (post-audit).** (a) Toggling the **lead** off in Multiple mode while others remain selected
+  promotes the **highest** remaining index to lead (`Max`) — a deliberate, pinned choice (row C3.8b). (b) The
+  structural hooks are **lenient on out-of-range input** (`index < 0` or `count ≤ 0` ⇒ no-op), consistent with
+  `Select(-1)`; valid input never produces a negative index (`x ≥ end ⇒ x − count ≥ index ≥ 0`). (c)
+  `SelectedIndexes` returns a `ReadOnlyCollection<int>`, never the live backing array (no external mutation via a
+  downcast). Rows C3.25–C3.28.
+
+## §C3 — SelectionModel (P9.2) — tests in `Section16_Selection`
+
+`SelectedIndex` = the **lead** (the most-recent primary; always a member of the set when non-empty, `−1` when
+empty). `AnchorIndex` = the range anchor (settable; `Select`/`Toggle` set it; `SelectRangeFromAnchor` reads it).
+`SelectedIndexes` = the selected set in ascending order. Oracle column: `WPF` = WPF/Avalonia parity; `PIN` = a
+CD-P9 decision.
+
+| # | Mode | Setup → Operation | Expected | Oracle |
+|---|---|---|---|---|
+| C3.1 | Single | `Select(2)` | `{2}`, `SelectedIndex=2`, `AnchorIndex=2` | WPF |
+| C3.2 | Single | `Select(1)` then `Select(3)` | `{3}` (replace) — 1 deselected | WPF |
+| C3.3 | Single | `Toggle(2)` (not selected) | selects `{2}` | WPF |
+| C3.4 | Single | `Select(2)` then `Toggle(2)` | deselects → `{}`, `SelectedIndex=−1` | WPF |
+| C3.5 | Single | `Select(1)` then `SelectRangeFromAnchor(4)` | collapses to `{4}` (no range in single) | PIN (CD-P9-10) |
+| C3.6 | Multiple | `Select(2)` | replaces → `{2}` (plain-click semantics) | WPF |
+| C3.7 | Multiple | `Toggle(1)`, `Toggle(3)` | `{1,3}`, `SelectedIndexes` ascending | WPF |
+| C3.8 | Multiple | …then `Toggle(1)` | removes 1 → `{3}` | WPF |
+| C3.9 | Multiple | `Select(1)` then `SelectRangeFromAnchor(4)` | `{1,2,3,4}`, `AnchorIndex=1`, `SelectedIndex=4` | WPF |
+| C3.10 | Multiple | `Select(4)` then `SelectRangeFromAnchor(1)` | `{1,2,3,4}` (backward range), `SelectedIndex=1` | WPF |
+| C3.11 | Multiple | `SelectedIndex=2`; then `SelectedIndex=−1` | sets `{2}`; then clears `{}` | WPF |
+| C3.12 | Multiple | `AnchorIndex=0` then `SelectRangeFromAnchor(2)` | `{0,1,2}` (manual anchor honored) | PIN |
+| C3.13 | Multiple | `Select(2)` → `ItemsInserted(0,2)` | selected shifts to `{4}`; **no** `SelectionChanged` | PIN (CD-P9-11) |
+| C3.14 | Multiple | `Select(2)` → `ItemsInserted(3,1)` / `ItemsInserted(2,1)` | insert-after leaves `{2}`; insert-at shifts to `{3}` | WPF |
+| C3.15 | Multiple | `Select(3)` → `ItemsRemoved(0,2)` | shifts to `{1}`; no `SelectionChanged` | PIN (CD-P9-11) |
+| C3.16 | Single | `Select(2)` → `ItemsRemoved(2,1)` | the selected was dropped → `{}`, `SelectedIndex=−1` (model goes empty; ListBox re-targets at P9.3) | PIN (CD-P9-9) |
+| C3.17 | Multiple | `{1,3,5}`, lead 5 → `ItemsRemoved(1,1)` | drop 1, shift → `{2,4}`, lead 5→4 survives, `SelectedIndex=4` | PIN (CD-P9-9) |
+| C3.18 | Multiple | `{1,3,5}`, lead 3 → `ItemsRemoved(3,1)` | the lead (3) is dropped, 5→4 → `{1,4}`; lead relocates to the nearest survivor `4`; `SelectedIndex=4`, `RemovedIndexes=[3]` | PIN (CD-P9-9) |
+| C3.19 | Multiple | `Select(1)`,`Toggle(3)` → `Reset()` | `{}`, `SelectedIndex=−1`, `AnchorIndex=−1`; `SelectionChanged` `RemovedIndexes=[1,3]` | PIN (CD-P9-8) |
+| C3.20 | Multiple | subscribe → `Toggle(2)` | `SelectionChanged` `AddedIndexes=[2]`, `RemovedIndexes=[]` | WPF |
+| C3.21 | Multiple | `Select(2)` then `Select(2)` | idempotent — no second `SelectionChanged` | PIN (CD-P9-11) |
+| C3.22 | Single | `Select(1)` then `Toggle(3)` | single caps → `{3}` (1 replaced) | PIN (CD-P9-10) |
+| C3.23 | Multiple | `SelectRangeFromAnchor(2)` with `AnchorIndex=−1` | behaves as `Select(2)` → `{2}`, `AnchorIndex=2` | PIN |
+| C3.24 | Multiple→Single | `{1,2,3}` then set `Mode=Single` | collapses to the lead `{3}`; fires once `RemovedIndexes=[1,2]` | PIN (CD-P9-10) |
+| C3.8b | Multiple | `{1,3}` lead 3 → `Toggle(3)` | removes the lead → `{1}`, lead promotes to `Max`=1 | PIN (CD-P9-12) |
+| C3.17b | Multiple | `{1,3}` lead 3 → `ItemsRemoved(1,1)` | a non-lead selected index dropped; lead survives (3→2) → `{2}`; fires `RemovedIndexes=[1]` | PIN (CD-P9-11) |
+| C3.18b | Multiple | `{2,3,5}` lead 3 → `ItemsRemoved(3,1)` | lead dropped; survivors `{2,4}` equidistant from 3 → tie resolves to the **smaller**, lead=2 | PIN (CD-P9-9) |
+| C3.25 | Multiple | `{2,3,4,5}` anchor 2 lead 5 → `ItemsRemoved(0,1)` | anchor shifts 2→1, lead 5→4 | PIN (CD-P9-12) |
+| C3.26 | Multiple | anchor 2 lead 2 → `ItemsRemoved(2,1)` | anchor was in the removed range → re-anchors to the (relocated) lead | PIN (CD-P9-12) |
+| C3.27 | Multiple | `Select(2)` (anchor 2) → `ItemsInserted(0,1)` | anchor shifts 2→3 (with the lead) | PIN (CD-P9-12) |
+| C3.28 | any | `ItemsRemoved(-1,1)` / `SelectedIndexes` downcast | out-of-range hook is a no-op (no negative leak); `SelectedIndexes` is not an `int[]` | PIN (CD-P9-12) |

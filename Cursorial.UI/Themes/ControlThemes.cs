@@ -47,6 +47,7 @@ internal static class ControlThemes
         dict[typeof(MenuItem)] = MenuItemTheme();
         dict[typeof(ContextMenu)] = ContextMenuTheme();
         dict[typeof(Separator)] = SeparatorTheme();
+        dict[typeof(ToolTip)] = ToolTipTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -173,6 +174,24 @@ internal static class ControlThemes
         => new Style { Key = "Theme.ContextMenu" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, ContextMenuTemplate());
+
+    // A ToolTip: an occluding bordered panel (overwrites the content it floats over) wrapping a ContentPresenter;
+    // capped at 40 cells wide with the content wrapping (design doc §12.7).
+    private static ControlTemplate ToolTipTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        var border = new Border { Occludes = true, Padding = new Margins(1, 0), Child = presenter };
+        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        return border;
+    });
+
+    private static Style ToolTipTheme()
+        => new Style { Key = "Theme.ToolTip" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(UIElement.MaxWidthProperty, 40) // spec §12.7: max 40 cells, content wraps
+            .Set(Control.TemplateProperty, ToolTipTemplate());
 
     // A menu item: a fill-bounded header row [header … gesture], plus the submenu Popup (PART_Popup) whose Child is
     // an occluding PanelBrush surface hosting the sub-items (PART_ItemsHost). The Popup contributes no layout to the

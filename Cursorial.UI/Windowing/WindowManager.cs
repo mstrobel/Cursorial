@@ -755,7 +755,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (popup.Child is not { } child)
             return;
 
-        var surface = new TopLevelSurface(child, _scenePool, _capabilities, _guard) { IsPopup = true };
+        var surface = new TopLevelSurface(child, _scenePool, _capabilities, _guard)
+                      {
+                          IsPopup = true,
+                          IsHitTestTransparent = popup.IsHitTestTransparent, // a ToolTip's surface never steals hover/clicks
+                      };
         popup.PopupSurface = surface;
         _popups.Add(popup);
 

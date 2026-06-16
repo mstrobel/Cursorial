@@ -390,7 +390,8 @@ the first-cut C6.31–C6.33 were false-green against a no-op registration and th
 *click* + Right/Left-on-a-submenu-leaf jumping to the adjacent bar menu (all need the SubTree-capture menu-session
 model — the press is otherwise swallowed by light-dismiss); sub-item invoke + nested-header hover *via a
 popup-surface click* (the test harness needs screen-absolute popup coords — the mechanism is covered by the
-keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns; `ToolTip` / `ToolTipService` — **P9.4d**.
+keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns. **P9.4 menus are complete**
+(§C6 menu/access-keys, §C7 ContextMenu, §C8 ToolTip/ToolTipService).
 
 **Landed in P9.4c-2:** access-key folding + registration lifecycle (attach/Header-change/detach) + menu-mode entry
 (Alt/F10 + `IMainMenu`), driven end-to-end through the `AccessKeyManager` (CD-P9-19, rows C6.31–C6.42).
@@ -442,3 +443,36 @@ surface is placed). The audit also caught the first-cut C7.3/C7.9/C7.10 as false
 `Handled`-suppresses-menu branch, the right-click-then-dismiss path, the key-path no-menu walk). Rows C7.3/C7.10 were
 strengthened (assert `PlacementMode.Pointer` / the applied offset / a fresh `PopupSurface` — the last
 mutation-verified to fail without the relocation fix) and rows C7.13–C7.16 added.
+
+## §C8 — ToolTip / ToolTipService (P9.4d) — tests in `Section21_ToolTip`
+
+`ToolTip : ContentControl` (never focusable, never hit-tested) shown by the process-wide `ToolTipService` in a
+hit-test-transparent `Popup`, hover-driven on S3's `InputDispatcher.HoverChanged` hook + an S5 `UITimer`.
+
+| # | Setup | Action | Expectation | Source |
+|---|-------|--------|-------------|--------|
+| C8.1 | element with `ToolTipService.Tip` | hover, wait the delay | the tooltip shows after `InitialDelay` (not before) | WPF |
+| C8.2 | tip-bearing element | hover, leave before the delay | the pending open is cancelled (no show) | WPF |
+| C8.3 | shown tooltip | leave the element | the tooltip closes | WPF |
+| C8.4 | shown tooltip | any mouse button press | closes (`DismissTransients`) | PIN (CD-P9-21) |
+| C8.5 | shown tooltip | a non-modifier key press (Enter) | closes | PIN (CD-P9-21) |
+| C8.6 | shown tooltip | a bare modifier key press (Shift) | stays shown — a standalone modifier never dismisses | PIN (CD-P9-21) |
+| C8.7 | tooltip shown then closed | re-hover within 100 ms | shows immediately (quick-show, delay 0) | WPF |
+| C8.8 | shown tooltip | inspect the popup surface | it is hit-test-transparent (never steals hover/clicks) | PIN (CD-P9-21) |
+| C8.9 | shown tooltip | terminal focus-out | closes (must not outlive the focused terminal) | PIN (CD-P9-21) |
+| C8.10 | element | get/set `Tip`/`InitialDelay`/`ShowOnFocus` | round-trip; defaults are `null` / 500 ms / `null` (auto) | WPF |
+| C8.11 | a `ToolTip` | inspect | not focusable, not hit-test-visible | spec §12.7 |
+| C8.12 | element with a 100 ms `InitialDelay` | hover, wait 120 ms | shows (the custom delay is honored, well short of 500 ms) | WPF |
+
+**CD-P9-21 (P9.4d) — ToolTipService on the hover stream.** One `ToolTipController` per `UIApplication` (a
+`ConditionalWeakTable`, created lazily when the first `Tip` is set) subscribes the dispatcher's `HoverChanged`
+hook and owns one reusable hit-test-transparent `Popup`. Entering a `Tip`-bearing element arms a `UITimer`
+(`InitialDelay`, default 500 ms); intra-element moves don't change the hover chain so the timer is never reset by
+them; the innermost tip in the added chain wins. The tooltip closes on hover-leave (the element appears in the
+removed chain — covers detach, which truncates the chain), on any button press / non-modifier key press (the new
+internal `InputDispatcher.DismissTransients` signal — a bare modifier never raises it, `IsStandaloneModifier`), and
+on terminal focus-out (`TerminalFocusChanged`). Quick-show: a close arms a 100 ms window during which the next
+hover shows with no delay. `Popup.IsHitTestTransparent` (new) flows to the surface in `WindowManager.OpenPopup`.
+`CursorialTheme.BuiltIn` keys an occluding `Theme.ToolTip` panel capped at `MaxWidth = 40`. **Deferred:**
+`ShowOnFocus` is declared (`bool?`, null = auto from `!MouseCapabilities.Motion`) but the focus-triggered show
+itself is a recorded deferral — the hover path is the v1 behavior (no public focus-changed hook to ride yet).

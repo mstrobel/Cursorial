@@ -65,6 +65,12 @@ public class Popup : UIElement
     public static readonly StyledProperty<bool> CloseOnEscapeProperty =
         UIProperty.Register<Popup, bool>(nameof(CloseOnEscape), defaultValue: true);
 
+    /// <summary>When true the popup's surface is transparent to hit testing — the pointer falls through to the
+    /// content beneath it and the popup never appears in the surface scan (default false). The ToolTip case
+    /// (doc §12.7): a tooltip floats over content but must not steal hover/clicks.</summary>
+    public static readonly StyledProperty<bool> IsHitTestTransparentProperty =
+        UIProperty.Register<Popup, bool>(nameof(IsHitTestTransparent));
+
     /// <summary>The popup's drop shadow (default <see cref="WindowShadow.Default"/>).</summary>
     public static readonly StyledProperty<WindowShadow> ShadowProperty =
         UIProperty.Register<Popup, WindowShadow>(nameof(Shadow), defaultValue: WindowShadow.Default);
@@ -106,6 +112,9 @@ public class Popup : UIElement
 
     /// <inheritdoc cref="CloseOnEscapeProperty"/>
     public bool CloseOnEscape { get => GetValue(CloseOnEscapeProperty); set => SetValue(CloseOnEscapeProperty, value); }
+
+    /// <inheritdoc cref="IsHitTestTransparentProperty"/>
+    public bool IsHitTestTransparent { get => GetValue(IsHitTestTransparentProperty); set => SetValue(IsHitTestTransparentProperty, value); }
 
     /// <inheritdoc cref="ShadowProperty"/>
     public WindowShadow Shadow { get => GetValue(ShadowProperty); set => SetValue(ShadowProperty, value); }

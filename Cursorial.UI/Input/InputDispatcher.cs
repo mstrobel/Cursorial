@@ -147,6 +147,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// </summary>
     public event HoverChangedHandler? HoverChanged;
 
+    /// <summary>
+    /// Raised on a mouse button press or a NON-modifier key press — the ToolTipService dismiss signal (doc
+    /// §12.7: a tooltip closes on any ButtonDown / non-modifier KeyDown). A bare modifier press (Shift/Ctrl/
+    /// Alt/… alone, which Kitty reports as standalone key events) does NOT raise it.
+    /// </summary>
+    internal event Action? DismissTransients;
+
     /// <summary>The negotiated (undecorated) capability snapshot last fanned out (test observability).</summary>
     internal TerminalCapabilities NegotiatedCapabilities => _capabilities;
 
@@ -368,6 +375,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         var isDown = key.Kind == KeyEventKind.Down;
 
+        if (isDown && !key.Synthesized && !IsStandaloneModifier(key.Key))
+            DismissTransients?.Invoke(); // a non-modifier key press closes an open tooltip (doc §12.7; bare Shift must not)
+
         // Step 1 — pre-stage (doc §7.5; skips Synthesized events — a stray KeyReleaseSynthesizer
         // must not corrupt the Alt bracket): Alt-side bracketing on both Down and Up; stale-Alt
         // inference + the sticky-cue Esc consume on Down only (KeyUp runs 1a alone). The
@@ -483,6 +493,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
             {
                 var isDown = mouse.Kind == MouseEventKind.ButtonDown;
 
+                if (isDown)
+                    DismissTransients?.Invoke(); // any button press closes an open tooltip (doc §12.7)
+
                 // Element capture short-circuits the hit test (so a captured gesture never triggers the
                 // window manager's press-time light-dismiss / activation in FilterMouseEvent); SubTree and
                 // the uncaptured path both need the hit to resolve the route target.
@@ -555,6 +568,14 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         return false;
     }
+
+    /// <summary>Whether <paramref name="key"/> is a standalone modifier key (Kitty reports these as discrete
+    /// key events) — pressing one alone must not dismiss a tooltip (doc §12.7).</summary>
+    private static bool IsStandaloneModifier(Key key)
+        => key is Key.LeftShift or Key.RightShift or Key.LeftControl or Key.RightControl
+            or Key.LeftAlt or Key.RightAlt or Key.LeftSuper or Key.RightSuper
+            or Key.LeftHyper or Key.RightHyper or Key.LeftMeta or Key.RightMeta
+            or Key.CapsLock or Key.NumLock or Key.ScrollLock;
 
     private static InputDispatchResult ToResult(bool handled)
         => handled ? InputDispatchResult.DispatchedHandled : InputDispatchResult.DispatchedUnhandled;

@@ -127,7 +127,10 @@ internal sealed class ToolTipController
         if (!ReferenceEquals(_target, owner) || !owner.IsAttachedToTree)
             return; // re-targeted or detached while the timer was pending
 
-        _toolTip.Content = ToolTipService.GetTip(owner);
+        if (ToolTipService.GetTip(owner) is not { } tip)
+            return; // the tip was cleared while the timer was pending — nothing to show
+
+        _toolTip.Content = tip;
         _popup.PlacementTarget = owner;
         _popup.Placement = PlacementMode.Pointer; // below-right of the pointer cell
         _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, 1);

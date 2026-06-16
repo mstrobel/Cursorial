@@ -211,4 +211,103 @@ public sealed class Section21_ToolTip
         host.RunFrame();
         Assert.Equal(1, Popups(host));
     }
+
+    [Fact] // C8.13: clearing the Tip while the open timer is pending shows nothing (no empty tooltip)
+    public void C8_13_TipClearedWhilePendingNoShow()
+    {
+        var (host, tip) = RootWithTip("hello");
+        using var _ = host;
+
+        Hover(host, tip);                 // arm the open timer
+        ToolTipService.SetTip(tip, null); // clear the tip before the timer fires
+        host.AdvanceTime(Delay + TimeSpan.FromMilliseconds(50));
+        host.RunFrame();
+        Assert.Equal(0, Popups(host));    // Show() bails when the tip is gone
+    }
+
+    [Fact] // C8.14: with nested tip-bearing elements, the innermost wins (the popup anchors to it)
+    public void C8_14_InnermostTipWins()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        using var _ = host;
+        var inner = new Border { Background = new SolidColorBrush(Color.FromRgb(60, 60, 60)) }; // fills outer, hittable
+        ToolTipService.SetTip(inner, "inner");
+        var outer = new Border { Width = 24, Height = 8, Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)), Child = inner };
+        ToolTipService.SetTip(outer, "outer");
+        host.ShowRoot(outer);
+        host.RunUntilIdle();
+
+        Show(host, inner); // hovering the inner hits inner (on top); the chain carries both tips
+        Assert.Equal(1, Popups(host));
+        Assert.Same(inner, host.Application.WindowManager!.Popups[0].PlacementTarget); // innermost, not outer
+    }
+
+    [Fact] // C8.15: entering a no-tip child of the tip element does NOT reset the open timer (intra-element move)
+    public void C8_15_IntraElementMoveDoesNotResetTimer()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        using var _ = host;
+        var child = new Border // a no-tip child pinned top-left, smaller than the parent (leaves bare parent area)
+        {
+            Width = 8, Height = 2,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Background = new SolidColorBrush(Color.FromRgb(70, 70, 70)),
+        };
+        var parent = new Border { Width = 24, Height = 8, Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)), Child = child };
+        ToolTipService.SetTip(parent, "p");
+        host.ShowRoot(parent);
+        host.RunUntilIdle();
+
+        var bare = parent.TranslateToWindow(0, 0);
+        host.SendMouseMove(bare.Column + 20, bare.Row + 6); // a parent-only cell (beyond the top-left child)
+        host.RunFrame();                                    // arm the open timer for the parent
+        host.AdvanceTime(TimeSpan.FromMilliseconds(300));   // partway through the 500 ms delay
+
+        var childOrigin = child.TranslateToWindow(0, 0);
+        host.SendMouseMove(childOrigin.Column + 1, childOrigin.Row + 1); // move INTO the no-tip child (still inside the parent)
+        host.RunFrame();                                                 // must NOT reset the parent's timer
+
+        host.AdvanceTime(TimeSpan.FromMilliseconds(250)); // total ~550 ms — past the ORIGINAL 500 ms deadline
+        host.RunFrame();
+        Assert.Equal(1, Popups(host)); // shown on the un-reset timer (a reset would push it to ~800 ms)
+    }
+
+    [Fact] // C8.16: the quick-show window EXPIRES — re-hovering after 100 ms requires the full delay again
+    public void C8_16_QuickShowWindowExpires()
+    {
+        var (host, tip) = RootWithTip("hello");
+        using var _ = host;
+
+        Show(host, tip);
+        MoveAway(host); // close → arms the 100 ms quick-show window
+        host.AdvanceTime(TimeSpan.FromMilliseconds(150)); // let the window expire
+        host.RunFrame();
+
+        Hover(host, tip); // re-hover after expiry
+        host.RunFrame();
+        Assert.Equal(0, Popups(host)); // NOT immediate — the quick-show window closed
+
+        host.AdvanceTime(Delay + TimeSpan.FromMilliseconds(50));
+        host.RunFrame();
+        Assert.Equal(1, Popups(host)); // shows only after the full delay
+    }
+
+    [Fact] // C8.17: one controller per application — two tip-bearing elements never stack duplicate tooltips
+    public void C8_17_OneControllerPerApp()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        using var _ = host;
+        var a = new Border { Width = 16, Height = 3, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        var b = new Border { Width = 16, Height = 3, Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)) };
+        ToolTipService.SetTip(a, "a"); // each SetTip calls ToolTipController.Ensure — must be idempotent
+        ToolTipService.SetTip(b, "b");
+        var panel = new StackPanel();
+        panel.Children.Add(a);
+        panel.Children.Add(b);
+        host.ShowRoot(panel);
+        host.RunUntilIdle();
+
+        Show(host, a);
+        Assert.Equal(1, Popups(host)); // exactly one popup — a duplicate controller would show two
+    }
 }

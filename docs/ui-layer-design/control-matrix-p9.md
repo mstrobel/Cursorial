@@ -463,6 +463,11 @@ hit-test-transparent `Popup`, hover-driven on S3's `InputDispatcher.HoverChanged
 | C8.10 | element | get/set `Tip`/`InitialDelay`/`ShowOnFocus` | round-trip; defaults are `null` / 500 ms / `null` (auto) | WPF |
 | C8.11 | a `ToolTip` | inspect | not focusable, not hit-test-visible | spec §12.7 |
 | C8.12 | element with a 100 ms `InitialDelay` | hover, wait 120 ms | shows (the custom delay is honored, well short of 500 ms) | WPF |
+| C8.13 | tip-bearing element, timer pending | clear the `Tip` (set null) | the tooltip never shows (`Show` bails on a null tip — CD-P9-21 audit fix) | PIN (CD-P9-21) |
+| C8.14 | nested tip elements (outer + inner) | hover the inner | the innermost tip wins (the popup anchors to the inner element) | PIN (CD-P9-21) |
+| C8.15 | tip element with a no-tip child | hover bare, partway, then move into the child | the open timer is NOT reset (shows at the original deadline) | PIN (CD-P9-21) |
+| C8.16 | tooltip shown then closed | re-hover **after** the 100 ms quick-show window | NOT immediate — the full delay re-applies (quick-show window expires) | PIN (CD-P9-21) |
+| C8.17 | two tip-bearing elements | hover one | exactly one popup — one controller per app (`Ensure` idempotent) | PIN (CD-P9-21) |
 
 **CD-P9-21 (P9.4d) — ToolTipService on the hover stream.** One `ToolTipController` per `UIApplication` (a
 `ConditionalWeakTable`, created lazily when the first `Tip` is set) subscribes the dispatcher's `HoverChanged`
@@ -476,3 +481,12 @@ hover shows with no delay. `Popup.IsHitTestTransparent` (new) flows to the surfa
 `CursorialTheme.BuiltIn` keys an occluding `Theme.ToolTip` panel capped at `MaxWidth = 40`. **Deferred:**
 `ShowOnFocus` is declared (`bool?`, null = auto from `!MouseCapabilities.Motion`) but the focus-triggered show
 itself is a recorded deferral — the hover path is the v1 behavior (no public focus-changed hook to ride yet).
+
+**CD-P9-21 audit (P9.4d-2 follow-up).** An adversarial audit (6 confirmed findings) caught a real MEDIUM bug:
+**clearing the `Tip` while the open timer was pending still showed an empty tooltip** — `Show` now bails when the
+tip is null (row C8.13). The other five were coverage gaps in correct-but-untested behavior (each mutation-verified):
+the innermost-tip selection (C8.14), the intra-element-move no-reset (C8.15), the quick-show-window expiry (C8.16),
+and `Ensure` idempotency (C8.17) are now pinned. The `Show()` re-target staleness guard
+(`!ReferenceEquals(_target, owner)`) is **defensive and unreachable** in the single-threaded frame model
+(an `Arm` always `Reset`s — stopping the prior open timer — so a stale pending callback cannot fire); left
+in place as a guard against future re-entrancy, not given an artificial test.

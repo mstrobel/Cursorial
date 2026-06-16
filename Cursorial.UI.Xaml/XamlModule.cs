@@ -1,9 +1,5 @@
-using System;
-using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-
-using Cursorial.UI;
 
 namespace Cursorial.UI.Xaml;
 
@@ -26,14 +22,14 @@ public static class XamlModule
     // C-9: the library deliberately installs ResourceDictionary.LoadCallback at module load so a
     // ResourceDictionary.Source resolves the instant Cursorial.UI.Xaml is referenced (the P5 guard
     // throws until then). This is the sanctioned advanced use of [ModuleInitializer].
+#pragma warning disable CA2255
     [ModuleInitializer]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2255:The 'ModuleInitializer' attribute should not be used in libraries",
-        Justification = "C-9: the loader installs ResourceDictionary.LoadCallback at module load so Source= resolves once the assembly is referenced.")]
     internal static void Initialize()
     {
         // Install the loader-backed Source resolver once (C-9). Idempotent assignment.
         ResourceDictionary.LoadCallback ??= LoadDictionary;
     }
+#pragma warning restore CA2255
 
     /// <summary>
     /// Forces the loader callback to be installed (tests / explicit installs); idempotent. The

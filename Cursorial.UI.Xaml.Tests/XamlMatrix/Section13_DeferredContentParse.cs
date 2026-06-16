@@ -1,5 +1,7 @@
 using Cursorial.UI.Xaml;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
 /// <summary>

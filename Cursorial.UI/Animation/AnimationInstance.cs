@@ -1,5 +1,3 @@
-using System;
-
 using Cursorial.Animation;
 
 // ReSharper disable CheckNamespace

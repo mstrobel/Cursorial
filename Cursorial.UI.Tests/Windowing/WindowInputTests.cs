@@ -1,8 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System;
-
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
@@ -33,7 +31,7 @@ public sealed class WindowInputTests
         Left = left,
         Top = top,
         Width = 20,
-        Height = 8,
+        Height = 8
     };
 
     [Fact] // a press on an inactive enabled window activates it (activation-on-press through the WM topology)

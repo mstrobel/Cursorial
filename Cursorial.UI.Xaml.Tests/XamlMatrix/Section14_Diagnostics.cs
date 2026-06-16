@@ -1,8 +1,8 @@
-using System;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
+
 using Cursorial.UI.Xaml;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 

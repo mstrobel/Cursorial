@@ -439,6 +439,6 @@ internal sealed class FocusNavigator
         FocusNavigationDirection.Right => FocusNavigationDirection.Left,
         FocusNavigationDirection.Left => FocusNavigationDirection.Right,
         FocusNavigationDirection.Up => FocusNavigationDirection.Down,
-        _ => FocusNavigationDirection.Up,
+        _ => FocusNavigationDirection.Up
     };
 }

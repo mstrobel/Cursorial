@@ -1,8 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System;
-
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
@@ -36,7 +34,7 @@ public sealed class WindowResizeMoveTests
         Left = left,
         Top = top,
         Width = width,
-        Height = height,
+        Height = height
     };
 
     private static MouseEvent Mouse(MouseEventKind kind, int col, int row, MouseButton button, MouseButtons held) => new()
@@ -46,7 +44,7 @@ public sealed class WindowResizeMoveTests
         Button = button,
         ButtonsHeld = held,
         Modifiers = KeyModifiers.None,
-        Timestamp = default, // SendInput stamps the fake clock
+        Timestamp = default // SendInput stamps the fake clock
     };
 
     private static void Drag(UITestHost host, (int Col, int Row) from, (int Col, int Row) to)
@@ -352,7 +350,7 @@ public sealed class WindowResizeMoveTests
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
             Left = 2, Top = 2, Width = 20, Height = 8,
-            Background = new SolidColorBrush(windowFill),
+            Background = new SolidColorBrush(windowFill)
         };
         w.Show(wm);
         Assert.True(host.RunUntilIdle());

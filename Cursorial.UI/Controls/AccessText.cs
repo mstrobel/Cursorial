@@ -52,6 +52,7 @@ public readonly record struct AccessText(string Text, char Key, int KeyIndex)
                 continue;
             }
 
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
             if (keyCodeUnitOffset < 0 && (char.IsLetterOrDigit(next) && next <= '￿'))
             {
                 // The mnemonic: record the code-unit offset, drop the underscore.
@@ -111,5 +112,6 @@ public readonly record struct AccessText(string Text, char Key, int KeyIndex)
     public override string ToString()
         => HasKey ? $"AccessText('{Text}', key='{Key}'@{KeyIndex})" : $"AccessText('{Text}')";
 
+    // ReSharper disable once UnusedMember.Local
     private string DebuggerDisplay => ToString();
 }

@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 using Cursorial.UI.Xaml;
 using Cursorial.Rendering;
@@ -30,7 +29,7 @@ internal static class TestConverters
     {
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
             if (int.TryParse(text, NumberStyles.Integer, ctx.Culture, out int v))
@@ -46,7 +45,7 @@ internal static class TestConverters
     {
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             var parts = text.Split(',');
             int[] vals = new int[parts.Length];
@@ -74,7 +73,7 @@ internal static class TestConverters
     {
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             if (bool.TryParse(text.Trim(), out bool v))
                 return v;
@@ -86,7 +85,7 @@ internal static class TestConverters
     {
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             if (double.TryParse(text.Trim(), NumberStyles.Float, ctx.Culture, out double v))
                 return v;
@@ -98,7 +97,7 @@ internal static class TestConverters
     {
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
             if (Enum.TryParse<TEnum>(text, ignoreCase: false, out var v) && Enum.IsDefined(typeof(TEnum), v))
@@ -114,7 +113,7 @@ internal static class TestConverters
     {
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
             if (string.Equals(text, "Auto", StringComparison.OrdinalIgnoreCase))

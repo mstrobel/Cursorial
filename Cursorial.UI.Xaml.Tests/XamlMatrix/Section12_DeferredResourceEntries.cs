@@ -1,7 +1,6 @@
-using System.Linq;
-
 using Cursorial.UI;
-using Cursorial.UI.Xaml;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -68,7 +67,7 @@ public sealed class Section12_DeferredResourceEntries : LoaderTestBase
             "<Border x:Key=\"B\" Background=\"{StaticResource Missing}\"/>" +
             "</ResourceDictionary>");
 
-        Assert.ThrowsAny<System.Exception>(() => _ = dict["B"]);
+        Assert.ThrowsAny<Exception>(() => _ = dict["B"]);
         // The slot reset to Deferred (X144) — retry-safe, consumed no slice state.
         Assert.True(dict.TryGetDeferredInfo("B", out var info));
         Assert.Equal(ResourceDictionary.DeferredState.Deferred, info.State);

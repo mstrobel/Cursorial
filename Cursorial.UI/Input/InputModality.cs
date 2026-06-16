@@ -11,5 +11,5 @@ public enum InputModality : byte
     Keyboard,
 
     /// <summary>The last dispatched event was a mouse event.</summary>
-    Pointer,
+    Pointer
 }

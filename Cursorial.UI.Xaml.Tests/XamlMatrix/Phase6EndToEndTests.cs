@@ -1,11 +1,7 @@
-using System.Linq;
-
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Xaml;
-
-using UIControls = Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -22,7 +18,7 @@ public sealed class Phase6EndToEndTests : LoaderTestBase
         // A button-styled ControlTemplate defined inside a resource dictionary: a named part, a
         // TemplateBinding to the templated parent's Background, and a StaticResource from the
         // definition-site chain. Load, expand on a real Button, assert the live wiring.
-        var border = Load<UIControls.Border>(
+        var border = Load<Border>(
             "<Border>" +
             "<Border.Resources>" +
             "<TestBrush x:Key=\"Accent\" Color=\"#ff8800\"/>" +
@@ -35,21 +31,21 @@ public sealed class Phase6EndToEndTests : LoaderTestBase
             "</Border>");
 
         var template = (ControlTemplate)border.Resources["ButtonChrome"]!;
-        template.TargetType = typeof(UIControls.Button);
+        template.TargetType = typeof(Button);
 
-        var owner = new UIControls.Button { Background = new TestBrush { Color = Color.FromRgb(10, 20, 30) }, Template = template };
+        var owner = new Button { Background = new TestBrush { Color = Color.FromRgb(10, 20, 30) }, Template = template };
         owner.ApplyTemplate();
 
         // The named part resolved in the template scope.
         var scope = NameScope.GetTemplateNameScope(owner)!;
-        var chrome = scope.RequireControl<UIControls.Border>("PART_Chrome");
+        var chrome = scope.RequireControl<Border>("PART_Chrome");
         Assert.Same(owner.TemplateInstance!.Root, chrome);
 
         // The TemplateBinding tracks the templated parent's Background.
         Assert.Same(owner.Background, chrome.Background);
 
         // The StaticResource resolved from the definition-site chain (the orange Accent), not a miss.
-        var text = (UIControls.TextBlock)chrome.Child!;
+        var text = (TextBlock)chrome.Child!;
         Assert.Equal(Color.FromRgb(255, 0x88, 0), ((TestBrush)text.Foreground!).Color);
     }
 
@@ -57,13 +53,13 @@ public sealed class Phase6EndToEndTests : LoaderTestBase
     public void EndToEnd_Document_Resources_Binding_AccessKey()
     {
         var vm = new TestVm { Name = "Save" };
-        var border = Load<UIControls.Border>(
+        var border = Load<Border>(
             "<Border>" +
             "<Border.Resources><TestBrush x:Key=\"Bg\" Color=\"#202020\"/></Border.Resources>" +
             "<Button x:Name=\"Go\" Background=\"{StaticResource Bg}\" Content=\"_Save\"/>" +
             "</Border>");
 
-        var button = (UIControls.Button)border.Child!;
+        var button = (Button)border.Child!;
 
         // x:Name registered in the document scope.
         Assert.Same(button, NameScope.GetNameScope(border)!.Find("Go"));
@@ -73,7 +69,7 @@ public sealed class Phase6EndToEndTests : LoaderTestBase
         Assert.Equal(new AccessText("Save", 'S', 0), AccessText.Parse((string)button.Content!));
 
         // A live binding on the same tree pushes through.
-        var labeled = Load<UIControls.Button>("<Button Content=\"{Binding Name}\"/>");
+        var labeled = Load<Button>("<Button Content=\"{Binding Name}\"/>");
         labeled.DataContext = vm;
         Assert.Equal("Save", labeled.Content);
     }
@@ -82,14 +78,14 @@ public sealed class Phase6EndToEndTests : LoaderTestBase
     public void X179_FoldEquivalence_LoaderHalf()
     {
         // Access-key fold equivalence.
-        var button = Load<UIControls.Button>("<Button Content=\"_Run\"/>");
+        var button = Load<Button>("<Button Content=\"_Run\"/>");
         Assert.Equal(AccessText.Parse("_Run"), AccessText.Parse((string)button.Content!));
 
         // Folded-constant sharing across loads: a context-free Margins folds once and is the same boxed
         // reference across distinct Loads of the same parsed document (XD20).
         var doc = Parse("<Border Margin=\"1,2,3,4\"/>");
-        var a = (UIControls.Border)Loader.Load(doc, new XamlLoadContext { Source = TestSource });
-        var b = (UIControls.Border)Loader.Load(doc, new XamlLoadContext { Source = TestSource });
+        var a = (Border)Loader.Load(doc, new XamlLoadContext { Source = TestSource });
+        var b = (Border)Loader.Load(doc, new XamlLoadContext { Source = TestSource });
         Assert.NotSame(a, b);                    // distinct trees
         Assert.Equal(a.Margin, b.Margin);        // equal folded value
     }

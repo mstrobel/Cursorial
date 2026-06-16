@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 // Animation-matrix §2 (BeginAnimation + handle lifecycle) — N13–N22, N28.

@@ -1,4 +1,3 @@
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
@@ -9,6 +8,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -52,7 +53,7 @@ public sealed class Section09_TextBorderAccessKey
                      Width = 10,
                      Height = 3,
                      HorizontalAlignment = HorizontalAlignment.Left,
-                     VerticalAlignment = VerticalAlignment.Top,
+                     VerticalAlignment = VerticalAlignment.Top
                  };
         using var host = Attach(tb);
 
@@ -176,7 +177,7 @@ public sealed class Section09_TextBorderAccessKey
         {
             Child = child,
             Padding = new Margins(1, 1, 1, 1),
-            BorderPen = Pens.Light,
+            BorderPen = Pens.Light
         };
         var host = UITestHost.Create();
         host.ShowRoot(border);
@@ -236,7 +237,7 @@ public sealed class Section09_TextBorderAccessKey
             Width = 5,
             Height = 3,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         using var host = Attach(occluding);
         // A box corner renders at the Border's window origin.
@@ -249,11 +250,11 @@ public sealed class Section09_TextBorderAccessKey
     {
         // Two adjacent borders in a shared zone render their strokes (junction-merge is the default
         // JunctionMode.Merge — asserted here as both boxes painting without throwing).
-        var panel = new Cursorial.UI.Controls.StackPanel
+        var panel = new StackPanel
         {
             Orientation = Orientation.Vertical,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         var first = new Border { BorderPen = Pens.Light, Width = 4, Height = 2 };
         panel.Children.Add(first);
@@ -346,7 +347,7 @@ public sealed class Section09_TextBorderAccessKey
     {
         var target = new Button { Content = "T" };
         var label = new Label { Content = "_Name", Target = target };
-        var panel = new Cursorial.UI.Controls.StackPanel();
+        var panel = new StackPanel();
         panel.Children.Add(label);
         panel.Children.Add(target);
         using var host = Attach(panel);
@@ -363,7 +364,7 @@ public sealed class Section09_TextBorderAccessKey
     {
         var next = new Button { Content = "N" };
         var label = new Label { Content = "_Go" }; // Target == null
-        var panel = new Cursorial.UI.Controls.StackPanel();
+        var panel = new StackPanel();
         panel.Children.Add(label);
         panel.Children.Add(next);
         using var host = Attach(panel);
@@ -494,7 +495,7 @@ public sealed class Section09_TextBorderAccessKey
         Assert.True(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
 
         // A terminal focus-out (Alt+Tab swallows the Up) must clear the cue unconditionally.
-        host.SendInput(new Cursorial.Input.Events.FocusEvent { HasFocus = false, Timestamp = host.Time.GetUtcNow() });
+        host.SendInput(new FocusEvent { HasFocus = false, Timestamp = host.Time.GetUtcNow() });
         host.RunFrame();
         Assert.False(host.Application.AccessKeys.IsCueActive);
         Assert.False(host.GetCell(oc, orow).Style.Attributes.HasFlag(TextAttributes.Underline));
@@ -525,7 +526,7 @@ public sealed class Section09_TextBorderAccessKey
     {
         var target = new Button { Content = "T" };
         var label = new Label { Content = "_Name", Target = target };
-        var panel = new Cursorial.UI.Controls.StackPanel();
+        var panel = new StackPanel();
         panel.Children.Add(label);
         panel.Children.Add(target);
         using var host = Attach(panel);

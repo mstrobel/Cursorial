@@ -166,8 +166,11 @@ internal sealed class SaveDialogDemo : IDemo
             // FileName to the VM on every change, the VM raises PropertyChanged, and we re-raise the command's
             // CanExecuteChanged so the bound button's effective-enabled flips live (the §3.9 demonstration).
             var saveCommand = new RelayCommand(
+                // ReSharper disable once AllUnderscoreLocalParameterName
+                // ReSharper disable RedundantAssignment
                 _ => _ = AttemptSaveAsync(vm, overwrite, dialog),
                 _ => !string.IsNullOrWhiteSpace(vm.FileName));
+                // ReSharper restore RedundantAssignment
             vm.PropertyChanged += (_, _) => saveCommand.RaiseCanExecuteChanged();
             save.Command = saveCommand;
             cancel.Click += (_, _) => dialog.Close(null);

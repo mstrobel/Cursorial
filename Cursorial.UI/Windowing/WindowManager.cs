@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
@@ -668,7 +665,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 ((_viewport.Columns - size.Columns) / 2, (_viewport.Rows - size.Rows) / 2),
             WindowStartupLocation.CenterOwner when window.Owner?.HostSurface is { } owner =>
                 (owner.Left + (owner.Size.Columns - size.Columns) / 2, owner.Top + (owner.Size.Rows - size.Rows) / 2),
-            _ => (window.Left, window.Top),
+            _ => (window.Left, window.Top)
         };
 
         window.SetCurrentValue(Window.LeftProperty, left); // user-gesture-style write: bindings survive (§8.2)
@@ -758,7 +755,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         var surface = new TopLevelSurface(child, _scenePool, _capabilities, _guard)
                       {
                           IsPopup = true,
-                          IsHitTestTransparent = popup.IsHitTestTransparent, // a ToolTip's surface never steals hover/clicks
+                          IsHitTestTransparent = popup.IsHitTestTransparent // a ToolTip's surface never steals hover/clicks
                       };
         popup.PopupSurface = surface;
         _popups.Add(popup);
@@ -805,12 +802,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         var anchor = AnchorRect(popup);
         var (left, top) = popup.Placement switch
         {
-            PlacementMode.Top => (anchor.Column, anchor.Row - size.Rows),
-            PlacementMode.Right => (anchor.ColumnEnd, anchor.Row),
-            PlacementMode.Left => (anchor.Column - size.Columns, anchor.Row),
-            PlacementMode.Center => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
+            PlacementMode.Top     => (anchor.Column, anchor.Row - size.Rows),
+            PlacementMode.Right   => (anchor.ColumnEnd, anchor.Row),
+            PlacementMode.Left    => (anchor.Column - size.Columns, anchor.Row),
+            PlacementMode.Center  => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
             PlacementMode.Pointer => (_lastPointer.Column, _lastPointer.Row),
-            _ => (anchor.Column, anchor.RowEnd), // Bottom (default)
+            _                     => (anchor.Column, anchor.RowEnd) // Bottom (default)
         };
 
         left += popup.HorizontalOffset;

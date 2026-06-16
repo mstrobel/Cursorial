@@ -1,6 +1,4 @@
-using System;
 using System.Globalization;
-using System.IO;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
@@ -9,7 +7,7 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;
 
-using UIControls = Cursorial.UI.Controls;
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -32,7 +30,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
         var scope = ResourceScopes.ForDictionary(dict, ambient);
 
         var doc = Parse("<Button Background=\"{StaticResource AmbientBrush}\"/>");
-        var component = new UIControls.Button();
+        var component = new Button();
         Loader.LoadComponent(component, doc, new XamlLoadContext { AmbientResources = scope });
 
         Assert.IsType<TestBrush>(component.Background);
@@ -44,7 +42,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
         // Sanity: without the ambient scope the same document's StaticResource is a miss (proving the
         // ambient wiring above is what resolved it).
         var doc = Parse("<Button Background=\"{StaticResource AmbientBrush}\"/>");
-        var component = new UIControls.Button();
+        var component = new Button();
         Assert.Throws<XamlParseException>(() => Loader.LoadComponent(component, doc));
     }
 
@@ -55,7 +53,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     {
         // ReversedExtension declares its positionals via [ConstructorArgument] mapped to a (first, second)
         // ctor whose parameter order is the authoritative positional order — NOT reflection property order.
-        var button = Load<UIControls.Button>("<Button Content=\"{Reversed head, tail}\"/>");
+        var button = Load<Button>("<Button Content=\"{Reversed head, tail}\"/>");
         Assert.Equal("head|tail", button.Content);
     }
 
@@ -64,7 +62,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     [Fact]
     public void RelativeSource_UnrecognizedMode_Throws()
     {
-        var ex = Assert.Throws<XamlParseException>(() => Load<UIControls.Button>(
+        var ex = Assert.Throws<XamlParseException>(() => Load<Button>(
             "<Button Content=\"{Binding Name, RelativeSource={RelativeSource FindAncestor}}\"/>"));
         Assert.Equal(XamlDiagnosticCodes.ConversionFailed, ex.Code);
     }
@@ -73,12 +71,12 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     public void RelativeSource_ModeNamedArg_TemplatedParent_Resolves()
     {
         // {RelativeSource Mode=TemplatedParent} (the named-arg form) resolves the same as the positional.
-        var template = Load<UIControls.ControlTemplate>(
+        var template = Load<ControlTemplate>(
             "<ControlTemplate><Border Background=\"{Binding Background, RelativeSource={RelativeSource Mode=TemplatedParent}}\"/></ControlTemplate>");
-        var owner = new UIControls.Button { Background = new SolidColorBrush(Color.FromRgb(1, 2, 3)) };
-        template.TargetType = typeof(UIControls.Button);
+        var owner = new Button { Background = new SolidColorBrush(Color.FromRgb(1, 2, 3)) };
+        template.TargetType = typeof(Button);
         var instance = template.Instantiate(owner);
-        var part = (UIControls.Border)instance.Root;
+        var part = (Border)instance.Root;
         Assert.Equal(owner.Background, part.Background);
     }
 
@@ -87,7 +85,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     [Fact]
     public void Exception_SourceUri_Distinct_From_ExceptionSource()
     {
-        var ex = Assert.Throws<XamlParseException>(() => Load<UIControls.Button>("<Bogus/>"));
+        var ex = Assert.Throws<XamlParseException>(() => Load<Button>("<Bogus/>"));
         Assert.Equal(TestSource, ex.SourceUri);
         // Exception.Source (the assembly-name slot, a string?) is NOT clobbered into a Uri — assigning it
         // a string round-trips, which a `new Uri? Source` shadow would have broken.
@@ -102,7 +100,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     public void Enum_BindingMode_CaseInsensitive()
     {
         var vm = new TestVm { Name = "start" };
-        var button = Load<UIControls.Button>("<Button Content=\"{Binding Path=Name, Mode=twoway}\"/>");
+        var button = Load<Button>("<Button Content=\"{Binding Path=Name, Mode=twoway}\"/>");
         button.DataContext = vm;
         button.Content = "edited";
         Assert.Equal("edited", vm.Name);
@@ -122,7 +120,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     {
         // One <ColumnDefinition> under <Grid.ColumnDefinitions> (a read-only collection) is added to the
         // existing collection, not assigned as a replacement (the IsCollectionMember parse classification).
-        var grid = Load<UIControls.Grid>(
+        var grid = Load<Grid>(
             "<Grid><Grid.ColumnDefinitions><ColumnDefinition/></Grid.ColumnDefinitions></Grid>");
         Assert.Single(grid.ColumnDefinitions);
     }
@@ -132,7 +130,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     [Fact]
     public void AccessKeyObjectSlot_KeepsRawString_FoldsEquivalently()
     {
-        var button = Load<UIControls.Button>("<Button Content=\"_Run\"/>");
+        var button = Load<Button>("<Button Content=\"_Run\"/>");
         // The object-typed Content slot keeps the literal string (the runtime ContentControl.GetAccessText
         // is the fold producer — fold-equivalence rather than fold-at-load, P6 review P2-1 / XD11 amendment).
         Assert.Equal("_Run", button.Content);
@@ -161,7 +159,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     public void Binding_Converter_XStatic_Resolves()
     {
         var vm = new TestVm { Status = "ok" };
-        var button = Load<UIControls.Button>(
+        var button = Load<Button>(
             "<Button Foreground=\"{Binding Status, Converter={x:Static StatusConverters.Instance}}\"/>");
         button.DataContext = vm;
         Assert.IsType<SolidColorBrush>(button.Foreground);
@@ -174,7 +172,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     {
         using var reader = new StringReader(Wrap("<Button Content=\"Hi\"/>"));
         var doc = Loader.Parse(reader, TestSource);
-        var button = Loader.Load<UIControls.Button>(doc);
+        var button = Loader.Load<Button>(doc);
         Assert.Equal("Hi", button.Content);
     }
 
@@ -191,7 +189,7 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
     [Fact]
     public void MemberNotFound_SuggestsNearestMember()
     {
-        var ex = Assert.Throws<XamlParseException>(() => Load<UIControls.Button>("<Button Withh=\"10\"/>"));
+        var ex = Assert.Throws<XamlParseException>(() => Load<Button>("<Button Withh=\"10\"/>"));
         Assert.Equal(XamlDiagnosticCodes.MemberNotFound, ex.Code);
         Assert.Contains("Did you mean 'Width'", ex.Message);
     }
@@ -271,7 +269,7 @@ public sealed class ReversedExtension : MarkupExtension
     [ConstructorArgument("first")]
     public string First { get; set; } = "";
 
-    public override object? ProvideValue(IServiceProvider serviceProvider) => $"{First}|{Second}";
+    public override object ProvideValue(IServiceProvider serviceProvider) => $"{First}|{Second}";
 }
 
 /// <summary>A converter exposed as an {x:Static} singleton (P6 review P2-13).</summary>
@@ -279,9 +277,9 @@ public sealed class StatusConverters : IValueConverter
 {
     public static readonly StatusConverters Instance = new();
 
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => new SolidColorBrush(value is "ok" ? Color.FromRgb(0, 255, 0) : Color.FromRgb(255, 0, 0));
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

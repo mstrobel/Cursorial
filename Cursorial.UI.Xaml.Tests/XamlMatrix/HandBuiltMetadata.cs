@@ -1,7 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Xaml;

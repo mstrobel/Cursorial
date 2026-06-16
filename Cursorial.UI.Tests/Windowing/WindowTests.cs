@@ -1,8 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System;
-
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
@@ -41,7 +39,7 @@ public sealed class WindowTests
             Width = 20,
             Height = 8,
             Left = 3,
-            Top = 2,
+            Top = 2
         };
         window.Show(wm);
         Assert.True(host.RunUntilIdle());

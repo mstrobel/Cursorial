@@ -1,4 +1,3 @@
-using System.Linq;
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;

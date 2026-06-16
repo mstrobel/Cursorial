@@ -42,5 +42,5 @@ public enum InteractionState : uint
     Disabled = 1 << 7,
 
     /// <summary><c>:modal-attention</c> — S4 sets on a blocked-window press; cleared by an S5 timer (P7).</summary>
-    ModalAttention = 1 << 8,
+    ModalAttention = 1 << 8
 }

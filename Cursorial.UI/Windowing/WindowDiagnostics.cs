@@ -17,7 +17,7 @@ public static class WindowDiagnostics
     /// </summary>
     public static string DumpZOrder(WindowManager manager)
     {
-        System.ArgumentNullException.ThrowIfNull(manager);
+        ArgumentNullException.ThrowIfNull(manager);
 
         var builder = new StringBuilder();
         var surfaces = manager.Surfaces;

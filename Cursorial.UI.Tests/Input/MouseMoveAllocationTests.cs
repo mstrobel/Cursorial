@@ -50,7 +50,7 @@ public class MouseMoveAllocationTests
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         };
 
     [Fact]

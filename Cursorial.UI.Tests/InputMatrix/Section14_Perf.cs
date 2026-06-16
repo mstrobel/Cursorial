@@ -55,7 +55,7 @@ public class Section14_Perf
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         };
 
     private static KeyEvent CharKey(string text)
@@ -65,7 +65,7 @@ public class Section14_Perf
             Modifiers = KeyModifiers.None,
             Kind = KeyEventKind.Down,
             Text = text.AsMemory(),
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         };
 
     [Fact]

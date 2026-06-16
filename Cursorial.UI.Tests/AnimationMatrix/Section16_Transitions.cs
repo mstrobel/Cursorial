@@ -5,6 +5,8 @@ using Cursorial.UI.Testing;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 // Animation-matrix §16 (Transitions — implicit animations over the winning-base observer) — N141–N153.
@@ -220,7 +222,7 @@ public sealed class Section16_Transitions
         Transition.SetTransitions(element, new TransitionCollection
         {
             new DoubleTransition(Animatable.VProperty) { Duration = Ms(100) },
-            new DoubleTransition(Animatable.WProperty) { Duration = Ms(100) },
+            new DoubleTransition(Animatable.WProperty) { Duration = Ms(100) }
         });
 
         element.SetV(10.0);

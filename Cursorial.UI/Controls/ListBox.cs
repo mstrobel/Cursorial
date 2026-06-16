@@ -1,7 +1,6 @@
 using Cursorial.Input;
 using Cursorial.UI.Input;
 
-// ReSharper disable CheckNamespace
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -115,6 +114,7 @@ public class ListBox : SelectingItemsControl
     {
         ItemContainerGenerator.ContainerFromIndex(target)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
 
+        // ReSharper disable once RedundantJumpStatement
         if (SelectionMode == SelectionMode.Single)
             Selection.Select(target); // selection-follows-focus
         else if ((modifiers & KeyModifiers.Control) != 0)

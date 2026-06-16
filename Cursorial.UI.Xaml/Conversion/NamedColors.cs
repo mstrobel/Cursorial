@@ -1,12 +1,11 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using System.Threading;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 

@@ -1,3 +1,6 @@
+// ReSharper disable CheckNamespace
+// ReSharper disable UnusedParameter.Local
+
 namespace Cursorial.UI;
 
 /// <summary>

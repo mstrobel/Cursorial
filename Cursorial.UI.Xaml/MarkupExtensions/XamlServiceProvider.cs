@@ -1,6 +1,4 @@
-using System;
-
-using Cursorial.UI;
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -50,8 +48,8 @@ internal sealed class XamlServiceProvider :
     }
 
     // IProvideValueTarget
-    public object? TargetObject => _targetObject;
-    public object? TargetProperty => _targetMember.Property ?? (object)_targetMember;
+    public object TargetObject => _targetObject;
+    public object TargetProperty => _targetMember.Property ?? _targetMember;
 
     // IRootObjectProvider
     public object? RootObject => _builder.RootObject;
@@ -65,5 +63,5 @@ internal sealed class XamlServiceProvider :
         => _scopes.TryResolve(key, out value);
 
     // INameScopeProvider
-    public INameScope? NameScope => _builder.DocumentScope;
+    public INameScope NameScope => _builder.DocumentScope;
 }

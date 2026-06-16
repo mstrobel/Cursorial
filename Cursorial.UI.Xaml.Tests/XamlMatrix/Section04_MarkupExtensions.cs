@@ -1,6 +1,6 @@
-using System;
-using System.Linq;
 using Cursorial.UI.Xaml;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -20,7 +20,7 @@ public sealed class Section04_MarkupExtensions : XamlTestBase
         ref readonly var ext = ref doc.ExtensionOf(m);
         var node = doc.ParsedExtension(in ext);
         Assert.NotNull(node);
-        return node!;
+        return node;
     }
 
     [Fact] // X41
@@ -82,7 +82,7 @@ public sealed class Section04_MarkupExtensions : XamlTestBase
         Assert.True(ext.PayloadIsParsedExtension);          // nested key ⇒ Payload indexes ParsedExtensions
         var keyNode = doc.ParsedExtension(in ext);          // the INNER key node, not the outer *Resource
         Assert.NotNull(keyNode);
-        Assert.Equal("x:Static", keyNode!.Name);
+        Assert.Equal("x:Static", keyNode.Name);
         Assert.Equal("ThemeKeys.SurfaceBrush", keyNode.PositionalArguments[0].Text);
     }
 

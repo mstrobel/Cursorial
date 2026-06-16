@@ -26,7 +26,7 @@ public enum ShutdownMode
     OnLastWindowClose,
 
     /// <summary>Shut down only on an explicit <see cref="UIApplication.Shutdown"/> call.</summary>
-    OnExplicitShutdown,
+    OnExplicitShutdown
 }
 
 /// <summary>

@@ -1,7 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System;
 using System.Text;
 
 using Cursorial.Rendering;

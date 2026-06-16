@@ -1,7 +1,8 @@
-using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -129,12 +130,14 @@ public sealed class Section07_ContentPresenter
         var template = new DataTemplate
         {
             DataType = typeof(object),
+            // ReSharper disable AccessToModifiedClosure
             Content = new FuncTemplateContent(_ =>
             {
                 // Re-enter realization during the build (the degenerate path the guard protects).
                 cp!.InvalidateMeasure();
                 return new TextBlock("leaf");
-            }),
+            })
+            // ReSharper restore AccessToModifiedClosure
         };
         cp = new ContentPresenter { Content = new object(), ContentTemplate = template };
 

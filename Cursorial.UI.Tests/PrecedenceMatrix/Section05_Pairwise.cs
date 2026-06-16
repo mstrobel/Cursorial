@@ -609,7 +609,7 @@ public class Section05_Pairwise
             (9, 7, BindingPriority.LocalValue),
             (7, 5, BindingPriority.Style),
             (5, 2, BindingPriority.Inherited),
-            (2, 0, BindingPriority.Default),
+            (2, 0, BindingPriority.Default)
         ];
         Assert.Equal(expected, probe.Typed);
         Assert.Equal(expected.Select(e => ((object?)e.Item1, (object?)e.Item2, e.Item3)), probe.Untyped);

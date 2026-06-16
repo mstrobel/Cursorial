@@ -1,7 +1,6 @@
 using System.Globalization;
 using Cursorial.UI;
 using Cursorial.UI.Data;
-using Xunit;
 
 // ReSharper disable InconsistentNaming
 
@@ -181,26 +180,26 @@ public class Section06_ForwardPipeline
 
     private sealed class HashConverter : IValueConverter
     {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => $"#{value}";
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => $"#{value}";
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
     }
 
     private sealed class ParamConverter : IValueConverter
     {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => $"{value}/{parameter}";
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => $"{value}/{parameter}";
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
     }
 
     private sealed class ThrowingConverter : IValueConverter
     {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new InvalidOperationException("boom");
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new InvalidOperationException("boom");
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
     }
 
     private sealed class UnsetConverter : IValueConverter
     {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
     }
 }
 

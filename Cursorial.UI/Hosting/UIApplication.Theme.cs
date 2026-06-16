@@ -208,7 +208,7 @@ public sealed partial class UIApplication : IResourceHost
     {
         var rgbVariant = new ThemeVariant(_actualThemeVariant.Base, ColorDepth.Truecolor);
         if (ResourceExtensions.WalkApplicationTail(ThemeKeys.AccentBrush, rgbVariant, searched: null, out var value) &&
-            value is Cursorial.Drawing.Media.SolidColorBrush { Color: { Kind: ColorKind.Rgb } accent })
+            value is Drawing.Media.SolidColorBrush { Color: { Kind: ColorKind.Rgb } accent })
         {
             PaletteWriter.WriteSetCursor(output, accent.Red, accent.Green, accent.Blue);
             _cursorColorEmitted = true;

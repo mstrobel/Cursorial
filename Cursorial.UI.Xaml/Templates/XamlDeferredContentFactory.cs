@@ -1,7 +1,6 @@
-using System;
-
-using Cursorial.UI;
 using Cursorial.UI.Controls;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -16,7 +15,7 @@ internal sealed class XamlDeferredContentFactory(XamlLoaderOptions defaultOption
 {
     private readonly XamlLoaderOptions _defaultOptions = defaultOptions;
 
-    public object Create(XamlDocument doc, int sliceHead, XamlLoaderOptions options, Uri? source, CapturedScopeChain capturedScope)
+    public object Create(XamlDocument doc, int sliceHead, XamlLoaderOptions? options, Uri? source, CapturedScopeChain capturedScope)
         => new XamlTemplateContent(doc, sliceHead, options ?? _defaultOptions, source, capturedScope);
 }
 

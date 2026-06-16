@@ -1,9 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System.Collections.Generic;
-using System.Linq;
-
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -118,7 +115,7 @@ public sealed class XamlThemeStylesTests
 
         // The effective ToggleGlyph.Glyphs is the app-theme's override — proving the app.Theme caps-unicode rule
         // armed at Theme(2) and BEAT BuiltIn's identical-selector rule (the order-base override, R2/B13).
-        var effective = checkBox.GetValue(Cursorial.UI.Themes.ToggleGlyph.GlyphsProperty);
+        var effective = checkBox.GetValue(ToggleGlyph.GlyphsProperty);
         Assert.Equal("(!)", Assert.IsType<GlyphSetCarrier>(effective).Checked);
 
         // The checked glyph renders the app-theme's unique mark.

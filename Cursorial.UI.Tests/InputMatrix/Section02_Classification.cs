@@ -28,7 +28,7 @@ public class Section02_Classification
             {
                 Kind = DeviceResponseKind.PrimaryDeviceAttributes,
                 Payload = new byte[] { 0x1b },
-                Timestamp = DateTimeOffset.UnixEpoch,
+                Timestamp = DateTimeOffset.UnixEpoch
             },
             "unknown" => new UnknownEvent { RawBytes = new byte[] { 0x1b, 0x5b }, Timestamp = DateTimeOffset.UnixEpoch },
             _ => new PointerEvent
@@ -37,8 +37,8 @@ public class Section02_Classification
                 EventKind = PointerEventKind.Move,
                 Position = new CellPosition(3, 3),
                 PointerId = 1,
-                Timestamp = DateTimeOffset.UnixEpoch,
-            },
+                Timestamp = DateTimeOffset.UnixEpoch
+            }
         };
 
         var result = fixture.Dispatcher.ProcessEvent(inputEvent);

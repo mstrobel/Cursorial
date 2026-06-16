@@ -7,6 +7,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C2 — the ItemsControl pipeline (ItemContainerGenerator / ItemsPresenter / punch-43).
@@ -329,7 +331,7 @@ public sealed class Section15_Items
         var newPanel = c0.VisualParent;
         Assert.NotSame(oldPanel, newPanel);             // …in a freshly-built panel
         Assert.IsType<StackPanel>(newPanel);
-        Assert.Equal(2, ((Panel)newPanel!).Children.Count); // exactly the two containers — no double-adoption
+        Assert.Equal(2, ((Panel)newPanel).Children.Count); // exactly the two containers — no double-adoption
     }
 
     [Fact] // C2.18: HeaderedItemsControl exposes Header + the items host (MenuItem's base — smoke)

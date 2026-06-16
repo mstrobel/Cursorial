@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 // Animation-matrix §1 (frame clock + driver + idle gate) — N1, N3, N7–N12.

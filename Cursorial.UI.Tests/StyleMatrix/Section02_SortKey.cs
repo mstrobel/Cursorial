@@ -199,11 +199,11 @@ public class Section02_SortKey
     [Fact]
     public void S035_EqualSpecificity_LaterDeclarationOrderWins()
     {
-        using var tree = StyleMatrixFixture.ShowTree(show: false);
+        using var tree = ShowTree(show: false);
         tree.A.Classes.Add("a");
         tree.A.Classes.Add("b");
-        tree.App.Styles.Add(StyleMatrixFixture.R(".a", (Widget.P, 1)));
-        tree.App.Styles.Add(StyleMatrixFixture.R(".b", (Widget.P, 2)));
+        tree.App.Styles.Add(R(".a", (Widget.P, 1)));
+        tree.App.Styles.Add(R(".b", (Widget.P, 2)));
         tree.Host.ShowRoot(tree.Root);
 
         Assert.Equal(2, tree.A.GetValue(Widget.P)); // equal keys except order — later wins
@@ -212,10 +212,10 @@ public class Section02_SortKey
     [Fact]
     public void S036_IdenticalRule_DeeperScopeWins()
     {
-        using var tree = StyleMatrixFixture.ShowTree(show: false);
+        using var tree = ShowTree(show: false);
         tree.A.Classes.Add("x");
-        tree.PaneA.Styles.Add(StyleMatrixFixture.R(".x", (Widget.P, 1))); // owner depth 1
-        tree.A.Styles.Add(StyleMatrixFixture.R(".x", (Widget.P, 2)));     // owner depth 2
+        tree.PaneA.Styles.Add(R(".x", (Widget.P, 1))); // owner depth 1
+        tree.A.Styles.Add(R(".x", (Widget.P, 2)));     // owner depth 2
         tree.Host.ShowRoot(tree.Root);
 
         Assert.Equal(2, tree.A.GetValue(Widget.P)); // scopeDepth (SD6)
@@ -224,12 +224,12 @@ public class Section02_SortKey
     [Fact]
     public void S037_ScopedBeatsApp_RegardlessOfSpecificity()
     {
-        using var tree = StyleMatrixFixture.ShowTree(show: false);
+        using var tree = ShowTree(show: false);
         tree.A.Classes.Add("x");
         tree.A.Classes.Add("y");
         tree.A.Classes.Add("z");
-        tree.App.Styles.Add(StyleMatrixFixture.R("Widget.x.y.z", (Widget.P, 1))); // specificity-boosted App rule
-        tree.PaneA.Styles.Add(StyleMatrixFixture.R(".x", (Widget.P, 2)));         // bare Scoped rule
+        tree.App.Styles.Add(R("Widget.x.y.z", (Widget.P, 1))); // specificity-boosted App rule
+        tree.PaneA.Styles.Add(R(".x", (Widget.P, 2)));         // bare Scoped rule
         tree.Host.ShowRoot(tree.Root);
 
         Assert.Equal(2, tree.A.GetValue(Widget.P)); // layer beats specificity (rule 3)
@@ -238,13 +238,13 @@ public class Section02_SortKey
     [Fact]
     public void S038_ExplicitBeatsScoped_AtAnySpecificity()
     {
-        using var tree = StyleMatrixFixture.ShowTree(show: false);
+        using var tree = ShowTree(show: false);
         tree.A.Classes.Add("a");
         tree.A.Classes.Add("b");
         tree.A.Classes.Add("c");
         tree.A.Name = "save";
-        tree.PaneA.Styles.Add(StyleMatrixFixture.R("Widget.a.b.c#save", (Widget.P, 1)));
-        tree.A.Style = StyleMatrixFixture.Explicit((Widget.P, 9));
+        tree.PaneA.Styles.Add(R("Widget.a.b.c#save", (Widget.P, 1)));
+        tree.A.Style = Explicit((Widget.P, 9));
         tree.Host.ShowRoot(tree.Root);
 
         Assert.Equal(9, tree.A.GetValue(Widget.P)); // Explicit(5) outranks any Scoped specificity

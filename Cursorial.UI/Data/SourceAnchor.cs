@@ -22,5 +22,5 @@ internal enum AnchorKind : byte
     TemplatedParent,
 
     /// <summary>The nth assignable logical ancestor (<c>FindAncestor</c>).</summary>
-    FindAncestor,
+    FindAncestor
 }

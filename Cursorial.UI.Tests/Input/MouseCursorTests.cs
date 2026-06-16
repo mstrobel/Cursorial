@@ -88,7 +88,7 @@ public class MouseCursorTests
             var host = UITestHost.Create(new UITestHostOptions
             {
                 Capabilities = capabilities ?? TestCapabilities.KittyTruecolor,
-                CaptureFrameBytes = true,
+                CaptureFrameBytes = true
             });
 
             var log = new List<string>();
@@ -219,7 +219,7 @@ public class MouseCursorTests
         fixture.Host.SendInput(new Cursorial.Input.Events.FocusEvent
         {
             HasFocus = false,
-            Timestamp = fixture.Host.Time.GetUtcNow(),
+            Timestamp = fixture.Host.Time.GetUtcNow()
         });
         var bytes = fixture.Pump();
 

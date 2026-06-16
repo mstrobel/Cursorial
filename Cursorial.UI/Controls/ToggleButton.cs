@@ -1,4 +1,3 @@
-using Cursorial.UI;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -69,7 +68,7 @@ public class ToggleButton : ButtonBase
         {
             false => true,
             true => IsThreeState ? null : false,
-            null => false,
+            null => false
         };
     }
 
@@ -80,6 +79,7 @@ public class ToggleButton : ButtonBase
         base.OnClick();
     }
 
+    // ReSharper disable once RedundantOverriddenMember
     /// <inheritdoc/>
     protected override void OnAccessKey(AccessKeyEventArgs e)
     {
@@ -96,7 +96,7 @@ public class ToggleButton : ButtonBase
         {
             true => CheckedEvent,
             false => UncheckedEvent,
-            null => IndeterminateEvent,
+            null => IndeterminateEvent
         };
 
         toggle.OnIsCheckedChangedCore(oldValue, newValue);

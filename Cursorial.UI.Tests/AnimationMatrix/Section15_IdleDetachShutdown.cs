@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 // Animation-matrix §15 (idle + detach-stop + Shutdown) — N96, N98, N99, N101.

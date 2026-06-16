@@ -1,5 +1,7 @@
 using System.Text;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI.Xaml;
 
 /// <summary>

@@ -30,7 +30,7 @@ public enum LayoutDiagnosticKind
     /// push-stack-uncovered draw call straddled a banded scroll scene's top edge and was dropped. Every
     /// draw path now rides the band's <c>PushTranslate</c> and clips per cell instead (doc §5.7). The
     /// member is retained so recorded diagnostics streams keep their meaning.</summary>
-    BandStraddlingDrawDropped,
+    BandStraddlingDrawDropped
 }
 
 /// <summary>One emitted layout diagnostic: the kind, the element it names (when one is identifiable), and a message.</summary>

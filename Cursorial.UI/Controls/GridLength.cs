@@ -10,7 +10,7 @@ public enum GridUnitType : byte
     Auto,
 
     /// <summary>A weighted share of the space remaining after Cell and Auto tracks (the pinned integer Hamilton distribution).</summary>
-    Star,
+    Star
 }
 
 /// <summary>
@@ -67,6 +67,6 @@ public readonly record struct GridLength(int Cells, GridUnitType UnitType, doubl
     {
         GridUnitType.Auto => "Auto",
         GridUnitType.Star => $"{StarWeight}*",
-        _ => $"{Cells}",
+        _ => $"{Cells}"
     };
 }

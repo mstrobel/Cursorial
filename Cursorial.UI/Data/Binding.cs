@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -159,7 +158,7 @@ internal static class CompiledBindingFactory
         {
             MemberExpression { Member: PropertyInfo { CanWrite: true } } => CompileSetter<TSource, TValue>(body),
             MemberExpression { Member: FieldInfo { IsInitOnly: false } } => CompileSetter<TSource, TValue>(body),
-            _ => null,
+            _ => null
         };
     }
 
@@ -186,6 +185,6 @@ internal static class CompiledBindingFactory
         MemberExpression member => Expression.MakeMemberAccess(Rebase(member.Expression!, newRoot), member.Member),
         UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } convert =>
             Expression.Convert(Rebase(convert.Operand, newRoot), convert.Type),
-        _ => node,
+        _ => node
     };
 }

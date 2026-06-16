@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Specialized;
 
-// ReSharper disable CheckNamespace
 namespace Cursorial.UI.Controls;
 
 /// <summary>

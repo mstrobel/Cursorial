@@ -21,5 +21,5 @@ public enum BindingMode : byte
     OneTime,
 
     /// <summary>Target → source only; the chain re-resolves from the anchor on every write (BD11).</summary>
-    OneWayToSource,
+    OneWayToSource
 }

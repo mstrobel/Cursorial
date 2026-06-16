@@ -1,11 +1,12 @@
 using System.Collections.ObjectModel;
-using System.Linq;
 
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -387,7 +388,7 @@ public sealed class Section17_ListBox
         Assert.NotNull(scroll); // the ListBox template hosts the items in a ScrollViewer
 
         var rowBefore = Item(lb, 0).TranslateToWindow(0, 0).Row;
-        scroll!.VerticalOffset = 5;
+        scroll.VerticalOffset = 5;
         host.RunUntilIdle();
         var rowAfter = Item(lb, 0).TranslateToWindow(0, 0).Row;
         Assert.True(rowAfter < rowBefore); // scrolling down moved item 0 up (out of the viewport) — the SCP slid the band

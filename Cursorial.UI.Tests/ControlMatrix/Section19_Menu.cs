@@ -8,6 +8,8 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C6 — Menu / MenuItem / Separator (P9.4a: structural core — mouse open/invoke + theme).
@@ -238,12 +240,12 @@ public sealed class Section19_Menu
         host.RunUntilIdle();
 
         Click(host, file);
-        Assert.Equal(1, host.Application.WindowManager!.Popups.Count);
+        Assert.Single(host.Application.WindowManager!.Popups);
 
         root.Children.Remove(menu); // detach the whole menu while the submenu is open
         host.RunUntilIdle();
         Assert.False(file.IsSubmenuOpen);
-        Assert.Equal(0, host.Application.WindowManager!.Popups.Count); // the submenu Popup surface was released
+        Assert.Empty(host.Application.WindowManager!.Popups); // the submenu Popup surface was released
     }
 
     private static MenuItem Sub(MenuItem item, int index) => (MenuItem)item.ItemContainerGenerator.ContainerFromIndex(index)!;
@@ -260,7 +262,7 @@ public sealed class Section19_Menu
             Modifiers = modifiers,
             Kind = KeyEventKind.Down,
             Text = (text ?? string.Empty).AsMemory(),
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         };
 
     // Activate a folded mnemonic through the manager. A fresh Alt-down precedes each char so the cue window
@@ -334,7 +336,7 @@ public sealed class Section19_Menu
         menu.Items.Add(new MenuItem { Header = "_File" });
         host.ShowRoot(menu);
         host.RunUntilIdle();
-        Assert.Same(menu, (object?)host.Application.AccessKeys.MainMenu);
+        Assert.Same(menu, host.Application.AccessKeys.MainMenu);
     }
 
     [Fact] // C6.35: menu-mode entry focuses the first top-level item
@@ -417,7 +419,7 @@ public sealed class Section19_Menu
         menu.Items.Add(new MenuItem { Header = "_File" });
         host.ShowRoot(menu);
         host.RunUntilIdle();
-        Assert.Same(menu, (object?)host.Application.AccessKeys.MainMenu);
+        Assert.Same(menu, host.Application.AccessKeys.MainMenu);
 
         host.ShowRoot(new StackPanel()); // swap the root out → the old menu detaches
         host.RunUntilIdle();
@@ -437,11 +439,11 @@ public sealed class Section19_Menu
         using var host = Host();
         host.ShowRoot(root);
         host.RunUntilIdle();
-        Assert.Same(second, (object?)host.Application.AccessKeys.MainMenu); // last attach wins
+        Assert.Same(second, host.Application.AccessKeys.MainMenu); // last attach wins
 
         root.Children.Remove(first); // the NON-owner detaches — must NOT clear second's registration
         host.RunUntilIdle();
-        Assert.Same(second, (object?)host.Application.AccessKeys.MainMenu);
+        Assert.Same(second, host.Application.AccessKeys.MainMenu);
 
         root.Children.Remove(second); // the owner detaches — now it clears
         host.RunUntilIdle();
@@ -780,7 +782,7 @@ public sealed class Section19_Menu
         host.AdvanceTime(TimeSpan.FromMilliseconds(300));
         host.RunFrame();
         Assert.False(file.IsSubmenuOpen);                               // the parked timer was stopped — never fired
-        Assert.Equal(0, host.Application.WindowManager!.Popups.Count);  // no popup surface materialized post-detach
+        Assert.Empty(host.Application.WindowManager!.Popups);  // no popup surface materialized post-detach
     }
 
     [Fact] // C6.20: hovering a leaf (no sub-items) arms no timer + opens nothing
@@ -797,7 +799,7 @@ public sealed class Section19_Menu
         host.AdvanceTime(TimeSpan.FromMilliseconds(300));
         host.RunFrame();
         Assert.False(leaf.IsSubmenuOpen);
-        Assert.Equal(0, host.Application.WindowManager!.Popups.Count);
+        Assert.Empty(host.Application.WindowManager!.Popups);
     }
 
     [Fact] // C6.21: re-hovering an already-open header doesn't churn it (early-return on _isSubmenuOpen)
@@ -817,7 +819,7 @@ public sealed class Section19_Menu
         host.AdvanceTime(TimeSpan.FromMilliseconds(300));
         host.RunFrame();
         Assert.True(file.IsSubmenuOpen); // stays open, no flicker
-        Assert.Equal(1, host.Application.WindowManager!.Popups.Count); // exactly one popup (no churn)
+        Assert.Single(host.Application.WindowManager!.Popups); // exactly one popup (no churn)
     }
 
     [Fact] // C6.15: a nested (2-level) submenu opens + hosts its grandchild items

@@ -2,10 +2,10 @@ using System.Text;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
-using Cursorial.Text;
 using Cursorial.UI.Input;
 
-// ReSharper disable CheckNamespace
+// ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>

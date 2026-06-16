@@ -6,6 +6,8 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>
@@ -40,7 +42,7 @@ public sealed class Section10_ButtonBase
         Button = MouseButton.Left,
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static MouseEvent MouseUp(int column, int row) => new()
@@ -50,7 +52,7 @@ public sealed class Section10_ButtonBase
         Button = MouseButton.Left,
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static MouseEvent MouseMoveHeld(int column, int row) => new()
@@ -60,7 +62,7 @@ public sealed class Section10_ButtonBase
         Button = MouseButton.None,
         ButtonsHeld = MouseButtons.Left,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     // Establishes pointer-over on the target cell (the hover that precedes a real click), applied via
@@ -569,7 +571,7 @@ public sealed class Section10_ButtonBase
             Key = Key.Space,
             Modifiers = KeyModifiers.Control,
             Kind = KeyEventKind.Down,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         host.RunFrame();
         Assert.Equal(0, clicks);         // Ctrl+Space did NOT click (P0-1)

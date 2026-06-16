@@ -35,10 +35,10 @@ public class Section12_AccessKeys
                 Keyboard = TestCapabilities.KittyTruecolor.Input.Keyboard with
                 {
                     DistinguishesKeyUpDown = upDown,
-                    ReportsRepeats = repeats,
+                    ReportsRepeats = repeats
                 },
-                Protocol = TestCapabilities.KittyTruecolor.Input.Protocol with { Win32InputMode = win32 },
-            },
+                Protocol = TestCapabilities.KittyTruecolor.Input.Protocol with { Win32InputMode = win32 }
+            }
         };
 
     private static KeyEvent KeyEvt(
@@ -54,7 +54,7 @@ public class Section12_AccessKeys
             Kind = kind,
             Text = (text ?? string.Empty).AsMemory(),
             Synthesized = synthesized,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         };
 
     private static void AltDown(InputDispatcher dispatcher, Key side = Key.LeftAlt)
@@ -501,7 +501,7 @@ public class Section12_AccessKeys
     {
         Disabled,
         Detached,
-        Collapsed,
+        Collapsed
     }
 
     [Theory]

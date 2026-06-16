@@ -22,7 +22,7 @@ public class Section13_SignedMargins
         {
             Margin = new Margins(0, -1, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         probe.Measure(new Size(20, 20));
@@ -63,7 +63,7 @@ public class Section13_SignedMargins
         var probe = new Probe(4, 2)
         {
             Margin = new Margins(-1, 0, -1, 0),
-            VerticalAlignment = VerticalAlignment.Top, // H stays Stretch
+            VerticalAlignment = VerticalAlignment.Top // H stays Stretch
         };
 
         probe.Measure(new Size(20, 20));
@@ -79,12 +79,12 @@ public class Section13_SignedMargins
         var child = new Probe(4, 2)
         {
             Margin = new Margins(0, -1, 0, 0),
-            OnRender = static (probe, context) =>
+            OnRender = static (_, context) =>
             {
                 for (var row = 0; row < context.Size.Rows; row++)
                 for (var column = 0; column < context.Size.Columns; column++)
                     context.Set(column, row, row == 0 ? "x" : "y", default);
-            },
+            }
         };
         var panel = new StackPanel();
         panel.Children.Add(child);
@@ -110,7 +110,7 @@ public class Section13_SignedMargins
             {
                 observed = (column, row);
                 return true;
-            },
+            }
         };
         var panel = new StackPanel();
         panel.Children.Add(child);
@@ -142,7 +142,7 @@ public class Section13_SignedMargins
             MinWidth = 12,
             Margin = new Margins(-1, 0, 0, 0),
             HorizontalAlignment = alignment,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         probe.Measure(new Size(40, 40));
@@ -163,7 +163,7 @@ public class Section13_SignedMargins
         {
             Margin = new Margins(0, -3, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         probe.Measure(new Size(20, 20));

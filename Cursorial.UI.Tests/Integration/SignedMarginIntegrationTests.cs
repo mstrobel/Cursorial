@@ -60,6 +60,6 @@ public sealed class SignedMarginIntegrationTests
     {
         Margin = margin,
         HorizontalAlignment = HorizontalAlignment.Left,
-        OnRender = (_, context) => context.DrawText(0, 0, text, Ink),
+        OnRender = (_, context) => context.DrawText(0, 0, text, Ink)
     };
 }

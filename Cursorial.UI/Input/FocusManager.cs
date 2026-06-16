@@ -183,7 +183,7 @@ public sealed class FocusManager
         {
             FocusNavigationDirection.Next => MoveTab(forward: true),
             FocusNavigationDirection.Previous => MoveTab(forward: false),
-            _ => MoveDirectional(direction),
+            _ => MoveDirectional(direction)
         };
     }
 
@@ -435,7 +435,7 @@ public sealed class FocusManager
             or FocusNavigationMethod.AccessKey or FocusNavigationMethod.Restore => true,
         FocusNavigationMethod.Programmatic =>
             (InputDispatcherInternal?.LastModality ?? InputModality.Keyboard) == InputModality.Keyboard,
-        _ => false, // Pointer
+        _ => false // Pointer
     };
 
     /// <summary>

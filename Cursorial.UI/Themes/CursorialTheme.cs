@@ -102,7 +102,7 @@ public static class CursorialTheme
             // button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill +
             // content text) and disabled dims to Faint.
             CursorialThemeStyles.CapsNoColorInteractiveInverse(),
-            CursorialThemeStyles.CapsNoColorDisabledFaint(),
+            CursorialThemeStyles.CapsNoColorDisabledFaint()
         };
 
         // (·,NoColor): every fill/foreground role token resolves to Colors.Default — no stranded RGB. State

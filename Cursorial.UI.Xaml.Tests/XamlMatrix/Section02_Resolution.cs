@@ -2,6 +2,8 @@ using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
 using UIData = Cursorial.UI.Data;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
 /// <summary>§2 — xmlns → CLR resolution, intrinsics, directives (X13–X30). Frontend.</summary>

@@ -5,6 +5,8 @@ using Style = Cursorial.UI.Style;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>§1 — <c>ResourceDictionary</c> storage, keys, merged/seal/deferred (R0); rows C1–C30.</summary>
@@ -16,8 +18,11 @@ public sealed class Section01_ResourceDictionary
     [Fact] // C1
     public void C1_KeyedStorage_RoundTrips()
     {
-        var dict = new ResourceDictionary();
-        dict[K] = Vbrush;
+        var dict = new ResourceDictionary
+                   {
+                       [K] = Vbrush
+                   };
+
         Assert.Same(Vbrush, dict[K]);
         Assert.True(dict.ContainsKey(K));
         Assert.Equal(1, dict.Count);
@@ -26,8 +31,11 @@ public sealed class Section01_ResourceDictionary
     [Fact] // C2
     public void C2_StringKeys_AreOrdinal()
     {
-        var dict = new ResourceDictionary();
-        dict["Theme.X"] = Vbrush;
+        var dict = new ResourceDictionary
+                   {
+                       ["Theme.X"] = Vbrush
+                   };
+
         Assert.False(dict.TryGetValue("theme.x", out _)); // distinct ordinal key
         dict["theme.x"] = Vbrush2;
         Assert.Equal(2, dict.Count); // two entries coexist
@@ -38,9 +46,11 @@ public sealed class Section01_ResourceDictionary
     [Fact] // C3
     public void C3_TypeAndDataTemplateKeys_ResolveByValue_AndAreCollisionFree()
     {
-        var dict = new ResourceDictionary();
-        dict[typeof(Probe)] = "type-entry";
-        dict[new DataTemplateKey(typeof(Probe))] = "dt-entry";
+        var dict = new ResourceDictionary
+                   {
+                       [typeof(Probe)] = "type-entry",
+                       [new DataTemplateKey(typeof(Probe))] = "dt-entry"
+                   };
 
         Assert.Equal("type-entry", dict[typeof(Probe)]);
         Assert.Equal("dt-entry", dict[new DataTemplateKey(typeof(Probe))]);
@@ -62,8 +72,11 @@ public sealed class Section01_ResourceDictionary
     [Fact] // C5
     public void C5_DuplicateAdd_Throws_IndexerOverwritesAndPulses()
     {
-        var dict = new ResourceDictionary();
-        dict[K] = Vbrush;
+        var dict = new ResourceDictionary
+                   {
+                       [K] = Vbrush
+                   };
+
         Assert.Throws<ArgumentException>(() => dict.Add(K, Vbrush2));
 
         var pulses = new List<ResourcesChangedEventArgs>();
@@ -79,8 +92,11 @@ public sealed class Section01_ResourceDictionary
     [Fact] // C6
     public void C6_Remove_PresentPulses_AbsentNoPulse()
     {
-        var dict = new ResourceDictionary();
-        dict[K] = Vbrush;
+        var dict = new ResourceDictionary
+                   {
+                       [K] = Vbrush
+                   };
+
         var pulses = new List<ResourcesChangedEventArgs>();
         dict.Changed += (_, e) => pulses.Add(e);
 
@@ -256,8 +272,8 @@ public sealed class Section01_ResourceDictionary
                 d[K] = Vbrush;
             }
 
-            Assert.Equal(0, pulses); // inner dispose does not pulse
-            Assert.Throws<InvalidOperationException>(() => d.Seal()); // seal inside an open scope throws
+            Assert.Equal(0, pulses);                          // inner dispose does not pulse
+            Assert.Throws<InvalidOperationException>(d.Seal); // seal inside an open scope throws
             d[K2] = Vbrush2;
         }
 
@@ -335,8 +351,7 @@ public sealed class Section01_ResourceDictionary
     public void C22_RealizationCycle_Throws()
     {
         var d = new ResourceDictionary();
-        CountingDeferred? entry = null;
-        entry = new CountingDeferred(_ => d[K]); // re-enters the same key
+        var entry = new CountingDeferred(_ => d[K]); // re-enters the same key
         d.SetDeferred(K, entry);
 
         Assert.Throws<InvalidOperationException>(() => _ = d[K]);

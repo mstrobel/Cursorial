@@ -298,7 +298,7 @@ public abstract partial class UIElement
             {
                 HorizontalAlignment.Left  => 0,
                 HorizontalAlignment.Right => Math.Max(0, slot.Columns - usedColumns),
-                _                         => LayoutMath.CenterOffset(slot.Columns, usedColumns), // Center, and Stretch that cannot fill (LD3)
+                _                         => LayoutMath.CenterOffset(slot.Columns, usedColumns) // Center, and Stretch that cannot fill (LD3)
             };
 
         var offsetRow =
@@ -306,7 +306,7 @@ public abstract partial class UIElement
             {
                 VerticalAlignment.Top    => 0,
                 VerticalAlignment.Bottom => Math.Max(0, slot.Rows - usedRows),
-                _                        => LayoutMath.CenterOffset(slot.Rows, usedRows),
+                _                        => LayoutMath.CenterOffset(slot.Rows, usedRows)
             };
 
         // The signed position fold (LD19): margin.Left / margin.Top may be negative, producing a

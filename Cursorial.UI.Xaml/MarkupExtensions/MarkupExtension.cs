@@ -1,6 +1,4 @@
-using System;
-
-using Cursorial.UI;
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 

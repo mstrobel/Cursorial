@@ -25,7 +25,7 @@ public enum InputDispatchResult
     DispatchedUnhandled,
 
     /// <summary>A handler claimed the event — default gestures (e.g. Ctrl+C exit) are suppressed.</summary>
-    DispatchedHandled,
+    DispatchedHandled
 }
 
 /// <summary>

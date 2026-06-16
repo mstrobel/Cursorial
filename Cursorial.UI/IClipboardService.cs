@@ -1,6 +1,8 @@
 using System.Buffers;
 using Cursorial.Output;
 
+// ReSharper disable RedundantLambdaParameterType
+
 namespace Cursorial.UI;
 
 /// <summary>

@@ -7,6 +7,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>
@@ -32,7 +34,7 @@ public sealed class Section14_PerfInvariants
         Button = MouseButton.None,
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     [Fact] // C237 — cold attach of many themed controls completes within a sane budget (informational)
@@ -127,7 +129,7 @@ public sealed class Section14_PerfInvariants
             Height = 10,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Content = new RasterCountingBlock(19, 100),
+            Content = new RasterCountingBlock(19, 100)
         };
         using var host = Show(sv);
 

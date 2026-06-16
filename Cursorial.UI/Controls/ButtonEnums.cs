@@ -12,7 +12,7 @@ public enum ClickMode
     Press,
 
     /// <summary>Click on pointer hover (no v1 control uses it; kept for parity).</summary>
-    Hover,
+    Hover
 }
 
 /// <summary>The args for <see cref="ButtonBase.ClickEvent"/> (a bubbling routed event, S8-owned — doc §12.7).</summary>

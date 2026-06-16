@@ -45,7 +45,7 @@ public class Section04_TerminalFocus
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         Assert.True((a.InteractionStateInternal & InteractionState.PointerOver) != 0);
 
@@ -63,7 +63,7 @@ public class Section04_TerminalFocus
             Kind = KeyEventKind.Down,
             Modifiers = KeyModifiers.Alt,
             Text = ReadOnlyMemory<char>.Empty,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         Assert.True(host.Application.AccessKeys.IsCueActive);
 
@@ -227,7 +227,7 @@ public class Section04_TerminalFocus
             Modifiers = KeyModifiers.None,
             Kind = KeyEventKind.Down,
             Text = "f".AsMemory(),
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
 
         Assert.Contains("B.OnKeyDown", log); // terminal focus is not element focus
@@ -247,7 +247,7 @@ public class Section04_TerminalFocus
             Button = MouseButton.Left,
             ButtonsHeld = MouseButtons.Left,
             Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         Assert.Equal(MouseButtons.Left, dispatcher.ButtonsHeld);
 

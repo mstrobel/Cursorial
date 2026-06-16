@@ -1,8 +1,9 @@
-using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 

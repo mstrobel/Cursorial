@@ -1,6 +1,8 @@
 using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
 /// <summary>§1 — XML → node graph: element &amp; property-element syntax (X1–X12). Frontend, no host.</summary>
@@ -70,7 +72,7 @@ public sealed class Section01_Parsing : XamlTestBase
     public void X007_ExplicitCollectionPropertyElement()
     {
         var doc = Parse("<StackPanel><StackPanel.Children><Button/></StackPanel.Children></StackPanel>");
-        Assert.True(doc.TryFindMember(0, "Children", out var m));
+        Assert.True(doc.TryFindMember(0, "Children", out _));
         // a single child through the explicit collection element still fills Children
         Assert.Equal(1, doc.ObjectCount() - 1); // one child object
     }

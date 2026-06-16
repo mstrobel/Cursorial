@@ -112,7 +112,7 @@ public sealed partial class UIApplication
         })
         {
             Name = "Cursorial UI",
-            IsBackground = false,
+            IsBackground = false
         };
 
         thread.Start();
@@ -214,21 +214,24 @@ public sealed partial class UIApplication
 
     private void ComposeSystems()
     {
-        _windowManager = new WindowManager(_capabilities.Output, _caretService, _guard)
-        {
-            // S3 re-evaluates hover against the new stack on every show/close/modal/z change (§8.6).
-            SurfacesChanged = _inputDispatcher.OnSurfacesChanged,
-            // A modal blocking a window releases any pointer capture held inside it (mid-gesture modal, §8.6).
-            WindowBlocked = root => _inputDispatcher.ReleaseCaptureWithin(root),
-            // The active window's title mirrors to the terminal via OSC 2 when supported (§8.8).
-            SetTerminalTitle = _capabilities.Output.Window.TitleSet
-                ? title => QueueControlSequence(writer => WindowWriter.WriteTitle(writer, title))
-                : null,
-        };
+        _windowManager =
+            new WindowManager(_capabilities.Output, _caretService, _guard)
+            {
+                // S3 re-evaluates hover against the new stack on every show/close/modal/z change (§8.6).
+                SurfacesChanged = _inputDispatcher.OnSurfacesChanged,
+                // A modal blocking a window releases any pointer capture held inside it (mid-gesture modal, §8.6).
+                WindowBlocked = r => _inputDispatcher.ReleaseCaptureWithin(r),
+                // The active window's title mirrors to the terminal via OSC 2 when supported (§8.8).
+                SetTerminalTitle = _capabilities.Output.Window.TitleSet
+                                       ? title => QueueControlSequence(writer => WindowWriter.WriteTitle(writer, title))
+                                       : null
+            };
+
         _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
         _inputDispatcher.SetWindowTopology(_windowManager); // S4 is the real topology now (replaces SingleRootWindowTopology)
         _systemsReady = true;
-        if (_rootElement is { } root)
+
+        if (_rootElement is {} root)
             WireRoot(root);
     }
 
@@ -681,7 +684,7 @@ public sealed partial class UIApplication
                                         new CapabilitiesChangedEventArgs
                                         {
                                             OldCapabilities = oldCapabilities,
-                                            NewCapabilities = fresh,
+                                            NewCapabilities = fresh
                                         });
         }
         finally

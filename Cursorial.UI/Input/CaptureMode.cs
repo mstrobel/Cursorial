@@ -19,5 +19,5 @@ public enum CaptureMode : byte
     /// redirect to the holder only when the pointer is outside it. The Menu/ComboBox default: items
     /// inside the open popup stay interactive while an outside press still reaches the owner.
     /// </summary>
-    SubTree,
+    SubTree
 }

@@ -30,7 +30,7 @@ public class Section05_MouseDispatch
         Assert.Equal(
             [
                 "Root.OnPreviewMouseDown", "A.OnPreviewMouseDown", "D.OnPreviewMouseDown",
-                "D.OnMouseDown", "A.OnMouseDown", "Root.OnMouseDown",
+                "D.OnMouseDown", "A.OnMouseDown", "Root.OnMouseDown"
             ],
             fixture.Log);
     }
@@ -80,7 +80,7 @@ public class Section05_MouseDispatch
             Button = MouseButton.Left,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = host.Time.GetUtcNow(),
+            Timestamp = host.Time.GetUtcNow()
         });
 
         Assert.Contains("X.OnMouseDown", log); // the same composite-order winner, by delegation
@@ -156,7 +156,7 @@ public class Section05_MouseDispatch
             [
                 "Root.OnMouseEnter", "A.OnMouseEnter", "D.OnMouseEnter",
                 "Root.OnPreviewMouseMove", "A.OnPreviewMouseMove", "D.OnPreviewMouseMove",
-                "D.OnMouseMove", "A.OnMouseMove", "Root.OnMouseMove",
+                "D.OnMouseMove", "A.OnMouseMove", "Root.OnMouseMove"
             ],
             fixture.Log);
     }

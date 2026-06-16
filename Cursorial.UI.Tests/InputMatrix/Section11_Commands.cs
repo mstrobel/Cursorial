@@ -32,7 +32,7 @@ public class Section11_Commands
             ExtendedModifiers = extendedModifiers ?? modifiers,
             Kind = KeyEventKind.Down,
             Text = (text ?? string.Empty).AsMemory(),
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
     }
 

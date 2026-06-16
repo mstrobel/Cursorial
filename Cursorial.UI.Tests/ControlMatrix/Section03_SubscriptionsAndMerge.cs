@@ -8,6 +8,8 @@ using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
 
 using Style = Cursorial.UI.Style;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>§3 — Variants live + subscriptions + the UIApplication merge + version (R1); rows C59–C92.</summary>
@@ -228,7 +230,7 @@ public sealed class Section03_SubscriptionsAndMerge
         // the Ansi16 dictionary (resources agree) — no desync.
         Assert.Equal("caps-ansi16", ColorClass(tree.Root));
         var borderPen = tree.Leaf.FindResource(ThemeKeys.BorderPen);
-        Assert.IsType<Cursorial.Drawing.Pen>(borderPen); // resolves at the Ansi16 tier dictionary
+        Assert.IsType<Drawing.Pen>(borderPen); // resolves at the Ansi16 tier dictionary
     }
 
     [Fact] // C72 — the re-stamp rides ActualThemeVariantChanged
@@ -565,7 +567,7 @@ public sealed class Section03_SubscriptionsAndMerge
         using var host = UITestHost.Create();
         // The brush lives on the root's element scope so a keyed pulse on it sweeps that root's registry.
         var root = new StackPanel { Name = "Root" };
-        root.Resources["Brush.Accent"] = ControlMatrixFixture.Vbrush;
+        root.Resources["Brush.Accent"] = Vbrush;
         var tb = new TextBlock { Markup = "[brush=Brush.Accent]X[/brush]" };
         root.Children.Add(tb);
         host.ShowRoot(root);
@@ -581,7 +583,7 @@ public sealed class Section03_SubscriptionsAndMerge
         // render is what re-parses (the cache key, not a subscription, is the staleness mechanism). A
         // sibling invalidation drives that next render; the stale-key check then forces a re-format.
         var v0 = ResourceServices.GetResourceVersion(tb);
-        root.Resources["Brush.Accent"] = ControlMatrixFixture.Vbrush2;
+        root.Resources["Brush.Accent"] = Vbrush2;
         Assert.True(ResourceServices.GetResourceVersion(tb) > v0); // ver bumped — cache key is now stale
         tb.InvalidateVisual(); // the "next render" the row names
         host.RunFrame();
@@ -632,7 +634,7 @@ public sealed class Section03_SubscriptionsAndMerge
 
     // A minimal template for an explicit Control.Theme override (C87).
     private static ControlTemplate ControlThemesProbeTemplate()
-        => new(ctx => new Border());
+        => new(_ => new Border());
 
     // Resolves the control's effective control theme via a transient subscription (the same path the
     // styling engine takes) — used to assert identity stability across a variant flip (C88).

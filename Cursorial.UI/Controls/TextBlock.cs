@@ -1,9 +1,6 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
-
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.Controls;
 
@@ -108,7 +105,7 @@ public class TextBlock : UIElement
         // every painted cell at paint time — NOT baked into the cached FormattedText (TextAttributesProperty
         // is AffectsRender, so a flip re-paints the cached layout without re-formatting it).
         var attrs = TextElement.GetTextAttributes(this);
-        if (Foreground is { } brush)
+        if (Foreground is {} brush)
             context.DrawFormattedText(formatted, context.Bounds, brush, attrs);
         else
             context.DrawFormattedText(formatted, context.Bounds, attrs);
@@ -116,14 +113,15 @@ public class TextBlock : UIElement
 
     private FormattedText GetFormatted(int width)
     {
-        var caps = UIApplication.Current is { } app ? app.Capabilities.Output : (Output.Capabilities.OutputCapabilities?)null;
+        var caps = UIApplication.Current is {} app ? app.Capabilities.Output : null;
+
         var key = new CacheKey(
             Text, Markup, width, TextWrapping, TextAlignment, TextTrimming,
             ResourceServices.GetResourceVersion(this),
             UIApplication.Current?.ActualThemeVariant,
             caps);
 
-        if (_cached is { } cached && _cacheKey.Equals(key))
+        if (_cached is {} cached && _cacheKey.Equals(key))
             return cached;
 
         var formatted = Format(width, caps);
@@ -135,14 +133,14 @@ public class TextBlock : UIElement
     private FormattedText Format(int width, Output.Capabilities.OutputCapabilities? caps)
     {
         var formatter = new TextFormatter
-        {
-            Wrap = TextWrapping,
-            Alignment = TextAlignment,
-            Trim = TextTrimming,
-        };
+                        {
+                            Wrap = TextWrapping,
+                            Alignment = TextAlignment,
+                            Trim = TextTrimming
+                        };
 
         RichText document;
-        if (Markup is { } markup)
+        if (Markup is {} markup)
         {
             // Markup wins over Text (doc §12.7); [brush=…] resolves via the S7 chain.
             var options = new TextMarkupOptions { BrushResolver = ResourceBrushResolver.Create(this) };

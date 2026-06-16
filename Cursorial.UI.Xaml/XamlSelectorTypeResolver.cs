@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-
-using Cursorial.UI;
-
 namespace Cursorial.UI.Xaml;
 
 /// <summary>

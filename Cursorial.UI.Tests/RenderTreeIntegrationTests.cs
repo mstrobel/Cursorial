@@ -112,7 +112,7 @@ public class RenderTreeIntegrationTests
             Width = 6,
             Height = 2,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         root.Add(under);
         root.Add(panel);

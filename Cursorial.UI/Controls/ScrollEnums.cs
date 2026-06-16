@@ -15,7 +15,7 @@ public enum ScrollBarVisibility
     Disabled,
 
     /// <summary>The bar is always shown.</summary>
-    Visible,
+    Visible
 }
 
 /// <summary>The kind of scroll action a <see cref="ScrollBar"/> requested (design doc §12.7).</summary>
@@ -40,7 +40,7 @@ public enum ScrollEventType
     ThumbTrack,
 
     /// <summary>The drag ended.</summary>
-    EndScroll,
+    EndScroll
 }
 
 /// <summary>Args for <see cref="ScrollBar.Scroll"/> (design doc §12.7): the requested new value and the action that produced it.</summary>

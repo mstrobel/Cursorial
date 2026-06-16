@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 using Cursorial.Drawing.Media;
@@ -9,11 +10,8 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
-using Cursorial.UI.Themes;
 
-using GlyphSet = Cursorial.UI.Themes.GlyphSetCarrier;
 using Style = Cursorial.UI.Style;
 
 namespace Cursorial.Tests.UI.Integration;
@@ -59,7 +57,7 @@ public sealed class Phase5EndToEndTests
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
         ClickCount = clickCount,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static MouseEvent MouseUp(int column, int row) => new()
@@ -69,7 +67,7 @@ public sealed class Phase5EndToEndTests
         Button = MouseButton.Left,
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static MouseEvent Wheel(int column, int row, int deltaY) => new()
@@ -80,7 +78,7 @@ public sealed class Phase5EndToEndTests
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
         WheelDeltaY = deltaY,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     // A rigid content block of a fixed cell size (the scrollable extent source).
@@ -136,7 +134,7 @@ public sealed class Phase5EndToEndTests
             Content = "OK",
             Background = new SolidColorBrush(ButtonFace),
             Foreground = new SolidColorBrush(ButtonInk),
-            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = HorizontalAlignment.Left
         };
         var check = new CheckBox { Content = "Enable", IsChecked = true };
         var scroller = new ScrollViewer
@@ -145,7 +143,7 @@ public sealed class Phase5EndToEndTests
             Height = 4,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Content = new Block(11, 40, "S"),
+            Content = new Block(11, 40, "S")
         };
         stack.Children.Add(button);
         stack.Children.Add(check);
@@ -170,7 +168,7 @@ public sealed class Phase5EndToEndTests
         // The QUANTIZATION lives at the byte writer (the renderer runs each cell's style through a
         // capability StyleQuantizer before emission): the same composited RGB face survives verbatim on
         // truecolor and collapses to a 16-color palette index on Ansi16 — the cross-tier color difference.
-        var quantizedFace = new Cursorial.Output.StyleQuantizer(caps.Output).Quantize(faceCell.Style).Background;
+        var quantizedFace = new StyleQuantizer(caps.Output).Quantize(faceCell.Style).Background;
         if (legacy)
             Assert.Equal(ColorKind.Palette, quantizedFace.Kind); // RGB → palette index on Ansi16
         else
@@ -208,7 +206,7 @@ public sealed class Phase5EndToEndTests
         // The first template applied: the part is wired and bound to the VM (exactly one subscription).
         var firstPart = control.Part;
         Assert.NotNull(firstPart);
-        Assert.Equal("first", firstPart!.Text);
+        Assert.Equal("first", firstPart.Text);
         Assert.Equal(1, vm.SubscriberCount); // the part's binding is the only live subscription
 
         // A VM change flows through the live binding to the rendered part.
@@ -258,6 +256,7 @@ public sealed class Phase5EndToEndTests
     }
 
     /// <summary>A bindable text part used inside the swapped templates.</summary>
+    [SuppressMessage("ReSharper", "UnusedMember.Local")]
     private sealed class TextPart : UIElement
     {
         public static readonly StyledProperty<string?> TextProperty = UIProperty.Register<TextPart, string?>("Text");
@@ -306,7 +305,7 @@ public sealed class Phase5EndToEndTests
         host.Application.Resources[new DataTemplateKey(typeof(Person))] = new DataTemplate
         {
             DataType = typeof(Person),
-            Content = new FuncTemplateContent(_ => new TextPart()),
+            Content = new FuncTemplateContent(_ => new TextPart())
         };
 
         var person = new Person { Name = "Grace" };
@@ -314,7 +313,7 @@ public sealed class Phase5EndToEndTests
         {
             Content = person,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         host.ShowRoot(control);
@@ -370,7 +369,7 @@ public sealed class Phase5EndToEndTests
             Command = command,
             Background = new SolidColorBrush(ButtonFace),
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         var clicks = 0;
         button.Click += (_, _) => clicks++;
@@ -447,7 +446,7 @@ public sealed class Phase5EndToEndTests
             Height = 10,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Content = new RowMarkerBlock(15, 200), // a tall block whose rows are numbered glyphs
+            Content = new RowMarkerBlock(15, 200) // a tall block whose rows are numbered glyphs
         };
         host.ShowRoot(sv);
         Assert.True(host.RunUntilIdle());

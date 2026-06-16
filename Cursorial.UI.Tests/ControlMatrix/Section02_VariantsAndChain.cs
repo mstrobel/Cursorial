@@ -5,6 +5,8 @@ using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>§2 — Theme variants + the lookup chain + StaticResource (R0); rows C31–C58.</summary>

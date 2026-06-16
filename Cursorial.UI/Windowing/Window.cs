@@ -427,7 +427,7 @@ public partial class Window : ContentControl
         var root = new Border
                    {
                        // Occludes = true,
-                       Background = window.Background ?? DefaultSurfaceBrush,
+                       Background = window.Background ?? DefaultSurfaceBrush
                    };
 
         if (window.WindowStyle == WindowStyle.None)
@@ -488,7 +488,7 @@ public partial class Window : ContentControl
                        {
                            Text = "◢",
                            HorizontalAlignment = HorizontalAlignment.Right,
-                           VerticalAlignment = VerticalAlignment.Bottom,
+                           VerticalAlignment = VerticalAlignment.Bottom
                        };
 
             WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);

@@ -15,7 +15,7 @@ internal enum PathSegmentKind : byte
     StringIndexer,
 
     /// <summary>An attached/styled-property segment (<c>(Grid.Row)</c>).</summary>
-    Attached,
+    Attached
 }
 
 /// <summary>One parsed hop of a <see cref="BindingPath"/> (design doc §6.3 / spec §3.2).</summary>

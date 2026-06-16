@@ -1,10 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
@@ -124,7 +120,7 @@ public sealed class WindowModalTests
     [Fact] // non-generic: a canceled modal makes `await ShowDialogAsync()` throw OperationCanceledException
     public async Task ShowDialogAsync_Cancellation_AwaitThrows()
     {
-        var (host, wm) = ShownRoot();
+        var (host, _) = ShownRoot();
         using var hostScope = host;
 
         using var cts = new CancellationTokenSource();
@@ -142,7 +138,7 @@ public sealed class WindowModalTests
     [Fact] // typed: cancellation THROWS through the await — it does NOT return default(TResult)
     public async Task ShowDialogAsync_Typed_Cancellation_Throws_NotDefault()
     {
-        var (host, wm) = ShownRoot();
+        var (host, _) = ShownRoot();
         using var hostScope = host;
 
         using var cts = new CancellationTokenSource();
@@ -161,7 +157,7 @@ public sealed class WindowModalTests
     [Fact] // typed: a normal close with a matching DialogResult returns the cast value
     public async Task ShowDialogAsync_Typed_Close_ReturnsResult()
     {
-        var (host, wm) = ShownRoot();
+        var (host, _) = ShownRoot();
         using var hostScope = host;
 
         var dialog = new Window { Width = 20, Height = 6 };
@@ -177,7 +173,7 @@ public sealed class WindowModalTests
     [Fact] // typed: a normal close with NO (or mismatched) result returns default(TResult) — and does NOT throw
     public async Task ShowDialogAsync_Typed_CloseWithoutResult_ReturnsDefault_NoThrow()
     {
-        var (host, wm) = ShownRoot();
+        var (host, _) = ShownRoot();
         using var hostScope = host;
 
         var dialog = new Window { Width = 20, Height = 6 };

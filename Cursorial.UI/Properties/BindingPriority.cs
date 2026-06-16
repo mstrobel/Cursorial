@@ -58,5 +58,5 @@ public enum BindingPriority
     /// Internal sentinel ("no contribution"). Never assignable and never reported by
     /// <c>GetValueSource</c>.
     /// </summary>
-    Unset = int.MaxValue,
+    Unset = int.MaxValue
 }

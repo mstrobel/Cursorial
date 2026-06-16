@@ -1,8 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System;
-
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -10,7 +8,6 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
-using UIControls = Cursorial.UI.Controls;
 using Style = Cursorial.UI.Style; // disambiguate from the Cursorial.Output.Style SGR record
 
 namespace Cursorial.Tests.UI.Windowing;
@@ -27,7 +24,7 @@ public sealed class WindowActiveStateTests
     private static (UITestHost Host, WindowManager Wm) ShownRoot()
     {
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
-        host.ShowRoot(new UIControls.StackPanel());
+        host.ShowRoot(new StackPanel());
         Assert.True(host.RunUntilIdle());
         return (host, host.Application.WindowManager!);
     }

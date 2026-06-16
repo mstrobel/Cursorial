@@ -1,4 +1,3 @@
-// ReSharper disable CheckNamespace
 namespace Cursorial.UI.Controls;
 
 /// <summary>

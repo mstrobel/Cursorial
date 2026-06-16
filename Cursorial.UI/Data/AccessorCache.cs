@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
 
@@ -125,7 +124,7 @@ internal static class AccessorCache
             if (parameters.Length != 1 || !parameters[0].ParameterType.IsEnum)
                 continue;
 
-            if (Enum.TryParse(parameters[0].ParameterType, name, ignoreCase: true, out var value) && value is not null)
+            if (Enum.TryParse(parameters[0].ParameterType, name, ignoreCase: true, out var value))
                 return new ReflectionIndexerAccessor(property, value);
         }
 
@@ -172,7 +171,7 @@ internal static class AccessorCache
 
     private static PropertyAccessor BuildClrAccessor(Type instanceType, PropertyInfo property)
     {
-        var rung = NotificationRung.Inpc;
+        NotificationRung rung;
         EventInfo? changedEvent = null;
 
         // Rung 1: INPC subscribes the whole instance — no per-property discovery needed; mark Inpc.
@@ -251,7 +250,7 @@ internal sealed class DictionaryAccessor(string key) : PropertyAccessor
 
     public override string MemberName => "Item[]";
 
-    public override Type? ValueType => typeof(object);
+    public override Type ValueType => typeof(object);
 
     public override bool CanWrite => true;
 
@@ -284,7 +283,7 @@ internal sealed class UnresolvableAccessor(string memberName) : PropertyAccessor
 
     public bool IsUnresolvable => true;
 
-    public override object? GetValue(object instance) => UIProperty.UnsetValue;
+    public override object GetValue(object instance) => UIProperty.UnsetValue;
 
     public override void SetValue(object instance, object? value)
     {

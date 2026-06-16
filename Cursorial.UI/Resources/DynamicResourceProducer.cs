@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>An element-held resource producer; the attach/detach walk re-registers/unregisters its registry node (CD16).</summary>
@@ -19,6 +21,7 @@ internal interface IResourceSubscriber
 internal sealed class DynamicResourceProducer<T> : IResourceChangeListener, IValueEvictionListener, IResourceSubscriber
 {
     private readonly UIElement _element;
+    // ReSharper disable once NotAccessedField.Local
     private readonly StyledProperty<T> _property;
     private readonly object _key;
     private BindingEntry<T>? _entry;

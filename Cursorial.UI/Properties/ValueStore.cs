@@ -929,7 +929,7 @@ internal sealed class ValueStore
         Untyped,
 
         /// <summary>Winning-base changes (<c>IValueObserver&lt;T&gt;.OnBaseValueChanged</c>, ledger A20).</summary>
-        Base,
+        Base
     }
 
     /// <summary>The observer arrays for <paramref name="propertyId"/>, or <see langword="null"/>.</summary>

@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-
-using Cursorial.UI;
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.UI.Themes.Xaml;

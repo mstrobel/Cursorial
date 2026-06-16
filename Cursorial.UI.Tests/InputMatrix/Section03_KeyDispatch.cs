@@ -36,7 +36,7 @@ public class Section03_KeyDispatch
                 "B.OnPreviewKeyDown", "B.p1",
                 "B.OnKeyDown", "B.h1",
                 "A.OnKeyDown", "A.h1",
-                "Root.OnKeyDown", "Root.h1",
+                "Root.OnKeyDown", "Root.h1"
             ],
             fixture.Log);
     }
@@ -94,7 +94,7 @@ public class Section03_KeyDispatch
         Assert.Equal(
             [
                 "Root.OnPreviewKeyUp", "A.OnPreviewKeyUp", "B.OnPreviewKeyUp",
-                "B.OnKeyUp", "A.OnKeyUp", "Root.OnKeyUp",
+                "B.OnKeyUp", "A.OnKeyUp", "Root.OnKeyUp"
             ],
             fixture.Log); // ND9: no tails of any kind — nothing else in the log
     }
@@ -116,7 +116,7 @@ public class Section03_KeyDispatch
                 "Root.OnPreviewKeyDown", "A.OnPreviewKeyDown", "B.OnPreviewKeyDown",
                 "B.OnKeyDown", "A.OnKeyDown", "Root.OnKeyDown",
                 "Root.OnPreviewTextInput", "A.OnPreviewTextInput", "B.OnPreviewTextInput",
-                "B.OnTextInput", "B.t1", "A.OnTextInput", "Root.OnTextInput",
+                "B.OnTextInput", "B.t1", "A.OnTextInput", "Root.OnTextInput"
             ],
             fixture.Log); // synthesis runs after the full KeyDown route
         Assert.Equal(("f", false), seen);
@@ -333,7 +333,7 @@ public class Section03_KeyDispatch
             Modifiers = KeyModifiers.None,
             Kind = KeyEventKind.Down,
             Text = ReadOnlyMemory<char>.Empty,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
 
         Assert.Equal(InputDispatchResult.DispatchedHandled, result);

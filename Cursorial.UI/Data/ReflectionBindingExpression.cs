@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Reflection;
 using Cursorial.UI.Input;
 
+// ReSharper disable UnusedParameter.Local
+
 namespace Cursorial.UI.Data;
 
 /// <summary>
@@ -119,7 +121,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
             {
                 RelativeSourceMode.Self => AnchorKind.Self,
                 RelativeSourceMode.TemplatedParent => AnchorKind.TemplatedParent,
-                _ => AnchorKind.FindAncestor,
+                _ => AnchorKind.FindAncestor
             };
         }
 
@@ -408,7 +410,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
         {
             PathSegmentKind.IntIndexer => AccessorCache.ResolveIntIndexer(instance, segment.IntIndex),
             PathSegmentKind.StringIndexer => AccessorCache.ResolveStringIndexer(instance, segment.Name!) ?? new UnresolvableAccessor($"['{segment.Name}']"),
-            _ => AccessorCache.ResolveProperty(instance, in segment),
+            _ => AccessorCache.ResolveProperty(instance, in segment)
         };
 
     private void SubscribeNode(ref Node node, int index)
@@ -1158,7 +1160,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
         BindingFailureKind.SourceMissing => "the binding source (anchor) is unresolved; parked until attach.",
         BindingFailureKind.NameNotFound => $"the element name '{_binding.ElementName}' was not found in scope.",
         BindingFailureKind.AncestorNotFound => $"no ancestor of type '{_binding.RelativeSource?.AncestorType?.Name}' was found.",
-        _ => "the binding source could not be resolved.",
+        _ => "the binding source could not be resolved."
     };
 
     internal override BindingExpressionExplanation Explain()
@@ -1182,7 +1184,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
         Inpc,
         Incc,
         InccAndInpc,
-        ChangedEvent,
+        ChangedEvent
     }
 
     private struct Node

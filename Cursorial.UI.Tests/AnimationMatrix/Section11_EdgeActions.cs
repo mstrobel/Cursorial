@@ -1,10 +1,11 @@
-using Cursorial.Animation;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.AnimationMatrix;
 

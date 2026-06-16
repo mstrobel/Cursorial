@@ -21,7 +21,7 @@ public static class NameScopeExtensions
             null => throw new InvalidOperationException(
                 $"No element named '{name}' was found in the name scope ({scope.GetType().Name})."),
             { } other => throw new InvalidOperationException(
-                $"The element named '{name}' is a '{other.GetType().Name}', not the required '{typeof(T).Name}'."),
+                $"The element named '{name}' is a '{other.GetType().Name}', not the required '{typeof(T).Name}'.")
         };
     }
 }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
@@ -24,8 +26,8 @@ internal sealed class MarkupExtensionNode
 {
     public MarkupExtensionNode(
         string name,
-        IReadOnlyList<MarkupExtensionArgumentValue> positionalArguments,
-        IReadOnlyList<MarkupExtensionNamedArgument> namedArguments,
+        IReadOnlyList<MarkupExtensionArgumentValue>? positionalArguments,
+        IReadOnlyList<MarkupExtensionNamedArgument>? namedArguments,
         int line,
         int column)
     {

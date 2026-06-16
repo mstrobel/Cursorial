@@ -15,6 +15,7 @@ namespace Cursorial.Drawing;
 /// </summary>
 internal static class DrawingInterpolatorRegistration
 {
+#pragma warning disable CA2255
     [ModuleInitializer]
     internal static void RegisterBuiltIns()
     {
@@ -27,4 +28,5 @@ internal static class DrawingInterpolatorRegistration
         Interpolator.Register(BrushInterpolator.Instance);            // IBrush (per-sample allocation)
         Interpolator.Register(PenInterpolator.Instance);              // Pen
     }
+#pragma warning restore CA2255
 }

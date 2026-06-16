@@ -1,5 +1,7 @@
 using Cursorial.UI.Controls;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C3 — the SelectionModel (pure index-based; reused by ListBox/TabControl). One test per row.

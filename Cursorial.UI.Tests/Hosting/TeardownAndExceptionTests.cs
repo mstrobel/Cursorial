@@ -190,7 +190,7 @@ public sealed class TeardownAndExceptionTests
         var bomb = new Probe(4, 1)
         {
             FillGlyph = "X",
-            OnRender = (_, _) => throw new InvalidOperationException("draw bomb"),
+            OnRender = (_, _) => throw new InvalidOperationException("draw bomb")
         };
         host.ShowRoot(bomb);
         host.RunFrame(); // the guard funnels the draw exception; the frame completes

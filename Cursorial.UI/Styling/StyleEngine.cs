@@ -462,6 +462,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         return new InvalidOperationException(trace.ToString());
     }
 
+    // ReSharper disable once UnusedParameter.Local
     private void ReconcileElement(UIElement element, ElementStyleState state)
     {
         _applying++;

@@ -37,7 +37,7 @@ public class DataTemplate
         var root = Content.Build(context)
             ?? throw new InvalidOperationException("The DataTemplate's ITemplateContent produced a null root element.");
 
-        Cursorial.UI.NameScope.SetNameScope(root, scope);
+        NameScope.SetNameScope(root, scope);
         root.DataContext = data;
         return root;
     }

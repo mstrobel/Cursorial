@@ -266,7 +266,7 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
 
         var instance = new AnimationInstance<T>(this, target, property, animation, Clock.Now + options.BeginTime, options)
         {
-            Owner = owner,
+            Owner = owner
         };
         _instances.Add(instance);
         owner.AddChild(instance); // register BEFORE the first sample (a zero-duration child can't underflow the count)

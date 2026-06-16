@@ -1,11 +1,10 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.ComponentModel;
 
-using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
+
+// ReSharper disable UnusedParameter.Local
+// ReSharper disable once UnusedMember.Local
 
 namespace Cursorial.UI.Xaml;
 
@@ -52,12 +51,7 @@ internal sealed class XamlObjectGraphBuilder
 
     private bool InTemplateBuild => TemplateContext is not null;
 
-    internal XamlObjectGraphBuilder(XamlDocument doc, XamlLoaderOptions options, Uri? source)
-        : this(doc, options, source, ambient: null)
-    {
-    }
-
-    internal XamlObjectGraphBuilder(XamlDocument doc, XamlLoaderOptions options, Uri? source, IResourceScope? ambient)
+    internal XamlObjectGraphBuilder(XamlDocument doc, XamlLoaderOptions options, Uri? source, IResourceScope? ambient = null)
     {
         _doc = doc;
         _options = options;
@@ -436,7 +430,7 @@ internal sealed class XamlObjectGraphBuilder
 
         // Resolve the collection to fill: a read-only collection member's existing value (the getter
         // path) or the implicit content collection (Panel.Children / a dictionary).
-        object? collection = ResolveCollection(resolved, instance, type, line, column, out var addItem, out var addDictionaryItem);
+        object collection = ResolveCollection(resolved, instance, type, line, column, out var addItem, out var addDictionaryItem);
 
         int childIndex = first;
         for (int k = 0; k < count; k++, childIndex += _doc.Objects[childIndex].SubtreeLength)
@@ -446,9 +440,9 @@ internal sealed class XamlObjectGraphBuilder
             // A keyed dictionary item.
             if (addDictionaryItem is not null && TryGetKey(in childRecord, out string key))
             {
-                var keyValue = ConvertDictionaryKey(collection!, type, key, line, column);
+                var keyValue = ConvertDictionaryKey(collection, type, key, line, column);
                 var item = InstantiateObject(childIndex);
-                addDictionaryItem(collection!, keyValue, item);
+                addDictionaryItem(collection, keyValue, item);
             }
             else
             {
@@ -456,7 +450,7 @@ internal sealed class XamlObjectGraphBuilder
                 if (addItem is null)
                     throw Fatal(XamlDiagnosticCodes.NoCollectionAccess,
                         $"Member has no fillable collection on '{type.ClrType.Name}'.", line, column);
-                addItem(collection!, item);
+                addItem(collection, item);
             }
         }
     }
@@ -475,7 +469,7 @@ internal sealed class XamlObjectGraphBuilder
         }
     }
 
-    private object? ResolveCollection(
+    private object ResolveCollection(
         XamlMember? member, object instance, XamlType type, int line, int column,
         out Action<object, object?>? addItem, out Action<object, object, object?>? addDictionaryItem)
     {
@@ -537,7 +531,7 @@ internal sealed class XamlObjectGraphBuilder
                 break;
             default:
                 // A generic IList<T> without IList — fall back to a reflective Add at fill time.
-                addItem = (c, item) => InvokeGenericAdd(c, item);
+                addItem = InvokeGenericAdd;
                 break;
         }
     }
@@ -558,7 +552,7 @@ internal sealed class XamlObjectGraphBuilder
         {
             if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(ICollection<>))
             {
-                iface.GetMethod("Add")!.Invoke(collection, new[] { item });
+                iface.GetMethod("Add")!.Invoke(collection, [item]);
                 return;
             }
         }
@@ -672,7 +666,7 @@ internal sealed class XamlObjectGraphBuilder
         for (int i = 0; i < record.MemberCount; i++)
         {
             var member = _doc.Members[record.MemberStart + i];
-            if (member.Kind == XamlValueKind.Directive && member.DirectiveKind == (int)XamlDirectiveKind.Key)
+            if (member is { Kind: XamlValueKind.Directive, DirectiveKind: (int)XamlDirectiveKind.Key })
             {
                 key = _doc.Strings[member.ValueIndex];
                 return true;
@@ -913,15 +907,15 @@ internal sealed class XamlObjectGraphBuilder
     // (seal-on-attach). Consumed only from UIApplication.Theme by the StyleEngine at Theme(2).
     private void FillStyles(ResourceDictionary dict, in MemberRecord member, int line, int column)
     {
-        var styles = dict.Styles ??= new Styles();
+        var styles = dict.Styles ??= [];
         if (member.Kind is XamlValueKind.Items)
         {
             foreach (int idx in EnumerateItems(member.ValueIndex, member.ItemCount))
-                styles.Add((Cursorial.UI.Style)InstantiateObject(idx));
+                styles.Add((Style)InstantiateObject(idx));
         }
         else if (member.Kind == XamlValueKind.Object)
         {
-            styles.Add((Cursorial.UI.Style)InstantiateObject(member.ValueIndex));
+            styles.Add((Style)InstantiateObject(member.ValueIndex));
         }
     }
 
@@ -1025,7 +1019,7 @@ internal sealed class XamlObjectGraphBuilder
         {
             var member = _doc.Members[record.MemberStart + i];
             // DataType may be the x:DataType directive or a CLR DataType member with a folded Type value.
-            if (member.Kind == XamlValueKind.Directive && member.DirectiveKind == (int)XamlDirectiveKind.DataType)
+            if (member is { Kind: XamlValueKind.Directive, DirectiveKind: (int)XamlDirectiveKind.DataType })
             {
                 var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, _doc.Strings[member.ValueIndex]);
                 if (resolution.IsResolved)
@@ -1060,7 +1054,7 @@ internal sealed class XamlObjectGraphBuilder
     /// scope (matrix X143 — a nested StaticResource resolves against the defining dictionary then the
     /// enclosing chain), then instantiates the slice's object subtree.
     /// </summary>
-    internal object? RealizeDeferredEntry(int childIndex, CapturedScopeChain capturedScope)
+    internal object RealizeDeferredEntry(int childIndex, CapturedScopeChain capturedScope)
     {
         int depth = _scopes.Depth;
         _scopes.PushChain(capturedScope);

@@ -1,10 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
 using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
 using UIData = Cursorial.UI.Data;
-using Cursorial.Rendering;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 

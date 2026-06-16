@@ -155,7 +155,7 @@ public sealed class UITestHostRenderingTests
             Key = Key.Enter,
             Modifiers = KeyModifiers.None,
             Kind = KeyEventKind.Down,
-            Timestamp = default,
+            Timestamp = default
         });
         host.RunFrame();
 

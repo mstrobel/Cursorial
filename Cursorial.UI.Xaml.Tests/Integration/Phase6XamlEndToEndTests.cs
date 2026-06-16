@@ -1,5 +1,5 @@
-using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Drawing.Media;
@@ -9,11 +9,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Xaml;
-
-using UIControls = Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
 
@@ -57,7 +54,7 @@ public sealed class Phase6XamlEndToEndTests
         using var host = UITestHost.Create();
         var vm = new DemoVm { Caption = "Hello", Accent = "go" };
 
-        var root = Loader.Load<UIControls.StackPanel>(
+        var root = Loader.Load<StackPanel>(
             "<StackPanel" + Ns + " HorizontalAlignment=\"Left\" VerticalAlignment=\"Top\">" +
               "<StackPanel.Resources>" +
                 "<XamlTestBrush x:Key=\"PanelAccent\" Color=\"#3050c0\"/>" +
@@ -82,10 +79,10 @@ public sealed class Phase6XamlEndToEndTests
 
         // x:Name registration in the document scope.
         var scope = NameScope.GetNameScope(root)!;
-        var button = (UIControls.Button)scope.Find("Ok")!;
-        var check = (UIControls.CheckBox)scope.Find("Toggle")!;
-        var live = (UIControls.TextBlock)scope.Find("Live")!;
-        var bound = (UIControls.TextBlock)scope.Find("Bound")!;
+        var button = (Button)scope.Find("Ok")!;
+        var check = (CheckBox)scope.Find("Toggle")!;
+        var live = (TextBlock)scope.Find("Live")!;
+        var bound = (TextBlock)scope.Find("Bound")!;
 
         // The {StaticResource} brush resolved eagerly onto the Button foreground (the #3050c0 XamlTestBrush).
         var brush = Assert.IsType<XamlTestBrush>(button.Foreground);
@@ -115,10 +112,10 @@ public sealed class Phase6XamlEndToEndTests
         // The ControlTemplate from the resource chain expands on a real Button and the TemplateBinding part
         // tracks the templated parent's Background.
         var template = (ControlTemplate)root.Resources["Chrome"]!;
-        template.TargetType = typeof(UIControls.Button);
-        var owner = new UIControls.Button { Template = template, Background = new XamlTestBrush { Color = Color.FromRgb(7, 8, 9) } };
+        template.TargetType = typeof(Button);
+        var owner = new Button { Template = template, Background = new XamlTestBrush { Color = Color.FromRgb(7, 8, 9) } };
         owner.ApplyTemplate();
-        var chrome = NameScope.GetTemplateNameScope(owner)!.RequireControl<UIControls.Border>("PART_Chrome");
+        var chrome = NameScope.GetTemplateNameScope(owner)!.RequireControl<Border>("PART_Chrome");
         Assert.Same(owner.Background, chrome.Background);
 
         _ = check; // referenced for the name-scope assertion; toggling is exercised by the demo
@@ -160,7 +157,7 @@ public sealed class Phase6XamlEndToEndTests
         host.Application.Resources = appResources;
 
         // The consumer tree: a Button whose Foreground is a DynamicResource to the themed "ink" key.
-        var button = Loader.Load<UIControls.Button>(
+        var button = Loader.Load<Button>(
             "<Button" + Ns + " Content=\"Ink\" Foreground=\"{DynamicResource ink}\" " +
                        "HorizontalAlignment=\"Left\" VerticalAlignment=\"Top\"/>", source: null);
         host.ShowRoot(button);
@@ -170,7 +167,7 @@ public sealed class Phase6XamlEndToEndTests
         var lightInk = Color.FromRgb(0x14, 0x18, 0x3c);
 
         // The DynamicResource resolved the themed "ink" brush at the Dark variant (live, at LocalValue).
-        Assert.Equal(BindingPriority.LocalValue, button.GetValueSource(UIControls.Control.ForegroundProperty).Priority);
+        Assert.Equal(BindingPriority.LocalValue, button.GetValueSource(Control.ForegroundProperty).Priority);
         Assert.Equal(darkInk, ((XamlTestBrush)button.Foreground!).Color);
 
         // The top-level merged "Surface" entry resolved through the application chain.
@@ -211,12 +208,12 @@ public sealed class Phase6XamlEndToEndTests
             "</ResourceDictionary>", source: null);
 
         var template = (ControlTemplate)dict["Chrome"]!;
-        template.TargetType = typeof(UIControls.Button);
+        template.TargetType = typeof(Button);
 
-        var first = new UIControls.Button { Template = template, Background = new XamlTestBrush { Color = Color.FromRgb(1, 2, 3) } };
-        var second = new UIControls.Button { Template = template, Background = new XamlTestBrush { Color = Color.FromRgb(4, 5, 6) } };
+        var first = new Button { Template = template, Background = new XamlTestBrush { Color = Color.FromRgb(1, 2, 3) } };
+        var second = new Button { Template = template, Background = new XamlTestBrush { Color = Color.FromRgb(4, 5, 6) } };
 
-        var stack = new UIControls.StackPanel();
+        var stack = new StackPanel();
         stack.Children.Add(first);
         stack.Children.Add(second);
         host.ShowRoot(stack);
@@ -224,8 +221,8 @@ public sealed class Phase6XamlEndToEndTests
 
         var firstScope = NameScope.GetTemplateNameScope(first)!;
         var secondScope = NameScope.GetTemplateNameScope(second)!;
-        var firstChrome = firstScope.RequireControl<UIControls.Border>("PART_Chrome");
-        var secondChrome = secondScope.RequireControl<UIControls.Border>("PART_Chrome");
+        var firstChrome = firstScope.RequireControl<Border>("PART_Chrome");
+        var secondChrome = secondScope.RequireControl<Border>("PART_Chrome");
 
         // Independent name scopes: same part name, two distinct instances.
         Assert.NotSame(firstScope, secondScope);
@@ -258,12 +255,12 @@ public sealed class Phase6XamlEndToEndTests
     {
         using var host = UITestHost.Create();
 
-        var border = Loader.Load<UIControls.Border>(
+        var border = Loader.Load<Border>(
             "<Border" + Ns + " HorizontalAlignment=\"Left\" VerticalAlignment=\"Top\">" +
               "<Button x:Name=\"Save\" Content=\"_Save\" HorizontalAlignment=\"Left\"/>" +
             "</Border>", source: null);
 
-        var button = (UIControls.Button)border.Child!;
+        var button = (Button)border.Child!;
         var clicks = 0;
         button.Click += (_, _) => clicks++;
 
@@ -340,6 +337,7 @@ public sealed class Phase6XamlEndToEndTests
     }
 
     /// <summary>The {Binding} oracle for the integration documents.</summary>
+    [SuppressMessage("ReSharper", "UnusedMember.Local")]
     private sealed class DemoVm : INotifyPropertyChanged
     {
         private string? _caption;

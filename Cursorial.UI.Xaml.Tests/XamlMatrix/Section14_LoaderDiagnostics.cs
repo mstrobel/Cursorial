@@ -1,9 +1,9 @@
-using System;
 using System.Globalization;
 
-using Cursorial.UI;
 using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -114,13 +114,13 @@ public sealed class Section14_LoaderDiagnostics : LoaderTestBase
     }
 
     [Fact] // X178
-    public async System.Threading.Tasks.Task X178_LoadIsSingleThreadAffine()
+    public async Task X178_LoadIsSingleThreadAffine()
     {
         // Instantiation is single-UI-thread (invariant 6): with no ambient application, a UIObject
         // captures its constructing thread's affinity, so a Load on one thread builds a consistent
         // tree. The documented contract is that all of one Load runs on one thread; parse is the
         // thread-safe half (X176). Here we assert a single-threaded Load builds + reads coherently.
-        var content = await System.Threading.Tasks.Task.Run(() =>
+        var content = await Task.Run(() =>
         {
             var button = Loader.Load<UIControls.Button>(Wrap("<Button Content=\"Hi\"/>"), TestSource);
             return button.Content;

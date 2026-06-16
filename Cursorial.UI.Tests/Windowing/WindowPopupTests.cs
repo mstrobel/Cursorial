@@ -3,7 +3,6 @@ using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 using UIControls = Cursorial.UI.Controls;
@@ -62,7 +61,7 @@ public sealed class WindowPopupTests
     [Fact] // PlacementMode.Bottom positions the surface directly below the target, in screen space
     public void PlacementBottom_PositionsBelowTarget()
     {
-        var (host, wm, popup, target, _) = Setup();
+        var (host, _, popup, target, _) = Setup();
         using var _ = host;
 
         popup.Open();
@@ -201,7 +200,7 @@ public sealed class WindowPopupTests
         var popup = new Popup
         {
             PlacementTarget = target,
-            Child = new UIControls.Border { Background = new SolidColorBrush(popupFill), Width = 10, Height = 3 },
+            Child = new UIControls.Border { Background = new SolidColorBrush(popupFill), Width = 10, Height = 3 }
         };
 
         popup.Open();
@@ -277,7 +276,7 @@ public sealed class WindowPopupTests
         var popup = new Popup { Child = inner, PlacementTarget = owner };
 
         var ownerSawKey = false;
-        owner.AddHandler(UIElement.KeyDownEvent, (object? _, KeyEventArgs _) => ownerSawKey = true);
+        owner.AddHandler(UIElement.KeyDownEvent, (_, _) => ownerSawKey = true);
 
         popup.Open();
         Assert.True(host.RunUntilIdle());

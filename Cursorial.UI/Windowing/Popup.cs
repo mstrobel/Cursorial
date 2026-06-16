@@ -1,5 +1,3 @@
-using System;
-
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Input;

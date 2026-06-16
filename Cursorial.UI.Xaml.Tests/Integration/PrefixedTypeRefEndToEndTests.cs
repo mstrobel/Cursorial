@@ -48,7 +48,7 @@ public sealed class PrefixedTypeRefEndToEndTests
         // The TargetType binds the custom `t:` namespace; the unqualified `Marker` Setter then resolves against
         // that resolved target type. Pre-#22, TargetType="t:XamlPrefixTarget" resolved verbatim against the
         // default ns → null target → the Setter would be CUR2110 at load.
-        var style = Loader.Load<Cursorial.UI.Style>(
+        var style = Loader.Load<Style>(
             "<Style" + Ns + TestClrNs + " TargetType=\"t:XamlPrefixTarget\">" +
               "<Setter Property=\"Marker\" Value=\"42\"/>" +
             "</Style>");
@@ -71,7 +71,7 @@ public sealed class PrefixedTypeRefEndToEndTests
 
         // The Selector's `t|XamlPrefixTarget` binds the custom `t` namespace from the document table; the Setter's
         // owner-qualified `t:XamlPrefixTarget.Marker` resolves via the captured ns (the attached/styled member).
-        var style = Loader.Load<Cursorial.UI.Style>(
+        var style = Loader.Load<Style>(
             "<Style" + Ns + TestClrNs + " Selector=\"t|XamlPrefixTarget\">" +
               "<Setter Property=\"t:XamlPrefixTarget.Marker\" Value=\"7\"/>" +
             "</Style>");
@@ -96,7 +96,7 @@ public sealed class PrefixedTypeRefEndToEndTests
 
         using var host = UITestHost.Create();
 
-        var style = Loader.Load<Cursorial.UI.Style>(
+        var style = Loader.Load<Style>(
             "<Style" + Ns + TestClrNs + " Selector=\":is(t|XamlPrefixTarget)\">" +
               "<Setter Property=\"t:XamlPrefixTarget.Marker\" Value=\"9\"/>" +
             "</Style>");
@@ -117,7 +117,7 @@ public sealed class PrefixedTypeRefEndToEndTests
     [Fact] // An UNBOUND prefix in a Style TargetType is a loud, positioned error — parity with the prefix|Type selector form
     public void StyleTargetType_UnboundPrefix_IsXamlDiagnostic()
     {
-        var ex = Assert.Throws<XamlParseException>(() => Loader.Load<Cursorial.UI.Style>(
+        var ex = Assert.Throws<XamlParseException>(() => Loader.Load<Style>(
             "<Style" + Ns + " TargetType=\"undeclared:Button\"/>"));
 
         Assert.Equal(XamlDiagnosticCodes.UndeclaredPrefix, ex.Code); // never a silent strip-to-default-namespace
@@ -127,7 +127,7 @@ public sealed class PrefixedTypeRefEndToEndTests
     [Fact] // An unresolvable Style TargetType surfaces as a positioned XAML diagnostic, not a raw SelectorParseException
     public void StyleTargetType_UnknownType_IsXamlDiagnostic_NotRaw()
     {
-        var ex = Assert.Throws<XamlParseException>(() => Loader.Load<Cursorial.UI.Style>(
+        var ex = Assert.Throws<XamlParseException>(() => Loader.Load<Style>(
             "<Style" + Ns + " TargetType=\"NoSuchControlType\"/>"));
 
         Assert.True(ex.Line > 0 && ex.Column > 0); // line+col present (a XamlParseException, not a leaked library exception)

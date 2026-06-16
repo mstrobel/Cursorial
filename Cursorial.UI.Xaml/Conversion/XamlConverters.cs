@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using System.Globalization;
 
@@ -6,9 +5,10 @@ using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
-using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -90,7 +90,7 @@ public static class XamlConverters
         public static readonly Int32CellConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
             if (int.TryParse(text, NumberStyles.Integer | NumberStyles.AllowLeadingSign, ctx.Culture, out int v))
@@ -106,7 +106,7 @@ public static class XamlConverters
         public static readonly DoubleConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             if (double.TryParse(text.Trim(), NumberStyles.Float, ctx.Culture, out double v))
                 return v;
@@ -119,7 +119,7 @@ public static class XamlConverters
         public static readonly BoolConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             if (bool.TryParse(text.Trim(), out bool v))
                 return v;
@@ -135,7 +135,7 @@ public static class XamlConverters
         // the target runtime type. Folding here at parse would lose that hook — keep strings as Text.
         public bool IsContextFree => false;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx) => text;
+        public object ConvertFromString(string text, in XamlValueContext ctx) => text;
     }
 
     // ── Geometry (matrix XD12) ───────────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ public static class XamlConverters
         public static readonly MarginsConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             var parts = text.Split(',');
             int[] vals = new int[parts.Length];
@@ -175,7 +175,7 @@ public static class XamlConverters
         public static readonly GridLengthConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
             if (string.Equals(text, "Auto", StringComparison.OrdinalIgnoreCase))
@@ -204,7 +204,7 @@ public static class XamlConverters
         public static readonly ColorConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx) => Parse(text, ctx);
+        public object ConvertFromString(string text, in XamlValueContext ctx) => Parse(text, ctx);
 
         internal static Color Parse(string text, in XamlValueContext ctx)
         {
@@ -264,7 +264,7 @@ public static class XamlConverters
         // color → SolidColorBrush; fold at parse.
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
 
@@ -310,7 +310,7 @@ public static class XamlConverters
         public static readonly PenConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             // "Heavy", "Double Rounded", "Dashed #888" — space-separated preset tokens + an optional color.
             var tokens = text.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
@@ -360,11 +360,11 @@ public static class XamlConverters
 
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             text = text.Trim();
             // Enum names in XAML are case-insensitive (WPF/Avalonia parity, P6 review P1-6).
-            if (Enum.TryParse(_enumType, text, ignoreCase: true, out var v) && v is not null && Enum.IsDefined(_enumType, v))
+            if (Enum.TryParse(_enumType, text, ignoreCase: true, out var v) && Enum.IsDefined(_enumType, v))
                 return v;
             if (long.TryParse(text, NumberStyles.Integer, ctx.Culture, out long n) && Enum.IsDefined(_enumType, Enum.ToObject(_enumType, n)))
                 return Enum.ToObject(_enumType, n);
@@ -377,7 +377,7 @@ public static class XamlConverters
         public static readonly TextAttributesConverter Instance = new();
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             // A comma- or pipe-separated flags list — Enum.Parse honors both with the [Flags] enum;
             // case-insensitive to match the other enum converters (P6 review P1-6).
@@ -395,7 +395,7 @@ public static class XamlConverters
         // KeyGesture.Parse needs no services and never touches the tree — context-free.
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             try
             {
@@ -418,7 +418,7 @@ public static class XamlConverters
         // for any non-Style Selector-typed member and resolves simple names via the default resolver.
         public bool IsContextFree => false;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             try
             {
@@ -439,7 +439,7 @@ public static class XamlConverters
         // gradient brush). Named points (TopLeft/Center/…) are reachable via {x:Static RelativePoint.Center}.
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             var parts = text.Split(',');
             if (parts.Length == 2
@@ -462,7 +462,7 @@ public static class XamlConverters
         // by the caps-unicode theme styles' ToggleGlyph.Glyphs setter. Context-free.
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             var parts = text.Split('|');
             if (parts.Length is < 2 or > 3)
@@ -480,7 +480,7 @@ public static class XamlConverters
 
         public bool IsContextFree => true;
 
-        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        public object ConvertFromString(string text, in XamlValueContext ctx)
         {
             try
             {

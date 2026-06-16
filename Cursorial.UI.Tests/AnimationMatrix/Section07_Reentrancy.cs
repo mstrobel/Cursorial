@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 // Animation-matrix §7 (reentrancy) — N61–N66.
@@ -16,11 +18,14 @@ public sealed class Section07_Reentrancy
 
         AnimationHandle? handle = null;
         var completed = 0;
+        // ReSharper disable AccessToModifiedClosure
         a.VChanged = v =>
         {
+            // ReSharper disable once CompareOfFloatsByEqualityOperator
             if (handle is not null && v == 10.0) // only the final write produces exactly the end value
                 handle.Stop();
         };
+        // ReSharper restore AccessToModifiedClosure
         handle = a.BeginAnimation(Animatable.VProperty, new DoubleAnimation(0.0, 10.0, Ms(100)));
         handle.Completed += _ => completed++;
 

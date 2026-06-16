@@ -1,4 +1,3 @@
-// ReSharper disable CheckNamespace
 namespace Cursorial.UI.Controls;
 
 /// <summary>What an <see cref="ItemContainerGenerator"/> did to a contiguous range of containers (design doc §12.6 — the visualization seam).</summary>
@@ -14,7 +13,7 @@ public enum ContainersChangedAction
     Moved,
 
     /// <summary>Every container was unrealized — the host should drop all and re-adopt from scratch.</summary>
-    Reset,
+    Reset
 }
 
 /// <summary>

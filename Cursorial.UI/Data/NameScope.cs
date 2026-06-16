@@ -2,8 +2,6 @@
 
 namespace Cursorial.UI;
 
-using Cursorial.UI.Data;
-
 /// <summary>
 /// A name → element registry (design doc §6.3). The shape is shared with Fork C; the XAML loader
 /// and template engine populate scopes, while this subsystem defines how <c>ElementName</c> finds

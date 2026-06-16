@@ -10,7 +10,7 @@ public enum RelativeSourceMode : byte
     TemplatedParent,
 
     /// <summary>The nth logical ancestor assignable to <see cref="RelativeSource.AncestorType"/>.</summary>
-    FindAncestor,
+    FindAncestor
 }
 
 /// <summary>
@@ -56,6 +56,6 @@ public sealed class RelativeSource
     public override string ToString() => Mode switch
     {
         RelativeSourceMode.FindAncestor => $"FindAncestor({AncestorType?.Name}, {AncestorLevel})",
-        _ => Mode.ToString(),
+        _ => Mode.ToString()
     };
 }

@@ -232,6 +232,7 @@ public class Section08_Dynamics
         // on the element mid-arm). Without the SD24 fence, the .x frame arms in a nested re-match
         // that the outer ApplyMatchDiff then clobbers — applied-but-untracked, never retractable.
         var added = false;
+        // ReSharper disable AccessToDisposedClosure
         var observer = new InlineObserver<int>((_, _, _, _) =>
         {
             if (added)
@@ -239,6 +240,7 @@ public class Section08_Dynamics
             added = true;
             tree.A.Classes.Add("x");
         });
+        // ReSharper restore AccessToDisposedClosure
         tree.Host.ShowRoot(tree.Root);
         tree.A.AddObserver(Widget.P, observer);
 

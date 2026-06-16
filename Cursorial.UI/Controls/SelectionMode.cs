@@ -1,4 +1,3 @@
-// ReSharper disable CheckNamespace
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -14,5 +13,5 @@ public enum SelectionMode
     Single,
 
     /// <summary>Any number of items may be selected (toggle + range-from-anchor).</summary>
-    Multiple,
+    Multiple
 }

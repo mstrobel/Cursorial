@@ -1,7 +1,6 @@
 using System.Globalization;
 using Cursorial.UI;
 using Cursorial.UI.Data;
-using Xunit;
 
 // ReSharper disable InconsistentNaming
 
@@ -367,7 +366,7 @@ public class Section07_ModesTriggers
     private sealed class FailingBackConverter : IValueConverter
     {
         public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value;
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
     }
 }
 

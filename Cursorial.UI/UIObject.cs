@@ -187,7 +187,7 @@ public abstract class UIObject : IInheritanceNode
             return new ValueSource(entry.EffectivePriority, entry.IsCurrentValue)
             {
                 BasePriority = basePriority,
-                IsCoerced = entry.IsCoerced,
+                IsCoerced = entry.IsCoerced
             };
         }
 

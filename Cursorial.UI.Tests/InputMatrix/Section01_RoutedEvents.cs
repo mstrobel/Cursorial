@@ -15,7 +15,7 @@ public class Section01_RoutedEvents
         Key = Key.Enter,
         Modifiers = KeyModifiers.None,
         Kind = KeyEventKind.Down,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static (List<string> Log, Probe Root, Probe A, Probe B) Chain()
@@ -101,7 +101,7 @@ public class Section01_RoutedEvents
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         };
         b.RaiseEvent(new MouseEventArgs(UIElement.MouseEnterEvent, b, device));
 

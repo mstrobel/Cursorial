@@ -77,7 +77,7 @@ internal static class StyleSetterConverter
                                                       System.Convert.ChangeType(
                                                           value,
                                                           Enum.GetUnderlyingType(underlyingType),
-                                                          CultureInfo.InvariantCulture)!),
+                                                          CultureInfo.InvariantCulture)),
                         _ => throw SealError(style, ruleIndex, property,
                                              $"cannot convert '{value.GetType().Name}' to enum type '{underlyingType.Name}'")
                     },

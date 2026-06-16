@@ -28,7 +28,7 @@ public class Section06_HoverChain
             [
                 "Root.OnMouseEnter", "A.OnMouseEnter", "D.OnMouseEnter",
                 "Root.OnPreviewMouseMove", "A.OnPreviewMouseMove", "D.OnPreviewMouseMove",
-                "D.OnMouseMove", "A.OnMouseMove", "Root.OnMouseMove",
+                "D.OnMouseMove", "A.OnMouseMove", "Root.OnMouseMove"
             ],
             fixture.Log);
         Assert.True(Over(fixture.Root));
@@ -64,7 +64,7 @@ public class Section06_HoverChain
             [
                 "D.OnMouseLeave", "A.OnMouseLeave", "B.OnMouseEnter",
                 "Root.OnPreviewMouseMove", "B.OnPreviewMouseMove",
-                "B.OnMouseMove", "Root.OnMouseMove",
+                "B.OnMouseMove", "Root.OnMouseMove"
             ],
             fixture.Log);
         Assert.False(Over(fixture.D));
@@ -194,7 +194,7 @@ public class Section06_HoverChain
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = host.Time.GetUtcNow(),
+            Timestamp = host.Time.GetUtcNow()
         });
         Assert.True(Over(rows[2])); // content row 2 under the pointer at offset 0
         log.Clear();
@@ -278,7 +278,7 @@ public class Section06_HoverChain
             [
                 "D.OnMouseLeave", "A.OnMouseLeave", "B.OnMouseEnter",
                 "Root.OnPreviewMouseMove", "B.OnPreviewMouseMove",
-                "B.OnMouseMove", "Root.OnMouseMove",
+                "B.OnMouseMove", "Root.OnMouseMove"
             ],
             fixture.Log);
         Assert.True(Over(fixture.B));

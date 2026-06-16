@@ -1,4 +1,3 @@
-using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.Reflection;
@@ -6,8 +5,6 @@ using System.Runtime.InteropServices;
 
 using Cursorial.Tests.UI.Xaml.XamlMatrix; // NodeGraphProbe: TryFindMember / StringValue over the node graph
 using Cursorial.UI.Xaml;
-
-using Xunit;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
 
@@ -178,7 +175,7 @@ public sealed class SystemXamlOracleTests
 /// <see cref="Content"/> attribute path needs no content property: System.Xaml sets any public member by
 /// name, so the <c>{}</c> brace-escape leg works directly.
 /// </summary>
-[System.ComponentModel.TypeConverter(typeof(OracleNodeConverter))]
+[TypeConverter(typeof(OracleNodeConverter))]
 public sealed class OracleNode
 {
     /// <summary>The content text (System.Xaml fills this from element text via the converter, or from the
@@ -191,14 +188,14 @@ public sealed class OracleNode
 /// element text through <see cref="ConvertFrom(System.ComponentModel.ITypeDescriptorContext, CultureInfo, object)"/>,
 /// yielding a node whose <see cref="OracleNode.Content"/> is the oracle's collapsed value.
 /// </summary>
-public sealed class OracleNodeConverter : System.ComponentModel.TypeConverter
+public sealed class OracleNodeConverter : TypeConverter
 {
     /// <inheritdoc/>
-    public override bool CanConvertFrom(System.ComponentModel.ITypeDescriptorContext? context, Type sourceType)
+    public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
         => sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
 
     /// <inheritdoc/>
-    public override object ConvertFrom(System.ComponentModel.ITypeDescriptorContext? context, CultureInfo? culture, object value)
+    public override object ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
         => value is string s ? new OracleNode { Content = s } : base.ConvertFrom(context, culture, value)!;
 }
 

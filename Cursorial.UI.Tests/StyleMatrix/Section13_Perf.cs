@@ -11,6 +11,7 @@ using Xunit.Abstractions;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
+// ReSharper disable AccessToDisposedClosure
 // ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.StyleMatrix;
@@ -181,7 +182,7 @@ public class Section13_Perf(ITestOutputHelper output)
                 Button = MouseButton.None,
                 ButtonsHeld = MouseButtons.None,
                 Modifiers = KeyModifiers.None,
-                Timestamp = DateTimeOffset.UnixEpoch,
+                Timestamp = DateTimeOffset.UnixEpoch
             };
         }
 

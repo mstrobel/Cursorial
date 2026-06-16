@@ -19,7 +19,7 @@ public enum FocusNavigationMethod : byte
     AccessKey,
 
     /// <summary>Window-activation scope-memory restore (always shows the focus visual — recorded divergence from Chrome heuristics).</summary>
-    Restore,
+    Restore
 }
 
 /// <summary>Args for the <c>GotFocus</c>/<c>LostFocus</c> events (design doc §7.2). State commits before these raise.</summary>

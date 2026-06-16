@@ -61,7 +61,7 @@ public sealed class TemplateBinding : BindingBase
             RelativeSource = RelativeSource.TemplatedParent,
             Mode = BindingMode.OneWay,
             Converter = Converter,
-            ConverterParameter = ConverterParameter,
+            ConverterParameter = ConverterParameter
         };
 
         return binding.CreateExpression(in context);

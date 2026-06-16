@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI.Xaml;
 
 /// <summary>

@@ -85,7 +85,7 @@ public class Section01_LayoutMath
         {
             Margin = new Margins(marginLeft, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         var diagnostics = LayoutFixture.CaptureDiagnostics(

@@ -1,9 +1,8 @@
-using System;
-using System.Globalization;
 using System.Reflection;
 
-using Cursorial.UI;
 using Cursorial.UI.Data;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -116,6 +115,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
 
     // ── {DynamicResource} — late (matrix X116/X117) ──────────────────────────────────────────────
 
+    // ReSharper disable once UnusedParameter.Local
     private void AttachDynamicResource(XamlObjectGraphBuilder builder, object instance, XamlType type, XamlMember? member, object key, int line, int column)
     {
         if (member is null)
@@ -131,7 +131,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             {
                 SetResourceReferenceDynamic(element, styled, key);
             }
-            catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is { } inner)
+            catch (TargetInvocationException ex) when (ex.InnerException is { } inner)
             {
                 throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
                     $"DynamicResource '{key}' could not be installed: {inner.Message}", line, column);
@@ -210,7 +210,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             Mode = ParseEnum<BindingMode>(builder, node, "Mode", line, column) ?? BindingMode.Default,
             Converter = ResolveConverter(builder, node, line, column),
             StringFormat = Named(node, "StringFormat"),
-            FallbackValue = fallback is null ? UIProperty.UnsetValue : fallback,
+            FallbackValue = fallback ?? UIProperty.UnsetValue,
         };
     }
 
@@ -231,7 +231,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             "Self" => RelativeSource.Self,
             // A nested {RelativeSource} with no explicit mode defaults to Self (WPF).
             null when value.IsNested => RelativeSource.Self,
-            // An unrecognized mode (e.g. FindAncestor — not in v1) is a hard error, not a silent Self,
+            // An unrecognized mode (e.g., FindAncestor — not in v1) is a hard error, not a silent Self,
             // so a misuse doesn't appear to have worked (P6 review P1-4).
             { Length: > 0 } => throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
                 $"RelativeSource mode '{mode}' is not supported in v1 (TemplatedParent and Self are).", line, column),
@@ -264,7 +264,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         return name switch
         {
             "StaticResource" => ResolveStaticResource(builder, FirstPositional(node) ?? string.Empty, line, column),
-            // {x:Static MyConverters.Instance} as a binding argument value (e.g. Converter={x:Static …}),
+            // {x:Static MyConverters.Instance} as a binding argument value (e.g., Converter={x:Static …}),
             // P6 review P2-13. (The top-level {x:Static} folds at parse; a nested one inside an extension
             // argument reaches here.)
             "Static" => builder.ResolveStaticMember(FirstPositional(node) ?? string.Empty, line, column),

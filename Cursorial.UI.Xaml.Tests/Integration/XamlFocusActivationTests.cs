@@ -5,8 +5,6 @@ using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Xaml;
 
-using UIControls = Cursorial.UI.Controls;
-
 namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
@@ -61,8 +59,8 @@ public sealed class XamlFocusActivationTests
     {
         var root = new DockPanel();
         var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        var border = new Border { BorderPen = Cursorial.Drawing.Media.Pens.Light, Padding = new Cursorial.Rendering.Margins(1) };
-        var panel = new StackPanel { Spacing = 1, Margin = new Cursorial.Rendering.Margins(1) };
+        var border = new Border { BorderPen = Drawing.Media.Pens.Light, Padding = new Rendering.Margins(1) };
+        var panel = new StackPanel { Spacing = 1, Margin = new Rendering.Margins(1) };
         panel.Children.Add(new Button { Name = "Ok", Content = "_OK" });
         panel.Children.Add(new Button { Name = "Cancel", Content = "_Cancel" });
         panel.Children.Add(new Button { Name = "Apply", Content = "_Apply" });

@@ -4,6 +4,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C9 — TabControl / TabItem (P9.5): single-selection over SelectingItemsControl; the strip shows
@@ -51,7 +53,7 @@ public sealed class Section22_TabControl
     public void C9_2_FirstTabAutoSelects()
     {
         var (host, _, a, _, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
 
         Assert.Equal(0, ((TabControl)a.LogicalParent!).SelectedIndex);
         Assert.True(a.IsSelected);
@@ -62,7 +64,7 @@ public sealed class Section22_TabControl
     public void C9_3_SelectedContentReflectsSelection()
     {
         var (host, tabs, _, _, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         Assert.Equal("bodyA", tabs.SelectedContent); // auto-selected tab 0
 
         tabs.SelectedIndex = 2;
@@ -74,7 +76,7 @@ public sealed class Section22_TabControl
     public void C9_4_ClickSelects()
     {
         var (host, tabs, a, b, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
 
         Click(host, b);
         Assert.Equal(1, tabs.SelectedIndex);
@@ -88,7 +90,7 @@ public sealed class Section22_TabControl
     public void C9_5_ArrowsMove()
     {
         var (host, tabs, a, b, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         a.Focus();
         host.RunUntilIdle();
 
@@ -107,7 +109,7 @@ public sealed class Section22_TabControl
     public void C9_6_HomeEnd()
     {
         var (host, tabs, a, _, c) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         a.Focus();
         host.RunUntilIdle();
 
@@ -125,7 +127,7 @@ public sealed class Section22_TabControl
     public void C9_7_CtrlPageCycles()
     {
         var (host, tabs, a, _, c) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         a.Focus();
         host.RunUntilIdle();
 
@@ -143,7 +145,7 @@ public sealed class Section22_TabControl
     public void C9_8_SelectedItem()
     {
         var (host, tabs, _, b, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
 
         tabs.SelectedIndex = 1;
         host.RunUntilIdle();
@@ -154,7 +156,7 @@ public sealed class Section22_TabControl
     public void C9_9_IsSelectedFoldsIntoModel()
     {
         var (host, tabs, a, _, c) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         Assert.True(a.IsSelected); // auto-selected
 
         c.IsSelected = true; // set directly on the container
@@ -168,7 +170,7 @@ public sealed class Section22_TabControl
     public void C9_10_OneSelectedAtATime()
     {
         var (host, tabs, a, b, c) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
 
         tabs.SelectedIndex = 1;
         host.RunUntilIdle();
@@ -181,7 +183,7 @@ public sealed class Section22_TabControl
     public void C9_11_CtrlArrowsDoNotNavigate()
     {
         var (host, tabs, _, b, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         tabs.SelectedIndex = 1; // middle, so a wrong move in either direction is observable
         host.RunUntilIdle();
         b.Focus();
@@ -199,7 +201,7 @@ public sealed class Section22_TabControl
     public void C9_12_PlainPageKeysDoNotNavigate()
     {
         var (host, tabs, _, b, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         tabs.SelectedIndex = 1;
         host.RunUntilIdle();
         b.Focus();
@@ -217,7 +219,7 @@ public sealed class Section22_TabControl
     public void C9_13_UIElementContentSwitches()
     {
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
-        using var _h = host;
+        using var _ = host;
         var bodyA = new Border { Child = new TextBlock { Text = "A-body" } };
         var bodyB = new Border { Child = new TextBlock { Text = "B-body" } };
         var a = new TabItem { Header = "A", Content = bodyA };
@@ -245,7 +247,7 @@ public sealed class Section22_TabControl
     public void C9_14_EmptyTabControlKeyboardNoOp()
     {
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
-        using var _h = host;
+        using var _ = host;
         var tabs = new TabControl { Focusable = true }; // no items
         host.ShowRoot(tabs);
         host.RunUntilIdle();
@@ -263,7 +265,7 @@ public sealed class Section22_TabControl
     public void C9_15_ClickSelectedTabIdempotent()
     {
         var (host, tabs, _, b, _) = ThreeTabs();
-        using var _h = host;
+        using var _ = host;
         tabs.SelectedIndex = 1;
         host.RunUntilIdle();
         Assert.True(b.IsSelected);

@@ -68,7 +68,7 @@ public sealed class Phase3EndToEndTests
                        "Card" => typeof(Card),
                        "Shell" => typeof(Shell),
                        "Pane" => typeof(StackPanel),
-                       _ => null,
+                       _ => null
                    };
         }
     }

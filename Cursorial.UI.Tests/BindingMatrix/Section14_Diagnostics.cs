@@ -1,6 +1,4 @@
-using Cursorial.UI;
 using Cursorial.UI.Data;
-using Xunit;
 
 // ReSharper disable InconsistentNaming
 
@@ -155,7 +153,7 @@ public class Section14_Diagnostics
         BindingDiagnostics.Record(new BindingTraceEvent(
             BindingTraceLevel.Error, BindingFailureKind.PathError, "P", "T#x.Prop", "msg", Environment.TickCount64));
 
-        var sw = new System.IO.StringWriter();
+        var sw = new StringWriter();
         BindingDiagnostics.DumpTo(sw);
 
         var text = sw.ToString();

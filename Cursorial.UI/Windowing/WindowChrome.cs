@@ -24,14 +24,14 @@ public sealed class WindowChrome
     /// <summary>Reads the chrome role on <paramref name="element"/>.</summary>
     public static WindowHitTestRole GetHitTestRole(UIElement element)
     {
-        System.ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(element);
         return element.GetValue(HitTestRoleProperty);
     }
 
     /// <summary>Sets the chrome role on <paramref name="element"/>.</summary>
     public static void SetHitTestRole(UIElement element, WindowHitTestRole value)
     {
-        System.ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(element);
         element.SetValue(HitTestRoleProperty, value);
     }
 }

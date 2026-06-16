@@ -1,7 +1,8 @@
-using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -23,7 +24,7 @@ public sealed class Section08_DataTemplateChain
     private static DataTemplate VmTemplate(string marker) => new()
     {
         DataType = typeof(Vm),
-        Content = new FuncTemplateContent(_ => new TextBlock(marker)),
+        Content = new FuncTemplateContent(_ => new TextBlock(marker))
     };
 
     private static UITestHost Attach(UIElement root)

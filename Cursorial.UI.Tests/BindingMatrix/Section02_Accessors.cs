@@ -1,7 +1,4 @@
-using System.Collections.ObjectModel;
-using Cursorial.UI;
 using Cursorial.UI.Data;
-using Xunit;
 
 // ReSharper disable InconsistentNaming
 
@@ -79,7 +76,7 @@ public class Section02_Accessors
         var accessor = AccessorCache.ResolveStringIndexer(vm.Map, "key");
 
         Assert.NotNull(accessor);
-        Assert.Equal(AccessorKind.ReflectionIndexer, accessor!.Kind);
+        Assert.Equal(AccessorKind.ReflectionIndexer, accessor.Kind);
         Assert.Equal("v", accessor.GetValue(vm.Map));
     }
 
@@ -94,8 +91,8 @@ public class Section02_Accessors
         var sub = subAccessor.GetValue(vm);
         Assert.NotNull(sub);
 
-        var nameAccessor = AccessorCache.ResolveProperty(sub!, in nameSeg);
-        Assert.Equal("inner", nameAccessor.GetValue(sub!));
+        var nameAccessor = AccessorCache.ResolveProperty(sub, in nameSeg);
+        Assert.Equal("inner", nameAccessor.GetValue(sub));
     }
 
     [Fact]
@@ -132,15 +129,15 @@ public class Section02_Accessors
     {
         // Dictionary<TEnum, T> is IDictionary but exposes only Item[TEnum]; the bare token coerces to
         // the enum key rather than silently missing as a string lookup (design doc §6.3).
-        var map = new System.Collections.Generic.Dictionary<Status, string>
+        var map = new Dictionary<Status, string>
         {
             [Status.Active] = "on",
-            [Status.Closed] = "off",
+            [Status.Closed] = "off"
         };
 
         var bare = AccessorCache.ResolveStringIndexer(map, BindingPath.Parse("[Active]").Segments[0].Name!);
         Assert.NotNull(bare);
-        Assert.Equal(AccessorKind.ReflectionIndexer, bare!.Kind);
+        Assert.Equal(AccessorKind.ReflectionIndexer, bare.Kind);
         Assert.Equal("on", bare.GetValue(map));
 
         // Qualified form [Status.Closed] strips to the member name.
@@ -160,7 +157,7 @@ public class Section02_Accessors
         var accessor = AccessorCache.ResolveStringIndexer(box, BindingPath.Parse("[Active]").Segments[0].Name!);
 
         Assert.NotNull(accessor);
-        Assert.Equal(AccessorKind.ReflectionIndexer, accessor!.Kind);
+        Assert.Equal(AccessorKind.ReflectionIndexer, accessor.Kind);
         accessor.SetValue(box, "live");          // two-way write-back through the enum key
         Assert.Equal("live", accessor.GetValue(box));
         Assert.Equal("live", box[Status.Active]);
@@ -174,7 +171,8 @@ public class Section02_Accessors
 
     private sealed class EnumIndexed
     {
-        private readonly System.Collections.Generic.Dictionary<Status, string?> _store = new();
+        private readonly Dictionary<Status, string?> _store = new();
+        // ReSharper disable once UnusedMember.Local
         public string? this[Status key] { get => _store.GetValueOrDefault(key); set => _store[key] = value; }
     }
 

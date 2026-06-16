@@ -3,6 +3,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C10 — ProgressBar (P9.7): determinate fill ratio + clamping + the :indeterminate pseudo-class;
@@ -22,7 +24,7 @@ public sealed class Section23_ProgressBar
             Width = width,
             Height = 1,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(bar);
         host.RunUntilIdle();
@@ -128,7 +130,7 @@ public sealed class Section23_ProgressBar
         {
             IsIndeterminate = true, IndeterminateOffset = 5, // block (~width/3) starts at column 5
             Width = 12, Height = 1,
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(bar);
         host.RunUntilIdle();

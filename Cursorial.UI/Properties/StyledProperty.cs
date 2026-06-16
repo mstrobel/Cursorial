@@ -199,6 +199,6 @@ public class StyledProperty<T> : UIProperty
         (PropertyChangedCallback<T>?)Delegate.Combine(baseMetadata.Changed, overrideMetadata.Changed), // chains base-first
         overrideMetadata.Comparer ?? baseMetadata.Comparer)
     {
-        ParsesAccessKeyLiterals = overrideMetadata.ParsesAccessKeyLiterals ?? baseMetadata.ParsesAccessKeyLiterals,
+        ParsesAccessKeyLiterals = overrideMetadata.ParsesAccessKeyLiterals ?? baseMetadata.ParsesAccessKeyLiterals
     };
 }

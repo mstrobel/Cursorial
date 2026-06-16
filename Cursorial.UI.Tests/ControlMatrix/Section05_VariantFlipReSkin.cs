@@ -7,6 +7,8 @@ using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>
@@ -51,7 +53,7 @@ public sealed class Section05_VariantFlipReSkin
         {
             Content = "OK",
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
@@ -105,7 +107,7 @@ public sealed class Section05_VariantFlipReSkin
             Background = new SolidColorBrush(Color.FromRgb(20, 20, 20)),
             IsRenderBoundary = true,
             Width = 8,
-            Height = 1,
+            Height = 1
         };
         root.Children.Add(button);
         root.Children.Add(sibling);
@@ -140,7 +142,7 @@ public sealed class Section05_VariantFlipReSkin
             Content = "OK",
             Foreground = new SolidColorBrush(explicitInk), // an explicit LocalValue
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
@@ -165,7 +167,7 @@ public sealed class Section05_VariantFlipReSkin
         {
             Content = "OK",
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
@@ -231,7 +233,7 @@ public sealed class Section05_VariantFlipReSkin
         using var host = UITestHost.Create(new UITestHostOptions
         {
             Capabilities = TestCapabilities.KittyTruecolor,
-            CaptureFrameBytes = true,
+            CaptureFrameBytes = true
         });
         host.Application.RequestedThemeBase = ThemeBase.Dark;
 
@@ -280,7 +282,7 @@ public sealed class Section05_VariantFlipReSkin
         {
             Content = "OK",
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());

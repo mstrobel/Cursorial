@@ -36,7 +36,7 @@ public sealed class DefaultPathTypeResolver : IPathTypeResolver
             { Count: 1 } => owners[0],
             _ => throw new FormatException(
                 $"Type token '{typeToken}' is ambiguous: {string.Join(", ", owners.Select(static t => t.FullName))}. " +
-                "Supply an IPathTypeResolver (or the XAML xmlns context) to disambiguate."),
+                "Supply an IPathTypeResolver (or the XAML xmlns context) to disambiguate.")
         };
     }
 }

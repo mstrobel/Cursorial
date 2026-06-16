@@ -1,16 +1,13 @@
 using System.ComponentModel;
-using System.IO;
-using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
-using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
-using Cursorial.Rendering;          // Rect (the IBrush.ColorAt bounds type)
+// Rect (the IBrush.ColorAt bounds type)
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Data;            // INameScope
+// INameScope
 using Cursorial.UI.Input;
 using Cursorial.UI.Xaml;
 
@@ -209,6 +206,7 @@ internal sealed class UIXamlDemo : IDemo
     }
 
     /// <summary>The {Binding} oracle for the XAML document (the status line + the live caption).</summary>
+    [SuppressMessage("ReSharper", "UnusedMember.Local")]
     private sealed class DemoVm : INotifyPropertyChanged
     {
         private string? _caption;

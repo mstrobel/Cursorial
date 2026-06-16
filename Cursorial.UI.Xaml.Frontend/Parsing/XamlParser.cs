@@ -3,7 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Xml;
+using System.Xml; 
+
+// ReSharper disable UnusedParameter.Local
+// ReSharper disable UnusedMember.Local
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -156,7 +160,7 @@ internal sealed class XamlParser
 
         // Resolve the element type.
         var resolution = ResolveType(ns, localName, reportLine, reportColumn);
-        int typeId = -1;
+        int typeId;
         XamlType? type = null;
         if (resolution.IsResolved)
         {
@@ -688,11 +692,11 @@ internal sealed class XamlParser
         int ownerObjectIndex)
     {
         var textBuffer = new StringBuilder();
-        bool preserveSpace = false;
         var contentChildren = new List<int>();
         bool sawPropertyElement = false;
         bool sawContentChild = false;
 
+        // ReSharper disable once UnusedVariable
         int depth = _reader.Depth;
 
         while (_reader.Read())
@@ -741,7 +745,7 @@ internal sealed class XamlParser
 
     done:
         // xml:space="preserve" detection: the reader exposes XmlSpace on the element scope.
-        preserveSpace = _reader.XmlSpace == XmlSpace.Preserve;
+        var preserveSpace = _reader.XmlSpace == XmlSpace.Preserve;
 
         // Commit content text (if any non-whitespace) as the content-property value.
         if (!sawContentChild)
@@ -892,7 +896,7 @@ internal sealed class XamlParser
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Deferred, childObjects[0], childObjects.Count, lineInfo));
             }
-            else if (childObjects.Count == 1 && member?.ValueType is { } vt && !IsCollectionMember(member))
+            else if (childObjects.Count == 1 && member?.ValueType is not null && !IsCollectionMember(member))
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Object, childObjects[0], 0, lineInfo));
             }
@@ -1225,7 +1229,7 @@ internal sealed class XamlParser
         string ns = _reader.LookupNamespace(prefix) is { Length: > 0 } bound ? bound : XmlnsNamespaces.CursorialUi;
 
         var resolution = ResolveTypeQuiet(ns, name);
-        if (!resolution.IsResolved && !resolution.IsAmbiguous && appendExtensionSuffix)
+        if (resolution is { IsResolved: false, IsAmbiguous: false } && appendExtensionSuffix)
             resolution = ResolveTypeQuiet(ns, name + "Extension");
 
         if (!resolution.IsResolved && report)

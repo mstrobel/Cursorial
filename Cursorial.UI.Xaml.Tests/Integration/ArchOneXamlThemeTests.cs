@@ -1,8 +1,6 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using System.Collections.Generic;
-
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -101,11 +99,11 @@ public sealed class ArchOneXamlThemeTests
         AssertGlyphs(dict, ThemeKeys.RadioGlyphs, "( )", "(*)", "(-)");
         AssertGlyphs(dict, ThemeKeys.ScrollArrowGlyphs, "^", "v", ""); // arrow pair: empty Indeterminate default
 
-        static void AssertGlyphs(ResourceDictionary dict, string key, string unchecked_, string checked_, string indeterminate)
+        static void AssertGlyphs(ResourceDictionary dict, string key, string @unchecked, string @checked, string indeterminate)
         {
             Assert.True(dict.TryGetValue(key, out var value), $"theme dict missing glyph resource '{key}'");
             var glyphs = Assert.IsType<GlyphSetCarrier>(value);
-            Assert.Equal((unchecked_, checked_, indeterminate), (glyphs.Unchecked, glyphs.Checked, glyphs.Indeterminate));
+            Assert.Equal((@unchecked, @checked, indeterminate), (glyphs.Unchecked, glyphs.Checked, glyphs.Indeterminate));
         }
     }
 

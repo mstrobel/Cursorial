@@ -135,7 +135,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
                 Button = MouseButton.None,
                 ButtonsHeld = MouseButtons.None,
                 Modifiers = KeyModifiers.None,
-                Timestamp = DateTimeOffset.UnixEpoch,
+                Timestamp = DateTimeOffset.UnixEpoch
             };
         }
 
@@ -393,7 +393,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
                 Button = MouseButton.None,
                 ButtonsHeld = MouseButtons.None,
                 Modifiers = KeyModifiers.None,
-                Timestamp = DateTimeOffset.UnixEpoch,
+                Timestamp = DateTimeOffset.UnixEpoch
             };
         }
 
@@ -478,7 +478,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     private static Style CreateButtonHoverRule()
     {
         var style = new Style(Selectors.OfType<Button>().PseudoClass("pointerover"));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, new Cursorial.Drawing.Media.SolidColorBrush(Cursorial.Output.Color.FromRgb(80, 120, 200))));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, new Drawing.Media.SolidColorBrush(Output.Color.FromRgb(80, 120, 200))));
         return style;
     }
 }

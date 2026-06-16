@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -39,7 +41,7 @@ public static class ResourceDiagnostics
     public static int Subscriptions(UIElement root)
     {
         ArgumentNullException.ThrowIfNull(root);
-        return UIApplication.Current?.RegistryForRoot(ResourceServices.LogicalRoot(root))?.LiveNodeCount ?? 0;
+        return UIApplication.Current?.RegistryForRoot(ResourceServices.LogicalRoot(root)).LiveNodeCount ?? 0;
     }
 
     /// <summary>The deferred-entry states + <c>RealizedAtVariant</c> for a dictionary (design doc §11.10/CD7).</summary>

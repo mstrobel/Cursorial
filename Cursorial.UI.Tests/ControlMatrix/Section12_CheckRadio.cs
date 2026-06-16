@@ -5,6 +5,8 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>
@@ -35,7 +37,7 @@ public sealed class Section12_CheckRadio
     public void C207_CheckBoxGlyphRender(object? state, string glyph)
     {
         var cb = new CheckBox { Content = "Opt", IsThreeState = true };
-        cb.IsChecked = state switch { true => true, "ind" => (bool?)null, _ => false };
+        cb.IsChecked = state switch { true => true, "ind" => null, _ => false };
 
         using var host = Show(cb, TestCapabilities.KittyTruecolor);
         var row = host.GetRowText(0);
@@ -242,7 +244,7 @@ public sealed class Section12_CheckRadio
         {
             host.SendKey(Key.Space);
             host.RunFrame();
-            Assert.NotEqual((bool?)null, rb.IsChecked); // never cycles to indeterminate by click (C218)
+            Assert.NotNull(rb.IsChecked); // never cycles to indeterminate by click (C218)
         }
 
         // An explicit set still allows null (the bool? shape from ToggleButton exists).

@@ -5,6 +5,8 @@ using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C5 — ListBox keyboard navigation (P9.3b: arrows/Home/End/Space/Enter + the focus-row cue).

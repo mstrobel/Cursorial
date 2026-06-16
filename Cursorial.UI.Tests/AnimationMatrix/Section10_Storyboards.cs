@@ -2,10 +2,11 @@ using Cursorial.Animation;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
 using Cursorial.UI.Testing;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
@@ -30,7 +31,7 @@ public sealed class Section10_Storyboards
             TargetProperty = property,
             To = to,
             Duration = Ms(ms),
-            From = from is { } f ? new Optional<double>(f) : Optional<double>.Unset,
+            From = from is { } f ? new Optional<double>(f) : Optional<double>.Unset
         };
 
     [Fact] // N102: two finite tracks run as independent children; the storyboard completes when the longer finishes
@@ -320,7 +321,7 @@ public sealed class Section10_Storyboards
         {
             TargetProperty = Animatable.VProperty,
             Source = new DoubleAnimation(0.0, 10.0, Ms(50)),
-            Repeat = RepeatBehavior.Count(2),
+            Repeat = RepeatBehavior.Count(2)
         });
         var handle = sb.Begin(scope);
 
@@ -352,7 +353,7 @@ public sealed class Section10_Storyboards
             TargetProperty = Animatable.VProperty,
             To = 10.0,
             Duration = TimeSpan.FromTicks(long.MaxValue / 2),
-            Repeat = RepeatBehavior.Count(5),
+            Repeat = RepeatBehavior.Count(5)
         });
         Assert.Throws<OverflowException>(() => sb.Begin(scope));
     }

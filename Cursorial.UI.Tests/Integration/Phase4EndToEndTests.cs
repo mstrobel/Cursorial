@@ -156,16 +156,17 @@ public sealed class Phase4EndToEndTests
     }
 
     /// <summary>A converter projecting a bool → one of two fill colors (the When-style alternative path probe).</summary>
+    // ReSharper disable once UnusedType.Local
     private sealed class BoolToFillConverter : IValueConverter
     {
         public Color WhenTrue { get; init; }
 
         public Color WhenFalse { get; init; }
 
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
             => value is true ? WhenTrue : WhenFalse;
 
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
             => throw new NotSupportedException();
     }
 
@@ -240,7 +241,7 @@ public sealed class Phase4EndToEndTests
         host.Application.Styles.Add(R("Card", (Card.FillProperty, BaseFill)));
         card.SetBinding(Card.LabelProperty, new Binding(nameof(PocoVm.Title))
         {
-            Mode = BindingMode.TwoWay,
+            Mode = BindingMode.TwoWay
         });
 
         host.ShowRoot(root);
@@ -466,7 +467,7 @@ public sealed class Phase4EndToEndTests
         card.SetBinding(Card.LabelProperty, new Binding(nameof(CardVm.Title))
         {
             Mode = BindingMode.TwoWay,
-            UpdateSourceTrigger = UpdateSourceTrigger.LostFocus,
+            UpdateSourceTrigger = UpdateSourceTrigger.LostFocus
         });
 
         // A dirty edit not yet flushed (LostFocus trigger holds it).

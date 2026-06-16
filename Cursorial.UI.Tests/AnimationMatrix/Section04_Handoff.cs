@@ -3,6 +3,8 @@ using Cursorial.UI;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 // Animation-matrix §4 (handoff — SnapshotAndReplace) — N20, N37, N39, N40.

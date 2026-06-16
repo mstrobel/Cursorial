@@ -1,6 +1,4 @@
-using Cursorial.UI;
 using Cursorial.UI.Data;
-using Xunit;
 
 // ReSharper disable InconsistentNaming
 

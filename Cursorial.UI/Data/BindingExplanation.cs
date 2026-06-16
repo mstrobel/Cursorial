@@ -15,7 +15,7 @@ public enum BindingLane : byte
     WatchOnly,
 
     /// <summary>A binding targeting a <c>DirectProperty</c> (no store entry).</summary>
-    DirectProperty,
+    DirectProperty
 }
 
 /// <summary>One explained expression line (design doc §6.10).</summary>

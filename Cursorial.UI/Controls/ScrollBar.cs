@@ -1,6 +1,4 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
-
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -178,12 +176,15 @@ public class ScrollBar : Control
     private void SetValueAndRaise(double rawValue, ScrollEventType type)
     {
         var clamped = Math.Clamp(rawValue, Minimum, Math.Max(Minimum, Maximum));
+
+        // ReSharper disable once CompareOfFloatsByEqualityOperator
         if (clamped == Value)
             return;
 
         // Set the value without the OnValueChanged auto-raise (it would tag ThumbPosition), then raise
         // once with the action's own type.
         _suppressScrollEvent = true;
+
         try
         {
             Value = clamped;

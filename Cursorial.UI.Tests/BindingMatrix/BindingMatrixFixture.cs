@@ -2,10 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Cursorial.UI;
-using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
 
-// ReSharper disable InconsistentNaming
 // ReSharper disable MemberCanBePrivate.Global
 
 namespace Cursorial.Tests.UI.BindingMatrix;
@@ -140,6 +137,7 @@ public sealed class WritableLeaf
 }
 
 /// <summary>The INPC sub-object (§0.1).</summary>
+// ReSharper disable once ClassNeverInstantiated.Global
 public sealed class Addr : INotifyPropertyChanged
 {
     private string? _city;

@@ -5,6 +5,8 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>
@@ -38,7 +40,7 @@ public sealed class Section11_RepeatToggle
         Button = kind is MouseEventKind.ButtonDown or MouseEventKind.ButtonUp ? MouseButton.Left : MouseButton.None,
         ButtonsHeld = held,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static void HoverOver(UITestHost host, int column, int row)

@@ -1,8 +1,6 @@
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
-using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 
@@ -344,7 +342,7 @@ internal static class ControlThemes
     private static Style SeparatorTheme()
         => new Style { Key = "Theme.Separator" }
             .SetResource(Control.BackgroundProperty, ThemeKeys.MutedBrush)
-            .Set(UIElement.HeightProperty, (int?)1)
+            .Set(UIElement.HeightProperty, 1)
             .Set(Control.TemplateProperty, new ControlTemplate(_ =>
             {
                 var rule = new Border();
@@ -432,7 +430,7 @@ internal static class ControlThemes
                                {
                                    HorizontalAlignment = HorizontalAlignment.Left,
                                    VerticalAlignment = VerticalAlignment.Top,
-                                   Margin = new Margins(1, 0, 0, 0),
+                                   Margin = new Margins(1, 0, 0, 0)
                                };
 
                    ctx.RegisterName("PART_Caret", caret);
@@ -512,7 +510,7 @@ internal static class ControlThemes
     {
         var theme = new Style { Key = "Theme.ScrollBar" }
             .Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: false))
-            .SetResource(ScrollBar.BorderPenProperty, ThemeKeys.BorderPen);
+            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
         // A horizontal bar uses the rotated template (arrows on the ends of the long axis).
         theme.Children.Add(new Style("^:horizontal").Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: true)));
         return theme;
@@ -556,10 +554,10 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     /// <summary>The <see cref="ThemeKeys"/> glyph-set resource key (the <c>(Unchecked, Checked, Indeterminate)</c> <see cref="GlyphSetCarrier"/> base).</summary>
     public string? GlyphKey { get; set; }
 
-    /// <summary>The <see cref="ThemeKeys"/> brush key coloring the CHECKED inner mark (e.g. GreenBrush ✓ / AccentBrush ●); <c>null</c> leaves it in the foreground.</summary>
+    /// <summary>The <see cref="ThemeKeys"/> brush key coloring the CHECKED inner mark (e.g., GreenBrush ✓ / AccentBrush ●); <c>null</c> leaves it in the foreground.</summary>
     public string? CheckedMarkKey { get; set; }
 
-    /// <summary>The <see cref="ThemeKeys"/> brush key coloring the INDETERMINATE inner mark (e.g. AmberBrush ▪); <c>null</c> leaves it in the foreground.</summary>
+    /// <summary>The <see cref="ThemeKeys"/> brush key coloring the INDETERMINATE inner mark (e.g., AmberBrush ▪); <c>null</c> leaves it in the foreground.</summary>
     public string? IndeterminateMarkKey { get; set; }
 
     // The caps-unicode glyph-set override (design doc §12.7 / SD14): CursorialThemeStyles' `.caps-unicode`
@@ -570,7 +568,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     public static readonly AttachedProperty<GlyphSetCarrier?> GlyphsProperty =
         UIProperty.RegisterAttached<ToggleGlyph, ToggleButton, GlyphSetCarrier?>("Glyphs");
 
-    static ToggleGlyph() => UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
+    static ToggleGlyph() => AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
 
     /// <summary>Parameterless constructor for XAML; set <see cref="GlyphKey"/> + the mark keys via properties.</summary>
     public ToggleGlyph() { }
@@ -634,7 +632,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     protected override Size MeasureOverride(Size availableSize)
     {
         var glyph = Glyphs.ForChecked(CheckedState);
-        return new Size(Cursorial.Text.GraphemeWidth.StringWidth(glyph), 1);
+        return new Size(Text.GraphemeWidth.StringWidth(glyph), 1);
     }
 
     /// <inheritdoc/>
@@ -661,10 +659,10 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         {
             var open = glyph[..1];
             var inner = glyph[1..^1];
-            var openWidth = Cursorial.Text.GraphemeWidth.StringWidth(open);
+            var openWidth = Text.GraphemeWidth.StringWidth(open);
             DrawAt(context, 0, open, foreground, attrs);
             DrawAt(context, openWidth, inner, mark, attrs);
-            DrawAt(context, openWidth + Cursorial.Text.GraphemeWidth.StringWidth(inner), glyph[^1..], foreground, attrs);
+            DrawAt(context, openWidth + Text.GraphemeWidth.StringWidth(inner), glyph[^1..], foreground, attrs);
             return;
         }
 

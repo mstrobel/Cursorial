@@ -24,7 +24,7 @@ public class Section08_FocusCore
         Modifiers = modifiers,
         Kind = KeyEventKind.Down,
         Text = ReadOnlyMemory<char>.Empty,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static MouseEvent MouseMove(int column, int row) => new()
@@ -34,7 +34,7 @@ public class Section08_FocusCore
         Button = MouseButton.None,
         ButtonsHeld = MouseButtons.None,
         Modifiers = KeyModifiers.None,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static bool HasState(Probe probe, InteractionState state) => (probe.InteractionStateInternal & state) != 0;
@@ -182,7 +182,7 @@ public class Section08_FocusCore
         Assert.Equal(
             [
                 "A.OnLostFocus", "A.h-lost", "Root.OnLostFocus", // LostFocus bubbles from A
-                "B.OnGotFocus", "B.h-got", "Root.OnGotFocus",    // then GotFocus bubbles from B
+                "B.OnGotFocus", "B.h-got", "Root.OnGotFocus"     // then GotFocus bubbles from B
             ],
             log);
         Assert.Equal((a, b, FocusNavigationMethod.Programmatic), lostArgs);
@@ -599,7 +599,7 @@ public class Section08_FocusCore
             Modifiers = KeyModifiers.None,
             Kind = KeyEventKind.Down,
             Text = ReadOnlyMemory<char>.Empty,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         Assert.Contains("Other.OnKeyDown", log);
         Assert.DoesNotContain("Leaf.OnKeyDown", log);

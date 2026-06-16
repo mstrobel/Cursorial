@@ -15,7 +15,7 @@ public enum ControlDiagnosticKind
     ContentRecursion,
 
     /// <summary>A <see cref="ScrollViewer"/> requested horizontal <c>Auto</c>, which v1 treats as <c>Disabled</c> (the horizontal axis is unbanded — doc §5.7/CD28).</summary>
-    HorizontalAutoUnsupported,
+    HorizontalAutoUnsupported
 }
 
 /// <summary>One emitted control diagnostic.</summary>

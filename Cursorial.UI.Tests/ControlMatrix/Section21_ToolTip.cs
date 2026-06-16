@@ -6,6 +6,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C8 — ToolTip / ToolTipService (P9.4d): hover-driven, UITimer-paced, on S3's HoverChanged
@@ -154,7 +156,7 @@ public sealed class Section21_ToolTip
         Show(host, tip);
         var surface = host.Application.WindowManager!.Popups[0].PopupSurface;
         Assert.NotNull(surface);
-        Assert.True(surface!.IsHitTestTransparent);
+        Assert.True(surface.IsHitTestTransparent);
     }
 
     [Fact] // C8.9: terminal focus-out closes the tooltip (it must not outlive the focused terminal)
@@ -251,7 +253,7 @@ public sealed class Section21_ToolTip
         {
             Width = 8, Height = 2,
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
-            Background = new SolidColorBrush(Color.FromRgb(70, 70, 70)),
+            Background = new SolidColorBrush(Color.FromRgb(70, 70, 70))
         };
         var parent = new Border { Width = 24, Height = 8, Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)), Child = child };
         ToolTipService.SetTip(parent, "p");

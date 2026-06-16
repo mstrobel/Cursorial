@@ -1,6 +1,8 @@
-using System.Collections.ObjectModel;
+using System.Collections.ObjectModel; 
 
+// ReSharper disable ParameterOnlyUsedForPreconditionCheck.Local
 // ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>

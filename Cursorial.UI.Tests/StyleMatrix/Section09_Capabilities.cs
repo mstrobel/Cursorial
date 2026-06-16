@@ -2,7 +2,6 @@
 // renegotiation path the same way the P2 suites do (the synthetic host completes synchronously).
 
 using Cursorial.Output;
-using Cursorial.Output.Capabilities;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
 
@@ -52,8 +51,8 @@ public class Section09_Capabilities
         {
             Output = TestCapabilities.KittyTruecolor.Output with
             {
-                Color = TestCapabilities.KittyTruecolor.Output.Color with { Depth = depth },
-            },
+                Color = TestCapabilities.KittyTruecolor.Output.Color with { Depth = depth }
+            }
         };
 
         using var tree = ShowTree(new UITestHostOptions { Capabilities = capabilities });

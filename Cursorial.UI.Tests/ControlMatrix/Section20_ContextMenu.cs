@@ -8,6 +8,9 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable UnusedTupleComponentInReturnValue
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C7 — ContextMenu (P9.4d): the popup-rooted vertical menu + the right-click / Key.Menu
@@ -76,7 +79,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, _, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         Assert.False(menu.IsOpen);
         host.SendClick(5, 4, MouseButton.Right);
@@ -105,7 +108,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var host = Host();
-        using var _h = host;
+        using var _ = host;
         var owner = new Button { Content = "target" }; // focusable so Key.Menu has a focused target
         ContextMenu.SetMenu(owner, menu);
         host.ShowRoot(owner);
@@ -127,7 +130,7 @@ public sealed class Section20_ContextMenu
         menu.Items.Add(first);
         menu.Items.Add(second);
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         menu.Open(owner);
         host.RunUntilIdle();
@@ -146,7 +149,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(leaf);
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         menu.Open(owner);
         host.RunUntilIdle();
@@ -165,7 +168,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         menu.Open(owner);
         host.RunUntilIdle();
@@ -182,7 +185,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         menu.Open(owner, new CellPosition(0, 0)); // drop below the owner so the far corner is outside
         host.RunUntilIdle();
@@ -199,7 +202,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
         var wm = host.Application.WindowManager!;
 
         menu.Open(owner, new CellPosition(0, 0));
@@ -224,7 +227,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(more);
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         menu.Open(owner);
         host.RunUntilIdle();
@@ -242,7 +245,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         menu.Open(owner);
         host.RunUntilIdle();
@@ -260,7 +263,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu); // owner (Border) carries the menu, centered (cols 5-35, rows 3-13)
-        using var _h = host;
+        using var _ = host;
         var child = new Border { Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)) }; // fills owner, hittable, NO menu
         owner.Child = child;
         host.RunUntilIdle();
@@ -276,7 +279,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, owner, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
         owner.AddHandler(UIElement.PreviewMouseUpEvent, (_, e) => e.Handled = true); // consume the event
 
         host.SendClick(5, 4, MouseButton.Right);
@@ -291,7 +294,7 @@ public sealed class Section20_ContextMenu
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Cut" });
         var (host, _, _) = RootWithMenu(menu);
-        using var _h = host;
+        using var _ = host;
 
         host.SendClick(10, 6, MouseButton.Right); // open at the pointer (inside the centered owner)
         host.RunUntilIdle();
@@ -306,7 +309,7 @@ public sealed class Section20_ContextMenu
     public void C7_16_MenuKeyNoMenuNoOp()
     {
         var host = Host();
-        using var _h = host;
+        using var _ = host;
         var owner = new Button { Content = "target" }; // focusable, but no ContextMenu.Menu attached
         host.ShowRoot(owner);
         host.RunUntilIdle();

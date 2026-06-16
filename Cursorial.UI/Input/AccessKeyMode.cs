@@ -18,5 +18,5 @@ public enum AccessKeyMode : byte
     /// The legacy fallback (requirement 6's "permanently visible otherwise"): the cue is set on
     /// every surface root and never cleared.
     /// </summary>
-    AlwaysVisible,
+    AlwaysVisible
 }

@@ -1,6 +1,8 @@
 using Cursorial.UI;
-using Cursorial.UI.Xaml;
+
 using UIControls = Cursorial.UI.Controls;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 

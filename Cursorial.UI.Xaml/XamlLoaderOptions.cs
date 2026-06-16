@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 
 namespace Cursorial.UI.Xaml;
@@ -57,5 +56,5 @@ public sealed class XamlLoadContext
     /// The ambient resource scope <c>{StaticResource}</c> falls back to after the document's lexical
     /// dictionary stack (matrix XD9). Defaults to <c>ResourceScopes.ForApplication()</c> when null.
     /// </summary>
-    public Cursorial.UI.IResourceScope? AmbientResources { get; init; }
+    public IResourceScope? AmbientResources { get; init; }
 }

@@ -623,7 +623,7 @@ public class Section11_RenderZones
         {
             "hit-test-invisible-container" => BuildContainerCase(root),
             "hidden-subtree" => BuildHiddenCase(root),
-            _ => BuildHitTestCoreCase(root),
+            _ => BuildHitTestCoreCase(root)
         };
         tree.Render();
 
@@ -652,7 +652,7 @@ public class Section11_RenderZones
             var child = new Probe(4, 2)
             {
                 HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Top,
+                VerticalAlignment = VerticalAlignment.Top
             };
             container.Add(child);
             root.Children.Add(container);

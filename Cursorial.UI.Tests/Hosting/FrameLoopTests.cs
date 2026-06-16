@@ -76,7 +76,7 @@ public sealed class FrameLoopTests
         {
             Kind = DeviceResponseKind.Unknown,
             Payload = new byte[] { 0x1b },
-            Timestamp = host.Time.GetUtcNow(),
+            Timestamp = host.Time.GetUtcNow()
         });
         host.RunFrame();
 

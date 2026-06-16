@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using Cursorial.UI;
@@ -194,6 +195,7 @@ public class Section14_When
     }
 
     /// <summary>An INPC viewmodel that exposes its live subscriber count (the leak probe for B162h).</summary>
+    [SuppressMessage("ReSharper", "UnusedMember.Local")]
     private sealed class WhenVm : INotifyPropertyChanged
     {
         private PropertyChangedEventHandler? _handlers;

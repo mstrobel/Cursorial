@@ -293,7 +293,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.MinValue,
+            Timestamp = DateTimeOffset.MinValue
         });
     }
 

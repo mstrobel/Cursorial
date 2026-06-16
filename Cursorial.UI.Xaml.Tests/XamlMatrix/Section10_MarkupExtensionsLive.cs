@@ -1,12 +1,11 @@
-using System;
-
 using Cursorial.Drawing.Media;
 using Cursorial.UI;
-using Cursorial.UI.Data;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -185,7 +184,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         var button = (UIControls.Button)border.Child!;
         button.DataContext = vm;
         Assert.IsType<SolidColorBrush>(button.Foreground);
-        Assert.Equal(Cursorial.Output.Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
+        Assert.Equal(Output.Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
     }
 
     [Fact] // X122
@@ -234,7 +233,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         // templated parent's Background (one-way).
         var template = Load<UIControls.ControlTemplate>(
             "<ControlTemplate><Border Background=\"{TemplateBinding Background}\"/></ControlTemplate>");
-        var owner = new UIControls.Button { Background = new SolidColorBrush(Cursorial.Output.Color.FromRgb(1, 2, 3)) };
+        var owner = new UIControls.Button { Background = new SolidColorBrush(Output.Color.FromRgb(1, 2, 3)) };
         template.TargetType = typeof(UIControls.Button);
         var instance = template.Instantiate(owner);
         var part = (UIControls.Border)instance.Root;

@@ -21,7 +21,7 @@ public enum KeyboardNavigationMode : byte
     /// container itself when focusable; the next Tab/Shift+Tab exits past the whole container —
     /// the ListBox shape.
     /// </summary>
-    Once,
+    Once
 }
 
 /// <summary>
@@ -37,7 +37,7 @@ public enum DirectionalNavigationMode : byte
     Contained,
 
     /// <summary>As <see cref="Contained"/>, but at an edge focus wraps to the farthest candidate on the opposite side (ND17).</summary>
-    Cycle,
+    Cycle
 }
 
 /// <summary>

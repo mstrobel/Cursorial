@@ -114,7 +114,7 @@ public sealed class Phase2EndToEndTests
             Modifiers = KeyModifiers.None,
             WheelDeltaY = wheelDeltaY,
             ClickCount = 1,
-            Timestamp = default, // stamped by UITestHost.SendInput on the fake clock
+            Timestamp = default // stamped by UITestHost.SendInput on the fake clock
         };
 
     // ───────────────────────────── (a) tab cycle + scope memory + restore ─────────────────────────────
@@ -219,7 +219,7 @@ public sealed class Phase2EndToEndTests
     {
         using var host = UITestHost.Create(new UITestHostOptions
         {
-            InitialSize = new Size(20, 10),
+            InitialSize = new Size(20, 10)
         });
 
         var root = new PlainHost();

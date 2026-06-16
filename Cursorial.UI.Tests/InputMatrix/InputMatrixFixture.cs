@@ -360,7 +360,7 @@ public sealed class MouseHost : IDisposable
             ButtonsHeld = buttonsHeld,
             Modifiers = KeyModifiers.None,
             ClickCount = clickCount,
-            Timestamp = Host.Time.GetUtcNow(),
+            Timestamp = Host.Time.GetUtcNow()
         };
 
     public void Dispose() => Host.Dispose();
@@ -450,7 +450,7 @@ public sealed class InputHost : IDisposable
             Synthesized = synthesized,
             IsRepeat = isRepeat,
             RepeatCount = repeatCount,
-            Timestamp = Host.Time.GetUtcNow(),
+            Timestamp = Host.Time.GetUtcNow()
         };
 
     public MouseEvent Mouse(
@@ -470,7 +470,7 @@ public sealed class InputHost : IDisposable
             Modifiers = KeyModifiers.None,
             ClickCount = clickCount,
             Synthesized = synthesized,
-            Timestamp = Host.Time.GetUtcNow(),
+            Timestamp = Host.Time.GetUtcNow()
         };
 
     public FocusEvent Focus(bool hasFocus)

@@ -1,7 +1,5 @@
 using Cursorial.Animation;
 
-// ReSharper disable RedundantTypeArgumentsOfMethod
-
 namespace Cursorial.Tests.Animation;
 
 // Animation-matrix §13 (mechanism combinators, MECH) + the perpetual/overflow guards (N67–N70, N82–N88).

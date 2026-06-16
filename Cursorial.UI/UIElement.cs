@@ -518,7 +518,7 @@ public abstract partial class UIElement : UIObject
 
         OnTearDown(); // subclass-owned release of non-binding external subscriptions (e.g. ItemsControl's source view)
         TearDownValueStore();
-        Cursorial.UI.Data.BindingOperations.TearDown(this); // the second sweep leg (doc §5.1 / §6.5)
+        Data.BindingOperations.TearDown(this); // the second sweep leg (doc §5.1 / §6.5)
     }
 
     /// <summary>

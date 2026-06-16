@@ -23,5 +23,5 @@ public enum UpdateSourceTrigger : byte
     LostFocus,
 
     /// <summary>Flush only when <c>BindingExpressionBase.UpdateSource()</c> is called.</summary>
-    Explicit,
+    Explicit
 }

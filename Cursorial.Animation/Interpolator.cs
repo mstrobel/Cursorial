@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Threading;
-
 using Cursorial.Output;
 
 namespace Cursorial.Animation;
@@ -25,15 +22,15 @@ namespace Cursorial.Animation;
 /// </remarks>
 public static class Interpolator
 {
-    private static readonly object _writeLock = new();
-    private static Dictionary<System.Type, object> _registry = Seed();
+    private static readonly object WriteLock = new();
+    private static Dictionary<Type, object> _registry = Seed();
 
     /// <summary>The interpolator registered for <typeparamref name="T"/>.</summary>
     /// <exception cref="System.InvalidOperationException">No interpolator is registered for <typeparamref name="T"/>.</exception>
     public static IInterpolator<T> For<T>()
         => TryGet<T>(out var interpolator)
             ? interpolator
-            : throw new System.InvalidOperationException(
+            : throw new InvalidOperationException(
                 $"No interpolator is registered for '{typeof(T)}'. Register one with " +
                 $"Interpolator.Register<{typeof(T).Name}>(…) at startup, or pass an explicit interpolator to the animation/track.");
 
@@ -50,10 +47,10 @@ public static class Interpolator
     /// </summary>
     public static void Register<T>(IInterpolator<T> interpolator)
     {
-        System.ArgumentNullException.ThrowIfNull(interpolator);
-        lock (_writeLock)
+        ArgumentNullException.ThrowIfNull(interpolator);
+        lock (WriteLock)
         {
-            var next = new Dictionary<System.Type, object>(Volatile.Read(ref _registry)) { [typeof(T)] = interpolator };
+            var next = new Dictionary<Type, object>(Volatile.Read(ref _registry)) { [typeof(T)] = interpolator };
             Volatile.Write(ref _registry, next);
         }
     }
@@ -70,7 +67,7 @@ public static class Interpolator
         return false;
     }
 
-    private static Dictionary<System.Type, object> Seed() => new()
+    private static Dictionary<Type, object> Seed() => new()
     {
         [typeof(double)] = DoubleInterpolator.Instance,
         [typeof(int)] = Int32Interpolator.Instance,

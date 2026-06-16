@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>The granularity of a <see cref="ResourceDictionary.Changed"/> pulse (design doc §11.1).</summary>

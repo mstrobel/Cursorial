@@ -1,5 +1,7 @@
 using System.Collections;
 
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.UI;
 
 /// <summary>

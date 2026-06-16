@@ -1,9 +1,9 @@
-using Cursorial.Drawing;
-using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Testing;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -132,7 +132,7 @@ public sealed class Section06_ControlTemplates
         var presenter = control.GetTemplatePart<ContentPresenter>("PART_Presenter");
         Assert.NotNull(presenter);
         Assert.Same(control, root.TemplatedParent);
-        Assert.Same(control, presenter!.TemplatedParent);
+        Assert.Same(control, presenter.TemplatedParent);
         // The template name scope is set on the control.
         Assert.Same(control.TemplateInstance!.NameScope, NameScope.GetTemplateNameScope(control));
     }
@@ -145,7 +145,7 @@ public sealed class Section06_ControlTemplates
 
         var control = new TestControl
         {
-            Template = new ControlTemplate(_ => alien),
+            Template = new ControlTemplate(_ => alien)
         };
 
         var host = UITestHost.Create();
@@ -215,7 +215,7 @@ public sealed class Section06_ControlTemplates
                 var border = new Border();
                 ctx.RegisterName("PART_T", border);
                 return border;
-            }),
+            })
         };
 
         using var host = AttachControl(control);
@@ -232,7 +232,7 @@ public sealed class Section06_ControlTemplates
                 var wrong = new TextBlock("x");
                 ctx.RegisterName("PART_T", wrong); // declared Border, provided TextBlock
                 return wrong;
-            }),
+            })
         };
 
         var host = UITestHost.Create();
@@ -248,7 +248,7 @@ public sealed class Section06_ControlTemplates
     {
         var control = new RequiredPartControl
         {
-            Template = new ControlTemplate(_ => new Border()), // PART_T omitted
+            Template = new ControlTemplate(_ => new Border()) // PART_T omitted
         };
 
         var host = UITestHost.Create();
@@ -262,7 +262,7 @@ public sealed class Section06_ControlTemplates
     {
         var control = new OptionalPartControl
         {
-            Template = new ControlTemplate(_ => new Border()), // PART_Opt omitted (optional)
+            Template = new ControlTemplate(_ => new Border()) // PART_Opt omitted (optional)
         };
 
         using var host = AttachControl(control);
@@ -280,7 +280,7 @@ public sealed class Section06_ControlTemplates
                 var wrong = new TextBlock("x");
                 ctx.RegisterName("PART_T", wrong); // wrong type for the required part
                 return wrong;
-            }),
+            })
         };
 
         var host = UITestHost.Create();
@@ -321,18 +321,17 @@ public sealed class Section06_ControlTemplates
     [Fact] // C134
     public void C134_ReentrantTemplateSetDefersNoRecurse()
     {
-        TestControl? control = null;
         var reentered = false;
-        control = new TestControl
-        {
-            Template = BorderWithPresenter(),
-        };
+        var control = new TestControl
+                      {
+                          Template = BorderWithPresenter()
+                      };
         control.ApplyHook = () =>
         {
             if (!reentered)
             {
                 reentered = true;
-                control!.Template = BorderWithPresenter(); // re-set from inside OnApplyTemplate
+                control.Template = BorderWithPresenter(); // re-set from inside OnApplyTemplate
             }
         };
 
@@ -448,7 +447,7 @@ public sealed class Section06_ControlTemplates
             var border = new Border();
             ctx.RegisterName("PART_B", border);
             // {TemplateBinding ZIndex} — one-way fast path to the templated parent's ZIndex.
-            border.SetBinding(UIElement.ZIndexProperty, new Cursorial.UI.Data.TemplateBinding(UIElement.ZIndexProperty));
+            border.SetBinding(UIElement.ZIndexProperty, new TemplateBinding(UIElement.ZIndexProperty));
             return border;
         });
 

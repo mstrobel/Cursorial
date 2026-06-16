@@ -18,7 +18,7 @@ public class ValueSourceDiagnosticsTests
         var annotated = new ValueSource(BindingPriority.Style, IsCurrentValue: false)
         {
             BasePriority = BindingPriority.Style,
-            IsCoerced = true,
+            IsCoerced = true
         };
 
         Assert.Equal(plain, annotated); // PD23: annotations do not participate
@@ -30,17 +30,17 @@ public class ValueSourceDiagnosticsTests
     public void AnimatedSource_ReportsIsAnimated_AndTheBaseLane()
     {
         var host = new Host();
-        host.SetValue(MatrixFixture.P, 3);
-        var handle = host.BeginAnimation(MatrixFixture.P);
+        host.SetValue(P, 3);
+        var handle = host.BeginAnimation(P);
         handle.SetValue(9);
 
-        var source = host.GetValueSource(MatrixFixture.P);
+        var source = host.GetValueSource(P);
         Assert.True(source.IsAnimated);
         Assert.Equal(BindingPriority.Animation, source.Priority);
         Assert.Equal(BindingPriority.LocalValue, source.BasePriority); // the lane underneath
 
         handle.Dispose();
-        source = host.GetValueSource(MatrixFixture.P);
+        source = host.GetValueSource(P);
         Assert.False(source.IsAnimated);
         Assert.Equal(BindingPriority.LocalValue, source.BasePriority);
     }

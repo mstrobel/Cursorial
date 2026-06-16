@@ -28,5 +28,5 @@ public sealed class MarginsInterpolator : IInterpolator<Margins>
 
     // Rounded (ties away from zero), signed — unlike the size/geometry family, margins are NOT clamped ≥ 0.
     private static int RoundSigned(int from, int to, double progress) =>
-        (int)System.Math.Round(from + (to - from) * progress, System.MidpointRounding.AwayFromZero);
+        (int)Math.Round(from + (to - from) * progress, MidpointRounding.AwayFromZero);
 }

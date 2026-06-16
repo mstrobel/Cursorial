@@ -42,7 +42,7 @@ public class Section14_Untyped
     {
         // ReSharper disable once UnusedMember.Local
         None = 0,
-        Red = 1,
+        Red = 1
     }
 
     [Fact]

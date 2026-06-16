@@ -1,5 +1,3 @@
-using Cursorial.UI.Input;
-
 namespace Cursorial.UI.Controls;
 
 /// <summary>

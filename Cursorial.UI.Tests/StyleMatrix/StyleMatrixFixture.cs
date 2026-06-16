@@ -174,7 +174,7 @@ public static class StyleMatrixFixture
             PaneB = new StackPanel(),
             A = new Widget(),
             B = new Widget(),
-            C = new Widget(),
+            C = new Widget()
         };
 
         tree.PaneA.Children.Add(tree.A);

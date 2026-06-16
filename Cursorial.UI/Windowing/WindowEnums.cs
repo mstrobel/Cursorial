@@ -1,4 +1,4 @@
-using System;
+
 
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
@@ -10,7 +10,7 @@ public enum WindowState : byte
     Normal,
 
     /// <summary>Maximized to fill the screen (re-sized on viewport resize).</summary>
-    Maximized,
+    Maximized
 }
 
 /// <summary>Auto-sizing policy for a window's realized size (design doc §8.2). Default <see cref="WidthAndHeight"/>.</summary>
@@ -26,7 +26,7 @@ public enum SizeToContent : byte
     Height,
 
     /// <summary>Both dimensions track content.</summary>
-    WidthAndHeight,
+    WidthAndHeight
 }
 
 /// <summary>Window chrome selection (design doc §8.2).</summary>
@@ -36,7 +36,7 @@ public enum WindowStyle : byte
     TitleBar,
 
     /// <summary>Chrome-less but still opaque (occluding) — a bare content frame.</summary>
-    None,
+    None
 }
 
 /// <summary>Where a window first appears when shown (design doc §8.2).</summary>
@@ -49,7 +49,7 @@ public enum WindowStartupLocation : byte
     CenterScreen,
 
     /// <summary>Centered over the owner window (falls back to the screen when there is no owner).</summary>
-    CenterOwner,
+    CenterOwner
 }
 
 /// <summary>Why a window is closing — surfaced on <c>WindowClosingEventArgs</c> (design doc §8.2/§8.6/§8.8).</summary>
@@ -65,7 +65,7 @@ public enum WindowCloseReason : byte
     OwnerClosed,
 
     /// <summary>The window manager is shutting down — <c>CloseAllAsync</c> (not cancelable).</summary>
-    ManagerShutdown,
+    ManagerShutdown
 }
 
 /// <summary>Where a <c>Popup</c> places its surface relative to its placement target (design doc §8.4). Default <see cref="Bottom"/>.</summary>
@@ -87,7 +87,7 @@ public enum PlacementMode : byte
     Center,
 
     /// <summary>At the last pointer position.</summary>
-    Pointer,
+    Pointer
 }
 
 /// <summary>Why a <c>Popup</c> closed — surfaced on <c>PopupClosedEventArgs</c> (design doc §8.4).</summary>
@@ -112,7 +112,7 @@ public enum PopupCloseReason : byte
     HostClosed,
 
     /// <summary>The screen was resized (a light-dismiss popup; <c>StaysOpen</c> popups re-place instead).</summary>
-    ScreenResized,
+    ScreenResized
 }
 
 /// <summary>
@@ -135,5 +135,5 @@ public enum WindowHitTestRole : byte
     Maximize = 4,
 
     /// <summary>Dragging the part resizes the window from the lower-right corner (the grip).</summary>
-    ResizeSE = 8,
+    ResizeSE = 8
 }

@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 
 using Cursorial.Drawing;
@@ -9,6 +8,8 @@ using Cursorial.UI;
 using Cursorial.UI.Input;
 using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -161,8 +162,8 @@ public sealed class Section07_Converters : LoaderTestBase
     {
         var pen = (Pen)Convert(typeof(Pen), "Heavy #66d9ef")!;
         Assert.Equal(StrokeWeight.Heavy, pen.Weight);                           // preset preserved
-        var brush = Assert.IsType<Cursorial.Drawing.Media.SolidColorBrush>(pen.Brush);
-        Assert.Equal(Cursorial.Output.Color.FromHex("#66d9ef"), brush.Color);   // …and the color folded in
+        var brush = Assert.IsType<SolidColorBrush>(pen.Brush);
+        Assert.Equal(Color.FromHex("#66d9ef"), brush.Color);   // …and the color folded in
     }
 
     [Fact]
@@ -193,6 +194,6 @@ public sealed class Section07_Converters : LoaderTestBase
     private sealed class ConstConverter : ITypeConverter
     {
         public bool IsContextFree => true;
-        public object? ConvertFromString(string text, in XamlValueContext context) => text;
+        public object ConvertFromString(string text, in XamlValueContext context) => text;
     }
 }

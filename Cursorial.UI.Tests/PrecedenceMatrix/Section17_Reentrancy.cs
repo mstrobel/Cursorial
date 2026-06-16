@@ -136,7 +136,7 @@ public class Section17_Reentrancy
             [
                 "cb(0->2)",
                 "cb(2->5)", "obs(2->5,LocalValue)", "virt(2->5)",
-                "obs(0->2,LocalValue)", "virt(0->2)",
+                "obs(0->2,LocalValue)", "virt(0->2)"
             ],
             sequence);
         Assert.Equal(5, host.GetValue(property));

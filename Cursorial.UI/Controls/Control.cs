@@ -1,6 +1,5 @@
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 
 namespace Cursorial.UI.Controls;
@@ -202,7 +201,7 @@ public class Control : UIElement, IControlThemeHost
 
         // ③ Instantiate: build + stamp TemplatedParent + set the template name scope.
         var instance = template.Instantiate(this);
-        Cursorial.UI.NameScope.SetTemplateNameScope(this, instance.NameScope);
+        NameScope.SetTemplateNameScope(this, instance.NameScope);
         _templateInstance = instance;
 
         // ④ Validate [TemplatePart] immediately, before visual attach (CD19/C129/C130/C132).

@@ -1,13 +1,10 @@
-using System;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-using Cursorial.UI;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.UI.Xaml;
@@ -126,7 +123,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider
         if (Nullable.GetUnderlyingType(clrType) is not null)
             return null;
         // A value type's implicit parameterless constructor is NOT surfaced by GetConstructor(Type.EmptyTypes)
-        // (it returns null), but Activator.CreateInstance always default-constructs one. Record structs (e.g.
+        // (it returns null), but Activator.CreateInstance always default-constructs one. Record structs (e.g.,
         // Drawing.Pen) are thus element-authorable; their init members are set via reflection SetValue on the
         // boxed instance the builder holds, which mutates the box in place (boxed-struct-safe).
         if (clrType.IsValueType || clrType.GetConstructor(Type.EmptyTypes) is not null)
@@ -203,18 +200,14 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider
         // (2) A CLR event.
         var evt = ownerType.GetEvent(name, BindingFlags.Public | BindingFlags.Instance);
         if (evt is not null)
-            return new XamlMember(name, evt.EventHandlerType ?? typeof(Delegate), isEvent: true) { };
+            return new XamlMember(name, evt.EventHandlerType ?? typeof(Delegate), isEvent: true);
 
         // (3) A CLR property (setter delegate, or getter for read-only collections).
         var prop = ownerType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
         if (prop is not null)
         {
-            Action<object, object?>? setClr = prop.CanWrite
-                ? (target, value) => prop.SetValue(target, value)
-                : null;
-            Func<object, object?>? get = prop.CanRead
-                ? target => prop.GetValue(target)
-                : null;
+            Action<object, object?>? setClr = prop.CanWrite ? prop.SetValue : null;
+            Func<object, object?>? get = prop.CanRead ? prop.GetValue : null;
 
             return new XamlMember(
                 name,

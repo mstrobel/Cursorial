@@ -1,4 +1,3 @@
-using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -56,10 +55,10 @@ internal sealed class TestVm : INotifyPropertyChanged
 /// <summary>A one-way converter mapping a status string to a brush (matrix X121's nested converter).</summary>
 internal sealed class StatusToBrush : IValueConverter
 {
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is "ok" ? new SolidColorBrush(Color.FromRgb(0, 255, 0)) : new SolidColorBrush(Color.FromRgb(255, 0, 0));
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
 
@@ -69,8 +68,8 @@ public sealed class RepeatExtension : MarkupExtension
     public int Count { get; set; } = 1;
     public string Text { get; set; } = "x";
 
-    public override object? ProvideValue(IServiceProvider serviceProvider)
-        => string.Concat(System.Linq.Enumerable.Repeat(Text, Count));
+    public override object ProvideValue(IServiceProvider serviceProvider)
+        => string.Concat(Enumerable.Repeat(Text, Count));
 }
 
 /// <summary>A custom markup extension with positional args (matrix X126): adds two integers.</summary>
@@ -79,7 +78,7 @@ public sealed class AddExtension : MarkupExtension
     public int A { get; set; }
     public int B { get; set; }
 
-    public override object? ProvideValue(IServiceProvider serviceProvider) => (A + B).ToString(CultureInfo.InvariantCulture);
+    public override object ProvideValue(IServiceProvider serviceProvider) => (A + B).ToString(CultureInfo.InvariantCulture);
 }
 
 /// <summary>

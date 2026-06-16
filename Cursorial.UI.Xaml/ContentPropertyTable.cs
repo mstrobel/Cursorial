@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
-using Cursorial.UI;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.UI.Xaml;

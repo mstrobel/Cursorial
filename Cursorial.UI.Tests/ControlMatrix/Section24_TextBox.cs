@@ -7,8 +7,9 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -24,7 +25,7 @@ public sealed class Section24_TextBox
         {
             InitialSize = new Size(30, 4),
             Capabilities = capabilities ?? TestCapabilities.KittyTruecolor,
-            CaptureFrameBytes = true,
+            CaptureFrameBytes = true
         };
 
         var host = UITestHost.Create(options);
@@ -34,7 +35,7 @@ public sealed class Section24_TextBox
             Width = width,
             Height = 1,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(box);
         host.RunUntilIdle();
@@ -323,7 +324,7 @@ public sealed class Section24_TextBox
             Button = MouseButton.Left,
             ButtonsHeld = MouseButtons.Left,
             Modifiers = KeyModifiers.None,
-            Timestamp = default,
+            Timestamp = default
         });
         host.RunUntilIdle();
 
@@ -339,7 +340,7 @@ public sealed class Section24_TextBox
             Button = MouseButton.Left,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = default,
+            Timestamp = default
         });
         host.RunUntilIdle();
         Assert.Equal("ell", box.SelectedText); // selection persists after release
@@ -424,7 +425,7 @@ public sealed class Section24_TextBox
         var caps = TestCapabilities.KittyTruecolor;
         var withClipboard = caps with
         {
-            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } },
+            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } }
         };
         var (host, box) = Shown("hello", capabilities: withClipboard);
         using var _ = host;
@@ -455,7 +456,7 @@ public sealed class Section24_TextBox
         var caps = TestCapabilities.KittyTruecolor;
         var withClipboard = caps with
         {
-            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } },
+            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } }
         };
         var (host, box) = Shown("hello", capabilities: withClipboard);
         using var _ = host;
@@ -476,7 +477,7 @@ public sealed class Section24_TextBox
         using var _ = host;
         box.CaretIndex = 0; // no selection
         var bubbled = false;
-        box.AddHandler(UIElement.KeyDownEvent, (object? _, KeyEventArgs e) =>
+        box.AddHandler(UIElement.KeyDownEvent, (_, e) =>
         {
             if (e.Key == Key.Character && (e.Modifiers & KeyModifiers.Control) != 0 && !e.Handled)
                 bubbled = true;
@@ -494,7 +495,7 @@ public sealed class Section24_TextBox
         var caps = TestCapabilities.KittyTruecolor;
         var withClipboard = caps with
         {
-            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } },
+            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } }
         };
         var (host, box) = Shown("hello", capabilities: withClipboard);
         using var _ = host;
@@ -507,7 +508,7 @@ public sealed class Section24_TextBox
 
         // With no selection, Shift+Delete is not consumed — it bubbles (matches Ctrl+X / Ctrl+C).
         var bubbled = false;
-        box.AddHandler(UIElement.KeyDownEvent, (object? _, KeyEventArgs e) =>
+        box.AddHandler(UIElement.KeyDownEvent, (_, e) =>
         {
             if (e.Key == Key.Delete && (e.Modifiers & KeyModifiers.Shift) != 0 && !e.Handled)
                 bubbled = true;

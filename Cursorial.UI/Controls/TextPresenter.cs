@@ -1,4 +1,3 @@
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -7,11 +6,12 @@ using Cursorial.UI.Themes;
 
 using CellStyle = Cursorial.Output.Style;
 
-// ReSharper disable CheckNamespace
+// ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
-/// Renders the single line of its <see cref="TemplatedParent"/> <see cref="TextBox"/> (the
+/// Renders the single line of its <see cref="UIElement.TemplatedParent"/> <see cref="TextBox"/> (the
 /// <c>PART_TextPresenter</c>): the text or the <see cref="TextBox.Placeholder"/>, the selection highlight,
 /// and the <b>real terminal caret</b> via S1's <see cref="ITerminalCaretService"/> (design doc §5.9 /
 /// §3.9-TextBox). Owns the horizontal scroll offset (display columns) that keeps the caret in view.

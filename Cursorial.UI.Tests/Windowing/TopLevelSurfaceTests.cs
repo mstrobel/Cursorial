@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
@@ -28,7 +26,7 @@ public sealed class TopLevelSurfaceTests
         {
             Left = left,
             Top = top,
-            Size = size,
+            Size = size
         };
         surface.RunLayoutPass();
         surface.RunRenderPass();

@@ -1,7 +1,6 @@
-using System.Collections.Generic;
 using System.Text;
 
-using Cursorial.UI;
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -63,9 +62,9 @@ internal sealed class XamlResourceScopeStack
     {
         var sb = new StringBuilder("Searched scopes:");
         for (int i = _stack.Count - 1; i >= 0; i--)
-            sb.Append(System.Environment.NewLine).Append("  resource dictionary (hop ").Append(_stack.Count - i).Append(')');
+            sb.Append(Environment.NewLine).Append("  resource dictionary (hop ").Append(_stack.Count - i).Append(')');
         if (_ambient is not null)
-            sb.Append(System.Environment.NewLine).Append("  ambient (XamlLoadContext.AmbientResources)");
+            sb.Append(Environment.NewLine).Append("  ambient (XamlLoadContext.AmbientResources)");
         return sb.ToString();
     }
 

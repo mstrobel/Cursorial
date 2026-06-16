@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 using Cursorial.Drawing;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;

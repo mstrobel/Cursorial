@@ -2,6 +2,8 @@ using Cursorial.UI;
 using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
 /// <summary>
@@ -28,7 +30,7 @@ public sealed class Section08_NameScope : LoaderTestBase
         var scope = NameScope.GetNameScope(root)!;
 
         Assert.IsType<UIControls.Button>(scope.RequireControl<UIControls.Button>("run"));
-        Assert.Throws<System.InvalidOperationException>(() => scope.RequireControl<UIControls.Button>("nope"));
+        Assert.Throws<InvalidOperationException>(() => scope.RequireControl<UIControls.Button>("nope"));
     }
 
     [Fact]
@@ -72,7 +74,7 @@ public sealed class Section08_NameScope : LoaderTestBase
     public void X107_StaticLoadComponent_OneArg_Throws_TwoArgRoutes()
     {
         // The one-arg form requires the x:Class embedded-resource convention (X2).
-        Assert.Throws<System.NotSupportedException>(() => Loader.LoadComponent(new UIControls.Border()));
+        Assert.Throws<NotSupportedException>(() => Loader.LoadComponent(new UIControls.Border()));
 
         // The explicit-document form routes through the loader.
         var instance = new UIControls.Border();

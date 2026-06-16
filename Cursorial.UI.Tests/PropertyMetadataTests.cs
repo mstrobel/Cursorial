@@ -145,7 +145,7 @@ public class PropertyMetadataTests
 
         p.OverrideMetadata<MetaDerivedHost>(new PropertyMetadata<string?>
         {
-            ParsesAccessKeyLiterals = true,
+            ParsesAccessKeyLiterals = true
         });
         p.OverrideMetadata<MetaGrandchildHost>(new PropertyMetadata<string?>(
             Changed: static (_, _, _) => { })); // flag null ⇒ falls through to the derived override

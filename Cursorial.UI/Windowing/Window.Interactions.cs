@@ -1,5 +1,3 @@
-using System;
-
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Input;
@@ -76,8 +74,8 @@ public partial class Window
         {
             var size = Manager?.ClampSize(_resizeOrigin.Columns + deltaColumn, _resizeOrigin.Rows + deltaRow)
                        ?? new Size(_resizeOrigin.Columns + deltaColumn, _resizeOrigin.Rows + deltaRow);
-            SetCurrentValue(WidthProperty, (int?)size.Columns);
-            SetCurrentValue(HeightProperty, (int?)size.Rows);
+            SetCurrentValue(WidthProperty, size.Columns);
+            SetCurrentValue(HeightProperty, size.Rows);
         }
 
         e.Handled = true;
@@ -148,8 +146,8 @@ public partial class Window
             _restoreBounds ??= (Left, Top, Width, Height);
             SetCurrentValue(LeftProperty, 0); // maximized fills from the origin …
             SetCurrentValue(TopProperty, 0);
-            SetCurrentValue(WidthProperty, (int?)null); // … and stretches to the whole surface
-            SetCurrentValue(HeightProperty, (int?)null);
+            SetCurrentValue(WidthProperty, null); // … and stretches to the whole surface
+            SetCurrentValue(HeightProperty, null);
         }
         else if (_restoreBounds is { } restore)
         {
@@ -180,13 +178,13 @@ public partial class Window
         {
             if (width > screen.Columns)
             {
-                SetCurrentValue(WidthProperty, (int?)screen.Columns);
+                SetCurrentValue(WidthProperty, screen.Columns);
                 width = screen.Columns;
             }
 
             if (height > screen.Rows)
             {
-                SetCurrentValue(HeightProperty, (int?)screen.Rows);
+                SetCurrentValue(HeightProperty, screen.Rows);
                 height = screen.Rows;
             }
         }

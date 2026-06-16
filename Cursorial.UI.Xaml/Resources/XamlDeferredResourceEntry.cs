@@ -1,4 +1,4 @@
-using Cursorial.UI;
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Xaml;
 
@@ -23,6 +23,6 @@ internal sealed class XamlDeferredResourceEntry : IDeferredResourceEntry
     }
 
     /// <inheritdoc/>
-    public object? Realize(IResourceScope lexicalScope)
+    public object Realize(IResourceScope lexicalScope)
         => _builder.RealizeDeferredEntry(_sliceHead, _capturedScope);
 }

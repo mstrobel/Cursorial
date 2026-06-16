@@ -60,5 +60,5 @@ public enum PropertyEffects
     BindsTwoWayByDefault = 1 << 7,
 
     /// <summary>The property rejects data binding (consumed by the binding engine).</summary>
-    NotDataBindable = 1 << 8,
+    NotDataBindable = 1 << 8
 }

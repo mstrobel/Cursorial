@@ -1,5 +1,3 @@
-using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -10,6 +8,8 @@ using DrawingMedia = Cursorial.Drawing.Media;
 using Style = Cursorial.UI.Style;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
+
+// ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -187,13 +187,13 @@ public sealed class Section04_BuiltInAndBuilders
         host.RunFrame();
 
         var theme = CursorialTheme.CreateDefault();
-        theme.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, Vbrush) };
+        theme.Styles = [new Style("Button").Set(Control.BackgroundProperty, Vbrush)];
         host.Application.Theme = theme;
         host.RunFrame();
 
         // The theme rule arms at Theme(2) (the R2/B13 consumption) and wins the Background over the BuiltIn
         // control theme's ControlTheme(0) setter (Theme(2) is the stronger layer).
-        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
         Assert.Same(Vbrush, button.Background);
     }
 
@@ -208,21 +208,21 @@ public sealed class Section04_BuiltInAndBuilders
         host.ShowRoot(button);
 
         var theme1 = CursorialTheme.CreateDefault();
-        theme1.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, brush1) };
+        theme1.Styles = [new Style("Button").Set(Control.BackgroundProperty, brush1)];
         host.Application.Theme = theme1;
         host.RunFrame();
         Assert.Same(brush1, button.Background);
 
         var theme2 = CursorialTheme.CreateDefault();
-        theme2.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, brush2) };
+        theme2.Styles = [new Style("Button").Set(Control.BackgroundProperty, brush2)];
         host.Application.Theme = theme2;
         host.RunFrame();
 
         // The old theme's frame retracted (owner = theme1, no longer gathered) and the new one armed: exactly
         // one Theme-layer rule, the value is the new theme's, and NO dormant theme frame survived the swap.
         Assert.Same(brush2, button.Background);
-        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
-        Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && !r.IsActive);
+        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
+        Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: false });
     }
 
     [Fact] // C100c — mutating the live app.Theme.Styles re-reads on the theme-origin pulse (C100 "re-read on pulse")
@@ -235,7 +235,7 @@ public sealed class Section04_BuiltInAndBuilders
         host.ShowRoot(button);
 
         var theme = CursorialTheme.CreateDefault();
-        theme.Styles = new Styles(); // empty at assignment
+        theme.Styles = []; // empty at assignment
         host.Application.Theme = theme;
         host.RunFrame();
         Assert.DoesNotContain(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme);
@@ -244,7 +244,7 @@ public sealed class Section04_BuiltInAndBuilders
         theme.Styles.Add(new Style("Button").Set(Control.BackgroundProperty, brush));
         host.RunFrame();
 
-        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
         Assert.Same(brush, button.Background);
     }
 
@@ -258,10 +258,10 @@ public sealed class Section04_BuiltInAndBuilders
         host.ShowRoot(button);
 
         var theme = CursorialTheme.CreateDefault();
-        theme.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, brush) };
+        theme.Styles = [new Style("Button").Set(Control.BackgroundProperty, brush)];
         host.Application.Theme = theme;
         host.RunFrame();
-        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
 
         // Flip the theme base (a genuine variant change — assert it took effect). Per CD15 the flip is
         // resource-only: the theme-style frame is neither retracted nor re-armed — exactly one Theme rule
@@ -271,7 +271,7 @@ public sealed class Section04_BuiltInAndBuilders
         host.RunFrame();
         Assert.NotEqual(beforeBase, host.Application.ActualThemeVariant.Base); // the variant actually flipped
 
-        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Single(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
         Assert.Same(brush, button.Background);
     }
 
@@ -284,7 +284,7 @@ public sealed class Section04_BuiltInAndBuilders
         root.Children.Add(button);
 
         // A Styles on a plain element-scope Resources dictionary (not app.Theme): never consumed.
-        root.Resources.Styles = new Styles { new Style("Button").Set(Control.BackgroundProperty, Vbrush) };
+        root.Resources.Styles = [new Style("Button").Set(Control.BackgroundProperty, Vbrush)];
         host.ShowRoot(root);
         host.RunFrame();
 
@@ -310,14 +310,14 @@ public sealed class Section04_BuiltInAndBuilders
         // A MORE-specific theme rule (Button.primary, classLike=1) at Theme(2) competes with a LESS-specific
         // app rule (Button, classLike=0) at App(3). Layer beats specificity (C102): the app rule wins.
         var theme = CursorialTheme.CreateDefault();
-        theme.Styles = new Styles { new Style("Button.primary").Set(Control.BackgroundProperty, themeBrush) };
+        theme.Styles = [new Style("Button.primary").Set(Control.BackgroundProperty, themeBrush)];
         host.Application.Theme = theme;
         host.Application.Styles.Add(new Style("Button").Set(Control.BackgroundProperty, Vbrush));
         host.RunFrame();
 
         // Both armed — but the App-layer (less specific) wins.
-        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
-        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.App && r.IsActive);
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.App, IsActive: true });
         Assert.Same(Vbrush, button.Background);
     }
 
@@ -335,10 +335,10 @@ public sealed class Section04_BuiltInAndBuilders
         // `.caps-nocolor`-gated, which never match here (no caps-nocolor class at a color tier) — so the
         // Inverse below is UNAMBIGUOUSLY this theme rule, not a BuiltIn duplicate (isolates the channel).
         var theme = CursorialTheme.CreateDefault();
-        theme.Styles = new Styles
-        {
-            new Style("Button:focus").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse),
-        };
+        theme.Styles =
+        [
+            new Style("Button:focus").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)
+        ];
         host.Application.Theme = theme;
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
@@ -346,7 +346,7 @@ public sealed class Section04_BuiltInAndBuilders
         // The theme rule armed at Theme(2) and, with the button focused, flipped the inherited
         // TextElement.TextAttributes to Inverse — the exact mechanism #19 will author in XAML.
         Assert.True(button.IsFocused);
-        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r.Layer == StyleLayer.Theme && r.IsActive);
+        Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
         Assert.Equal(TextAttributes.Inverse, TextElement.GetTextAttributes(button));
         // Sanity: at a color tier the inherited attribute is the theme rule's doing — clearing the theme
         // removes it (proves it was not some always-on default).
@@ -365,7 +365,7 @@ public sealed class Section04_BuiltInAndBuilders
 
         // A nearer chain scope (the root's element Resources) supplies a Type-keyed Button theme; it must
         // win over the BuiltIn one (SubscribeControlTheme resolves the nearest scope).
-        var nearerTheme = new Style { Key = "Nearer.Button" }.Set(Control.TemplateProperty, new ControlTemplate(ctx => new Border()));
+        var nearerTheme = new Style { Key = "Nearer.Button" }.Set(Control.TemplateProperty, new ControlTemplate(_ => new Border()));
         root.Resources[typeof(Button)] = nearerTheme;
         host.ShowRoot(root);
         host.RunFrame();

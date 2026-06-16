@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.IO;
-
 namespace Cursorial.UI.Data;
 
 /// <summary>The severity of a <see cref="BindingTraceEvent"/> (design doc §6.10).</summary>
@@ -16,7 +13,7 @@ public enum BindingTraceLevel : byte
     Warning,
 
     /// <summary>Everything, including informational and per-binding verbose events.</summary>
-    Verbose,
+    Verbose
 }
 
 /// <summary>The kind of a binding failure (design doc §6.10; the diagnostics taxonomy).</summary>
@@ -50,7 +47,7 @@ public enum BindingFailureKind : byte
     TypeMismatch,
 
     /// <summary>A compiled binding's anchor resolved to a non-<c>TSource</c> object.</summary>
-    SourceTypeMismatch,
+    SourceTypeMismatch
 }
 
 /// <summary>
@@ -182,7 +179,7 @@ public static class BindingDiagnostics
         => level switch
         {
             BindingTraceLevel.Error or BindingTraceLevel.Warning => true,
-            _ => bindingTrace || Level == BindingTraceLevel.Verbose,
+            _ => bindingTrace || Level == BindingTraceLevel.Verbose
         };
 
     /// <summary>

@@ -13,7 +13,7 @@ public abstract class BindingExpressionBase : IDisposable
     {
         None = 0,
         Disposing = 1 << 0,
-        Disposed = 1 << 1,
+        Disposed = 1 << 1
     }
 
     private protected ExpressionFlags Flags;

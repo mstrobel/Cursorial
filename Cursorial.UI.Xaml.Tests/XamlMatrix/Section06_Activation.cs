@@ -2,6 +2,8 @@ using Cursorial.UI;
 using Cursorial.UI.Xaml;
 using UIControls = Cursorial.UI.Controls;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
 /// <summary>
@@ -15,7 +17,7 @@ public sealed class Section06_Activation : LoaderTestBase
         Assert.IsType<UIControls.Button>(Load("<Button/>"));
         var button = Load<UIControls.Button>("<Button/>");
         Assert.NotNull(button);
-        Assert.ThrowsAny<System.Exception>(() => Load<UIControls.TextBlock>("<Button/>"));
+        Assert.ThrowsAny<Exception>(() => Load<UIControls.TextBlock>("<Button/>"));
     }
 
     [Fact]
@@ -88,7 +90,7 @@ public sealed class Section06_Activation : LoaderTestBase
     [Fact]
     public void X073_ResourceDictionaryFill_KeyedEntries()
     {
-        var dict = (Cursorial.UI.ResourceDictionary)LoadRaw(
+        var dict = (ResourceDictionary)LoadRaw(
             "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
             "<Border x:Key=\"A\"/></ResourceDictionary>");
         Assert.True(dict.TryGetValue("A", out var value));
@@ -150,7 +152,7 @@ public sealed class Section06_Activation : LoaderTestBase
         var b = Loader.Load<UIControls.Button>(doc);
         Assert.NotSame(a, b);
         Assert.Equal(a.Margin, b.Margin);
-        Assert.Equal(new Cursorial.Rendering.Margins(1, 2), a.Margin);
+        Assert.Equal(new Rendering.Margins(1, 2), a.Margin);
 
         // XD20: the document holds ONE boxed constant for the folded Margin, and both loads read that
         // same boxed reference out of doc.Constants (the parse-once/instantiate-many box sharing — P6
@@ -160,7 +162,7 @@ public sealed class Section06_Activation : LoaderTestBase
         object? box1 = doc.FoldedValue(in m);
         object? box2 = doc.FoldedValue(in m);
         Assert.Same(box1, box2);
-        Assert.Equal(new Cursorial.Rendering.Margins(1, 2), (Cursorial.Rendering.Margins)box1!);
+        Assert.Equal(new Rendering.Margins(1, 2), (Rendering.Margins)box1!);
     }
 
     [Fact]

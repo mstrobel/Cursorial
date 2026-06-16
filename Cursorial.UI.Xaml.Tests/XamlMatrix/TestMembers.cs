@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Cursorial.UI;
 using Cursorial.UI.Xaml;
 using Cursorial.Rendering;
@@ -63,12 +61,12 @@ internal static class TestMembers
             AddDeferred(table, contentProperty);
 
         // Style / Setter members.
-        if (owner == typeof(global::Cursorial.UI.Style))
+        if (owner == typeof(Style))
         {
             Add(table, "TargetType", typeof(Type), converter: null);
             Add(table, "Setters", typeof(object), converter: null);
         }
-        if (owner == typeof(global::Cursorial.UI.Setter))
+        if (owner == typeof(Setter))
         {
             Add(table, "Property", typeof(string), converter: null);
             Add(table, "Value", typeof(object), converter: null);

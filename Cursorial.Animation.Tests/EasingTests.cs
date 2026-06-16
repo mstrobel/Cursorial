@@ -145,17 +145,17 @@ public class EasingTests
     {
         Assert.True(Easings.TryParse(name, out var easing));
         Assert.NotNull(easing);
-        Assert.True(Math.Abs(easing!(1.0) - 1.0) < 1e-9); // every catalog curve pins its endpoint
+        Assert.True(Math.Abs(easing(1.0) - 1.0) < 1e-9); // every catalog curve pins its endpoint
     }
 
     [Fact]
     public void TryParse_CubicBezierFunctional_Resolves()
     {
         Assert.True(Easings.TryParse("cubic-bezier(0, 0, 1, 1)", out var identity));
-        Assert.True(Math.Abs(identity!(0.5) - 0.5) < 1e-6);
+        Assert.True(Math.Abs(identity(0.5) - 0.5) < 1e-6);
 
         Assert.True(Easings.TryParse("cubic-bezier(0.42,0,0.58,1)", out var easeInOut));
-        Assert.Equal(0.0, easeInOut!(0.0));
+        Assert.Equal(0.0, easeInOut(0.0));
         Assert.Equal(1.0, easeInOut(1.0));
     }
 

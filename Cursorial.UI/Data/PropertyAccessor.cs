@@ -14,7 +14,7 @@ internal enum NotificationRung : byte
     ChangedEvent,
 
     /// <summary>Observed-on-parent-change only (rung 3) — a one-time Info is recorded.</summary>
-    ParentChangeOnly,
+    ParentChangeOnly
 }
 
 /// <summary>
@@ -65,7 +65,7 @@ internal enum AccessorKind : byte
     ListIndexer,
 
     /// <summary>An <c>IDictionary</c>/general <c>Item[...]</c> reflection indexer.</summary>
-    ReflectionIndexer,
+    ReflectionIndexer
 }
 
 /// <summary>A registered <c>UIProperty</c> accessor (rule 1) — no reflection, no INPC.</summary>
@@ -77,7 +77,7 @@ internal sealed class UIPropertyAccessor(UIProperty property) : PropertyAccessor
 
     public override string MemberName => Property.Name;
 
-    public override Type? ValueType => Property.PropertyType;
+    public override Type ValueType => Property.PropertyType;
 
     public override bool CanWrite => !Property.IsReadOnly;
 
@@ -118,7 +118,7 @@ internal sealed class ClrPropertyAccessor : PropertyAccessor
 
     public override string MemberName => _property.Name;
 
-    public override Type? ValueType => _property.PropertyType;
+    public override Type ValueType => _property.PropertyType;
 
     public override bool CanWrite => _property.CanWrite;
 
@@ -176,7 +176,7 @@ internal sealed class ReflectionIndexerAccessor(PropertyInfo indexer, object key
 
     public override string MemberName => "Item[]";
 
-    public override Type? ValueType => indexer.PropertyType;
+    public override Type ValueType => indexer.PropertyType;
 
     public override bool CanWrite => indexer.CanWrite;
 

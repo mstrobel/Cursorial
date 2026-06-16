@@ -19,5 +19,5 @@ public enum FocusNavigationDirection : byte
     Left,
 
     /// <summary>Directionally right (RightArrow).</summary>
-    Right,
+    Right
 }

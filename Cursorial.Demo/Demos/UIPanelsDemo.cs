@@ -573,10 +573,10 @@ internal sealed class UIPanelsDemo : IDemo
     {
         public static readonly BoolToVisibility Instance = new();
 
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
             => value is true ? Visibility.Visible : Visibility.Collapsed;
 
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
             => throw new NotSupportedException();
     }
 }

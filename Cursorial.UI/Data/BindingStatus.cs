@@ -16,5 +16,5 @@ public enum BindingStatus : byte
     SourceMissing,
 
     /// <summary>Disposed.</summary>
-    Detached,
+    Detached
 }

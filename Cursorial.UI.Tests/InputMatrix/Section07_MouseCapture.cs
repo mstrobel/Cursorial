@@ -149,7 +149,7 @@ public class Section07_MouseCapture
         fixture.Dispatcher.ProcessEvent(new Cursorial.Input.Events.FocusEvent
         {
             HasFocus = false,
-            Timestamp = fixture.Host.Time.GetUtcNow(),
+            Timestamp = fixture.Host.Time.GetUtcNow()
         });
 
         Assert.Contains("A.OnLostMouseCapture", fixture.Log);

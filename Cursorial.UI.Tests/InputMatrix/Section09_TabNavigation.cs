@@ -22,7 +22,7 @@ public class Section09_TabNavigation
         Modifiers = modifiers,
         Kind = KeyEventKind.Down,
         Text = ReadOnlyMemory<char>.Empty,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     private static bool HasState(Probe probe, InteractionState state) => (probe.InteractionStateInternal & state) != 0;

@@ -5,6 +5,8 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 /// <summary>
@@ -40,7 +42,7 @@ public sealed class Section13_Scrolling
             Height = viewportRows,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Content = new Block(viewportColumns - 1, contentRows), // -1 leaves room for the vertical bar
+            Content = new Block(viewportColumns - 1, contentRows) // -1 leaves room for the vertical bar
         };
     }
 
@@ -58,7 +60,7 @@ public sealed class Section13_Scrolling
         Modifiers = modifiers,
         WheelDeltaY = deltaY,
         WheelDeltaX = deltaX,
-        Timestamp = DateTimeOffset.UnixEpoch,
+        Timestamp = DateTimeOffset.UnixEpoch
     };
 
     // ───────────────────────────── 13.1 ScrollViewer offsets / wheel / keyboard ─────────────────────────────
@@ -131,7 +133,7 @@ public sealed class Section13_Scrolling
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Visible,
-            Content = new Block(200, 5),
+            Content = new Block(200, 5)
         };
         using var host = Show(sv);
         var dispatcher = host.Application.InputDispatcher;
@@ -151,7 +153,7 @@ public sealed class Section13_Scrolling
             Height = 20,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Content = inner,
+            Content = inner
         };
         using var host = Show(outer);
         var dispatcher = host.Application.InputDispatcher;
@@ -236,7 +238,7 @@ public sealed class Section13_Scrolling
             Height = 10,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Content = new Block(19, 50_000),
+            Content = new Block(19, 50_000)
         };
         using var host = Show(sv);
 
@@ -259,7 +261,7 @@ public sealed class Section13_Scrolling
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new Block(19, 3), // fits the viewport
+            Content = new Block(19, 3) // fits the viewport
         };
         using var host = Show(sv);
 
@@ -292,11 +294,11 @@ public sealed class Section13_Scrolling
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
-            Content = new Block(19, 3), // fits the viewport — yet the bar still shows
+            Content = new Block(19, 3) // fits the viewport — yet the bar still shows
         };
-        using (var host = Show(always))
+        using (Show(always))
         {
-            Assert.True(always.Extent.Rows <= always.Viewport.Rows); // nothing to scroll
+            Assert.True(always.Extent.Rows <= always.Viewport.Rows);   // nothing to scroll
             Assert.Equal(Visibility.Visible, VBar(always).Visibility); // …but Visible keeps the bar shown
         }
 
@@ -365,7 +367,7 @@ public sealed class Section13_Scrolling
             VerticalAlignment = VerticalAlignment.Top,
             Minimum = 0,
             Maximum = 90,
-            ViewportSize = 10,
+            ViewportSize = 10
         };
         using var host = Show(bar);
 
@@ -392,7 +394,7 @@ public sealed class Section13_Scrolling
             Minimum = 0,
             Maximum = 100,
             ViewportSize = 10,
-            LargeChange = 10,
+            LargeChange = 10
         };
         var scrolls = new List<ScrollEventType>();
         bar.Scroll += (_, e) => scrolls.Add(e.ScrollEventType);
@@ -408,14 +410,14 @@ public sealed class Section13_Scrolling
         {
             Kind = MouseEventKind.ButtonDown, Position = new CellPosition(0, belowRow),
             Button = MouseButton.Left, ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         host.RunFrame();
         dispatcher.ProcessEvent(new MouseEvent
         {
             Kind = MouseEventKind.ButtonUp, Position = new CellPosition(0, belowRow),
             Button = MouseButton.Left, ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         host.RunFrame();
 
@@ -436,7 +438,7 @@ public sealed class Section13_Scrolling
             Maximum = 100,
             ViewportSize = 10,
             SmallChange = 1,
-            Value = 50,
+            Value = 50
         };
         using var host = Show(bar);
 
@@ -463,13 +465,13 @@ public sealed class Section13_Scrolling
         {
             Kind = MouseEventKind.ButtonDown, Position = new CellPosition(col, row),
             Button = MouseButton.Left, ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
         dispatcher.ProcessEvent(new MouseEvent
         {
             Kind = MouseEventKind.ButtonUp, Position = new CellPosition(col, row),
             Button = MouseButton.Left, ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.UnixEpoch,
+            Timestamp = DateTimeOffset.UnixEpoch
         });
     }
 
@@ -506,7 +508,7 @@ public sealed class Section13_Scrolling
             Minimum = 0,
             Maximum = 100,
             ViewportSize = 10,
-            Template = TrackOnlyTemplate(),
+            Template = TrackOnlyTemplate()
         };
         using var host = Show(bar); // no throw despite the optional arrows being absent (CD19/C236)
 
@@ -535,7 +537,7 @@ public sealed class Section13_Scrolling
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
-            Content = stack,
+            Content = stack
         };
         using var host = Show(sv);
         var focus = host.Application.FocusManager;

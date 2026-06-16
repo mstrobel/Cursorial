@@ -2,6 +2,8 @@ using Cursorial.UI;
 using Cursorial.UI.Xaml;
 using Cursorial.Rendering;
 
+// ReSharper disable InconsistentNaming
+
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
 /// <summary>§5 — Constant folding &amp; Setter folding (X59–X66). XD3 + the Setter special fold. Frontend.</summary>

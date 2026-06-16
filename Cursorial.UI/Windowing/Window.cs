@@ -406,6 +406,7 @@ public partial class Window : ContentControl
             return;
 
         SetValue(IsActivePropertyKey, active);
+        SetInteractionState(InteractionState.ActiveWindow, active); // wire :active-window (style-matrix §0.3; was never set)
         (active ? Activated : Deactivated)?.Invoke(this, EventArgs.Empty);
     }
 

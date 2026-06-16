@@ -622,7 +622,7 @@ public abstract partial class UIElement : UIObject
     /// <c>Bounds.Column</c> in content coordinates sits at <c>Bounds.Column − this</c> in the
     /// element's own frame. 0 everywhere except scroll hosts (<c>ScrollContentPresenter</c>
     /// overrides — doc §5.7). Folded by the boundary walk, hit testing, and
-    /// <see cref="TranslateToWindow"/>/<see cref="TranslateToLocal"/>.
+    /// <see cref="TranslateToWindow"/>/<see cref="TranslateFromWindow"/>.
     /// </summary>
     internal virtual int ChildScrollOffsetColumn => 0;
 
@@ -655,8 +655,28 @@ public abstract partial class UIElement : UIObject
         return (column, row);
     }
 
+    /// <summary>
+    /// Translates element-local coordinates to screen coordinates — a live O(depth)
+    /// parent-chain walk, allocation-free and never stale (no cached absolute bounds exist). Each
+    /// hop folds in the element's <see cref="Bounds"/> position and <see cref="RenderOffsetColumn"/> /
+    /// <see cref="RenderOffsetRow"/>, minus the parent's scroll when crossing into a scroll host
+    /// (<see cref="ChildScrollOffsetColumn"/>/<see cref="ChildScrollOffsetRow"/>).
+    /// </summary>
+    public (int Column, int Row) TranslateToScreen(int column, int row)
+    {
+        if (_visualRoot is {} root)
+        {
+            if (root is Window { HostSurface: {} windowHost})
+                (column, row) = (column + windowHost.Left, row + windowHost.Top);
+            else if (root is Popup { PopupSurface: {} popupHost})
+                (column, row) = (column + popupHost.Left, row + popupHost.Top);
+        }
+
+        return (column, row);
+    }
+
     /// <summary>Translates window (visual-root) coordinates to element-local coordinates — the inverse of <see cref="TranslateToWindow"/>.</summary>
-    public (int Column, int Row) TranslateToLocal(int column, int row)
+    public (int Column, int Row) TranslateFromWindow(int column, int row)
     {
         for (var element = this; element is not null; element = element._visualParent)
         {
@@ -668,6 +688,22 @@ public abstract partial class UIElement : UIObject
                 column += parent.ChildScrollOffsetColumn;
                 row += parent.ChildScrollOffsetRow;
             }
+        }
+
+        return (column, row);
+    }
+
+    /// <summary>Translates screencoordinates to element-local coordinates — the inverse of <see cref="TranslateToScreen"/>.</summary>
+    public (int Column, int Row) TranslateFromScreen(int column, int row)
+    {
+        (column, row) = TranslateFromWindow(column, row);
+
+        if (_visualRoot is {} root)
+        {
+            if (root is Window { HostSurface: {} windowHost})
+                (column, row) = (column + windowHost.Left, row + windowHost.Top);
+            else if (root is Popup { PopupSurface: {} popupHost})
+                (column, row) = (column + popupHost.Left, row + popupHost.Top);
         }
 
         return (column, row);

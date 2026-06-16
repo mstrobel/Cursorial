@@ -369,10 +369,10 @@ public class ScrollCaretIntegrationTests
         tree.Render();
 
         Assert.Equal((2, 2), probes[7].TranslateToWindow(2, 0));   // content row 7 − scroll 5
-        Assert.Equal((2, 0), probes[7].TranslateToLocal(2, 2));    // the inverse
+        Assert.Equal((2, 0), probes[7].TranslateFromWindow(2, 2));    // the inverse
 
         // Round-trip through a nested point.
         var (column, row) = probes[42].TranslateToWindow(3, 0);
-        Assert.Equal((3, 0), probes[42].TranslateToLocal(column, row));
+        Assert.Equal((3, 0), probes[42].TranslateFromWindow(column, row));
     }
 }

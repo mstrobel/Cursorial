@@ -226,11 +226,11 @@ public class ElementTreeTests
         manager.Layout(20, 10);
 
         Assert.Equal((5, 3), leaf.TranslateToWindow(1, 1)); // (4+1, 2+1) — panel at origin
-        Assert.Equal((1, 1), leaf.TranslateToLocal(5, 3));
+        Assert.Equal((1, 1), leaf.TranslateFromWindow(5, 3));
 
         leaf.RenderOffsetColumn = 2; // composite offsets fold into the chain walk
         Assert.Equal((7, 3), leaf.TranslateToWindow(1, 1));
-        Assert.Equal((1, 1), leaf.TranslateToLocal(7, 3));
+        Assert.Equal((1, 1), leaf.TranslateFromWindow(7, 3));
     }
 
     [Fact]

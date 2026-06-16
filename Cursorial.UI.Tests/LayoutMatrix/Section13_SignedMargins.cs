@@ -127,9 +127,9 @@ public class Section13_SignedMargins
 
         // The coordinate-translation walks fold the signed origin (P2.6 review #7).
         Assert.Equal((-1, 0), child.TranslateToWindow(0, 0));
-        Assert.Equal((1, 0), child.TranslateToLocal(0, 0));
+        Assert.Equal((1, 0), child.TranslateFromWindow(0, 0));
         var (windowColumn, windowRow) = child.TranslateToWindow(2, 1);
-        Assert.Equal((2, 1), child.TranslateToLocal(windowColumn, windowRow)); // round-trip identity
+        Assert.Equal((2, 1), child.TranslateFromWindow(windowColumn, windowRow)); // round-trip identity
     }
 
     [Theory]

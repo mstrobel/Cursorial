@@ -70,7 +70,7 @@ public class MouseEventArgs : RoutedEventArgs
     {
         ArgumentNullException.ThrowIfNull(relativeTo);
         var position = Device.Position;
-        var (column, row) = relativeTo.TranslateToLocal(position.Column, position.Row);
+        var (column, row) = relativeTo.TranslateFromScreen(position.Column, position.Row);
         return new CellPosition(column, row);
     }
 

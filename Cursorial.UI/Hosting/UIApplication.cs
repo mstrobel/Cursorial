@@ -262,6 +262,15 @@ public sealed partial class UIApplication : IAsyncDisposable
     /// <summary>The caret registry (S1 §5.9) the render system consumes at frame assembly.</summary>
     public TerminalCaretService CaretService => _caretService;
 
+    private IClipboardService? _clipboardService;
+
+    /// <summary>
+    /// The OSC 52 clipboard service (S1 §5.9 / punch 30): a focused <see cref="Controls.TextBox"/>'s
+    /// Copy/Cut writes through it. Write-gated on the negotiated capability; reads are not yet supported
+    /// (<see cref="IClipboardService.CanRead"/> is false — the terminal's own paste is the inbound path).
+    /// </summary>
+    public IClipboardService Clipboard => _clipboardService ??= new TerminalClipboardService(this);
+
     /// <summary>
     /// The root element tree rendered on the single full-screen surface — <b>the P1 stand-in for
     /// window content</b> (S4's <c>Window.Content</c> replaces it at P7). UI-thread only; setting

@@ -560,3 +560,94 @@ across `round(FilledFraction · width)` cells — no template, no per-cell child
 geometry/paint properties are `AffectsRender`. **Deferred:** the animated indeterminate sweep as a
 storyboard-ignited, composite-only persistent highlight layer (design doc §3.9 resolution 1 — `IndeterminateOffset`
 as an `AffectsComposite` target); v1 draws the offset block in `Render` (a consumer can animate the offset).
+
+## §C11 — TextBox (P9.6) — tests in `Section24_TextBox`
+
+`TextBox : Control` is a single-line editable field. The caret is the **real terminal cursor**
+(`CursorShape.BlinkingBar`) published by `TextPresenter` (the `PART_TextPresenter` part) through S1's
+`ITerminalCaretService` while the field holds physical focus. Caret offsets pin to grapheme-cluster boundaries
+and all horizontal math is in display columns (`GraphemeWidth.ClusterWidth` — a wide cluster is two columns).
+`Text` is two-way by default with per-change source push; Copy/Cut route through the OSC 52 clipboard service.
+
+| # | Setup | Action | Expectation | Source |
+|---|-------|--------|-------------|--------|
+| C11.1 | `Text` binding `Mode=Default` | inspect | `EffectiveMode` is `TwoWay` (BindsTwoWayByDefault) | PIN (CD-P9-24) |
+| C11.1b | two-way `Text` binding to a VM | type "ab" | the source updates per keystroke (per-change push, §3.9) | PIN (CD-P9-24) |
+| C11.2 | `"ac"`, caret 1 | type "b" | `"abc"`, caret 2 | WPF |
+| C11.3 | `"a😀b"` | set caret mid-emoji / Right from 1 | pins to the cluster start (1) / steps over to 3 | PIN (CD-P9-24) |
+| C11.4 | `"hello"` | Left / Home / End | caret 4 / 0 / 5 | WPF |
+| C11.5 | `"one two three"` | Ctrl+Right ×2 / Ctrl+Left | 3 / 7 / 4 (word, whitespace-delimited) | WPF |
+| C11.6 | `"hello"`, caret 0 | Shift+Right ×2 | selection `[0,2)` = "he" | WPF |
+| C11.7 | `"abc"`, caret 2 | Backspace / Delete | `"ac"` caret 1 / `"a"` | WPF |
+| C11.8 | `"hello"`, sel `[1,4)` | Backspace | `"ho"`, caret 1, no selection | WPF |
+| C11.9 | `"hello"` | Ctrl+A | whole text selected | WPF |
+| C11.10 | `"abc"`, `MaxLength=4`, caret 3 | type "xy" | `"abcx"` (capped) | WPF |
+| C11.11 | `"abc"` read-only | type / Backspace / Right | text unchanged; caret moves (navigable) | WPF |
+| C11.12 | `"hello"`, sel `[1,4)` | get / set `SelectedText="i"` | "ell" / `"hio"` | WPF |
+| C11.13 | empty | paste `"a\r\nb\tc"` | `"a b c"` (newlines/tabs flattened) | PIN (CD-P9-24) |
+| C11.14 | focused field | inspect / blur | terminal caret visible (`BlinkingBar`) / cleared | PIN (CD-P9-24) |
+| C11.15 | focused field | detach the tree | caret publication cleared (no stale cursor) | PIN (CD-P9-24) |
+| C11.16 | `"one two"` | click 't' / double-click | caret to the cluster / "two" selected | WPF |
+| C11.17 | 40 `x` in a 12-wide field | caret home / end | scroll 0 / scrolled so the caret is visible | PIN (CD-P9-24) |
+| C11.18 | — | inspect; set `Text`; set `IsReadOnly` | `:empty` flips with text; `:readonly` mirrors `IsReadOnly` | PIN (CD-P9-24) |
+| C11.19 | `Placeholder="name"` | empty → set `Text` | placeholder renders, then text replaces it | WPF |
+| C11.20 | `"hello"` | select `[0,2)` | the selected cell's style differs from unselected | PIN (CD-P9-24) |
+| C11.21 | clipboard-write terminal, sel | Ctrl+C | OSC 52 write emitted | PIN (CD-P9-24) |
+| C11.22 | no-clipboard terminal, sel | Ctrl+C | no OSC 52 (silent no-op; `CanWrite` false) | PIN (CD-P9-24) |
+| C11.23 | clipboard-write terminal, sel `[0,2)` | Ctrl+X | text `"llo"` + OSC 52 emitted | WPF |
+| C11.24 | `"hello"`, no selection | Ctrl+C | not consumed — bubbles (an app may bind quit) | PIN (CD-P9-24) |
+| C11.16b | `"hello"` | left-down at 1, drag to 4, release | selection "ell" extends from the anchor and persists | WPF |
+| C11.25 | sel / no-sel | Shift+Delete | cuts the selection / is not consumed → bubbles (like Ctrl+X) | PIN (CD-P9-24 audit) |
+| C11.26 | scrolled field | collapse the viewport to 0 width | scroll offset resets to 0 (no stale/negative caret column) | PIN (CD-P9-24 audit) |
+
+**CD-P9-24 (P9.6) — TextBox: terminal-caret editor, grapheme-pinned, per-change two-way.** `TextBox : Control`
+with a required `PART_TextPresenter` (`TextPresenter : UIElement`). **Caret = the real terminal cursor**
+(§3.9-TextBox / §5.9): the presenter publishes element-local `(caretColumn − scrollOffset, 0)` with
+`CursorShape.BlinkingBar` through `UIApplication.Current.CaretService` whenever the owning `TextBox` `IsFocused`
+(only the active window's editor is the app's focused element, so `IsFocused` subsumes the window-active gate),
+and `Clear`s on detach (belt-and-braces with the service's stale-owner drop). The presenter is a **clipped render
+boundary** (`ClipToBounds = true`): a wide cluster straddling either viewport edge clips per cell (no bleed into
+the field chrome), the scroll-offset change re-rasters only the one-row presenter zone — strictly better than the
+spec's "window-scene re-raster" simplification — and the zone-clip gate auto-hides a scrolled-out caret.
+**Grapheme model:** caret/selection offsets pin to cluster boundaries via `GraphemeLayout` (`StringInfo`
+enumeration); horizontal math is in display columns (`GraphemeWidth.ClusterWidth`, a wide cluster = 2 columns).
+**`Text`** is a two-way-by-default `StyledProperty<string>` (`BindsTwoWayByDefault`) that pushes to its source
+**per change** (the pinned default — §3.9; the `UpdateSourceTrigger.PropertyChanged` resolution makes
+validation-reactive UI react per keystroke), `AffectsMeasure`, raising the bubbling `TextChanged`.
+**`CaretIndex`/`SelectionStart`/`SelectionLength`/`SelectedText`** are plain CLR state over `(_caretIndex active
+end, _selectionAnchor fixed end)` — not styleable/bindable in v1; mutating them re-anchors scroll + re-publishes
+the caret + invalidates the presenter visual. **Pseudo-classes:** `:empty` is driven directly via
+`PseudoClasses.Set` (constructor + `OnTextChanged`) — `PseudoClassMapping` applies only on a value *change*, never
+the initial default, and a never-edited empty field must read as `:empty`; `:readonly` via `PseudoClassMapping`.
+**Keyboard:** printable input arrives at `OnTextInput` (control keys at `OnKeyDown`); Left/Right cluster,
+Ctrl+Left/Right word (whitespace-delimited), Home/End, Shift extends; Backspace/Delete delete the selection or one
+cluster, Ctrl variants delete a word; Ctrl+A select-all; **Ctrl+C/Ctrl+Insert copy is NOT consumed when there is no
+selection** (it bubbles — an app may bind quit); Ctrl+X/Shift+Delete cut; Ctrl+V/Shift+Insert paste is a consumed
+**no-op in v1** (OSC 52 read is unnegotiated — the terminal's own paste, `TextInput{FromPaste}`, is the inbound
+path); **Enter/Escape are never handled** so `IsDefault`/`IsCancel` buttons work (spec §13). Read-only swallows
+typing and blocks edits while staying navigable + copyable. Paste flattens `\r\n|\n|\r`/`\t` to spaces; typed
+control chars are filtered; `MaxLength` trims at a cluster boundary (never splits a surrogate). **Mouse:** left-down
+focuses + places the caret + captures for drag-select; double-click selects the word, triple selects all.
+**Clipboard:** `IClipboardService` (`UIApplication.Clipboard`, punch 30) wraps `ClipboardWriter.WriteSet` over
+`QueueControlSequence` (OSC 52, OSC-class only) gated on `Capabilities.Output.Protocol.ClipboardWrite`;
+`CanRead` is false (no family negotiates OSC 52 read) so `TryGetTextAsync` returns null. **Theme:** `Theme.TextBox`
+is the cell-faithful spine — resting `SurfaceBrush`/`TextBrush`, `:pointerover` `HoverBrush`, **`:focus` the recessed
+`WellBrush` (not reverse-video — text focus is the well + the blinking-bar caret, adoption-spec §1/§7; this
+supersedes the older spec-controls.md `Pens.Light`/`Pens.Heavy` border sketch)**, `:disabled` the disabled pair, a
+themed `SelectionBrush`, and `MinWidth=12` so an unconstrained empty field is usable; the presenter paints the
+selection (`SelectionBrush`, or `TextAttributes.Inverse` on the NoColor tier) and the placeholder (`MutedBrush` +
+`Faint`). **Deferred (spec §15):** undo/redo, multi-line, PasswordBox, OSC 52 read, drag-selection auto-scroll, an
+`UpdateSourceTrigger` knob.
+
+**CD-P9-24 audit (P9.6 follow-up).** An adversarial audit (3 skeptic lenses, 27 candidate findings, 6 confirmed
+after refutation — the other 21 were code-correct test-coverage gaps) found **two real bugs** the green tests
+missed, each fixed and mutation-verified: (1) **`TextPresenter.RefreshCaretAndScroll` left a stale `_scrollOffset`
+when the viewport collapsed to 0** (the `viewport > 0` guard skipped re-anchoring), so the published caret column
+could go negative — now an `else` resets the offset (the zone-clip already hid it, but the element-local coordinate
+must stay valid); row C11.26. (2) **`Shift+Delete` (cut) didn't check `Cut()`'s return value**, so with no
+selection (or read-only) it consumed the key instead of bubbling — inconsistent with `Ctrl+X`/`Ctrl+C`; now it
+returns unhandled when there is nothing to cut; row C11.25. The audit also surfaced genuine coverage gaps over
+correct code — added: triple-click select-all (C11.16) and mouse drag-extend (C11.16b). The refuted findings
+(verified code-correct by tracing) included surrogate-pair backspace/MaxLength trimming, paste-into-selection,
+control-char filtering, the `:empty`/`SelectionStart`-preserves-length semantics, Enter/Escape bubbling, and the
+NoColor-tier `Inverse` selection path.

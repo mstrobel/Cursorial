@@ -51,6 +51,7 @@ internal static class ControlThemes
         dict[typeof(TabControl)] = TabControlTheme();
         dict[typeof(TabItem)] = TabItemTheme();
         dict[typeof(ProgressBar)] = ProgressBarTheme();
+        dict[typeof(TextBox)] = TextBoxTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -257,6 +258,38 @@ internal static class ControlThemes
             .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
             .SetResource(ProgressBar.FillProperty, ThemeKeys.GreenBrush);
         theme.Children.Add(new Style("^:indeterminate").SetResource(ProgressBar.FillProperty, ThemeKeys.AccentBrush));
+        return theme;
+    }
+
+    // ───────────────────────────── TextBox ─────────────────────────────
+
+    // A fill-bounded text field (gallery TextBox mockup, lines 605–609): a Border (Padding 1,0) over the
+    // PART_TextPresenter that paints the line. Per-state brush pairs come from the spine — resting
+    // SurfaceBrush + TextBrush, :pointerover HoverBrush, :focus the recessed WellBrush (text focus is the
+    // well + the blinking-bar caret, NOT reverse-video — adoption-spec §1/§7), :disabled the disabled pair.
+    // Selection (SelectionBrush) + placeholder (MutedBrush/Faint) are painted by the presenter; the caret is
+    // the real terminal cursor it publishes. MinWidth gives an unconstrained empty field a usable width.
+    private static ControlTemplate TextBoxTemplate() => new(ctx =>
+    {
+        var presenter = new TextPresenter();
+        ctx.RegisterName("PART_TextPresenter", presenter);
+        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        return border;
+    });
+
+    private static Style TextBoxTheme()
+    {
+        var theme = ApplyPaletteSpine(new Style { Key = "Theme.TextBox" })
+            .Set(UIElement.MinWidthProperty, 12)
+            .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.SelectionBrush)
+            .Set(Control.TemplateProperty, TextBoxTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:focus").SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush));
+        theme.Children.Add(new Style("^:disabled")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
         return theme;
     }
 

@@ -1,0 +1,125 @@
+using Cursorial.Text;
+
+// ReSharper disable CheckNamespace
+namespace Cursorial.UI.Controls;
+
+/// <summary>
+/// A grapheme-cluster layout of one line of text (design doc §12.7 / spec-controls "TextBox" model): maps
+/// a char offset to its display column and back, snapping to cluster boundaries so the caret never lands
+/// inside a multi-codepoint glyph and a wide cluster (CJK / emoji) counts as two columns. Built per use
+/// over the current text — a single-line field is short, so the O(length) build is negligible and the
+/// edit/render paths already re-raster (a caret move or keystroke is not the zero-allocation steady state).
+/// </summary>
+internal readonly struct GraphemeLayout
+{
+    // Parallel arrays of cluster-start boundaries, length Count+1 with a trailing sentinel:
+    // _charIndex[^1] == text length, _column[^1] == total display width.
+    private readonly int[] _charIndex;
+    private readonly int[] _column;
+
+    private GraphemeLayout(int[] charIndex, int[] column)
+    {
+        _charIndex = charIndex;
+        _column = column;
+    }
+
+    /// <summary>The total display width of the text, in columns.</summary>
+    public int TotalColumns => _column[^1];
+
+    /// <summary>The char length of the text.</summary>
+    public int Length => _charIndex[^1];
+
+    /// <summary>Builds the layout for <paramref name="text"/> (null/empty ⇒ a single zero boundary).</summary>
+    public static GraphemeLayout Build(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return new GraphemeLayout([0], [0]);
+
+        var charIndex = new List<int>(text.Length + 1) { 0 };
+        var column = new List<int>(text.Length + 1) { 0 };
+        var enumerator = text.GetGraphemeEnumerator();
+        int ci = 0, col = 0;
+        while (enumerator.MoveNext())
+        {
+            var cluster = enumerator.Current;
+            ci += cluster.Length;
+            col += GraphemeWidth.ClusterWidth(cluster);
+            charIndex.Add(ci);
+            column.Add(col);
+        }
+
+        return new GraphemeLayout([.. charIndex], [.. column]);
+    }
+
+    /// <summary>The display column of the cluster boundary at or before <paramref name="charIndex"/>.</summary>
+    public int ColumnOf(int charIndex) => _column[BoundaryAtOrBefore(charIndex)];
+
+    /// <summary>Snaps <paramref name="charIndex"/> to the cluster boundary at or before it (clamped to [0, Length]).</summary>
+    public int PinToBoundary(int charIndex) => _charIndex[BoundaryAtOrBefore(charIndex)];
+
+    /// <summary>The next cluster boundary strictly after <paramref name="charIndex"/> (clamped to Length).</summary>
+    public int NextBoundary(int charIndex)
+    {
+        foreach (var boundary in _charIndex)
+            if (boundary > charIndex)
+                return boundary;
+        return Length;
+    }
+
+    /// <summary>The previous cluster boundary strictly before <paramref name="charIndex"/> (clamped to 0).</summary>
+    public int PrevBoundary(int charIndex)
+    {
+        for (var i = _charIndex.Length - 1; i >= 0; i--)
+            if (_charIndex[i] < charIndex)
+                return _charIndex[i];
+        return 0;
+    }
+
+    /// <summary>The char index of the first cluster boundary whose column is ≥ <paramref name="column"/> (clamped to Length).</summary>
+    public int CharIndexAtOrAfterColumn(int column)
+    {
+        for (var i = 0; i < _column.Length; i++)
+            if (_column[i] >= column)
+                return _charIndex[i];
+        return Length;
+    }
+
+    /// <summary>The char index of the cluster boundary at or before <paramref name="column"/> (the cluster covering it).</summary>
+    public int CharIndexAtOrBeforeColumn(int column)
+    {
+        var best = 0;
+        for (var i = 0; i < _column.Length && _column[i] <= column; i++)
+            best = i;
+        return _charIndex[best];
+    }
+
+    private int BoundaryAtOrBefore(int charIndex)
+    {
+        var best = 0;
+        for (var i = 0; i < _charIndex.Length && _charIndex[i] <= charIndex; i++)
+            best = i;
+        return best;
+    }
+}
+
+/// <summary>Whitespace-delimited word navigation for single-line editing (Ctrl+Arrow / Ctrl+Backspace/Delete).</summary>
+internal static class TextNavigation
+{
+    /// <summary>The offset after the next word: skip a leading whitespace run, then the word run (clamped to length).</summary>
+    public static int NextWord(string text, int index)
+    {
+        var i = Math.Clamp(index, 0, text.Length);
+        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+        while (i < text.Length && !char.IsWhiteSpace(text[i])) i++;
+        return i;
+    }
+
+    /// <summary>The offset at the start of the previous word: skip a trailing whitespace run, then the word run (clamped to 0).</summary>
+    public static int PrevWord(string text, int index)
+    {
+        var i = Math.Clamp(index, 0, text.Length);
+        while (i > 0 && char.IsWhiteSpace(text[i - 1])) i--;
+        while (i > 0 && !char.IsWhiteSpace(text[i - 1])) i--;
+        return i;
+    }
+}

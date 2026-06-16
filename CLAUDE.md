@@ -78,7 +78,11 @@ the property system, element-level layout enums (`Visibility`, the alignments), 
 **Phase 0 complete** (doc §14): the Fork A property engine — `UIProperty`/`StyledProperty<T>`/`AttachedProperty<T>`/
 `DirectProperty<TOwner,T>`/`UIPropertyKey<T>` registration + per-type frozen metadata, two-lane `PropertyEffects`,
 `UIObject` + `ValueStore` (effective/base split, priority frames at `BindingPriority` Animation > LocalValue > Style >
-Default, store-owned retraction/promotion), `SetCurrentValue`, copied-value change carriers, typed/untyped observers
+Template > Inherited > Default — the **Template lane** (wire 150) landed 2026-06-16 for values a control/data template
+authors on its parts (literal `SetValue`/`{TemplateBinding}`/`SetResourceReference`, reached only via
+`TemplateInstantiationScope`), one rung below Style so a page/theme Style overrides a template default (precedence-matrix
+§20/PD24; `ValueSource.Kind`/`ValueSourceKind` carries the within-lane provenance, PD25) — store-owned
+retraction/promotion), `SetCurrentValue`, copied-value change carriers, typed/untyped observers
 (incl. the winning-base observer), `BindingEntry<T>`/`BindInFrame`/`AnimatedValueHandle<T>` producer seams,
 lazy-read/eager-notify inheritance over `IInheritanceNode`, untyped XAML lane + box interning + `GetValueSource`
 diagnostics, and the `ValueFrame` conformance kit. The oracle-pinned precedence matrix

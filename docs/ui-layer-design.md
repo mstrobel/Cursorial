@@ -172,18 +172,22 @@ Change carriers are **copied-value `readonly struct`s passed by `in`** — value
 ```csharp
 public enum BindingPriority
 {
-    Animation  = -1,   // above local: trigger-driven pulses must beat the value they animate; restoration falls out free
-    LocalValue =  0,   // SetValue / local {Binding}
-    Style      =  1,   // SINGLE slot; within-slot order = Fork B's packed StyleSortKey carried by frames
-                       //   (layer field encodes ControlTheme/Theme/Template/app provenance — template-local included)
-    Inherited  =  2,   // resolution-only: walk-up result; never assignable
-    Default    =  3,   // resolution-only: per-type metadata default
+    Animation  = -100,  // above local: trigger-driven pulses must beat the value they animate; restoration falls out free
+    LocalValue =    0,  // SetValue / local {Binding}
+    Style      =  100,  // SINGLE slot; within-slot order = Fork B's packed StyleSortKey carried by frames
+                        //   (layer field encodes ControlTheme/Theme/Template/app provenance — template-local included)
+    Template   =  150,  // §20/PD24: values a control/data template AUTHORS on its parts (literal SetValue,
+                        //   {TemplateBinding}/{Binding}, SetResourceReference) — below Style so a page/theme
+                        //   Style overrides a template default; reached only via the template-instantiation scope
+    Inherited  =  200,  // resolution-only: walk-up result; never assignable
+    Default    =  300,  // resolution-only: per-type metadata default
     Unset      = int.MaxValue,
 }
 ```
 
 - **Binding is not a priority.** A `BindingEntry<T>` contributes at the priority it was installed at; within one priority, last writer wins and a binding's push counts as a write.
 - **One Style slot.** All style/trigger/template contributions are frames in the single `Style` slot, ordered by `StyleSortKey` (Fork B owns key construction; layer beats specificity per DECISIONS). The store sorts frames by the key and arbitrates; it never evaluates selectors.
+- **The Template lane** (`BindingPriority.Template`, wire 150 — added 2026-06-16, precedence matrix §20/PD24) is the engine-internal lane for everything a control/data template *authors on its parts*: a literal `SetValue`, a `{TemplateBinding}`/`{Binding}`, a `SetResourceReference`. It sits one rung **below** `Style` (so a page/theme Style overrides a template default — the deliberate inverse of WPF, where template-property values outrank Style) and **above** `Inherited`. It is **not** a `SetValue` priority argument (PD1 stands); a thread-static **template-instantiation scope** open while a template's content tree is built (`ControlTemplate.Instantiate` / `DataTemplate.Build`) reroutes the ordinary local-lane producers to it. **Do not confuse it with Fork B's `StyleLayer.Template`** (§3.4): that is a *sort-key layer within the Style slot* for style rules declared in a control template's `Styles` — those are still `Style`-priority and therefore *beat* a Template-lane part value. (A `BindingEntry<T>` installed inside the scope captures the lane at install — A6 now accepts `LocalValue` or `Template`.)
 - **`SetCurrentValue<T>`** (verbatim P3 graft): replace the effective value in place without changing its source; no entry ⇒ behaves as Local. Observer args carry the priority of the lane whose value was replaced — `Animation` while an animation holds the property, else the base lane's priority (A11); provenance unchanged. Non-echo `SetValue` **and** `SetCurrentValue` writes feed TwoWay write-back (A12 — `Popup.IsOpen` dismissal depends on it); jointly: a mid-animation `SetCurrentValue` on a two-way-bound property never reaches the source, because S2 filters Animation-priority args (pinned as one oracle row, §2.5).
 - **`ClearValue` is the binding kill** (A9): removes the local value and evicts local-priority binding entries; `SetValue` is a transient override that never kills a binding (coexistence model).
 - **`GetBaseValue<T>`** is the storyboard handoff snapshot; `Animation`-above-local means the base keeps living underneath and disposing the handle resurfaces it with one notification.
@@ -265,7 +269,7 @@ public sealed class AnimatedValueHandle<T> : IDisposable
 - **One-winner-per-priority slots** — the single Style slot needs coexisting frame contributions ordered by `StyleSortKey`.
 - **Coercion as a priority slot** — coercion happens inside effective-value computation, not on the ladder.
 - **Any `IObservable` surface** — subscription + closure allocation per use; drags an Rx contract through the codebase.
-- **WPF's 10-bucket priority ladder** — unused at terminal scale; cut rungs recorded as re-addable.
+- **WPF's 10-bucket priority ladder** — unused at terminal scale; cut rungs recorded as re-addable. The first re-add landed 2026-06-16: the **Template lane** (`BindingPriority.Template`, §2.2/§20) — but **weaker** than Style, not stronger (WPF puts template values above style); see §20's header for why.
 - **Ref-struct change args over live store entries** — reentrancy corrupts the entry mid-dispatch; replaced by copied-value carriers.
 - **Effects parameter on `Register`** — only the `Affects*<TOwner>` sugar + `GlobalEffects` lane handles attached properties; the parameter shape cannot.
 - **POCO + INPC (no property system)** — value restoration, priority arbitration, and inheritance get re-derived ad hoc per control, three bad stores instead of one.
@@ -281,7 +285,7 @@ Deltas the subsystem chapters impose beyond the canonical proposal as amended by
 | A3 | Inherited-change virtual | S1 | `UIObject.OnInheritedPropertyChanged(in InheritedPropertyChangedEventArgs)`; `UIElement` overrides for entry-less-descendant effects dispatch |
 | A4 | Inherited delivery on observers | S2 | `AddObserver` fires on inherited changes on entry-less descendants (DataContext rebind) |
 | A5 | Frame-hosted producer entries | S2 | `BindInFrame<T>(StyledProperty<T>, ValueFrame, IValueEvictionListener?)` + untyped; evicted on frame removal / cookie retraction / `TemplateInstance.Detach()` |
-| A6 | Free-standing `Bind` restricted | S2 | `Bind`/`BindUntyped` accept LocalValue only; Style-slot contributions must be frame-hosted |
+| A6 | Free-standing `Bind` restricted | S2 | `Bind`/`BindUntyped` accept LocalValue or **Template** (the §20/PD24 in-template install path, added 2026-06-16); Style-slot contributions must be frame-hosted |
 | A7 | Entry base + re-entrant dispose | S2 | `BindingEntryBase { Property; Priority; SetValue; SetUnset; Dispose }`; `Dispose` idempotent, legal from `OnEvicted` |
 | A8 | Entry-holds-unset | S2, S7 | Entries valueless until first `SetValue`; `UnsetValue` ⇒ `HasValue=false` ⇒ promotion; resource producers get in-place set/unset + displacement notification |
 | A9 | `ClearValue` is the binding kill | S2 | Removes local value **and** evicts local-priority entries; `SetValue` never kills |
@@ -313,7 +317,7 @@ Recorded ownership notes: effective-`IsEnabled` is S1's (no store work); `Overri
 - **Data validation (`INotifyDataErrorInfo` channel)** — terminal forms are a later concern; `Validate` + diagnostics hook suffice.
 - **Property-change tracing / dev-tools hooks** beyond `GetValueSource` + frame/local enumeration — DevTools-era work.
 - **Fat-struct slot split** (side allocation for fat `T` like `Style`) — internal, profiling-gated; no API impact.
-- **Cut WPF ladder rungs** — recorded as re-addable if a consumer materializes; none has.
+- **Cut WPF ladder rungs** — recorded as re-addable if a consumer materializes. The **Template lane** materialized 2026-06-16 (§2.2/§20); the remaining WPF rungs (e.g. a separate trigger lane) stay cut — `Style.When` covers triggers within the Style slot.
 
 ---
 
@@ -409,7 +413,7 @@ Each attached `Styles` owns a **`StyleIndex`** rule-hash keyed by the subject's 
 
 ### §3.4 Precedence: one slot, one sort key
 
-All style values enter Fork A at **`BindingPriority.Style`**: `Animation > LocalValue > Style (within-slot ordered by StyleSortKey) > Default`, with `TemplateBinding`'s template-local provenance and inheritance integrated below per the Fork A store design.
+All style values enter Fork A at **`BindingPriority.Style`**: `Animation > LocalValue > Style (within-slot ordered by StyleSortKey) > Template > Inherited > Default`. Values a template *authors on its parts* (`{TemplateBinding}`, literals, `SetResourceReference`) enter at the separate **`BindingPriority.Template`** lane *below* the whole Style slot (§2.2/§20, added 2026-06-16) — so any style rule, including one armed at the `StyleLayer.Template` *sort-key layer* (a rule from a control template's own `Styles`, still `Style`-priority), overrides a templated part's authored value. The `StyleLayer.Template` layer below and the `BindingPriority.Template` lane are **different mechanisms that share a word** — the former orders rules *within* the Style slot, the latter is a weaker lane *outside* it.
 
 ```csharp
 public readonly struct StyleSortKey : IComparable<StyleSortKey>   // packed ulong
@@ -648,7 +652,7 @@ Built-in extensions (`{x:Null}`, `{x:Static}`, `{x:Type}`, `{StaticResource}`, `
 - `Binding` constructs the parsed `BindingRecord` into S2's `Binding` and applies via `BindingOperations.Apply` → a `BindingEntry<T>` producer at the attach site's priority. Binding to a non-`UIProperty` member is CUR2210 at parse time. Paths parse with the loader's xmlns-aware `IPathTypeResolver { Type? Resolve(string typeToken); }` so `(Type.Property)` segments resolve against xmlns context (C-14); code-first falls back to Fork A's short-name registry.
 - `TemplateBinding` applies S2's optimized one-way-to-templated-parent entry at build time.
 
-**Precedence:** the loader is a well-behaved value source, never a precedence authority. Document-level sets carry `BindingPriority.LocalValue`; template builds stamp template-local provenance, which Fork A's store integrates so document-local overrides template-shipped values. Within-`Style` ordering is Fork B's `StyleSortKey`; restoration is store-owned (invariant 4) — the loader retracts nothing.
+**Precedence:** the loader is a well-behaved value source, never a precedence authority. Document-level sets carry `BindingPriority.LocalValue`; values authored inside a template build land on the **`BindingPriority.Template`** lane (§2.2/§20, added 2026-06-16) — below Style, so both a document-level `LocalValue` set and any page/theme Style override a template-shipped value. Within-`Style` ordering is Fork B's `StyleSortKey`; restoration is store-owned (invariant 4) — the loader retracts nothing.
 
 ### §4.5 Deferred content: templates and resource entries
 

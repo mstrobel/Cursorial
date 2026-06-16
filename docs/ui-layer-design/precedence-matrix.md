@@ -37,7 +37,7 @@ All rows assume a freshly constructed host unless the Setup column says otherwis
 
 ### 0.3 Global arbitration rules restated (rows assert instances of these)
 
-1. Ladder (strong→weak): `Animation(-1) > LocalValue(0) > Style(1, single slot, within-slot StyleSortKey) > Inherited(2, resolution-only) > Default(3, resolution-only)`. `Unset = int.MaxValue` is an internal sentinel, never reported by `GetValueSource`.
+1. Ladder (strong→weak): `Animation(-1) > LocalValue(0) > Style(1, single slot, within-slot StyleSortKey) > Template(1.5, the template-instantiation lane — weaker than Style, stronger than Inherited; wire value 150) > Inherited(2, resolution-only) > Default(3, resolution-only)`. `Unset = int.MaxValue` is an internal sentinel, never reported by `GetValueSource`. The **Template lane** (§20, added 2026-06-16, PD24) carries everything a control/data template *authors* on its parts — a literal `SetValue`, a `{TemplateBinding}`/`{Binding}`, a `SetResourceReference` — so a page/theme **Style** overrides a template-default the way authors expect (the deliberate inverse of WPF, where template-set values beat styles). It is *not* a producer `SetValue`/`Bind`/a frame accept directly: an ambient template-instantiation scope (open while a template's content tree is built) reroutes the ordinary local-lane producers to Template; outside the scope they stay LocalValue (PD24).
 2. Change-args priority = the priority of the **new effective value** (promotion reports the promoted lane) — except `SetCurrentValue`, which per A11 reports the **replaced** lane.
 3. Equality gate everywhere: metadata `Comparer` ?? `EqualityComparer<T>.Default`; a write whose post-coercion result equals the current effective value at the same winning lane produces zero notifications and zero downstream work.
 4. A source change with no value change (equal-value promotion) is **silent**, though `GetValueSource` updates (PD9).
@@ -70,6 +70,8 @@ Rows below reference these. Each goes beyond (but never against) the canonical t
 - **PD21** — `AddFrame` of an already-added frame throws `InvalidOperationException`; `RemoveFrame` of a never-added frame throws `ArgumentException` (deterministic over forgiving).
 - **PD22** *(added at engine-4)* — **Propagated** inherited deliveries (a change reaching an entry-less descendant via eager-notify — A3/A4) ride a dedicated channel set, in order: typed observers → untyped observers → the `OnInheritedPropertyChanged` virtual (the A3 carrier). The metadata `Changed` callback and the ordinary `OnPropertyChanged` virtual are **origin-site** channels and do not fire on descendants — §2.3 enumerates descendant delivery as exactly "A3 **and** A4", and §5.5 has `UIElement` run its effects dispatch from the A3 virtual, which would be redundant if the `Changed`/virtual channels fired there. Where a row's Expected cell says `notify(…)` on a descendant for a *propagated* change (the leaf cells of M108–M111, M182, M184's leaf, M186, M189, M194–M196), it asserts this channel set; operations executed on the node itself (e.g. M85's `leaf.H.Dispose()`, M97's `leaf.CV`) keep the full four-channel meaning. Propagated deliveries dispatch immediately and are not captured by a *descendant's* defer scope — the origin's scope coalesces the whole fan-out (M194; PD15 spirit). The origin's equality gate is the only gate: no per-descendant re-gating with descendant-type comparers.
 - **PD23** *(added at engine-4)* — `ValueSource` equality compares exactly the matrix-pinned `src` pair (`Priority`, `IsCurrentValue`). The §2.1 diagnostics grafts — `BasePriority`, `IsAnimated`, `IsCoerced` — are non-equality annotations on the same struct. Inherited-sourced reads report `IsAnimated`/`IsCoerced` as `false`: those details live at the contributing ancestor.
+- **PD24** *(added 2026-06-16, §20)* — The **Template lane** (`BindingPriority.Template`, wire 150) sits one rung below `Style` and one above `Inherited`. There is no new public producer mouth: a thread-static **template-instantiation scope** is opened around the build of a control template's or data template's content tree (`ControlTemplate.Instantiate` / `DataTemplate.Build`), and while it is open the three ordinary local-lane producers reroute to Template — a literal `SetValue`/`SetCurrentValue:false` (`SetTemplateValue`), a free-standing `{Binding}`/`{TemplateBinding}` install (priority captured into the binding's activation context at install time, since the entry may materialize on a later attach **outside** the scope), and a `SetResourceReference` (`SetTemplateValue` via a Template-priority binding entry). Outside the scope every one of these stays `LocalValue` — the scope is the *only* trigger and it restores on dispose (nesting and re-entrancy are last-open-wins; closing pops). `SetValue(p, v, BindingPriority.Template)` is **not** accepted on the public mouth (PD1 stands — the lane is scope-driven, not parameter-driven); the cut WPF rung being re-added here is the engine-internal `Template` lane only. The lane is a structural twin of the local lane (literal value + at-most-one binding entry, last-writer-wins within the lane) and **can be masked** by Style/Local/Animation, so it carries its own coerced/raw storage and resolves through `Reevaluate` rather than winning unconditionally. **DEV** from WPF (where template-property values outrank Style) — rationale in §20's header and `docs/ui-layer-design/judgment-styling-coherence.md` (Flaw 1).
+- **PD25** *(added 2026-06-16, §20.6)* — `ValueSource` gains a non-equality `Kind : ValueSourceKind` annotation (joining the PD23 grafts; excluded from equality). It refines *how* the winning contribution was produced beyond the `Priority` lane: `Local`, `TemplateLiteral`, `TemplateBinding`, `TemplateResource`, `StyleSetter`, `StyleWhen`, `Animation`, `Inherited`, `Default`. The lane-level distinctions a consumer asked for — "is this a template default or a style?" — fall out of `Priority` alone; `Kind` adds the within-lane provenance (literal vs binding vs resource inside Template; setter vs `When`-guarded rule inside Style). It is derived from store state plus a lightweight source tag carried on binding entries / frames; a contribution whose finer origin is unknown reports the lane's generic kind (`Local`/`Default`/`Inherited`/`Animation`).
 
 ---
 
@@ -491,9 +493,91 @@ Repo norm: deterministic oracle-pinned tables; assert via `GC.GetAllocatedBytesF
 
 ---
 
-## 20. Test authoring contract
+## 20. Template lane (M270–M301)
 
-Each numbered row above becomes **exactly one** xUnit test in `Cursorial.UI.Tests`, named after its row id with a behavior slug: `M042_OnEntryChanged_InPlaceReEmit_NotifiesAtStyle` (`[Fact]`) — rows whose Expected cell enumerates a family (M24, M114, M148, M263) become a single `[Theory]` with one `[InlineData]`/`MemberData` case per family member, keeping the row↔test bijection at the row level. Tests live under `Cursorial.UI.Tests/PrecedenceMatrix/`, one file per section (`Section01_Defaults.cs` … `Section19_Allocation.cs`), sharing the §0.1 fixture via a common harness class that registers the fixture properties once (`ModuleInitializer` or static lazy — dense ids are process-global, so registrations must be idempotent across test classes). Rows are not merged, reordered, or "covered implicitly by" other rows: a row without a matching test is a P0 exit-criterion failure (§14 P0: "precedence matrix green against the store"). DEBUG-only rows (M204, M255) compile under `#if DEBUG` and assert the absence of the check in release where practical. When the engine cannot honor a row, the resolution is a PR that amends this file (and, where the row carries a `PIN`/`DEV` tag, the PD ledger) **before** the engine change lands — the matrix is the oracle, not the implementation. Oracle tags (`AV`/`WPF`/`PIN`/`DEV`) are documentation of provenance and do not alter test behavior.
+Added 2026-06-16 (PD24/PD25). The Template lane carries everything a **control/data template authors on its parts** — a literal `SetValue`, a `{TemplateBinding}`/`{Binding}`, a `SetResourceReference` — at a priority **weaker than Style** so a page/theme Style overrides a template default, and **stronger than Inherited/Default** so the template's authored value still beats an inherited or metadata value. This is the deliberate **inverse of WPF**, where values set in a template (template properties) outrank Style; the rationale (a control's parts should be re-skinnable by an app's styles, which is the behavior authors actually expect, and the reason a `{TemplateBinding}` forwarding a style-set control property must *yield* to a style targeting the part) is recorded in `docs/ui-layer-design/judgment-styling-coherence.md` (Flaw 1).
+
+The lane is a **structural twin of the local lane** (a literal value + at most one binding entry, last-writer-wins within the lane) that *can be masked* by Style/Local/Animation, so it carries its own coerced + raw storage and resolves through `Reevaluate` rather than winning unconditionally. There is **no new public producer**: the lane is reached only through a thread-static **template-instantiation scope** open while a template's content tree is built (PD24). New notation:
+
+- `T(v)` = a literal `SetValue(P, v)` issued **inside an open template-instantiation scope** — engine: routes to the Template lane (`SetTemplateValue`). Same value-bearing semantics as `L`, one rung weaker than Style. `[withdraw T]` = the lane-appropriate retraction (`TearDown` of the part, or the entry form's `Unset`/`Dispose`).
+- `TE` = a Template-lane binding entry from `Bind(P, BindingPriority.Template)` (the engine twin of `E`; the in-template `{Binding}`/`{TemplateBinding}` install path). `TE.Set(v)`/`TE.Unset()`/`TE.Dispose()` as for `E`.
+- W-value = 5, S-value = 9 as in §5 unless noted. Rows assert `eff`, `base`, `src`, and the exact notification.
+
+### 20.1 Template over the resolution tiers (Template is the stronger side)
+
+| # | Pair (S over W) | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M270 | Template over Inherited | `root.L(Pi,5)`; `leaf.T(9)` | leaf eff=9 base=9 src=`Template`; `notify(5→9, Template)` — a template default beats the inherited value | PIN (PD24) |
+| M271 | Template over Inherited (withdraw) | `root.L(Pi,5)`; `leaf.TE.Set(9)` then `leaf.TE.Unset()` | leaf eff=5 src=`Inherited`; `notify(9→5, Inherited)` | PIN |
+| M272 | Template over Default | `T(9)` on fresh | eff=9 base=9 src=`Template` IsSet=true; `notify(0→9, Template)` | PIN |
+| M273 | Template over Default (equal) | `T(0)` on fresh (equals default) | `silent`; src=`Template`, IsSet=true (PD9 lane flip) | PIN |
+
+### 20.2 The stronger lanes mask Template
+
+| # | Pair (S over W) | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M274 | Style over Template | `T(5)` then `F(k1){P=9}` | **the fix**: eff=9 src=`Style`; `notify(5→9, Style)` — a Style overrides a template default | DEV (WPF inverts this ordering) |
+| M275 | Style over Template (withdraw) | after M274, `RemoveFrame` | eff=5 src=`Template`; `notify(9→5, Template)` — the template value resurfaces | PIN |
+| M276 | Style over Template (masked write) | M274 stack; `T(6)` (template re-emit while masked) | `silent`; eff stays 9; `GetValue(P, Template)`=6 | PIN |
+| M277 | Local over Template | `T(5)` then `L(9)` | eff=9 src=`Local`; `notify(5→9, Local)` | PIN |
+| M278 | Local over Template (withdraw) | after M277, `CV` | eff=5 src=`Template`; `notify(9→5, Template)` | PIN |
+| M279 | Anim over Template | `T(5)` then `H.Set(9)` | eff=9 base=5 src=`Animation`; `notify(5→9, Animation)`; `H.Dispose()` ⇒ `notify(9→5, Template)` | PIN |
+
+### 20.3 Full six-rung ladder
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M280 | `root.L(Pi,2)`; leaf: `TE.Set(4)`, `F(k1){P=5}`, `L(7)`, `H.Set(9)` | peel top-down | eff=9; `H.Dispose()`⇒`notify(9→7, Local)`; `CV`⇒`notify(7→5, Style)`; `RemoveFrame`⇒`notify(5→4, Template)`; `TE.Unset()`⇒`notify(4→2, Inherited)`; `root.CV`⇒`notify(2→0, Default)` — five notifications, each exactly once, each at the promoted lane | PIN |
+| M281 | the M280 stack | `GetValue(P, maxPriority)` probes | `Animation`→9, `LocalValue`→7, `Style`→5, `Template`→4, `Inherited`→2, `Default`→0 | PIN (PD16 + Template) |
+| M282 | the M280 stack | `GetBaseValue` at each peel step | 7, 5, 4, 2, 0 — base tracks the strongest sub-Animation lane | PIN |
+| M283 | apply-below-apply | fresh: `L(7)` first, then `T(5)`, `F(k1){P=3}` | the weaker template/style applies `silent`; eff stays 7; `GetValue(P, Style)`=3, `GetValue(P, Template)`=5; then `CV` ⇒ `notify(7→3, Style)` — Style still beats Template | PIN |
+
+### 20.4 The theme-forwarding invariant (the whole point) + the reported repro
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M284 | a part `border` carries `TE.Set(themeBrush)` (a `{TemplateBinding}` forwarding the control's style-set `Background`) | add a page Style `border.AddFrame F(k1){Background=pageBrush}` | `border` eff=`pageBrush` src=`Style` — the page style overrides the forwarded template value | DEV (the documented fix) |
+| M285 | M284 without the page frame | resolve | `border` eff=`themeBrush` src=`Template` — the forwarded value wins over Default | PIN |
+| M286 | **close-button repro** | part `btn` with a template literal `T(Background=transparent)`; then a window/page Style frame `F(k1){Background=accent}` on `btn` | `btn` eff=`accent` src=`Style` — the Style now applies (with the lane at LocalValue it stayed `transparent`: the reported bug) | DEV (regression guard) |
+
+### 20.5 SetCurrentValue × Template (mirrors §6)
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M287 | fresh | `SCV(4)` (the M118 as-Local graft) then `T(8)` | the graft **yields to the Template producer** (PD24's "one extra branch", mirroring M118→S100 for Style): eff=8 src=`Template`; the graft evaporates; `notify(4→8, Template)` | PIN |
+| M288 | `T(5)` | `SCV(6)` | eff=6 src=`Template+cur` — provenance unchanged; `notify(5→6, Template)` (A11 replaced lane); base=6, IsSet=true | PIN (mirror M120/M121) |
+| M289 | after M288 | template re-emits 5→8 (`T(8)`) | re-evaluation from the replaced lane clobbers the overwrite: eff=8 src=`Template` (`+cur` cleared); `notify(6→8, Template)` | PIN (mirror M122) |
+| M289b | after M288 | template re-emits the **same** value (`T(5)`) | the re-emit still clobbers — a producer re-asserting drops the manual overlay, and the template's source (5) was held separately under the overwrite (the Style M122 analog, **not** the Local M119 case where SCV becomes the raw): eff=5 src=`Template` (`+cur` cleared); `notify(6→5, Template)`. The clobber is unconditional on a re-emit (precedes the equal-value gate). | PIN (Style-analog; the Template source is held separately) |
+| M290 | after M288 with the rung as `TE` | `TE.Dispose()` | the overwrite evaporates with its lane: eff=0 src=`Default`; `notify(6→0, Default)` | PIN (mirror M123) |
+| M291 | after M288 | `F(k1){P=9}` | a stronger lane wins and the overwrite is lost: eff=9 src=`Style`; `notify(6→9, Style)` | PIN (mirror M124) |
+| M292 | `T(5)` | `CV` | no *local* contribution to clear ⇒ no-op, `silent`; eff stays 5 src=`Template` — the Template lane is not "local" (`CV`/A9 kills local-priority producers only; only `[withdraw T]` removes it) | PIN |
+
+### 20.6 Install seams, ValueSourceKind (PD25), IsSet, diagnostics
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M293 | scope routing | inside an open scope: a literal `SetValue`, a `Bind` install, a `SetResourceReference` | all three land at `Template`; the **identical** operations outside any scope land at `LocalValue` — the scope is the only trigger and restores on dispose (nested/re-entrant scopes are last-open-wins) | PIN (PD24) |
+| M294 | public mouth unchanged | `SetValue(P, 1, BindingPriority.Template)` | throws `ArgumentException` — the lane is scope-driven, not parameter-driven (PD1 stands; PD24) | PIN |
+| M295 | bind priorities | `Bind(P, BindingPriority.Template)` vs `Bind(P, Style/Animation/Inherited/Default)` | `Template` installs a Template-lane entry (the in-template binding install path); the others still throw `ArgumentException` — **M148 amended**: free-standing `Bind` now accepts `LocalValue` or `Template` (A6) | PIN (amends M148) |
+| M296 | `Kind` annotation (PD25) | `GetValueSource(P).Kind` over the producer family | literal-local→`Local`; `T(v)`→`TemplateLiteral`; in-template `Bind`→`TemplateBinding`; in-template `SetResourceReference`→`TemplateResource`; plain setter→`StyleSetter`; `When`-guarded rule→`StyleWhen`; animation→`Animation`; inherited→`Inherited`; default→`Default`. `Kind` is a non-equality annotation (PD25) | PIN (PD25) |
+| M297 | IsSet counts Template | `T(5)` | `IsSet(P)`=true — a template contribution is *set* (PD11 extended: S8 auto-aliasing yields to template-provided values exactly as it does to style/local ones) | PIN (PD11) |
+| M298 | diagnostics enumeration | `GetValueDiagnostics(P)` on a stack carrying a Template contribution | includes a `Template` row, ordered between the Style frame rows and the Inherited provenance (strongest-first) | PIN |
+
+### 20.7 Coercion (PD6 parity — the Template lane is the local lane's twin)
+
+The Template lane carries its own raw + coerced storage (`RawTemplateValue`/`TemplateValue`), so coercion mirrors the local lane (§15): the stored value is coerced at write, and `CoerceValue` re-runs the coercer against the **raw** template value (the WPF Maximum/Value dance) — notifying when Template wins, silent when masked.
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| M299 | `Pc` (clamp [0,100]) | `T(Pc, 250)` | eff=100 (coerced); src=`Template`; `IsCoerced` true; the raw template slot holds 250 (PD6 parity — observable via M300) | WPF (PD6) |
+| M300 | a coercer reading instance state (ceiling from `Pmax`); `T(Pcd, 250)` while Template wins, ceiling 100 ⇒ eff=100 | raise ceiling to 300; `CoerceValue(Pcd)` | re-runs against the **raw** 250 ⇒ eff=250; `notify(100→250, Template)` — the Maximum/Value dance on the Template lane (M232 analog), only possible because the raw template value survives | WPF (PD6) |
+| M301 | M299 stack + a Style frame `F(k1){Pc=9}` masking the template (eff=9) | raise ceiling, `CoerceValue(Pc)` | the masked template re-coerces **silently** (eff stays 9 at Style); removing the frame resurfaces the re-coerced template value | PIN |
+
+---
+
+## 21. Test authoring contract
+
+Each numbered row above becomes **exactly one** xUnit test in `Cursorial.UI.Tests`, named after its row id with a behavior slug: `M042_OnEntryChanged_InPlaceReEmit_NotifiesAtStyle` (`[Fact]`) — rows whose Expected cell enumerates a family (M24, M114, M148, M263) become a single `[Theory]` with one `[InlineData]`/`MemberData` case per family member, keeping the row↔test bijection at the row level. Tests live under `Cursorial.UI.Tests/PrecedenceMatrix/`, one file per section (`Section01_Defaults.cs` … `Section19_Allocation.cs`, `Section20_TemplateLane.cs`), sharing the §0.1 fixture via a common harness class that registers the fixture properties once (`ModuleInitializer` or static lazy — dense ids are process-global, so registrations must be idempotent across test classes). Rows are not merged, reordered, or "covered implicitly by" other rows: a row without a matching test is a P0 exit-criterion failure (§14 P0: "precedence matrix green against the store"). DEBUG-only rows (M204, M255) compile under `#if DEBUG` and assert the absence of the check in release where practical. When the engine cannot honor a row, the resolution is a PR that amends this file (and, where the row carries a `PIN`/`DEV` tag, the PD ledger) **before** the engine change lands — the matrix is the oracle, not the implementation. Oracle tags (`AV`/`WPF`/`PIN`/`DEV`) are documentation of provenance and do not alter test behavior.
 
 
 

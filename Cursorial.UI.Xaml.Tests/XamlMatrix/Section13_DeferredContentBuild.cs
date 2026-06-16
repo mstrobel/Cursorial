@@ -85,17 +85,25 @@ public sealed class Section13_DeferredContentBuild : LoaderTestBase
         Assert.Null(NameScope.GetNameScope(instance.Root)); // no document scope on a template part
     }
 
-    [Fact] // X158
+    [Fact] // X158 (amended 2026-06-16 — precedence-matrix §20/PD24: the Template lane)
     public void X158_DocumentLocalValue_OverridesTemplateShipped()
     {
-        // A template sets Background; a document-level set on the SAME part overrides it (LocalValue > template).
+        // A template ships Background on a part: it lands at the Template lane (one rung below Style),
+        // NOT LocalValue — so a page/theme Style overrides it. A document-level LocalValue set beats it.
         var template = Load<ControlTemplate>(
             "<ControlTemplate><Border Background=\"#ff0000\"/></ControlTemplate>");
         var owner = new Button();
         var instance = InstantiateOn(template, owner);
         var border = (Border)instance.Root;
-        // The template-built value is present at LocalValue (the loader's value-source).
+
+        // The template-shipped value is at Template priority (the fix — was LocalValue before the lane existed).
+        Assert.Equal(BindingPriority.Template, border.GetValueSource(Border.BackgroundProperty).Priority);
+
+        // A local set on the part overrides it (LocalValue > Template), proving the value is reachable.
+        var local = new TestBrush { Color = Color.FromRgb(9, 9, 9) };
+        border.SetValue(Border.BackgroundProperty, local);
         Assert.Equal(BindingPriority.LocalValue, border.GetValueSource(Border.BackgroundProperty).Priority);
+        Assert.Same(local, border.Background);
     }
 
     [Fact] // X160

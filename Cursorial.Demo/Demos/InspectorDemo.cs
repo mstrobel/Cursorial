@@ -1,4 +1,3 @@
-using System.IO;
 using Cursorial.Input;
 using Cursorial.Rendering;            // Margins
 using Cursorial.UI;
@@ -324,16 +323,20 @@ internal sealed class InspectorDemo : IDemo
                 // Guarded: a diagnostic must never crash the thing it inspects — a pathological value ToString()
                 // in an arbitrarily-loaded tree degrades to an error line, not an unhandled hover-handler throw.
                 string winning;
+                var kind = ValueSourceKind.Default;
                 try
                 {
                     winning = StyleDiagnostics.Explain(element, property).Split('\n', 2)[0];
+                    kind = element.GetValueSource(property).Kind; // PD25 within-lane provenance
                 }
                 catch (Exception ex)
                 {
                     winning = $"{property.Name} = (error: {ex.GetType().Name})";
                 }
 
-                _inspectorContent.Children.Add(new TextBlock(winning));
+                // Append the within-lane provenance (PD25): "template literal vs template binding vs
+                // template resource", "style setter vs When-guarded rule" — the finer origin beyond the lane.
+                _inspectorContent.Children.Add(new TextBlock($"{winning}   ·  {kind}"));
             }
         }
 

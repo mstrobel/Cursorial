@@ -44,7 +44,12 @@ public static class BindingOperations
         }
 
         var anchor = target as UIElement;
-        var context = new BindingActivationContext(target, property, anchor, hostFrame, watchCallback: null);
+        // §20/PD24: a free-standing binding installed inside a template-instantiation scope captures
+        // the Template lane now (the entry may materialize on a later attach, outside the scope).
+        // Frame-hosted installs ignore this (they contribute at Style).
+        var context = new BindingActivationContext(
+            target, property, anchor, hostFrame, watchCallback: null,
+            installPriority: TemplateInstantiationScope.CurrentInstallPriority);
         return binding.CreateExpression(in context);
     }
 

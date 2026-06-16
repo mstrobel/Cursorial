@@ -104,7 +104,14 @@ public sealed class ControlTemplate
 
         var scope = new NameScopeDictionary();
         var context = new TemplateBuildContext(owner, scope);
-        var root = _content.Build(context);
+
+        // §20/PD24: while the scope is open, every value the template authors on its parts — a literal
+        // SetValue, a {TemplateBinding}/{Binding}, a SetResourceReference — routes to the Template lane
+        // (one rung below Style), so a page/theme Style overrides a template default. Covers the nested
+        // FuncTemplateContent / XAML ITemplateContent builds. TemplatedParent stamping stays outside.
+        UIElement? root;
+        using (TemplateInstantiationScope.Enter())
+            root = _content.Build(context);
 
         if (root is null)
         {

@@ -52,6 +52,14 @@ public abstract class ValueFrame
     /// <summary>The store this frame is installed on, or <see langword="null"/>.</summary>
     internal ValueStore? Store { get; set; }
 
+    /// <summary>
+    /// Whether this frame is a <em>conditional</em> style rule — a <c>When</c>-guarded rule (the
+    /// data-condition "trigger" equivalent) rather than a plain setter (PD25). Drives the
+    /// <see cref="ValueSourceKind.StyleWhen"/> vs <see cref="ValueSourceKind.StyleSetter"/> provenance
+    /// reported by <c>GetValueSource</c>; default <see langword="false"/> (a plain frame is a setter).
+    /// </summary>
+    internal virtual bool IsConditionalStyleRule => false;
+
     /// <summary>The frame-hosted binding entries (ledger A5), or <see langword="null"/> when none.</summary>
     internal List<BindingEntryBase>? HostedEntries => _hostedEntries;
 

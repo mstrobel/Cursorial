@@ -14,11 +14,16 @@ namespace Cursorial.Tests.UI.PrecedenceMatrix;
 public sealed class TestValueFrame : ValueFrame
 {
     private readonly List<IValueEntry> _entries = [];
+    private readonly bool _isConditional;
 
-    public TestValueFrame(ulong sortKey, bool isActive = true)
+    public TestValueFrame(ulong sortKey, bool isActive = true, bool isConditional = false)
         : base(new StyleSortKey(sortKey), isActive)
     {
+        _isConditional = isConditional;
     }
+
+    /// <summary>The §20.6 <c>When</c>-guarded-rule flag (drives <see cref="ValueSourceKind.StyleWhen"/> provenance, M296).</summary>
+    internal override bool IsConditionalStyleRule => _isConditional;
 
     public override int EntryCount => _entries.Count;
 

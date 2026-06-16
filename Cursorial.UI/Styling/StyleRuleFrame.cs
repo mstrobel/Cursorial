@@ -111,6 +111,9 @@ internal sealed class StyleRuleFrame : ValueFrame
     /// <summary>The armed compiled rule (shared, immutable; the SD21 identity-diff key).</summary>
     internal CompiledRule Rule { get; }
 
+    /// <summary>A <c>When</c>-guarded rule is a conditional rule (the data-condition "trigger") — drives the <see cref="ValueSourceKind.StyleWhen"/> provenance (PD25).</summary>
+    internal override bool IsConditionalStyleRule => Rule.HasWhenConditions;
+
     /// <summary>The channel layer the arming scope assigned (diagnostics).</summary>
     internal StyleLayer Layer { get; }
 

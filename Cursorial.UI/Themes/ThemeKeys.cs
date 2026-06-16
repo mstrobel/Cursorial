@@ -92,6 +92,21 @@ public static class ThemeKeys
     /// <summary>Status bar alternate/branch foreground.</summary>
     public const string StatusBarAltForeground = "Theme.StatusBarAltForeground";
 
+    /// <summary>Background at the Desktop elevation level.</summary>
+    public const string ElevationDesktop = "Theme.ElevationDesktop";
+
+    /// <summary>Background at the Window elevation level.</summary>
+    public const string ElevationWindow = "Theme.ElevationWindow";
+
+    /// <summary>Background at the Raised elevation level.</summary>
+    public const string ElevationRaised = "Theme.ElevationRaised";
+    
+    /// <summary>Background at the Highest elevation level.</summary>
+    public const string ElevationHighest = "Theme.ElevationHighest";
+    
+    /// <summary>Background at the Well (lowest) elevation level.</summary>
+    public const string ElevationWell = "Theme.ElevationWell";
+
     // ───────────────────────────── opt-in chrome (NOT spine members, §11.8a) ─────────────────────────────
 
     /// <summary>

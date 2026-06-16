@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — borderless windows</title>
+<style>
+  :root, [data-theme="dark"] {
+    /* elevation ramp: desktop -> body -> raised -> highest */
+    --desktop:#080910; --win:#16161e; --raised:#1f2335; --high:#24283b;
+    --well:#0d0f19;
+    --text:#c0caf5; --text-dim:#a9b1d6; --muted:#565f89; --faint:#414868;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --sel:#33467c; --hover:#414868;
+    --shadow:#05060b; --titlebar:#1f2335; --titlebar-active:#7aa2f7;
+  }
+  [data-theme="light"] {
+    --desktop:#d2d3da; --win:#f6f6f8; --raised:#e9e9ed; --high:#cbccd1;
+    --well:#ffffff;
+    --text:#343b58; --text-dim:#565a6e; --muted:#9699a3; --faint:#c4c5cc;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#ffffff;
+    --sel:#a8aecb; --hover:#cbccd1;
+    --shadow:#bcbdc6; --titlebar:#e9e9ed; --titlebar-active:#34548a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg,#0d0f19);background:var(--desktop);color:var(--text-dim);
+    font-family:"Cascadia Code NF","JetBrainsMono Nerd Font",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1100px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;max-width:880px;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:30px 0 12px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:10px;max-width:880px;line-height:1.6;}
+  .scene{background:var(--desktop);padding:18px 20px;display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+
+  /* ---- borderless window: fill + padding, no drawn border ---- */
+  .w{background:var(--win);color:var(--text-dim);display:inline-block;vertical-align:top;min-width:36ch;}
+  /* title bar = filled band; padding gives breathing room */
+  .w .tb{display:flex;align-items:center;gap:8px;background:var(--titlebar);color:var(--text-dim);padding:2px 10px;}
+  .w.active .tb{background:var(--titlebar-active);color:var(--on-accent);}
+  .w .tb .ico{color:var(--accent-2);} .w.active .tb .ico{color:var(--on-accent);}
+  .w .tb .cap{flex:1;}
+  .w .tb .ctl{cursor:pointer;padding:0 2px;}
+  .w .tb .ctl.min{color:var(--amber);} .w .tb .ctl.max{color:var(--green);} .w .tb .ctl.cls{color:var(--red);}
+  .w.active .tb .ctl{color:var(--on-accent);opacity:.85;}
+  .w.active .tb .ctl:hover{opacity:1;}
+  /* body: generous padding so content never touches the (invisible) edge */
+  .w .bd{padding:8px 12px;color:var(--text-dim);}
+  .w .bd .txt{color:var(--text);} .w .bd .dim{color:var(--muted);}
+  .acc{color:var(--accent);} .acc2{color:var(--accent-2);} .grn{color:var(--green);}
+  .amb{color:var(--amber);} .rd{color:var(--red);} .pur{color:var(--purple);}
+  /* footer band (raised) */
+  .w .ft{background:var(--raised);padding:5px 12px;display:flex;gap:8px;justify-content:flex-end;}
+  .w .ft.left{justify-content:flex-start;}
+  /* buttons: filled, padded, no border */
+  .btn{background:var(--high);color:var(--text);padding:1px 12px;cursor:pointer;}
+  .btn:hover{background:var(--hover);}
+  .btn.primary{background:var(--accent);color:var(--on-accent);}
+  .btn.primary:hover{background:var(--accent-2);}
+  .btn.danger{background:var(--red);color:var(--on-accent);}
+  /* inputs: well fill, padded */
+  .field{background:var(--well);color:var(--text);padding:1px 8px;display:inline-block;}
+  .field .caret{background:var(--accent);color:var(--accent);}
+  .field.focus{background:var(--well);outline:0;}
+
+  /* elevation shadow: a darker fill strip on right+bottom (whole-cell, not blur) */
+  .elev{position:relative;display:inline-block;vertical-align:top;}
+  .elev > .w{position:relative;z-index:1;}
+  .elev::after{content:"";position:absolute;left:6px;top:6px;right:-6px;bottom:-6px;background:var(--shadow);z-index:0;}
+  /* deeper modal shadow */
+  .elev.modal::after{left:10px;top:10px;right:-10px;bottom:-10px;}
+
+  /* list rows inside a window */
+  .row{display:flex;gap:10px;padding:1px 0;color:var(--text-dim);cursor:pointer;}
+  .row:hover{background:var(--hover);color:var(--text);}
+  .row.sel{background:var(--sel);color:var(--text);}
+  .row .ic{color:var(--accent-2);width:2ch;display:inline-block;}
+  .seprow{color:var(--faint);}
+
+  /* sidebar layout (master/detail flat) */
+  .split{display:flex;}
+  .split .side{background:var(--raised);padding:6px 10px;min-width:18ch;}
+  .split .side .navitem{padding:1px 6px;color:var(--text-dim);cursor:pointer;}
+  .split .side .navitem.sel{background:var(--accent);color:var(--on-accent);}
+  .split .side .navitem:hover:not(.sel){background:var(--hover);color:var(--text);}
+  .split .main{padding:8px 14px;min-width:34ch;background:var(--win);}
+  .split .side .grp{color:var(--muted);font-size:11px;margin:4px 0 1px;}
+
+  /* segmented control + toggle, flat */
+  .seg{display:inline-flex;background:var(--high);}
+  .seg .o{padding:0 10px;color:var(--text-dim);cursor:pointer;}
+  .seg .o.on{background:var(--accent);color:var(--on-accent);}
+  .sw{display:inline-flex;background:var(--high);padding:0 1px;}
+  .sw .k{padding:0 7px;color:var(--muted);} .sw .k.on{background:var(--green);color:var(--on-accent);}
+
+  /* elevation ramp swatch */
+  .ramp{display:flex;gap:0;margin:2px 0 0;}
+  .ramp div{padding:3px 12px;color:var(--text-dim);font-size:11px;}
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — borderless windows — 110×40</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+  <div class="legend">
+    <b>Borderless, fill + padding:</b> windows separate from the desktop by <b>tonal elevation</b> (desktop → body → raised → highest),
+    not drawn borders. Interior <b>padding</b> keeps content off the invisible edge; a filled title band, a raised footer, and an
+    optional whole-cell <b>shadow</b> imply depth. Everything stays cell-aligned — the “border” is just where one fill meets another.
+  </div>
+
+  <h2 class="sec">▸ Elevation ramp — the surfaces that replace borders</h2>
+  <div class="ramp">
+    <div style="background:var(--desktop)">desktop</div>
+    <div style="background:var(--win)">window</div>
+    <div style="background:var(--raised)">raised</div>
+    <div style="background:var(--high)">highest</div>
+    <div style="background:var(--well)">well (inset)</div>
+  </div>
+  <div class="caption">Depth comes from a deliberate fill ramp. Each surface is one step lighter (dark theme) than the one it sits on, so an edge reads as a <b>tonal seam</b> rather than a line. The desktop is darkest; the window body lifts off it; title bars, footers, and buttons use the <b>raised</b>/<b>highest</b> steps; inputs recess to the <b>well</b>. Four steps is enough to layer a full UI without a single border glyph.</div>
+
+  <h2 class="sec">▸ Window depth — three elevation treatments</h2>
+  <div class="scene">
+    <!-- flat: tonal seam only -->
+    <div class="w active" style="min-width:34ch">
+      <div class="tb"><span class="ico"></span><span class="cap">Flat — tonal seam only</span>
+        <span class="ctl min">─</span><span class="ctl max">▢</span><span class="ctl cls">✕</span></div>
+      <div class="bd">
+        <div class="txt">No shadow.</div>
+        <div class="dim">The window fill is one step above the</div>
+        <div class="dim">desktop; the edge is just where the two</div>
+        <div class="dim">tones meet. Lightest, most minimal.</div>
+      </div>
+    </div>
+
+    <!-- shadowed: whole-cell shadow -->
+    <div class="elev">
+      <div class="w active" style="min-width:34ch">
+        <div class="tb"><span class="ico"></span><span class="cap">Raised — whole-cell shadow</span>
+          <span class="ctl min">─</span><span class="ctl max">▢</span><span class="ctl cls">✕</span></div>
+        <div class="bd">
+          <div class="txt">Offset shadow.</div>
+          <div class="dim">A darker fill block sits behind, offset</div>
+          <div class="dim">down-right, implying the window floats</div>
+          <div class="dim">above the desktop. Reads as elevation.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- inactive: recessed -->
+    <div class="w" style="min-width:30ch">
+      <div class="tb"><span class="ico"></span><span class="cap">Inactive — recessed</span>
+        <span class="ctl min">─</span><span class="ctl max">▢</span><span class="ctl cls">✕</span></div>
+      <div class="bd">
+        <div class="dim">Inactive windows keep the grey title</div>
+        <div class="dim">band (no accent) and drop any shadow,</div>
+        <div class="dim">so they sit flat and recede.</div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Three depths from the same parts. <b>Flat</b> relies only on the body-vs-desktop tonal seam — cleanest, good for tiled/full-pane layouts. <b>Raised</b> adds a whole-cell <span class="dim">shadow</span> (a darker fill offset down-right, not a blur) for floating windows. <b>Inactive</b> windows drop the accent title band and any shadow, sitting flat so the focused window stands out. Active windows carry the accent title bar; inactive ones the grey raised band.</div>
+
+  <h2 class="sec">▸ Master–detail — flat sidebar layout</h2>
+  <div class="scene">
+    <div class="elev">
+      <div class="w active" style="min-width:0">
+        <div class="tb"><span class="ico"></span><span class="cap">Settings</span>
+          <span class="ctl cls">✕</span></div>
+        <div class="split">
+          <div class="side">
+            <div class="grp">General</div>
+            <div class="navitem sel">Appearance</div>
+            <div class="navitem">Editor</div>
+            <div class="navitem">Terminal</div>
+            <div class="grp">System</div>
+            <div class="navitem">Keybindings</div>
+            <div class="navitem">Extensions</div>
+            <div class="navitem">Privacy</div>
+          </div>
+          <div class="main">
+            <div class="txt">Appearance</div>
+            <div class="dim" style="margin-bottom:6px">Theme and display options</div>
+            <div style="display:flex;gap:10px;align-items:center;margin:3px 0">
+              <span style="width:12ch;display:inline-block;color:var(--muted)">Theme</span>
+              <span class="seg"><span class="o on">Dark</span><span class="o">Light</span><span class="o">Auto</span></span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin:3px 0">
+              <span style="width:12ch;display:inline-block;color:var(--muted)">Accent</span>
+              <span class="field" style="min-width:12ch"><span class="acc">▰</span> Blue ▾</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin:3px 0">
+              <span style="width:12ch;display:inline-block;color:var(--muted)">Font size</span>
+              <span class="field" style="min-width:7ch">13 ▾</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin:3px 0">
+              <span style="width:12ch;display:inline-block;color:var(--muted)">Ligatures</span>
+              <span class="sw"><span class="k on">on</span><span class="k">off</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="ft"><span class="btn">Cancel</span><span class="btn primary">Done</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">A master–detail settings window, fully borderless: the <b>sidebar</b> is the <span class="dim">raised</span> fill, the <b>detail pane</b> the window fill, and the seam between them is the only thing dividing the two panes — no rule. Selected nav item gets the accent fill. Controls (segmented Dark/Light/Auto, well-filled dropdowns, an on/off switch) are all flat fills with padding. A raised footer band holds the actions, default in accent.</div>
+
+  <h2 class="sec">▸ Modal sheet — over a dimmed desktop</h2>
+  <div class="scene" style="position:relative;display:block;padding:0">
+    <div style="background:var(--win);padding:0;position:relative;overflow:hidden;min-width:72ch;min-height:13em;">
+      <!-- parent peeking -->
+      <div style="padding:10px 14px;color:var(--muted)">
+        <div class="txt" style="color:var(--text-dim)">document.md — parent window</div>
+        <div class="dim">the sheet drops from the top edge and the parent dims behind it…</div>
+        <div class="dim">&nbsp;</div>
+        <div class="dim">&nbsp;</div>
+        <div class="dim">&nbsp;</div>
+      </div>
+      <!-- dim overlay -->
+      <div style="position:absolute;inset:0;background:rgba(8,9,16,.55);"></div>
+      <!-- the sheet, centered, with deep shadow -->
+      <div class="elev modal" style="position:absolute;left:50%;top:18px;transform:translateX(-50%);z-index:3">
+        <div class="w active" style="min-width:42ch">
+          <div class="tb"><span class="cap">Move to folder</span><span class="ctl cls">✕</span></div>
+          <div class="bd">
+            <div class="dim" style="margin-bottom:4px">Choose a destination for 3 items:</div>
+            <div class="row"><span class="ic"></span> Documents</div>
+            <div class="row sel"><span class="ic"></span> Projects</div>
+            <div class="row"><span class="ic"></span> Archive</div>
+            <div class="row"><span class="ic"></span> Downloads</div>
+          </div>
+          <div class="ft"><span class="btn">Cancel</span><span class="btn primary">Move</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">A modal <b>sheet</b> centred over its parent, with a deeper offset <span class="dim">shadow</span> than ordinary windows to push it forward. The parent dims under a semi-opaque overlay. The sheet body holds a selectable destination list (selected row in accent fill) over a raised footer with Cancel / Move. This is the borderless counterpart to the box-drawing modal — same job, separated by fill and elevation instead of a double-line frame.</div>
+
+  <h2 class="sec">▸ Toast / notification stack — floating cards</h2>
+  <div class="scene">
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div class="elev"><div class="w active" style="min-width:40ch">
+        <div class="bd" style="display:flex;gap:10px;align-items:flex-start;padding:7px 12px">
+          <span class="grn" style="font-size:14px">✓</span>
+          <span><span class="txt">Export complete</span><br><span class="dim">report.pdf saved to ~/Downloads</span></span>
+          <span style="margin-left:auto" class="dim">✕</span>
+        </div>
+      </div></div>
+      <div class="elev"><div class="w active" style="min-width:40ch">
+        <div class="bd" style="display:flex;gap:10px;align-items:flex-start;padding:7px 12px">
+          <span class="amb" style="font-size:14px">⚠</span>
+          <span><span class="txt">Update available</span><br><span class="dim">Version 4.8 is ready to install</span></span>
+          <span style="margin-left:auto;display:flex;gap:6px"><span class="btn">Later</span><span class="btn primary">Update</span></span>
+        </div>
+      </div></div>
+      <div class="elev"><div class="w active" style="min-width:40ch">
+        <div class="bd" style="display:flex;gap:10px;align-items:flex-start;padding:7px 12px">
+          <span class="acc2" style="font-size:14px">ⓘ</span>
+          <span><span class="txt">3 files synced</span><br><span class="dim">Last sync just now</span></span>
+          <span style="margin-left:auto" class="dim">✕</span>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="caption">Toasts are tiny borderless windows — each a card with a status glyph, a title + detail, and either a dismiss <span class="dim">✕</span> or inline actions. They stack with the whole-cell shadow so they float above whatever's behind. No title bar needed; the card fill and shadow alone separate them from the desktop. Severity reads from the leading glyph colour (<span class="grn">✓</span>/<span class="amb">⚠</span>/<span class="acc2">ⓘ</span>).</div>
+
+</div>
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+    tt.textContent=(light?'tokyo-night-light':'tokyo-night')+' — borderless windows — 110×40';
+  });
+</script>
+</body>
+</html>

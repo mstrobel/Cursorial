@@ -31,6 +31,20 @@ internal abstract class EffectiveValueBase
     public bool LocalValueFromEntry;
 
     /// <summary>
+    /// Whether a Template-lane contribution is present (precedence matrix §20, PD24): a raw + coerced
+    /// value stored, the structural twin of <see cref="HasLocal"/> one rung below Style. Set by
+    /// <c>SetTemplateValue</c> — a literal <c>SetValue</c>, a <c>{TemplateBinding}</c>/<c>{Binding}</c>,
+    /// or a <c>SetResourceReference</c> issued inside the template-instantiation scope.
+    /// </summary>
+    public bool HasTemplate;
+
+    /// <summary>Whether the Template slot's value was pushed by <see cref="TemplateEntry"/> (vs a literal in-template <c>SetValue</c>) — eviction withdraws only the entry's own contribution.</summary>
+    public bool TemplateValueFromEntry;
+
+    /// <summary>Whether the winning Template-base value was modified by the coercer when produced (resurfaces into <see cref="IsCoerced"/> when Template wins).</summary>
+    public bool TemplateIsCoerced;
+
+    /// <summary>
     /// Whether the local contribution exists only as the <c>SetCurrentValue</c> no-contribution
     /// graft (matrix M118): the overlay rode Default/Inherited, so it grafted as local for storage —
     /// but a <em>style producer arriving later replaces it</em> (A11 "a producer change replaces the
@@ -57,6 +71,13 @@ internal abstract class EffectiveValueBase
     public BindingEntryBase? LocalEntry;
 
     /// <summary>
+    /// The installed Template-priority binding entry, or <see langword="null"/> (at most one; the
+    /// Template-lane twin of <see cref="LocalEntry"/>). A <c>{TemplateBinding}</c>/<c>{Binding}</c> or
+    /// <c>SetResourceReference</c> installed inside the template-instantiation scope.
+    /// </summary>
+    public BindingEntryBase? TemplateEntry;
+
+    /// <summary>
     /// The identity of the frame entry the winning base resolved from (<see langword="null"/> for
     /// local/default bases) — lets a <c>SetCurrentValue</c> overwrite survive re-evaluations whose
     /// winner is the same un-re-emitted contribution (matrix M120 vs M122).
@@ -75,6 +96,9 @@ internal abstract class EffectiveValueBase
     /// <summary>Re-runs the coercer against the stored raw local value (PD6; no-op without one).</summary>
     public abstract void RecoerceLocal(ValueStore store);
 
+    /// <summary>Re-runs the coercer against the stored raw Template-lane value (PD6 parity, §20; no-op without one). Re-arbitrates: notifies when Template wins, silent when masked.</summary>
+    public abstract void RecoerceTemplate(ValueStore store);
+
     /// <summary>Delivers the coalesced deferred change, equality-gated on first-old vs last-new (M245).</summary>
     public abstract void FlushPending(ValueStore store);
 
@@ -86,6 +110,9 @@ internal abstract class EffectiveValueBase
 
     /// <summary>The boxed raw (pre-coercion) local value, or <see langword="null"/> when no local contribution exists.</summary>
     public abstract object? GetRawLocalBoxedValue();
+
+    /// <summary>The boxed raw (pre-coercion) Template-lane value, or <see langword="null"/> when no template contribution exists (§20).</summary>
+    public abstract object? GetRawTemplateBoxedValue();
 
     /// <summary>The property this entry stores values for — the untyped handle the diagnostics enumeration needs.</summary>
     public abstract UIProperty PropertyUntyped { get; }
@@ -118,6 +145,12 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
 
     /// <summary>The raw (pre-coercion) local value; valid while <see cref="EffectiveValueBase.HasLocal"/> (PD6).</summary>
     public T RawLocalValue = default!;
+
+    /// <summary>The post-coercion Template-lane value; valid while <see cref="EffectiveValueBase.HasTemplate"/>. Held separately from <see cref="BaseValue"/> because Template can be masked by Style/Local and must resurface when they withdraw (precedence matrix §20).</summary>
+    public T TemplateValue = default!;
+
+    /// <summary>The raw (pre-coercion) Template-lane value; valid while <see cref="EffectiveValueBase.HasTemplate"/> (PD6 parity — <c>CoerceValue</c> re-runs against it when Template wins).</summary>
+    public T RawTemplateValue = default!;
 
     /// <summary>The deferred change's first-old snapshot; valid while <see cref="EffectiveValueBase.HasPendingNotification"/>.</summary>
     public T PendingOldValue = default!;
@@ -189,6 +222,32 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
     }
 
     /// <inheritdoc/>
+    public override void RecoerceTemplate(ValueStore store)
+    {
+        if (!HasTemplate)
+            return; // no template contribution to re-coerce
+
+        var metadata = Property.GetMetadata(store.Owner.GetType());
+        if (metadata.Coerce is not { } coerce)
+            return;
+
+        var coerced = coerce(store.Owner, RawTemplateValue); // against the RAW template value (PD6, §20)
+        var comparer = metadata.EffectiveComparer;
+        var newIsCoerced = !comparer.Equals(RawTemplateValue, coerced);
+        if (comparer.Equals(TemplateValue, coerced))
+        {
+            TemplateIsCoerced = newIsCoerced; // coerced result unchanged, but the flag may flip (raw differs)
+            return;
+        }
+
+        TemplateValue = coerced;
+        TemplateIsCoerced = newIsCoerced;
+        // Re-arbitrate: the new template value flows to the effective when Template wins (one notify
+        // at the Template lane, M300), or stays masked and silent under a stronger lane.
+        store.Reevaluate(Property, changedEntry: null);
+    }
+
+    /// <inheritdoc/>
     public override void FlushPending(ValueStore store)
     {
         if (!HasPendingNotification)
@@ -217,6 +276,12 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
             local.Evict(); // fires OnEvicted; no change notifications (PD13)
         }
 
+        if (TemplateEntry is { } template)
+        {
+            TemplateEntry = null;
+            template.Evict(); // the Template-lane twin of the local entry (PD13)
+        }
+
         if (AnimationHandle is { } handle)
         {
             AnimationHandle = null;
@@ -229,4 +294,7 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
 
     /// <inheritdoc/>
     public override object? GetRawLocalBoxedValue() => HasLocal ? ValueBoxes.Box(RawLocalValue) : null;
+
+    /// <inheritdoc/>
+    public override object? GetRawTemplateBoxedValue() => HasTemplate ? ValueBoxes.Box(RawTemplateValue) : null;
 }

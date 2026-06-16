@@ -35,14 +35,30 @@ public abstract class BindingEntryBase : IDisposable, IValueEntry
         Priority = priority;
         HostFrame = hostFrame;
         _listener = listener;
+        SourceKind = priority switch
+        {
+            BindingPriority.Template => ValueSourceKind.TemplateBinding,
+            BindingPriority.Style => ValueSourceKind.StyleSetter,
+            _ => ValueSourceKind.Local,
+        };
     }
+
+    /// <summary>
+    /// The within-lane provenance this entry contributes (PD25) — defaulted from <see cref="Priority"/>
+    /// (a Template entry is a <see cref="ValueSourceKind.TemplateBinding"/>, a local one
+    /// <see cref="ValueSourceKind.Local"/>); a resource producer overrides it to
+    /// <see cref="ValueSourceKind.TemplateResource"/>. Surfaced through <c>GetValueSource(...).Kind</c>.
+    /// </summary>
+    internal ValueSourceKind SourceKind { get; set; }
 
     /// <summary>The property this entry produces values for.</summary>
     public UIProperty Property { get; }
 
     /// <summary>
-    /// The priority lane the entry contributes at: <see cref="BindingPriority.LocalValue"/> for
-    /// free-standing entries (A6), <see cref="BindingPriority.Style"/> for frame-hosted ones (A5).
+    /// The priority lane the entry contributes at: <see cref="BindingPriority.LocalValue"/> or
+    /// <see cref="BindingPriority.Template"/> for free-standing entries (A6 — Template when installed
+    /// inside the template-instantiation scope, §20/PD24), <see cref="BindingPriority.Style"/> for
+    /// frame-hosted ones (A5).
     /// </summary>
     public BindingPriority Priority { get; }
 
@@ -162,7 +178,10 @@ public sealed class BindingEntry<T> : BindingEntryBase, IValueEntry<T>
         {
             _value = value;
             HasValue = true;
-            Target.SetLocalValueFromEntry(Property, metadata, value, this);
+            if (Priority == BindingPriority.Template)
+                Target.SetTemplateValueFromEntry(Property, metadata, value, this); // the Template-lane entry (§20)
+            else
+                Target.SetLocalValueFromEntry(Property, metadata, value, this);
         }
         else
         {
@@ -189,7 +208,10 @@ public sealed class BindingEntry<T> : BindingEntryBase, IValueEntry<T>
 
         if (HostFrame is null)
         {
-            Target.UnsetLocalValueFromEntry(Property); // clears the shared local slot (an unset is a push)
+            if (Priority == BindingPriority.Template)
+                Target.UnsetTemplateValueFromEntry(Property); // clears the shared template slot (§20)
+            else
+                Target.UnsetLocalValueFromEntry(Property); // clears the shared local slot (an unset is a push)
         }
         else if (hadValue)
         {
@@ -206,7 +228,10 @@ public sealed class BindingEntry<T> : BindingEntryBase, IValueEntry<T>
 
         if (HostFrame is null)
         {
-            Target.DetachLocalEntry(Property, this);
+            if (Priority == BindingPriority.Template)
+                Target.DetachTemplateEntry(Property, this); // the Template-lane twin (§20)
+            else
+                Target.DetachLocalEntry(Property, this);
         }
         else
         {

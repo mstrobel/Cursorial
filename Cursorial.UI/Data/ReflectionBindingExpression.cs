@@ -25,6 +25,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
     private readonly Action<object?>? _watchCallback;
     private readonly BindingMode _effectiveMode;
     private readonly UpdateSourceTrigger _trigger;
+    private readonly BindingPriority _installPriority;  // LocalValue, or Template if installed in a template scope (§20/PD24)
 
     private AnchorKind _anchorKind;
     private object? _root;                       // the resolved source root object
@@ -59,6 +60,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
         _anchorElement = context.Anchor;
         _hostFrame = context.HostFrame;
         _watchCallback = context.WatchCallback;
+        _installPriority = context.InstallPriority; // §20/PD24: captured at install (used when the entry materializes)
         _trigger = binding.UpdateSourceTrigger == UpdateSourceTrigger.Default
             ? UpdateSourceTrigger.PropertyChanged
             : binding.UpdateSourceTrigger;
@@ -795,7 +797,7 @@ internal sealed class ReflectionBindingExpression : BindingExpressionBase, IValu
             return;
 
         _entry = _hostFrame is null
-            ? _target.BindUntyped(_targetProperty, BindingPriority.LocalValue, this)
+            ? _target.BindUntyped(_targetProperty, _installPriority, this) // LocalValue, or Template in a template scope (§20)
             : _target.BindInFrameUntyped(_targetProperty, _hostFrame, this);
 
         WireTargetObserver();

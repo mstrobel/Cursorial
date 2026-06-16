@@ -34,8 +34,14 @@ public class DataTemplate
 
         var scope = new NameScopeDictionary();
         var context = new TemplateBuildContext(templatedParent: null, scope);
-        var root = Content.Build(context)
-            ?? throw new InvalidOperationException("The DataTemplate's ITemplateContent produced a null root element.");
+
+        // §20/PD24: values authored inside the data-template content route to the Template lane so app
+        // styles override them (data-template content is app-styleable, CD18). The DataContext write
+        // below stays OUTSIDE the scope — it is the real data, not a template default.
+        UIElement root;
+        using (TemplateInstantiationScope.Enter())
+            root = Content.Build(context)
+                ?? throw new InvalidOperationException("The DataTemplate's ITemplateContent produced a null root element.");
 
         NameScope.SetNameScope(root, scope);
         root.DataContext = data;

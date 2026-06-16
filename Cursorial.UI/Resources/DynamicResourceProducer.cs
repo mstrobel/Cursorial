@@ -38,7 +38,13 @@ internal sealed class DynamicResourceProducer<T> : IResourceChangeListener, IVal
     public static void Install(UIElement element, StyledProperty<T> property, object key)
     {
         var producer = new DynamicResourceProducer<T>(element, property, key);
-        producer._entry = element.Bind(property, BindingPriority.LocalValue, producer);
+        // §20/PD24: a SetResourceReference issued inside a template-instantiation scope installs at
+        // the Template lane (overridable by a page/theme Style); outside, LocalValue. The entry's
+        // Priority is fixed here at install, so later resource-change pushes keep the captured lane.
+        var priority = TemplateInstantiationScope.CurrentInstallPriority;
+        producer._entry = element.Bind(property, priority, producer);
+        if (priority == BindingPriority.Template)
+            producer._entry.SourceKind = ValueSourceKind.TemplateResource; // PD25 within-lane provenance
         element.RegisterResourceSubscriber(producer);
         producer.SubscribeAndPush();
     }

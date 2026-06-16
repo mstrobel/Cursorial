@@ -130,6 +130,11 @@ public static class CursorialTheme
         // Truecolor too (descent never ascends; CD8). The cell-faithful spine (design doc §11.8a) — fill +
         // foreground tokens; the two pens are opt-in chrome, not spine members.
         var rgb = new ResourceDictionary();
+        rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#ffffff"));
+        rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
+        rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
+        rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#e9e9ed"));
+        rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd2"));
         rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f18") : Color.FromHex("#e6e7ec"));
         rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
         rgb[ThemeKeys.PanelBrush] = new SolidColorBrush(dark ? Color.FromHex("#222639") : Color.FromHex("#e9e9ed"));
@@ -167,6 +172,11 @@ public static class CursorialTheme
         // distinguishability under reverse-video: --text/--bg at the extremes (15/0), --accent/--on-accent on
         // real blue, resting fills→0 vs interactive fills→8 (dark), status hues kept true.
         var ansi16 = new ResourceDictionary();
+        rgb[ThemeKeys.ElevationWell] = Palette(15);
+        rgb[ThemeKeys.ElevationDesktop] = Palette(dark ? 0 : 7);
+        rgb[ThemeKeys.ElevationWindow] = Palette(dark ? 0 : 15);
+        rgb[ThemeKeys.ElevationRaised] = Palette(dark ? 0 : 7);
+        rgb[ThemeKeys.ElevationHighest] = Palette(dark ? 7 : 15);
         ansi16[ThemeKeys.WindowBackground] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 0 : 7);

@@ -184,6 +184,50 @@ internal sealed class ValueStore
     }
 
     /// <summary>
+    /// The Template-lane write (precedence matrix §20, PD24): a literal <c>SetValue</c> issued inside
+    /// the template-instantiation scope, and the push of a Template-priority binding entry
+    /// (<paramref name="writer"/> non-null — a <c>{TemplateBinding}</c>/<c>{Binding}</c> or
+    /// <c>SetResourceReference</c> installed in a template). Stores the raw + coerced value in the
+    /// per-entry Template slot (it can be masked by Style/Local/Animation, so it cannot win
+    /// unconditionally the way the local lane does) and re-arbitrates. Within the lane, last writer
+    /// wins; the raw value was validated at the mouth (PD7). A re-emit clobbers any
+    /// <c>SetCurrentValue</c> overwrite riding the Template lane (M289).
+    /// </summary>
+    public void SetTemplateValue<T>(
+        StyledProperty<T> property, PropertyMetadata<T> metadata, T rawValue, BindingEntryBase? writer = null)
+    {
+        var coerced = metadata.Coerce is {} coerce ? coerce(Owner, rawValue) : rawValue;
+        var comparer = metadata.EffectiveComparer;
+
+        var entry = (EffectiveValue<T>?)TryGetEntry(property.Id);
+
+        // A re-emit of the Template contribution clobbers any SetCurrentValue overwrite riding the
+        // Template lane — the Style analog (M122/M289): the template's source value (kept separately
+        // in TemplateValue, never touched by the in-place overwrite) re-asserts, dropping the manual
+        // overlay. This is unconditional on a producer re-emit, so it precedes the equal-value gate:
+        // even when the template's own value is unchanged, the overwrite must yield (clearing +cur
+        // makes Reevaluate restore the effective to the source). A masked-template update under a
+        // stronger lane (BasePriority != Template) must not disturb that lane's own overwrite.
+        var clobbering = entry is { BasePriority: BindingPriority.Template, IsCurrentValue: true };
+        if (clobbering)
+            entry!.IsCurrentValue = false;
+
+        if (!clobbering && entry is { HasTemplate: true } && comparer.Equals(entry.TemplateValue, coerced))
+            return; // same template value, no overwrite to clobber ⇒ fully gated (PD20 parity, M135 spirit)
+
+        entry ??= CreateEntry(property);
+
+        var wasCoerced = metadata.Coerce is not null && !comparer.Equals(rawValue, coerced);
+        entry.RawTemplateValue = rawValue;
+        entry.TemplateValue = coerced;
+        entry.TemplateIsCoerced = wasCoerced;
+        entry.HasTemplate = true;
+        entry.TemplateValueFromEntry = writer is not null;
+
+        Reevaluate(property, changedEntry: null);
+    }
+
+    /// <summary>
     /// The boxed effective value with interning (M267), the contributing ancestor's interned box
     /// for inherited reads, or the shared boxed default.
     /// </summary>
@@ -224,6 +268,16 @@ internal sealed class ValueStore
                     return entry.BaseValue; // the maintained style base (a +cur overwrite included)
                 if (TryResolveStyleValue(property, out var styleValue, out _))
                     return metadata.Coerce is {} coerce ? coerce(Owner, styleValue) : styleValue;
+                break;
+
+            case BindingPriority.Template:
+                // Skips Animation/Local/Style (all stronger); the strongest considered is Template
+                // and weaker. The maintained template base when it wins (a +cur overwrite included),
+                // else the stored coerced template value when masked, else fall through.
+                if (entry is { BasePriority: BindingPriority.Template })
+                    return entry.BaseValue;
+                if (entry is { HasTemplate: true })
+                    return entry.TemplateValue;
                 break;
         }
 
@@ -313,9 +367,26 @@ internal sealed class ValueStore
                 entry.RawLocalValue = default!;
             }
         }
+        else if (entry is { HasTemplate: true })
+        {
+            // The Template lane (§20, PD24): one rung below Style, above Inherited. Stored coerced
+            // (never re-derived on reads), the structural twin of the local branch.
+            newBasePriority = BindingPriority.Template;
+            newBaseValue = entry.TemplateValue;
+            newBaseIsCoerced = entry.TemplateIsCoerced;
+
+            if (graftLocal)
+            {
+                // The SCV graft yields to a Template producer too, not only a Style one (PD24, M287).
+                entry.HasLocal = false;
+                entry.LocalValueFromEntry = false;
+                entry.LocalIsCurrentValueOnly = false;
+                entry.RawLocalValue = default!;
+            }
+        }
         else if (graftLocal)
         {
-            // No style producer: the graft keeps holding the local lane (M118 storage semantics).
+            // No style/template producer: the graft keeps holding the local lane (M118 storage semantics).
             newBasePriority = BindingPriority.LocalValue;
             newBaseValue = entry!.BaseValue;
             newBaseIsCoerced = entry.BaseIsCoerced;
@@ -560,6 +631,69 @@ internal sealed class ValueStore
         }
     }
 
+    // ───────────────────────────── template binding entries (the Template lane) ─────────────────────────────
+
+    /// <summary>
+    /// Installs a Template-priority entry (precedence matrix §20, PD24) — the Template-lane twin of
+    /// <see cref="BindLocal{T}"/>: a <c>{TemplateBinding}</c>/<c>{Binding}</c> or
+    /// <c>SetResourceReference</c> installed inside the template-instantiation scope. Valueless until
+    /// its first push; a prior template entry is displaced with eviction (PD12).
+    /// </summary>
+    public BindingEntry<T> BindTemplate<T>(StyledProperty<T> property, IValueEvictionListener? listener)
+    {
+        var entry = GetOrCreateEntry(property);
+
+        if (entry.TemplateEntry is {} prior)
+        {
+            entry.TemplateEntry = null;
+            prior.Evict(); // PD2: the eviction fires before the promotion's notification
+            if (entry.TemplateValueFromEntry)
+            {
+                entry.HasTemplate = false;
+                entry.TemplateValueFromEntry = false;
+                entry.TemplateValue = default!;
+                entry.RawTemplateValue = default!;
+                Reevaluate(property, changedEntry: null);
+            }
+        }
+
+        var bindingEntry = new BindingEntry<T>(Owner, property, BindingPriority.Template, hostFrame: null, listener);
+        entry.TemplateEntry = bindingEntry;
+        return bindingEntry;
+    }
+
+    /// <summary>Withdraws the Template slot's value (a template entry pushed unset) and promotes the next source; keeps the entry installed.</summary>
+    public void UnsetTemplateValue<T>(StyledProperty<T> property)
+    {
+        if (TryGetEntry(property.Id) is not EffectiveValue<T> { HasTemplate: true } entry)
+            return;
+
+        entry.HasTemplate = false;
+        entry.TemplateValueFromEntry = false;
+        entry.TemplateValue = default!;
+        entry.RawTemplateValue = default!;
+        Reevaluate(property, changedEntry: null);
+    }
+
+    /// <summary>Detaches a self-disposed template entry (PD12: no <c>OnEvicted</c>) and withdraws its value when the slot still holds the entry's own contribution.</summary>
+    public void DetachTemplateEntry<T>(StyledProperty<T> property, BindingEntryBase bindingEntry)
+    {
+        if (TryGetEntry(property.Id) is not EffectiveValue<T> entry)
+            return;
+
+        if (ReferenceEquals(entry.TemplateEntry, bindingEntry))
+            entry.TemplateEntry = null;
+
+        if (entry is { HasTemplate: true, TemplateValueFromEntry: true })
+        {
+            entry.HasTemplate = false;
+            entry.TemplateValueFromEntry = false;
+            entry.TemplateValue = default!;
+            entry.RawTemplateValue = default!;
+            Reevaluate(property, changedEntry: null);
+        }
+    }
+
     // ───────────────────────────── frames (the Style slot) ─────────────────────────────
 
     /// <summary>
@@ -738,6 +872,56 @@ internal sealed class ValueStore
                     results.Add((frame, entry));
             }
         }
+    }
+
+    /// <summary>
+    /// The within-lane provenance (PD25) of <paramref name="entry"/>'s effective value, keyed on the
+    /// effective lane: Template refines to literal / binding / resource (via the template entry's
+    /// <see cref="BindingEntryBase.SourceKind"/>); Style refines to setter / <c>When</c>-guarded rule
+    /// (via the winning frame's conditional flag). Cold path (diagnostics).
+    /// </summary>
+    internal ValueSourceKind ComputeValueSourceKind(EffectiveValueBase entry) => entry.EffectivePriority switch
+    {
+        BindingPriority.Animation => ValueSourceKind.Animation,
+        BindingPriority.LocalValue => ValueSourceKind.Local,
+        BindingPriority.Template => entry.TemplateValueFromEntry
+            ? entry.TemplateEntry?.SourceKind ?? ValueSourceKind.TemplateBinding
+            : ValueSourceKind.TemplateLiteral,
+        BindingPriority.Style => ResolveWinningStyleKind(entry.PropertyUntyped.Id),
+        _ => ValueSourceKind.Default,
+    };
+
+    /// <summary>
+    /// The kind of the winning active style contribution for <paramref name="propertyId"/> — the same
+    /// strongest-first scan as <see cref="TryResolveStyleValue{T}"/>: <see cref="ValueSourceKind.StyleWhen"/>
+    /// when the winning frame is a conditional rule, else <see cref="ValueSourceKind.StyleSetter"/>.
+    /// </summary>
+    private ValueSourceKind ResolveWinningStyleKind(int propertyId)
+    {
+        for (var i = _frameCount - 1; i >= 0; i--)
+        {
+            var frame = _frames[i];
+            if (!frame.IsActive)
+                continue;
+
+            if (frame.HostedEntries is {} hosted)
+            {
+                for (var j = hosted.Count - 1; j >= 0; j--)
+                {
+                    if (hosted[j].Property.Id == propertyId && hosted[j].HasValue)
+                        return frame.IsConditionalStyleRule ? ValueSourceKind.StyleWhen : ValueSourceKind.StyleSetter;
+                }
+            }
+
+            for (var j = frame.EntryCount - 1; j >= 0; j--)
+            {
+                var entry = frame.GetEntry(j);
+                if (entry.Property.Id == propertyId && entry.HasValue)
+                    return frame.IsConditionalStyleRule ? ValueSourceKind.StyleWhen : ValueSourceKind.StyleSetter;
+            }
+        }
+
+        return ValueSourceKind.StyleSetter; // effective lane is Style but no live frame found — defensive
     }
 
     /// <summary>

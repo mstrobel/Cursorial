@@ -13,13 +13,15 @@ internal readonly struct BindingActivationContext
         UIProperty targetProperty,
         UIElement? anchor,
         ValueFrame? hostFrame,
-        Action<object?>? watchCallback)
+        Action<object?>? watchCallback,
+        BindingPriority installPriority = BindingPriority.LocalValue)
     {
         Target = target;
         TargetProperty = targetProperty;
         Anchor = anchor;
         HostFrame = hostFrame;
         WatchCallback = watchCallback;
+        InstallPriority = installPriority;
     }
 
     /// <summary>The object whose property the binding produces into (or the watch anchor for watch-only).</summary>
@@ -33,6 +35,15 @@ internal readonly struct BindingActivationContext
 
     /// <summary>The host frame for frame-hosted installs; <see langword="null"/> for free-standing / watch-only.</summary>
     public ValueFrame? HostFrame { get; }
+
+    /// <summary>
+    /// The lane a free-standing (non-frame-hosted) entry installs at — <see cref="BindingPriority.LocalValue"/>
+    /// normally, <see cref="BindingPriority.Template"/> when the binding was installed inside a
+    /// template-instantiation scope (§20/PD24). Captured at install time and used when the entry
+    /// materializes (which may be a later attach, outside the scope). Ignored for frame-hosted (Style)
+    /// and watch-only installs.
+    /// </summary>
+    public BindingPriority InstallPriority { get; }
 
     /// <summary>The callback for watch-only arming; <see langword="null"/> for producing installs.</summary>
     public Action<object?>? WatchCallback { get; }

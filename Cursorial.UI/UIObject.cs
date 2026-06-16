@@ -147,17 +147,20 @@ public abstract class UIObject : IInheritanceNode
     }
 
     /// <summary>
-    /// Whether a value-bearing local contribution — local value or local entry with a value — or a
-    /// value-bearing entry in an <em>active</em> frame is present (PD11 — guards S8 auto-aliasing).
-    /// Animation, inherited, and default contributions never count; valueless entries never count;
-    /// direct properties always report <see langword="false"/>.
+    /// Whether a value-bearing local contribution — local value or local entry with a value — a
+    /// <see cref="BindingPriority.Template"/> contribution (§20/PD11 — auto-aliasing yields to
+    /// template-provided values as it does to style/local ones), or a value-bearing entry in an
+    /// <em>active</em> frame is present (PD11 — guards S8 auto-aliasing). Animation, inherited, and
+    /// default contributions never count; valueless entries never count; direct properties always
+    /// report <see langword="false"/>.
     /// </summary>
     public bool IsSet(UIProperty property)
     {
         ArgumentNullException.ThrowIfNull(property);
         VerifyAccess();
         return _store is { } store &&
-               (store.TryGetEntry(property.Id) is { HasLocal: true } || store.HasActiveStyleContribution(property.Id));
+               (store.TryGetEntry(property.Id) is { HasLocal: true } or { HasTemplate: true }
+                || store.HasActiveStyleContribution(property.Id));
     }
 
     /// <summary>
@@ -174,7 +177,7 @@ public abstract class UIObject : IInheritanceNode
         VerifyAccess();
 
         if (property.IsDirect)
-            return new ValueSource(BindingPriority.LocalValue, IsCurrentValue: false);
+            return new ValueSource(BindingPriority.LocalValue, IsCurrentValue: false) { Kind = ValueSourceKind.Local };
 
         var entry = _store?.TryGetEntry(property.Id);
         if (entry is { EffectivePriority: not BindingPriority.Unset })
@@ -187,13 +190,14 @@ public abstract class UIObject : IInheritanceNode
             return new ValueSource(entry.EffectivePriority, entry.IsCurrentValue)
             {
                 BasePriority = basePriority,
-                IsCoerced = entry.IsCoerced
+                IsCoerced = entry.IsCoerced,
+                Kind = _store!.ComputeValueSourceKind(entry) // PD25 within-lane provenance
             };
         }
 
         return property.Inherits && FindInheritedEntry(property.Id, out _) is not null
-            ? new ValueSource(BindingPriority.Inherited, IsCurrentValue: false)
-            : new ValueSource(BindingPriority.Default, IsCurrentValue: false);
+            ? new ValueSource(BindingPriority.Inherited, IsCurrentValue: false) { Kind = ValueSourceKind.Inherited }
+            : new ValueSource(BindingPriority.Default, IsCurrentValue: false) { Kind = ValueSourceKind.Default };
     }
 
     /// <summary>
@@ -223,6 +227,9 @@ public abstract class UIObject : IInheritanceNode
             results.Add(new PropertyValueDiagnostic(BindingPriority.LocalValue, entry.GetRawLocalBoxedValue(), HasValue: true));
 
         _store?.AppendStyleDiagnostics(property, results);
+
+        if (entry is { HasTemplate: true })
+            results.Add(new PropertyValueDiagnostic(BindingPriority.Template, entry.GetRawTemplateBoxedValue(), HasValue: true));
 
         if (property.Inherits && FindInheritedEntry(property.Id, out var source) is { } inherited)
             results.Add(new PropertyValueDiagnostic(
@@ -305,12 +312,14 @@ public abstract class UIObject : IInheritanceNode
 
     /// <summary>
     /// The key-holder write for a structurally read-only property: lands in the
-    /// <see cref="BindingPriority.LocalValue"/> lane (PD14, matrix M205).
+    /// <see cref="BindingPriority.LocalValue"/> lane (PD14, matrix M205) — framework-internal read-only
+    /// state (e.g. <c>IsPressed</c>) is never a template default, so it bypasses the template-scope
+    /// reroute even when written during a template build.
     /// </summary>
     public void SetValue<T>(UIPropertyKey<T> key, T value)
     {
         ArgumentNullException.ThrowIfNull(key);
-        SetValueCore(key.Property, value, isCurrentValue: false);
+        SetValueCore(key.Property, value, isCurrentValue: false, honorTemplateScope: false);
     }
 
     /// <summary>
@@ -361,11 +370,17 @@ public abstract class UIObject : IInheritanceNode
         if (property.IsDirect)
             throw new ArgumentException($"Direct property '{property}' has no coercion (ledger A24).", nameof(property));
 
-        if (_store is { } store)
-            store.TryGetEntry(property.Id)?.RecoerceLocal(store);
+        if (_store is { } store && store.TryGetEntry(property.Id) is { } entry)
+        {
+            // Re-coerce both lanes that carry a raw value (each no-ops if its lane is absent, §20/PD6
+            // parity): the local lane (the winning base when present) notifies; the Template lane
+            // notifies only when it wins, else re-coerces its stored source silently.
+            entry.RecoerceLocal(store);
+            entry.RecoerceTemplate(store);
+        }
     }
 
-    private void SetValueCore<T>(StyledProperty<T> property, T value, bool isCurrentValue)
+    private void SetValueCore<T>(StyledProperty<T> property, T value, bool isCurrentValue, bool honorTemplateScope = true)
     {
         VerifyAccess();
         RenderPassGuard.ThrowIfActive(); // the render pass is read-only (design doc §5.5; DEBUG only)
@@ -381,6 +396,8 @@ public abstract class UIObject : IInheritanceNode
         var store = _store ??= new ValueStore(this);
         if (isCurrentValue)
             store.SetCurrentValue(property, metadata, value);
+        else if (honorTemplateScope && TemplateInstantiationScope.IsActive)
+            store.SetTemplateValue(property, metadata, value); // §20: a literal authored inside a template build
         else
             store.SetLocalValue(property, metadata, value, isCurrentValue: false);
     }
@@ -388,11 +405,13 @@ public abstract class UIObject : IInheritanceNode
     // ───────────────────────────── producers: bindings, frames, animation ─────────────────────────────
 
     /// <summary>
-    /// Installs a free-standing binding producer entry (ledger A6/A7/A8). Free-standing entries are
-    /// <see cref="BindingPriority.LocalValue"/>-only — Style-slot contributions must be frame-hosted
-    /// (<see cref="BindInFrame{T}"/>) and Animation is <see cref="BeginAnimation{T}"/> territory.
-    /// The entry installs <em>valueless</em>; a prior local entry is displaced with eviction
-    /// (PD12). <c>ClearValue</c> evicts it (A9); plain <c>SetValue</c> coexists (last writer wins).
+    /// Installs a free-standing binding producer entry (ledger A6/A7/A8). Free-standing entries land
+    /// at <see cref="BindingPriority.LocalValue"/> or <see cref="BindingPriority.Template"/> only
+    /// (matrix M295 — Template is the in-template install path, §20/PD24); Style-slot contributions
+    /// must be frame-hosted (<see cref="BindInFrame{T}"/>) and Animation is
+    /// <see cref="BeginAnimation{T}"/> territory. The entry installs <em>valueless</em>; a prior entry
+    /// on the same lane is displaced with eviction (PD12). <c>ClearValue</c> evicts a local entry
+    /// (A9); plain <c>SetValue</c> coexists (last writer wins).
     /// </summary>
     public BindingEntry<T> Bind<T>(
         StyledProperty<T> property,
@@ -403,14 +422,15 @@ public abstract class UIObject : IInheritanceNode
         ThrowIfReadOnly(property);
         VerifyAccess();
 
-        if (priority != BindingPriority.LocalValue)
+        var store = _store ??= new ValueStore(this);
+        return priority switch
         {
-            throw new ArgumentException(
-                $"Free-standing Bind accepts BindingPriority.LocalValue only (ledger A6 — Style-slot " +
-                $"contributions must be frame-hosted via BindInFrame); got {priority}.", nameof(priority));
-        }
-
-        return (_store ??= new ValueStore(this)).BindLocal(property, listener);
+            BindingPriority.LocalValue => store.BindLocal(property, listener),
+            BindingPriority.Template => store.BindTemplate(property, listener),
+            _ => throw new ArgumentException(
+                $"Free-standing Bind accepts BindingPriority.LocalValue or Template only (ledger A6 — " +
+                $"Style-slot contributions must be frame-hosted via BindInFrame); got {priority}.", nameof(priority)),
+        };
     }
 
     /// <summary>The untyped <see cref="Bind{T}"/> (ledger A16 bridge — no reflection, all checks apply).</summary>
@@ -714,6 +734,18 @@ public abstract class UIObject : IInheritanceNode
     internal void DetachLocalEntry<T>(StyledProperty<T> property, BindingEntryBase entry)
         => _store?.DetachLocalEntry(property, entry);
 
+    /// <summary>A template entry's push (§20): writes the Template lane and re-arbitrates.</summary>
+    internal void SetTemplateValueFromEntry<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, T value, BindingEntryBase writer)
+        => _store?.SetTemplateValue(property, metadata, value, writer);
+
+    /// <summary>A template entry's unset push: withdraws the Template lane's value and promotes (§20).</summary>
+    internal void UnsetTemplateValueFromEntry<T>(StyledProperty<T> property)
+        => _store?.UnsetTemplateValue(property);
+
+    /// <summary>Self-disposed template entry: detach without eviction (PD12), withdrawing only its own value.</summary>
+    internal void DetachTemplateEntry<T>(StyledProperty<T> property, BindingEntryBase entry)
+        => _store?.DetachTemplateEntry(property, entry);
+
     /// <summary>A frame-hosted entry changed: re-arbitrate its property.</summary>
     internal void ReevaluateFromEntry<T>(StyledProperty<T> property, IValueEntry? changedEntry)
         => _store?.Reevaluate(property, changedEntry);
@@ -943,12 +975,13 @@ public abstract class UIObject : IInheritanceNode
             case BindingPriority.Animation:
             case BindingPriority.LocalValue:
             case BindingPriority.Style:
+            case BindingPriority.Template:
             case BindingPriority.Inherited:
             case BindingPriority.Default:
                 return;
             default:
                 throw new ArgumentException(
-                    $"maxPriority must be a resolvable lane (Animation, LocalValue, Style, Inherited, or Default — PD16); got {maxPriority}.",
+                    $"maxPriority must be a resolvable lane (Animation, LocalValue, Style, Template, Inherited, or Default — PD16); got {maxPriority}.",
                     nameof(maxPriority));
         }
     }

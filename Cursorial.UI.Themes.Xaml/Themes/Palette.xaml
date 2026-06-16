@@ -14,6 +14,11 @@
 
     <!-- ───────────────────────────── Dark · Ansi256 (RGB, Tokyo Night) ───────────────────────────── -->
     <ResourceDictionary x:Key="Dark+Ansi256">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"           Color="#0d0f19"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"        Color="#080910"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"         Color="#16161e"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationRaised}"         Color="#1f2335"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"        Color="#24283b"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="#0d0f18"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="#24283b"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="#222639"/>
@@ -44,6 +49,11 @@
 
     <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
     <ResourceDictionary x:Key="Light+Ansi256">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"           Color="#ffffff"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"        Color="#d2d3da"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"         Color="#f6f6f8"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationRaised}"         Color="#e9e9ed"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"        Color="#cbccd2"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="#e6e7ec"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="#cbccd1"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="#e9e9ed"/>
@@ -74,6 +84,11 @@
 
     <!-- ───────────────────────────── Dark · Ansi16 (palette indices) ───────────────────────────── -->
     <ResourceDictionary x:Key="Dark+Ansi16">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"           Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"        Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"         Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationRaised}"         Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"        Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Palette(0)"/>
@@ -104,6 +119,11 @@
 
     <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
     <ResourceDictionary x:Key="Light+Ansi16">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"           Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"        Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"         Color="Palette(16)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationRaised}"         Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"        Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Palette(7)"/>

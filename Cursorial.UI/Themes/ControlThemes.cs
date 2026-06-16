@@ -48,6 +48,8 @@ internal static class ControlThemes
         dict[typeof(ContextMenu)] = ContextMenuTheme();
         dict[typeof(Separator)] = SeparatorTheme();
         dict[typeof(ToolTip)] = ToolTipTheme();
+        dict[typeof(TabControl)] = TabControlTheme();
+        dict[typeof(TabItem)] = TabItemTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -192,6 +194,57 @@ internal static class ControlThemes
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(UIElement.MaxWidthProperty, 40) // spec §12.7: max 40 cells, content wraps
             .Set(Control.TemplateProperty, ToolTipTemplate());
+
+    // ───────────────────────────── TabControl / TabItem ─────────────────────────────
+
+    // A TabControl: a DockPanel with the tab strip (PART_TabStrip ItemsPresenter, docked top — the row of headers)
+    // over a bordered content host (PART_ContentHost ContentPresenter showing the selected tab's SelectedContent).
+    private static ControlTemplate TabControlTemplate() => new(ctx =>
+    {
+        var strip = new ItemsPresenter();
+        ctx.RegisterName("PART_TabStrip", strip);
+        DockPanel.SetDock(strip, Dock.Top);
+
+        var content = new ContentPresenter();
+        ctx.RegisterName("PART_ContentHost", content);
+        content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
+        content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+        var body = new Border { Padding = new Margins(1, 0), Child = content };
+        body.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+
+        var root = new DockPanel();
+        root.Children.Add(strip); // docked top (the header row)
+        root.Children.Add(body);  // fills the rest (the selected tab's body)
+        return root;
+    });
+
+    private static Style TabControlTheme()
+        => new Style { Key = "Theme.TabControl" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, TabControlTemplate());
+
+    // A tab header: a fill-bounded ContentPresenter over the TabItem.Header (RecognizesAccessKey). :selected =
+    // SelectionBrush fill, :pointerover = HoverBrush, :disabled muted (the gallery item-bar idiom).
+    private static ControlTemplate TabItemTemplate() => new(ctx =>
+    {
+        var header = new ContentPresenter { RecognizesAccessKey = true };
+        ctx.RegisterName("PART_ContentPresenter", header);
+        header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+        var face = new Border { Padding = new Margins(1, 0), Child = header };
+        face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        return face;
+    });
+
+    private static Style TabItemTheme()
+    {
+        var theme = new Style { Key = "Theme.TabItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, TabItemTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
 
     // A menu item: a fill-bounded header row [header … gesture], plus the submenu Popup (PART_Popup) whose Child is
     // an occluding PanelBrush surface hosting the sub-items (PART_ItemsHost). The Popup contributes no layout to the

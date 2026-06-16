@@ -490,3 +490,34 @@ and `Ensure` idempotency (C8.17) are now pinned. The `Show()` re-target stalenes
 (`!ReferenceEquals(_target, owner)`) is **defensive and unreachable** in the single-threaded frame model
 (an `Arm` always `Reset`s — stopping the prior open timer — so a stale pending callback cannot fire); left
 in place as a guard against future re-entrancy, not given an artificial test.
+
+## §C9 — TabControl / TabItem (P9.5) — tests in `Section22_TabControl`
+
+`TabControl : SelectingItemsControl` (single mode) with `TabItem : HeaderedContentControl, ISelectableContainer`
+containers. The themed template hosts the tab strip (`PART_TabStrip`, the headers) over a content host
+(`PART_ContentHost`, the selected tab's `SelectedContent`).
+
+| # | Setup | Action | Expectation | Source |
+|---|-------|--------|-------------|--------|
+| C9.1 | `TabControl` with a `TabItem` + a data item | shown | the TabItem is its own container; the data item is wrapped | WPF |
+| C9.2 | three tabs | shown | the first tab auto-selects (`SelectedIndex` 0, `IsSelected`, `:selected`) | PIN (CD-P9-22) |
+| C9.3 | three tabs | set `SelectedIndex` | `SelectedContent` shows the selected tab's `Content` | PIN (CD-P9-22) |
+| C9.4 | three tabs | click a tab header | selects it (`:selected`), deselects the others (single mode), `SelectedContent` follows | WPF |
+| C9.5 | focused tab | Left / Right | selection moves (selection-follows-focus) | WPF |
+| C9.6 | focused tab | Home / End | selection jumps to the ends | WPF |
+| C9.7 | focused tab | Ctrl+PageUp / Ctrl+PageDown | selection cycles (wrap) — the universal chord | WPF |
+| C9.8 | three tabs | set `SelectedIndex` | `SelectedItem` is the selected container | WPF |
+| C9.9 | three tabs | set a `TabItem.IsSelected = true` | folds into the single-selection model — the old selection clears | WPF |
+| C9.10 | three tabs | set `SelectedIndex` | exactly one tab carries `:selected` | WPF |
+
+**CD-P9-22 (P9.5) — TabControl on the selection base.** `TabControl` reuses `SelectingItemsControl` (single mode)
+unchanged — `SelectedIndex`/`SelectedItem`/`SelectionModel`/the `ISelectableContainer` mirror all come from P9.3.
+It adds: a read-only `SelectedContent` (the selected tab's `Content`) the content-host `ContentPresenter` shows via
+`TemplateBinding`, updated on `SelectionChanged`; auto-selection of the first tab on container realization
+(`ItemContainerGenerator.ContainersChanged`, WPF parity — a tab control always shows a tab); horizontal-strip
+keyboard nav (Left/Right/Home/End move + select; Ctrl+PageUp/PageDown cycle — Ctrl+Tab deferred as wire-ambiguous).
+A `TabItem`'s **template renders only its `Header`** (the strip label); its `Content` is presented *only* by the
+content host, so a UIElement content is never double-hosted. `CursorialTheme.BuiltIn` keys `Theme.TabControl`
+(DockPanel: strip top + bordered body) and `Theme.TabItem` (fill-bounded header, `:selected` = `SelectionBrush`).
+**Deferred:** `TabItem` access-key folding (Alt+mnemonic selects the tab — the `IAccessKeyTarget` + Header-fold
+treatment like `MenuItem`); selection by click/keyboard is the v1 behavior.

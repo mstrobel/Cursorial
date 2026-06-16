@@ -701,9 +701,9 @@ public abstract partial class UIElement : UIObject
         if (_visualRoot is {} root)
         {
             if (root is Window { HostSurface: {} windowHost})
-                (column, row) = (column + windowHost.Left, row + windowHost.Top);
+                (column, row) = (column - windowHost.Left, row - windowHost.Top);
             else if (root is Popup { PopupSurface: {} popupHost})
-                (column, row) = (column + popupHost.Left, row + popupHost.Top);
+                (column, row) = (column - popupHost.Left, row - popupHost.Top);
         }
 
         return (column, row);

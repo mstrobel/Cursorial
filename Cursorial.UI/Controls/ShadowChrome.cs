@@ -38,7 +38,7 @@ public class ShadowChrome : Decorator
 
     /// <summary>Color of the shadow. Default <see cref="Colors.Black"/>.</summary>
     public static readonly StyledProperty<Color> ShadowColorProperty =
-        UIProperty.Register<ShadowChrome, Color>(nameof(ShadowColor), Colors.Black);
+        UIProperty.Register<ShadowChrome, Color>(nameof(ShadowColor), Colors.TrueBlack);
 
 
     static ShadowChrome()

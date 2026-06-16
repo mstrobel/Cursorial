@@ -331,14 +331,36 @@ mouse-driven structural core + theme.
 | C6.19 | submenu header | hover (arm timer), detach the menu | the parked timer is stopped — never fires post-detach (no popup) | PIN (CD-P9-18b) |
 | C6.20 | leaf (no sub-items) | hover, wait 250 ms | arms no timer, opens nothing | WPF |
 | C6.21 | open header | re-hover it | stays open, no churn (one popup) | WPF |
+| C6.22 | focused bar header | Down | opens its submenu + moves focus to the first sub-item | WPF |
+| C6.23 | open submenu | Down / Up | focus moves among sub-items | WPF |
+| C6.24 | focused leaf in submenu | Enter | invokes the leaf + dismisses the chain | WPF |
+| C6.25 | nested header | Right then Left | Right descends (focus first grandchild); Left closes + re-focuses the parent header | WPF |
+| C6.26 | bar headers | Left / Right | move focus between top-level headers | WPF |
+| C6.27 | keyboard-opened submenu | Esc | closes (focus is inside the submenu) | WPF |
+| C6.28 | focused leaf | Right (unhandled by the leaf) | does NOT hijack the ancestor header (no bar jump, submenu not stranded) | PIN (CD-P9-18c) |
+| C6.29 | open submenu | Down | the focused item is `:highlighted`, others not (highlight follows focus) | PIN (CD-P9-18c) |
+| C6.30 | submenu `[item, Separator, item]` | Down ×3 | skips the Separator, then wraps | WPF |
 
 **Landed in P9.4b:** 250 ms hover-open + immediate sibling-switch when the menu is active (rows C6.16–C6.21;
+**CD-P9-18c (P9.4c) — keyboard navigation + highlight-follows-focus.** `MenuItem` is focusable; highlight =
+focused OR pointer-over (`RefreshHighlight` from the focus + hover hooks). Bar (horizontal): Left/Right cycle
+headers, Down opens + enters the submenu. Submenu (vertical): Up/Down move focus (wrap, skip non-focusable
+Separators), Right descends into a nested header, Left closes + re-focuses the parent, Enter invokes/opens. A
+keyboard open moves focus into the submenu, so Esc routes back through the `Popup` and closes it. **`OnKeyDown`
+gates on `IsFocused`** — it is a class handler on the whole bubble route, so without the gate a key a focused
+sub-item leaves unhandled would bubble to an ancestor header (via the popup→`PlacementTarget` bridge) and be
+re-interpreted (rows C6.22–C6.30). **Deferred:** WPF-parity Right/Left-on-a-submenu-leaf jumping to the adjacent
+bar menu (a no-op today); a `Menu`-level helper lands with the SubTree-capture session model.
+
 **CD-P9-18b** — each submenu-header MenuItem owns a `UITimer` armed on hover-enter, cancelled on leave/detach;
 `OpenSubmenu` closes sibling submenus via the owner generator; a sibling already open ⇒ open immediately).
 
-**Still deferred to P9.4c/d (noted, not silently dropped):** re-click-on-header toggle-close + sibling-switch by
-*click* (both need the SubTree-capture menu-session model — the press is otherwise swallowed by light-dismiss);
-sub-item invoke *via a popup-surface click* (the test harness needs screen-absolute popup coords); nested-header
-hover-open (same harness limit); Esc-closes-submenu + keyboard cycling (Left/Right/Down/Up/Enter — depend on focus
-moving into the menu, the P9.4c focus scope); the check-glyph + submenu-▸ glyph columns; access-key folding +
-menu-mode entry (P9.4c); `ContextMenu` + `ToolTip` (P9.4d).
+**Landed in P9.4c:** keyboard navigation (Left/Right/Down/Up/Enter) + Esc-close + highlight-follows-focus
+(CD-P9-18c, rows C6.22–C6.30).
+
+**Still deferred to P9.4c-2/d (noted, not silently dropped):** re-click-on-header toggle-close + sibling-switch by
+*click* + Right/Left-on-a-submenu-leaf jumping to the adjacent bar menu (all need the SubTree-capture menu-session
+model — the press is otherwise swallowed by light-dismiss); sub-item invoke + nested-header hover *via a
+popup-surface click* (the test harness needs screen-absolute popup coords — the mechanism is covered by the
+keyboard + direct-state tests); the check-glyph + submenu-▸ glyph columns; **access-key folding + menu-mode entry
+(Alt/F10 + `IMainMenu`) — P9.4c-2**; `ContextMenu` + `ToolTip` — **P9.4d**.

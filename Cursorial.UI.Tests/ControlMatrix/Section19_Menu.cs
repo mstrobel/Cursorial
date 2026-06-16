@@ -244,6 +244,223 @@ public sealed class Section19_Menu
         Assert.Equal(0, host.Application.WindowManager!.Popups.Count); // the submenu Popup surface was released
     }
 
+    private static MenuItem Sub(MenuItem item, int index) => (MenuItem)item.ItemContainerGenerator.ContainerFromIndex(index)!;
+
+    [Fact] // C6.22: Down on a focused bar header opens its submenu + moves focus to the first sub-item
+    public void C6_22_DownOpensAndFocusesFirst()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        file.Items.Add(new MenuItem { Header = "Open" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+        Assert.True(file.IsSubmenuOpen);
+        Assert.True(Sub(file, 0).IsFocused); // focus entered the submenu
+    }
+
+    [Fact] // C6.23: Down/Up move focus among sub-items (wrapping)
+    public void C6_23_ArrowsMoveWithinSubmenu()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        file.Items.Add(new MenuItem { Header = "Open" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open + focus New (0)
+        host.RunUntilIdle();
+
+        host.SendKey(Key.DownArrow); // → Open (1)
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 1).IsFocused);
+        host.SendKey(Key.UpArrow);   // → New (0)
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 0).IsFocused);
+    }
+
+    [Fact] // C6.24: Enter invokes a focused leaf (and dismisses)
+    public void C6_24_EnterInvokesLeaf()
+    {
+        var command = new TestCommand();
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New", Command = command });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open + focus New
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(1, command.Runs);
+        Assert.False(file.IsSubmenuOpen); // chain dismissed
+    }
+
+    [Fact] // C6.25: Right descends into a nested submenu; Left closes it + focuses the parent header
+    public void C6_25_RightDescendsLeftAscends()
+    {
+        var recent = new MenuItem { Header = "Recent" };
+        recent.Items.Add(new MenuItem { Header = "a.txt" });
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(recent);
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open File → focus Recent
+        host.RunUntilIdle();
+
+        host.SendKey(Key.RightArrow); // descend into Recent
+        host.RunUntilIdle();
+        Assert.True(recent.IsSubmenuOpen);
+        Assert.True(Sub(recent, 0).IsFocused);
+
+        host.SendKey(Key.LeftArrow); // ascend
+        host.RunUntilIdle();
+        Assert.False(recent.IsSubmenuOpen);
+        Assert.True(recent.IsFocused);
+    }
+
+    [Fact] // C6.26: Left/Right move between top-level bar headers
+    public void C6_26_BarArrowsCycle()
+    {
+        var file = new MenuItem { Header = "File" };
+        var edit = new MenuItem { Header = "Edit" };
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        menu.Items.Add(edit);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.True(edit.IsFocused);
+        host.SendKey(Key.LeftArrow);
+        host.RunUntilIdle();
+        Assert.True(file.IsFocused);
+    }
+
+    [Fact] // C6.27: Escape closes the open submenu (focus is inside it after a keyboard open)
+    public void C6_27_EscapeClosesSubmenu()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open + focus into submenu
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(file.IsSubmenuOpen);
+    }
+
+    [Fact] // C6.28: a key the focused sub-item leaves unhandled (Right on a leaf) does NOT hijack an ancestor header
+    public void C6_28_UnhandledKeyDoesNotHijackAncestor()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" }); // a leaf
+        var edit = new MenuItem { Header = "Edit" };
+        edit.Items.Add(new MenuItem { Header = "Copy" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        menu.Items.Add(edit);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open File, focus the leaf "New"
+        host.RunUntilIdle();
+        var leaf = Sub(file, 0);
+        Assert.True(leaf.IsFocused);
+
+        host.SendKey(Key.RightArrow); // the leaf doesn't handle Right — must NOT bubble to File and jump the bar
+        host.RunUntilIdle();
+        Assert.True(file.IsSubmenuOpen);  // File stays open (not stranded by a bar jump)
+        Assert.False(edit.IsFocused);     // focus did NOT hijack to the Edit header
+        Assert.True(leaf.IsFocused);      // focus stayed on the leaf
+    }
+
+    [Fact] // C6.29: highlight follows focus — the focused sub-item is :highlighted, others are not
+    public void C6_29_HighlightFollowsFocus()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" });
+        file.Items.Add(new MenuItem { Header = "Open" });
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // focus New (0)
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 0).IsHighlighted);
+        Assert.True(Sub(file, 0).HasCustomPseudoClass(":highlighted"));
+        Assert.False(Sub(file, 1).IsHighlighted);
+
+        host.SendKey(Key.DownArrow); // focus Open (1) — highlight moves
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 1).IsHighlighted);
+        Assert.False(Sub(file, 0).IsHighlighted);
+    }
+
+    [Fact] // C6.30: arrow navigation skips a non-focusable Separator (and wraps)
+    public void C6_30_ArrowSkipsSeparator()
+    {
+        var file = new MenuItem { Header = "File" };
+        file.Items.Add(new MenuItem { Header = "New" }); // 0
+        file.Items.Add(new Separator());                  // 1 — not focusable
+        file.Items.Add(new MenuItem { Header = "Open" }); // 2
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+        file.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open, focus New (0)
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 0).IsFocused);
+
+        host.SendKey(Key.DownArrow); // skip the Separator → Open (2)
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 2).IsFocused);
+
+        host.SendKey(Key.DownArrow); // wrap back to New (0)
+        host.RunUntilIdle();
+        Assert.True(Sub(file, 0).IsFocused);
+    }
+
     private static void Hover(UITestHost host, UIElement element)
     {
         var origin = element.TranslateToWindow(0, 0);

@@ -53,10 +53,14 @@ public class MenuItem : HeaderedItemsControl
 
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
+    private bool _isPointerOver;
     private Popup? _popup;
     private UITimer? _hoverTimer;
 
     static MenuItem() => PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
+
+    /// <summary>Creates a menu item (focusable — keyboard navigation lands focus on the highlighted item).</summary>
+    public MenuItem() => Focusable = true;
 
     /// <inheritdoc cref="CommandProperty"/>
     public ICommand? Command { get => GetValue(CommandProperty); set => SetValue(CommandProperty, value); }
@@ -158,7 +162,8 @@ public class MenuItem : HeaderedItemsControl
     protected override void OnMouseEnter(MouseEventArgs e)
     {
         base.OnMouseEnter(e);
-        SetHighlighted(true);
+        _isPointerOver = true;
+        RefreshHighlight();
 
         if (!HasItems || _isSubmenuOpen)
             return;
@@ -173,8 +178,69 @@ public class MenuItem : HeaderedItemsControl
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
-        SetHighlighted(false);
+        _isPointerOver = false;
+        RefreshHighlight();
         StopHoverTimer(); // cancel a pending hover-open (an already-open submenu stays open)
+    }
+
+    /// <inheritdoc/>
+    protected override void OnGotFocus(FocusChangedEventArgs e)
+    {
+        base.OnGotFocus(e);
+        RefreshHighlight(); // the focused item is the highlighted (current) item
+    }
+
+    /// <inheritdoc/>
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        RefreshHighlight();
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled || !IsFocused)
+            return; // OnKeyDown is a class handler on the whole bubble route — only the FOCUSED item navigates,
+                    // else a key a focused sub-item leaves unhandled bubbles to an ancestor header that re-interprets it
+
+        var topLevel = OwnerItemsControl is Menu; // bar items run horizontally; submenu items run vertically
+
+        switch (e.Key)
+        {
+            case Key.DownArrow when topLevel && HasItems:
+                OpenSubmenuWithFocus(); // Down on the bar opens the submenu and enters it
+                break;
+            case Key.DownArrow when !topLevel:
+                MoveToSibling(+1);
+                break;
+            case Key.UpArrow when !topLevel:
+                MoveToSibling(-1);
+                break;
+            case Key.RightArrow when topLevel:
+                MoveToSibling(+1); // next bar header
+                break;
+            case Key.RightArrow when HasItems:
+                OpenSubmenuWithFocus(); // descend into a nested submenu
+                break;
+            case Key.LeftArrow when topLevel:
+                MoveToSibling(-1); // previous bar header
+                break;
+            case Key.LeftArrow:
+                CloseAndFocusParent(); // ascend a level
+                break;
+            case Key.Enter:
+                if (HasItems)
+                    OpenSubmenuWithFocus();
+                else
+                    Invoke();
+                break;
+            default:
+                return; // not a menu-nav key — leave unhandled (Esc is the Popup's; closes the open submenu)
+        }
+
+        e.Handled = true;
     }
 
     /// <summary>Invokes a leaf item: raise <see cref="Click"/>, toggle <see cref="IsChecked"/> (if checkable),
@@ -192,12 +258,64 @@ public class MenuItem : HeaderedItemsControl
         CloseMenuChain();
     }
 
+    private void RefreshHighlight() => SetHighlighted(IsFocused || _isPointerOver); // highlighted = focused or hovered
+
     // Opens this submenu, first closing any sibling submenu (only one branch of a level is open at a time).
     private void OpenSubmenu()
     {
         StopHoverTimer();
         CloseSiblings();
         SetSubmenuOpen(true);
+    }
+
+    // Keyboard open: open the submenu and move focus to its first item (so arrows work inside it).
+    private void OpenSubmenuWithFocus()
+    {
+        OpenSubmenu();
+        FocusFirstItem();
+    }
+
+    private void FocusFirstItem()
+    {
+        for (var i = 0; i < ItemContainerGenerator.ContainerCount; i++)
+            if (ItemContainerGenerator.ContainerFromIndex(i) is { Focusable: true } first)
+            {
+                first.Focus(FocusNavigationMethod.Directional);
+                return;
+            }
+    }
+
+    // Moves focus to the next/previous focusable sibling at this level, wrapping and skipping Separators.
+    private void MoveToSibling(int delta)
+    {
+        if (OwnerItemsControl is not { } owner)
+            return;
+
+        var generator = owner.ItemContainerGenerator;
+        var count = generator.ContainerCount;
+        var index = generator.IndexFromContainer(this);
+        if (count == 0 || index < 0)
+            return;
+
+        for (var step = 1; step <= count; step++)
+        {
+            var i = (((index + delta * step) % count) + count) % count; // wrap
+            if (generator.ContainerFromIndex(i) is { Focusable: true } target)
+            {
+                target.Focus(FocusNavigationMethod.Directional);
+                return;
+            }
+        }
+    }
+
+    // Ascends one level: closes the parent header's submenu and focuses the header (Left / back-out).
+    private void CloseAndFocusParent()
+    {
+        if (OwnerItemsControl is MenuItem parent)
+        {
+            parent.SetSubmenuOpen(false);
+            parent.Focus(FocusNavigationMethod.Directional);
+        }
     }
 
     private void StartHoverTimer()

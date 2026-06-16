@@ -12,6 +12,7 @@
     --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
     --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
     --chip:#2e3354; --chip-hot:#33467c;
+    --well-focus:#1e2438; --well-err:#2a1a24; --well-warn:#2a2418; --chip-dup:#3a2230;
   }
   [data-theme="light"] {
     --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
@@ -20,6 +21,7 @@
     --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
     --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
     --chip:#c2cae0; --chip-hot:#a8aecb;
+    --well-focus:#e4e8f2; --well-err:#f0dde2; --well-warn:#f0e8d4; --chip-dup:#e2c4cc;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--text-dim);
@@ -41,21 +43,21 @@
   .lbl.sm{width:12ch;}
 
   /* ===== tag / token input ===== */
-  .taginput{display:flex;flex-wrap:wrap;align-items:center;gap:3px;background:var(--well);padding:2px 6px;min-width:46ch;max-width:60ch;box-shadow:inset 0 0 0 1px var(--faint);}
-  .taginput.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .taginput{display:flex;flex-wrap:wrap;align-items:center;gap:3px;background:var(--well);padding:2px 6px;min-width:46ch;max-width:60ch;}
+  .taginput.focus{background:var(--well-focus);}
   .chip{display:inline-flex;align-items:center;gap:5px;background:var(--chip);color:var(--text);padding:0 3px 0 7px;}
   .chip .x{color:var(--muted);cursor:pointer;} .chip .x:hover{color:var(--red);}
-  .chip.hot{background:var(--chip-hot);box-shadow:0 0 0 1px var(--accent);}
+  .chip.hot{background:var(--chip-hot);}
   .chip.ic-pre{padding-left:5px;} .chip .ci{color:var(--accent-2);}
-  .chip.dup{box-shadow:0 0 0 1px var(--red);}
+  .chip.dup{background:var(--chip-dup);}
   .chip.dup .x{color:var(--red);}
   .taginput .tcaret{display:inline-flex;align-items:center;color:var(--text);min-width:6ch;}
   .taginput .tcaret .ph{color:var(--muted);}
   .taginput .tcaret .caret{background:var(--accent);color:var(--accent);}
-  .taginput.full{box-shadow:inset 0 0 0 1px var(--amber);}
+  .taginput.full{background:var(--well-warn);}
 
   /* token completion dropdown */
-  .tagpop{background:var(--panel);width:max-content;min-width:30ch;box-shadow:0 0 0 1px var(--faint);margin-top:2px;}
+  .tagpop{background:var(--panel);width:max-content;min-width:30ch;margin-top:2px;}
   .tagpop .tphead{background:var(--surface);color:var(--muted);padding:0 8px;display:flex;justify-content:space-between;gap:16px;}
   .tagpop .tprow{display:flex;align-items:center;gap:7px;padding:0 8px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
   .tagpop .tprow:hover{background:var(--hover);color:var(--text);}
@@ -71,26 +73,30 @@
   .msg{font-size:11px;margin-top:2px;} .msg.err{color:var(--red);} .msg.warn{color:var(--amber);} .msg.ok{color:var(--green);}
 
   /* ===== masked input ===== */
-  .masked{display:inline-flex;background:var(--well);padding:0 8px;box-shadow:inset 0 0 0 1px var(--faint);color:var(--text);min-width:20ch;}
-  .masked.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .masked{display:inline-flex;background:var(--well);padding:0 8px;color:var(--text);min-width:20ch;}
+  .masked.focus{background:var(--well-focus);}
   .masked .filled{color:var(--text);} .masked .slot{color:var(--muted);} .masked .lit{color:var(--muted);}
   .masked .caret{background:var(--accent);color:var(--accent);}
-  .masked.bad{box-shadow:inset 0 0 0 1px var(--red);}
+  .masked.bad{background:var(--well-err);}
 
   /* ===== part editor (date/time segments) ===== */
-  .parts{display:inline-flex;align-items:center;background:var(--well);padding:0 6px;box-shadow:inset 0 0 0 1px var(--faint);color:var(--text);}
-  .parts.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .parts{display:inline-flex;align-items:center;background:var(--well);padding:0 6px;color:var(--text);}
+  .parts.focus{background:var(--well-focus);}
   .parts .pt{padding:0 1px;} .parts .pt.sel{background:var(--accent);color:var(--on-accent);}
   .parts .psep{color:var(--muted);}
-  .parts .spin{display:inline-flex;flex-direction:column;line-height:.7;margin-left:4px;color:var(--accent);font-size:9px;}
+  .parts .spin{display:inline-flex;margin-left:4px;color:var(--accent);}
+  .parts .spin span{width:1ch;text-align:center;cursor:pointer;}
+  .parts .spin span:hover{color:var(--accent-2);}
   .parts .ampm{color:var(--accent-2);margin-left:3px;}
 
   /* ===== numeric drag ===== */
-  .numdrag{display:inline-flex;align-items:center;background:var(--well);padding:0 6px;box-shadow:inset 0 0 0 1px var(--faint);color:var(--text);min-width:12ch;justify-content:space-between;gap:8px;}
-  .numdrag.focus{box-shadow:inset 0 0 0 1px var(--accent);}
+  .numdrag{display:inline-flex;align-items:center;background:var(--well);padding:0 6px;color:var(--text);min-width:12ch;justify-content:space-between;gap:8px;}
+  .numdrag.focus{background:var(--well-focus);}
   .numdrag .grip{color:var(--muted);cursor:ew-resize;} .numdrag.dragging .grip{color:var(--accent);}
   .numdrag .nv{color:var(--text);} .numdrag .unit{color:var(--muted);}
-  .numdrag .spin{display:inline-flex;flex-direction:column;line-height:.7;color:var(--accent);font-size:9px;}
+  .numdrag .spin{display:inline-flex;color:var(--accent);}
+  .numdrag .spin span{width:1ch;text-align:center;cursor:pointer;}
+  .numdrag .spin span:hover{color:var(--accent-2);}
   .scrubhint{color:var(--muted);font-size:11px;}
 
   /* ===== rating ===== */
@@ -107,8 +113,8 @@
   .tslider .ticks span{width:0;}
 
   /* ===== tag input — disabled & readonly variants ===== */
-  .taginput.disabled{box-shadow:inset 0 0 0 1px var(--faint);background:var(--disabled-bg);}
-  .taginput.disabled .chip{background:var(--disabled-bg);color:var(--muted);box-shadow:0 0 0 1px var(--faint);}
+  .taginput.disabled{background:var(--disabled-bg);}
+  .taginput.disabled .chip{background:var(--faint);color:var(--muted);}
   .taginput.disabled .chip .x{color:var(--faint);}
 
   u{text-decoration-thickness:1px;text-underline-offset:2px;}
@@ -184,14 +190,14 @@
       <span class="chip">design<span class="x">✕</span></span><span class="chip">frontend<span class="x">✕</span></span>
     </div>
   </div>
-  <div class="caption">The tag input holds committed values as <b>chips</b> (icon + label + ✕ remove) with a live <b>text caret</b> after the last chip. Typing filters a <b>completion dropdown</b> with match-highlighting, usage counts, fuzzy hits, and a "<span style="color:var(--green)">Create</span>" row for new tags; Enter/Tab/comma commit. Validation states: a re-entered value flags as a <span style="color:var(--red)">duplicate</span> (red outline), hitting the cap switches the frame <span style="color:var(--amber)">amber</span> and disables input, Backspace on an empty caret selects the last chip (<span style="color:var(--accent)">highlighted</span>) for deletion, and a disabled control greys its chips.</div>
+  <div class="caption">The tag input holds committed values as <b>chips</b> (icon + label + ✕ remove) with a live <b>text caret</b> after the last chip. Typing filters a <b>completion dropdown</b> with match-highlighting, usage counts, fuzzy hits, and a "<span style="color:var(--green)">Create</span>" row for new tags; Enter/Tab/comma commit. Validation states read through <b>whole-cell fills</b>, not outlines: a re-entered value flags as a <span style="color:var(--red)">duplicate</span> (red-tinted chip), hitting the cap switches the field to an <span style="color:var(--amber)">amber</span> fill and disables input, Backspace on an empty caret selects the last chip (<span style="color:var(--accent)">accent fill</span>) for deletion, the focused field brightens its well, and a disabled control greys its chips.</div>
 
   <h2 class="sec">▸ Masked text inputs</h2>
   <div class="row"><span class="lbl sm">Phone</span><span class="masked focus">(<span class="filled">415</span>)&nbsp;<span class="filled">555</span>-<span class="filled">01</span><span class="caret">|</span><span class="slot">__</span></span><span class="scrubhint">mask (___)&nbsp;___-____ · digits fill slots L→R</span></div>
   <div class="row"><span class="lbl sm">Date</span><span class="masked"><span class="filled">2026</span>/<span class="filled">06</span>/<span class="slot">DD</span></span><span class="scrubhint">YYYY/MM/DD · unfilled slots show placeholder letters</span></div>
   <div class="row"><span class="lbl sm">IP address</span><span class="masked"><span class="filled">192</span>.<span class="filled">168</span>.<span class="filled">1</span>.<span class="slot">___</span></span><span class="scrubhint">octet groups, dots are literal mask chars</span></div>
   <div class="row"><span class="lbl sm">Card</span><span class="masked bad"><span class="filled">4242</span>&nbsp;<span class="filled">4242</span>&nbsp;<span class="filled">4242</span>&nbsp;<span class="filled">42</span><span class="slot">__</span></span><span class="msg err" style="margin:0">✕ fails Luhn check</span></div>
-  <div class="caption">Masked inputs render the <b>mask template</b> inline: literal characters (parentheses, slashes, dots, spaces) are fixed, fillable positions show as <span style="color:var(--muted)">slot placeholders</span> (underscores or letter hints) until typed, and entered characters land left-to-right with the caret at the next open slot. A failed format/checksum (here a card failing Luhn) flips the frame <span style="color:var(--red)">red</span>.</div>
+  <div class="caption">Masked inputs render the <b>mask template</b> inline: literal characters (parentheses, slashes, dots, spaces) are fixed, fillable positions show as <span style="color:var(--muted)">slot placeholders</span> (underscores or letter hints) until typed, and entered characters land left-to-right with the caret at the next open slot. A failed format/checksum (here a card failing Luhn) tints the field <span style="color:var(--red)">red</span>.</div>
 
   <h2 class="sec">▸ Part editors — spinnable date / time segments</h2>
   <div class="row"><span class="lbl sm">Date</span><span class="parts focus"><span class="pt sel">2026</span><span class="psep">-</span><span class="pt">06</span><span class="psep">-</span><span class="pt">13</span><span class="spin"><span>▲</span><span>▼</span></span></span><span class="scrubhint">year segment selected · ↑↓ spins just that part · ←→ moves between parts</span></div>

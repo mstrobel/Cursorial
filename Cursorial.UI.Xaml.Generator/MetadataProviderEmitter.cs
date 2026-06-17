@@ -73,6 +73,15 @@ internal sealed class MetadataProviderEmitter
             EmitType(sb, type);
 
         sb.AppendLine("    }");
+        sb.AppendLine();
+        // A module initializer installs the generated provider as the loader's process default — AOT-clean
+        // (no reflection), so the consuming assembly uses it automatically without any explicit opt-in.
+        sb.AppendLine("    internal static class __GeneratedXamlMetadataModuleInit");
+        sb.AppendLine("    {");
+        sb.AppendLine("        [global::System.Runtime.CompilerServices.ModuleInitializer]");
+        sb.AppendLine("        internal static void Initialize()");
+        sb.AppendLine($"            => global::Cursorial.UI.Xaml.XamlLoaderOptions.DefaultMetadataProvider = __GeneratedXamlMetadata.Instance;");
+        sb.AppendLine("    }");
         sb.AppendLine("}");
         return sb.ToString();
     }

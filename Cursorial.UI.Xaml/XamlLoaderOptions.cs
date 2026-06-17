@@ -15,8 +15,23 @@ namespace Cursorial.UI.Xaml;
 /// </remarks>
 public sealed class XamlLoaderOptions
 {
-    /// <summary>The metadata provider; defaults to <see cref="ReflectionXamlMetadata.Instance"/>.</summary>
-    public IXamlTypeMetadataProvider MetadataProvider { get; init; } = ReflectionXamlMetadata.Instance;
+    private static IXamlTypeMetadataProvider _default = ReflectionXamlMetadata.Instance;
+
+    /// <summary>
+    /// The process-wide default metadata provider new <see cref="XamlLoaderOptions"/> adopt
+    /// (<see cref="ReflectionXamlMetadata.Instance"/> unless overridden). The X4 generated provider sets
+    /// this from a <c>[ModuleInitializer]</c> (no reflection) so a consuming assembly's generated,
+    /// trim/AOT-clean provider becomes the default without any explicit opt-in. Setting <see langword="null"/>
+    /// restores the reflection provider.
+    /// </summary>
+    public static IXamlTypeMetadataProvider DefaultMetadataProvider
+    {
+        get => _default;
+        set => _default = value ?? ReflectionXamlMetadata.Instance;
+    }
+
+    /// <summary>The metadata provider; defaults to <see cref="DefaultMetadataProvider"/>.</summary>
+    public IXamlTypeMetadataProvider MetadataProvider { get; init; } = DefaultMetadataProvider;
 
     /// <summary>How diagnostics surface. Default <see cref="XamlDiagnosticMode.ThrowOnFirstError"/>.</summary>
     public XamlDiagnosticMode DiagnosticMode { get; init; } = XamlDiagnosticMode.ThrowOnFirstError;

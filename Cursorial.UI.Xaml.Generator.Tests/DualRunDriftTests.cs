@@ -50,6 +50,28 @@ public class DualRunDriftTests
         Assert.Equal("Inner", inner.Content);
     }
 
+    [Fact] // WS-X4.5 — the generated provider's [ModuleInitializer] installs it as the loader default (no opt-in)
+    public void ModuleInitializer_InstallsGeneratedProvider_AsLoaderDefault()
+    {
+        var xaml = $"<StackPanel {Xmlns}><Button Content=\"Hi\"/></StackPanel>";
+        var saved = XamlLoaderOptions.DefaultMetadataProvider;
+        try
+        {
+            // Loading the generated assembly + touching its Instance fires the module initializer.
+            var generated = BuildGeneratedProvider(xaml);
+            Assert.Same(generated, XamlLoaderOptions.DefaultMetadataProvider); // installed as the default
+
+            // A default-constructed loader now uses the generated provider — no explicit MetadataProvider.
+            var root = (StackPanel)new XamlLoader().Load(xaml);
+            var button = Assert.IsType<Button>(Assert.Single(root.Children));
+            Assert.Equal("Hi", button.Content);
+        }
+        finally
+        {
+            XamlLoaderOptions.DefaultMetadataProvider = saved; // restore (process-wide default)
+        }
+    }
+
     private static IXamlTypeMetadataProvider BuildGeneratedProvider(string xaml)
     {
         var compilation = GeneratorHarness.ReferencedCompilation();

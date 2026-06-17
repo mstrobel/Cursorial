@@ -24,13 +24,26 @@
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <IsPackable>true</IsPackable>
-        <!-- Analyzers are not runtime references; suppress the "no runtime assets" pack warning. -->
-        <NoWarn>$(NoWarn);NU5128</NoWarn>
+        <!-- NU5128: analyzers ship no runtime assets. RS2008: the diagnostic IDs are the frontend's
+             dynamic CUR codes, not a fixed analyzer-release-tracked set. -->
+        <NoWarn>$(NoWarn);NU5128;RS2008</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
         <!-- The compiler host supplies Roslyn at runtime; pin a floor the .NET 10 SDK's Roslyn satisfies. -->
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+        <!-- The frontend is netstandard2.0 + uses Span; it source-links below, so its System.Memory dep is ours too. -->
+        <PackageReference Include="System.Memory" Version="4.6.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Source-link the netstandard2.0 parser frontend (design doc §4.9: "shared verbatim with the
+             X4/X5 generator"). Compiling it INTO the analyzer grants internal access and keeps the
+             generator self-contained in the compiler host (the frontend's IsExternalInit polyfill comes
+             with it). The runtime Frontend.dll is a separate copy — this one never ships to runtime. -->
+        <Compile Include="..\Cursorial.UI.Xaml.Frontend\**\*.cs"
+                 Exclude="..\Cursorial.UI.Xaml.Frontend\obj\**\*.cs;..\Cursorial.UI.Xaml.Frontend\bin\**\*.cs"
+                 LinkBase="Frontend" />
     </ItemGroup>
 
 </Project>

@@ -32,6 +32,7 @@ internal static class ControlThemes
     internal static void Populate(ResourceDictionary dict)
     {
         dict[typeof(Button)] = ButtonTheme();
+        dict[typeof(Label)] = LabelTheme();
         dict[typeof(RepeatButton)] = RepeatButtonTheme();
         dict[typeof(ToggleButton)] = ToggleButtonTheme();
         dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.GreenBrush, ThemeKeys.AmberBrush);
@@ -85,6 +86,27 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:default")
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+        return theme;
+    }
+
+    // ───────────────────────────── Label ─────────────────────────────
+
+    // A caption (design doc §12.5/§12.7): a RecognizesAccessKey ContentPresenter so the access-key mnemonic
+    // underlines on Alt (Label.Content folds "_Name" → an AccessText mnemonic). No resting fill or frame — a
+    // Label is a caption, not a control face; the content paints in the inherited TextBrush, muted when disabled.
+    private static ControlTemplate LabelTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        return presenter;
+    });
+
+    private static Style LabelTheme()
+    {
+        var theme = new Style { Key = "Theme.Label" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, LabelTemplate());
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
         return theme;
     }
 

@@ -113,11 +113,22 @@ public sealed class ArchOneXamlThemeTests
     [InlineData("Separator")]
     [InlineData("ListBox")]       // exercises the ListBox AND ListBoxItem XAML themes
     [InlineData("ItemsControl")]
+    [InlineData("Label")]         // the Label default theme (added with W6)
     public void XamlP9ControlTheme_RendersIdenticallyToCSharpBuiltIn_AtRest(string control)
     {
         Assert.Equal(
             CaptureCells(xaml: false, focus: false, 16, 5, () => MakeP9Control(control)),
             CaptureCells(xaml: true,  focus: false, 16, 5, () => MakeP9Control(control)));
+    }
+
+    [Fact] // the Label DEFAULT THEME renders its caption — without a theme, ContentControl has no presenter → blank (gap fix)
+    public void Label_DefaultTheme_RendersItsContent()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(12, 2) });
+        host.ShowRoot(new UIControls.Label { Content = "Hi" });
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal("H", host.GetCell(0, 0).Grapheme);
+        Assert.Equal("i", host.GetCell(1, 0).Grapheme);
     }
 
     [Fact] // W5: every P9 control theme parses + is present (covers the popup-rooted ones that can't render inline)
@@ -151,6 +162,7 @@ public sealed class ArchOneXamlThemeTests
         "Separator"    => new UIControls.Separator { Width = 14 },
         "ListBox"      => new UIControls.ListBox { ItemsSource = new[] { "a", "b", "c" }, Width = 14, Height = 4 },
         "ItemsControl" => new UIControls.ItemsControl { ItemsSource = new[] { "a", "b" }, Width = 14, Height = 4 },
+        "Label"        => new UIControls.Label { Content = "Caption" },
         _              => throw new ArgumentOutOfRangeException(nameof(control)),
     };
 

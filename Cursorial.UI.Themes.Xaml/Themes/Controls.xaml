@@ -55,6 +55,23 @@
     </Style.Children>
   </Style>
 
+  <!-- Label (design doc §12.5/§12.7): a caption — a RecognizesAccessKey ContentPresenter so the access-key
+       mnemonic underlines on Alt; no fill/frame, content in the inherited TextBrush, muted when disabled.
+       The declarative twin of ControlThemes.LabelTheme(). -->
+  <ControlTemplate x:Key="LabelTemplate">
+    <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Label}" TargetType="Label">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource LabelTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:disabled" TargetType="Label">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
   <!-- RepeatButton / ToggleButton share the button family's spine + template + interactive states, minus the
        Button-only :default (matching the code-first Repeat/ToggleButtonTheme = AddButtonStates(spine + template)). -->
   <Style x:Key="{x:Type RepeatButton}" TargetType="RepeatButton">

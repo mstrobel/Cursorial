@@ -15,7 +15,7 @@ public abstract class TextElement
 
     /// <summary>The inherited text foreground brush (<c>Inherits | AffectsRender</c>).</summary>
     public static readonly AttachedProperty<IBrush?> ForegroundProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>("Foreground", inherits: true);
+        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>("Foreground", inherits: true, defaultValue: Brushes.Default);
 
     /// <summary>The inherited text attributes (bold/italic/underline/…) (<c>Inherits | AffectsRender</c>).</summary>
     public static readonly AttachedProperty<TextAttributes> TextAttributesProperty =

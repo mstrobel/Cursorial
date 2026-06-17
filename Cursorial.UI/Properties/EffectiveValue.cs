@@ -1,5 +1,7 @@
 // ReSharper disable CheckNamespace
 
+using System.Runtime.CompilerServices;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -11,6 +13,64 @@ namespace Cursorial.UI;
 /// </summary>
 internal abstract class EffectiveValueBase
 {
+    /// <summary>
+    /// The packed lane/coercion bookkeeping bits. Each former <c>bool</c> field is now one flag here,
+    /// surfaced through a property so the read/write surface is unchanged — the storage just folds ten
+    /// one-byte fields into a single <see cref="EntryFlags"/> word.
+    /// </summary>
+    [Flags]
+    protected enum EntryFlags
+    {
+        None = 0,
+
+        /// <summary>Backs <see cref="HasLocal"/>.</summary>
+        HasLocal = 1 << 0,
+
+        /// <summary>Backs <see cref="LocalValueFromEntry"/>.</summary>
+        LocalValueFromEntry = 1 << 1,
+
+        /// <summary>Backs <see cref="HasTemplate"/>.</summary>
+        HasTemplate = 1 << 2,
+
+        /// <summary>Backs <see cref="TemplateValueFromEntry"/>.</summary>
+        TemplateValueFromEntry = 1 << 3,
+
+        /// <summary>Backs <see cref="TemplateIsCoerced"/>.</summary>
+        TemplateIsCoerced = 1 << 4,
+
+        /// <summary>Backs <see cref="LocalIsCurrentValueOnly"/>.</summary>
+        LocalIsCurrentValueOnly = 1 << 5,
+
+        /// <summary>Backs <see cref="IsCurrentValue"/>.</summary>
+        IsCurrentValue = 1 << 6,
+
+        /// <summary>Backs <see cref="HasAnimatedValue"/>.</summary>
+        HasAnimatedValue = 1 << 7,
+
+        /// <summary>Backs <see cref="IsCoerced"/>.</summary>
+        IsCoerced = 1 << 8,
+
+        /// <summary>Backs <see cref="BaseIsCoerced"/>.</summary>
+        BaseIsCoerced = 1 << 9,
+    }
+
+    /// <summary>The packed backing store for every boolean lane bit.</summary>
+    private EntryFlags _flags;
+
+    /// <summary>Reads one flag bit.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Get(EntryFlags flag) => (_flags & flag) != 0;
+
+    /// <summary>Sets or clears one flag bit.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Set(EntryFlags flag, bool value)
+    {
+        if (value)
+            _flags |= flag;
+        else
+            _flags &= ~flag;
+    }
+
     /// <summary>
     /// The lane the effective value resolved from; <see cref="BindingPriority.Unset"/> when the
     /// entry currently contributes nothing (reads fall through to the metadata default — the entry
@@ -25,10 +85,18 @@ internal abstract class EffectiveValueBase
     public BindingPriority BasePriority = BindingPriority.Unset;
 
     /// <summary>Whether a local-lane contribution is present (raw value stored, PD6).</summary>
-    public bool HasLocal;
+    public bool HasLocal
+    {
+        get => Get(EntryFlags.HasLocal);
+        set => Set(EntryFlags.HasLocal, value);
+    }
 
     /// <summary>Whether the local slot's current value was pushed by <see cref="LocalEntry"/> (vs a plain <c>SetValue</c>) — eviction withdraws only the entry's own contribution.</summary>
-    public bool LocalValueFromEntry;
+    public bool LocalValueFromEntry
+    {
+        get => Get(EntryFlags.LocalValueFromEntry);
+        set => Set(EntryFlags.LocalValueFromEntry, value);
+    }
 
     /// <summary>
     /// Whether a Template-lane contribution is present (precedence matrix §20, PD24): a raw + coerced
@@ -36,13 +104,25 @@ internal abstract class EffectiveValueBase
     /// <c>SetTemplateValue</c> — a literal <c>SetValue</c>, a <c>{TemplateBinding}</c>/<c>{Binding}</c>,
     /// or a <c>SetResourceReference</c> issued inside the template-instantiation scope.
     /// </summary>
-    public bool HasTemplate;
+    public bool HasTemplate
+    {
+        get => Get(EntryFlags.HasTemplate);
+        set => Set(EntryFlags.HasTemplate, value);
+    }
 
     /// <summary>Whether the Template slot's value was pushed by <see cref="TemplateEntry"/> (vs a literal in-template <c>SetValue</c>) — eviction withdraws only the entry's own contribution.</summary>
-    public bool TemplateValueFromEntry;
+    public bool TemplateValueFromEntry
+    {
+        get => Get(EntryFlags.TemplateValueFromEntry);
+        set => Set(EntryFlags.TemplateValueFromEntry, value);
+    }
 
     /// <summary>Whether the winning Template-base value was modified by the coercer when produced (resurfaces into <see cref="IsCoerced"/> when Template wins).</summary>
-    public bool TemplateIsCoerced;
+    public bool TemplateIsCoerced
+    {
+        get => Get(EntryFlags.TemplateIsCoerced);
+        set => Set(EntryFlags.TemplateIsCoerced, value);
+    }
 
     /// <summary>
     /// Whether the local contribution exists only as the <c>SetCurrentValue</c> no-contribution
@@ -50,19 +130,39 @@ internal abstract class EffectiveValueBase
     /// but a <em>style producer arriving later replaces it</em> (A11 "a producer change replaces the
     /// overlay"; style matrix S100). A real <c>SetValue</c> clears the flag; the graft refresh keeps it.
     /// </summary>
-    public bool LocalIsCurrentValueOnly;
+    public bool LocalIsCurrentValueOnly
+    {
+        get => Get(EntryFlags.LocalIsCurrentValueOnly);
+        set => Set(EntryFlags.LocalIsCurrentValueOnly, value);
+    }
 
     /// <summary>The <c>+cur</c> bit: the effective value was overwritten by <c>SetCurrentValue</c>.</summary>
-    public bool IsCurrentValue;
+    public bool IsCurrentValue
+    {
+        get => Get(EntryFlags.IsCurrentValue);
+        set => Set(EntryFlags.IsCurrentValue, value);
+    }
 
     /// <summary>Whether the Animation lane holds a value (an attached handle has pushed — PD4: a fresh handle is inert).</summary>
-    public bool HasAnimatedValue;
+    public bool HasAnimatedValue
+    {
+        get => Get(EntryFlags.HasAnimatedValue);
+        set => Set(EntryFlags.HasAnimatedValue, value);
+    }
 
     /// <summary>Whether the effective value was modified by the coercer when produced (the <see cref="ValueSource.IsCoerced"/> annotation).</summary>
-    public bool IsCoerced;
+    public bool IsCoerced
+    {
+        get => Get(EntryFlags.IsCoerced);
+        set => Set(EntryFlags.IsCoerced, value);
+    }
 
     /// <summary>Whether the winning base value was modified by the coercer when produced (resurfaces into <see cref="IsCoerced"/> when an animation ends).</summary>
-    public bool BaseIsCoerced;
+    public bool BaseIsCoerced
+    {
+        get => Get(EntryFlags.BaseIsCoerced);
+        set => Set(EntryFlags.BaseIsCoerced, value);
+    }
 
     /// <summary>
     /// The installed local-priority binding entry, or <see langword="null"/> (at most one — a newer
@@ -262,7 +362,7 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
             ? Value
             : store.GetUnsetFallback(Property, metadata, out _); // inherited-or-default (lazy walk)
         if (metadata.EffectiveComparer.Equals(oldValue, newValue))
-            return; // first old == last new ⇒ the scope's changes cancelled out (M245)
+            return; // first old == last new ⇒ the scope's changes canceled out (M245)
 
         store.Owner.DispatchPropertyChanged(Property, metadata.Changed, oldValue, newValue, PendingPriority);
     }

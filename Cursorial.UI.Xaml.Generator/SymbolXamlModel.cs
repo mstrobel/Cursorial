@@ -263,6 +263,30 @@ internal static class SymbolXamlModel
     /// <summary>True when the value type is the deferred-content contract (<c>ITemplateContent</c>).</summary>
     public static bool IsDeferredContent(ITypeSymbol type) => type.Name == "ITemplateContent";
 
+    /// <summary>True when the type is (or derives from) <c>Cursorial.UI.ResourceDictionary</c> — a keyed
+    /// dictionary the loader fills via <c>Add(key, value)</c> (the type-level dictionary flag).</summary>
+    public static bool IsResourceDictionary(INamedTypeSymbol type)
+    {
+        for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
+        {
+            if (t.ToDisplayString() == "Cursorial.UI.ResourceDictionary")
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>True when the type implements <c>System.ComponentModel.ISupportInitialize</c> — the loader
+    /// brackets its member sets with <c>BeginInit</c>/<c>EndInit</c>.</summary>
+    public static bool RequiresInitialize(INamedTypeSymbol type)
+    {
+        foreach (var iface in type.AllInterfaces)
+        {
+            if (iface.ToDisplayString() == "System.ComponentModel.ISupportInitialize")
+                return true;
+        }
+        return false;
+    }
+
     private static bool ImplementsIList(ITypeSymbol type)
     {
         foreach (var iface in type.AllInterfaces)

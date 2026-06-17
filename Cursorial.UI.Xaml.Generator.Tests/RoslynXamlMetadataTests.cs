@@ -111,6 +111,20 @@ public class RoslynXamlMetadataTests
         Assert.DoesNotContain(doc.Diagnostics, d => d.Severity == XamlDiagnosticSeverity.Error);
     }
 
+    [Fact] // an ITemplateContent content member is deferred content (its body is a deferred slice)
+    public void TemplateContentMember_IsDeferred()
+    {
+        var template = Provider().TryGetType(Ui, "ControlTemplate").Type!;
+        Assert.Equal("Content", template.ContentProperty);
+        var content = template.TryGetMember("Content");
+        Assert.NotNull(content);
+        Assert.True(content!.IsDeferredContent);
+    }
+
+    [Fact] // a ResourceDictionary is dictionary-shaped (the type-level fill flag)
+    public void ResourceDictionary_IsCollection()
+        => Assert.True(Provider().TryGetType(Ui, "ResourceDictionary").Type!.IsCollection);
+
     [Fact] // coverage audit: a representative theme-style document must parse with NO false CUR2xxx errors,
            // so the CUR2 semantic band can be surfaced as build errors without breaking valid XAML.
     public void SymbolBackedParse_ThemeStyleVocabulary_NoFalsePositives()

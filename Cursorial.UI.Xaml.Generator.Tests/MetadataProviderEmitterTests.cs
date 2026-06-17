@@ -64,6 +64,25 @@ public class MetadataProviderEmitterTests
         Assert.Contains("isCollection: true", source);
     }
 
+    [Fact] // broader coverage: an ITemplateContent-typed content member bakes IsDeferredContent (templates)
+    public void Bakes_DeferredContent_ForTemplateContentMember()
+    {
+        var (source, errors) = EmitFor("ControlTemplate");
+        Assert.Empty(errors);
+        Assert.Contains("IsDeferredContent = true", source);
+    }
+
+    [Fact] // broader coverage: a ResourceDictionary bakes the keyed dictionary-fill (addDictionaryItem + key type)
+    public void Bakes_DictionaryFill_ForResourceDictionary()
+    {
+        var (source, errors) = EmitFor("ResourceDictionary");
+        Assert.Empty(errors);
+        Assert.Contains("isCollection: true", source);
+        Assert.Contains("addDictionaryItem:", source);
+        Assert.Contains("dictionaryKeyType: typeof(object)", source);
+        Assert.Contains(".Add(k, v)", source);
+    }
+
     [Fact]
     public void EmptySet_EmitsNothing()
     {

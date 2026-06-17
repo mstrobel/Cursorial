@@ -135,7 +135,10 @@ internal sealed class MetadataProviderEmitter
         var field = FieldName(type);
         var members = SymbolXamlModel.EnumerateMembers(type).ToList();
         var contentProperty = SymbolXamlModel.ResolveContentProperty(type);
-        var isCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(type, contentProperty);
+        var isDictionary = SymbolXamlModel.IsResourceDictionary(type);
+        var contentIsCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(type, contentProperty);
+        var isCollection = contentIsCollection || isDictionary;
+        var requiresInit = SymbolXamlModel.RequiresInitialize(type);
 
         sb.AppendLine($"        private static readonly {Frontend}.XamlType {field} = Build_{field}();");
         sb.AppendLine($"        private static {Frontend}.XamlType Build_{field}()");
@@ -150,11 +153,20 @@ internal sealed class MetadataProviderEmitter
             sb.AppendLine("                " + EmitMember(type, member) + ",");
 
         sb.AppendLine("            };");
+        // A ResourceDictionary is filled via Add(key, value) with object keys (matrix XD10/C-8).
+        var addDictionaryItem = isDictionary
+            ? $"static (d, k, v) => (({Global(type)})d).Add(k, v)"
+            : "null";
+        var dictionaryKeyType = isDictionary ? "typeof(object)" : "null";
+
         sb.AppendLine($"            return new {Frontend}.XamlType(");
         sb.AppendLine($"                clrType: typeof({Global(type)}),");
         sb.AppendLine($"                activate: {(SymbolXamlModel.CanActivate(type) ? $"static () => new {Global(type)}()" : "null")},");
         sb.AppendLine($"                contentProperty: {(contentProperty is null ? "null" : $"\"{contentProperty}\"")},");
         sb.AppendLine($"                isCollection: {(isCollection ? "true" : "false")},");
+        sb.AppendLine($"                addDictionaryItem: {addDictionaryItem},");
+        sb.AppendLine($"                dictionaryKeyType: {dictionaryKeyType},");
+        sb.AppendLine($"                requiresInitialize: {(requiresInit ? "true" : "false")},");
         sb.AppendLine("                memberResolver: name => members.TryGetValue(name, out var m) ? m : null);");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -165,8 +177,12 @@ internal sealed class MetadataProviderEmitter
         var valueTypeOf = $"typeof({Global(member.ValueType)})";
         var converter = $"{Frontend}.XamlConverters.For({valueTypeOf})";
 
+        // An ITemplateContent-typed member is deferred content (its children are a deferred slice with their
+        // own template name scope) — mirror ReflectionXamlMetadata's IsDeferredContent stamp.
+        var deferred = SymbolXamlModel.IsDeferredContent(member.ValueType) ? " { IsDeferredContent = true }" : string.Empty;
+
         if (member.IsEvent)
-            return $"[\"{member.Name}\"] = new {Frontend}.XamlMember(\"{member.Name}\", {valueTypeOf}, isEvent: true)";
+            return $"[\"{member.Name}\"] = new {Frontend}.XamlMember(\"{member.Name}\", {valueTypeOf}, isEvent: true){deferred}";
 
         if (member.RegisteredFieldOwner is not null)
         {
@@ -174,7 +190,7 @@ internal sealed class MetadataProviderEmitter
             // additionally carries isAttachable: true so the loader assigns it through the attached registration.
             var prop = $"{Global(member.RegisteredFieldOwner)}.{member.Name}Property";
             var attachable = member.IsAttached ? ", isAttachable: true" : string.Empty;
-            return $"[\"{member.Name}\"] = new {Frontend}.XamlMember(\"{member.Name}\", {valueTypeOf}, property: {prop}, converter: {converter}{attachable})";
+            return $"[\"{member.Name}\"] = new {Frontend}.XamlMember(\"{member.Name}\", {valueTypeOf}, property: {prop}, converter: {converter}{attachable}){deferred}";
         }
 
         // CLR property: setClr / get delegates.
@@ -187,7 +203,7 @@ internal sealed class MetadataProviderEmitter
         if (setClr is not null) parts.Add(setClr);
         if (get is not null) parts.Add(get);
         parts.Add($"converter: {converter}");
-        return $"[\"{member.Name}\"] = new {Frontend}.XamlMember({string.Join(", ", parts)})";
+        return $"[\"{member.Name}\"] = new {Frontend}.XamlMember({string.Join(", ", parts)}){deferred}";
     }
 
     // ── codegen helpers ───────────────────────────────────────────────────────────────────────────

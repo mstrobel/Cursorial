@@ -75,7 +75,9 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
     private XamlType BuildType(INamedTypeSymbol symbol)
     {
         var contentProperty = SymbolXamlModel.ResolveContentProperty(symbol);
-        var isCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(symbol, contentProperty);
+        var isDictionary = SymbolXamlModel.IsResourceDictionary(symbol);
+        var isCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(symbol, contentProperty) ||
+                           isDictionary; // mirror ReflectionXamlMetadata + the emitter: a dictionary is a collection
         var members = new Dictionary<string, XamlMember?>(StringComparer.Ordinal);
 
         return new XamlType(
@@ -83,6 +85,7 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
             activate: null, // no activation at generator time
             contentProperty: contentProperty,
             isCollection: isCollection,
+            requiresInitialize: SymbolXamlModel.RequiresInitialize(symbol), // the parser stamps NeedsBeginInit from this
             memberResolver: name => members.TryGetValue(name, out var m) ? m : members[name] = BuildMember(symbol, name));
     }
 

@@ -66,6 +66,21 @@ public class DualRunDriftTests
         }
     }
 
+    [Fact] // broader coverage — a ControlTemplate (deferred content) loads identically (the IsDeferredContent stamp)
+    public void GeneratedProvider_HandlesDeferredTemplate_AsReflection()
+    {
+        var xaml =
+            $"<Button {Xmlns}><Button.Template><ControlTemplate><Border/></ControlTemplate></Button.Template></Button>";
+
+        var generated = BuildGeneratedProvider(xaml);
+        var byGenerated = (Button)new XamlLoader(new XamlLoaderOptions { MetadataProvider = generated }).Load(xaml);
+        var byReflection = (Button)new XamlLoader(new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        // The template body deferred correctly (not eagerly instantiated) → Template is a ControlTemplate on both.
+        foreach (var button in new[] { byGenerated, byReflection })
+            Assert.IsType<ControlTemplate>(button.Template);
+    }
+
     [Fact] // WS-X4.5 — the generated provider's [ModuleInitializer] installs it as the loader default (no opt-in)
     public void ModuleInitializer_InstallsGeneratedProvider_AsLoaderDefault()
     {

@@ -39,6 +39,15 @@
         <TrimMode>partial</TrimMode>
     </PropertyGroup>
 
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+      <DebugType>none</DebugType>
+      <DocumentationFile />
+      <GenerateDocumentationFile>false</GenerateDocumentationFile>
+      <DebugSymbols>false</DebugSymbols>
+      <IncludeDebugSymbolsProjectOutputGroup>false</IncludeDebugSymbolsProjectOutputGroup>
+      <IncludeDocumentationProjectOutputGroup>false</IncludeDocumentationProjectOutputGroup>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />

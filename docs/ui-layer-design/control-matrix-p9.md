@@ -66,6 +66,15 @@ P9.5 TabControl · P9.6 TextBox · P9.7 ProgressBar + chrome · P9.8 inspector d
   ("only visible with striping rules"; control-theme brushes come from the mockups, not invented), so an app
   authors a `…:alternate { Background }` rule to target the stamped class. Not WPF's N-way `AlternationCount` —
   a single 2-way stripe (the design's "row-striping"); positional `:nth-child` stays unsupported by design (§3.10).
+- **CD-P9-26 — the resource-inspector hook (P9 tail).** `ResourceDiagnostics.GetResourceKey(element, property)`
+  is the **reverse** of `Trace`: it answers "which resource key did this property's effective value resolve
+  *through*?" — checking the element's instance `SetResourceReference`/`{DynamicResource}` producers first
+  (they win at the Local/Template lane) then the winning style/theme `{DynamicResource}` setter, returning the
+  key or null. It is a **separate** cold-path surface (it does **not** touch `StyleDiagnostics.Explain`'s pinned
+  one-line format, SD13). Seams: `IResourceSubscriber.ResourceProvenance` (instance), and the
+  `ValueFrame.TryGetResourceKey` virtual overridden by `StyleRuleFrame` over its resource-backed setters (style),
+  resolved by `ValueStore.ResolveWinningStyleResourceKey`. The `inspect` demo appends `← resource '<key>'` to a
+  resource-backed property's line — the resource companion to the style inspector (design doc §14 P9).
 
 ---
 

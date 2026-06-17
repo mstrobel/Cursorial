@@ -60,6 +60,17 @@ public abstract class ValueFrame
     /// </summary>
     internal virtual bool IsConditionalStyleRule => false;
 
+    /// <summary>
+    /// The resource key this frame's DynamicResource setter feeds <paramref name="property"/> (the W3
+    /// resource-provenance seam), or <see langword="false"/> when the frame has no resource-backed setter
+    /// for it. Default <see langword="false"/> (a plain frame carries constant setters).
+    /// </summary>
+    internal virtual bool TryGetResourceKey(UIProperty property, out object? key)
+    {
+        key = null;
+        return false;
+    }
+
     /// <summary>The frame-hosted binding entries (ledger A5), or <see langword="null"/> when none.</summary>
     internal List<BindingEntryBase>? HostedEntries => _hostedEntries;
 

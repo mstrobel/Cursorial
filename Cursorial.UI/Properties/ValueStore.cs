@@ -925,6 +925,39 @@ internal sealed class ValueStore
     }
 
     /// <summary>
+    /// The resource key the winning active style contribution for <paramref name="propertyId"/> resolved
+    /// through (a DynamicResource setter), or <see langword="null"/> when the winner is a constant setter
+    /// (the W3 resource-provenance seam). Same strongest-first scan as <see cref="ResolveWinningStyleKind"/>.
+    /// </summary>
+    internal object? ResolveWinningStyleResourceKey(int propertyId)
+    {
+        for (var i = _frameCount - 1; i >= 0; i--)
+        {
+            var frame = _frames[i];
+            if (!frame.IsActive)
+                continue;
+
+            if (frame.HostedEntries is {} hosted)
+            {
+                for (var j = hosted.Count - 1; j >= 0; j--)
+                {
+                    if (hosted[j].Property.Id == propertyId && hosted[j].HasValue)
+                        return frame.TryGetResourceKey(hosted[j].Property, out var key) ? key : null;
+                }
+            }
+
+            for (var j = frame.EntryCount - 1; j >= 0; j--)
+            {
+                var entry = frame.GetEntry(j);
+                if (entry.Property.Id == propertyId && entry.HasValue)
+                    return frame.TryGetResourceKey(entry.Property, out var key) ? key : null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Resolves the strongest active style contribution: frames strongest-first (largest sort key;
     /// equal keys later-added), within a frame hosted entries beat declared ones and later indices
     /// beat earlier (install/document order); valueless entries are skipped wholesale (A8 unset

@@ -255,6 +255,9 @@ public abstract class UIObject : IInheritanceNode
         return result;
     }
 
+    /// <summary>The resource key the winning style/theme DynamicResource setter feeds <paramref name="property"/>, or <see langword="null"/> (the W3 resource-provenance seam; the instance-<c>SetResourceReference</c> half is on <c>UIElement</c>).</summary>
+    internal object? GetWinningStyleResourceKey(UIProperty property) => _store?.ResolveWinningStyleResourceKey(property.Id);
+
     internal object? GetValueBoxed<T>(StyledProperty<T> property)
     {
         if (_store is { } store)

@@ -1,5 +1,7 @@
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
+using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
 
@@ -90,5 +92,44 @@ public sealed class Section05_ResourceDiagnostics
         {
             ResourceDiagnostics.ResourceMissed -= Handler;
         }
+    }
+
+    // ───────────────────────────── W3: GetResourceKey (resource-inspector hook) ─────────────────────────────
+
+    [Fact] // GetResourceKey returns the key an instance SetResourceReference / {DynamicResource} feeds (the reverse of Trace)
+    public void GetResourceKey_InstanceDynamicResource_ReturnsKey()
+    {
+        using var host = UITestHost.Create();
+        var tree = BuildTree();
+        tree.Root.Res[K] = Vbrush;
+        host.ShowRoot(tree.Root);
+
+        tree.Leaf.SetResourceReference(Probe.P, K);
+        host.RunUntilIdle();
+
+        Assert.Equal(K, ResourceDiagnostics.GetResourceKey(tree.Leaf, Probe.P));
+    }
+
+    [Fact] // a literal (non-resource) value has no resource provenance
+    public void GetResourceKey_LiteralValue_ReturnsNull()
+    {
+        using var host = UITestHost.Create();
+        var tree = BuildTree();
+        host.ShowRoot(tree.Root);
+
+        tree.Leaf.SetValue(Probe.P, Vbrush); // a plain value, not resource-backed
+        Assert.Null(ResourceDiagnostics.GetResourceKey(tree.Leaf, Probe.P));
+    }
+
+    [Fact] // a themed control's style {DynamicResource} setter exposes its key (the style-lane half of the hook)
+    public void GetResourceKey_StyleResourceSetter_ReturnsKey()
+    {
+        using var host = UITestHost.Create();
+        var listBox = new ListBox();
+        host.ShowRoot(listBox);
+        host.RunUntilIdle();
+
+        // The BuiltIn ListBox control theme resolves Background via SetResource(WellBrush).
+        Assert.Equal(ThemeKeys.WellBrush, ResourceDiagnostics.GetResourceKey(listBox, Control.BackgroundProperty));
     }
 }

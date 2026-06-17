@@ -324,19 +324,24 @@ internal sealed class InspectorDemo : IDemo
                 // in an arbitrarily-loaded tree degrades to an error line, not an unhandled hover-handler throw.
                 string winning;
                 var kind = ValueSourceKind.Default;
+                object? resourceKey = null;
                 try
                 {
                     winning = StyleDiagnostics.Explain(element, property).Split('\n', 2)[0];
-                    kind = element.GetValueSource(property).Kind; // PD25 within-lane provenance
+                    kind = element.GetValueSource(property).Kind;        // PD25 within-lane provenance
+                    resourceKey = ResourceDiagnostics.GetResourceKey(element, property); // W3 resource-inspector hook
                 }
                 catch (Exception ex)
                 {
                     winning = $"{property.Name} = (error: {ex.GetType().Name})";
                 }
 
-                // Append the within-lane provenance (PD25): "template literal vs template binding vs
-                // template resource", "style setter vs When-guarded rule" — the finer origin beyond the lane.
-                _inspectorContent.Children.Add(new TextBlock($"{winning}   ·  {kind}"));
+                // Append the within-lane provenance (PD25) and, for a resource-backed value, the resource KEY
+                // it resolved through (W3 — the resource-inspector companion to the style inspector).
+                var line = $"{winning}   ·  {kind}";
+                if (resourceKey is not null)
+                    line += $"  ← resource '{resourceKey}'";
+                _inspectorContent.Children.Add(new TextBlock(line));
             }
         }
 

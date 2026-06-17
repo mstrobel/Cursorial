@@ -37,6 +37,23 @@ public static class ResourceDiagnostics
     /// <summary>Renders the searched chain for <paramref name="key"/> (the <see cref="ResourceNotFoundException.SearchedScopes"/> shape) — equivalent to <see cref="Trace"/> for a miss (design doc §11.10).</summary>
     public static IReadOnlyList<string> Explain(UIElement element, object key) => Trace(element, key);
 
+    /// <summary>
+    /// The <b>reverse</b> of <see cref="Trace"/>: the resource key the effective value of
+    /// <paramref name="property"/> on <paramref name="element"/> resolved <em>through</em> — an instance
+    /// <c>SetResourceReference</c>/<c>{DynamicResource}</c> (checked first, since it wins at the Local/Template
+    /// lane), else a style/theme <c>{DynamicResource}</c> setter — or <see langword="null"/> when the value is
+    /// not resource-backed. The resource-inspector hook (design doc §14 P9), a companion to
+    /// <c>StyleDiagnostics.Explain</c>; pair the key with <see cref="Trace"/> to render the full lookup chain.
+    /// Cold path.
+    /// </summary>
+    public static object? GetResourceKey(UIElement element, UIProperty property)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(property);
+        element.VerifyAccess();
+        return element.FindInstanceResourceKey(property) ?? element.GetWinningStyleResourceKey(property);
+    }
+
     /// <summary>The live registry nodes for a root — the subscription leak-hunting surface (design doc §11.10); empty after the owners detach.</summary>
     public static int Subscriptions(UIElement root)
     {

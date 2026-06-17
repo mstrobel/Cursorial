@@ -114,6 +114,21 @@ internal sealed class StyleRuleFrame : ValueFrame
     /// <summary>A <c>When</c>-guarded rule is a conditional rule (the data-condition "trigger") — drives the <see cref="ValueSourceKind.StyleWhen"/> provenance (PD25).</summary>
     internal override bool IsConditionalStyleRule => Rule.HasWhenConditions;
 
+    /// <inheritdoc/>
+    internal override bool TryGetResourceKey(UIProperty property, out object? key)
+    {
+        if (_resourceEntries is { } entries)
+            foreach (var backed in entries)
+                if (ReferenceEquals(backed.Property, property))
+                {
+                    key = backed.Key;
+                    return true;
+                }
+
+        key = null;
+        return false;
+    }
+
     /// <summary>The channel layer the arming scope assigned (diagnostics).</summary>
     internal StyleLayer Layer { get; }
 

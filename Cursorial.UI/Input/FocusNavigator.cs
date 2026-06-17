@@ -17,8 +17,8 @@ internal sealed class FocusNavigator
         public readonly bool IsOnceContainer = isOnceContainer;
     }
 
-    private static readonly Comparison<Stop> TabOrderComparison = static (a, b) =>
-        a.TabIndex != b.TabIndex ? a.TabIndex.CompareTo(b.TabIndex) : a.Order.CompareTo(b.Order);
+    private static readonly Comparison<Stop> TabOrderComparison =
+        static (a, b) => a.TabIndex != b.TabIndex ? a.TabIndex.CompareTo(b.TabIndex) : a.Order.CompareTo(b.Order);
 
     private const int MaxOnceEntryDepth = 4;
 
@@ -42,7 +42,9 @@ internal sealed class FocusNavigator
     public UIElement? NextTabStop(UIElement from, bool forward)
     {
         var container = GetTabContainer(from);
+
         CollectStops(container, marker: from);
+
         try
         {
             if (_stops.Count == 0)
@@ -57,6 +59,7 @@ internal sealed class FocusNavigator
             var step = forward ? 1 : -1;
 
             int targetIndex;
+
             if (currentIndex >= 0)
             {
                 targetIndex = Wrap(currentIndex + step);
@@ -78,7 +81,7 @@ internal sealed class FocusNavigator
                 if (targetIndex == currentIndex)
                     return null; // wrapped back to the current stop — no move (N130)
 
-                if (ResolveEntry(_stops[targetIndex], depth: 0) is { } resolved)
+                if (ResolveEntry(_stops[targetIndex], depth: 0) is {} resolved)
                     return resolved;
             }
 
@@ -94,16 +97,19 @@ internal sealed class FocusNavigator
     public UIElement? FirstOrLastTabStop(UIElement container, bool forward)
     {
         CollectStops(container, marker: null);
+
         try
         {
             if (_stops.Count == 0)
                 return null;
 
             _stops.Sort(TabOrderComparison);
+
             var step = forward ? 1 : -1;
+
             for (var i = forward ? 0 : _stops.Count - 1; i >= 0 && i < _stops.Count; i += step)
             {
-                if (ResolveEntry(_stops[i], depth: 0) is { } resolved)
+                if (ResolveEntry(_stops[i], depth: 0) is {} resolved)
                     return resolved;
             }
 
@@ -118,6 +124,7 @@ internal sealed class FocusNavigator
     private UIElement ResolveCurrentStop(UIElement from, UIElement container)
     {
         UIElement? onceAncestor = null;
+
         for (var node = from; node is not null && !ReferenceEquals(node, container); node = node.VisualParent ?? node.LogicalParent)
         {
             if (KeyboardNavigation.GetTabNavigation(node) == KeyboardNavigationMode.Once)
@@ -149,6 +156,7 @@ internal sealed class FocusNavigator
         for (var i = 0; i < _stops.Count; i++)
         {
             var stop = _stops[i];
+
             if (stop.TabIndex > _markerTabIndex || (stop.TabIndex == _markerTabIndex && stop.Order > _markerOrder))
                 return i;
         }
@@ -161,6 +169,7 @@ internal sealed class FocusNavigator
         for (var i = _stops.Count - 1; i >= 0; i--)
         {
             var stop = _stops[i];
+
             if (stop.TabIndex < _markerTabIndex || (stop.TabIndex == _markerTabIndex && stop.Order < _markerOrder))
                 return i;
         }
@@ -187,7 +196,7 @@ internal sealed class FocusNavigator
         if (depth >= MaxOnceEntryDepth)
             return null;
 
-        if (FocusManager.GetFocusedElement(container) is { } memory
+        if (FocusManager.GetFocusedElement(container) is {} memory
             && FocusManager.IsValidFocusTarget(memory)
             && IsWithin(memory, container))
         {
@@ -199,9 +208,10 @@ internal sealed class FocusNavigator
         var order = 0;
         CollectInto(container, inner, marker: null, navigator: null, ref order);
         inner.Sort(TabOrderComparison);
+
         for (var i = 0; i < inner.Count; i++)
         {
-            if (ResolveEntry(inner[i], depth + 1) is { } resolved)
+            if (ResolveEntry(inner[i], depth + 1) is {} resolved)
                 return resolved;
         }
 
@@ -237,13 +247,14 @@ internal sealed class FocusNavigator
     /// </summary>
     private static void CollectInto(UIElement parent, List<Stop> stops, UIElement? marker, FocusNavigator? navigator, ref int order)
     {
-        if (parent.VisualChildrenList is not { } children)
+        if (parent.VisualChildrenList is not {} children)
             return;
 
         for (var i = 0; i < children.Count; i++)
         {
             var child = children[i];
             order++;
+
             if (navigator is not null && ReferenceEquals(child, marker))
             {
                 navigator._markerOrder = order;
@@ -254,12 +265,14 @@ internal sealed class FocusNavigator
                 continue; // visibility inherits down — prune the subtree
 
             var mode = KeyboardNavigation.GetTabNavigation(child);
+
             if (mode == KeyboardNavigationMode.Once)
             {
                 // One stop for the whole container (ND16); requires the container enabled and a
                 // tab stop, not focusable — the entry resolution finds the focus target inside.
                 if (child.IsAttachedToTree && child.IsEffectivelyEnabled && child.GetValue(UIElement.IsTabStopProperty))
                     stops.Add(new Stop(child, child.GetValue(UIElement.TabIndexProperty), order, isOnceContainer: true));
+
                 continue;
             }
 
@@ -281,12 +294,13 @@ internal sealed class FocusNavigator
     private static UIElement GetTabContainer(UIElement element)
     {
         var node = element;
+
         while (true)
         {
             if (KeyboardNavigation.GetTabNavigation(node) == KeyboardNavigationMode.Cycle)
                 return node;
 
-            if ((node.VisualParent ?? node.LogicalParent) is not { } parent)
+            if ((node.VisualParent ?? node.LogicalParent) is not {} parent)
                 return node; // window/popup roots default Cycle (doc §7.7 — no OS to Tab out to)
 
             node = parent;
@@ -313,9 +327,11 @@ internal sealed class FocusNavigator
     {
         UIElement? container = null;
         var mode = DirectionalNavigationMode.None;
+
         for (var node = current; node is not null; node = node.VisualParent ?? node.LogicalParent)
         {
             var m = KeyboardNavigation.GetDirectionalNavigation(node);
+
             if (m != DirectionalNavigationMode.None)
             {
                 container = node;
@@ -328,6 +344,7 @@ internal sealed class FocusNavigator
             return null; // opt-in policy (N135): arrows stay with controls
 
         CollectStops(container, marker: null);
+
         try
         {
             if (_stops.Count == 0)
@@ -338,9 +355,11 @@ internal sealed class FocusNavigator
 
             var bestIndex = -1;
             var bestScore = int.MaxValue;
+
             for (var i = 0; i < _stops.Count; i++)
             {
                 var candidate = _stops[i].Element;
+
                 if (ReferenceEquals(candidate, current))
                     continue;
 
@@ -356,9 +375,11 @@ internal sealed class FocusNavigator
                 // Wrap: the farthest candidate on the opposite side (max facing-edge distance).
                 var opposite = Opposite(direction);
                 var bestFacing = -1;
+
                 for (var i = 0; i < _stops.Count; i++)
                 {
                     var candidate = _stops[i].Element;
+
                     if (ReferenceEquals(candidate, current))
                         continue;
 
@@ -395,8 +416,8 @@ internal sealed class FocusNavigator
         }
 
         var gap = direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right
-            ? RangeGap(current.Row, current.Rows, candidate.Row, candidate.Rows)
-            : RangeGap(current.Column, current.Columns, candidate.Column, candidate.Columns);
+                      ? RangeGap(current.Row, current.Rows, candidate.Row, candidate.Rows)
+                      : RangeGap(current.Column, current.Columns, candidate.Column, candidate.Columns);
 
         score = facing + 2 * gap;
         return true;
@@ -410,15 +431,19 @@ internal sealed class FocusNavigator
             case FocusNavigationDirection.Right when candidate.Column >= current.Column + current.Columns:
                 facing = candidate.Column - (current.Column + current.Columns);
                 return true;
+
             case FocusNavigationDirection.Left when candidate.Column + candidate.Columns <= current.Column:
                 facing = current.Column - (candidate.Column + candidate.Columns);
                 return true;
+
             case FocusNavigationDirection.Down when candidate.Row >= current.Row + current.Rows:
                 facing = candidate.Row - (current.Row + current.Rows);
                 return true;
+
             case FocusNavigationDirection.Up when candidate.Row + candidate.Rows <= current.Row:
                 facing = current.Row - (candidate.Row + candidate.Rows);
                 return true;
+
             default:
                 facing = 0;
                 return false;
@@ -429,16 +454,18 @@ internal sealed class FocusNavigator
     {
         if (bStart >= aStart + aLength)
             return bStart - (aStart + aLength);
+
         if (aStart >= bStart + bLength)
             return aStart - (bStart + bLength);
+
         return 0; // cross-axis ranges overlap
     }
 
     private static FocusNavigationDirection Opposite(FocusNavigationDirection direction) => direction switch
-    {
-        FocusNavigationDirection.Right => FocusNavigationDirection.Left,
-        FocusNavigationDirection.Left => FocusNavigationDirection.Right,
-        FocusNavigationDirection.Up => FocusNavigationDirection.Down,
-        _ => FocusNavigationDirection.Up
-    };
+                                                                                            {
+                                                                                                FocusNavigationDirection.Right => FocusNavigationDirection.Left,
+                                                                                                FocusNavigationDirection.Left => FocusNavigationDirection.Right,
+                                                                                                FocusNavigationDirection.Up => FocusNavigationDirection.Down,
+                                                                                                _ => FocusNavigationDirection.Up
+                                                                                            };
 }

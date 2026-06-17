@@ -20,6 +20,7 @@ internal static class ContentPropertyTable
     {
         (typeof(ContentControl), nameof(ContentControl.Content)),
         (typeof(Decorator), "Child"),               // Border : Decorator
+        (typeof(Popup), "Child"),                   // <Popup>child</Popup> → Popup.Child (WPF [ContentProperty("Child")] parity)
         (typeof(Panel), nameof(Panel.Children)),
         (typeof(ControlTemplate), "Content"),
         (typeof(DataTemplate), "Content"),

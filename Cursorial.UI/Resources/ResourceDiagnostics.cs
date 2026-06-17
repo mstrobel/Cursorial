@@ -51,7 +51,18 @@ public static class ResourceDiagnostics
         ArgumentNullException.ThrowIfNull(element);
         ArgumentNullException.ThrowIfNull(property);
         element.VerifyAccess();
-        return element.FindInstanceResourceKey(property) ?? element.GetWinningStyleResourceKey(property);
+
+        // An instance SetResourceReference/{DynamicResource} wins at the Local/Template lane — check it first.
+        if (element.FindInstanceResourceKey(property) is { } instanceKey)
+            return instanceKey;
+
+        // Else a style/theme {DynamicResource} setter — but ONLY when the Style lane actually owns the effective
+        // value. A LocalValue (or Template) literal masking a resource-backed style setter is NOT resource-backed:
+        // the winning value is the literal, so report no key (else this would lie about provenance). Gate on the
+        // winning BASE lane so an animation holding a resource-backed style value still reports its key.
+        return element.GetValueSource(property).BasePriority == BindingPriority.Style
+            ? element.GetWinningStyleResourceKey(property)
+            : null;
     }
 
     /// <summary>The live registry nodes for a root — the subscription leak-hunting surface (design doc §11.10); empty after the owners detach.</summary>

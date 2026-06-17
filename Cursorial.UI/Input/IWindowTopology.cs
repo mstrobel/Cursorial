@@ -30,7 +30,8 @@ internal interface IWindowTopology
     /// <param name="surfaceRoot">The hit surface's root element, or null for a miss.</param>
     /// <param name="surfaceColumn">The position translated into surface-local columns.</param>
     /// <param name="surfaceRow">The position translated into surface-local rows.</param>
-    bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow);
+    /// <param name="hitTestOnly">When <c>true</c>, perform hit-testing only with no side effects.</param>
+    bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow, bool hitTestOnly = false);
 }
 
 /// <summary>
@@ -41,7 +42,7 @@ internal interface IWindowTopology
 internal sealed class SingleRootWindowTopology(UIApplication application) : IWindowTopology
 {
     /// <inheritdoc/>
-    public bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow)
+    public bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow, bool hitTestOnly = false)
     {
         // The shown root is the surface only while it is attached with a live render tree —
         // mid-swap or never-shown states report "no surface" (N71: dropped, no throw).

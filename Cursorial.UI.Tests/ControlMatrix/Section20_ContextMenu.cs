@@ -305,6 +305,32 @@ public sealed class Section20_ContextMenu
         Assert.False(menu.IsOpen);
     }
 
+    [Fact] // W7 #3: tearing the menu's owner out of the tree while the menu is open closes it (no stranded surface)
+    public void C7_OwnerDetachWhileOpen_ClosesMenu()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem { Header = "Cut" });
+
+        using var host = Host();
+        var owner = new Border { Width = 30, Height = 10 };
+        ContextMenu.SetMenu(owner, menu);
+        var rootPanel = new StackPanel();
+        rootPanel.Children.Add(owner);
+        host.ShowRoot(rootPanel);
+        host.RunUntilIdle();
+
+        menu.Open(owner);
+        host.RunUntilIdle();
+        Assert.True(menu.IsOpen);
+        Assert.Equal(1, Popups(host));
+
+        rootPanel.Children.Remove(owner); // tear the owner out of the tree while the menu is open
+        host.RunUntilIdle();
+
+        Assert.False(menu.IsOpen);     // the menu closed on detach — no stranded popup surface
+        Assert.Equal(0, Popups(host));
+    }
+
     [Fact] // C7.16: Key.Menu over an element with no ContextMenu opens nothing (the key-path walk finds none)
     public void C7_16_MenuKeyNoMenuNoOp()
     {

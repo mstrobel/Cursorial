@@ -664,12 +664,13 @@ public abstract partial class UIElement : UIObject
     /// </summary>
     public (int Column, int Row) TranslateToScreen(int column, int row)
     {
+        (column, row) = TranslateToWindow(column, row);
+
         if (_visualRoot is {} root)
         {
-            if (root is Window { HostSurface: {} windowHost})
-                (column, row) = (column + windowHost.Left, row + windowHost.Top);
-            else if (root is Popup { PopupSurface: {} popupHost})
-                (column, row) = (column + popupHost.Left, row + popupHost.Top);
+            var surface = UIApplication.Current?.WindowManager?.SurfaceForElement(root);
+            if (surface is not null)
+                (column, row) = (column + surface.Left, row + surface.Top);
         }
 
         return (column, row);

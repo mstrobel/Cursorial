@@ -852,7 +852,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     /// <summary>The surface whose render tree owns <paramref name="element"/>, or <see langword="null"/> when it is
     /// detached / not hosted here.</summary>
-    private TopLevelSurface? SurfaceForElement(UIElement element)
+    internal TopLevelSurface? SurfaceForElement(UIElement element)
     {
         if (element.GetRenderTree() is not { } tree)
             return null;
@@ -1002,7 +1002,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     }
 
     /// <inheritdoc/>
-    public bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow)
+    public bool FilterMouseEvent(MouseEvent mouse, out UIElement? surfaceRoot, out int surfaceColumn, out int surfaceRow, bool hitTestOnly = false)
     {
         surfaceColumn = mouse.Position.Column;
         surfaceRow = mouse.Position.Row;
@@ -1013,35 +1013,39 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (surface is null)
         {
             // A press over no surface still light-dismisses open popups (a click in dead space, §8.4).
-            if (mouse.Kind == MouseEventKind.ButtonDown && _popups.Count > 0)
+            if (hitTestOnly is false && mouse.Kind == MouseEventKind.ButtonDown && _popups.Count > 0)
                 LightDismissPopups(hit: null!);
             return true; // routes nowhere (ND5: dropped, no throw)
         }
 
-        var window = surface.HostWindow;
-        var isPress = mouse.Kind == MouseEventKind.ButtonDown;
-
-        // Light dismiss before activation/routing: a press closes every open light-dismiss popup except the one
-        // pressed (§8.4). Pressing inside a popup keeps it (and routes into it); pressing a window/root dismisses.
-        if (isPress && _popups.Count > 0)
-            LightDismissPopups(surface);
-
-        // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate
-        // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse).
-        if (window is not null && _blocked.Contains(window))
+        if (hitTestOnly is false)
         {
-            if (isPress && TopmostModal is { } gate)
-            {
-                ActivateWindow(gate);
-                PulseModalAttention(gate);
-            }
-            return false;
-        }
+            var window = surface.HostWindow;
+            var isPress = mouse.Kind == MouseEventKind.ButtonDown;
+            
+            // Light dismiss before activation/routing: a press closes every open light-dismiss popup except the one
+            // pressed (§8.4). Pressing inside a popup keeps it (and routes into it); pressing a window/root dismisses.
+            if (isPress && _popups.Count > 0)
+                LightDismissPopups(surface);
 
-        // Activation-on-press for an inactive but enabled window (§8.6). Topology mutations during the input
-        // drain apply immediately (§8.8); the z-reorder doesn't move the surface, so the local coords below hold.
-        if (isPress && window is not null && !ReferenceEquals(_activeWindow, window))
-            ActivateWindow(window);
+            // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate
+            // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse).
+            if (window is not null && _blocked.Contains(window))
+            {
+                if (isPress && TopmostModal is {} gate)
+                {
+                    ActivateWindow(gate);
+                    PulseModalAttention(gate);
+                }
+
+                return false;
+            }
+
+            // Activation-on-press for an inactive but enabled window (§8.6). Topology mutations during the input
+            // drain apply immediately (§8.8); the z-reorder doesn't move the surface, so the local coords below hold.
+            if (isPress && window is not null && !ReferenceEquals(_activeWindow, window))
+                ActivateWindow(window);
+        }
 
         surfaceRoot = surface.Root;
         surfaceColumn = mouse.Position.Column - surface.Left;

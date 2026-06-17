@@ -1,8 +1,11 @@
+using System.ComponentModel;
+
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Data;
 using Cursorial.UI.Testing;
 
 using UIControls = Cursorial.UI.Controls;
@@ -369,6 +372,74 @@ public sealed class WindowPopupTests
         Assert.False(popup.IsOpen);
         // Restored to the SPECIFIC trigger, not the scope-root first tab stop (the decoy) that repair would pick.
         Assert.Same(target, host.Application.FocusManager.FocusedElement);
+    }
+
+    // A sticky-open view model: when the two-way IsOpen binding writes back false, it snaps the source back to
+    // true and re-notifies — re-asserting "open" to the popup. The mid-close re-entrancy the !_open guard handles.
+    private sealed class StickyOpenViewModel : INotifyPropertyChanged
+    {
+        private bool _isOpen;
+        public bool Reassert { get; set; }
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public bool IsOpen
+        {
+            get => _isOpen;
+            set
+            {
+                _isOpen = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOpen)));
+                if (!value && Reassert)
+                {
+                    _isOpen = true; // snap back open and re-notify → the binding pushes true to the popup
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOpen)));
+                }
+            }
+        }
+    }
+
+    [Fact] // W7 #6: a sticky two-way IsOpen source that re-asserts "open" on the close write-back is handled
+            // cleanly — the close/reopen re-entrancy converges (popup ends open, no exception). The CloseCore
+            // `&& !_open` restore guard is the forward-defense for the SYNCHRONOUS re-open variant of this race;
+            // the binding's re-assert lands a turn later, so this asserts the robust convergence the guard backs.
+    public void StickyOpenSource_ReopensOnCloseWriteBack_ConvergesCleanly()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var trigger = new UIControls.Button { Width = 10, Height = 1, Content = "open" };
+        var inner = new UIControls.Button { Width = 8, Height = 3, Content = "menu" };
+        var popup = new Popup { Child = inner, PlacementTarget = trigger };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(trigger);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var vm = new StickyOpenViewModel();
+        popup.SetBinding(Popup.IsOpenProperty, new Binding { Source = vm, Path = "IsOpen", Mode = BindingMode.TwoWay });
+
+        trigger.Focus(); // the trigger holds focus at open time (captured by OpenCore)
+        Assert.True(host.RunUntilIdle());
+
+        vm.IsOpen = true; // open through the binding
+        Assert.True(host.RunUntilIdle());
+        Assert.True(popup.IsOpen);
+        inner.Focus(); // the popup takes keyboard focus
+        Assert.True(host.RunUntilIdle());
+        Assert.Same(inner, host.Application.FocusManager.FocusedElement);
+
+        vm.Reassert = true; // arm the sticky source: the next close write-back re-asserts "open"
+
+        // Light-dismiss: the WM calls CloseCore with IsOpen still true → the write-back round-trips the two-way
+        // binding, which re-asserts true and re-opens the popup. The cycle must converge without throwing.
+        host.SendClick(trigger.TranslateToWindow(0, 0).Column, trigger.TranslateToWindow(0, 0).Row + 8); // outside both
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(popup.IsOpen);                            // converged to the sticky source's "open" state
+        Assert.NotNull(popup.PopupSurface);                   // re-hosted on a live surface, not stranded
+        var focused = host.Application.FocusManager.FocusedElement;
+        Assert.True(focused is null || focused.IsAttachedToTree); // focus left in a valid (attached) state
     }
 
     [Fact] // closing a popup that never held focus does NOT yank focus back (the IsKeyboardFocusWithin guard)

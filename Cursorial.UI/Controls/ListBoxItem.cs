@@ -24,11 +24,16 @@ public class ListBoxItem : ContentControl, ISelectableContainer
     public ListBoxItem() => Focusable = true;
 
     /// <inheritdoc cref="IsSelectedProperty"/>
-    public bool IsSelected { get => GetValue(IsSelectedProperty); set => SetValue(IsSelectedProperty, value); }
+    public bool IsSelected
+    {
+        get => GetValue(IsSelectedProperty);
+        set => SetValue(IsSelectedProperty, value);
+    }
 
     void ISelectableContainer.SetIsSelectedFromOwner(bool selected)
     {
         _ownerDriven = true;
+
         try
         {
             SetCurrentValue(IsSelectedProperty, selected); // SetCurrentValue preserves a two-way IsSelected binding
@@ -43,7 +48,8 @@ public class ListBoxItem : ContentControl, ISelectableContainer
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left || OwnerSelector is not { } owner)
+
+        if (e.Handled || e.Button != MouseButton.Left || OwnerSelector is not {} owner)
             return;
 
         Focus();
@@ -58,15 +64,18 @@ public class ListBoxItem : ContentControl, ISelectableContainer
         get
         {
             for (UIElement? node = LogicalParent; node is not null; node = node.LogicalParent)
+            {
                 if (node is SelectingItemsControl selector)
                     return selector;
+            }
+
             return null;
         }
     }
 
     private static void OnIsSelectedChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is ListBoxItem { _ownerDriven: false } item && item.OwnerSelector is { } owner)
+        if (sender is ListBoxItem { _ownerDriven: false, OwnerSelector: {} owner } item)
             owner.NotifyContainerIsSelectedChanged(item, newValue);
     }
 }

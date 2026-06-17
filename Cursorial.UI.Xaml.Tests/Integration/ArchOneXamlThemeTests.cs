@@ -146,6 +146,102 @@ public sealed class ArchOneXamlThemeTests
             Assert.True(dict.TryGetValue(t, out _), $"XAML theme missing the control theme for {t.Name}");
     }
 
+    // ── W7 #7: RUNTIME behavior of the popup-rooted XAML control themes (Menu/ContextMenu/ToolTip) + TabControl ──
+    // These exercise the themes the inline byte-identity theory can't reach: they render on popup surfaces or switch
+    // content. The parse+presence check (AllP9ControlThemes_…) proves they LOAD; these prove they WORK at runtime.
+
+    private static int Popups(UITestHost host) => host.Application.WindowManager!.Popups.Count;
+
+    private static bool RenderContains(UITestHost host, string text, int cols, int rows)
+    {
+        for (var r = 0; r < rows; r++)
+        {
+            var line = string.Concat(Enumerable.Range(0, cols).Select(c => host.GetCell(c, r).Grapheme ?? " "));
+            if (line.Contains(text))
+                return true;
+        }
+        return false;
+    }
+
+    [Fact] // the XAML TabControl theme renders the selected tab's content (PART_ContentHost) and switches it live
+    public void XamlTabControlTheme_RendersSelectedContent_AndSwitches()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 6) });
+        host.Application.Theme = CursorialXamlTheme.LoadControls();
+
+        var tabs = new UIControls.TabControl { Width = 20, Height = 6 };
+        tabs.Items.Add(new UIControls.TabItem { Header = "A", Content = "AAA" });
+        tabs.Items.Add(new UIControls.TabItem { Header = "B", Content = "BBB" });
+        host.ShowRoot(tabs);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(RenderContains(host, "AAA", 20, 6));  // selected (first) tab content via PART_ContentHost
+        Assert.False(RenderContains(host, "BBB", 20, 6));
+
+        tabs.SelectedIndex = 1;
+        Assert.True(host.RunUntilIdle());
+        Assert.True(RenderContains(host, "BBB", 20, 6));  // PART_ContentHost re-bound to the new SelectedContent
+        Assert.False(RenderContains(host, "AAA", 20, 6));
+    }
+
+    [Fact] // the XAML Menu/MenuItem theme hosts a submenu on a popup surface (the XAML MenuItem template's PART_Popup)
+    public void XamlMenuTheme_OpensSubmenuPopup()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
+        host.Application.Theme = CursorialXamlTheme.LoadControls();
+
+        var file = new UIControls.MenuItem { Header = "File" };
+        file.Items.Add(new UIControls.MenuItem { Header = "New" });
+        var menu = new UIControls.Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        Assert.True(host.RunUntilIdle());
+
+        file.IsSubmenuOpen = true;
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(1, Popups(host));
+        Assert.True(file.ItemContainerGenerator.ContainerFromIndex(0)!.IsAttachedToTree); // child realized on the surface
+    }
+
+    [Fact] // the XAML ContextMenu theme opens its popup-rooted vertical menu under the overlay
+    public void XamlContextMenuTheme_OpensPopup()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
+        host.Application.Theme = CursorialXamlTheme.LoadControls();
+
+        var owner = new UIControls.Border { Width = 20, Height = 6 };
+        var ctx = new UIControls.ContextMenu();
+        ctx.Items.Add(new UIControls.MenuItem { Header = "Copy" });
+        UIControls.ContextMenu.SetMenu(owner, ctx);
+        host.ShowRoot(owner);
+        Assert.True(host.RunUntilIdle());
+
+        ctx.Open(owner);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(ctx.IsOpen);
+        Assert.Equal(1, Popups(host));
+    }
+
+    [Fact] // the XAML ToolTip theme shows on the hit-transparent popup after the hover delay
+    public void XamlToolTipTheme_ShowsOnHover()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
+        host.Application.Theme = CursorialXamlTheme.LoadControls();
+
+        var element = new UIControls.Border { Width = 16, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        UIControls.ToolTipService.SetTip(element, "hint");
+        host.ShowRoot(element);
+        Assert.True(host.RunUntilIdle());
+
+        var origin = element.TranslateToWindow(0, 0);
+        host.SendMouseMove(origin.Column + 1, origin.Row + 1);
+        host.RunFrame();
+        host.AdvanceTime(TimeSpan.FromMilliseconds(550)); // past the 500ms initial delay
+        host.RunFrame();
+
+        Assert.Equal(1, Popups(host)); // the themed tooltip shows on its own popup surface
+    }
+
     private static UIControls.Control MakeControl(string control) => control switch
     {
         "RepeatButton" => new UIControls.RepeatButton { Content = "OK" },

@@ -634,23 +634,10 @@ internal static class ControlThemes
         DockPanel.SetDock(titleBar, Dock.Top);
         layout.Children.Add(titleBar);
 
-        // The active-state look, driven off Activated/Deactivated — the relocated interim mechanism.
-        void ApplyActiveLook(bool active)
-        {
-            titleBar.SetResourceReference(Border.BackgroundProperty, active ? ThemeKeys.AccentBrush : ThemeKeys.SurfaceBrush);
-            var ink = active ? ThemeKeys.OnAccentBrush : ThemeKeys.TextDimBrush;
-            titleText.SetResourceReference(TextElement.ForegroundProperty, ink);
-            closeButton.SetResourceReference(TextElement.ForegroundProperty, ink);
-            maximizeGlyph?.SetResourceReference(TextElement.ForegroundProperty, ink);
-        }
-
-        // These handlers live for the window's lifetime (GC'd with it). Re-templating a LIVE window does not
-        // detach them (a pre-existing edge from the interim — windows are not re-templated in practice; firing
-        // on a detached title bar is a harmless no-op). The declarative `:active-window /template/` refinement
-        // would retire them entirely — tracked for the P9 closeout.
-        ApplyActiveLook(window.IsActive);
-        window.Activated += (_, _) => ApplyActiveLook(true);
-        window.Deactivated += (_, _) => ApplyActiveLook(false);
+        // The active-state look (the band/ink that tracks Window.IsActive) is wired in Window.OnApplyTemplate
+        // against the PART_TitleBar/PART_Title/PART_CloseButton/PART_MaximizeButton parts and unhooked in
+        // Window.OnTemplateDetaching — so re-templating a live window never leaks the Activated/Deactivated
+        // handlers (the P9-closeout fix for the interim's lifetime-of-the-window subscription edge).
 
         if (window.CanResize)
         {

@@ -512,6 +512,30 @@ public sealed class Section15_Items
         Assert.False(IsAlternate(Gen(ic), 2)); // d
     }
 
+    [Fact] // C2.24b (W7): a Move re-stripes — parity follows each container's NEW index, not its old one
+    public void C2_24b_Alternate_ReStripesOnMove()
+    {
+        var source = new ObservableCollection<string> { "a", "b", "c", "d" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        using var _ = host;
+
+        // A Move reuses the same containers (C2.11), so capture them and prove their parity swaps with position.
+        var containerA = Gen(ic).ContainerFromIndex(0)!; // "a" — even, not alternate at rest
+        var containerB = Gen(ic).ContainerFromIndex(1)!; // "b" — odd, alternate at rest
+        Assert.False(containerA.HasCustomPseudoClass(":alternate"));
+        Assert.True(containerB.HasCustomPseudoClass(":alternate"));
+
+        source.Move(0, 1); // b, a, c, d — the two containers swap positions, so their parity must swap
+        host.RunUntilIdle();
+
+        Assert.Same(containerB, Gen(ic).ContainerFromIndex(0)); // same instances, reordered (no realize/unrealize)
+        Assert.Same(containerA, Gen(ic).ContainerFromIndex(1));
+        Assert.False(IsAlternate(Gen(ic), 0)); // b now even
+        Assert.True(IsAlternate(Gen(ic), 1));  // a now odd
+        Assert.False(IsAlternate(Gen(ic), 2));
+        Assert.True(IsAlternate(Gen(ic), 3));
+    }
+
     [Fact] // C2.25: an app ListBoxItem:alternate rule applies on odd rows (the end-to-end striping payoff)
     public void C2_25_Alternate_StripingRuleApplies_OnOddRows()
     {

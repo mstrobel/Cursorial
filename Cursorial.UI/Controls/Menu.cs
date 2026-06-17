@@ -11,8 +11,16 @@ namespace Cursorial.UI.Controls;
 public class Menu : ItemsControl, IMainMenu
 {
     /// <summary>Creates a menu bar (items stack horizontally).</summary>
-    public Menu() =>
+    public Menu()
+    {
         ItemsPanel = new FuncTemplateContent(static _ => new StackPanel { Orientation = Orientation.Horizontal });
+    }
+
+    static Menu()
+    {
+        IsTabStopProperty.OverrideMetadata<Menu>(new PropertyMetadata<bool>(DefaultValue: false));
+        KeyboardNavigation.TabNavigationProperty.OverrideMetadata<Menu>(new PropertyMetadata<KeyboardNavigationMode>(KeyboardNavigationMode.None));
+    }
 
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new MenuItem();
@@ -24,15 +32,17 @@ public class Menu : ItemsControl, IMainMenu
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
         base.OnAttachedToTree(in e);
-        if (UIApplication.Current?.AccessKeys is { } manager)
+
+        if (UIApplication.Current?.AccessKeys is {} manager)
             manager.MainMenu = this; // one per app, last wins (doc §7.8)
     }
 
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
-        if (UIApplication.Current?.AccessKeys is { } manager && ReferenceEquals(manager.MainMenu, this))
+        if (UIApplication.Current?.AccessKeys is {} manager && ReferenceEquals(manager.MainMenu, this))
             manager.MainMenu = null;
+
         base.OnDetachedFromTree(in e);
     }
 
@@ -40,10 +50,12 @@ public class Menu : ItemsControl, IMainMenu
     void IMainMenu.OnEnterMenuMode()
     {
         for (var i = 0; i < ItemContainerGenerator.ContainerCount; i++)
+        {
             if (ItemContainerGenerator.ContainerFromIndex(i) is { Focusable: true } first)
             {
                 first.Focus(FocusNavigationMethod.AccessKey);
                 return;
             }
+        }
     }
 }

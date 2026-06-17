@@ -91,6 +91,11 @@ public partial class Window : ContentControl
     private CancellationToken _dialogCancellation;
     private CancellationTokenRegistration _dialogRegistration;
 
+    // The chrome active-look handlers, wired in OnApplyTemplate / unhooked in OnTemplateDetaching (no leak on
+    // re-template; the P9-closeout relocation of the interim's lifetime-of-the-window subscription).
+    private EventHandler? _chromeActivatedHandler;
+    private EventHandler? _chromeDeactivatedHandler;
+
     static Window()
     {
         // The window chrome is a themed control template (C4): CursorialTheme.BuiltIn keys a "Theme.Window"
@@ -409,6 +414,56 @@ public partial class Window : ContentControl
         SetValue(IsActivePropertyKey, active);
         SetInteractionState(InteractionState.ActiveWindow, active); // wire :active-window (style-matrix §0.3; was never set)
         (active ? Activated : Deactivated)?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ── chrome active-look (relocated out of the template closure so re-template never leaks) ───────
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        // The themed chrome bands/ink track IsActive. A chrome-less template (WindowStyle.None) has no title
+        // band → GetTemplatePart returns null and the active look degrades to nothing.
+        if (GetTemplatePart<Border>("PART_TitleBar") is not { } titleBar)
+            return;
+
+        var titleText = GetTemplatePart<TextBlock>("PART_Title");
+        var closeButton = GetTemplatePart<Button>("PART_CloseButton");
+        var maximizeGlyph = GetTemplatePart<TextBlock>("PART_MaximizeButton");
+
+        void ApplyActiveLook(bool active)
+        {
+            titleBar.SetResourceReference(Border.BackgroundProperty, active ? ThemeKeys.AccentBrush : ThemeKeys.SurfaceBrush);
+            var ink = active ? ThemeKeys.OnAccentBrush : ThemeKeys.TextDimBrush;
+            titleText?.SetResourceReference(TextElement.ForegroundProperty, ink);
+            closeButton?.SetResourceReference(TextElement.ForegroundProperty, ink);
+            maximizeGlyph?.SetResourceReference(TextElement.ForegroundProperty, ink);
+        }
+
+        ApplyActiveLook(IsActive); // resting look for the current state
+        _chromeActivatedHandler = (_, _) => ApplyActiveLook(true);
+        _chromeDeactivatedHandler = (_, _) => ApplyActiveLook(false);
+        Activated += _chromeActivatedHandler;
+        Deactivated += _chromeDeactivatedHandler;
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTemplateDetaching(TemplateInstance old)
+    {
+        if (_chromeActivatedHandler is { } activated)
+        {
+            Activated -= activated;
+            _chromeActivatedHandler = null;
+        }
+
+        if (_chromeDeactivatedHandler is { } deactivated)
+        {
+            Deactivated -= deactivated;
+            _chromeDeactivatedHandler = null;
+        }
+
+        base.OnTemplateDetaching(old);
     }
 
 }

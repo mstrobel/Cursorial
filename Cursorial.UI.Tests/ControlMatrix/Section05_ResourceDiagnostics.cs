@@ -108,6 +108,7 @@ public sealed class Section05_ResourceDiagnostics
         host.RunUntilIdle();
 
         Assert.Equal(K, ResourceDiagnostics.GetResourceKey(tree.Leaf, Probe.P));
+        Assert.Same(Vbrush, tree.Leaf.GetValue(Probe.P)); // the key the hook names actually feeds the property
     }
 
     [Fact] // a literal (non-resource) value has no resource provenance
@@ -131,5 +132,25 @@ public sealed class Section05_ResourceDiagnostics
 
         // The BuiltIn ListBox control theme resolves Background via SetResource(WellBrush).
         Assert.Equal(ThemeKeys.WellBrush, ResourceDiagnostics.GetResourceKey(listBox, Control.BackgroundProperty));
+        // The named key actually feeds the property: the effective Background equals the resolved WellBrush.
+        Assert.Equal(listBox.FindResource(ThemeKeys.WellBrush), listBox.GetValue(Control.BackgroundProperty));
+    }
+
+    [Fact] // W7 #5: a LocalValue masking a resource-backed style setter is NOT resource-backed — report no key
+    public void GetResourceKey_LocalValueMasksStyleResource_ReturnsNull()
+    {
+        using var host = UITestHost.Create();
+        var listBox = new ListBox();
+        host.ShowRoot(listBox);
+        host.RunUntilIdle();
+
+        // At rest the WellBrush DynamicResource setter (Style lane) owns Background → the hook names it.
+        Assert.Equal(ThemeKeys.WellBrush, ResourceDiagnostics.GetResourceKey(listBox, Control.BackgroundProperty));
+
+        // A LocalValue literal wins over the Style lane (LocalValue > Style): the effective value is the literal,
+        // not resource-backed, so GetResourceKey must report null rather than the masked style setter's key.
+        listBox.SetValue(Control.BackgroundProperty, Vbrush);
+        host.RunUntilIdle();
+        Assert.Null(ResourceDiagnostics.GetResourceKey(listBox, Control.BackgroundProperty));
     }
 }

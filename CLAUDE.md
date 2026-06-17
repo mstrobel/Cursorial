@@ -500,6 +500,52 @@ Each sub-phase was adversarially audited (the audits found and fixed 7 real bugs
 `motion` demo (`Cursorial.Demo`) is the live canary: a toast Storyboard (slide + fade, selectable easing), a
 hover Opacity Transition, and an edge-action perpetual pulse. UI suite 1945 green, Animation 113 green.
 
+**Phase 9 complete** (doc §14 — the S8 control gallery + P9 closeout; normative spec at
+`docs/ui-layer-design/control-matrix-p9.md`, tests in `Cursorial.UI.Tests/ControlMatrix/Section15…Section21`).
+The remaining controls landed on `ItemsControl` + `ItemContainerGenerator` (index-aligned containers,
+Realize/Unrealize/Insert/Remove/Move/ResetFromSource, `:alternate` row-striping via `Restripe()` after every
+structural change — CD-P9-25): `Separator`, `Menu`/`MenuItem` (submenu `Popup`s, hover-open timer, access-key
+mnemonics), `ContextMenu` (right-click / `Key.Menu` router default), `ToolTip`/`ToolTipService` (hover-driven,
+hit-transparent never-focused popup), `TabControl`/`TabItem`, `ProgressBar`, `TextBox`, `ListBox`/`ListBoxItem`.
+The closeout ran as seven workstreams (W1–W7):
+
+- **W1 — themed window chrome (C4, punch 36)** — the S4 interim `Window.Template` default is gone; the chrome is
+  a `typeof(Window)` control theme in `CursorialTheme.BuiltIn`, resolved through the control-theme chain (so an app
+  `Window` style overrides it — the b13fc2a Template-lane precedence fix). The active-look (band/ink tracking
+  `IsActive`) is wired in `Window.OnApplyTemplate` against the named chrome parts and unhooked in
+  `Window.OnTemplateDetaching` (no handler leak on re-template).
+- **W2 — `:alternate` row-striping** — `ItemContainerGenerator.Restripe()` stamps `:alternate` on odd 0-based
+  containers (opt-in look — no default stripe) and re-stripes after insert/remove/move.
+- **W3 — resource-inspector hook** — `ResourceDiagnostics.GetResourceKey(element, property)` is the reverse of
+  `Trace`: the resource key the property's effective value resolved through — instance `SetResourceReference`
+  first, else a style/theme `{DynamicResource}` setter, **gated on the winning base lane actually being Style**
+  (a LocalValue/Template literal masking a resource-backed style setter reports no key — it isn't resource-backed).
+- **W4 — on-close focus restore** (the last W4-b deferral) — closing a popup that held keyboard focus returns
+  focus to the specific trigger (Esc-in-submenu → parent header, dismiss → opener); guarded on
+  `Child.IsKeyboardFocusWithin` (a hover-only popup/tooltip never yanks focus) and `!_open` (forward-defense
+  against a synchronous mid-close re-open — the binding-driven re-assert lands a turn later, so the cycle
+  converges cleanly).
+- **W5 — the ARCH-1 XAML theme overlay** (`Cursorial.UI.Themes.Xaml`) — every BuiltIn control theme re-authored in
+  embedded `.xaml`, loaded via `CursorialXamlTheme.LoadControls()`, layered over the code-first BuiltIn (which
+  stays the chain backstop). The inline controls render byte-identically to BuiltIn; the popup-rooted ones
+  (Menu/ContextMenu/ToolTip/TabControl) are proven at runtime through `UITestHost`.
+- **W6 — control-gallery demo + composition test** — `Cursorial.Demo`'s gallery + `P9ControlCompositionTests`
+  (every P9 control in one tree, re-skinning across every color tier + a dark/light flip). A default `Label`
+  control theme was added (a bare `ContentControl` has no presenter → renders blank without one).
+- **W7 — closeout review** — a multi-agent adversarial review of W1–W6 surfaced 8 confirmed findings, each fixed
+  with a regression test (mutation-verified where the fix was subtle): MenuItem's missing `[TemplatePart]`,
+  ContextMenu's owner-detach popup leak (the menu now watches its placement target's `DetachedFromLogicalTree`,
+  since the surface-rooted menu never sees the owner's detach), the W3 priority gate, the W4 re-entrancy guard,
+  the W1 handler leak, the `:alternate` move re-stripe, GetResourceKey value assertions, and a duplicate
+  `TabItemTemplate` in the XAML overlay. The runtime XAML-theme tests also caught a real W5 bug: the XAML
+  `MenuItem` template put implicit content in a `<Popup>`, but `Popup` had no content property in the loader —
+  fixed by adding **`Popup → Child`** to the loader's `ContentPropertyTable` (WPF `[ContentProperty("Child")]`
+  parity), so `<Popup>child</Popup>` maps to `Popup.Child`.
+
+The `accesskeys`/`uixaml`/`windows`/control-gallery demos are the live canaries. The access-key capability gate
+on a real Kitty terminal (the `(DistinguishesKeyUpDown && ReportsRepeats) || Win32InputMode` verdict, ND23) is a
+**manual verification step** — it can't be exercised headlessly and needs a hands-on Kitty session.
+
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
 theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);

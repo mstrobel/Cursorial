@@ -39,6 +39,9 @@ public sealed class FocusManager
 
     /// <summary>The access-key manager (assigned by the application): pointer-driven focus changes exit menu mode.</summary>
     internal AccessKeyManager? AccessKeysInternal;
+    
+    /// <summary>Internal shortcut to the current application's <see cref="FocusManager"/>.</summary>
+    internal static FocusManager? Current => UIApplication.Current?.FocusManager;
 
     internal FocusManager(UIDispatcher dispatcher, InteractionStateService interactions)
     {
@@ -100,13 +103,15 @@ public sealed class FocusManager
     public static UIElement GetFocusScope(UIElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
+
         var node = element;
+
         while (true)
         {
             if (node.GetValue(IsFocusScopeProperty))
                 return node;
 
-            if ((node.VisualParent ?? node.LogicalParent) is not { } parent)
+            if ((node.VisualParent ?? node.UIParent) is not {} parent)
                 return node; // root fallback
 
             node = parent;
@@ -161,6 +166,7 @@ public sealed class FocusManager
     public void ClearFocus()
     {
         _dispatcher.VerifyAccess();
+
         if (FocusedElement is null)
             return;
 
@@ -179,12 +185,13 @@ public sealed class FocusManager
     public bool MoveFocus(FocusNavigationDirection direction)
     {
         _dispatcher.VerifyAccess();
+
         return direction switch
-        {
-            FocusNavigationDirection.Next => MoveTab(forward: true),
-            FocusNavigationDirection.Previous => MoveTab(forward: false),
-            _ => MoveDirectional(direction)
-        };
+               {
+                   FocusNavigationDirection.Next     => MoveTab(forward: true),
+                   FocusNavigationDirection.Previous => MoveTab(forward: false),
+                   _                                 => MoveDirectional(direction)
+               };
     }
 
     /// <summary>
@@ -221,16 +228,17 @@ public sealed class FocusManager
     {
         ArgumentNullException.ThrowIfNull(windowRoot);
         _dispatcher.VerifyAccess();
+
         ActiveRoot = windowRoot;
         _pendingActivationRoot = null;
 
-        if (GetFocusedElement(windowRoot) is { } memory && IsValidFocusTarget(memory))
+        if (GetFocusedElement(windowRoot) is {} memory && IsValidFocusTarget(memory))
         {
             SetFocus(memory, FocusNavigationMethod.Restore);
             return;
         }
 
-        if (_navigator.FirstOrLastTabStop(windowRoot, forward: true) is { } first)
+        if (_navigator.FirstOrLastTabStop(windowRoot, forward: true) is {} first)
         {
             SetFocus(first, FocusNavigationMethod.Restore);
             return;
@@ -252,7 +260,7 @@ public sealed class FocusManager
     /// </summary>
     internal void CompletePendingActivationFocus()
     {
-        if (_pendingActivationRoot is not { } root)
+        if (_pendingActivationRoot is not {} root)
             return;
 
         // Stale-park hygiene: only retry while this is still the active root and focus is still empty.
@@ -264,14 +272,14 @@ public sealed class FocusManager
 
         // Scope memory may have been recorded since activation (e.g. window-activation memory) — honor
         // it first, exactly as OnWindowActivated does.
-        if (GetFocusedElement(root) is { } memory && IsValidFocusTarget(memory))
+        if (GetFocusedElement(root) is {} memory && IsValidFocusTarget(memory))
         {
             _pendingActivationRoot = null;
             SetFocus(memory, FocusNavigationMethod.Restore);
             return;
         }
 
-        if (_navigator.FirstOrLastTabStop(root, forward: true) is { } first)
+        if (_navigator.FirstOrLastTabStop(root, forward: true) is {} first)
         {
             _pendingActivationRoot = null;
             SetFocus(first, FocusNavigationMethod.Restore);
@@ -288,8 +296,10 @@ public sealed class FocusManager
     {
         ArgumentNullException.ThrowIfNull(windowRoot);
         _dispatcher.VerifyAccess();
+
         if (ReferenceEquals(ActiveRoot, windowRoot))
             ActiveRoot = null;
+
         if (ReferenceEquals(_pendingActivationRoot, windowRoot))
             _pendingActivationRoot = null; // a deactivated root never auto-focuses
     }
@@ -309,7 +319,7 @@ public sealed class FocusManager
         for (var node = element; node is not null; node = node.VisualParent ?? node.LogicalParent)
         {
             if (ReferenceEquals(node.GetValue(FocusedElementProperty), element))
-                node.SetValue(FocusedElementProperty, (UIElement?)null);
+                node.SetValue(FocusedElementProperty, (UIElement?) null);
         }
 
         if (ReferenceEquals(ActiveRoot, element))
@@ -327,7 +337,7 @@ public sealed class FocusManager
     /// </summary>
     internal void RepairFocusIfInvalid()
     {
-        if (FocusedElement is { } focused && !IsValidFocusTarget(focused))
+        if (FocusedElement is {} focused && !IsValidFocusTarget(focused))
             RepairFocus(focused, detachingRoot: null);
     }
 
@@ -344,6 +354,7 @@ public sealed class FocusManager
         // The detach walk is bottom-up, so the parent chain above the detaching root is still
         // navigable when the notification fires; everything at or below it is skipped.
         var start = detachingRoot ?? invalidated;
+
         for (var node = start.VisualParent ?? start.LogicalParent; node is not null; node = node.VisualParent ?? node.LogicalParent)
         {
             if (IsValidFocusTarget(node))
@@ -356,12 +367,13 @@ public sealed class FocusManager
         // ② The scope root's first tab-ordered focusable (N110); the active root stands in when
         // the scope itself is gone or doomed (ND30).
         var scopeRoot = GetFocusScope(invalidated);
+
         if (!scopeRoot.IsAttachedToTree || (detachingRoot is not null && IsWithinSubtree(scopeRoot, detachingRoot)))
             scopeRoot = ActiveRoot!;
 
         if (scopeRoot is { IsAttachedToTree: true }
             && (detachingRoot is null || !IsWithinSubtree(scopeRoot, detachingRoot))
-            && _navigator.FirstOrLastTabStop(scopeRoot, forward: true) is { } first)
+            && _navigator.FirstOrLastTabStop(scopeRoot, forward: true) is {} first)
         {
             MoveFocusCore(first, FocusNavigationMethod.Programmatic, focusVisible: false);
             return;
@@ -388,11 +400,12 @@ public sealed class FocusManager
     private bool MoveTab(bool forward)
     {
         UIElement? target;
-        if (FocusedElement is { } current)
+
+        if (FocusedElement is {} current)
         {
             target = _navigator.NextTabStop(current, forward);
         }
-        else if (ActiveRoot is { } root)
+        else if (ActiveRoot is {} root)
         {
             target = _navigator.FirstOrLastTabStop(root, forward); // N122: first/last with empty focus
         }
@@ -406,7 +419,7 @@ public sealed class FocusManager
 
     private bool MoveDirectional(FocusNavigationDirection direction)
     {
-        if (FocusedElement is not { } current)
+        if (FocusedElement is not {} current)
             return false;
 
         var target = _navigator.NextDirectional(current, direction);
@@ -430,13 +443,15 @@ public sealed class FocusManager
            element is { IsEffectivelyEnabled: true, IsEffectivelyVisible: true };
 
     private bool ComputeFocusVisible(FocusNavigationMethod method) => method switch
-    {
-        FocusNavigationMethod.Tab or FocusNavigationMethod.Directional
-            or FocusNavigationMethod.AccessKey or FocusNavigationMethod.Restore => true,
-        FocusNavigationMethod.Programmatic =>
-            (InputDispatcherInternal?.LastModality ?? InputModality.Keyboard) == InputModality.Keyboard,
-        _ => false // Pointer
-    };
+                                                                      {
+                                                                          FocusNavigationMethod.Tab or FocusNavigationMethod.Directional
+                                                                                                    or FocusNavigationMethod.AccessKey or
+                                                                                                    FocusNavigationMethod.Restore => true,
+                                                                          FocusNavigationMethod.Programmatic =>
+                                                                              (InputDispatcherInternal?.LastModality ?? InputModality.Keyboard) ==
+                                                                              InputModality.Keyboard,
+                                                                          _ => false // Pointer
+                                                                      };
 
     /// <summary>
     /// One focus transition: commit state (doc §7.7 — old element clears
@@ -454,6 +469,7 @@ public sealed class FocusManager
         }
 
         _transitionDepth++;
+
         try
         {
             var oldFocus = FocusedElement;
@@ -498,8 +514,9 @@ public sealed class FocusManager
         var oldCount = _oldChainScratch.Count;
         var newCount = _newChainScratch.Count;
         var common = 0;
+
         while (common < oldCount && common < newCount
-               && ReferenceEquals(_oldChainScratch[oldCount - 1 - common], _newChainScratch[newCount - 1 - common]))
+                                 && ReferenceEquals(_oldChainScratch[oldCount - 1 - common], _newChainScratch[newCount - 1 - common]))
         {
             common++;
         }
@@ -552,6 +569,7 @@ public sealed class FocusManager
         var args = EventArgsPool<FocusChangedEventArgs>.Rent();
         args.Initialize(routedEvent, target);
         args.InitializeFocus(oldFocus, newFocus, method);
+
         try
         {
             EventRouting.Raise(target, args);

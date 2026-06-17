@@ -7,6 +7,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
+using Cursorial.UI.Themes;
 
 using Style = Cursorial.UI.Style;
 using UIControls = Cursorial.UI.Controls;
@@ -105,5 +106,69 @@ public sealed class WindowChromeTests
         Assert.Same(customTemplate, window.Template);
         // And it actually applied: a body cell shows the custom fill colour, not the themed accent/panel.
         Assert.Equal(customColor, host.GetCell(7, 5).Style.Background);
+    }
+
+    [Fact] // W7 #1: re-templating a LIVE window unhooks the old chrome's active-look handlers — they must not fire after
+    public void Chrome_ReTemplate_UnhooksOldActiveLookHandlers()
+    {
+        var (host, wm) = ShownRoot();
+        using var _ = host;
+
+        // A custom chrome with a captured PART_TitleBar so we can inspect its active-look state after re-template.
+        Border? oldTitleBar = null;
+        var firstTemplate = new ControlTemplate(ctx =>
+        {
+            oldTitleBar = new Border();
+            ctx.RegisterName("PART_TitleBar", oldTitleBar); // Window.OnApplyTemplate wires the active look against it
+            var presenter = new ContentPresenter();
+            ctx.RegisterName("PART_ContentPresenter", presenter);
+            var dock = new DockPanel();
+            DockPanel.SetDock(oldTitleBar, Dock.Top);
+            dock.Children.Add(oldTitleBar);
+            dock.Children.Add(presenter);
+            return dock;
+        });
+
+        var window = new Window
+        {
+            Template = firstTemplate,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 2, Top = 2, Width = 20, Height = 8,
+            Content = "Body",
+        };
+        window.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(window.IsActive);
+        Assert.NotNull(oldTitleBar);
+
+        // Sanity: while active, the active look installed an AccentBrush DynamicResource on the title bar (its
+        // resource provenance, even though the custom template's bar doesn't resolve the brush to a cell).
+        Assert.Equal(ThemeKeys.AccentBrush, ResourceDiagnostics.GetResourceKey(oldTitleBar!, Border.BackgroundProperty));
+
+        // Re-template the live window (chrome-less): OnTemplateDetaching must unhook the active-look handlers,
+        // then the discarded title bar tears down — evicting its resource producer (provenance → null).
+        window.Template = new ControlTemplate(ctx =>
+        {
+            var presenter = new ContentPresenter();
+            ctx.RegisterName("PART_ContentPresenter", presenter);
+            return presenter;
+        });
+        Assert.True(host.RunUntilIdle());
+        Assert.Null(ResourceDiagnostics.GetResourceKey(oldTitleBar!, Border.BackgroundProperty)); // torn down
+
+        // Force the original window to DEACTIVATE: a second window steals activation. The discriminator —
+        // a LEAKED Deactivated handler fires ApplyActiveLook(false), re-installing a SurfaceBrush DynamicResource
+        // on the dead title bar (provenance becomes non-null); the unhook leaves it untouched (still null).
+        var second = new Window
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 28, Top = 2, Width = 10, Height = 5,
+            Content = "two",
+        };
+        second.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        Assert.False(window.IsActive); // deactivated by the second window's activation
+
+        Assert.Null(ResourceDiagnostics.GetResourceKey(oldTitleBar!, Border.BackgroundProperty));
     }
 }

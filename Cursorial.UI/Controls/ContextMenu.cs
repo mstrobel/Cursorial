@@ -32,6 +32,7 @@ public sealed class ContextMenu : ItemsControl
     public static readonly StyledProperty<bool> IsOpenProperty = IsOpenPropertyKey.Property;
 
     private Popup? _popup;
+    private UIElement? _watchedTarget; // the owner whose tree-detach must close this menu (no stranded surface)
 
     /// <summary>Creates a context menu (the host is not a focus stop; its items are).</summary>
     public ContextMenu() => Focusable = false;
@@ -79,11 +80,44 @@ public sealed class ContextMenu : ItemsControl
 
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
         SetValue(IsOpenPropertyKey, true);
-        FocusFirstItem(); // keyboard nav can begin immediately on the realized items
+        WatchTarget(target);            // close the menu if its owner leaves the tree (no stranded popup surface)
+        FocusFirstItem();               // keyboard nav can begin immediately on the realized items
     }
 
     /// <summary>Closes the menu (a no-op when already closed).</summary>
     public void Close() => _popup?.SetCurrentValue(Popup.IsOpenProperty, false); // OnPopupClosed flips IsOpen
+
+    /// <inheritdoc/>
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        // Defensive backstop: the menu is attached only to its own WM-owned popup surface (never the host's
+        // visual tree), so this fires when that surface tears down — Close() is then idempotent. The owner-detach
+        // leak (the host element leaving the tree while the menu is open) is handled by the target watch below,
+        // since the owner's detach does NOT reach this surface-rooted element.
+        Close();
+        base.OnDetachedFromTree(in e);
+    }
+
+    // The owner (placement target) lives in the host tree; if it detaches while the menu is open, nothing else
+    // would close the separate popup surface. Watch its logical-tree detach and close on it.
+    private void WatchTarget(UIElement target)
+    {
+        if (ReferenceEquals(_watchedTarget, target))
+            return;
+
+        UnwatchTarget();
+        _watchedTarget = target;
+        target.DetachedFromLogicalTree += OnTargetDetached;
+    }
+
+    private void UnwatchTarget()
+    {
+        if (_watchedTarget is { } target)
+            target.DetachedFromLogicalTree -= OnTargetDetached;
+        _watchedTarget = null;
+    }
+
+    private void OnTargetDetached(object? sender, LogicalTreeAttachmentEventArgs e) => Close();
 
     private Popup CreatePopup()
     {
@@ -92,8 +126,13 @@ public sealed class ContextMenu : ItemsControl
         return popup;
     }
 
-    // Light-dismiss / Escape / programmatic close all route through the Popup's Closed event → sync IsOpen.
-    private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetValue(IsOpenPropertyKey, false);
+    // Light-dismiss / Escape / programmatic close all route through the Popup's Closed event → sync IsOpen and
+    // drop the owner-detach watch (every close path funnels here).
+    private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
+    {
+        SetValue(IsOpenPropertyKey, false);
+        UnwatchTarget();
+    }
 
     private void FocusFirstItem()
     {

@@ -20,7 +20,7 @@ public sealed class Section19_Menu
     // Click an element at its on-screen position (works for bar items and items inside an open popup surface).
     private static void Click(UITestHost host, UIElement element)
     {
-        var origin = element.TranslateToWindow(0, 0);
+        var origin = element.TranslateToScreen(0, 0);
         host.SendClick(origin.Column + 1, origin.Row);
         host.RunUntilIdle();
     }
@@ -697,7 +697,7 @@ public sealed class Section19_Menu
 
     private static void Hover(UITestHost host, UIElement element)
     {
-        var origin = element.TranslateToWindow(0, 0);
+        var origin = element.TranslateToScreen(0, 0);
         host.SendMouseMove(origin.Column + 1, origin.Row);
         host.RunFrame();
     }
@@ -706,19 +706,25 @@ public sealed class Section19_Menu
     public void C6_16_HoverOpensAfterDelay()
     {
         var file = new MenuItem { Header = "File" };
-        file.Items.Add(new MenuItem { Header = "New" });
+        var open = new MenuItem { Header = "Open", Items = { new MenuItem { Header = "Cloud"}, new MenuItem { Header = "Local"} }};
+        file.Items.Add(open);
         using var host = Host();
-        var menu = new Menu();
+        var menu = new Menu() { VerticalAlignment = VerticalAlignment.Top };
         menu.Items.Add(file);
         host.ShowRoot(menu);
         host.RunUntilIdle();
 
-        Hover(host, file);
-        Assert.False(file.IsSubmenuOpen); // pending — the delay hasn't elapsed
+        Assert.False(file.IsSubmenuOpen);
+        Click(host, file);
+        host.RunUntilIdle();
+        Assert.True(file.IsSubmenuOpen);
+        Hover(host, open);
+        host.RunUntilIdle();
+        Assert.False(open.IsSubmenuOpen); // pending — the delay hasn't elapsed
 
         host.AdvanceTime(TimeSpan.FromMilliseconds(300));
         host.RunFrame();
-        Assert.True(file.IsSubmenuOpen); // opened on the hover timer
+        Assert.True(open.IsSubmenuOpen); // opened on the hover timer
     }
 
     [Fact] // C6.17: leaving before the delay cancels the pending hover-open
@@ -861,5 +867,28 @@ public sealed class Section19_Menu
         Click(host, file); // realize/template the nested item
         Assert.Equal(PlacementMode.Bottom, FindDescendant<Popup>(file)!.Placement); // top-level → down
         Assert.Equal(PlacementMode.Right, FindDescendant<Popup>(nested)!.Placement);  // nested → right
+    }
+
+    [Fact] // W7 #2: MenuItem declares its submenu surface via [TemplatePart("PART_Popup", typeof(Popup))] —
+            // a template that mis-types the part is rejected at apply (the attribute is wired, not decorative)
+    public void C6_PartPopup_WrongType_Throws()
+    {
+        using var host = Host();
+        var item = new MenuItem
+        {
+            Header = "File",
+            Template = new ControlTemplate(ctx =>
+            {
+                var wrong = new Border();
+                ctx.RegisterName("PART_Popup", wrong); // declared Popup, provided Border
+                return wrong;
+            }),
+        };
+        host.ShowRoot(item);
+
+        var ex = Assert.Throws<InvalidOperationException>(host.RunFrame);
+        Assert.Contains("PART_Popup", ex.Message);
+        Assert.Contains("Popup", ex.Message);
+        Assert.Contains("Border", ex.Message);
     }
 }

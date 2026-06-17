@@ -181,8 +181,10 @@ public class Popup : UIElement
 
         // Return focus to the trigger (Esc-in-submenu → parent header, context-menu dismiss → the right-clicked
         // element). Guarded on still-attached so a torn-down target is skipped; nested popups chain their
-        // restores so the outermost lands on the original trigger.
-        if (restoreFocusTo is { IsAttachedToTree: true })
+        // restores so the outermost lands on the original trigger. The !_open guard handles re-entrancy: a Closed
+        // observer (or the IsOpen write-back's change handler) that re-opens this popup mid-close must keep the
+        // focus it just placed inside the re-opened content, not yank it back to the stale trigger.
+        if (restoreFocusTo is { IsAttachedToTree: true } && !_open)
             restoreFocusTo.Focus(FocusNavigationMethod.Restore);
 
         Closed?.Invoke(this, new PopupClosedEventArgs(reason));

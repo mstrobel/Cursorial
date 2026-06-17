@@ -427,31 +427,6 @@
     <Setter Property="Template"   Value="{StaticResource TabControlTemplate}"/>
   </Style>
 
-  <!-- A tab header: a fill-bounded ContentPresenter over TabItem.Header (RecognizesAccessKey). The face fill
-       flips per interactive state — :selected = SelectionBrush, :pointerover = HoverBrush, :disabled = muted. -->
-  <ControlTemplate x:Key="TabItemTemplate">
-    <Border Padding="1,0" Background="{TemplateBinding Background}">
-      <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"
-                        Content="{TemplateBinding Header}"/>
-    </Border>
-  </ControlTemplate>
-
-  <Style x:Key="{x:Type TabItem}" TargetType="TabItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="Template"   Value="{StaticResource TabItemTemplate}"/>
-    <Style.Children>
-      <Style Selector="^:pointerover" TargetType="TabItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
-      </Style>
-      <Style Selector="^:selected" TargetType="TabItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
-      </Style>
-      <Style Selector="^:disabled" TargetType="TabItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
-      </Style>
-    </Style.Children>
-  </Style>
-
   <!-- TabItem (design doc TabControl/TabItem). A tab header: a fill-bounded ContentPresenter over the
        TabItem.Header (RecognizesAccessKey). No resting border — the face fill is the TemplateBinding Background,
        resting blank. :selected = SelectionBrush fill, :pointerover = HoverBrush, :disabled muted foreground

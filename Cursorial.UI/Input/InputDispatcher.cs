@@ -104,10 +104,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// </summary>
     internal void ReleaseCaptureWithin(UIElement root)
     {
-        if (_captureTarget is not { } holder)
+        if (_captureTarget is not {} holder)
             return;
 
-        for (var element = (UIElement?)holder; element is not null; element = element.VisualParent ?? element.UIParent)
+        for (var element = (UIElement?) holder; element is not null; element = element.VisualParent ?? element.UIParent)
             if (ReferenceEquals(element, root))
             {
                 ForceReleaseCapture();
@@ -211,7 +211,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
             return;
         }
 
-        UpdateHoverChain(HitTestForEvent(device), device);
+        UpdateHoverChain(HitTestForEvent(device, hitTestOnly: true), device);
     }
 
     /// <summary>
@@ -287,14 +287,15 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // A Move-shaped probe: the kind the P7 window manager never swallows (light dismiss and
         // activation are press-driven). Queries are off the hot path — the rental is fine.
         return HitTestForEvent(new MouseEvent
-        {
-            Kind = MouseEventKind.Move,
-            Position = position,
-            Button = MouseButton.None,
-            ButtonsHeld = MouseButtons.None,
-            Modifiers = KeyModifiers.None,
-            Timestamp = DateTimeOffset.MinValue
-        });
+                               {
+                                   Kind = MouseEventKind.Move,
+                                   Position = position,
+                                   Button = MouseButton.None,
+                                   ButtonsHeld = MouseButtons.None,
+                                   Modifiers = KeyModifiers.None,
+                                   Timestamp = DateTimeOffset.MinValue
+                               },
+                               hitTestOnly: true);
     }
 
     /// <summary>The capture mode currently in force, meaningful only while <see cref="MouseCaptureTarget"/> is non-null (§7.6).</summary>
@@ -384,6 +385,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // activation window is sampled FIRST — the stale inference may close the bracket on this
         // very key, which must still activate if the user typed it under visible cues (N182).
         var cueWindowWasOpen = _accessKeys.IsUnmodifiedActivationWindowOpen;
+
         if (!key.Synthesized)
         {
             if (key.Key is Key.LeftAlt or Key.RightAlt)
@@ -402,6 +404,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         // Step 2 — target. Both null ⇒ dropped (DispatchedUnhandled, empty route; never "topmost").
         var target = _focus.FocusedElement ?? _focus.ActiveRoot;
+
         if (target is null)
             return InputDispatchResult.DispatchedUnhandled;
 
@@ -479,13 +482,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
                 // ONE hit test per event (doc §13.2 — S3 re-derives nothing): hover and routing
                 // share it. Hit testing runs even under capture so :pointerover stays honest
                 // (doc §7.6); the route target is capture-first.
-                var hit = HitTestForEvent(mouse);
+                var hit = HitTestForEvent(mouse, hitTestOnly: false);
 
                 UpdateHoverChain(hit, mouse);
 
                 return RouteTargetUnderCapture(hit) is {} target
-                    ? ToResult(RaiseMousePair<MouseEventArgs>(UIElement.PreviewMouseMoveEvent, UIElement.MouseMoveEvent, target, mouse))
-                    : InputDispatchResult.DispatchedUnhandled;
+                           ? ToResult(RaiseMousePair<MouseEventArgs>(UIElement.PreviewMouseMoveEvent, UIElement.MouseMoveEvent, target, mouse))
+                           : InputDispatchResult.DispatchedUnhandled;
             }
 
             case MouseEventKind.ButtonDown:
@@ -499,24 +502,27 @@ public sealed class InputDispatcher : IInputDispatchTarget
                 // Element capture short-circuits the hit test (so a captured gesture never triggers the
                 // window manager's press-time light-dismiss / activation in FilterMouseEvent); SubTree and
                 // the uncaptured path both need the hit to resolve the route target.
-                var hit = HitTestForEvent(mouse);
+                var hit = HitTestForEvent(mouse, hitTestOnly: false);
+
                 var target = _captureTarget is {} capture && _captureMode == CaptureMode.Element
-                    ? capture
-                    : RouteTargetUnderCapture(hit);
+                                 ? capture
+                                 : RouteTargetUnderCapture(hit);
 
                 var result = target is {} routed
-                    ? ToResult(RaiseMousePair<MouseButtonEventArgs>(
-                        isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
-                        isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
-                        routed,
-                        mouse))
-                    : InputDispatchResult.DispatchedUnhandled;
+                                 ? ToResult(RaiseMousePair<MouseButtonEventArgs>(
+                                                isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
+                                                isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
+                                                routed,
+                                                mouse))
+                                 : InputDispatchResult.DispatchedUnhandled;
 
                 // Router default (doc §12.7): an uncaptured right-button release over an element carrying
                 // ContextMenu.Menu opens it at the pointer — unless the routed event already handled it.
-                if (!isDown && mouse.Button == MouseButton.Right && result != InputDispatchResult.DispatchedHandled
-                    && _captureTarget is null && TryOpenContextMenu(hit, position: null))
+                if (!isDown && mouse.Button == MouseButton.Right && result != InputDispatchResult.DispatchedHandled &&
+                    _captureTarget is null && TryOpenContextMenu(hit, position: null))
+                {
                     result = InputDispatchResult.DispatchedHandled;
+                }
 
                 return result;
             }
@@ -524,9 +530,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
             case MouseEventKind.Wheel:
                 // The one mouse event capture never redirects (doc §7.6): wheel targets the HIT
                 // element under the pointer, not the capture holder and not focus.
-                return HitTestForEvent(mouse) is {} wheelTarget
-                    ? ToResult(RaiseMousePair<MouseWheelEventArgs>(UIElement.PreviewMouseWheelEvent, UIElement.MouseWheelEvent, wheelTarget, mouse))
-                    : InputDispatchResult.DispatchedUnhandled;
+                return HitTestForEvent(mouse, hitTestOnly: false) is {} wheelTarget
+                           ? ToResult(RaiseMousePair<MouseWheelEventArgs>(UIElement.PreviewMouseWheelEvent, UIElement.MouseWheelEvent, wheelTarget, mouse))
+                           : InputDispatchResult.DispatchedUnhandled;
 
             default:
                 return InputDispatchResult.DispatchedUnhandled;
@@ -559,12 +565,14 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// </summary>
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
     {
-        for (var node = from; node is not null; node = node.UIParent)
+        for (var node = from; node is not null; node = node.UIParent ?? node.VisualParent)
+        {
             if (ContextMenu.GetMenu(node) is {} menu)
             {
                 menu.Open(node, position);
                 return true;
             }
+        }
 
         return false;
     }
@@ -573,9 +581,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// key events) — pressing one alone must not dismiss a tooltip (doc §12.7).</summary>
     private static bool IsStandaloneModifier(Key key)
         => key is Key.LeftShift or Key.RightShift or Key.LeftControl or Key.RightControl
-            or Key.LeftAlt or Key.RightAlt or Key.LeftSuper or Key.RightSuper
-            or Key.LeftHyper or Key.RightHyper or Key.LeftMeta or Key.RightMeta
-            or Key.CapsLock or Key.NumLock or Key.ScrollLock;
+                  or Key.LeftAlt or Key.RightAlt or Key.LeftSuper or Key.RightSuper
+                  or Key.LeftHyper or Key.RightHyper or Key.LeftMeta or Key.RightMeta
+                  or Key.CapsLock or Key.NumLock or Key.ScrollLock;
 
     private static InputDispatchResult ToResult(bool handled)
         => handled ? InputDispatchResult.DispatchedHandled : InputDispatchResult.DispatchedUnhandled;
@@ -617,9 +625,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// (out of viewport, no shown surface, swallowed, or no enabled ancestor) — route nowhere,
     /// never throw (ND5/ND6).
     /// </summary>
-    private UIElement? HitTestForEvent(MouseEvent mouse)
+    private UIElement? HitTestForEvent(MouseEvent mouse, bool hitTestOnly)
     {
-        if (!_topology.FilterMouseEvent(mouse, out var surfaceRoot, out var column, out var row))
+        if (!_topology.FilterMouseEvent(mouse, out var surfaceRoot, out var column, out var row, hitTestOnly))
             return null; // swallowed by the window manager (P7 policy; never at P2)
 
         if (surfaceRoot?.RenderTreeHost is not {} tree)
@@ -673,6 +681,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         if (_capabilities.Input.Mouse.Motion) // capability-honest: PointerOver never set without real motion reporting (doc §7.6)
         {
             _inHoverDiff = true;
+
             try
             {
                 UpdateHoverChainCore(hit, device);
@@ -834,8 +843,8 @@ public sealed class InputDispatcher : IInputDispatchTarget
             return;
 
         var resolved = _captureTarget is {} holder
-            ? ResolveCursor(holder)
-            : ResolveCursorFromHoverChain();
+                           ? ResolveCursor(holder)
+                           : ResolveCursorFromHoverChain();
 
         if (resolved == _effectiveCursorShape)
             return;
@@ -847,7 +856,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// <summary>First non-null <see cref="UIElement.Cursor"/> on <paramref name="leaf"/>'s self→root chain (the route walk's parent hop).</summary>
     private static MouseCursorShape? ResolveCursor(UIElement leaf)
     {
-        for (var node = (UIElement?)leaf; node is not null; node = node.VisualParent ?? node.UIParent)
+        for (var node = (UIElement?) leaf; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (node.GetValue(UIElement.CursorProperty) is {} cursor)
                 return cursor;
@@ -881,32 +890,33 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         // The FocusEvent{HasFocus:false} cluster, in ND24 order. Keyboard focus is RETAINED
         // throughout — refocusing the terminal restores interaction state intact (doc §13.2).
-        _accessKeys.OnTerminalFocusLost();                       // ① unconditional Alt/sticky/cue clears
-        ForceReleaseCapture();                                   // ② capture force-release
-        ClearHoverChainOnTerminalFocusLost();                    // ③ hover-chain clear
-        UpdateEffectiveCursorShape();                            // §7.6 once, after ②+③ — usually a no-op
-                                                                 // (③'s diff resolved when a hover driver
-                                                                 // existed); covers programmatic capture
-                                                                 // released with no mouse event ever seen
-        ClearPressedHoldersOnTerminalFocusLost();                // ④ pressed-holder clears (C8)
-        _buttonsHeld = MouseButtons.None;                        // ④ held-mask zeroed (N203 — the Ups go to another window)
+        _accessKeys.OnTerminalFocusLost();    // ① unconditional Alt/sticky/cue clears
+        ForceReleaseCapture();                // ② capture force-release
+        ClearHoverChainOnTerminalFocusLost(); // ③ hover-chain clear
+        UpdateEffectiveCursorShape();         // §7.6 once, after ②+③ — usually a no-op
+        // (③'s diff resolved when a hover driver
+        // existed); covers programmatic capture
+        // released with no mouse event ever seen
+        ClearPressedHoldersOnTerminalFocusLost(); // ④ pressed-holder clears (C8)
+        _buttonsHeld = MouseButtons.None;         // ④ held-mask zeroed (N203 — the Ups go to another window)
 
-        if (_focus.FocusedElement is {} focused)        // ⑤ exactly once, only with focus
+        if (_focus.FocusedElement is {} focused) // ⑤ exactly once, only with focus
             EditCommitRequested?.Invoke(focused);
 
-        TerminalFocusChanged?.Invoke(false);                     // ⑥
+        TerminalFocusChanged?.Invoke(false); // ⑥
         return InputDispatchResult.DispatchedHandled;
     }
 
     private InputDispatchResult ProcessPasteEvent(PasteEvent paste)
         => RaiseTextInput(paste.Text, fromPaste: true)
-            ? InputDispatchResult.DispatchedHandled
-            : InputDispatchResult.DispatchedUnhandled;
+               ? InputDispatchResult.DispatchedHandled
+               : InputDispatchResult.DispatchedUnhandled;
 
     /// <summary>Raises the <c>PreviewTextInput</c>/<c>TextInput</c> pair at the focused element (fallback: the active root).</summary>
     private bool RaiseTextInput(ReadOnlyMemory<char> text, bool fromPaste)
     {
         var target = _focus.FocusedElement ?? _focus.ActiveRoot;
+
         if (target is null)
             return false; // dropped (N22 parity for paste)
 
@@ -935,7 +945,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         if (_captureTarget is not {} target)
             return;
 
-        _captureTarget = null; // cleared before the raise — handlers observe the post-release state
+        _captureTarget = null;              // cleared before the raise — handlers observe the post-release state
         _captureMode = CaptureMode.Element; // back to the default for the next capture
 
         var args = EventArgsPool<RoutedEventArgs>.Rent();
@@ -1009,7 +1019,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     internal int PressedHolderCountInternal => _pressedHolders.Count;
 
     private static MouseButtons ToButtonFlag(MouseButton button)
-        => button == MouseButton.None ? MouseButtons.None : (MouseButtons)(1u << ((int)button - 1));
+        => button == MouseButton.None ? MouseButtons.None : (MouseButtons) (1u << ((int) button - 1));
 
     [System.Diagnostics.Conditional("DEBUG")]
     private void ThrowIfReentrant()

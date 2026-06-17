@@ -14,8 +14,11 @@ namespace Cursorial.UI.Controls;
 /// its own click/command surface. <c>:highlighted</c>/<c>:open</c> are <c>DirectProperty</c>-backed (flipped via
 /// <see cref="UIElement.PseudoClasses"/>); <c>:checked</c> mirrors <see cref="IsChecked"/> via <see cref="PseudoClassMapping"/>.
 /// </summary>
+[TemplatePart(PartPopup, typeof(Popup))] // optional: a leaf item's template may omit the submenu surface
 public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 {
+    private const string PartPopup = "PART_Popup";
+
     /// <summary>The command invoked when a leaf item is clicked/activated.</summary>
     public static readonly StyledProperty<ICommand?> CommandProperty =
         UIProperty.Register<MenuItem, ICommand?>(nameof(Command), changed: OnCommandChanged);
@@ -52,7 +55,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
-    private bool _isPointerOver;
+    // private bool _isPointerOver;
     private char _registeredAccessKey;
     private Popup? _popup;
     private UITimer? _hoverTimer;
@@ -90,6 +93,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Whether this item has sub-items (a submenu header) rather than being an invoke-on-click leaf.</summary>
     public bool HasItems => ItemContainerGenerator.ContainerCount > 0;
+
+    /// <summary>Indicates whether the menu item is a top-level item within a <see cref="Menu"/> control.</summary>
+    public bool IsTopLevel => OwnerItemsControl is Menu;
 
     /// <summary>CLR sugar over <see cref="ClickEvent"/>.</summary>
     public event EventHandler<ClickEventArgs>? Click
@@ -133,7 +139,8 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (_popup is not null)
             _popup.Closed -= OnPopupClosed;
 
-        _popup = GetTemplatePart<Popup>("PART_Popup");
+        _popup = GetTemplatePart<Popup>(PartPopup);
+
         if (_popup is not null)
         {
             _popup.PlacementTarget = this;
@@ -169,23 +176,27 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     protected override void OnMouseEnter(MouseEventArgs e)
     {
         base.OnMouseEnter(e);
-        _isPointerOver = true;
+
+        // _isPointerOver = true;
+
         RefreshHighlight();
 
-        if (!HasItems || _isSubmenuOpen)
-            return;
+        if (HasItems && !_isSubmenuOpen)
+        {
+            if (MenuIsActive())
+                OpenSubmenu(); // a sibling submenu is already open ⇒ switch immediately (no delay)
+            else if (IsTopLevel is false)
+                StartHoverTimer(); // otherwise open after the hover delay
+        }
 
-        if (MenuIsActive())
-            OpenSubmenu();      // a sibling submenu is already open ⇒ switch immediately (no delay)
-        else
-            StartHoverTimer();  // otherwise open after the hover delay
+        Focus();
     }
 
     /// <inheritdoc/>
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
-        _isPointerOver = false;
+        // _isPointerOver = false;
         RefreshHighlight();
         StopHoverTimer(); // cancel a pending hover-open (an already-open submenu stays open)
     }
@@ -194,6 +205,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
+        CloseSiblings();
         RefreshHighlight(); // the focused item is the highlighted (current) item
     }
 
@@ -265,7 +277,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         CloseMenuChain();
     }
 
-    private void RefreshHighlight() => SetHighlighted(IsFocused || _isPointerOver); // highlighted = focused or hovered
+    private void RefreshHighlight() => SetHighlighted(IsFocused/* || _isPointerOver*/); // highlighted = focused or hovered
 
     // Opens this submenu, first closing any sibling submenu (only one branch of a level is open at a time).
     private void OpenSubmenu()
@@ -355,8 +367,10 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             return;
 
         for (var i = 0; i < owner.ItemContainerGenerator.ContainerCount; i++)
+        {
             if (owner.ItemContainerGenerator.ContainerFromIndex(i) is MenuItem { _isSubmenuOpen: true } sibling && !ReferenceEquals(sibling, this))
                 sibling.SetSubmenuOpen(false);
+        }
     }
 
     private void SetSubmenuOpen(bool value)
@@ -383,7 +397,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     {
         for (UIElement? node = this; node is not null; node = (node as MenuItem)?.OwnerItemsControl)
         {
-            if (node is MenuItem item && item._isSubmenuOpen)
+            if (node is MenuItem { _isSubmenuOpen: true } item)
                 item.SetSubmenuOpen(false);
             else if (node is ContextMenu context)
                 context.Close();

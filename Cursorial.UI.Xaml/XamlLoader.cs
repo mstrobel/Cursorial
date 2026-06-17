@@ -11,8 +11,12 @@ namespace Cursorial.UI.Xaml;
 /// instance via the <c>x:Class</c> convention (deferred resolution of the embedded document is X2+; the
 /// explicit-URI / instance overloads are present now).
 /// </summary>
-[RequiresUnreferencedCode("The default ReflectionXamlMetadata provider resolves types/members by reflection.")]
-[RequiresDynamicCode("Activation/setter thunks compile; AOT uses the reflective fallback.")]
+// The loader is provider-agnostic — it calls the metadata provider through the IXamlTypeMetadataProvider
+// interface, so its reflection-ness lives in the PROVIDER, not here. With a generated (trim/AOT-clean)
+// provider and standard markup, the load path is reflection-free; the reflective surfaces are
+// ReflectionXamlMetadata ([Requires*]), the embedded-resource LoadComponent(object), and custom
+// markup-extension instantiation (a documented v1 AOT limitation). The reflection DEFAULT is feature-switched
+// in XamlLoaderOptions so NativeAOT can drop it.
 public sealed class XamlLoader
 {
     private readonly XamlLoaderOptions _options;

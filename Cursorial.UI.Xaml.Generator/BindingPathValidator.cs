@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 
 using Cursorial.UI.Xaml; // frontend node graph (internals via InternalsVisibleTo)
-
 using Microsoft.CodeAnalysis;
 
 namespace Cursorial.UI.Xaml.Generator;
@@ -42,7 +41,7 @@ internal static class BindingPathValidator
                 scope.Pop();
 
             // An x:DataType on this object establishes the DataContext type for its whole subtree.
-            if (ResolveDataType(document, in obj, resolver) is { } declared)
+            if (ResolveDataType(document, in obj, resolver) is {} declared)
                 scope.Push((i + obj.SubtreeLength, declared));
 
             if (scope.Count == 0)
@@ -53,14 +52,16 @@ internal static class BindingPathValidator
             for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
             {
                 ref readonly var member = ref members[m];
+
                 if (member.Kind != XamlValueKind.Extension)
                     continue;
 
                 ref readonly var ext = ref extensions[member.ValueIndex];
+
                 if (ext.Kind != ExtensionKind.Binding)
                     continue;
 
-                if (parsed[ext.Payload] is { } node)
+                if (parsed[ext.Payload] is {} node)
                     ValidateBinding(node, dataType, report);
             }
         }
@@ -69,12 +70,15 @@ internal static class BindingPathValidator
     private static INamedTypeSymbol? ResolveDataType(XamlDocument document, in ObjectRecord obj, XamlSymbolResolver resolver)
     {
         var members = document.Members;
+
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref members[m];
-            if (member.Kind == XamlValueKind.Directive && member.DirectiveKind == (int)XamlDirectiveKind.DataType)
+
+            if (member.Kind == XamlValueKind.Directive && member.DirectiveKind == (int) XamlDirectiveKind.DataType)
                 return ResolveTypeName(document, document.Strings[member.ValueIndex], resolver);
         }
+
         return null;
     }
 
@@ -86,6 +90,7 @@ internal static class BindingPathValidator
 
         string prefix = string.Empty, local = token;
         int colon = token.IndexOf(':');
+
         if (colon > 0)
         {
             prefix = token.Substring(0, colon);
@@ -94,6 +99,7 @@ internal static class BindingPathValidator
 
         if (!document.Namespaces.TryGetValue(prefix, out var ns))
             ns = prefix.Length == 0 ? XamlSymbolResolver.CursorialUiNamespace : null!;
+
         if (ns is null)
             return null;
 
@@ -103,10 +109,15 @@ internal static class BindingPathValidator
     private static void ValidateBinding(MarkupExtensionNode node, INamedTypeSymbol dataType, Action<string, int, int> report)
     {
         // Only DataContext-relative bindings carry an x:DataType-validatable path.
-        if (node.FindNamed("Source") is not null || node.FindNamed("RelativeSource") is not null || node.FindNamed("ElementName") is not null)
+        if (node.FindNamed("Source") is not null ||
+            node.FindNamed("RelativeSource") is not null ||
+            node.FindNamed("ElementName") is not null)
+        {
             return;
+        }
 
         string? path = node.PositionalArguments.Count > 0 ? node.PositionalArguments[0].Text : node.FindNamed("Path")?.Text;
+
         if (string.IsNullOrEmpty(path) || path == ".")
             return; // binds to the DataContext itself — nothing to walk
 
@@ -115,12 +126,13 @@ internal static class BindingPathValidator
             return;
 
         INamedTypeSymbol current = dataType;
+
         foreach (var segment in path.Split('.'))
         {
             if (segment.Length == 0)
                 return;
 
-            if (FindMemberType(current, segment) is not { } memberType)
+            if (FindMemberType(current, segment) is not {} memberType)
             {
                 report($"Binding path member '{segment}' was not found on x:DataType '{current.Name}'.", node.Line, node.Column);
                 return;
@@ -141,12 +153,15 @@ internal static class BindingPathValidator
             {
                 if (member.DeclaredAccessibility != Accessibility.Public)
                     continue;
+
                 if (member is IPropertySymbol property)
                     return property.Type;
+
                 if (member is IFieldSymbol field)
                     return field.Type;
             }
         }
+
         return null;
     }
 }

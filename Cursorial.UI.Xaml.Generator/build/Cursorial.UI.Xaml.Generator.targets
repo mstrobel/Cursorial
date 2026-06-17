@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    Cursorial XAML generator — consumer targets (WS-X4.2). Imported after the consumer's items are
+    evaluated, this maps the first-class <CursorialXaml Include="View.xaml"/> item to an AdditionalFiles
+    entry the generator consumes, stamped with SourceItemType=CursorialXaml (the metadata the paired
+    .props made compiler-visible). Authors write <CursorialXaml>; the generator never sees raw
+    AdditionalFiles plumbing.
+  -->
+
+  <ItemGroup>
+    <AdditionalFiles Include="@(CursorialXaml)" SourceItemType="CursorialXaml" />
+  </ItemGroup>
+
+</Project>

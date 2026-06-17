@@ -45,4 +45,35 @@
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
     </ItemGroup>
 
+    <!-- ── WS-X4.2 packaging ─────────────────────────────────────────────────────────────────────────
+         The consumer .props/.targets ship in build/; the generator + its copy-local runtime deps (the
+         frontend + System.Memory + facades) ship as analyzer assets so the analyzer loads in the C#
+         compiler. Microsoft.CodeAnalysis is PrivateAssets=all → never copy-local, never packed (the
+         compiler supplies its own Roslyn). -->
+    <ItemGroup>
+        <None Include="build\Cursorial.UI.Xaml.Generator.props" Pack="true" PackagePath="build" />
+        <None Include="build\Cursorial.UI.Xaml.Generator.targets" Pack="true" PackagePath="build" />
+        <None Include="$(OutputPath)\Cursorial.UI.Xaml.Generator.dll" Pack="true" PackagePath="analyzers\dotnet\cs" Visible="false" />
+    </ItemGroup>
+
+    <Target Name="_CursorialXamlPackAnalyzerDeps" BeforeTargets="_GetPackageFiles" DependsOnTargets="ResolveReferences">
+        <ItemGroup>
+            <None Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'"
+                  Pack="true" PackagePath="analyzers\dotnet\cs" Visible="false" />
+        </ItemGroup>
+    </Target>
+
+    <!-- In-repo parity: a ProjectReference consumer (OutputItemType=Analyzer) gets the generator dll as an
+         analyzer; surface its runtime deps as analyzer assets too, or the analyzer fails to load. -->
+    <PropertyGroup>
+        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);_CursorialXamlGeneratorAnalyzerDeps</GetTargetPathDependsOn>
+    </PropertyGroup>
+    <Target Name="_CursorialXamlGeneratorAnalyzerDeps" DependsOnTargets="ResolveReferences">
+        <ItemGroup>
+            <!-- .dll only — surfacing the .pdb/.xml siblings makes the compiler try to load them as analyzers (CS8034). -->
+            <TargetPathWithTargetPlatformMoniker Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'"
+                                                 IncludeRuntimeDependency="false" />
+        </ItemGroup>
+    </Target>
+
 </Project>

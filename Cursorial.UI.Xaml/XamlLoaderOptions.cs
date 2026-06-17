@@ -15,20 +15,41 @@ namespace Cursorial.UI.Xaml;
 /// </remarks>
 public sealed class XamlLoaderOptions
 {
-    private static IXamlTypeMetadataProvider _default = ReflectionXamlMetadata.Instance;
+    private static IXamlTypeMetadataProvider? _default;
 
     /// <summary>
-    /// The process-wide default metadata provider new <see cref="XamlLoaderOptions"/> adopt
-    /// (<see cref="ReflectionXamlMetadata.Instance"/> unless overridden). The X4 generated provider sets
-    /// this from a <c>[ModuleInitializer]</c> (no reflection) so a consuming assembly's generated,
-    /// trim/AOT-clean provider becomes the default without any explicit opt-in. Setting <see langword="null"/>
-    /// restores the reflection provider.
+    /// The process-wide default metadata provider new <see cref="XamlLoaderOptions"/> adopt. The X4 generated
+    /// provider sets this from a <c>[ModuleInitializer]</c> (no reflection) so a consuming assembly's
+    /// generated, trim/AOT-clean provider becomes the default without any explicit opt-in. When nothing has
+    /// set it, it falls back to <see cref="ReflectionXamlMetadata.Instance"/> — UNLESS the reflection provider
+    /// is disabled for trimming/AOT (the <c>Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported</c>
+    /// feature switch), in which case a fallback read throws (the generated provider must be installed).
+    /// Setting <see langword="null"/> restores the fallback.
     /// </summary>
     public static IXamlTypeMetadataProvider DefaultMetadataProvider
     {
-        get => _default;
-        set => _default = value ?? ReflectionXamlMetadata.Instance;
+        get => _default ??= ReflectionMetadataProviderFallback();
+        set => _default = value ?? ReflectionMetadataProviderFallback();
     }
+
+    /// <summary>
+    /// The reflection metadata provider feature switch (default <see langword="true"/>). An app targeting
+    /// NativeAOT/trimming sets <c>Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported=false</c> (a
+    /// <c>RuntimeHostConfigurationOption</c> with <c>Trim="true"</c>); the trimmer then constant-folds this
+    /// and drops the reflection provider's <c>[RequiresUnreferencedCode]</c>/<c>[RequiresDynamicCode]</c>
+    /// branch entirely, so the generated provider is the only metadata source.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition("Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported")]
+    internal static bool IsReflectionMetadataProviderSupported
+        => !AppContext.TryGetSwitch("Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported", out var enabled) || enabled;
+
+    private static IXamlTypeMetadataProvider ReflectionMetadataProviderFallback()
+        => IsReflectionMetadataProviderSupported
+            ? ReflectionXamlMetadata.Instance
+            : throw new InvalidOperationException(
+                "No XAML metadata provider is installed and the reflection provider is disabled for trimming/AOT " +
+                "(Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported=false). The X4 generated provider's " +
+                "module initializer installs one — ensure the generator ran over this assembly's CursorialXaml.");
 
     /// <summary>The metadata provider; defaults to <see cref="DefaultMetadataProvider"/>.</summary>
     public IXamlTypeMetadataProvider MetadataProvider { get; init; } = DefaultMetadataProvider;

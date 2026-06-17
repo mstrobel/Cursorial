@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <RootNamespace>Cursorial.Tests.UI.Xaml.Generator</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+        <!-- The GeneratorDriver host used to run the generator under test. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Reference the generator as a plain assembly (we drive it manually via CSharpGeneratorDriver),
+             not as an analyzer. -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="true" />
+    </ItemGroup>
+
+</Project>

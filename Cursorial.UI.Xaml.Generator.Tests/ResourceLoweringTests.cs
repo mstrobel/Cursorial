@@ -87,6 +87,38 @@ namespace GenApp { public partial class StaticView : StackPanel { public StaticV
         Assert.Same(resourceBrush, button.Foreground);
     }
 
+    [Fact] // an init-only CLR property (SolidColorBrush.Color) is set via the construction object initializer (not CS8852)
+    public void Lowered_InitOnlyClrProperty_SetViaObjectInitializer()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.InitView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"Accent\" Color=\"#3050C0\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\" Foreground=\"{StaticResource Accent}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class InitView : StackPanel { public InitView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The init-only Color is set in the construction object initializer (a post-construction `.Color =` is CS8852).
+        Assert.Contains("new global::Cursorial.Drawing.Media.SolidColorBrush { Color =", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.InitView")!)!;
+        var button = Assert.IsType<Button>(view.Children[0]);
+
+        // The converter ran (#3050C0 → Color) and the init-only Color was set — the resolved brush carries it.
+        var brush = Assert.IsType<SolidColorBrush>(button.Foreground);
+        Assert.Equal(Color.FromRgb(0x30, 0x50, 0xC0), brush.Color);
+    }
+
     [Fact] // {DynamicResource} on a non-styled / non-bindable target stays a // TODO X5 (matches the runtime reject)
     public void Lowered_DynamicResource_NonStyledTarget_StaysTodo()
     {

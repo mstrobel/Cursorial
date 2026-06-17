@@ -87,6 +87,13 @@ internal static class XamlDataTypeScope
         _ => false,
     };
 
+    /// <summary>
+    /// True when the only public way to assign the member is an <c>init</c> setter — i.e. it must be set in an
+    /// object initializer (<c>new T { Prop = v }</c>), never post-construction (<c>__e.Prop = v</c> is CS8852).
+    /// </summary>
+    public static bool IsInitOnlySettable(ISymbol member)
+        => member is IPropertySymbol { SetMethod: { DeclaredAccessibility: Accessibility.Public, IsInitOnly: true } };
+
     /// <summary>True when a property/field member can be read through publicly (a public getter / any field).</summary>
     public static bool IsReadable(ISymbol member) => member switch
     {

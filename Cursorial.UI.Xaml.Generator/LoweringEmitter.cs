@@ -107,6 +107,12 @@ internal static class LoweringEmitter
 
         var objType = TypeSymbolOf(c.Doc, obj.TypeId);
 
+        // Init-only CLR value members (e.g. SolidColorBrush.Color) can't be set post-construction (CS8852) — they
+        // go in the construction object initializer. Pre-scan for them so the `new T { … }` carries them and the
+        // member loop skips them. (The root is `this` — already constructed — so its init-only members can't use
+        // an initializer; they fall to the member loop's ClrSetBlocked → TODO.)
+        var initMembers = isRoot ? null : ScanInitOnlyMembers(c, in obj, objType);
+
         if (!isRoot)
         {
             if (objType is null)
@@ -114,7 +120,8 @@ internal static class LoweringEmitter
                 c.Todo($"unresolved element type (object {objectIndex})");
                 return;
             }
-            c.Line($"var {varExpr} = new {Global(objType)}();");
+            var initializer = initMembers is { Entries.Count: > 0 } ? $" {{ {string.Join(", ", initMembers.Entries)} }}" : "()";
+            c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
         }
 
         // An x:DataType on this object establishes the compiled-binding source type for its whole subtree
@@ -126,6 +133,9 @@ internal static class LoweringEmitter
             ref readonly var member = ref c.Doc.Members[m];
             c.CurrentLineInfo = member.PackedLineInfo;
             c.CurrentObjectType = objType; // re-assert per member (child recursion clobbers it)
+
+            if (initMembers is not null && initMembers.Indices.Contains(m))
+                continue; // already emitted in the construction object initializer
 
             if (member.Kind == XamlValueKind.Directive)
             {
@@ -193,35 +203,96 @@ internal static class LoweringEmitter
         }
     }
 
+    // Pre-scans an object's Text/Folded members for init-only CLR value properties (settable only in an object
+    // initializer). Returns the initializer entries (`Prop = expr`) + the member indices to skip in the main loop.
+    private static InitOnlyScan ScanInitOnlyMembers(Context c, in ObjectRecord obj, INamedTypeSymbol? objType)
+    {
+        var scan = new InitOnlyScan();
+        if (objType is null)
+            return scan;
+
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind is not (XamlValueKind.Text or XamlValueKind.Folded))
+                continue;
+
+            var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+            if (xm is null || RegisteredOwner(xm) is not null) // a UIProperty uses SetValue, never an initializer
+                continue;
+
+            if (XamlDataTypeScope.FindMember(objType, xm.Name) is not { } sym || !XamlDataTypeScope.IsInitOnlySettable(sym))
+                continue;
+
+            var expr = member.Kind == XamlValueKind.Text
+                           ? ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex])
+                           : FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]);
+
+            if (expr is null) // unresolved — let the member loop TODO it (don't skip)
+                continue;
+
+            scan.Entries.Add($"{xm.Name} = {expr}");
+            scan.Indices.Add(m);
+        }
+
+        return scan;
+    }
+
     // A Text value: an object/string member takes the string literal directly; any other typed member runs
     // the (hand-written, AOT-clean) converter ladder via the emitted __ConvertXamlValue helper (X5.1).
+    // (Init-only CLR targets are set in the construction object initializer, NOT here — see EmitObject.)
     private static void EmitScalarAssign(Context c, string varExpr, XamlMember xm, string text)
     {
-        string valueExpr;
-        if (IsObjectOrString(xm.ValueType))
+        if (RegisteredOwner(xm) is { } owner)
         {
-            valueExpr = $"\"{Escape(text)}\"";
-        }
-        else if (ValueTypeSymbol(xm.ValueType) is { } valueType)
-        {
-            c.UsesConverter = true;
-            valueExpr = $"__ConvertXamlValue(typeof({Global(valueType)}), \"{Escape(text)}\")";
-        }
-        else
-        {
-            c.Todo($"unresolved value type for {xm.Name}=\"{Escape(text)}\"");
+            // SetValue takes object? — no cast needed.
+            if (ScalarConvertExpr(c, xm, text) is { } raw)
+                c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {raw});");
+            else
+                c.Todo($"unresolved value type for {xm.Name}=\"{Escape(text)}\"");
             return;
         }
 
-        if (RegisteredOwner(xm) is { } owner)
-            // SetValue takes object? — no cast needed.
-            c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
-        else if (IsObjectOrString(xm.ValueType))
-            c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
+        if (ClrSetBlocked(c, xm.Name))
+        {
+            c.Todo($"CLR property '{xm.Name}' is init-only/read-only — can't be set post-construction (set on the root, or a missed initializer)");
+            return;
+        }
+
+        if (ScalarTypedExpr(c, xm, text) is { } typed)
+            c.Line($"{varExpr}.{xm.Name} = {typed};");
         else
-            // CLR setter wants the property type — cast the converter's object? result.
-            c.Line($"{varExpr}.{xm.Name} = ({Global(ValueTypeSymbol(xm.ValueType)!)}){valueExpr}!;");
+            c.Todo($"unresolved value type for {xm.Name}=\"{Escape(text)}\"");
     }
+
+    // The object?-typed expression for a Text value (a string literal, or the converter call). Null = unresolved.
+    private static string? ScalarConvertExpr(Context c, XamlMember xm, string text)
+    {
+        if (IsObjectOrString(xm.ValueType))
+            return $"\"{Escape(text)}\"";
+
+        if (ValueTypeSymbol(xm.ValueType) is { } valueType)
+        {
+            c.UsesConverter = true;
+            return $"__ConvertXamlValue(typeof({Global(valueType)}), \"{Escape(text)}\")";
+        }
+
+        return null;
+    }
+
+    // The typed (cast) form for a CLR setter / object initializer (the converter's object? cast to the prop type).
+    private static string? ScalarTypedExpr(Context c, XamlMember xm, string text)
+    {
+        if (ScalarConvertExpr(c, xm, text) is not { } raw)
+            return null;
+
+        return IsObjectOrString(xm.ValueType) ? raw : $"({Global(ValueTypeSymbol(xm.ValueType)!)}){raw}!";
+    }
+
+    // True only when the property is POSITIVELY known non-writable post-construction (init-only / read-only). A
+    // symbol-walk miss keeps the current direct-set emit (avoids false TODOs for properties the walk doesn't surface).
+    private static bool ClrSetBlocked(Context c, string name)
+        => c.CurrentObjectType is { } t && XamlDataTypeScope.FindMember(t, name) is { } m && !XamlDataTypeScope.IsWritable(m);
 
     // A child element value: a ResourceDictionary member fills via Add(key, value) (the get-object dictionary,
     // keyed by x:Key); a registered-collection content member fills via Add(item); a single member is set
@@ -283,26 +354,37 @@ internal static class LoweringEmitter
         => ValueTypeSymbol(xm.ValueType) is INamedTypeSymbol s && SymbolXamlModel.IsResourceDictionary(s);
 
     // {x:Null} → null; {x:Static Type.Member} → the resolved static reference (global::Type.Member).
+    // (Init-only CLR targets are set in the construction object initializer, NOT here — see EmitObject.)
     private static void EmitFoldedAssign(Context c, string varExpr, XamlMember xm, object? constant)
     {
-        string? valueExpr = constant switch
-        {
-            null => "null",
-            XamlStaticReference staticRef => ResolveStaticPath(c, staticRef.MemberPath),
-            _ => null, // not expected under FoldConstants=false
-        };
-
-        if (valueExpr is null)
+        if (FoldedValueExpr(c, constant) is not { } valueExpr)
         {
             c.Todo($"folded value for {xm.Name} ({constant?.GetType().Name ?? "null"})");
             return;
         }
 
         if (RegisteredOwner(xm) is { } owner)
+        {
             c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
-        else
-            c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
+            return;
+        }
+
+        if (ClrSetBlocked(c, xm.Name))
+        {
+            c.Todo($"CLR property '{xm.Name}' is init-only/read-only — can't be set post-construction");
+            return;
+        }
+
+        c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
     }
+
+    // The C# expression for a folded constant: null, or {x:Static}'s resolved global:: reference. Null = not handled.
+    private static string? FoldedValueExpr(Context c, object? constant) => constant switch
+    {
+        null => "null",
+        XamlStaticReference staticRef => ResolveStaticPath(c, staticRef.MemberPath),
+        _ => null, // not expected under FoldConstants=false
+    };
 
     // ── {Binding} (B3a — the compiled lane) ──────────────────────────────────────────────────────
 
@@ -614,6 +696,13 @@ internal static class LoweringEmitter
     private static string Global(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
     private static string Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    // The result of an init-only member pre-scan: the object-initializer entries + the member indices to skip.
+    private sealed class InitOnlyScan
+    {
+        public List<string> Entries { get; } = [];
+        public HashSet<int> Indices { get; } = [];
+    }
 
     private sealed class Context(XamlDocument document, string indent, XamlSymbolResolver resolver)
     {

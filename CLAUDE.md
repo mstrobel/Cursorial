@@ -562,34 +562,48 @@ on a real Kitty terminal (the `(DistinguishesKeyUpDown && ReportsRepeats) || Win
   reflective-fallback v1 producer, B185). Binding matrix 183 green (164 reflection + 19 compiled, in
   `BindingMatrix/Section12_CompiledLane` + `Section15_CompiledDescriptor`), the extraction mutation-verified,
   full UI suite 2260 green.
+- **TSA — the frontend type-system abstraction (the keystone, ✅ complete):** `XamlType.ClrType` and
+  `XamlMember.ValueType` are now an `IXamlType` interface (`Name`/`IsCollection`/`UnderlyingSystemType?`), not
+  a concrete `System.Type` — two backends: `ReflectionXamlType` (loader; wraps `System.Type`) and
+  `RoslynXamlType` (generator; wraps an `INamedTypeSymbol`, `UnderlyingSystemType` null). The `Type`-accepting
+  ctors stay as conveniences that wrap into `ReflectionXamlType`, so the loader's reflection provider keeps
+  passing `typeof(T)`; the parser's single-child Object-vs-Items decision reads `IXamlType.IsCollection`
+  (the old `IsCollectionMember` relocated into the backend); the loader reaches the runtime `Type` through
+  `UnderlyingSystemType` (a small internal `SystemType()` helper). This is what lets `XamlFrontend.Parse` run
+  **inside the generator over Roslyn symbols** — the same parser the loader runs.
 - **Fork C X4 — the build-time XAML generator (`Cursorial.UI.Xaml.Generator`, a netstandard2.0 Roslyn
-  `IIncrementalGenerator`):** the generated metadata-provider pipeline is built and dual-run-verified.
-  - It discovers `CursorialXaml` items (AdditionalFiles flagged `SourceItemType=CursorialXaml`), runs the SAME
-    `XamlFrontend.Parse` the loader runs (referenced via `ProjectReference` + `InternalsVisibleTo`), and surfaces
-    the `CUR1xxx` parse-band diagnostics as Roslyn build diagnostics at the `.xaml` line/col (syntax-mode; the
-    `CUR2xxx` semantic band needs the System.Type-resolved parse — see "build-time type system" below).
+  `IIncrementalGenerator`): the core story is complete** — symbol-backed parse, full diagnostics, the AOT-clean
+  generated provider, and typed code-behind. It references the frontend via `ProjectReference` +
+  `InternalsVisibleTo` (the node-graph internals).
   - **The build-time type system** is resolved purely from Roslyn symbols (never loading `Cursorial.UI` into the
     compiler): `XamlSymbolResolver` maps `(xmlns, localName)` → `INamedTypeSymbol` (the `XamlSchemaContext` default
-    map); a *recording* metadata provider captures the document's element-name set during a syntax-mode parse
-    (the node graph drops raw names under a null provider); `MetadataProviderEmitter` then enumerates each type's
-    XAML-settable members from symbols and emits the generated `IXamlTypeMetadataProvider` — shaped like
-    `HandBuiltMetadata`, mirroring `ReflectionXamlMetadata`'s `BuildType`/`BuildMember` (activation, content
-    property + collection, registered-`UIProperty` field refs vs CLR setter/getter delegates, events), with the
-    converter emitted as a runtime `XamlConverters.For(typeof(...))` call (converter drift impossible). The
-    consumer's `typeof`/field refs resolve at *its* compile, so no runtime `System.Type` is needed at generator
-    time.
-  - **Verified end-to-end:** the emitted provider compiles against the real assemblies; the **dual-run drift gate**
-    (matrix X174 / the P10 exit criterion) loads it and asserts a real control tree (`StackPanel` > `Button` +
-    `Border` > `Button`) renders byte-identically through the generated provider and `ReflectionXamlMetadata` —
-    **zero drift**; and a generated `[ModuleInitializer]` installs the provider as `XamlLoaderOptions.
-    DefaultMetadataProvider` (AOT-clean, no reflection) so it's used with no explicit opt-in. Generator suite 17
-    green (`Cursorial.UI.Xaml.Generator.Tests`).
-  - **Remaining X4/B3 tail** (not yet built): typed `x:Name` fields + `InitializeComponent` codegen (X4.6 — the
-    `x:Name`→element-type correlation wants the type-resolved parse); the `CursorialXaml` MSBuild `.props`/
-    `.targets` + the AOT-publish demo (X4.2/X4.7 — the AOT-clean exit also wants the loader's default-provider path
-    to drop its static `ReflectionXamlMetadata` reference, and AOT publish needs a native toolchain to verify);
-    broader emitter coverage (attached properties, `x:Static` baking, deferred-content/templates); and **S2 B3**
-    (generator-emitted `CompiledBinding` descriptors + `x:DataType` build-time path diagnostics).
+    map); the shared `SymbolXamlModel` (extracted from the emitter — ONE source so the parse provider and the
+    emitted provider can't drift) mirrors `ReflectionXamlMetadata`'s full `BuildMember` ladder: the synthetic
+    `Style.TargetType`, registered `UIProperty`s via the `<Name>Property` field convention (instance AND
+    **attached** — `Grid.Row` etc., a second enumeration pass), events, CLR properties.
+  - **`RoslynXamlMetadata` (X4.3)** is the symbol-backed `IXamlTypeMetadataProvider`: it builds `XamlType`/
+    `XamlMember` with `RoslynXamlType` identities so the parser runs in the generator, yielding the **`CUR1xxx`
+    syntax AND `CUR2xxx` semantic bands** (type/member-not-found) as Roslyn build diagnostics at the `.xaml`
+    line/col (X4.4). A coverage audit over a representative theme-style document asserts zero CUR2 false
+    positives on valid XAML.
+  - **`MetadataProviderEmitter` (X4.5)** emits one generated `IXamlTypeMetadataProvider` per compilation over the
+    union closed type set, with a `[ModuleInitializer]` that installs it as `XamlLoaderOptions.
+    DefaultMetadataProvider` (AOT-clean). The **dual-run drift gate** (matrix X174 / the P10 exit) loads it and
+    asserts a real control tree (incl. an attached `Grid.Row`) renders **byte-identically** to
+    `ReflectionXamlMetadata` — zero drift. The converter is an emitted runtime `XamlConverters.For(typeof(...))`
+    call (drift impossible).
+  - **Code-behind (X4.6)** — for each `x:Class` document `CodeBehindEmitter` emits a `partial class` with a typed
+    `internal <ElementType> <Name>` field per document-scope `x:Name` (resource-dictionary / template-scope names
+    excluded) and an `InitializeComponent()` that loads the XAML through a loader bound DIRECTLY to the
+    assembly's own generated provider (deterministic, no global-default coupling), then assigns the fields from
+    the document name scope. An end-to-end test compiles a real `MyView : StackPanel` code-behind against the
+    generated partial, instantiates it, and asserts the typed fields are populated. Generator suite 36 green;
+    `Cursorial.UI.Xaml.Generator.Tests` is serialized (module-inits mutate the process-global default provider).
+  - **Remaining X4/B3 tail** (not yet built): the `CursorialXaml` MSBuild `.props`/`.targets` + the AOT-publish
+    demo (X4.2/X4.7 — the AOT-clean exit also wants the loader's default-provider path to drop its static
+    `ReflectionXamlMetadata` reference, and AOT publish needs a native toolchain to verify); broader emitter
+    coverage (`x:Static` baking, deferred-content/templates); and **S2 B3** (generator-emitted `CompiledBinding`
+    descriptors + `x:DataType` build-time path diagnostics).
 
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette

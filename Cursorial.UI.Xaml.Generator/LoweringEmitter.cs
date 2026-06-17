@@ -24,7 +24,7 @@ namespace Cursorial.UI.Xaml.Generator;
 /// </remarks>
 internal static class LoweringEmitter
 {
-    public static string? Emit(XamlDocument document, string xamlPath, XamlSymbolResolver resolver)
+    public static LoweringResult? Emit(XamlDocument document, string xamlPath, XamlSymbolResolver resolver)
     {
         if (!document.HasObjects)
             return null;
@@ -91,19 +91,20 @@ internal static class LoweringEmitter
         if (ns is not null)
             sb.AppendLine("}");
 
-        return sb.ToString();
+        return new LoweringResult(sb.ToString(), ctx.Unlowered);
     }
 
     private static void EmitObject(Context c, int objectIndex, string varExpr, bool isRoot, bool hasScope, INamedTypeSymbol? dataType)
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
+        c.CurrentLineInfo = obj.PackedLineInfo;
 
         if (!isRoot)
         {
             var typeSymbol = TypeSymbolOf(c.Doc, obj.TypeId);
             if (typeSymbol is null)
             {
-                c.Line($"// TODO X5: unresolved element type (object {objectIndex})");
+                c.Todo($"unresolved element type (object {objectIndex})");
                 return;
             }
             c.Line($"var {varExpr} = new {Global(typeSymbol)}();");
@@ -116,6 +117,7 @@ internal static class LoweringEmitter
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
+            c.CurrentLineInfo = member.PackedLineInfo;
 
             if (member.Kind == XamlValueKind.Directive)
             {
@@ -177,7 +179,7 @@ internal static class LoweringEmitter
                     break;
 
                 default:
-                    c.Line($"// TODO X5: member '{xm.Name}' kind {member.Kind} not yet lowered");
+                    c.Todo($"member '{xm.Name}' kind {member.Kind} not yet lowered");
                     break;
             }
         }
@@ -199,7 +201,7 @@ internal static class LoweringEmitter
         }
         else
         {
-            c.Line($"// TODO X5: unresolved value type for {xm.Name}=\"{Escape(text)}\"");
+            c.Todo($"unresolved value type for {xm.Name}=\"{Escape(text)}\"");
             return;
         }
 
@@ -241,7 +243,7 @@ internal static class LoweringEmitter
 
         if (valueExpr is null)
         {
-            c.Line($"// TODO X5: folded value for {xm.Name} ({constant?.GetType().Name ?? "null"})");
+            c.Todo($"folded value for {xm.Name} ({constant?.GetType().Name ?? "null"})");
             return;
         }
 
@@ -262,7 +264,7 @@ internal static class LoweringEmitter
         }
 
         // StaticResource/DynamicResource/TemplateBinding lowering are later X5 workstreams (resources/templates).
-        c.Line($"// TODO X5: extension {ext.Kind} for '{xm.Name}' not yet lowered");
+        c.Todo($"extension {ext.Kind} for '{xm.Name}' not yet lowered");
     }
 
     // B3a/B3b — {Binding} lowering. The compiled lane (zero reflection, AOT-clean) is taken for an
@@ -276,7 +278,7 @@ internal static class LoweringEmitter
         // A binding target must be a registered UIProperty — the runtime handler enforces the same (X119).
         if (RegisteredOwner(xm) is not { } owner)
         {
-            c.Line($"// TODO X5: binding target '{xm.Name}' is not a bindable UIProperty");
+            c.Todo($"binding target '{xm.Name}' is not a bindable UIProperty");
             return;
         }
 
@@ -342,19 +344,19 @@ internal static class LoweringEmitter
         // A Converter needs eager resource/static resolution, which lowering doesn't do yet — defer (X5.4).
         if (HasNamed(node, "Converter"))
         {
-            c.Line($"// TODO X5: {{Binding}} with a Converter for '{xm.Name}' not yet lowered (needs resource lowering)");
+            c.Todo($"{{Binding}} with a Converter for '{xm.Name}' not yet lowered (needs resource lowering)");
             return;
         }
 
         if (CanonicalMode(node) is not { } modeName)
         {
-            c.Line($"// TODO X5: {{Binding}} with an unrecognized Mode for '{xm.Name}'");
+            c.Todo($"{{Binding}} with an unrecognized Mode for '{xm.Name}'");
             return;
         }
 
         if (RelativeSourceInit(node) is not { } relSource)
         {
-            c.Line($"// TODO X5: {{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self/TemplatedParent only)");
+            c.Todo($"{{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self/TemplatedParent only)");
             return;
         }
 
@@ -473,10 +475,41 @@ internal static class LoweringEmitter
         public XamlSymbolResolver Resolver { get; } = resolver;
         public StringBuilder Body { get; } = new();
         public bool UsesConverter { get; set; }
+        public List<UnloweredMember> Unlowered { get; } = [];
+
+        /// <summary>The packed source position of the member currently being lowered — stamps any TODO note.</summary>
+        public int CurrentLineInfo { get; set; }
+
         private int _counter;
 
         public string NextVar() => $"__e{_counter++}";
 
         public void Line(string statement) => Body.AppendLine(indent + statement);
+
+        /// <summary>
+        /// Records a feature the full-lowering can't yet emit: leaves a visible <c>// TODO X5</c> marker in the
+        /// generated code AND a note the generator surfaces as a build warning (so an opted-in <c>full</c> build
+        /// never silently drops a member — the marker alone would be invisible at the call site).
+        /// </summary>
+        public void Todo(string message)
+        {
+            Line("// TODO X5: " + message);
+            Unlowered.Add(new UnloweredMember(message, LineInfo.Line(CurrentLineInfo), LineInfo.Column(CurrentLineInfo)));
+        }
+    }
+
+    /// <summary>The lowered source plus the members it couldn't emit (each a build-warning candidate).</summary>
+    public readonly struct LoweringResult(string source, IReadOnlyList<UnloweredMember> unlowered)
+    {
+        public string Source { get; } = source;
+        public IReadOnlyList<UnloweredMember> Unlowered { get; } = unlowered;
+    }
+
+    /// <summary>A member the full-lowering couldn't emit, with its 1-based source position (0 if unknown).</summary>
+    public readonly struct UnloweredMember(string message, int line, int column)
+    {
+        public string Message { get; } = message;
+        public int Line { get; } = line;
+        public int Column { get; } = column;
     }
 }

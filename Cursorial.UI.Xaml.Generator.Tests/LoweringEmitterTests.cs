@@ -26,8 +26,8 @@ public class LoweringEmitterTests
             DiagnosticMode = XamlDiagnosticMode.CollectAll,
             FoldConstants = false,
         });
-        return LoweringEmitter.Emit(document, "MyView.xaml", new XamlSymbolResolver(compilation))
-            ?? throw new System.InvalidOperationException("no lowering emitted");
+        return (LoweringEmitter.Emit(document, "MyView.xaml", new XamlSymbolResolver(compilation))
+                ?? throw new System.InvalidOperationException("no lowering emitted")).Source;
     }
 
     [Fact]

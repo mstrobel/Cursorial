@@ -11,4 +11,13 @@
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SourceItemType" />
   </ItemGroup>
 
+  <!--
+    WS-X5.5 — the full-lowering opt-in. Set <CursorialXamlLowering>full</CursorialXamlLowering> to compile each
+    x:Class document to straight-line, reflection-free C# (no runtime XAML loader) instead of the default
+    loader-backed code-behind. A member the lowering can't yet emit is reported as a CURG3001 build warning.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="CursorialXamlLowering" />
+  </ItemGroup>
+
 </Project>

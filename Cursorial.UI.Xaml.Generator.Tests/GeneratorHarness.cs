@@ -99,6 +99,12 @@ internal static class GeneratorHarness
     /// generator diagnostics — the substrate for the code-behind end-to-end test.</summary>
     public static (CSharpCompilation Compilation, ImmutableArray<Diagnostic> Diagnostics) RunWithCodeBehind(
         string codeBehindSource, params (string FileName, string Xaml)[] files)
+        => RunWithCodeBehind(codeBehindSource, loweringFull: false, files);
+
+    /// <summary>As <see cref="RunWithCodeBehind(string, ValueTuple{string,string}[])"/>, but with the WS-X5.5
+    /// full-lowering opt-in (<c>build_property.CursorialXamlLowering=full</c>) set when <paramref name="loweringFull"/>.</summary>
+    public static (CSharpCompilation Compilation, ImmutableArray<Diagnostic> Diagnostics) RunWithCodeBehind(
+        string codeBehindSource, bool loweringFull, params (string FileName, string Xaml)[] files)
     {
         var compilation = ReferencedCompilation("CodeBehindHost")
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehindSource));
@@ -107,10 +113,14 @@ internal static class GeneratorHarness
                               .Select(f => (AdditionalText) new InMemoryAdditionalText(f.FileName, f.Xaml))
                               .ToImmutableArray();
 
+        var globalOptions = loweringFull
+            ? new Dictionary<string, string> { ["build_property.CursorialXamlLowering"] = "full" }
+            : new Dictionary<string, string>();
+
         var driver = CSharpGeneratorDriver.Create(
             generators: [new Cursorial.UI.Xaml.Generator.XamlSourceGenerator().AsSourceGenerator()],
             additionalTexts: additionalTexts,
-            optionsProvider: new CursorialXamlOptionsProvider(additionalTexts));
+            optionsProvider: new CursorialXamlOptionsProvider(additionalTexts, globalOptions));
 
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
         return ((CSharpCompilation) updated, diagnostics);
@@ -140,14 +150,16 @@ internal static class GeneratorHarness
     }
 
     // Returns SourceItemType=CursorialXaml for every supplied .xaml additional file (mirrors the package targets).
-    private sealed class CursorialXamlOptionsProvider(ImmutableArray<AdditionalText> xamlFiles) : AnalyzerConfigOptionsProvider
+    private sealed class CursorialXamlOptionsProvider(
+        ImmutableArray<AdditionalText> xamlFiles, Dictionary<string, string>? globalOptions = null) : AnalyzerConfigOptionsProvider
     {
         private readonly AnalyzerConfigOptions _cursorialXaml = new FixedOptions(
             new Dictionary<string, string> { ["build_metadata.AdditionalFiles.SourceItemType"] = "CursorialXaml" });
 
         private readonly AnalyzerConfigOptions _empty = new FixedOptions(new Dictionary<string, string>());
+        private readonly AnalyzerConfigOptions _global = new FixedOptions(globalOptions ?? new Dictionary<string, string>());
 
-        public override AnalyzerConfigOptions GlobalOptions => _empty;
+        public override AnalyzerConfigOptions GlobalOptions => _global;
 
         public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _empty;
 

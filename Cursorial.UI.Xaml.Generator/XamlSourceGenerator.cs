@@ -51,11 +51,19 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
                                            pair.Left.Path,
                                            pair.Left.GetText(ct)?.ToString() ?? string.Empty));
 
+        // WS-X5.5 — the full-lowering opt-in. `<CursorialXamlLowering>full</CursorialXamlLowering>` (a
+        // compiler-visible MSBuild property, declared in the package .props) switches each x:Class document from
+        // the X4.6 runtime-loader code-behind to the X5 straight-line lowering (reflection-free). Default
+        // (unset / anything but "full") keeps the loader-backed code-behind.
+        var loweringFull = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) =>
+            provider.GlobalOptions.TryGetValue("build_property.CursorialXamlLowering", out var mode)
+            && string.Equals(mode, "full", System.StringComparison.OrdinalIgnoreCase));
+
         // Combine with the compilation so the symbol-backed RoslynXamlMetadata can resolve types (WS-X4.3).
         // This makes the generator compilation-coupled (re-runs as the compilation changes) — the standard
         // tradeoff for a semantic generator; XAML inputs themselves stay equatable for the file half.
-        var withCompilation = xamlFiles.Combine(context.CompilationProvider);
-        context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left, pair.Right));
+        var withCompilation = xamlFiles.Combine(context.CompilationProvider).Combine(loweringFull);
+        context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left.Left, pair.Left.Right, pair.Right));
 
         // WS-X4.5 — one generated metadata provider per compilation, over the UNION of every CursorialXaml
         // file's closed type set. A generated [ModuleInitializer] installs it as the loader default so the
@@ -91,7 +99,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             spc.AddSource("__GeneratedXamlMetadata.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 
-    private static void Emit(SourceProductionContext spc, XamlInput input, Compilation compilation)
+    private static void Emit(SourceProductionContext spc, XamlInput input, Compilation compilation, bool loweringFull)
     {
         // Run the SAME parser the loader runs, now over the symbol-backed provider (WS-X4.3) so element types
         // resolve and the node graph carries them. FoldConstants=false — there are no runtime values to fold at
@@ -149,6 +157,19 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         }
 
         var hint = SanitizeHint(System.IO.Path.GetFileNameWithoutExtension(input.Path)) + ".g.cs";
+
+        // WS-X5.5 — full-lowering opt-in: an x:Class document with valid syntax lowers to straight-line,
+        // reflection-free C# (no runtime loader). Any member the lowering can't yet emit is surfaced as a
+        // CURG3001 build warning at its .xaml position, so an opted-in build never silently drops a member.
+        if (loweringFull && !hasSyntaxError &&
+            LoweringEmitter.Emit(document, input.Path, new XamlSymbolResolver(compilation)) is { } lowered)
+        {
+            foreach (var note in lowered.Unlowered)
+                spc.ReportDiagnostic(Diagnostic.Create(LoweringGap, LocationFor(input, note.Line, note.Column), note.Message));
+
+            spc.AddSource(hint, SourceText.From(lowered.Source, Encoding.UTF8));
+            return;
+        }
 
         // WS-X4.6 — a document with an x:Class and valid syntax gets the typed-field + InitializeComponent
         // partial. (A syntax error leaves the node graph unreliable, so fall back to the marker.)
@@ -223,6 +244,17 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         id: "CURG2001",
         title: "Binding path does not resolve on the declared x:DataType",
         messageFormat: "{0}",
+        category: "Cursorial.Xaml",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    // WS-X5.5 — a full-lowering gap: a member the lowering couldn't emit (it left a // TODO X5 marker and the
+    // member has no runtime effect). Warning, so an opted-in `full` build sees the dropped member instead of a
+    // silently-incomplete view; the fix is to use the supported subset or stay on the code-behind path.
+    private static readonly DiagnosticDescriptor LoweringGap = new(
+        id: "CURG3001",
+        title: "XAML member not lowered (full-lowering)",
+        messageFormat: "Full-lowering could not emit this member, so it has no runtime effect: {0}",
         category: "Cursorial.Xaml",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

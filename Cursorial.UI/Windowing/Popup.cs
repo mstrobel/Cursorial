@@ -75,6 +75,7 @@ public class Popup : UIElement
 
     private bool _open;
     private WindowManager? _manager;
+    private UIElement? _restoreFocusTo; // the element focused when this popup opened — restored on close (W4-b)
 
     static Popup()
     {
@@ -165,12 +166,25 @@ public class Popup : UIElement
         if (!_open)
             return;
 
+        // On-close focus restore (W4-b): only when the popup actually held keyboard focus (a menu/context-menu
+        // with a focused item) — a hover-only popup or a tooltip never had focus, so its trigger is left alone.
+        // Capture the verdict + target BEFORE closing tears the focus chain down.
+        var restoreFocusTo = (Child?.IsKeyboardFocusWithin ?? false) ? _restoreFocusTo : null;
+        _restoreFocusTo = null;
+
         _open = false;
         _manager?.ClosePopup(this);
         _manager = null;
         SyncOwnerInheritanceBridge(); // drop the owner bridge now that we're closed
         if (IsOpen)
             SetCurrentValue(IsOpenProperty, false); // write-back; _open is already false so this does not re-enter
+
+        // Return focus to the trigger (Esc-in-submenu → parent header, context-menu dismiss → the right-clicked
+        // element). Guarded on still-attached so a torn-down target is skipped; nested popups chain their
+        // restores so the outermost lands on the original trigger.
+        if (restoreFocusTo is { IsAttachedToTree: true })
+            restoreFocusTo.Focus(FocusNavigationMethod.Restore);
+
         Closed?.Invoke(this, new PopupClosedEventArgs(reason));
     }
 
@@ -182,6 +196,9 @@ public class Popup : UIElement
         _manager = UIApplication.Current?.WindowManager;
         if (_manager is null)
             return;
+
+        // Capture the focused element BEFORE opening (the trigger) — restored on close if the popup takes focus (W4-b).
+        _restoreFocusTo = UIApplication.Current?.FocusManager.FocusedElement;
 
         _open = true;
         _manager.OpenPopup(this);

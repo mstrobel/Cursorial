@@ -330,4 +330,75 @@ public sealed class WindowPopupTests
         Assert.Empty(wm.Popups);
         Assert.Null(popup.PopupSurface);
     }
+
+    // ───────────────────────────── W4-b: on-close focus restore ─────────────────────────────
+
+    [Fact] // closing a popup that HELD keyboard focus returns focus to the SPECIFIC trigger (Esc-in-submenu → parent, dismiss → opener)
+    public void FocusRestore_OnClose_ReturnsToTrigger()
+    {
+        // The trigger is NOT the first tab stop (a decoy precedes it), so this is distinguishable from
+        // plain detach focus-repair — which would land on the scope-root's first tab stop (the decoy), not
+        // the trigger. Only the explicit restore lands on `target`.
+        var host = NewHost();
+        using var _ = host;
+
+        var decoy = new UIControls.Button { Width = 10, Height = 1, Content = "decoy" }; // the first tab stop
+        var target = new UIControls.Button { Width = 10, Height = 1, Content = "open" };  // the trigger (second)
+        var inner = new UIControls.Button { Width = 8, Height = 3, Content = "menu" };
+        var popup = new Popup { Child = inner, PlacementTarget = target };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(decoy);
+        root.Children.Add(target);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        target.Focus();
+        Assert.True(host.RunUntilIdle());
+        Assert.Same(target, host.Application.FocusManager.FocusedElement);
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        inner.Focus(); // the popup takes keyboard focus (a focused menu item)
+        Assert.True(host.RunUntilIdle());
+        Assert.Same(inner, host.Application.FocusManager.FocusedElement);
+
+        popup.Close();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(popup.IsOpen);
+        // Restored to the SPECIFIC trigger, not the scope-root first tab stop (the decoy) that repair would pick.
+        Assert.Same(target, host.Application.FocusManager.FocusedElement);
+    }
+
+    [Fact] // closing a popup that never held focus does NOT yank focus back (the IsKeyboardFocusWithin guard)
+    public void FocusRestore_Skipped_WhenPopupNeverHeldFocus()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var target = new UIControls.Button { Width = 10, Height = 1, Content = "open" };
+        var other = new UIControls.Button { Width = 10, Height = 1, Content = "other" };
+        var inner = new UIControls.Button { Width = 8, Height = 3, Content = "menu" };
+        var popup = new Popup { Child = inner, PlacementTarget = target };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(target);
+        root.Children.Add(other);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        target.Focus();        // trigger focused at open time (captured)
+        Assert.True(host.RunUntilIdle());
+        popup.Open();          // opens, but focus stays out of the popup
+        Assert.True(host.RunUntilIdle());
+        other.Focus();         // focus deliberately moves elsewhere
+        Assert.True(host.RunUntilIdle());
+        Assert.Same(other, host.Application.FocusManager.FocusedElement);
+
+        popup.Close();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Same(other, host.Application.FocusManager.FocusedElement); // NOT yanked back to the trigger
+    }
 }

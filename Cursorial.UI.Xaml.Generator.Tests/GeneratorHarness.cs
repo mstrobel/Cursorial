@@ -91,6 +91,41 @@ internal static class GeneratorHarness
         return (Cursorial.UI.Xaml.IXamlTypeMetadataProvider)instance!;
     }
 
+    /// <summary>Runs the generator over <paramref name="codeBehindSource"/> (a hand-written code-behind syntax
+    /// tree) + the given CursorialXaml files, returning the updated compilation (with generated sources) and the
+    /// generator diagnostics — the substrate for the code-behind end-to-end test.</summary>
+    public static (CSharpCompilation Compilation, ImmutableArray<Diagnostic> Diagnostics) RunWithCodeBehind(
+        string codeBehindSource, params (string FileName, string Xaml)[] files)
+    {
+        var compilation = ReferencedCompilation("CodeBehindHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehindSource));
+
+        var additionalTexts = files
+            .Select(f => (AdditionalText)new InMemoryAdditionalText(f.FileName, f.Xaml))
+            .ToImmutableArray();
+
+        var driver = CSharpGeneratorDriver.Create(
+            generators: [new Cursorial.UI.Xaml.Generator.XamlSourceGenerator().AsSourceGenerator()],
+            additionalTexts: additionalTexts,
+            optionsProvider: new CursorialXamlOptionsProvider(additionalTexts));
+
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
+        return ((CSharpCompilation)updated, diagnostics);
+    }
+
+    /// <summary>Compiles a compilation to an in-memory assembly and loads it (throws on compile error).</summary>
+    public static System.Reflection.Assembly EmitAndLoad(Compilation compilation)
+    {
+        using var ms = new System.IO.MemoryStream();
+        var result = compilation.Emit(ms);
+        if (!result.Success)
+        {
+            var errors = string.Join("\n", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+            throw new System.InvalidOperationException("compilation failed:\n" + errors);
+        }
+        return System.Reflection.Assembly.Load(ms.ToArray());
+    }
+
     private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText
     {
         public override string Path { get; } = path;

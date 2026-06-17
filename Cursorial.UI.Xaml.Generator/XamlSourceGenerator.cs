@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Text;
 
 using Cursorial.UI.Xaml; // source-linked frontend: XamlFrontend, XamlDocument, XamlDiagnostic, XamlParseOptions
-
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
@@ -32,34 +31,47 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         // Each CursorialXaml file → an equatable (path, text) input (filtered to our item type so a stray
         // .xaml added as a plain AdditionalFiles isn't picked up). Equatable strings drive incrementality.
         var xamlFiles = context.AdditionalTextsProvider
-            .Combine(context.AnalyzerConfigOptionsProvider)
-            .Where(static pair =>
-            {
-                var (file, options) = pair;
-                if (!file.Path.EndsWith(".xaml", System.StringComparison.OrdinalIgnoreCase))
-                    return false;
-                return options.GetOptions(file).TryGetValue(SourceItemTypeKey, out var itemType)
-                    && string.Equals(itemType, CursorialXamlItemType, System.StringComparison.OrdinalIgnoreCase);
-            })
-            .Select(static (pair, ct) => new XamlInput(
-                pair.Left.Path,
-                pair.Left.GetText(ct)?.ToString() ?? string.Empty));
+                               .Combine(context.AnalyzerConfigOptionsProvider)
+                               .Where(static pair =>
+                                      {
+                                          var (file, options) = pair;
 
-        context.RegisterSourceOutput(xamlFiles, static (spc, input) => Emit(spc, input));
+                                          if (!file.Path.EndsWith(".xaml", System.StringComparison.OrdinalIgnoreCase))
+                                              return false;
+
+                                          return options.GetOptions(file).TryGetValue(SourceItemTypeKey, out var itemType)
+                                                 && string.Equals(itemType, CursorialXamlItemType, System.StringComparison.OrdinalIgnoreCase);
+                                      })
+                               .Select(static (pair, ct) => new XamlInput(
+                                           pair.Left.Path,
+                                           pair.Left.GetText(ct)?.ToString() ?? string.Empty));
+
+        // Combine with the compilation so the symbol-backed RoslynXamlMetadata can resolve types (WS-X4.3).
+        // This makes the generator compilation-coupled (re-runs as the compilation changes) — the standard
+        // tradeoff for a semantic generator; XAML inputs themselves stay equatable for the file half.
+        var withCompilation = xamlFiles.Combine(context.CompilationProvider);
+        context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left, pair.Right));
     }
 
-    private static void Emit(SourceProductionContext spc, XamlInput input)
+    private static void Emit(SourceProductionContext spc, XamlInput input, Compilation compilation)
     {
-        // Run the same parser the loader runs (syntax mode: no metadata provider yet — WS-X4.3 adds the
-        // symbol-backed provider for the semantic band). CollectAll so a malformed document yields every
-        // diagnostic rather than throwing on the first.
+        // Run the SAME parser the loader runs, now over the symbol-backed provider (WS-X4.3) so element types
+        // resolve and the node graph carries them. FoldConstants=false — there are no runtime values to fold at
+        // generator time. CollectAll so a malformed document yields every diagnostic rather than throwing.
         XamlDocument document;
+
         try
         {
             document = XamlFrontend.Parse(
                 input.Text,
-                new XamlParseOptions { DiagnosticMode = XamlDiagnosticMode.CollectAll },
-                source: null);
+                new XamlParseOptions
+                {
+                    MetadataProvider = new RoslynXamlMetadata(compilation),
+                    DiagnosticMode = XamlDiagnosticMode.CollectAll,
+                    FoldConstants = false,
+                },
+                source: null
+            );
         }
         catch (System.Exception ex)
         {
@@ -69,34 +81,51 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             return;
         }
 
+        bool hasSyntaxError = false;
+
         foreach (var diagnostic in document.Diagnostics)
         {
-            // Syntax mode: only the CUR1xxx parse band is sound without type resolution. The CUR2xxx
-            // (resolution) / CUR3xxx (instantiation) bands would false-positive on every element while
-            // the metadata provider is null — they join once WS-X4.3's RoslynXamlMetadata lands.
+            // Only the CUR1xxx parse (syntax) band is surfaced here. The CUR2xxx semantic band joins at WS-B
+            // once the symbol model's member coverage is complete enough to never false-positive (e.g.
+            // Style.TargetType). Surfacing it prematurely would break builds on valid XAML.
             if (!diagnostic.Code.StartsWith("CUR1", System.StringComparison.Ordinal))
                 continue;
+
+            if (diagnostic.Severity == XamlDiagnosticSeverity.Error)
+                hasSyntaxError = true;
+
             spc.ReportDiagnostic(ToRoslyn(diagnostic, input));
         }
 
-        // WS-X4.1 marker (retained until the codegen passes replace it) — proves the file reached the generator.
         var hint = SanitizeHint(System.IO.Path.GetFileNameWithoutExtension(input.Path)) + ".g.cs";
+
+        // WS-X4.6 — a document with an x:Class and valid syntax gets the typed-field + InitializeComponent
+        // partial. (A syntax error leaves the node graph unreliable, so fall back to the marker.)
+        if (!hasSyntaxError && CodeBehindEmitter.Emit(document, input.Text, input.Path) is {} codeBehind)
+        {
+            spc.AddSource(hint, SourceText.From(codeBehind, Encoding.UTF8));
+            return;
+        }
+
+        // Marker for class-less documents (and syntax-error fallback) — proves the file reached the generator.
         var rootClass = document.RootClassName is { Length: > 0 } rc ? rc : "(none)";
+
         var src =
             "// <auto-generated/> Cursorial.UI.Xaml.Generator\n" +
             $"// source: {input.Path}\n" +
             $"// x:Class: {rootClass}; diagnostics: {document.Diagnostics.Count}\n";
+
         spc.AddSource(hint, SourceText.From(src, Encoding.UTF8));
     }
 
     private static Diagnostic ToRoslyn(XamlDiagnostic diagnostic, XamlInput input)
     {
         var severity = diagnostic.Severity switch
-        {
-            XamlDiagnosticSeverity.Error => DiagnosticSeverity.Error,
-            XamlDiagnosticSeverity.Warning => DiagnosticSeverity.Warning,
-            _ => DiagnosticSeverity.Info,
-        };
+                       {
+                           XamlDiagnosticSeverity.Error   => DiagnosticSeverity.Error,
+                           XamlDiagnosticSeverity.Warning => DiagnosticSeverity.Warning,
+                           _                              => DiagnosticSeverity.Info,
+                       };
 
         // One descriptor per CUR code (cached) — the message is the format argument.
         var descriptor = DescriptorFor(diagnostic.Code, severity);
@@ -110,7 +139,8 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
     {
         lock (DescriptorLock)
         {
-            var key = code + (char)severity;
+            var key = code + (char) severity;
+
             if (DescriptorCache.TryGetValue(key, out var cached))
                 return cached;
 
@@ -120,7 +150,9 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
                 messageFormat: "{0}",
                 category: "Cursorial.Xaml",
                 defaultSeverity: severity,
-                isEnabledByDefault: true);
+                isEnabledByDefault: true
+            );
+
             DescriptorCache[key] = descriptor;
             return descriptor;
         }
@@ -142,6 +174,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
 
         var text = SourceText.From(input.Text);
         var zeroLine = line - 1;
+
         if (zeroLine >= text.Lines.Count)
             return Location.None;
 
@@ -154,8 +187,10 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
     private static string SanitizeHint(string name)
     {
         var sb = new StringBuilder(name.Length);
+
         foreach (var c in name)
             sb.Append(char.IsLetterOrDigit(c) ? c : '_');
+
         return sb.Length == 0 ? "Xaml" : sb.ToString();
     }
 

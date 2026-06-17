@@ -112,15 +112,17 @@ internal static class CodeBehindEmitter
         if (named.Count > 0)
             sb.AppendLine();
 
-        // The XAML is parsed ONCE into an immutable, shareable document (cached static) and instantiated per
-        // InitializeComponent call via the runtime loader, populating `this` as the root.
+        // The loader is bound DIRECTLY to this assembly's generated metadata provider (always emitted when a
+        // code-behind is — a class-bearing document's types resolve, so the closed set is non-empty). Binding
+        // the provider explicitly (rather than reading the global default) makes the load deterministic, AOT-
+        // clean, and free of any cross-assembly default-provider coupling. The XAML is parsed ONCE into an
+        // immutable, shareable document and instantiated per InitializeComponent call, populating `this`.
         sb.AppendLine($"{indent}    private const string __XamlSource = {Verbatim(xamlText)};");
         sb.AppendLine();
+        sb.AppendLine($"{indent}    private static readonly global::Cursorial.UI.Xaml.XamlLoader __XamlLoader =");
+        sb.AppendLine($"{indent}        new(new global::Cursorial.UI.Xaml.XamlLoaderOptions {{ MetadataProvider = global::Cursorial.UI.Xaml.Generated.__GeneratedXamlMetadata.Instance }});");
         sb.AppendLine($"{indent}    private static readonly global::Cursorial.UI.Xaml.XamlDocument __XamlDocument =");
-
-        sb.AppendLine($"{indent}        global::Cursorial.UI.Xaml.XamlLoader.Shared.Parse(__XamlSource, " +
-                      $"new global::System.Uri({Verbatim(xamlPath)}, global::System.UriKind.RelativeOrAbsolute));");
-
+        sb.AppendLine($"{indent}        __XamlLoader.Parse(__XamlSource, new global::System.Uri({Verbatim(xamlPath)}, global::System.UriKind.RelativeOrAbsolute));");
         sb.AppendLine();
         sb.AppendLine($"{indent}    private bool __contentLoaded;");
         sb.AppendLine();
@@ -128,7 +130,7 @@ internal static class CodeBehindEmitter
         sb.AppendLine($"{indent}    {{");
         sb.AppendLine($"{indent}        if (__contentLoaded) return;");
         sb.AppendLine($"{indent}        __contentLoaded = true;");
-        sb.AppendLine($"{indent}        global::Cursorial.UI.Xaml.XamlLoader.Shared.LoadComponent(this, __XamlDocument);");
+        sb.AppendLine($"{indent}        __XamlLoader.LoadComponent(this, __XamlDocument);");
 
         if (named.Count > 0)
         {

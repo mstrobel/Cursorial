@@ -20,7 +20,8 @@ public class XamlSourceGeneratorTests
             "<DockPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" x:Class=\"App.View\"/>"));
 
         var generated = Assert.Single(result.Results);
-        var tree = Assert.Single(generated.GeneratedSources);
+        // The generator also emits the per-compilation metadata provider (WS-X4.5); pick the View output.
+        var tree = generated.GeneratedSources.Single(s => s.HintName.Contains("View"));
         Assert.Contains("View", tree.HintName);
         Assert.Contains("source:", tree.SourceText.ToString());
         Assert.Contains("App.View", tree.SourceText.ToString()); // x:Class captured
@@ -49,6 +50,28 @@ public class XamlSourceGeneratorTests
         Assert.Equal(2, sources.Count);
         Assert.Contains(sources, s => s.HintName.Contains("Alpha"));
         Assert.Contains(sources, s => s.HintName.Contains("Beta"));
+    }
+
+    [Fact] // WS-X4.5 — the generator emits ONE metadata provider per compilation, over the union closed set
+    public void Generator_EmitsMetadataProvider_ForCompilation()
+    {
+        var result = GeneratorHarness.Run(
+            ("A.xaml", "<StackPanel xmlns=\"https://cursorial.dev/ui\"><Button/></StackPanel>"),
+            ("B.xaml", "<Border xmlns=\"https://cursorial.dev/ui\"/>"));
+
+        var providers = result.Results
+            .SelectMany(r => r.GeneratedSources)
+            .Where(s => s.HintName.Contains("__GeneratedXamlMetadata"))
+            .ToList();
+
+        var provider = Assert.Single(providers); // exactly one per compilation (not per file)
+        var src = provider.SourceText.ToString();
+        Assert.Contains("__GeneratedXamlMetadata", src);
+        Assert.Contains("ModuleInitializer", src); // installs itself as the loader default (AOT-clean)
+        // The union of both files' types is baked.
+        Assert.Contains("typeof(global::Cursorial.UI.Controls.StackPanel)", src);
+        Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", src);
+        Assert.Contains("typeof(global::Cursorial.UI.Controls.Border)", src);
     }
 
     [Fact] // WS-X4.4 — a malformed document surfaces a CUR1xxx parse diagnostic at the .xaml location

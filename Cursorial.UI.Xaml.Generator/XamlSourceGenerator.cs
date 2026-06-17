@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using System.Text;
 
 using Cursorial.UI.Xaml; // source-linked frontend: XamlFrontend, XamlDocument, XamlDiagnostic, XamlParseOptions
@@ -51,6 +53,39 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         // tradeoff for a semantic generator; XAML inputs themselves stay equatable for the file half.
         var withCompilation = xamlFiles.Combine(context.CompilationProvider);
         context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left, pair.Right));
+
+        // WS-X4.5 — one generated metadata provider per compilation, over the UNION of every CursorialXaml
+        // file's closed type set. A generated [ModuleInitializer] installs it as the loader default so the
+        // app's XAML loads (incl. each code-behind's cached parse) run reflection-free / AOT-clean.
+        var allXaml = xamlFiles.Collect().Combine(context.CompilationProvider);
+        context.RegisterSourceOutput(allXaml, static (spc, pair) => EmitProvider(spc, pair.Left, pair.Right));
+    }
+
+    private static void EmitProvider(SourceProductionContext spc, ImmutableArray<XamlInput> inputs, Compilation compilation)
+    {
+        if (inputs.IsDefaultOrEmpty)
+            return;
+
+        var resolver = new XamlSymbolResolver(compilation);
+
+        // Union of every file's recorded element/attached-owner names → resolved symbols (the closed set).
+        var names = new HashSet<(string Namespace, string LocalName)>();
+        foreach (var input in inputs)
+        {
+            foreach (var name in ClosedTypeSet.CollectElementNames(input.Text))
+                names.Add(name);
+        }
+
+        var types = names
+            .Select(n => resolver.Resolve(n.Namespace, n.LocalName, out _))
+            .Where(static t => t is not null)
+            .Cast<INamedTypeSymbol>()
+            .Distinct(SymbolEqualityComparer.Default)
+            .Cast<INamedTypeSymbol>()
+            .ToList();
+
+        if (new MetadataProviderEmitter(compilation).Emit(types) is { } source)
+            spc.AddSource("__GeneratedXamlMetadata.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 
     private static void Emit(SourceProductionContext spc, XamlInput input, Compilation compilation)

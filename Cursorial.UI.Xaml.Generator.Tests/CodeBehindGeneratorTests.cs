@@ -15,8 +15,12 @@ public class CodeBehindGeneratorTests
 {
     private const string Ns = "xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\"";
 
+    // The per-file output (code-behind / marker), excluding the per-compilation metadata provider (WS-X4.5).
     private static string OnlySource((string FileName, string Xaml) file)
-        => GeneratorHarness.Run(file).Results.SelectMany(r => r.GeneratedSources).Single().SourceText.ToString();
+        => GeneratorHarness.Run(file).Results
+            .SelectMany(r => r.GeneratedSources)
+            .Where(s => !s.HintName.Contains("__GeneratedXamlMetadata"))
+            .Single().SourceText.ToString();
 
     [Fact]
     public void EmitsTypedFields_ForNamedElements()

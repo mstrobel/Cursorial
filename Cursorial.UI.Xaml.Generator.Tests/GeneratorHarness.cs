@@ -17,20 +17,20 @@ internal static class GeneratorHarness
     public static CSharpCompilation ReferencedCompilation(string assemblyName = "GeneratorTestAssembly")
     {
         var tpa = (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? string.Empty)
-            .Split(System.IO.Path.PathSeparator)
-            .Where(p => p.Length > 0 && p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+                  .Split(Path.PathSeparator)
+                  .Where(p => p.Length > 0 && p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
 
         var cursorial = new[]
-        {
-            typeof(Cursorial.UI.UIElement).Assembly.Location,            // Cursorial.UI
-            typeof(Cursorial.UI.Xaml.XamlType).Assembly.Location,        // Cursorial.UI.Xaml.Frontend
-            typeof(Cursorial.UI.Xaml.XamlConverters).Assembly.Location,  // Cursorial.UI.Xaml (loader — XamlConverters)
-        };
+                        {
+                            typeof(Cursorial.UI.UIElement).Assembly.Location,           // Cursorial.UI
+                            typeof(Cursorial.UI.Xaml.XamlType).Assembly.Location,       // Cursorial.UI.Xaml.Frontend
+                            typeof(Cursorial.UI.Xaml.XamlConverters).Assembly.Location, // Cursorial.UI.Xaml (loader — XamlConverters)
+                        };
 
         var references = tpa.Concat(cursorial)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
-            .ToImmutableArray();
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Select(p => (MetadataReference) MetadataReference.CreateFromFile(p))
+                            .ToImmutableArray();
 
         return CSharpCompilation.Create(
             assemblyName,
@@ -46,8 +46,8 @@ internal static class GeneratorHarness
         var compilation = ReferencedCompilation();
 
         var additionalTexts = files
-            .Select(f => (AdditionalText)new InMemoryAdditionalText(f.FileName, f.Xaml))
-            .ToImmutableArray();
+                              .Select(f => (AdditionalText) new InMemoryAdditionalText(f.FileName, f.Xaml))
+                              .ToImmutableArray();
 
         var optionsProvider = new CursorialXamlOptionsProvider(additionalTexts);
 
@@ -63,9 +63,9 @@ internal static class GeneratorHarness
     /// error-severity diagnostics — empty means the generated provider is valid, symbol-correct C#.</summary>
     public static IReadOnlyList<Diagnostic> CompileErrors(string generatedSource)
     {
-        var compilation = ReferencedCompilation("GeneratedProviderCompile")
-            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource));
-        using var ms = new System.IO.MemoryStream();
+        var compilation = ReferencedCompilation("GeneratedProviderCompile").AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource));
+
+        using var ms = new MemoryStream();
         var result = compilation.Emit(ms);
         return result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
     }
@@ -74,21 +74,24 @@ internal static class GeneratorHarness
     /// generated <c>__GeneratedXamlMetadata.Instance</c> as an <c>IXamlTypeMetadataProvider</c> (for the dual-run).</summary>
     public static Cursorial.UI.Xaml.IXamlTypeMetadataProvider CompileAndLoadProvider(string generatedSource)
     {
-        var compilation = ReferencedCompilation("GeneratedProviderAsm")
-            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource));
-        using var ms = new System.IO.MemoryStream();
+        var compilation = ReferencedCompilation("GeneratedProviderAsm").AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource));
+
+        using var ms = new MemoryStream();
         var result = compilation.Emit(ms);
+
         if (!result.Success)
         {
             var errors = string.Join("\n", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
-            throw new System.InvalidOperationException("generated provider failed to compile:\n" + errors);
+            throw new InvalidOperationException("generated provider failed to compile:\n" + errors);
         }
 
         var assembly = System.Reflection.Assembly.Load(ms.ToArray());
-        var type = assembly.GetType("Cursorial.UI.Xaml.Generated.__GeneratedXamlMetadata")
-            ?? throw new System.InvalidOperationException("generated provider type not found");
+
+        var type = assembly.GetType("Cursorial.UI.Xaml.Generated.__GeneratedXamlMetadata") ??
+                   throw new InvalidOperationException("generated provider type not found");
+
         var instance = type.GetField("Instance")!.GetValue(null);
-        return (Cursorial.UI.Xaml.IXamlTypeMetadataProvider)instance!;
+        return (Cursorial.UI.Xaml.IXamlTypeMetadataProvider) instance!;
     }
 
     /// <summary>Runs the generator over <paramref name="codeBehindSource"/> (a hand-written code-behind syntax
@@ -101,8 +104,8 @@ internal static class GeneratorHarness
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehindSource));
 
         var additionalTexts = files
-            .Select(f => (AdditionalText)new InMemoryAdditionalText(f.FileName, f.Xaml))
-            .ToImmutableArray();
+                              .Select(f => (AdditionalText) new InMemoryAdditionalText(f.FileName, f.Xaml))
+                              .ToImmutableArray();
 
         var driver = CSharpGeneratorDriver.Create(
             generators: [new Cursorial.UI.Xaml.Generator.XamlSourceGenerator().AsSourceGenerator()],
@@ -110,19 +113,21 @@ internal static class GeneratorHarness
             optionsProvider: new CursorialXamlOptionsProvider(additionalTexts));
 
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
-        return ((CSharpCompilation)updated, diagnostics);
+        return ((CSharpCompilation) updated, diagnostics);
     }
 
     /// <summary>Compiles a compilation to an in-memory assembly and loads it (throws on compile error).</summary>
     public static System.Reflection.Assembly EmitAndLoad(Compilation compilation)
     {
-        using var ms = new System.IO.MemoryStream();
+        using var ms = new MemoryStream();
         var result = compilation.Emit(ms);
+
         if (!result.Success)
         {
             var errors = string.Join("\n", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
-            throw new System.InvalidOperationException("compilation failed:\n" + errors);
+            throw new InvalidOperationException("compilation failed:\n" + errors);
         }
+
         return System.Reflection.Assembly.Load(ms.ToArray());
     }
 

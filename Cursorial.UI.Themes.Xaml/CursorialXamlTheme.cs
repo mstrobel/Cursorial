@@ -7,7 +7,9 @@ namespace Cursorial.UI.Themes.Xaml;
 /// in embedded <c>.xaml</c> and loaded at runtime through <see cref="XamlLoader"/>. Assign the result to
 /// <c>UIApplication.Theme</c> — it layers over the code-first <see cref="CursorialTheme"/> <c>BuiltIn</c>
 /// backstop (§2237), so a partial theme overrides only the controls it defines and the rest fall through.
-/// Phase 1 ships the Button family; the remaining controls extend <c>Themes/*.xaml</c>.
+/// As of P9-W5 the control set is at parity with the code-first themes — the button family plus every P9
+/// control (items/list/menu/tab/progress/textbox/tooltip/separator); only <c>Window</c> stays code-first (its
+/// chrome's active/inactive look is code-driven, not declarable).
 /// </summary>
 public static class CursorialXamlTheme
 {

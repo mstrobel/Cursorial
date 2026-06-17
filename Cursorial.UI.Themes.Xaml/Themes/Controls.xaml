@@ -202,4 +202,315 @@
     <Setter Property="Template" Value="{StaticResource ScrollViewerTemplate}"/>
   </Style>
 
+  <!-- ═══════════════════════════ P9 controls (ARCH-1 parity, W5) ═══════════════════════════
+       Authored to parity with the code-first ControlThemes for the P9 control set; the code-first
+       CursorialTheme.BuiltIn remains the backstop. Window is intentionally omitted — its chrome's
+       active/inactive look is code-driven (Activated/Deactivated handlers), not declarative. -->
+
+  <!-- ItemsControl (design doc §12.6 / C2): a Border (opt-in Background/BorderPen via TemplateBindings)
+       wrapping the PART_ItemsHost ItemsPresenter, which builds the ItemsPanel and lays out containers.
+       The declarative twin of ControlThemes.ItemsControlTheme()/ItemsControlTemplate(). -->
+  <ControlTemplate x:Key="ItemsControlTemplate">
+    <Border Background="{TemplateBinding Background}" BorderPen="{TemplateBinding BorderPen}">
+      <ItemsPresenter x:Name="PART_ItemsHost"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ItemsControl}" TargetType="ItemsControl">
+    <Setter Property="Template" Value="{StaticResource ItemsControlTemplate}"/>
+  </Style>
+
+  <!-- ListBox (design doc §11.8a): a Border (opt-in BorderPen) over a ScrollViewer whose content is the
+       PART_ItemsHost ItemsPresenter, so a long list scrolls (the SCP band, C3). The ItemsPresenter stays in the
+       ListBox's template namescope even nested under the ScrollViewer. Background is a recessed well. The
+       declarative twin of ControlThemes.ListBoxTheme(). -->
+  <ControlTemplate x:Key="ListBoxTemplate">
+    <Border Background="{TemplateBinding Background}" BorderPen="{TemplateBinding BorderPen}">
+      <ScrollViewer x:Name="PART_ScrollViewer">
+        <ItemsPresenter x:Name="PART_ItemsHost"/>
+      </ScrollViewer>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ListBox}" TargetType="ListBox">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ListBoxTemplate}"/>
+  </Style>
+
+  <!-- ListBoxItem (design doc §11.8a / gallery .item): a full-width selection bar — a Border filling its row
+       (Padding 1,0, content at row 0, no frame) over a ContentPresenter. NO resting fill (transparent), Foreground =
+       TextBrush. Interactive states ordered hover -> selected -> focus-visible -> disabled (document order breaks the
+       pseudo-class tie, so a hovered-selected item reads as selected, a focused+selected current item reads as the
+       reverse-video focus row). selected = SelectionBrush fill keeping the ink (milder than pressed, adoption-spec);
+       :focus-visible (not :focus) is the keyboard focus-row reverse-video cue so a mouse click shows :selected while
+       keyboard nav shows the reverse row; disabled = muted ink. The declarative twin of ControlThemes.ListBoxItemTheme(). -->
+  <ControlTemplate x:Key="ListBoxItemTemplate">
+    <Border Padding="1,0" Background="{TemplateBinding Background}">
+      <ContentPresenter x:Name="PART_ContentPresenter"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ListBoxItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- Menu (design doc §12.7): the horizontal menu bar — a SurfaceBrush strip hosting the top-level items.
+       The Menu's ItemsPanel is a horizontal StackPanel (set in its ctor), so the template is just a fill-bound
+       Border wrapping the PART_ItemsHost ItemsPresenter. NO interactive states (the bar itself never highlights —
+       its MenuItems do). The declarative twin of ControlThemes.MenuTheme(). -->
+  <ControlTemplate x:Key="MenuTemplate">
+    <Border Background="{TemplateBinding Background}">
+      <ItemsPresenter x:Name="PART_ItemsHost"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Menu}" TargetType="Menu">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource MenuTemplate}"/>
+  </Style>
+
+  <!-- MenuItem (design doc §12.7): a fill-bounded header row [header … gesture] in a padded face Border, plus the
+       submenu Popup (PART_Popup) whose Child is an occluding PanelBrush surface hosting the sub-items
+       (PART_ItemsHost ItemsPresenter). The Popup contributes no layout to the row — a Grid cell stacks it behind
+       the face at 0×0. :pointerover = HoverBrush; :highlighted/:open = SelectionBrush; :disabled = muted ink.
+       The declarative twin of ControlThemes.MenuItemTheme(). -->
+  <ControlTemplate x:Key="MenuItemTemplate">
+    <Grid>
+      <Border x:Name="PART_Face" Padding="1,0" Background="{TemplateBinding Background}">
+        <DockPanel>
+          <TextBlock x:Name="PART_GestureText"
+                     DockPanel.Dock="Right"
+                     Margin="2,0,0,0"
+                     Text="{TemplateBinding InputGestureText}"
+                     Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+          <ContentPresenter x:Name="PART_ContentPresenter"
+                            RecognizesAccessKey="True"
+                            Content="{TemplateBinding Header}"/>
+        </DockPanel>
+      </Border>
+      <Popup x:Name="PART_Popup">
+        <Border Occludes="True"
+                Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+                BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+          <ItemsPresenter x:Name="PART_ItemsHost"/>
+        </Border>
+      </Popup>
+    </Grid>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type MenuItem}" TargetType="MenuItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource MenuItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="MenuItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:highlighted" TargetType="MenuItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:open" TargetType="MenuItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- ContextMenu (design doc §12.7): a popup-rooted occluding bordered panel hosting the PART_ItemsHost
+       ItemsPresenter (the default vertical StackPanel stacks its MenuItems). The declarative twin of
+       ControlThemes.ContextMenuTheme()/ContextMenuTemplate(). The panel fill/border are the DynamicResource
+       PanelBrush/BorderPen (the code-first template sets them via SetResourceReference, not TemplateBinding). -->
+  <ControlTemplate x:Key="ContextMenuTemplate">
+    <Border Occludes="True"
+            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+            BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+      <ItemsPresenter x:Name="PART_ItemsHost"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ContextMenu}" TargetType="ContextMenu">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ContextMenuTemplate}"/>
+  </Style>
+
+  <!-- The non-interactive divider control theme (design doc §12.7), the declarative twin of the code-first
+       ControlThemes.SeparatorTheme(): a 1-cell-high rule whose Border fills with the templated parent's
+       Background, which the palette spine resolves to MutedBrush. No interactive states (Separator is never
+       focusable and never a tab stop). -->
+  <ControlTemplate x:Key="SeparatorTemplate">
+    <Border Background="{TemplateBinding Background}"/>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Separator}" TargetType="Separator">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+    <Setter Property="Height"     Value="1"/>
+    <Setter Property="Template"   Value="{StaticResource SeparatorTemplate}"/>
+  </Style>
+
+  <!--
+    The ToolTip control theme (design doc §12.7), the twin of ControlThemes.ToolTipTheme(). An occluding
+    bordered panel (Border.Occludes overwrites the content it floats over) wrapping a ContentPresenter,
+    capped at 40 cells wide so the content wraps. The Border's Background/BorderPen are DynamicResource on
+    the element (matching the code-first SetResourceReference, not TemplateBindings); Foreground rides the
+    R2 palette spine (TextBrush). No interactive states — a ToolTip is non-interactive.
+  -->
+
+  <ControlTemplate x:Key="ToolTipTemplate">
+    <Border Occludes="True"
+            Padding="1,0"
+            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+            BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+      <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ToolTip}" TargetType="ToolTip">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="MaxWidth"   Value="40"/>
+    <Setter Property="Template"   Value="{StaticResource ToolTipTemplate}"/>
+  </Style>
+
+  <!-- ───────────────────────────── TabControl / TabItem ─────────────────────────────
+       Mirrors ControlThemes.TabControlTheme()/TabControlTemplate() + TabItemTheme()/TabItemTemplate().
+       TabControl: a DockPanel with the tab strip (PART_TabStrip ItemsPresenter, docked top) over a
+       bordered content host (PART_ContentHost ContentPresenter bound to SelectedContent/ContentTemplate). -->
+
+  <ControlTemplate x:Key="TabControlTemplate">
+    <DockPanel>
+      <ItemsPresenter x:Name="PART_TabStrip" DockPanel.Dock="Top"/>
+      <Border Padding="1,0" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+        <ContentPresenter x:Name="PART_ContentHost"
+                          Content="{TemplateBinding SelectedContent}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"/>
+      </Border>
+    </DockPanel>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type TabControl}" TargetType="TabControl">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource TabControlTemplate}"/>
+  </Style>
+
+  <!-- A tab header: a fill-bounded ContentPresenter over TabItem.Header (RecognizesAccessKey). The face fill
+       flips per interactive state — :selected = SelectionBrush, :pointerover = HoverBrush, :disabled = muted. -->
+  <ControlTemplate x:Key="TabItemTemplate">
+    <Border Padding="1,0" Background="{TemplateBinding Background}">
+      <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"
+                        Content="{TemplateBinding Header}"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type TabItem}" TargetType="TabItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource TabItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="TabItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="TabItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- TabItem (design doc TabControl/TabItem). A tab header: a fill-bounded ContentPresenter over the
+       TabItem.Header (RecognizesAccessKey). No resting border — the face fill is the TemplateBinding Background,
+       resting blank. :selected = SelectionBrush fill, :pointerover = HoverBrush, :disabled muted foreground
+       (the gallery item-bar idiom). The declarative twin of ControlThemes.TabItemTheme(). -->
+  <ControlTemplate x:Key="TabItemTemplate">
+    <Border Padding="1,0"
+            Background="{TemplateBinding Background}">
+      <ContentPresenter x:Name="PART_ContentPresenter"
+                        RecognizesAccessKey="True"
+                        Content="{TemplateBinding Header}"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type TabItem}" TargetType="TabItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource TabItemTemplate}"/>
+    <Style.Children>
+      <!-- Ordered pointerover -> selected -> disabled (document order breaks pseudo-class ties, matching the
+           code-first TabItemTheme.Children append order). -->
+      <Style Selector="^:pointerover" TargetType="TabItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="TabItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- ProgressBar: a self-painting control (no Template). The track is the recessed WellBrush
+       (Background), the determinate fill is GreenBrush (Fill), and the indeterminate sweep is
+       AccentBrush via the :indeterminate state. Mirrors ControlThemes.ProgressBarTheme(). -->
+  <Style x:Key="{x:Type ProgressBar}" TargetType="ProgressBar">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+    <Setter Property="Fill" Value="{DynamicResource {x:Static ThemeKeys.GreenBrush}}"/>
+    <Style.Children>
+      <Style Selector="^:indeterminate" TargetType="ProgressBar">
+        <Setter Property="Fill" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- TextBox (gallery TextBox mockup): a fill-bounded text field — a Border (Padding 1,0) over the
+       PART_TextPresenter that paints the line. Resting SurfaceBrush + TextBrush (the R2 palette spine);
+       :pointerover HoverBrush, :focus the recessed WellBrush (text focus is the well + the blinking-bar
+       caret the presenter publishes, NOT reverse-video), :disabled the disabled pair. Selection + placeholder
+       are painted by the presenter; SelectionBrush feeds the highlight. MinWidth gives an empty field width.
+       The declarative twin of ControlThemes.TextBoxTheme(). -->
+  <ControlTemplate x:Key="TextBoxTemplate">
+    <Border Padding="1,0"
+            Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}">
+      <TextPresenter x:Name="PART_TextPresenter"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type TextBox}" TargetType="TextBox">
+    <Setter Property="Foreground"     Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background"     Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="MinWidth"       Value="12"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+    <Setter Property="Template"       Value="{StaticResource TextBoxTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="TextBox">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:focus" TargetType="TextBox">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="TextBox">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
 </ResourceDictionary>

@@ -107,6 +107,34 @@ public sealed class ArchOneXamlThemeTests
         }
     }
 
+    [Theory] // W5 (ARCH-1 parity): the P9 controls that render inline render identically to the code-first BuiltIn
+    [InlineData("TextBox")]
+    [InlineData("ProgressBar")]
+    [InlineData("Separator")]
+    [InlineData("ListBox")]       // exercises the ListBox AND ListBoxItem XAML themes
+    [InlineData("ItemsControl")]
+    public void XamlP9ControlTheme_RendersIdenticallyToCSharpBuiltIn_AtRest(string control)
+    {
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: false, 16, 5, () => MakeP9Control(control)),
+            CaptureCells(xaml: true,  focus: false, 16, 5, () => MakeP9Control(control)));
+    }
+
+    [Fact] // W5: every P9 control theme parses + is present (covers the popup-rooted ones that can't render inline)
+    public void AllP9ControlThemes_Parse_AndArePresentInTheDictionary()
+    {
+        var dict = CursorialXamlTheme.LoadControls();
+        Type[] themed =
+        [
+            typeof(UIControls.ItemsControl), typeof(UIControls.ListBox), typeof(UIControls.ListBoxItem),
+            typeof(UIControls.Menu), typeof(UIControls.MenuItem), typeof(UIControls.ContextMenu),
+            typeof(UIControls.Separator), typeof(UIControls.ToolTip), typeof(UIControls.TabControl),
+            typeof(UIControls.TabItem), typeof(UIControls.ProgressBar), typeof(UIControls.TextBox),
+        ];
+        foreach (var t in themed)
+            Assert.True(dict.TryGetValue(t, out _), $"XAML theme missing the control theme for {t.Name}");
+    }
+
     private static UIControls.Control MakeControl(string control) => control switch
     {
         "RepeatButton" => new UIControls.RepeatButton { Content = "OK" },
@@ -114,6 +142,16 @@ public sealed class ArchOneXamlThemeTests
         "CheckBox"     => new UIControls.CheckBox { Content = "OK" },
         "RadioButton"  => new UIControls.RadioButton { Content = "OK" },
         _              => new UIControls.Button { Content = "OK" },
+    };
+
+    private static UIControls.Control MakeP9Control(string control) => control switch
+    {
+        "TextBox"      => new UIControls.TextBox { Width = 14 },
+        "ProgressBar"  => new UIControls.ProgressBar { Width = 14, Height = 1 },
+        "Separator"    => new UIControls.Separator { Width = 14 },
+        "ListBox"      => new UIControls.ListBox { ItemsSource = new[] { "a", "b", "c" }, Width = 14, Height = 4 },
+        "ItemsControl" => new UIControls.ItemsControl { ItemsSource = new[] { "a", "b" }, Width = 14, Height = 4 },
+        _              => throw new ArgumentOutOfRangeException(nameof(control)),
     };
 
     private static (string Glyph, Color Fg, Color Bg)[] CaptureCells(

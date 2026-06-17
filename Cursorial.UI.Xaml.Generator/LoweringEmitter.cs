@@ -23,7 +23,7 @@ namespace Cursorial.UI.Xaml.Generator;
 /// </remarks>
 internal static class LoweringEmitter
 {
-    public static string? Emit(XamlDocument document, string xamlPath)
+    public static string? Emit(XamlDocument document, string xamlPath, XamlSymbolResolver resolver)
     {
         if (!document.HasObjects)
             return null;
@@ -37,7 +37,7 @@ internal static class LoweringEmitter
         string className = dot > 0 ? rootClass.Substring(dot + 1) : rootClass;
         string indent = ns is null ? "    " : "        ";
 
-        var ctx = new Context(document, indent);
+        var ctx = new Context(document, indent, resolver);
 
         // Build the InitializeComponent body first (it determines whether a name scope is needed).
         if (named.Count > 0)
@@ -161,6 +161,12 @@ internal static class LoweringEmitter
                     c.Line($"{varExpr}.{xm.Name} += this.{c.Doc.Strings[member.ValueIndex]};");
                     break;
 
+                case XamlValueKind.Folded:
+                    // Under FoldConstants=false the only Folded members are the intrinsic extensions:
+                    // {x:Null} (a null constant) and {x:Static} (a XamlStaticReference carrying the member path).
+                    EmitFoldedAssign(c, varExpr, xm, c.Doc.Constants[member.ValueIndex]);
+                    break;
+
                 default:
                     c.Line($"// TODO X5: member '{xm.Name}' kind {member.Kind} not yet lowered");
                     break;
@@ -214,6 +220,42 @@ internal static class LoweringEmitter
             c.Line($"{varExpr}.{xm.Name} = {childVar};");
     }
 
+    // {x:Null} → null; {x:Static Type.Member} → the resolved static reference (global::Type.Member).
+    private static void EmitFoldedAssign(Context c, string varExpr, XamlMember xm, object? constant)
+    {
+        string? valueExpr = constant switch
+        {
+            null => "null",
+            XamlStaticReference staticRef => ResolveStaticPath(c, staticRef.MemberPath),
+            _ => null, // not expected under FoldConstants=false
+        };
+
+        if (valueExpr is null)
+        {
+            c.Line($"// TODO X5: folded value for {xm.Name} ({constant?.GetType().Name ?? "null"})");
+            return;
+        }
+
+        if (RegisteredOwner(xm) is { } owner)
+            c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
+        else
+            c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
+    }
+
+    // Resolves an {x:Static Type.Member} path to a C# static reference. The type token (before the last dot)
+    // is resolved through the same symbol resolver the parse used (default UI xmlns); the member is appended.
+    private static string? ResolveStaticPath(Context c, string memberPath)
+    {
+        int dot = memberPath.LastIndexOf('.');
+        if (dot <= 0)
+            return null;
+
+        var typeName = memberPath.Substring(0, dot);
+        var member = memberPath.Substring(dot + 1);
+        var typeSymbol = c.Resolver.Resolve(XamlSymbolResolver.CursorialUiNamespace, typeName, out _);
+        return typeSymbol is null ? null : $"{Global(typeSymbol)}.{member}"; // Global() already prefixes global::
+    }
+
     private static INamedTypeSymbol? RegisteredOwner(XamlMember member) => member.Property as INamedTypeSymbol;
 
     private static bool IsObjectOrString(IXamlType valueType)
@@ -229,9 +271,10 @@ internal static class LoweringEmitter
 
     private static string Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-    private sealed class Context(XamlDocument document, string indent)
+    private sealed class Context(XamlDocument document, string indent, XamlSymbolResolver resolver)
     {
         public XamlDocument Doc { get; } = document;
+        public XamlSymbolResolver Resolver { get; } = resolver;
         public StringBuilder Body { get; } = new();
         public bool UsesConverter { get; set; }
         private int _counter;

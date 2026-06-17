@@ -26,7 +26,7 @@ public class LoweringEmitterTests
             DiagnosticMode = XamlDiagnosticMode.CollectAll,
             FoldConstants = false,
         });
-        return LoweringEmitter.Emit(document, "MyView.xaml")
+        return LoweringEmitter.Emit(document, "MyView.xaml", new XamlSymbolResolver(compilation))
             ?? throw new System.InvalidOperationException("no lowering emitted");
     }
 
@@ -124,12 +124,53 @@ namespace TestApp
         Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("TestApp.ClickView")!));
     }
 
+    [Fact] // X5.3 — {x:Static} lowers to a resolved static reference, matching the loader's reflected value
+    public void Lowered_XStatic_MatchesLoader()
+    {
+        var xaml = $"<Button {Ns} x:Class=\"TestApp.StaticView\" Foreground=\"{{x:Static Brushes.TrueBlack}}\"/>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class StaticView : Button { public StaticView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("global::Cursorial.Drawing.Media.Brushes.TrueBlack", lowered); // x:Static resolved
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (Button)System.Activator.CreateInstance(assembly.GetType("TestApp.StaticView")!)!;
+
+        var runtime = (Button)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        Assert.Same(runtime.Foreground, view.Foreground); // both resolved to the Brushes.TrueBlack singleton
+        Assert.Same(Cursorial.Drawing.Media.Brushes.TrueBlack, view.Foreground);
+    }
+
+    [Fact] // X5.3 — {x:Null} lowers to a null SetValue
+    public void Lowered_XNull_SetsNull()
+    {
+        var xaml = $"<Button {Ns} x:Class=\"TestApp.NullView\" Foreground=\"{{x:Null}}\"/>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class NullView : Button { public NullView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("ForegroundProperty, null)", lowered); // null SetValue emitted
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (Button)System.Activator.CreateInstance(assembly.GetType("TestApp.NullView")!)!;
+        Assert.Null(view.Foreground);
+    }
+
     [Fact] // a class-less document has no code-behind to lower
     public void NoXClass_EmitsNothing()
     {
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var document = XamlFrontend.Parse($"<StackPanel {Ns}><Button/></StackPanel>",
             new XamlParseOptions { MetadataProvider = new RoslynXamlMetadata(compilation), FoldConstants = false });
-        Assert.Null(LoweringEmitter.Emit(document, "x.xaml"));
+        Assert.Null(LoweringEmitter.Emit(document, "x.xaml", new XamlSymbolResolver(compilation)));
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 using Cursorial.UI.Xaml; // frontend node graph (internals via InternalsVisibleTo)
@@ -264,11 +265,12 @@ internal static class LoweringEmitter
         c.Line($"// TODO X5: extension {ext.Kind} for '{xm.Name}' not yet lowered");
     }
 
-    // B3a — an x:DataType-scoped, DataContext-relative, single-hop {Binding} lowers to a typed
-    // CompiledBinding<TData, TLeaf> (zero reflection, the AOT-clean lane). Any binding shape this can't yet
-    // compile (no x:DataType, multi-hop/indexer/method path, Source/ElementName/RelativeSource/Converter/
-    // StringFormat/FallbackValue, an unknown Mode) stays a // TODO X5 — the reflective fallback is a later
-    // workstream, consistent with the spine's incremental-TODO discipline.
+    // B3a/B3b — {Binding} lowering. The compiled lane (zero reflection, AOT-clean) is taken for an
+    // x:DataType-scoped, DataContext-relative, single-hop binding; everything else falls back to a faithful
+    // reflective `new Binding(...)` (the plan's "graceful reflective fallback" — the binding still works, just
+    // through the reflective engine, which surfaces an AOT warning pointing at the binding to fix). Only a
+    // Converter-bearing binding (needs eager resource/static resolution, deferred with resources) or an
+    // unsupported RelativeSource stays a // TODO X5.
     private static void EmitBinding(Context c, string varExpr, XamlMember xm, MarkupExtensionNode node, INamedTypeSymbol? dataType)
     {
         // A binding target must be a registered UIProperty — the runtime handler enforces the same (X119).
@@ -281,8 +283,7 @@ internal static class LoweringEmitter
         if (TryEmitCompiledBinding(c, varExpr, owner, xm, node, dataType))
             return;
 
-        c.Line($"// TODO X5: {{Binding {BindingPathOf(node) ?? "(none)"}}} for '{xm.Name}' not yet lowered " +
-               "(needs x:DataType + a simple DataContext-relative single-hop path with no converter)");
+        EmitReflectiveBinding(c, varExpr, owner, xm, node);
     }
 
     private static bool TryEmitCompiledBinding(
@@ -307,13 +308,15 @@ internal static class LoweringEmitter
         if (path!.IndexOf('.') >= 0 || path.IndexOf('[') >= 0 || path.IndexOf('(') >= 0)
             return false;
 
-        if (ModeInitializer(node) is not { } mode) // an unknown Mode token
+        if (CanonicalMode(node) is not { } modeName) // an unknown Mode token — bail to the reflective fallback
             return false;
 
-        if (XamlDataTypeScope.FindMember(dataType, path) is not { } leaf ||
+        if (XamlDataTypeScope.FindMember(dataType, path) is not { IsStatic: false } leaf ||
             XamlDataTypeScope.MemberType(leaf) is not { } leafType ||
             !XamlDataTypeScope.IsReadable(leaf))
         {
+            // A static-named path can't be `__s.Member` (CS0176) — bail to the reflective fallback (which
+            // resolves instance-or-static identically to the runtime loader's reflective binding).
             return false;
         }
 
@@ -328,8 +331,46 @@ internal static class LoweringEmitter
         c.Line(
             $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
             $"new global::Cursorial.UI.Data.CompiledBinding<{data}, {value}>({getter}, {setter}, " +
-            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {step} }}, \"{Escape(path)}\"){mode});");
+            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {step} }}, \"{Escape(path)}\"){Initializers(ModeInit(modeName))});");
         return true;
+    }
+
+    // The reflective fallback (B3b) — a faithful `new Binding(path) { … }` mirroring the runtime handler's
+    // BuildBinding (Mode/ElementName/Source/StringFormat/FallbackValue/RelativeSource), minus Converter.
+    private static void EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
+    {
+        // A Converter needs eager resource/static resolution, which lowering doesn't do yet — defer (X5.4).
+        if (HasNamed(node, "Converter"))
+        {
+            c.Line($"// TODO X5: {{Binding}} with a Converter for '{xm.Name}' not yet lowered (needs resource lowering)");
+            return;
+        }
+
+        if (CanonicalMode(node) is not { } modeName)
+        {
+            c.Line($"// TODO X5: {{Binding}} with an unrecognized Mode for '{xm.Name}'");
+            return;
+        }
+
+        if (RelativeSourceInit(node) is not { } relSource)
+        {
+            c.Line($"// TODO X5: {{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self/TemplatedParent only)");
+            return;
+        }
+
+        string path = Escape(BindingPathOf(node) ?? string.Empty);
+        var inits = new List<string>(ModeInit(modeName))
+        {
+            relSource,
+            StringInit("ElementName", NamedText(node, "ElementName")),
+            StringInit("Source", NamedText(node, "Source")),       // mirrors the handler: Source = the bare string
+            StringInit("StringFormat", NamedText(node, "StringFormat")),
+            StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+        };
+
+        c.Line(
+            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
+            $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)});");
     }
 
     // The binding path: the first positional argument, else the Path= named argument (mirrors the runtime handler).
@@ -341,15 +382,18 @@ internal static class LoweringEmitter
     private static string? NamedText(MarkupExtensionNode node, string name)
         => node.FindNamed(name) is { Text: { } t } ? t : null;
 
-    // The ` { Mode = BindingMode.X }` object-initializer suffix for the carried Mode, "" for unspecified
-    // (Default — resolved at install, BD10), or null for an unrecognized Mode token (caller falls back to TODO).
-    private static string? ModeInitializer(MarkupExtensionNode node)
+    private static string? FirstPositionalText(MarkupExtensionNode node)
+        => node.PositionalArguments.Count > 0 ? node.PositionalArguments[0].Text : null;
+
+    // The canonical BindingMode member name; "" for unspecified (Default — resolved at install, BD10); null for
+    // an unrecognized token (the caller bails — the compiled path to the reflective fallback, the fallback to TODO).
+    private static string? CanonicalMode(MarkupExtensionNode node)
     {
         if (NamedText(node, "Mode") is not { } text)
             return string.Empty;
 
         // BindingMode is a closed enum; match case-insensitively (WPF/Avalonia parity with the runtime handler).
-        string? canonical = text.ToLowerInvariant() switch
+        return text.ToLowerInvariant() switch
         {
             "default" => "Default",
             "oneway" => "OneWay",
@@ -358,8 +402,40 @@ internal static class LoweringEmitter
             "onewaytosource" => "OneWayToSource",
             _ => null,
         };
+    }
 
-        return canonical is null ? null : $" {{ Mode = global::Cursorial.UI.Data.BindingMode.{canonical} }}";
+    // The `Mode = BindingMode.X` initializer fragment for a carried mode ("" when unspecified ⇒ no fragment).
+    private static IEnumerable<string> ModeInit(string modeName)
+        => modeName.Length == 0 ? [] : [$"Mode = global::Cursorial.UI.Data.BindingMode.{modeName}"];
+
+    private static string StringInit(string member, string? value)
+        => value is null ? string.Empty : $"{member} = \"{Escape(value)}\"";
+
+    // The `RelativeSource = …` fragment: "" not present; the Self/TemplatedParent fragment; null for an
+    // unsupported mode (FindAncestor etc. — the caller TODOs), mirroring the handler's ParseRelativeSource.
+    private static string? RelativeSourceInit(MarkupExtensionNode node)
+    {
+        if (node.FindNamed("RelativeSource") is not { } value)
+            return string.Empty;
+
+        string? mode = value.IsNested
+            ? FirstPositionalText(value.Nested!) ?? NamedText(value.Nested!, "Mode")
+            : value.Text;
+
+        return mode switch
+        {
+            "TemplatedParent" => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent",
+            "Self" => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self",
+            null when value.IsNested => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self", // WPF default
+            _ => null,
+        };
+    }
+
+    // Joins non-empty object-initializer member assignments into a ` { a, b }` suffix, or "" when none.
+    private static string Initializers(IEnumerable<string> members)
+    {
+        var present = members.Where(s => s.Length > 0).ToList();
+        return present.Count == 0 ? string.Empty : " { " + string.Join(", ", present) + " }";
     }
 
     // Resolves an {x:Static Type.Member} path to a C# static reference. The type token (before the last dot)

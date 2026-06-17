@@ -220,25 +220,113 @@ namespace TestApp
         Assert.Equal("Goodbye", label.Text);
     }
 
-    [Fact] // B3a — a {Binding} with no x:DataType in scope can't compile; it stays a // TODO X5 (no silent wrong code)
-    public void Lowered_Binding_WithoutDataType_StaysTodo()
+    [Fact] // B3b — a {Binding} that can't compile (here a multi-hop path, no x:DataType) gracefully falls back to
+    // a faithful reflective `new Binding(...)` (not a silent drop) and still resolves live through the engine.
+    public void Lowered_Binding_Uncompilable_FallsBackToReflectiveBinding()
     {
         var xaml =
-            $"<StackPanel {Ns} x:Class=\"TestApp.NoDataTypeView\">" +
-            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption}\"/>" +
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.ReflectiveView\" x:DataType=\"t:OuterVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Inner.Caption, Mode=OneWay}\"/>" + // multi-hop ⇒ reflective fallback
             "</StackPanel>";
 
         const string codeBehind = @"
+using System.ComponentModel;
 using Cursorial.UI.Controls;
-namespace TestApp { public partial class NoDataTypeView : StackPanel { public NoDataTypeView() => InitializeComponent(); } }";
+namespace TestApp
+{
+    public sealed class InnerVm : INotifyPropertyChanged
+    {
+        private string _caption = string.Empty;
+        public string Caption
+        {
+            get => _caption;
+            set { _caption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Caption))); }
+        }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    public sealed class OuterVm { public InnerVm Inner { get; } = new(); }
+    public partial class ReflectiveView : StackPanel { public ReflectiveView() => InitializeComponent(); }
+}";
 
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = Lower(xaml, compilation);
 
+        // The reflective fallback was emitted (a faithful new Binding with the carried Mode), NOT a compiled
+        // binding and NOT a silent TODO.
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Inner.Caption\")", lowered);
+        Assert.Contains("Mode = global::Cursorial.UI.Data.BindingMode.OneWay", lowered);
         Assert.DoesNotContain("CompiledBinding", lowered);
-        Assert.Contains("TODO X5", lowered);
-        // It still compiles (the TODO is a comment; the rest of the tree is valid).
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.ReflectiveView")!)!;
+        var label = Assert.IsType<TextBlock>(view.Children[0]);
+
+        var outerType = assembly.GetType("TestApp.OuterVm")!;
+        var outer = System.Activator.CreateInstance(outerType)!;
+        var inner = outerType.GetProperty("Inner")!.GetValue(outer)!;
+        var caption = inner.GetType().GetProperty("Caption")!;
+        caption.SetValue(inner, "Nested");
+
+        // The reflective multi-hop binding walks Inner.Caption and resolves live on the DataContext set.
+        view.DataContext = outer;
+        Assert.Equal("Nested", label.Text);
+
+        caption.SetValue(inner, "Updated");
+        Assert.Equal("Updated", label.Text);
+    }
+
+    [Fact] // audit fix — an init-only leaf compiles a null setter (degrades to OneWay), never an `__s.P = v` (CS8852)
+    public void Lowered_Binding_InitOnlyLeaf_CompilesWithNullSetter()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.InitOnlyView\" x:DataType=\"t:InitVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class InitVm { public string Caption { get; init; } = ""hi""; }
+    public partial class InitOnlyView : StackPanel { public InitOnlyView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // The compiled lane is taken with a NULL setter (the init-only leaf is read-only for write-back) — and
+        // critically the lowered code compiles (an `__s.Caption = __v` assignment would be CS8852).
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.InitVm, string>", lowered);
+        Assert.Contains("static __s => __s.Caption, null,", lowered); // getter, then a null setter
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
+
+    [Fact] // audit fix — a static-member path can't be `__s.Member` (CS0176); it bails to the reflective fallback
+    public void Lowered_Binding_StaticMemberPath_FallsBackToReflective()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.StaticPathView\" x:DataType=\"t:StaticVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Shared}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class StaticVm { public static string Shared => ""S""; }
+    public partial class StaticPathView : StackPanel { public StaticPathView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // Not a compiled `__s.Shared` (would be CS0176) — the reflective fallback handles it, and it compiles.
+        Assert.DoesNotContain("CompiledBinding", lowered);
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Shared\")", lowered);
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
     }
 

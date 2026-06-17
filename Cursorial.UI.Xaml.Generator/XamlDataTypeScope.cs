@@ -74,10 +74,15 @@ internal static class XamlDataTypeScope
         _ => null,
     };
 
-    /// <summary>True when a property/field member can be assigned through (a public setter / a non-readonly field).</summary>
+    /// <summary>
+    /// True when a property/field member can be assigned through OUTSIDE a constructor — a public,
+    /// non-init-only setter, or a non-readonly/non-const field. (An <c>init</c>-only setter is excluded:
+    /// a lowered <c>__s.Prop = __v</c> assignment to it is CS8852, so an init-only leaf must degrade to a
+    /// null setter ⇒ OneWay, mirroring the engine's read-only-leaf path — B152.)
+    /// </summary>
     public static bool IsWritable(ISymbol member) => member switch
     {
-        IPropertySymbol property => property is { SetMethod.DeclaredAccessibility: Accessibility.Public },
+        IPropertySymbol property => property is { SetMethod: { DeclaredAccessibility: Accessibility.Public, IsInitOnly: false } },
         IFieldSymbol field => field is { IsReadOnly: false, IsConst: false },
         _ => false,
     };

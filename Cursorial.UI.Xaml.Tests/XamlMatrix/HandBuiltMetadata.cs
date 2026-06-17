@@ -1,6 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Xaml;
+
 using UIControls = Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
@@ -24,24 +25,25 @@ internal sealed class HandBuiltMetadata : IXamlTypeMetadataProvider
             return XamlTypeResolution.NotFound();
 
         return localName switch
-        {
-            "StackPanel" => XamlTypeResolution.Resolved(StackPanel),
-            "Button" => XamlTypeResolution.Resolved(Button),
-            "Border" => XamlTypeResolution.Resolved(Border),
-            _ => XamlTypeResolution.NotFound(),
-        };
+               {
+                   "StackPanel" => XamlTypeResolution.Resolved(StackPanel),
+                   "Button"     => XamlTypeResolution.Resolved(Button),
+                   "Border"     => XamlTypeResolution.Resolved(Border),
+                   _            => XamlTypeResolution.NotFound(),
+               };
     }
 
-    public string[] GetClrNamespaces(string xmlNamespace) => new[] { "Cursorial.UI.Controls" };
+    public string[] GetClrNamespaces(string xmlNamespace) => ["Cursorial.UI.Controls"];
 
-    public string[] GetKnownTypeNames(string xmlNamespace) => new[] { "StackPanel", "Button", "Border" };
+    public string[] GetKnownTypeNames(string xmlNamespace) => ["StackPanel", "Button", "Border"];
 
-    public string[] GetKnownMemberNames(Type clrType)
+    public string[] GetKnownMemberNames(IXamlType type)
     {
-        if (clrType == typeof(UIControls.StackPanel)) return new[] { "Children" };
-        if (clrType == typeof(UIControls.Button)) return new[] { "Content", "Width", "Margin" };
-        if (clrType == typeof(UIControls.Border)) return new[] { "Child" };
-        return Array.Empty<string>();
+        var clrType = type.UnderlyingSystemType;
+        if (clrType == typeof(UIControls.StackPanel)) return ["Children"];
+        if (clrType == typeof(UIControls.Button)) return ["Content", "Width", "Margin"];
+        if (clrType == typeof(UIControls.Border)) return ["Child"];
+        return [];
     }
 
     private static readonly XamlType StackPanel = BuildStackPanel();
@@ -51,45 +53,50 @@ internal sealed class HandBuiltMetadata : IXamlTypeMetadataProvider
     private static XamlType BuildStackPanel()
     {
         var members = new Dictionary<string, XamlMember>(StringComparer.Ordinal)
-        {
-            ["Children"] = new XamlMember("Children", typeof(UIElementCollection),
-                get: target => ((UIControls.StackPanel)target).Children),
-        };
+                      {
+                          ["Children"] = new("Children",
+                                             typeof(UIElementCollection),
+                                             get: target => ((UIControls.StackPanel) target).Children),
+                      };
+
         return new XamlType(
             clrType: typeof(UIControls.StackPanel),
             activate: () => new UIControls.StackPanel(),
             contentProperty: "Children",
             isCollection: true,
-            memberResolver: name => members.GetValueOrDefault(name));
+            memberResolver: members.GetValueOrDefault);
     }
 
     private static XamlType BuildButton()
     {
         var members = new Dictionary<string, XamlMember>(StringComparer.Ordinal)
-        {
-            ["Content"] = new XamlMember("Content", typeof(object), property: UIControls.ContentControl.ContentProperty),
-            ["Width"] = new XamlMember("Width", typeof(int?), property: UIElement.WidthProperty, converter: XamlConverters.For(typeof(int?))),
-            ["Margin"] = new XamlMember("Margin", typeof(Margins), property: UIElement.MarginProperty, converter: XamlConverters.For(typeof(Margins))),
-        };
+                      {
+                          ["Content"] = new XamlMember("Content", typeof(object), property: UIControls.ContentControl.ContentProperty),
+                          ["Width"] = new XamlMember("Width", typeof(int?), property: UIElement.WidthProperty, converter: XamlConverters.For(typeof(int?))),
+                          ["Margin"] = new XamlMember("Margin", typeof(Margins), property: UIElement.MarginProperty,
+                                                      converter: XamlConverters.For(typeof(Margins))),
+                      };
+
         return new XamlType(
             clrType: typeof(UIControls.Button),
             activate: () => new UIControls.Button(),
             contentProperty: "Content",
-            memberResolver: name => members.GetValueOrDefault(name));
+            memberResolver: members.GetValueOrDefault);
     }
 
     private static XamlType BuildBorder()
     {
         var members = new Dictionary<string, XamlMember>(StringComparer.Ordinal)
-        {
-            ["Child"] = new XamlMember("Child", typeof(UIElement),
-                setClr: (target, value) => ((UIControls.Border)target).Child = (UIElement?)value,
-                get: target => ((UIControls.Border)target).Child),
-        };
+                      {
+                          ["Child"] = new XamlMember("Child", typeof(UIElement),
+                                                     setClr: (target, value) => ((UIControls.Border) target).Child = (UIElement?) value,
+                                                     get: target => ((UIControls.Border) target).Child),
+                      };
+
         return new XamlType(
             clrType: typeof(UIControls.Border),
             activate: () => new UIControls.Border(),
             contentProperty: "Child",
-            memberResolver: name => members.GetValueOrDefault(name));
+            memberResolver: members.GetValueOrDefault);
     }
 }

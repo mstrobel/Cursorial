@@ -112,7 +112,7 @@ internal sealed class XamlObjectGraphBuilder
 
         // A <Setter> is construction-immutable (no parameterless ctor): build it from its Property/Value
         // members directly (matrix X117/X129 — Setters in style/resource dictionaries).
-        if (existingInstance is null && type.ClrType == typeof(Setter))
+        if (existingInstance is null && type.SystemType() == typeof(Setter))
             return BuildSetter(objectIndex, in record, line, column);
 
         object instance = existingInstance ?? ActivateSpecialOrDefault(objectIndex, in record, type, line, column);
@@ -165,7 +165,7 @@ internal sealed class XamlObjectGraphBuilder
     /// </summary>
     private object ActivateSpecialOrDefault(int objectIndex, in ObjectRecord record, XamlType type, int line, int column)
     {
-        if (type.ClrType == typeof(Style))
+        if (type.SystemType() == typeof(Style))
         {
             // An explicit Selector is the matcher and WINS; a co-present TargetType is only the frontend's
             // Setter-property resolution hint (already consumed at parse), not a second selector. TargetType
@@ -206,7 +206,7 @@ internal sealed class XamlObjectGraphBuilder
 
             var prefixed = _options.MetadataProvider.TryGetType(ns, local);
             if (prefixed.IsResolved)
-                return Selectors.OfType(null, prefixed.Type!.ClrType);
+                return Selectors.OfType(null, prefixed.Type!.SystemType());
 
             throw Fatal(XamlDiagnosticCodes.TypeNotFound,
                 $"Style TargetType '{targetTypeName}' was not found in namespace '{ns}'.", line, column);
@@ -215,7 +215,7 @@ internal sealed class XamlObjectGraphBuilder
         string defaultNs = _doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSchemaContext.CursorialUiNamespace;
         var resolution = _options.MetadataProvider.TryGetType(defaultNs, targetTypeName);
         if (resolution.IsResolved)
-            return Selectors.OfType(null, resolution.Type!.ClrType);
+            return Selectors.OfType(null, resolution.Type!.SystemType());
 
         return BuildSelector(targetTypeName, line, column); // simple-name fallback, errors wrapped as XAML diagnostics
     }
@@ -403,7 +403,7 @@ internal sealed class XamlObjectGraphBuilder
         collection = null;
 
         // The value IS assignable to the member type (incl. a UIProperty-backed member): assign it.
-        if (member.Property is null && member.ValueType.IsInstanceOfType(value))
+        if (member.Property is null && member.SystemType().IsInstanceOfType(value))
             return false;
         if (member.Property is UIProperty p && p.PropertyType.IsInstanceOfType(value))
             return false;
@@ -591,7 +591,7 @@ internal sealed class XamlObjectGraphBuilder
         // ContentControl.GetAccessText() folds it on demand (the three-identical-producers rule), so the
         // loader must NOT replace the value (matrix X68 stores "Hi", X165 derives AccessText from "_Run").
         // A genuinely AccessText-typed member folds by type here.
-        if (value is string accessLiteral && member.ValueType == typeof(AccessText))
+        if (value is string accessLiteral && member.SystemType() == typeof(AccessText))
             value = AccessText.Parse(accessLiteral);
 
         if (member.Property is UIProperty uiProperty)
@@ -619,14 +619,15 @@ internal sealed class XamlObjectGraphBuilder
     private object? ConvertText(XamlMember member, string text, object instance, int line, int column)
     {
         // A string-typed slot keeps the raw text (the access-key fold runs in Assign).
-        if (member.ValueType == typeof(string) || member.ValueType == typeof(object))
+        var memberType = member.SystemType();
+        if (memberType == typeof(string) || memberType == typeof(object))
             return text;
 
-        var converter = member.Converter ?? XamlConverters.For(member.ValueType);
+        var converter = member.Converter ?? XamlConverters.For(memberType);
         if (converter is null)
             return text; // no converter — pass the raw string (CLR setter may accept it)
 
-        var ctx = new XamlValueContext(_options.ConverterCulture, member, member.ValueType, _source, line, column);
+        var ctx = new XamlValueContext(_options.ConverterCulture, member, memberType, _source, line, column);
         return converter.ConvertFromString(text, in ctx);
     }
 
@@ -709,7 +710,7 @@ internal sealed class XamlObjectGraphBuilder
         {
             var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
             if (resolution.IsResolved)
-                return resolution.Type!.ClrType;
+                return resolution.Type!.SystemType();
             throw Fatal(XamlDiagnosticCodes.TypeNotFound, $"x:Key {{x:Type {typeName}}} could not be resolved to a type.", line, column);
         }
 
@@ -860,7 +861,7 @@ internal sealed class XamlObjectGraphBuilder
         ref readonly var child = ref _doc.Objects[childIndex];
         var childType = child.TypeId >= 0 ? _doc.ResolvedTypes[child.TypeId] : null;
 
-        if (childType is not null && typeof(ResourceDictionary).IsAssignableFrom(childType.ClrType))
+        if (childType is not null && typeof(ResourceDictionary).IsAssignableFrom(childType.SystemType()))
         {
             // <Foo.Resources><ResourceDictionary>…</ResourceDictionary></Foo.Resources>: fold the inner
             // dictionary's members into the host's own Resources dictionary.
@@ -995,7 +996,7 @@ internal sealed class XamlObjectGraphBuilder
         if (type is null)
             return false;
 
-        if (type.ClrType == typeof(Style) && TryGetStyleStringMember(in child, "TargetType", out string targetTypeName))
+        if (type.SystemType() == typeof(Style) && TryGetStyleStringMember(in child, "TargetType", out string targetTypeName))
         {
             // The implicit Style key is the target-type selector (the styling engine matches on Selector;
             // the dictionary key is the type-selector form, matrix X137).
@@ -1003,7 +1004,7 @@ internal sealed class XamlObjectGraphBuilder
             return true;
         }
 
-        if (typeof(DataTemplate).IsAssignableFrom(type.ClrType) && TryGetDataType(in child, out var dataType))
+        if (typeof(DataTemplate).IsAssignableFrom(type.SystemType()) && TryGetDataType(in child, out var dataType))
         {
             key = new DataTemplateKey(dataType);
             return true;
@@ -1024,7 +1025,7 @@ internal sealed class XamlObjectGraphBuilder
                 var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, _doc.Strings[member.ValueIndex]);
                 if (resolution.IsResolved)
                 {
-                    dataType = resolution.Type!.ClrType;
+                    dataType = resolution.Type!.SystemType();
                     return true;
                 }
             }
@@ -1040,7 +1041,7 @@ internal sealed class XamlObjectGraphBuilder
                     var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, _doc.Strings[member.ValueIndex]);
                     if (resolution.IsResolved)
                     {
-                        dataType = resolution.Type!.ClrType;
+                        dataType = resolution.Type!.SystemType();
                         return true;
                     }
                 }
@@ -1138,7 +1139,7 @@ internal sealed class XamlObjectGraphBuilder
     {
         // A custom-extension or StaticResource result targeting a typed slot runs the converter ladder
         // when the value is a string and the slot isn't string/object (matrix X121-style flexibility).
-        if (value is string text && member.ValueType != typeof(string) && member.ValueType != typeof(object))
+        if (value is string text && member.SystemType() is var mt && mt != typeof(string) && mt != typeof(object))
             value = ConvertText(member, text, instance, line, column);
 
         Assign(member, instance, value, line, column);

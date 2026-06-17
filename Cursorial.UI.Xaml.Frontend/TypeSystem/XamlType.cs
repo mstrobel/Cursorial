@@ -14,9 +14,9 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 public sealed class XamlType
 {
-    /// <summary>Creates a resolved type.</summary>
+    /// <summary>Creates a resolved type from an abstract type identity (the symbol backend's path).</summary>
     public XamlType(
-        Type clrType,
+        IXamlType clrType,
         Func<object>? activate = null,
         string? contentProperty = null,
         bool isCollection = false,
@@ -37,10 +37,34 @@ public sealed class XamlType
         _memberResolver = memberResolver;
     }
 
+    /// <summary>
+    /// Creates a resolved type from a runtime CLR type (the reflection backend's path): the identity is
+    /// wrapped in a <see cref="ReflectionXamlType"/>, so the loader's reflection provider keeps passing
+    /// <c>typeof(T)</c>.
+    /// </summary>
+    public XamlType(
+        Type clrType,
+        Func<object>? activate = null,
+        string? contentProperty = null,
+        bool isCollection = false,
+        Action<object, object?>? addItem = null,
+        Action<object, object, object?>? addDictionaryItem = null,
+        Type? dictionaryKeyType = null,
+        bool requiresInitialize = false,
+        Func<string, XamlMember?>? memberResolver = null)
+        : this(
+            new ReflectionXamlType(clrType ?? throw new ArgumentNullException(nameof(clrType))),
+            activate, contentProperty, isCollection, addItem, addDictionaryItem,
+            dictionaryKeyType, requiresInitialize, memberResolver) {}
+
     private readonly Func<string, XamlMember?>? _memberResolver;
 
-    /// <summary>The underlying CLR type.</summary>
-    public Type ClrType { get; }
+    /// <summary>
+    /// The type's abstract identity (<see cref="IXamlType"/>): reflection-backed in the loader, symbol-backed
+    /// in the generator. Read <see cref="IXamlType.Name"/> / <see cref="IXamlType.IsCollection"/> in the
+    /// frontend; the loader reaches through <see cref="IXamlType.UnderlyingSystemType"/> for the runtime type.
+    /// </summary>
+    public IXamlType ClrType { get; }
 
     /// <summary>The cached parameterless-activation thunk (loader-side).</summary>
     public Func<object>? Activate { get; }

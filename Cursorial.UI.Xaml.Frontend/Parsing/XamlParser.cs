@@ -167,7 +167,7 @@ internal sealed class XamlParser
             type = resolution.Type;
             typeId = _builder.AddResolvedType(type);
             if (isRoot && type is not null)
-                _rootType = type.ClrType;
+                _rootType = type.ClrType.UnderlyingSystemType;
         }
         else
         {
@@ -661,7 +661,7 @@ internal sealed class XamlParser
             var resolution = ResolveQualifiedType(arg, appendExtensionSuffix: false, node.Line, node.Column, report: true);
             if (resolution.IsResolved)
             {
-                folded = resolution.Type!.ClrType;
+                folded = resolution.Type!.ClrType.UnderlyingSystemType;
                 return true;
             }
             return false; // ResolveQualifiedType reported the miss
@@ -896,7 +896,7 @@ internal sealed class XamlParser
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Deferred, childObjects[0], childObjects.Count, lineInfo));
             }
-            else if (childObjects.Count == 1 && member?.ValueType is not null && !IsCollectionMember(member))
+            else if (childObjects.Count == 1 && member is not null && !member.ValueType.IsCollection)
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Object, childObjects[0], 0, lineInfo));
             }
@@ -915,32 +915,6 @@ internal sealed class XamlParser
 
     private static bool InResourceDictionary(string memberName)
         => memberName is "Resources" or "MergedDictionaries" or "ThemeDictionaries";
-
-    /// <summary>
-    /// True when a property-element member's value type is collection-shaped — an <see cref="IList"/>,
-    /// an <see cref="IList{T}"/>, or a <c>ResourceDictionary</c> (the loader fills it rather than
-    /// replacing it). Drives the single-child Object-vs-Items decision so a lone child of a read-only
-    /// collection property (one <c>&lt;Style&gt;</c> under <c>&lt;Panel.Styles&gt;</c>) is emitted as an
-    /// <c>Items</c> run, not an <c>Object</c> replacement. The loader's <c>IsReadOnlyCollectionMember</c>
-    /// is the definitive runtime classification; this parse-time check is its mirror (a member this
-    /// predicate flags must be one the loader's collection-fill path handles).
-    /// </summary>
-    private static bool IsCollectionMember(XamlMember member)
-    {
-        var valueType = member.ValueType;
-        if (valueType == typeof(string) || valueType == typeof(object))
-            return false;
-        if (typeof(IList).IsAssignableFrom(valueType))
-            return true;
-        if (string.Equals(valueType.Name, "ResourceDictionary", StringComparison.Ordinal))
-            return true;
-        foreach (var iface in valueType.GetInterfaces())
-        {
-            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IList<>))
-                return true;
-        }
-        return false;
-    }
 
     // ── Setter resolution (X64/X66) ──────────────────────────────────────────────────────────────
 
@@ -1272,7 +1246,7 @@ internal sealed class XamlParser
         if (converter is null || !converter.IsContextFree)
             return false;
 
-        var ctx = new XamlValueContext(_options.ConverterCulture, member, member.ValueType, _builder.Source, line, column);
+        var ctx = new XamlValueContext(_options.ConverterCulture, member, member.ValueType.UnderlyingSystemType!, _builder.Source, line, column);
 
         try
         {

@@ -20,10 +20,10 @@ namespace Cursorial.UI.Xaml;
 /// </remarks>
 public sealed class XamlMember
 {
-    /// <summary>Creates a resolved member.</summary>
+    /// <summary>Creates a resolved member from an abstract value-type identity (the symbol backend's path).</summary>
     public XamlMember(
         string name,
-        Type valueType,
+        IXamlType valueType,
         object? property = null,
         Action<object, object?>? setClr = null,
         Func<object, object?>? get = null,
@@ -41,11 +41,35 @@ public sealed class XamlMember
         IsAttachable = isAttachable;
     }
 
+    /// <summary>
+    /// Creates a resolved member from a runtime CLR value type (the reflection backend's path): the value
+    /// type is wrapped in a <see cref="ReflectionXamlType"/>, so the loader's reflection provider keeps
+    /// passing <c>typeof(T)</c>.
+    /// </summary>
+    public XamlMember(
+        string name,
+        Type valueType,
+        object? property = null,
+        Action<object, object?>? setClr = null,
+        Func<object, object?>? get = null,
+        ITypeConverter? converter = null,
+        bool isEvent = false,
+        bool isAttachable = false)
+        : this(
+            name,
+            new ReflectionXamlType(valueType ?? throw new ArgumentNullException(nameof(valueType))),
+            property, setClr, get, converter, isEvent, isAttachable) {}
+
     /// <summary>The member's local name (e.g. <c>Content</c>, <c>Grid.Row</c> uses just <c>Row</c>).</summary>
     public string Name { get; }
 
-    /// <summary>The declared value type of the member.</summary>
-    public Type ValueType { get; }
+    /// <summary>
+    /// The member's declared value type, as an abstract identity (<see cref="IXamlType"/>):
+    /// reflection-backed in the loader, symbol-backed in the generator. The frontend reads
+    /// <see cref="IXamlType.IsCollection"/> for the Object-vs-Items decision; the loader reaches through
+    /// <see cref="IXamlType.UnderlyingSystemType"/> for conversion and assignability.
+    /// </summary>
+    public IXamlType ValueType { get; }
 
     /// <summary>
     /// The registered Fork A <c>UIProperty</c> backing this member, as an opaque reference, or

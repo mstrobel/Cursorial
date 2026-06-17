@@ -34,6 +34,6 @@ internal sealed class XamlSelectorTypeResolver : ISelectorTypeResolver
             return null; // an unbound prefix — the parser reports a qualified-type error at the token
 
         var resolution = _metadata.TryGetType(ns, local);
-        return resolution.IsResolved ? resolution.Type!.ClrType : null;
+        return resolution.IsResolved ? resolution.Type!.SystemType() : null;
     }
 }

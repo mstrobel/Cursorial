@@ -72,8 +72,12 @@ public sealed class Section01_Parsing : XamlTestBase
     public void X007_ExplicitCollectionPropertyElement()
     {
         var doc = Parse("<StackPanel><StackPanel.Children><Button/></StackPanel.Children></StackPanel>");
-        Assert.True(doc.TryFindMember(0, "Children", out _));
-        // a single child through the explicit collection element still fills Children
+        Assert.True(doc.TryFindMember(0, "Children", out var m));
+        // A LONE child of a collection-shaped member is an Items run, NOT an Object replacement
+        // (IXamlType.IsCollection drives this; the loader fills the read-only collection either way, so
+        // this node-graph assertion is the only thing that pins the IsCollection computation — guarding
+        // the reflection and symbol backends from drift).
+        Assert.Equal(XamlValueKind.Items, m.Kind);
         Assert.Equal(1, doc.ObjectCount() - 1); // one child object
     }
 

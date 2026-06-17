@@ -59,9 +59,11 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider
     /// <inheritdoc/>
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Member-name enumeration for a did-you-mean diagnostic over a resolved XAML type.")]
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Member-name enumeration for a did-you-mean diagnostic over a resolved XAML type.")]
-    public string[] GetKnownMemberNames(Type clrType)
+    public string[] GetKnownMemberNames(IXamlType type)
     {
-        ArgumentNullException.ThrowIfNull(clrType);
+        ArgumentNullException.ThrowIfNull(type);
+        if (type.UnderlyingSystemType is not { } clrType)
+            return Array.Empty<string>();
 
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var prop in clrType.GetProperties(BindingFlags.Public | BindingFlags.Instance))

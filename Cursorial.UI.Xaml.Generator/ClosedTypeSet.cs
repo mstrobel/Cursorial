@@ -18,13 +18,15 @@ internal static class ClosedTypeSet
     public static IReadOnlyList<(string Namespace, string LocalName)> CollectElementNames(string xaml)
     {
         var recorder = new RecordingProvider();
+
         try
         {
-            XamlFrontend.Parse(xaml, new XamlParseOptions
-            {
-                MetadataProvider = recorder,
-                DiagnosticMode = XamlDiagnosticMode.CollectAll,
-            });
+            XamlFrontend.Parse(xaml,
+                               new XamlParseOptions
+                               {
+                                   MetadataProvider = recorder,
+                                   DiagnosticMode = XamlDiagnosticMode.CollectAll,
+                               });
         }
         catch
         {
@@ -50,6 +52,7 @@ internal static class ClosedTypeSet
         {
             if (_seen.Add((xmlNamespace, localName)))
                 _names.Add((xmlNamespace, localName));
+
             return XamlTypeResolution.NotFound();
         }
 
@@ -57,6 +60,6 @@ internal static class ClosedTypeSet
 
         public string[] GetKnownTypeNames(string xmlNamespace) => System.Array.Empty<string>();
 
-        public string[] GetKnownMemberNames(System.Type clrType) => System.Array.Empty<string>();
+        public string[] GetKnownMemberNames(IXamlType type) => System.Array.Empty<string>();
     }
 }

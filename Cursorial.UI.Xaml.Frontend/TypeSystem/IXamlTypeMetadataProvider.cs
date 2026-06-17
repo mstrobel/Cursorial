@@ -35,11 +35,12 @@ public interface IXamlTypeMetadataProvider
     string[] GetKnownTypeNames(string xmlNamespace);
 
     /// <summary>
-    /// Returns the XAML-settable member names of <paramref name="clrType"/> (public instance
-    /// properties + events), for a did-you-mean suggestion on a member-not-found diagnostic (P6 review
-    /// P2-16). May return an empty array when the provider cannot enumerate (no suggestion is offered).
+    /// Returns the XAML-settable member names of <paramref name="type"/> (public instance properties +
+    /// events), for a did-you-mean suggestion on a member-not-found diagnostic (P6 review P2-16). Takes the
+    /// abstract <see cref="IXamlType"/> so a symbol backend can enumerate from a Roslyn symbol. May return
+    /// an empty array when the provider cannot enumerate (no suggestion is offered).
     /// </summary>
-    string[] GetKnownMemberNames(Type clrType);
+    string[] GetKnownMemberNames(IXamlType type);
 }
 
 /// <summary>

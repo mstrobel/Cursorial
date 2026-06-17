@@ -1,4 +1,5 @@
 using Cursorial.UI.Xaml;
+
 using UIControls = Cursorial.UI.Controls;
 using UIData = Cursorial.UI.Data;
 
@@ -19,7 +20,7 @@ internal sealed class TestMetadata : IXamlTypeMetadataProvider
     private const string Ui = XmlnsTestConstants.Ui;
 
     // A demonstration type for the using:/clr-namespace: rows (X17/X18).
-    public sealed class MyControl { }
+    public sealed class MyControl {}
 
     private readonly Dictionary<string, Func<XamlType>> _byName;
     private readonly string[] _knownNames;
@@ -27,29 +28,29 @@ internal sealed class TestMetadata : IXamlTypeMetadataProvider
     private TestMetadata()
     {
         _byName = new Dictionary<string, Func<XamlType>>(StringComparer.Ordinal)
-        {
-            ["Button"] = () => Build(typeof(UIControls.Button), content: "Content", requiresInit: false),
-            ["ButtonBase"] = () => Build(typeof(UIControls.ButtonBase), content: "Content"),
-            ["Border"] = () => Build(typeof(UIControls.Border), content: "Child"),
-            ["StackPanel"] = () => Build(typeof(UIControls.StackPanel), content: "Children", isCollectionContent: true),
-            ["TextBlock"] = () => Build(typeof(UIControls.TextBlock), content: "Text"),
-            ["Label"] = () => Build(typeof(UIControls.Label), content: "Content"),
-            ["Grid"] = () => Build(typeof(UIControls.Grid), content: "Children", isCollectionContent: true),
-            ["RowDefinition"] = () => Build(typeof(UIControls.RowDefinition)),
-            ["ColumnDefinition"] = () => Build(typeof(UIControls.ColumnDefinition)),
-            ["ControlTemplate"] = () => Build(typeof(UIControls.ControlTemplate), content: "Content", deferredContent: true),
-            ["DataTemplate"] = () => Build(typeof(UIControls.DataTemplate), content: "Content", deferredContent: true),
-            ["Style"] = () => Build(typeof(global::Cursorial.UI.Style)),
-            ["Setter"] = () => Build(typeof(global::Cursorial.UI.Setter)),
-            ["Binding"] = () => Build(typeof(UIData.Binding)),
-            ["MyControl"] = () => Build(typeof(MyControl)),
-        };
+                  {
+                      ["Button"] = () => Build(typeof(UIControls.Button), content: "Content", requiresInit: false),
+                      ["ButtonBase"] = () => Build(typeof(UIControls.ButtonBase), content: "Content"),
+                      ["Border"] = () => Build(typeof(UIControls.Border), content: "Child"),
+                      ["StackPanel"] = () => Build(typeof(UIControls.StackPanel), content: "Children", isCollectionContent: true),
+                      ["TextBlock"] = () => Build(typeof(UIControls.TextBlock), content: "Text"),
+                      ["Label"] = () => Build(typeof(UIControls.Label), content: "Content"),
+                      ["Grid"] = () => Build(typeof(UIControls.Grid), content: "Children", isCollectionContent: true),
+                      ["RowDefinition"] = () => Build(typeof(UIControls.RowDefinition)),
+                      ["ColumnDefinition"] = () => Build(typeof(UIControls.ColumnDefinition)),
+                      ["ControlTemplate"] = () => Build(typeof(UIControls.ControlTemplate), content: "Content", deferredContent: true),
+                      ["DataTemplate"] = () => Build(typeof(UIControls.DataTemplate), content: "Content", deferredContent: true),
+                      ["Style"] = () => Build(typeof(global::Cursorial.UI.Style)),
+                      ["Setter"] = () => Build(typeof(global::Cursorial.UI.Setter)),
+                      ["Binding"] = () => Build(typeof(UIData.Binding)),
+                      ["MyControl"] = () => Build(typeof(MyControl)),
+                  };
 
-        _knownNames = new[]
-        {
+        _knownNames =
+        [
             "Button", "ButtonBase", "Border", "StackPanel", "TextBlock", "Label", "Grid",
-            "RowDefinition", "ColumnDefinition", "ControlTemplate", "DataTemplate", "Style", "Setter", "Binding",
-        };
+            "RowDefinition", "ColumnDefinition", "ControlTemplate", "DataTemplate", "Style", "Setter", "Binding"
+        ];
     }
 
     public XamlTypeResolution TryGetType(string xmlNamespace, string localName)
@@ -60,6 +61,7 @@ internal sealed class TestMetadata : IXamlTypeMetadataProvider
         {
             if (clrNs == "DemoApp" && localName == "MyControl")
                 return XamlTypeResolution.Resolved(Build(typeof(MyControl)));
+
             return XamlTypeResolution.NotFound();
         }
 
@@ -68,7 +70,7 @@ internal sealed class TestMetadata : IXamlTypeMetadataProvider
 
         // Synthetic ambiguity for X20: a "Ambiguous" local name matches two full names.
         if (localName == "AmbiguousType")
-            return XamlTypeResolution.Ambiguous(new[] { "Cursorial.UI.AmbiguousType", "Cursorial.UI.Controls.AmbiguousType" });
+            return XamlTypeResolution.Ambiguous(["Cursorial.UI.AmbiguousType", "Cursorial.UI.Controls.AmbiguousType"]);
 
         if (_byName.TryGetValue(localName, out var factory))
             return XamlTypeResolution.Resolved(factory());
@@ -78,16 +80,19 @@ internal sealed class TestMetadata : IXamlTypeMetadataProvider
 
     public string[] GetClrNamespaces(string xmlNamespace)
         => string.Equals(xmlNamespace, Ui, StringComparison.Ordinal)
-            ? new[] { "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data" }
-            : Array.Empty<string>();
+               ? ["Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data"]
+               : [];
 
     public string[] GetKnownTypeNames(string xmlNamespace)
-        => string.Equals(xmlNamespace, Ui, StringComparison.Ordinal) ? _knownNames : Array.Empty<string>();
+        => string.Equals(xmlNamespace, Ui, StringComparison.Ordinal) ? _knownNames : [];
 
-    public string[] GetKnownMemberNames(Type clrType)
+    public string[] GetKnownMemberNames(IXamlType type)
     {
         // The X0 member-not-found rows don't assert a did-you-mean suggestion, but surfacing the static
         // member table keeps this fixture honest with the production reflection provider.
+        if (type.UnderlyingSystemType is not {} clrType)
+            return [];
+
         var members = TestMembers.For(clrType, contentProperty: null, deferredContent: false);
         var names = new string[members.Count];
         members.Keys.CopyTo(names, 0);
@@ -104,6 +109,7 @@ internal sealed class TestMetadata : IXamlTypeMetadataProvider
         bool requiresInit = false)
     {
         var members = TestMembers.For(clr, content, deferredContent);
+
         return new XamlType(
             clrType: clr,
             activate: null,
@@ -130,11 +136,13 @@ internal static class XmlnsNamespacesTest
     public static bool TryDecodeClr(string ns, out string clrNamespace)
     {
         clrNamespace = string.Empty;
+
         if (ns.StartsWith("using:", StringComparison.Ordinal))
         {
             clrNamespace = ns.Substring("using:".Length).Trim();
             return clrNamespace.Length > 0;
         }
+
         if (ns.StartsWith("clr-namespace:", StringComparison.Ordinal))
         {
             var body = ns.Substring("clr-namespace:".Length);
@@ -142,6 +150,7 @@ internal static class XmlnsNamespacesTest
             clrNamespace = (semi < 0 ? body : body.Substring(0, semi)).Trim();
             return clrNamespace.Length > 0;
         }
+
         return false;
     }
 }

@@ -50,6 +50,7 @@ internal static class ControlThemes
         dict[typeof(TabItem)] = TabItemTheme();
         dict[typeof(ProgressBar)] = ProgressBarTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
+        dict[typeof(Window)] = WindowTheme();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -535,6 +536,134 @@ internal static class ControlThemes
 
     private static Style ScrollViewerTheme()
         => new Style { Key = "Theme.ScrollViewer" }.Set(Control.TemplateProperty, ScrollViewerTemplate());
+
+    // ───────────────────────────── Window (S4 chrome — C4, punch 36) ─────────────────────────────
+
+    // The themed window chrome (design doc §8.3) — the C4 replacement for S4's interim default template,
+    // now resolved through the control-theme chain (CursorialTheme.BuiltIn is the backstop), so an app
+    // Window style overrides it (the b13fc2a Template-lane precedence fix makes part overrides land
+    // correctly). Borderless, fill-bounded (the tokyo-night "borderless windows" model): a window separates
+    // from the desktop by tonal ELEVATION, not a drawn frame — the root is an opaque occluding fill with NO
+    // resting pen (the body defaults to PanelBrush via the theme setter; an explicit Window.BorderPen opts a
+    // frame back in via the surviving binding). Drop-shadow elevation is WM/surface-applied (W5), not painted
+    // here. The title band doubles as the Drag grab; its fill + ink track the window's active state via the
+    // active-look below (the interim's Activated/Deactivated mechanism, relocated into the theme template; a
+    // declarative `^:active-window /template/ …` rule is a future refinement now the Template lane exists).
+    private static ControlTemplate WindowChromeTemplate() => new(ctx =>
+    {
+        var window = (Window) (ctx.TemplatedParent
+                               ?? throw new InvalidOperationException("The window chrome template requires a templated parent."));
+
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+
+        var root = new Border();
+        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        root.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty)); // opt-in frame only
+
+        if (window.WindowStyle == WindowStyle.None)
+        {
+            root.Child = presenter; // chrome-less, still an opaque occluding fill
+            return root;
+        }
+
+        var layout = new DockPanel();
+
+        // The title bar is a filled band that doubles as the Drag grab area (§8.3); its fill + ink track the
+        // window's active state (ApplyActiveLook): an accent band + on-accent ink when active, a recessed
+        // surface band + dim ink when inactive — the borderless focus cue is the band colour, not a border.
+        var titleBar = new Border { Padding = new Margins(1, 0) };
+        WindowChrome.SetHitTestRole(titleBar, WindowHitTestRole.Drag);
+        ctx.RegisterName("PART_TitleBar", titleBar);
+
+        var titleBarContent = new DockPanel(); // LastChildFill → the title fills the remainder
+
+        // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
+        // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
+        // intentionally leaves Close off).
+        var closeButton = new Button { Content = "✕", Background = Brushes.Transparent, Focusable = false, IsTabStop = false };
+        WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
+        closeButton.Click += (_, _) =>
+                             {
+                                 if (window.CanClose)
+                                     window.Close(WindowCloseReason.ChromeAction);
+                             };
+        DockPanel.SetDock(closeButton, Dock.Right);
+        titleBarContent.Children.Add(closeButton); // docked right → rightmost control
+        ctx.RegisterName("PART_CloseButton", closeButton);
+
+        // Maximize ▢ — a role-driven glyph (its press bubbles to the window, which toggles Maximized via the
+        // Maximize role, like the ◢ grip's ResizeSE). Only when the window can resize.
+        TextBlock? maximizeGlyph = null;
+        if (window.CanResize)
+        {
+            maximizeGlyph = new TextBlock { Text = "▢" };
+            WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
+            DockPanel.SetDock(maximizeGlyph, Dock.Right);
+            titleBarContent.Children.Add(maximizeGlyph); // docked right → left of the close glyph
+            ctx.RegisterName("PART_MaximizeButton", maximizeGlyph);
+        }
+
+        var titleText = new TextBlock { Text = window.Title ?? string.Empty };
+        titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
+        ctx.RegisterName("PART_Title", titleText);
+
+        titleBar.Child = titleBarContent;
+        DockPanel.SetDock(titleBar, Dock.Top);
+        layout.Children.Add(titleBar);
+
+        // The active-state look, driven off Activated/Deactivated — the relocated interim mechanism.
+        void ApplyActiveLook(bool active)
+        {
+            titleBar.SetResourceReference(Border.BackgroundProperty, active ? ThemeKeys.AccentBrush : ThemeKeys.SurfaceBrush);
+            var ink = active ? ThemeKeys.OnAccentBrush : ThemeKeys.TextDimBrush;
+            titleText.SetResourceReference(TextElement.ForegroundProperty, ink);
+            closeButton.SetResourceReference(TextElement.ForegroundProperty, ink);
+            maximizeGlyph?.SetResourceReference(TextElement.ForegroundProperty, ink);
+        }
+
+        // These handlers live for the window's lifetime (GC'd with it). Re-templating a LIVE window does not
+        // detach them (a pre-existing edge from the interim — windows are not re-templated in practice; firing
+        // on a detached title bar is a harmless no-op). The declarative `:active-window /template/` refinement
+        // would retire them entirely — tracked for the P9 closeout.
+        ApplyActiveLook(window.IsActive);
+        window.Activated += (_, _) => ApplyActiveLook(true);
+        window.Deactivated += (_, _) => ApplyActiveLook(false);
+
+        if (window.CanResize)
+        {
+            // The ◢ resize grip overlays the content's bottom-right corner (ResizeSE), stacked over the
+            // presenter in a single-cell Grid so it costs no layout row.
+            var body = new Grid();
+            body.Children.Add(presenter);
+
+            var grip = new TextBlock
+                       {
+                           Text = "◢",
+                           HorizontalAlignment = HorizontalAlignment.Right,
+                           VerticalAlignment = VerticalAlignment.Bottom
+                       };
+            grip.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+            WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
+            ctx.RegisterName("PART_ResizeGrip", grip);
+            body.Children.Add(grip);
+
+            layout.Children.Add(body); // fills the remainder
+        }
+        else
+        {
+            layout.Children.Add(presenter); // fills the remainder
+        }
+
+        root.Child = layout;
+        return root;
+    });
+
+    private static Style WindowTheme()
+        => new Style { Key = "Theme.Window" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush) // borderless body surface; a consumer LocalValue Background wins
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, WindowChromeTemplate());
 }
 
 /// <summary>

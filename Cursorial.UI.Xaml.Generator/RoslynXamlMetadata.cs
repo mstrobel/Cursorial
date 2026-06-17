@@ -25,12 +25,18 @@ namespace Cursorial.UI.Xaml.Generator;
 /// </remarks>
 internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
 {
+    private const string StyleTypeName = "Cursorial.UI.Style";
+
+    private readonly Compilation _compilation;
     private readonly XamlSymbolResolver _resolver;
     private readonly Dictionary<ITypeSymbol, XamlType> _typeCache = new(SymbolEqualityComparer.Default);
+    private RoslynXamlType? _systemTypeRef;
 
-    public RoslynXamlMetadata(Compilation compilation) => _resolver = new XamlSymbolResolver(compilation);
-
-    public RoslynXamlMetadata(XamlSymbolResolver resolver) => _resolver = resolver;
+    public RoslynXamlMetadata(Compilation compilation)
+    {
+        _compilation = compilation;
+        _resolver = new XamlSymbolResolver(compilation);
+    }
 
     public XamlTypeResolution TryGetType(string xmlNamespace, string localName)
     {
@@ -66,7 +72,7 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
         return built;
     }
 
-    private static XamlType BuildType(INamedTypeSymbol symbol)
+    private XamlType BuildType(INamedTypeSymbol symbol)
     {
         var contentProperty = SymbolXamlModel.ResolveContentProperty(symbol);
         var isCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(symbol, contentProperty);
@@ -80,8 +86,14 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
             memberResolver: name => members.TryGetValue(name, out var m) ? m : members[name] = BuildMember(symbol, name));
     }
 
-    private static XamlMember? BuildMember(INamedTypeSymbol owner, string name)
+    private XamlMember? BuildMember(INamedTypeSymbol owner, string name)
     {
+        // Rung 0 — Style.TargetType is synthetic: a Style matches via a Selector, not a TargetType property,
+        // so the reflection provider injects a Type-typed member here. Mirror it, or an enclosed Setter's
+        // target-type resolution (X64/X66) fails (CUR2110) and TargetType itself is CUR2102.
+        if (name == "TargetType" && string.Equals(owner.ToDisplayString(), StyleTypeName, StringComparison.Ordinal))
+            return new XamlMember(name, SystemTypeRef);
+
         if (SymbolXamlModel.FindMember(owner, name) is not {} m)
             return null;
 
@@ -94,7 +106,15 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
                    isEvent: m.IsEvent,
                    isAttachable: m.IsAttached)
                {
-                   IsDeferredContent = SymbolXamlModel.IsDeferredContent(m.ValueType),
+                   IsDeferredContent = SymbolXamlModel.IsDeferredContent(m.ValueType)
                };
     }
+
+    // The value-type identity for the synthetic Style.TargetType member (System.Type; falls back to object).
+    // Only its non-collection-ness matters at parse time — the loader reads the TargetType VALUE string.
+    private RoslynXamlType SystemTypeRef
+        => _systemTypeRef ??= new RoslynXamlType(
+               (ITypeSymbol?) _compilation.GetTypeByMetadataName("System.Type") ??
+               _compilation.GetSpecialType(SpecialType.System_Object)
+           );
 }

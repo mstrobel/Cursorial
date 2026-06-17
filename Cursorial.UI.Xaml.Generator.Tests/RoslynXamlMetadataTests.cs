@@ -1,3 +1,5 @@
+using System.Linq;
+
 using Cursorial.UI.Xaml;
 using Cursorial.UI.Xaml.Generator;
 
@@ -107,5 +109,34 @@ public class RoslynXamlMetadataTests
         var doc = ParseWith(Provider(), $"<StackPanel xmlns=\"{Ui}\"><Button Grid.Row=\"0\"/></StackPanel>");
         Assert.DoesNotContain(doc.Diagnostics, d => d.Code == "CUR2102");
         Assert.DoesNotContain(doc.Diagnostics, d => d.Severity == XamlDiagnosticSeverity.Error);
+    }
+
+    [Fact] // coverage audit: a representative theme-style document must parse with NO false CUR2xxx errors,
+           // so the CUR2 semantic band can be surfaced as build errors without breaking valid XAML.
+    public void SymbolBackedParse_ThemeStyleVocabulary_NoFalsePositives()
+    {
+        const string xaml = """
+            <ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+              <ControlTemplate x:Key="ButtonTemplate">
+                <Border Padding="1,0" Background="{TemplateBinding Background}">
+                  <ContentPresenter x:Name="PART_ContentPresenter"/>
+                </Border>
+              </ControlTemplate>
+              <Style x:Key="{x:Type Button}" TargetType="Button">
+                <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+                <Setter Property="Template" Value="{StaticResource ButtonTemplate}"/>
+              </Style>
+              <Style Selector=".caps-unicode CheckBox">
+                <Setter Property="ToggleGlyph.Glyphs" Value="a|b|c"/>
+              </Style>
+            </ResourceDictionary>
+            """;
+
+        var cur2 = ParseWith(Provider(), xaml).Diagnostics
+            .Where(d => d.Code.StartsWith("CUR2"))
+            .Select(d => $"{d.Code} @ ({d.Line},{d.Column}): {d.Message}")
+            .ToList();
+
+        Assert.True(cur2.Count == 0, "Unexpected CUR2 diagnostics on valid theme XAML:\n" + string.Join("\n", cur2));
     }
 }

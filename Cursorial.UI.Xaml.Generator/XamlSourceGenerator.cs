@@ -13,13 +13,16 @@ namespace Cursorial.UI.Xaml.Generator;
 /// The Fork C X4 incremental XAML generator (design doc §4.9, P10). It discovers the project's
 /// <c>CursorialXaml</c> items (surfaced as <see cref="AdditionalText"/> flagged
 /// <c>SourceItemType=CursorialXaml</c> by the package targets), runs the SAME netstandard2.0
-/// <c>XamlFrontend.Parse</c> the loader runs (source-linked), and emits:
+/// <c>XamlFrontend.Parse</c> the loader runs (referenced) over the symbol-backed
+/// <see cref="RoslynXamlMetadata"/> provider, and emits:
 /// <list type="bullet">
-/// <item>WS-X4.4 — the parser's <see cref="XamlDiagnostic"/>s as Roslyn build diagnostics at the
-/// <c>.xaml</c> location (syntax band <c>CUR1xxx</c> today; the semantic band joins once the
-/// build-time <c>RoslynXamlMetadata</c> provider lands at WS-X4.3).</item>
-/// <item>WS-X4.5/X4.6 (forthcoming) — the generated metadata provider and the typed <c>x:Name</c>
-/// fields + <c>InitializeComponent</c>.</item>
+/// <item>WS-X4.4 — the parser's <see cref="XamlDiagnostic"/>s (the <c>CUR1xxx</c> syntax band AND the
+/// <c>CUR2xxx</c> semantic band — type/member-not-found) as Roslyn build diagnostics at the <c>.xaml</c>
+/// location.</item>
+/// <item>WS-X4.5 — one generated <c>IXamlTypeMetadataProvider</c> per compilation (over the union closed
+/// type set) with a <c>[ModuleInitializer]</c> that installs it as the AOT-clean loader default.</item>
+/// <item>WS-X4.6 — for each <c>x:Class</c> document, the code-behind partial: typed <c>x:Name</c> fields +
+/// <c>InitializeComponent</c>.</item>
 /// </list>
 /// </summary>
 [Generator(LanguageNames.CSharp)]
@@ -120,13 +123,18 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
 
         foreach (var diagnostic in document.Diagnostics)
         {
-            // Only the CUR1xxx parse (syntax) band is surfaced here. The CUR2xxx semantic band joins at WS-B
-            // once the symbol model's member coverage is complete enough to never false-positive (e.g.
-            // Style.TargetType). Surfacing it prematurely would break builds on valid XAML.
-            if (!diagnostic.Code.StartsWith("CUR1", System.StringComparison.Ordinal))
+            // Surface the CUR1xxx parse (syntax) band AND the CUR2xxx semantic band — the symbol-backed
+            // RoslynXamlMetadata mirrors the reflection provider's full member ladder (registered instance +
+            // attached properties, events, CLR properties, the synthetic Style.TargetType), so a CUR2 member
+            // miss matches the runtime truth and a CUR2002 type miss is a genuine missing-reference error.
+            // The CUR3xxx instantiation band cannot arise at parse time (nothing is instantiated).
+            bool isParseOrSemantic = diagnostic.Code.StartsWith("CUR1", System.StringComparison.Ordinal) ||
+                                     diagnostic.Code.StartsWith("CUR2", System.StringComparison.Ordinal);
+            if (!isParseOrSemantic)
                 continue;
 
-            if (diagnostic.Severity == XamlDiagnosticSeverity.Error)
+            // A CUR1xxx syntax error leaves the node graph unreliable → fall back to the marker (no codegen).
+            if (diagnostic.Code.StartsWith("CUR1", System.StringComparison.Ordinal) && diagnostic.Severity == XamlDiagnosticSeverity.Error)
                 hasSyntaxError = true;
 
             spc.ReportDiagnostic(ToRoslyn(diagnostic, input));

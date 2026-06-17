@@ -74,6 +74,25 @@ public class XamlSourceGeneratorTests
         Assert.Contains("typeof(global::Cursorial.UI.Controls.Border)", src);
     }
 
+    [Fact] // WS-X4.4 semantic band — an unknown member surfaces CUR2102 (member-not-found) at the .xaml location
+    public void Generator_ReportsSemanticError_AsRoslynDiagnostic()
+    {
+        var result = GeneratorHarness.Run(("Bad.xaml",
+            "<Button xmlns=\"https://cursorial.dev/ui\" Frobnicate=\"nope\"/>"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "CUR2102");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var lineSpan = diagnostic.Location.GetLineSpan();
+        Assert.Contains("Bad.xaml", lineSpan.Path);
+    }
+
+    [Fact] // an unknown element type surfaces CUR2002 (type-not-found)
+    public void Generator_ReportsUnknownType_AsRoslynDiagnostic()
+    {
+        var result = GeneratorHarness.Run(("Bad.xaml", "<Buttn xmlns=\"https://cursorial.dev/ui\"/>"));
+        Assert.Contains(result.Diagnostics, d => d.Id == "CUR2002");
+    }
+
     [Fact] // WS-X4.4 — a malformed document surfaces a CUR1xxx parse diagnostic at the .xaml location
     public void Generator_ReportsSyntaxError_AsRoslynDiagnostic()
     {

@@ -80,7 +80,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 ? BindingLane.FrameHosted
                 : BindingLane.LocalValue;
 
-    public object? CurrentValue => _lastProducedValue;
+    public object? CurrentValue => LastProducedForDiagnostics;
 
     // ───────────────────────────── lane hooks (the only differences between lanes) ─────────────────────────────
 
@@ -113,6 +113,14 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
     /// <summary>The last produced value for diagnostics; the compiled typed lane overrides to box on demand (cold).</summary>
     private protected virtual object? LastProducedForDiagnostics => _lastProducedValue;
+
+    /// <summary>Whether a value has been pushed (for async-echo suppression, BD8 step 2); the compiled typed lane
+    /// overrides so it can keep the last-pushed value typed (no per-push boxing).</summary>
+    private protected virtual bool HasPushedValue => !ReferenceEquals(_lastPushedValue, NoPushSentinel);
+
+    /// <summary>The last value pushed to the target, for the async-echo comparison; the compiled typed lane
+    /// overrides to box its typed value on demand (the echo check runs on external target writes, not the hot push).</summary>
+    private protected virtual object? LastPushedForEcho => _lastPushedValue;
 
     /// <summary>Pushes the unset / fallback result; the compiled typed lane overrides to push through its typed entry.</summary>
     private protected virtual void ProduceUnsetOrFallback() => PushToTarget(UIProperty.UnsetValue);
@@ -662,11 +670,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (_effectiveMode != BindingMode.OneWayToSource)
         {
             var current = _target.GetValue(_targetProperty);
-            if (!ReferenceEquals(_lastPushedValue, NoPushSentinel) &&
-                _targetProperty.AreValuesEqualUntyped(_target.GetType(), current, _lastPushedValue))
-            {
+            if (HasPushedValue && _targetProperty.AreValuesEqualUntyped(_target.GetType(), current, LastPushedForEcho))
                 return;
-            }
         }
 
         switch (_trigger)

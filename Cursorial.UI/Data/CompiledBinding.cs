@@ -85,11 +85,6 @@ public sealed class CompiledBinding<TSource, TValue> : AnchoredBinding
     internal override BindingExpressionBase CreateExpression(in BindingActivationContext context)
     {
         ValidateAnchors();
-        // B2 lands CompiledBindingExpression<TSource,TValue>; until then the reflective fallback is
-        // the v1 producer and Binding.Compiled is the entry point. A hand-built CompiledBinding
-        // installed directly resolves through the same machinery at B2.
-        throw new NotImplementedException(
-            "CompiledBinding installation lands in stage B2 (the typed push lane); " +
-            "the descriptor shape is the v1 contract (matrix B179–B186).");
+        return new CompiledBindingExpression<TSource, TValue>(this, in context);
     }
 }

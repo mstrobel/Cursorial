@@ -82,10 +82,26 @@ public sealed class Vm : INotifyPropertyChanged
 
     public Dictionary<string, object?> Map { get; } = [];
 
+    /// <summary>A struct-typed intermediate hop — the compiled-lane struct-copy row (B155).</summary>
+    public Coord SomeStruct { get; set; }
+
+    /// <summary>A method (not a member access) — the compiled-lane method-rejection row (B151).</summary>
+    public string? GetName() => _name;
+
     public void SetReadOnlyAge(int value) => _readOnlyAge = value;
 
     /// <summary>Raises <c>PropertyChanged(null)</c>.</summary>
     public void RaiseAll() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+
+    private static readonly PropertyChangedEventArgs AgeArgs = new(nameof(Age));
+
+    /// <summary>Increments <see cref="Age"/> raising a CACHED args instance — a zero-allocation notify, so a
+    /// binding-side allocation measurement (B147) isn't polluted by the VM's own notification.</summary>
+    public void BumpAge()
+    {
+        _age++;
+        PropertyChanged?.Invoke(this, AgeArgs);
+    }
 
     private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
@@ -100,6 +116,12 @@ public sealed class Vm : INotifyPropertyChanged
 public sealed class PlainHolder
 {
     public string? Note { get; set; }
+}
+
+/// <summary>A value-type intermediate (no INPC) for the compiled-lane struct-copy row (B155).</summary>
+public struct Coord
+{
+    public int Field { get; set; }
 }
 
 /// <summary>

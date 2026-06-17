@@ -67,6 +67,7 @@ public sealed class ItemContainerGenerator
                 _containers.Add(RealizeCore(i));
         }
 
+        Restripe();
         ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Reset, 0, _containers.Count));
     }
 
@@ -99,6 +100,7 @@ public sealed class ItemContainerGenerator
         for (var i = 0; i < count; i++)
             _containers.Insert(start + i, RealizeCore(start + i));
 
+        Restripe(); // everything from `start` shifted parity
         ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Realized, start, count));
     }
 
@@ -121,6 +123,7 @@ public sealed class ItemContainerGenerator
 
         _containers.RemoveRange(start, count); // trim first: ContainerCount/ContainerFromIndex are now post-removal
 
+        Restripe(); // survivors from `start` shifted parity
         ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(
             ContainersChangedAction.Unrealized, start, count, removedContainers: removed));
 
@@ -141,6 +144,7 @@ public sealed class ItemContainerGenerator
 
         _containers.RemoveRange(oldIndex, count);
         _containers.InsertRange(newIndex, block);
+        Restripe(); // the moved block + the gap between old/new indices shifted parity
         ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Moved, newIndex, count, oldStartIndex: oldIndex));
     }
 
@@ -151,7 +155,19 @@ public sealed class ItemContainerGenerator
             for (var i = 0; i < _view.Count; i++)
                 _containers.Add(RealizeCore(i));
 
+        Restripe();
         ContainersChanged?.Invoke(this, new ContainersChangedEventArgs(ContainersChangedAction.Reset, 0, _containers.Count));
+    }
+
+    // Row-striping (design doc §14 P9 — the :alternate pseudo-class, "with the container generator"): stamp the
+    // positional :alternate pseudo-class on odd 0-based-indexed containers, so a striping rule (e.g.
+    // `ListBoxItem:alternate { Background … }`) can target alternate rows. Re-run after every structural change
+    // since insert/remove/move shift indices; PseudoClasses.Set is change-only, so only containers whose parity
+    // actually flipped restyle (the styling pass is bounded to the shifted tail, not the whole list).
+    private void Restripe()
+    {
+        for (var i = 0; i < _containers.Count; i++)
+            _containers[i].SetPseudoClassFromMapping(":alternate", (i & 1) == 1);
     }
 
     // Creates + logical-parents + stamps + prepares one container (no visual adoption — the host does that on the event).

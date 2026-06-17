@@ -2,10 +2,13 @@ using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
+
+using Style = Cursorial.UI.Style;
 
 // ReSharper disable InconsistentNaming
 
@@ -458,6 +461,74 @@ public sealed class Section15_Items
         Assert.Same(c0, Gen(ic).ContainerFromIndex(0));          // same instances — generator is control-lifetime
         var panel = (Panel)Gen(ic).ContainerFromIndex(0)!.VisualParent!;
         Assert.Equal(2, panel.Children.Count);                   // exactly two — no duplicate adoption
+    }
+
+    // ───────────────────────────── :alternate row-striping (CD-P9-25, C2.22–C2.25) ─────────────────────────────
+
+    private static bool IsAlternate(ItemContainerGenerator gen, int index) =>
+        gen.ContainerFromIndex(index)!.HasCustomPseudoClass(":alternate");
+
+    [Fact] // C2.22: the generator stamps :alternate on odd 0-based-indexed containers (opt-in look — no default stripe)
+    public void C2_22_Alternate_StampedOnOddIndexedContainers()
+    {
+        var (host, ic) = Show(new ItemsControl { ItemsSource = new ObservableCollection<string> { "a", "b", "c", "d" } });
+        using var _ = host;
+
+        Assert.False(IsAlternate(Gen(ic), 0));
+        Assert.True(IsAlternate(Gen(ic), 1));
+        Assert.False(IsAlternate(Gen(ic), 2));
+        Assert.True(IsAlternate(Gen(ic), 3));
+    }
+
+    [Fact] // C2.23: inserting re-stripes the shifted survivors
+    public void C2_23_Alternate_ReStripesOnInsert()
+    {
+        var source = new ObservableCollection<string> { "a", "b", "c", "d" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        using var _ = host;
+
+        source.Insert(1, "x"); // a, x, b, c, d — survivors from index 1 shift parity
+        host.RunUntilIdle();
+
+        Assert.False(IsAlternate(Gen(ic), 0));
+        Assert.True(IsAlternate(Gen(ic), 1));
+        Assert.False(IsAlternate(Gen(ic), 2));
+        Assert.True(IsAlternate(Gen(ic), 3));
+        Assert.False(IsAlternate(Gen(ic), 4));
+    }
+
+    [Fact] // C2.24: removing re-stripes the shifted survivors
+    public void C2_24_Alternate_ReStripesOnRemove()
+    {
+        var source = new ObservableCollection<string> { "a", "b", "c", "d" };
+        var (host, ic) = Show(new ItemsControl { ItemsSource = source });
+        using var _ = host;
+
+        source.RemoveAt(0); // b, c, d — survivors shift up one, parity flips
+        host.RunUntilIdle();
+
+        Assert.False(IsAlternate(Gen(ic), 0)); // b
+        Assert.True(IsAlternate(Gen(ic), 1));  // c
+        Assert.False(IsAlternate(Gen(ic), 2)); // d
+    }
+
+    [Fact] // C2.25: an app ListBoxItem:alternate rule applies on odd rows (the end-to-end striping payoff)
+    public void C2_25_Alternate_StripingRuleApplies_OnOddRows()
+    {
+        var lb = new ListBox { ItemsSource = new[] { "a", "b", "c", "d" } };
+
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 10) });
+        host.Application.Styles.Add(new Style(Selectors.OfType<ListBoxItem>().PseudoClass("alternate"))
+            .Set(Control.BackgroundProperty, Brushes.Magenta));
+        host.ShowRoot(lb);
+        host.RunUntilIdle();
+        using var _ = host;
+
+        // The :alternate rule matched the odd-row containers (its Background setter applied), not the even rows.
+        Assert.Same(Brushes.Magenta, ((ListBoxItem)Gen(lb).ContainerFromIndex(1)!).Background);
+        Assert.Same(Brushes.Magenta, ((ListBoxItem)Gen(lb).ContainerFromIndex(3)!).Background);
+        Assert.NotSame(Brushes.Magenta, ((ListBoxItem)Gen(lb).ContainerFromIndex(0)!).Background);
+        Assert.NotSame(Brushes.Magenta, ((ListBoxItem)Gen(lb).ContainerFromIndex(2)!).Background);
     }
 
     /// <summary>A minimal <see cref="IList"/> + <see cref="INotifyCollectionChanged"/> source that can raise a

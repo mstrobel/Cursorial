@@ -56,6 +56,16 @@ P9.5 TabControl · P9.6 TextBox · P9.7 ProgressBar + chrome · P9.8 inspector d
 - **CD-P9-7 — configurable items panel deferred shape.** `ItemsControl.ItemsPanel` (default a vertical
   `StackPanel`) is built by the `ItemsPresenter`, which sets `IsItemsHost` on it and delegates layout to it. v1
   ships the default; non-vertical panels (WrapPanel, horizontal) ride P9.3/P9.5 when their consumers land.
+- **CD-P9-25 — `:alternate` row-striping, stamped by the container generator (P9 tail).** The positional
+  `:alternate` pseudo-class is stamped by `ItemContainerGenerator` on **odd** 0-based-indexed containers
+  (`index & 1`) via the internal `UIElement.SetPseudoClassFromMapping` write path, re-run (`Restripe()`) after
+  every structural change (set-source/insert/remove/move/reset) since those shift indices; the writes are
+  change-only, so the restyle is bounded to the parity-flipped tail, not the whole list. Index 0 is the base
+  row (not alternate). It applies to **all** items hosts (the generator is shared — `ListBox`, plain
+  `ItemsControl`) including own-containers (harmless). The look is **opt-in**: no default theme stripe ships
+  ("only visible with striping rules"; control-theme brushes come from the mockups, not invented), so an app
+  authors a `…:alternate { Background }` rule to target the stamped class. Not WPF's N-way `AlternationCount` —
+  a single 2-way stripe (the design's "row-striping"); positional `:nth-child` stays unsupported by design (§3.10).
 
 ---
 
@@ -90,9 +100,12 @@ P9.5 TabControl · P9.6 TextBox · P9.7 ProgressBar + chrome · P9.8 inspector d
 | C2.18 | `HeaderedItemsControl` | set `Header` + add an item | `Header` round-trips; the items host realizes (MenuItem's base — smoke) | WPF |
 | C2.19 | bound source | runtime `ItemsPanel` change | the SAME containers are re-hosted in a freshly-built panel (no re-realize, no double-adoption) | PIN (CD-P9-6) |
 | C2.21 | static bound source | run idle frames | 0 B steady-state allocation (no per-frame generator/presenter churn) | PIN |
+| C2.22 | bound source of 4 | shown | the generator stamps the positional `:alternate` pseudo-class on **odd** 0-based-indexed containers (1, 3), not on even (0, 2) — "with the container generator"; the look is opt-in (no default theme stripe — only visible with a `…:alternate` rule) | PIN (CD-P9-25; design §14 P9) |
+| C2.23 | bound source of 4 | Insert at index 1 | survivors from index 1 shift parity, so `:alternate` re-stripes over the new order — re-run after the structural change; change-only, so unaffected rows don't restyle | PIN (CD-P9-25) |
+| C2.24 | bound source of 4 | Remove at index 0 | survivors shift up one, parity flips, `:alternate` re-stripes the post-removal order | PIN (CD-P9-25) |
+| C2.25 | bound source of 4 + an app `ListBoxItem:alternate { Background = X }` rule | shown | the odd-row containers render `X`, even rows do not — the striping rule sees the stamped pseudo-class (the end-to-end payoff) | PIN (CD-P9-25) |
 
-**Deferred to later sub-phases (noted, not silently dropped):** `:alternate` row-striping (P9.3 ListBox — only
-visible with striping rules); a non-vertical/scrolling `ItemsPanel` (P9.3); per-container DataTemplate-by-type
+**Deferred to later sub-phases (noted, not silently dropped):** a non-vertical/scrolling `ItemsPanel` (P9.3); per-container DataTemplate-by-type
 rendering assertions (when a styled item renders through the chain — exercised end-to-end at P9.3).
 
 ---
@@ -237,8 +250,8 @@ the `ScrollContentPresenter`'s content-hosting clears the `ItemsPresenter`'s `Te
 (CD-P9-17) is that `ItemsPresenter` resolves its owner the WPF way — `TemplatedParent`, else the nearest
 `ItemsControl` visual ancestor. (2) **keyboard navigation (P9.3b)** — §C5.
 
-**Still deferred:** PageUp/PageDown + Ctrl+A select-all (P9.3b notes); `:alternate` row-striping — with the
-generator at the P9 tail.
+**Still deferred:** PageUp/PageDown + Ctrl+A select-all (P9.3b notes). (`:alternate` row-striping landed at the
+P9 tail — §C2 rows C2.22–C2.25, stamped by the container generator.)
 | C4.21 | Single, bound | remove an UNSELECTED item before the lead | `SelectedItem` stays aligned with `SelectedIndex` (no stale-by-count) | PIN (CD-P9-15) |
 | C4.22 | own-container `new ListBoxItem{IsSelected=true}` in the source | shown | folds into the model — `SelectedIndex`=0, `SelectedItem`=the leaf; single-mode click elsewhere clears it | PIN (CD-P9-15) |
 | C4.23 | Single | `SelectedIndex = 99` (out of range) | clamps to −1; `SelectedItem` null (consistent) | PIN (CD-P9-15) |

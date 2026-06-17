@@ -546,6 +546,51 @@ The `accesskeys`/`uixaml`/`windows`/control-gallery demos are the live canaries.
 on a real Kitty terminal (the `(DistinguishesKeyUpDown && ReportsRepeats) || Win32InputMode` verdict, ND23) is a
 **manual verification step** — it can't be exercised headlessly and needs a hands-on Kitty session.
 
+**Phase 10 in progress** (doc §14 — Fork C X4 generator + S2 compiled bindings; normative specs amended in
+`binding-matrix.md` BD17/B146–B186 and `xaml-matrix.md` §15). Two halves were planned B2 → X4 → B3:
+
+- **S2 B2 — the compiled-binding runtime: ✅ complete.** `BindingExpressionCore` was extracted from
+  `ReflectionBindingExpression` (the shared lifecycle: anchoring, the source-notification ladder dispatch, the
+  forward boxed pipeline, two-way / one-way-to-source write-back with echo suppression, cross-thread coalescing,
+  eviction) so both lanes derive from it (`Cursorial.UI/Data/`). `CompiledBindingExpression<TSource,TValue>`
+  (the second subclass) implements the typed push lane: a whole-chain `Getter` read, `Steps`-driven INPC/INCC
+  subscription (the tail re-subscribes only below a changed hop, so a single-hop binding's steady-state push is
+  0 B), a **typed zero-box push** via `BindingEntry<TValue>.SetValue` (OneWay — the `AnimatedValueHandle<T>`
+  analog; B147) with forfeit-to-boxed on a converter/StringFormat/coercion (B182), the typed root check
+  (`SourceTypeMismatch`, B153), read-only-leaf degrade (B152), and frame-hosted installs (B186).
+  `CompiledBinding.CreateExpression` no longer throws — **`Binding.Compiled(...)` works end-to-end** (the
+  reflective-fallback v1 producer, B185). Binding matrix 183 green (164 reflection + 19 compiled, in
+  `BindingMatrix/Section12_CompiledLane` + `Section15_CompiledDescriptor`), the extraction mutation-verified,
+  full UI suite 2260 green.
+- **Fork C X4 — the build-time XAML generator (`Cursorial.UI.Xaml.Generator`, a netstandard2.0 Roslyn
+  `IIncrementalGenerator`):** the generated metadata-provider pipeline is built and dual-run-verified.
+  - It discovers `CursorialXaml` items (AdditionalFiles flagged `SourceItemType=CursorialXaml`), runs the SAME
+    `XamlFrontend.Parse` the loader runs (referenced via `ProjectReference` + `InternalsVisibleTo`), and surfaces
+    the `CUR1xxx` parse-band diagnostics as Roslyn build diagnostics at the `.xaml` line/col (syntax-mode; the
+    `CUR2xxx` semantic band needs the System.Type-resolved parse — see "build-time type system" below).
+  - **The build-time type system** is resolved purely from Roslyn symbols (never loading `Cursorial.UI` into the
+    compiler): `XamlSymbolResolver` maps `(xmlns, localName)` → `INamedTypeSymbol` (the `XamlSchemaContext` default
+    map); a *recording* metadata provider captures the document's element-name set during a syntax-mode parse
+    (the node graph drops raw names under a null provider); `MetadataProviderEmitter` then enumerates each type's
+    XAML-settable members from symbols and emits the generated `IXamlTypeMetadataProvider` — shaped like
+    `HandBuiltMetadata`, mirroring `ReflectionXamlMetadata`'s `BuildType`/`BuildMember` (activation, content
+    property + collection, registered-`UIProperty` field refs vs CLR setter/getter delegates, events), with the
+    converter emitted as a runtime `XamlConverters.For(typeof(...))` call (converter drift impossible). The
+    consumer's `typeof`/field refs resolve at *its* compile, so no runtime `System.Type` is needed at generator
+    time.
+  - **Verified end-to-end:** the emitted provider compiles against the real assemblies; the **dual-run drift gate**
+    (matrix X174 / the P10 exit criterion) loads it and asserts a real control tree (`StackPanel` > `Button` +
+    `Border` > `Button`) renders byte-identically through the generated provider and `ReflectionXamlMetadata` —
+    **zero drift**; and a generated `[ModuleInitializer]` installs the provider as `XamlLoaderOptions.
+    DefaultMetadataProvider` (AOT-clean, no reflection) so it's used with no explicit opt-in. Generator suite 17
+    green (`Cursorial.UI.Xaml.Generator.Tests`).
+  - **Remaining X4/B3 tail** (not yet built): typed `x:Name` fields + `InitializeComponent` codegen (X4.6 — the
+    `x:Name`→element-type correlation wants the type-resolved parse); the `CursorialXaml` MSBuild `.props`/
+    `.targets` + the AOT-publish demo (X4.2/X4.7 — the AOT-clean exit also wants the loader's default-provider path
+    to drop its static `ReflectionXamlMetadata` reference, and AOT publish needs a native toolchain to verify);
+    broader emitter coverage (attached properties, `x:Static` baking, deferred-content/templates); and **S2 B3**
+    (generator-emitted `CompiledBinding` descriptors + `x:DataType` build-time path diagnostics).
+
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
 theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);

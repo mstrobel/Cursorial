@@ -30,6 +30,13 @@
         <!-- The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
              metadata provider available rather than fail-fast. The warnings it produces are expected. -->
         <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
+        <!-- Reflection over the framework types (XAML activation via GetConstructor, brush/color tables,
+             binding accessors) needs those types + members PRESERVED. Full trimming removes e.g.
+             StackPanel's parameterless ctor (nothing references it statically) → CUR3001 at runtime. Partial
+             trim mode keeps non-opted-in assemblies (the Cursorial framework + this demo) whole; only the BCL
+             is trimmed. Larger binary, but the reflection-based demo runs. (The trim-clean route is the X4
+             generated provider / X5 lowering, not this reflection build.) -->
+        <TrimMode>partial</TrimMode>
     </PropertyGroup>
 
     <ItemGroup>

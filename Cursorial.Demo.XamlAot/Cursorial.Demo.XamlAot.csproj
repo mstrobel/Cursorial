@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The NativeAOT build of the full Cursorial REPL demo. It compiles the SAME sources + embedded
+        resources as Cursorial.Demo (linked, not duplicated) and emits a single native binary named
+        `cursorial-demo`. Publish it with:
+
+            dotnet publish Cursorial.Demo.XamlAot -c Release -r osx-arm64
+
+        (PublishAot is project-local — it does NOT flow to the netstandard2.0 ProjectReferences, which a
+        command-line /p:PublishAot would hit with NETSDK1207.)
+
+        The demo loads its XAML / themes through the RUNTIME loader (the reflection metadata provider), so
+        this build keeps the reflection provider enabled. NativeAOT trim/AOT analysis therefore reports
+        warnings for the reflective load/binding/conversion paths; the binary still builds and the
+        non-reflective commands run. A fully trim-clean demo is the X5 full-lowering goal (the X4 generator's
+        compiled code-behind path — proven separately — is the reflection-free route).
+    -->
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Match Cursorial.Demo so the linked sources' namespaces + default resource manifest names line up. -->
+        <RootNamespace>Cursorial.Demo</RootNamespace>
+        <!-- The native binary's name. -->
+        <AssemblyName>cursorial-demo</AssemblyName>
+        <PublishAot>true</PublishAot>
+        <!-- The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
+             metadata provider available rather than fail-fast. The warnings it produces are expected. -->
+        <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
+        <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
+        <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+    </ItemGroup>
+
+    <!-- Link the real demo's sources (so there is one source of truth — Cursorial.Demo). -->
+    <ItemGroup>
+        <Compile Include="..\Cursorial.Demo\**\*.cs"
+                 Exclude="..\Cursorial.Demo\obj\**\*.cs;..\Cursorial.Demo\bin\**\*.cs"
+                 Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <!-- Link the real demo's embedded resources with the SAME manifest names Cursorial.Demo produces:
+         the .png LogicalName is the demo's <relative-dir>/<file> form; the .xaml is the default
+         RootNamespace.Resources.<file>. Explicit LogicalNames make these independent of AssemblyName. -->
+    <ItemGroup>
+        <EmbeddedResource Include="..\Cursorial.Demo\**\*.png"
+                          Exclude="..\Cursorial.Demo\obj\**\*.png;..\Cursorial.Demo\bin\**\*.png"
+                          LogicalName="$([System.String]::new('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)" />
+        <EmbeddedResource Include="..\Cursorial.Demo\Resources\*.xaml"
+                          LogicalName="Cursorial.Demo.Resources.%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <RuntimeHostConfigurationOption Include="Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported"
+                                        Value="$(CursorialXamlReflectionProvider)" Trim="true" />
+    </ItemGroup>
+
+</Project>

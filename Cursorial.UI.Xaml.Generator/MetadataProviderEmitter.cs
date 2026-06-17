@@ -170,9 +170,11 @@ internal sealed class MetadataProviderEmitter
 
         if (member.RegisteredFieldOwner is not null)
         {
-            // Registered UIProperty: property: <DeclaringType>.<Name>Property
+            // Registered UIProperty: property: <DeclaringType>.<Name>Property. An attached property (Grid.Row)
+            // additionally carries isAttachable: true so the loader assigns it through the attached registration.
             var prop = $"{Global(member.RegisteredFieldOwner)}.{member.Name}Property";
-            return $"[\"{member.Name}\"] = new {Frontend}.XamlMember(\"{member.Name}\", {valueTypeOf}, property: {prop}, converter: {converter})";
+            var attachable = member.IsAttached ? ", isAttachable: true" : string.Empty;
+            return $"[\"{member.Name}\"] = new {Frontend}.XamlMember(\"{member.Name}\", {valueTypeOf}, property: {prop}, converter: {converter}{attachable})";
         }
 
         // CLR property: setClr / get delegates.

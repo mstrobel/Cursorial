@@ -91,7 +91,8 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
                    // A non-null Property marks a registered UIProperty (XD4 rule 1); the parser only checks
                    // null-ness, never the value (it carries the field-owner symbol, never a runtime UIProperty).
                    property: m.RegisteredFieldOwner,
-                   isEvent: m.IsEvent)
+                   isEvent: m.IsEvent,
+                   isAttachable: m.IsAttached)
                {
                    IsDeferredContent = SymbolXamlModel.IsDeferredContent(m.ValueType),
                };

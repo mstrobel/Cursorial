@@ -50,6 +50,22 @@ public class DualRunDriftTests
         Assert.Equal("Inner", inner.Content);
     }
 
+    [Fact] // WS-X4-attached — the generated provider resolves an attached property identically to reflection
+    public void GeneratedProvider_HandlesAttachedProperty_AsReflection()
+    {
+        var xaml = $"<StackPanel {Xmlns}><Button Content=\"Hi\" Grid.Row=\"2\"/></StackPanel>";
+
+        var generated = BuildGeneratedProvider(xaml);
+        var byGenerated = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = generated }).Load(xaml);
+        var byReflection = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        foreach (var root in new[] { byGenerated, byReflection })
+        {
+            var button = Assert.IsType<Button>(Assert.Single(root.Children));
+            Assert.Equal(2, Grid.GetRow(button)); // the attached value was set through the registered AttachedProperty
+        }
+    }
+
     [Fact] // WS-X4.5 — the generated provider's [ModuleInitializer] installs it as the loader default (no opt-in)
     public void ModuleInitializer_InstallsGeneratedProvider_AsLoaderDefault()
     {

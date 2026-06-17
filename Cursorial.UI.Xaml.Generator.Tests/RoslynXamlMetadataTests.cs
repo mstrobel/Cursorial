@@ -89,4 +89,23 @@ public class RoslynXamlMetadataTests
         var doc = ParseWith(Provider(), $"<Button xmlns=\"{Ui}\" Frobnicate=\"x\"/>");
         Assert.Contains(doc.Diagnostics, d => d.Code == "CUR2102");
     }
+
+    [Fact] // an attached property (Grid.Row) resolves as an attachable member from the <Name>Property field
+    public void AttachedProperty_ResolvesAsAttachableMember()
+    {
+        var grid = Provider().TryGetType(Ui, "Grid").Type!;
+        var row = grid.TryGetMember("Row");
+        Assert.NotNull(row);
+        Assert.True(row!.IsAttachable);
+        Assert.NotNull(row.Property);                 // registered (XD4 rule 1)
+        Assert.Equal("Int32", row.ValueType.Name);    // AttachedProperty<int> -> int
+    }
+
+    [Fact] // the formerly-false CUR2102: a symbol-backed parse of an attached property must be CLEAN
+    public void SymbolBackedParse_AttachedProperty_NoFalsePositive()
+    {
+        var doc = ParseWith(Provider(), $"<StackPanel xmlns=\"{Ui}\"><Button Grid.Row=\"0\"/></StackPanel>");
+        Assert.DoesNotContain(doc.Diagnostics, d => d.Code == "CUR2102");
+        Assert.DoesNotContain(doc.Diagnostics, d => d.Severity == XamlDiagnosticSeverity.Error);
+    }
 }

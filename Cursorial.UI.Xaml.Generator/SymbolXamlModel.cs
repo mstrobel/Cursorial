@@ -28,20 +28,32 @@ internal static class SymbolXamlModel
         ("Cursorial.Drawing.Media.GradientBrush", "Stops")
     ];
 
-    /// <summary>One XAML-settable member resolved from symbols (a property or an event).</summary>
+    /// <summary>One XAML-settable member resolved from symbols (a property, an event, or an attached property).</summary>
     public readonly record struct MemberModel(
-        string Name, 
+        string Name,
         ITypeSymbol ValueType,
         bool CanWrite,
         bool CanRead,
         bool IsEvent,
-        INamedTypeSymbol? RegisteredFieldOwner);
+        INamedTypeSymbol? RegisteredFieldOwner,
+        bool IsAttached = false);
 
-    /// <summary>The public instance properties + events of a type (most-derived first, deduped by name).</summary>
+    /// <summary>
+    /// The XAML-settable members of a type (most-derived first, deduped by name): public instance properties
+    /// and events, PLUS registered properties exposed only as a <c>&lt;Name&gt;Property</c> static field with
+    /// no instance CLR wrapper — i.e. attached properties like <c>Grid.Row</c>. The reflection provider
+    /// resolves the latter through <c>UIPropertyRegistry.Find</c> (rung 1 of its BuildMember ladder); the
+    /// symbol model has no registry, so it mirrors that by reading the <c>&lt;Name&gt;Property</c> field
+    /// convention. WITHOUT this pass a symbol-backed parse of <c>&lt;Button Grid.Row="0"/&gt;</c> would emit a
+    /// false CUR2102.
+    /// </summary>
     public static IEnumerable<MemberModel> EnumerateMembers(INamedTypeSymbol type)
     {
         var seen = new HashSet<string>(System.StringComparer.Ordinal);
 
+        // Pass 1 — public instance properties + events (CLR ladder rungs 2-3). A registered StyledProperty
+        // that ALSO has an instance CLR wrapper (e.g. Width/WidthProperty) is caught here and annotated with
+        // its RegisteredFieldOwner, so the emitter bakes `property: <Owner>.WidthProperty` (rung-1 parity).
         for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
         {
             foreach (var symbol in t.GetMembers())
@@ -71,6 +83,63 @@ internal static class SymbolXamlModel
                 }
             }
         }
+
+        // Pass 2 — registered UIProperty fields with NO instance CLR wrapper (attached properties, rung 1).
+        // Run after pass 1 so an instance-backed registered property (Width) is never double-yielded.
+        for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
+        {
+            foreach (var symbol in t.GetMembers())
+            {
+                if (symbol is not IFieldSymbol field || !IsRegisteredPropertyField(field, out var attached, out var valueType))
+                    continue;
+
+                var memberName = field.Name.Substring(0, field.Name.Length - PropertyFieldSuffix.Length);
+                if (memberName.Length > 0 && seen.Add(memberName))
+                {
+                    yield return new MemberModel(memberName,
+                                                 valueType,
+                                                 CanWrite: true,
+                                                 CanRead: true,
+                                                 IsEvent: false,
+                                                 RegisteredFieldOwner: t,
+                                                 IsAttached: attached);
+                }
+            }
+        }
+    }
+
+    private const string PropertyFieldSuffix = "Property";
+
+    // A `public static readonly <Name>Property` field of UIProperty type → its value type is the UIProperty's
+    // last generic argument (AttachedProperty<int>→int, DirectProperty<TOwner,T>→T). `attached` is true for an
+    // AttachedProperty<T> (the loader assigns it via SetValue on the attached registration, IsAttachable).
+    private static bool IsRegisteredPropertyField(IFieldSymbol field, out bool attached, out ITypeSymbol valueType)
+    {
+        attached = false;
+        valueType = null!;
+
+        if (!field.IsStatic || field.DeclaredAccessibility != Accessibility.Public)
+            return false;
+        if (!field.Name.EndsWith(PropertyFieldSuffix, System.StringComparison.Ordinal) || field.Name.Length == PropertyFieldSuffix.Length)
+            return false;
+        if (!IsUIPropertyType(field.Type))
+            return false;
+        if (field.Type is not INamedTypeSymbol { IsGenericType: true } named || named.TypeArguments.Length < 1)
+            return false;
+
+        valueType = named.TypeArguments[named.TypeArguments.Length - 1];
+        attached = IsAttachedPropertyType(field.Type);
+        return true;
+    }
+
+    private static bool IsAttachedPropertyType(ITypeSymbol type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+        {
+            if (t.OriginalDefinition.ToDisplayString().StartsWith("Cursorial.UI.AttachedProperty", System.StringComparison.Ordinal))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Resolves a single member by name (null on miss) — the per-member resolution the parser drives.</summary>
@@ -128,13 +197,15 @@ internal static class SymbolXamlModel
         // (1) An explicit [ContentProperty("Name")] attribute (matched by simple name).
         foreach (var attr in type.GetAttributes())
         {
-            // NOTE: explicit indexing (not a list pattern) — netstandard2.0 has no System.Index.
-            if (attr.AttributeClass?.Name == "ContentPropertyAttribute"
-                && attr.ConstructorArguments.Length == 1
-                && attr.ConstructorArguments[0].Value is string name && name.Length > 0)
+            // ReSharper disable MergeIntoPattern - explicit indexing (not a list pattern) — netstandard2.0 has no System.Index.
+            if (attr.AttributeClass?.Name == "ContentPropertyAttribute" &&
+                attr.ConstructorArguments.Length == 1 &&
+                attr.ConstructorArguments[0].Value is string name &&
+                name.Length > 0)
             {
                 return name;
             }
+            // ReSharper restore MergeIntoPattern
         }
 
         // (2) The known base-type table (most-derived first).

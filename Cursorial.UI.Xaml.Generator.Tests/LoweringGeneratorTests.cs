@@ -94,12 +94,12 @@ namespace GenApp { public partial class PlainView : StackPanel { public PlainVie
         Assert.DoesNotContain("new global::Cursorial.UI.Controls.Button()", view); // not the lowering
     }
 
-    [Fact] // a member the lowering can't emit (here a {StaticResource}) surfaces a CURG3001 warning — never silent
+    [Fact] // a member the lowering can't emit (here a Converter-bearing binding) surfaces a CURG3001 warning — never silent
     public void LoweringOptIn_UnsupportedFeature_EmitsCurg3001Warning()
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.GapView\">" +
-            "<Button x:Name=\"Ok\" Foreground=\"{StaticResource Accent}\"/>" + // resource lowering not built yet
+            "<Button x:Name=\"Ok\" Content=\"{Binding Amount, Converter={StaticResource Fmt}}\"/>" + // converter lowering not built yet
             "</StackPanel>";
 
         const string codeBehind = @"
@@ -111,7 +111,7 @@ namespace GenApp { public partial class GapView : StackPanel { public GapView() 
         // The dropped member is visible as a CURG3001 build warning at the .xaml (not silently lost).
         var gap = Assert.Single(diagnostics, d => d.Id == "CURG3001");
         Assert.Equal(DiagnosticSeverity.Warning, gap.Severity);
-        Assert.Contains("StaticResource", gap.GetMessage());
+        Assert.Contains("Converter", gap.GetMessage());
 
         // The rest of the view still lowered (the TODO is a comment) and compiles.
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);

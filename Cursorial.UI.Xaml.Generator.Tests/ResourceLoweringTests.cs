@@ -53,6 +53,40 @@ namespace GenApp { public partial class DynView : StackPanel { public DynView() 
         Assert.Same(brush, button.Foreground);
     }
 
+    [Fact] // <X.Resources> populates the dict via Add(key,value); {StaticResource} resolves it eagerly at end-of-Init
+    public void Lowered_StaticResource_ResolvesFromElementResources()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.StaticView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"Accent\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\" Foreground=\"{StaticResource Accent}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class StaticView : StackPanel { public StaticView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The dict was populated via Add(key, value); the StaticResource resolves at end via FindResource.
+        Assert.Contains(".Resources.Add(\"Accent\", ", lowered);
+        Assert.Contains("global::Cursorial.UI.ResourceExtensions.FindResource(", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.StaticView")!)!;
+        var button = Assert.IsType<Button>(view.Children[0]);
+
+        // The keyed brush from <StackPanel.Resources> resolved onto Foreground — the SAME instance as the entry
+        // (eager snapshot, like the loader), proving both the dictionary population and StaticResource resolution.
+        var resourceBrush = Assert.IsType<SolidColorBrush>(view.Resources["Accent"]);
+        Assert.Same(resourceBrush, button.Foreground);
+    }
+
     [Fact] // {DynamicResource} on a non-styled / non-bindable target stays a // TODO X5 (matches the runtime reject)
     public void Lowered_DynamicResource_NonStyledTarget_StaysTodo()
     {

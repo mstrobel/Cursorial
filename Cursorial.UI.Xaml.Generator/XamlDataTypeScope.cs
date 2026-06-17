@@ -108,4 +108,20 @@ internal static class XamlDataTypeScope
 
         return false;
     }
+
+    /// <summary>
+    /// True when <paramref name="type"/> is or derives from <c>Cursorial.UI.UIElement</c> — the receiver
+    /// constraint for the resource extension methods (<c>FindResource</c> / <c>SetResourceReference</c>), so a
+    /// resource markup on a non-element object (a brush/pen inside a resource value) bails instead of emitting
+    /// an uncompilable call.
+    /// </summary>
+    public static bool IsUIElement(INamedTypeSymbol? type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+            if (t is { Name: "UIElement", ContainingNamespace.Name: "UI" } &&
+                t.ContainingNamespace.ContainingNamespace is { Name: "Cursorial", ContainingNamespace.IsGlobalNamespace: true })
+                return true;
+
+        return false;
+    }
 }

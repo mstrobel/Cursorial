@@ -70,6 +70,27 @@ internal static class GeneratorHarness
         return result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
     }
 
+    /// <summary>Compiles <paramref name="generatedSource"/> to an in-memory assembly, loads it, and returns the
+    /// generated <c>__GeneratedXamlMetadata.Instance</c> as an <c>IXamlTypeMetadataProvider</c> (for the dual-run).</summary>
+    public static Cursorial.UI.Xaml.IXamlTypeMetadataProvider CompileAndLoadProvider(string generatedSource)
+    {
+        var compilation = ReferencedCompilation("GeneratedProviderAsm")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource));
+        using var ms = new System.IO.MemoryStream();
+        var result = compilation.Emit(ms);
+        if (!result.Success)
+        {
+            var errors = string.Join("\n", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+            throw new System.InvalidOperationException("generated provider failed to compile:\n" + errors);
+        }
+
+        var assembly = System.Reflection.Assembly.Load(ms.ToArray());
+        var type = assembly.GetType("Cursorial.UI.Xaml.Generated.__GeneratedXamlMetadata")
+            ?? throw new System.InvalidOperationException("generated provider type not found");
+        var instance = type.GetField("Instance")!.GetValue(null);
+        return (Cursorial.UI.Xaml.IXamlTypeMetadataProvider)instance!;
+    }
+
     private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText
     {
         public override string Path { get; } = path;

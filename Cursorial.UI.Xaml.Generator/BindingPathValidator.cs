@@ -41,7 +41,7 @@ internal static class BindingPathValidator
                 scope.Pop();
 
             // An x:DataType on this object establishes the DataContext type for its whole subtree.
-            if (ResolveDataType(document, in obj, resolver) is {} declared)
+            if (XamlDataTypeScope.ForObject(document, in obj, resolver) is {} declared)
                 scope.Push((i + obj.SubtreeLength, declared));
 
             if (scope.Count == 0)
@@ -65,45 +65,6 @@ internal static class BindingPathValidator
                     ValidateBinding(node, dataType, report);
             }
         }
-    }
-
-    private static INamedTypeSymbol? ResolveDataType(XamlDocument document, in ObjectRecord obj, XamlSymbolResolver resolver)
-    {
-        var members = document.Members;
-
-        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
-        {
-            ref readonly var member = ref members[m];
-
-            if (member.Kind == XamlValueKind.Directive && member.DirectiveKind == (int) XamlDirectiveKind.DataType)
-                return ResolveTypeName(document, document.Strings[member.ValueIndex], resolver);
-        }
-
-        return null;
-    }
-
-    // Resolves an x:DataType token ("vm:FileItem" / "FileItem") via the document xmlns table.
-    private static INamedTypeSymbol? ResolveTypeName(XamlDocument document, string token, XamlSymbolResolver resolver)
-    {
-        if (string.IsNullOrEmpty(token))
-            return null;
-
-        string prefix = string.Empty, local = token;
-        int colon = token.IndexOf(':');
-
-        if (colon > 0)
-        {
-            prefix = token.Substring(0, colon);
-            local = token.Substring(colon + 1);
-        }
-
-        if (!document.Namespaces.TryGetValue(prefix, out var ns))
-            ns = prefix.Length == 0 ? XamlSymbolResolver.CursorialUiNamespace : null!;
-
-        if (ns is null)
-            return null;
-
-        return resolver.Resolve(ns, local, out _);
     }
 
     private static void ValidateBinding(MarkupExtensionNode node, INamedTypeSymbol dataType, Action<string, int, int> report)
@@ -132,7 +93,8 @@ internal static class BindingPathValidator
             if (segment.Length == 0)
                 return;
 
-            if (FindMemberType(current, segment) is not {} memberType)
+            if (XamlDataTypeScope.FindMember(current, segment) is not {} member ||
+                XamlDataTypeScope.MemberType(member) is not {} memberType)
             {
                 report($"Binding path member '{segment}' was not found on x:DataType '{current.Name}'.", node.Line, node.Column);
                 return;
@@ -143,25 +105,5 @@ internal static class BindingPathValidator
             else
                 return; // can't walk into an array / pointer / type parameter — stop without a diagnostic
         }
-    }
-
-    private static ITypeSymbol? FindMemberType(INamedTypeSymbol type, string name)
-    {
-        for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
-        {
-            foreach (var member in t.GetMembers(name))
-            {
-                if (member.DeclaredAccessibility != Accessibility.Public)
-                    continue;
-
-                if (member is IPropertySymbol property)
-                    return property.Type;
-
-                if (member is IFieldSymbol field)
-                    return field.Type;
-            }
-        }
-
-        return null;
     }
 }

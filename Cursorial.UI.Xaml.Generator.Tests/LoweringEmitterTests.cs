@@ -165,6 +165,83 @@ namespace TestApp { public partial class NullView : Button { public NullView() =
         Assert.Null(view.Foreground);
     }
 
+    [Fact] // B3a — an x:DataType-scoped, single-hop {Binding} lowers to a typed CompiledBinding that resolves live
+    public void Lowered_Binding_WithDataType_CompilesAndResolvesLive()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.BindView\" x:DataType=\"t:BindVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using System.ComponentModel;
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class BindVm : INotifyPropertyChanged
+    {
+        private string _caption = string.Empty;
+        public string Caption
+        {
+            get => _caption;
+            set { _caption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Caption))); }
+        }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    public partial class BindView : StackPanel { public BindView() => InitializeComponent(); }
+}";
+
+        // The view-model must be in the compilation AT LOWERING TIME so x:DataType (t:BindVm) resolves and the
+        // compiled lane is taken — add the code-behind syntax tree before lowering.
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // The compiled lane was taken — a typed CompiledBinding<TData,TLeaf> installed, no reflective TODO.
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.BindVm, string>", lowered);
+        Assert.Contains("global::Cursorial.UI.Data.BindingOperations.Install", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.BindView")!)!;
+        var label = Assert.IsType<TextBlock>(view.Children[0]);
+
+        var vmType = assembly.GetType("TestApp.BindVm")!;
+        var vm = System.Activator.CreateInstance(vmType)!;
+        var caption = vmType.GetProperty("Caption")!;
+        caption.SetValue(vm, "Hello");
+
+        // The inherited DataContext drives the child TextBlock's compiled binding synchronously (no host pump).
+        view.DataContext = vm;
+        Assert.Equal("Hello", label.Text);
+
+        // INPC pushes the live update through the compiled chain.
+        caption.SetValue(vm, "Goodbye");
+        Assert.Equal("Goodbye", label.Text);
+    }
+
+    [Fact] // B3a — a {Binding} with no x:DataType in scope can't compile; it stays a // TODO X5 (no silent wrong code)
+    public void Lowered_Binding_WithoutDataType_StaysTodo()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.NoDataTypeView\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class NoDataTypeView : StackPanel { public NoDataTypeView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.DoesNotContain("CompiledBinding", lowered);
+        Assert.Contains("TODO X5", lowered);
+        // It still compiles (the TODO is a comment; the rest of the tree is valid).
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
+
     [Fact] // a class-less document has no code-behind to lower
     public void NoXClass_EmitsNothing()
     {

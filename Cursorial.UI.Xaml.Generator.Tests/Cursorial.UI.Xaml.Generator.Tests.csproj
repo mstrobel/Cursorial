@@ -29,6 +29,8 @@
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <!-- UITestHost — the live frame loop / app for behavioral resource + template lowering tests. -->
+        <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
     </ItemGroup>
 
 </Project>

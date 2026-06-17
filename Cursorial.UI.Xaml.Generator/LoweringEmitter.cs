@@ -257,14 +257,44 @@ internal static class LoweringEmitter
 
     private static void EmitExtensionAssign(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext, INamedTypeSymbol? dataType)
     {
-        if (ext.Kind == ExtensionKind.Binding && c.Doc.ParsedExtensions[ext.Payload] is { } node)
+        switch (ext.Kind)
         {
-            EmitBinding(c, varExpr, xm, node, dataType);
+            case ExtensionKind.Binding when c.Doc.ParsedExtensions[ext.Payload] is { } node:
+                EmitBinding(c, varExpr, xm, node, dataType);
+                return;
+
+            case ExtensionKind.DynamicResource:
+                EmitDynamicResource(c, varExpr, xm, in ext);
+                return;
+
+            // StaticResource (eager) and TemplateBinding lowering are later X5.4 sub-workstreams.
+            default:
+                c.Todo($"extension {ext.Kind} for '{xm.Name}' not yet lowered");
+                return;
+        }
+    }
+
+    // {DynamicResource Key} → ResourceExtensions.SetResourceReference(element, Owner.FooProperty, key): a live
+    // producer that re-resolves against the element's ancestor chain on attach (no eager-resolution timing
+    // problem — works inline AND inside templates). Requires a registered StyledProperty<T> target (the runtime
+    // handler rejects direct/attached); a literal key only (a nested-extension key is deferred to a later cut).
+    private static void EmitDynamicResource(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext)
+    {
+        if (ext.PayloadIsParsedExtension)
+        {
+            c.Todo($"{{DynamicResource}} with a markup-extension key for '{xm.Name}' not yet lowered");
             return;
         }
 
-        // StaticResource/DynamicResource/TemplateBinding lowering are later X5 workstreams (resources/templates).
-        c.Todo($"extension {ext.Kind} for '{xm.Name}' not yet lowered");
+        if (RegisteredOwner(xm) is not { } owner || !XamlDataTypeScope.IsStyledProperty(owner, xm.Name))
+        {
+            c.Todo($"{{DynamicResource}} target '{xm.Name}' is not a styled UIProperty (direct/attached unsupported)");
+            return;
+        }
+
+        var key = c.Doc.Strings[ext.Payload];
+        // SetResourceReference<T> infers T from the StyledProperty<T> field; call it statically (no using).
+        c.Line($"global::Cursorial.UI.ResourceExtensions.SetResourceReference({varExpr}, {Global(owner)}.{xm.Name}Property, \"{Escape(key)}\");");
     }
 
     // B3a/B3b — {Binding} lowering. The compiled lane (zero reflection, AOT-clean) is taken for an

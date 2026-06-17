@@ -94,4 +94,18 @@ internal static class XamlDataTypeScope
         IFieldSymbol => true,
         _ => false,
     };
+
+    /// <summary>
+    /// True when the registered <c>&lt;Name&gt;Property</c> static field on <paramref name="owner"/> is a
+    /// <c>StyledProperty&lt;T&gt;</c> — the precondition for <c>SetResourceReference&lt;T&gt;</c> ({DynamicResource})
+    /// and for a typed zero-box binding push. A direct/attached property (or a base <c>UIProperty</c> field) is not.
+    /// </summary>
+    public static bool IsStyledProperty(INamedTypeSymbol owner, string name)
+    {
+        foreach (var member in owner.GetMembers(name + "Property"))
+            if (member is IFieldSymbol { IsStatic: true, Type: INamedTypeSymbol { OriginalDefinition.Name: "StyledProperty" } })
+                return true;
+
+        return false;
+    }
 }

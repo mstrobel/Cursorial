@@ -18,17 +18,7 @@ public class LoweringEmitterTests
 {
     private const string Ns = "xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\"";
 
-    private static string Lower(string xaml, CSharpCompilation compilation)
-    {
-        var document = XamlFrontend.Parse(xaml, new XamlParseOptions
-        {
-            MetadataProvider = new RoslynXamlMetadata(compilation),
-            DiagnosticMode = XamlDiagnosticMode.CollectAll,
-            FoldConstants = false,
-        });
-        return (LoweringEmitter.Emit(document, "MyView.xaml", new XamlSymbolResolver(compilation))
-                ?? throw new System.InvalidOperationException("no lowering emitted")).Source;
-    }
+    private static string Lower(string xaml, CSharpCompilation compilation) => GeneratorHarness.LowerView(compilation, xaml);
 
     [Fact]
     public void Lowered_BuildsTree_MatchingRuntimeLoader()

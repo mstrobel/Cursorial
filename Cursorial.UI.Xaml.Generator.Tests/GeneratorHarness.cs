@@ -126,6 +126,24 @@ internal static class GeneratorHarness
         return ((CSharpCompilation) updated, diagnostics);
     }
 
+    /// <summary>Parses <paramref name="xaml"/> with the symbol-backed provider and runs the full-lowering
+    /// emitter, returning the generated source (throws if no code-behind class). The standard substrate for the
+    /// lowering-emitter unit tests — the view-model/types referenced by the XAML must already be in
+    /// <paramref name="compilation"/> (add the code-behind syntax tree first).</summary>
+    public static string LowerView(CSharpCompilation compilation, string xaml)
+    {
+        var document = Cursorial.UI.Xaml.XamlFrontend.Parse(xaml, new Cursorial.UI.Xaml.XamlParseOptions
+        {
+            MetadataProvider = new Cursorial.UI.Xaml.Generator.RoslynXamlMetadata(compilation),
+            DiagnosticMode = Cursorial.UI.Xaml.XamlDiagnosticMode.CollectAll,
+            FoldConstants = false,
+        });
+
+        return (Cursorial.UI.Xaml.Generator.LoweringEmitter.Emit(
+                    document, "MyView.xaml", new Cursorial.UI.Xaml.Generator.XamlSymbolResolver(compilation))
+                ?? throw new InvalidOperationException("no lowering emitted")).Source;
+    }
+
     /// <summary>Compiles a compilation to an in-memory assembly and loads it (throws on compile error).</summary>
     public static System.Reflection.Assembly EmitAndLoad(Compilation compilation)
     {

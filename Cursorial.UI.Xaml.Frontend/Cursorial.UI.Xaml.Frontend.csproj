@@ -23,6 +23,8 @@
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
+        <!-- The X4 generator consumes the node-graph internals (ObjectRecord/MemberRecord/Strings). -->
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Generator" />
     </ItemGroup>
 
     <ItemGroup>

@@ -30,20 +30,19 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- The compiler host supplies Roslyn at runtime; pin a floor the .NET 10 SDK's Roslyn satisfies. -->
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
-        <!-- The frontend is netstandard2.0 + uses Span; it source-links below, so its System.Memory dep is ours too. -->
-        <PackageReference Include="System.Memory" Version="4.6.0" />
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Generator.Tests" />
     </ItemGroup>
 
     <ItemGroup>
-        <!-- Source-link the netstandard2.0 parser frontend (design doc §4.9: "shared verbatim with the
-             X4/X5 generator"). Compiling it INTO the analyzer grants internal access and keeps the
-             generator self-contained in the compiler host (the frontend's IsExternalInit polyfill comes
-             with it). The runtime Frontend.dll is a separate copy — this one never ships to runtime. -->
-        <Compile Include="..\Cursorial.UI.Xaml.Frontend\**\*.cs"
-                 Exclude="..\Cursorial.UI.Xaml.Frontend\obj\**\*.cs;..\Cursorial.UI.Xaml.Frontend\bin\**\*.cs"
-                 LinkBase="Frontend" />
+        <!-- The compiler host supplies Roslyn at runtime; pin a floor the .NET 10 SDK's Roslyn satisfies. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Reference the netstandard2.0 parser frontend as ONE assembly (no source-link duplication).
+             InternalsVisibleTo on the frontend grants the node-graph internals; the frontend.dll +
+             its System.Memory dep ship as analyzer assets for real consumers (the X4.2 packaging step). -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
     </ItemGroup>
 
 </Project>

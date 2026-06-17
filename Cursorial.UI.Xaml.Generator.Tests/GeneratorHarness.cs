@@ -12,15 +12,37 @@ namespace Cursorial.Tests.UI.Xaml.Generator;
 /// <see cref="CSharpGeneratorDriver"/> — the generator-test substrate (no MSBuild needed).</summary>
 internal static class GeneratorHarness
 {
+    /// <summary>A Compilation referencing the runtime BCL + the Cursorial framework assemblies, so a
+    /// generator (or a direct <c>XamlSymbolResolver</c>) can resolve <c>Cursorial.UI</c> symbols.</summary>
+    public static CSharpCompilation ReferencedCompilation(string assemblyName = "GeneratorTestAssembly")
+    {
+        var tpa = (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? string.Empty)
+            .Split(System.IO.Path.PathSeparator)
+            .Where(p => p.Length > 0 && p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+
+        var cursorial = new[]
+        {
+            typeof(Cursorial.UI.UIElement).Assembly.Location,          // Cursorial.UI
+            typeof(Cursorial.UI.Xaml.XamlType).Assembly.Location,      // Cursorial.UI.Xaml.Frontend
+        };
+
+        var references = tpa.Concat(cursorial)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+            .ToImmutableArray();
+
+        return CSharpCompilation.Create(
+            assemblyName,
+            syntaxTrees: null,
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
     /// <summary>Runs the generator over the given (name → xaml) files, each carrying the
     /// <c>SourceItemType=CursorialXaml</c> AdditionalFiles metadata, and returns the run result.</summary>
     public static GeneratorDriverRunResult Run(params (string FileName, string Xaml)[] files)
     {
-        var compilation = CSharpCompilation.Create(
-            "GeneratorTestAssembly",
-            syntaxTrees: null,
-            references: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = ReferencedCompilation();
 
         var additionalTexts = files
             .Select(f => (AdditionalText)new InMemoryAdditionalText(f.FileName, f.Xaml))

@@ -22,11 +22,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- Reference the generator as a plain assembly (we drive it manually via CSharpGeneratorDriver),
-             not as an analyzer. -->
-        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
-                          OutputItemType="Analyzer"
-                          ReferenceOutputAssembly="true" />
+        <!-- Reference the generator as a plain assembly (we drive it manually via CSharpGeneratorDriver). -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj" />
+        <!-- The runtime framework assemblies — so a test Compilation can resolve Cursorial.UI symbols
+             (and the dual-run can instantiate the real types). -->
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
     </ItemGroup>
 
 </Project>

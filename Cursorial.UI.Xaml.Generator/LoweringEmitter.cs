@@ -154,6 +154,13 @@ internal static class LoweringEmitter
                     break;
                 }
 
+                case XamlValueKind.Event:
+                    // Click="OnClick" → `__e.Click += this.OnClick;`. The handler is resolved at the consumer's
+                    // compile (a missing/mismatched handler is a CS error). The runtime loader no-ops events at
+                    // X1, so lowering is strictly more capable here.
+                    c.Line($"{varExpr}.{xm.Name} += this.{c.Doc.Strings[member.ValueIndex]};");
+                    break;
+
                 default:
                     c.Line($"// TODO X5: member '{xm.Name}' kind {member.Kind} not yet lowered");
                     break;

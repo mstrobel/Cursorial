@@ -77,6 +77,53 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
         Assert.Same(view.Children[1], viewType.GetField("Frame", flags)!.GetValue(view));
     }
 
+    [Fact] // X5.2 — an attached property (Grid.Row) lowers to SetValue and matches the loader
+    public void Lowered_AttachedProperty_MatchesLoader()
+    {
+        var xaml = $"<Grid {Ns} x:Class=\"TestApp.GridView\"><Button x:Name=\"Cell\" Grid.Row=\"1\"/></Grid>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class GridView : Grid { public GridView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+
+        var view = (Grid)System.Activator.CreateInstance(assembly.GetType("TestApp.GridView")!)!;
+        var cell = Assert.IsType<Button>(view.Children[0]);
+        Assert.Equal(1, Grid.GetRow(cell));
+
+        var runtime = (Grid)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        Assert.Equal(Grid.GetRow((Button)runtime.Children[0]), Grid.GetRow(cell));
+    }
+
+    [Fact] // X5.2 — an event wires to a code-behind handler (the loader no-ops events; lowering wires them)
+    public void Lowered_WiresEventHandler()
+    {
+        var xaml = $"<Button {Ns} x:Class=\"TestApp.ClickView\" Click=\"OnClick\"/>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public partial class ClickView : Button
+    {
+        public ClickView() => InitializeComponent();
+        public bool Clicked;
+        private void OnClick(object? sender, ClickEventArgs e) => Clicked = true;
+    }
+}";
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("Click += this.OnClick", lowered); // the wiring is emitted
+
+        // Compiles ⇒ the handler exists and its signature matches the event delegate; instantiating wires it.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("TestApp.ClickView")!));
+    }
+
     [Fact] // a class-less document has no code-behind to lower
     public void NoXClass_EmitsNothing()
     {

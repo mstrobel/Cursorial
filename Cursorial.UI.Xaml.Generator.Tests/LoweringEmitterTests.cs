@@ -35,7 +35,7 @@ public class LoweringEmitterTests
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"TestApp.MyView\">" +
-            "<Button x:Name=\"Ok\" Content=\"OK\"/>" +
+            "<Button x:Name=\"Ok\" Content=\"OK\" Width=\"20\"/>" + // Width=int? exercises X5.1 value lowering
             "<Border x:Name=\"Frame\"/>" +
             "</StackPanel>";
 
@@ -66,6 +66,9 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
         var runtimeOk = Assert.IsType<Button>(runtime.Children[0]);
         Assert.Equal(runtimeOk.Content, loweredOk.Content);
         Assert.Equal("OK", loweredOk.Content);
+        // X5.1 — the converted typed value (Width=int?) matches the loader.
+        Assert.Equal(runtimeOk.Width, loweredOk.Width);
+        Assert.Equal(20, loweredOk.Width);
         Assert.IsType<Border>(view.Children[1]);
 
         // The typed x:Name fields point at the constructed elements.

@@ -73,6 +73,19 @@ internal static class LoweringEmitter
         sb.AppendLine($"{ci}        __contentLoaded = true;");
         sb.Append(ctx.Body);
         sb.AppendLine($"{ci}    }}");
+
+        if (ctx.UsesConverter)
+        {
+            // The (hand-written, AOT-clean) converter ladder for typed literals. No reflection except the
+            // named-color/TypeDescriptor edges in the ladder itself (tracked for later AOT-hardening).
+            sb.AppendLine();
+            sb.AppendLine($"{ci}    private static object? __ConvertXamlValue(global::System.Type targetType, string text)");
+            sb.AppendLine($"{ci}        => global::Cursorial.UI.Xaml.XamlConverters.For(targetType) is {{ }} __c");
+            sb.AppendLine($"{ci}            ? __c.ConvertFromString(text, new global::Cursorial.UI.Xaml.XamlValueContext(");
+            sb.AppendLine($"{ci}                global::System.Globalization.CultureInfo.InvariantCulture, null, targetType, null, 0, 0))");
+            sb.AppendLine($"{ci}            : text;");
+        }
+
         sb.AppendLine($"{ci}}}");
         if (ns is not null)
             sb.AppendLine("}");
@@ -148,20 +161,34 @@ internal static class LoweringEmitter
         }
     }
 
-    // A Text value: lowered only for object/string-typed members in the spine (no converter yet).
+    // A Text value: an object/string member takes the string literal directly; any other typed member runs
+    // the (hand-written, AOT-clean) converter ladder via the emitted __ConvertXamlValue helper (X5.1).
     private static void EmitScalarAssign(Context c, string varExpr, XamlMember xm, string text)
     {
-        if (!IsObjectOrString(xm.ValueType))
+        string valueExpr;
+        if (IsObjectOrString(xm.ValueType))
         {
-            c.Line($"// TODO X5.1: convert {xm.Name}=\"{Escape(text)}\" (value lowering)");
+            valueExpr = $"\"{Escape(text)}\"";
+        }
+        else if (ValueTypeSymbol(xm.ValueType) is { } valueType)
+        {
+            c.UsesConverter = true;
+            valueExpr = $"__ConvertXamlValue(typeof({Global(valueType)}), \"{Escape(text)}\")";
+        }
+        else
+        {
+            c.Line($"// TODO X5: unresolved value type for {xm.Name}=\"{Escape(text)}\"");
             return;
         }
 
-        var literal = $"\"{Escape(text)}\"";
         if (RegisteredOwner(xm) is { } owner)
-            c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {literal});");
+            // SetValue takes object? — no cast needed.
+            c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
+        else if (IsObjectOrString(xm.ValueType))
+            c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
         else
-            c.Line($"{varExpr}.{xm.Name} = {literal};");
+            // CLR setter wants the property type — cast the converter's object? result.
+            c.Line($"{varExpr}.{xm.Name} = ({Global(ValueTypeSymbol(xm.ValueType)!)}){valueExpr}!;");
     }
 
     // A child element value: a registered-collection content member fills via Add; a single member is set
@@ -185,6 +212,9 @@ internal static class LoweringEmitter
     private static bool IsObjectOrString(IXamlType valueType)
         => valueType is RoslynXamlType { Symbol.SpecialType: SpecialType.System_Object or SpecialType.System_String };
 
+    private static ITypeSymbol? ValueTypeSymbol(IXamlType valueType)
+        => valueType is RoslynXamlType { Symbol: { } symbol } ? symbol : null;
+
     private static INamedTypeSymbol? TypeSymbolOf(XamlDocument document, int typeId)
         => typeId >= 0 && document.ResolvedTypes[typeId]?.ClrType is RoslynXamlType { Symbol: INamedTypeSymbol s } ? s : null;
 
@@ -196,6 +226,7 @@ internal static class LoweringEmitter
     {
         public XamlDocument Doc { get; } = document;
         public StringBuilder Body { get; } = new();
+        public bool UsesConverter { get; set; }
         private int _counter;
 
         public string NextVar() => $"__e{_counter++}";

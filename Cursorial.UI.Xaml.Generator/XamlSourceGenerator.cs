@@ -140,6 +140,14 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             spc.ReportDiagnostic(ToRoslyn(diagnostic, input));
         }
 
+        // WS-B3 — x:DataType binding-path assists (CURG2001), once the node graph is structurally sound.
+        if (!hasSyntaxError)
+        {
+            BindingPathValidator.Validate(document, new XamlSymbolResolver(compilation),
+                (message, line, column) => spc.ReportDiagnostic(
+                    Diagnostic.Create(BindingPathAssist, LocationFor(input, line, column), message)));
+        }
+
         var hint = SanitizeHint(System.IO.Path.GetFileNameWithoutExtension(input.Path)) + ".g.cs";
 
         // WS-X4.6 — a document with an x:Class and valid syntax gets the typed-field + InitializeComponent
@@ -205,6 +213,16 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         id: "CURG0001",
         title: "XAML generator internal error",
         messageFormat: "The XAML generator failed on '{0}': {1}",
+        category: "Cursorial.Xaml",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    // WS-B3 — a generator-only assist (CURGxxxx band): an x:DataType-scoped binding path member that doesn't
+    // resolve. Warning, not error — the runtime reflective binding still applies; this just flags a likely typo.
+    private static readonly DiagnosticDescriptor BindingPathAssist = new(
+        id: "CURG2001",
+        title: "Binding path does not resolve on the declared x:DataType",
+        messageFormat: "{0}",
         category: "Cursorial.Xaml",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

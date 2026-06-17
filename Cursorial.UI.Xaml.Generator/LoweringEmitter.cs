@@ -172,7 +172,13 @@ internal static class LoweringEmitter
                 case XamlValueKind.Object:
                 {
                     var childVar = c.NextVar();
+                    // A ControlTemplate's templated parent is the enclosing control (this objType); a DataTemplate
+                    // has none. Establish it for the recursion so a {TemplateBinding} inside resolves its source.
+                    var savedTpt = c.TemplatedParentType;
+                    if (IsControlTemplateType(xm.ValueType)) c.TemplatedParentType = objType;
+                    else if (IsDataTemplateType(xm.ValueType)) c.TemplatedParentType = null;
                     EmitObject(c, member.ValueIndex, childVar, isRoot: false, hasScope, dataType);
+                    c.TemplatedParentType = savedTpt;
                     EmitChildAssign(c, varExpr, xm, childVar, member.ValueIndex, single: true);
                     break;
                 }
@@ -197,8 +203,11 @@ internal static class LoweringEmitter
                 case XamlValueKind.Deferred:
                 {
                     // A template body (ControlTemplate/DataTemplate Content): lower the slice to a FuncTemplateContent
-                    // factory built fresh per instantiation, and assign it to the ITemplateContent member.
-                    var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope);
+                    // factory built fresh per instantiation, and assign it to the ITemplateContent member. The
+                    // templated-parent type (for {TemplateBinding} inside) is the ControlTemplate's explicit
+                    // TargetType, else the enclosing control established by the Object recursion above.
+                    var target = ResolveTemplateTargetType(c, in obj) ?? c.TemplatedParentType;
+                    var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target);
                     var content = $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory})";
                     if (RegisteredOwner(xm) is { } owner)
                         c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {content});");
@@ -232,24 +241,28 @@ internal static class LoweringEmitter
     // registering x:Name parts into __ctx's template name scope. Returns the factory name (wrapped in a
     // FuncTemplateContent by the caller). The factory is accumulated and appended at the end of InitializeComponent
     // (a local function is hoisted, so the forward reference resolves). Nested templates flatten into sibling factories.
-    private static string EmitTemplateFactory(Context c, int sliceHead, bool hasScope)
+    private static string EmitTemplateFactory(Context c, int sliceHead, bool hasScope, INamedTypeSymbol? templatedParentType)
     {
         var factoryName = c.NextFactory();
         var rootVar = c.NextVar();
 
         // Redirect emission into the factory body + enter template mode (x:Name → __ctx.RegisterName, {StaticResource}
-        // → TODO since there's no end-of-tree FindResource anchor). Save/restore for correct nesting.
+        // → TODO since there's no end-of-tree FindResource anchor, {TemplateBinding} → the template's target type).
+        // Save/restore for correct nesting.
         var bodyBuf = new StringBuilder();
         var savedBuffer = c.SwapBuffer(bodyBuf);
         var savedInTemplate = c.InTemplate;
         var savedCtxVar = c.TemplateContextVar;
+        var savedTpt = c.TemplatedParentType;
         c.InTemplate = true;
         c.TemplateContextVar = "__ctx";
+        c.TemplatedParentType = templatedParentType;
 
         EmitObject(c, sliceHead, rootVar, isRoot: false, hasScope, dataType: null);
 
         c.InTemplate = savedInTemplate;
         c.TemplateContextVar = savedCtxVar;
+        c.TemplatedParentType = savedTpt;
         c.SwapBuffer(savedBuffer);
 
         var fn = new StringBuilder();
@@ -413,6 +426,29 @@ internal static class LoweringEmitter
     private static bool IsResourceDictionaryMember(XamlMember xm)
         => ValueTypeSymbol(xm.ValueType) is INamedTypeSymbol s && SymbolXamlModel.IsResourceDictionary(s);
 
+    private static bool IsControlTemplateType(IXamlType valueType)
+        => ValueTypeSymbol(valueType) is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" };
+
+    private static bool IsDataTemplateType(IXamlType valueType)
+        => ValueTypeSymbol(valueType) is { Name: "DataTemplate", ContainingNamespace.Name: "Controls" };
+
+    // The ControlTemplate's explicit TargetType (a Text member naming a type), resolved via the document xmlns, or null.
+    private static INamedTypeSymbol? ResolveTemplateTargetType(Context c, in ObjectRecord obj)
+    {
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind != XamlValueKind.Text)
+                continue;
+
+            var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+            if (xm?.Name == "TargetType")
+                return XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
+        }
+
+        return null;
+    }
+
     // {x:Null} → null; {x:Static Type.Member} → the resolved static reference (global::Type.Member).
     // (Init-only CLR targets are set in the construction object initializer, NOT here — see EmitObject.)
     private static void EmitFoldedAssign(Context c, string varExpr, XamlMember xm, object? constant)
@@ -464,7 +500,10 @@ internal static class LoweringEmitter
                 EmitStaticResource(c, varExpr, xm, in ext);
                 return;
 
-            // TemplateBinding lowering is a later X5.4 sub-workstream (templates).
+            case ExtensionKind.TemplateBinding when c.Doc.ParsedExtensions[ext.Payload] is { } node:
+                EmitTemplateBinding(c, varExpr, xm, node);
+                return;
+
             default:
                 c.Todo($"extension {ext.Kind} for '{xm.Name}' not yet lowered");
                 return;
@@ -663,6 +702,41 @@ internal static class LoweringEmitter
             $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)});");
     }
 
+    // {TemplateBinding SourceProp} (inside a template body) → a one-way TemplateBinding tracking the templated
+    // parent's SourceProp. The source property is resolved against the template's target type (statically known
+    // here via the ControlTemplate TargetType / enclosing control); the engine finds the live templated parent
+    // at apply-time via the target's TemplatedParent (so the lowered emission needs no parent reference).
+    private static void EmitTemplateBinding(Context c, string varExpr, XamlMember xm, MarkupExtensionNode node)
+    {
+        if (RegisteredOwner(xm) is not { } targetOwner)
+        {
+            c.Todo($"{{TemplateBinding}} target '{xm.Name}' is not a bindable UIProperty");
+            return;
+        }
+
+        if (c.TemplatedParentType is not { } parentType)
+        {
+            c.Todo($"{{TemplateBinding}} for '{xm.Name}' has no statically-known template target type (DataTemplate / unresolved TargetType)");
+            return;
+        }
+
+        if (FirstPositionalText(node) is not { Length: > 0 } sourceName)
+        {
+            c.Todo($"{{TemplateBinding}} for '{xm.Name}' has no source property name");
+            return;
+        }
+
+        if (SymbolXamlModel.FindRegisteredPropertyOwner(parentType, sourceName) is not { } sourceOwner)
+        {
+            c.Todo($"{{TemplateBinding {sourceName}}} — '{sourceName}' is not a registered property on '{parentType.Name}'");
+            return;
+        }
+
+        c.Line(
+            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(targetOwner)}.{xm.Name}Property, " +
+            $"new global::Cursorial.UI.Data.TemplateBinding({Global(sourceOwner)}.{sourceName}Property));");
+    }
+
     // The binding path: the first positional argument, else the Path= named argument (mirrors the runtime handler).
     private static string? BindingPathOf(MarkupExtensionNode node)
         => node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } p ? p : NamedText(node, "Path");
@@ -782,6 +856,9 @@ internal static class LoweringEmitter
 
         /// <summary>The TemplateBuildContext var name while inside a template factory (x:Name → its RegisterName); null otherwise.</summary>
         public string? TemplateContextVar { get; set; }
+
+        /// <summary>The templated-parent type while lowering inside a ControlTemplate body — the {TemplateBinding} source-property owner; null outside / in a DataTemplate.</summary>
+        public INamedTypeSymbol? TemplatedParentType { get; set; }
 
         /// <summary>The type of the object whose members are currently being lowered — the receiver of resource extensions.</summary>
         public INamedTypeSymbol? CurrentObjectType { get; set; }

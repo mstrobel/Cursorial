@@ -1,3 +1,5 @@
+using Cursorial.Drawing.Media;
+using Cursorial.Output;
 using Cursorial.UI.Controls;
 
 using Microsoft.CodeAnalysis.CSharp;
@@ -56,5 +58,43 @@ namespace GenApp { public partial class TplView : StackPanel { public TplView() 
         // A second instantiation produces a DISTINCT subtree (fresh per Build — no shared elements).
         var instance2 = template.Instantiate(button);
         Assert.NotSame(instance.Root, instance2.Root);
+    }
+
+    [Fact] // {TemplateBinding} inside a ControlTemplate one-way-tracks the templated parent's property
+    public void Lowered_TemplateBinding_TracksTemplatedParent()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.TbView\">" +
+            "<Button x:Name=\"Btn\">" +
+              "<Button.Template>" +
+                "<ControlTemplate><Border x:Name=\"PART_Chrome\" Background=\"{TemplateBinding Background}\"/></ControlTemplate>" +
+              "</Button.Template>" +
+            "</Button>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class TbView : StackPanel { public TbView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The source property resolved against the template target (Button → Control.BackgroundProperty).
+        Assert.Contains("new global::Cursorial.UI.Data.TemplateBinding(", lowered);
+        Assert.Contains("BackgroundProperty));", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.TbView")!)!;
+        var button = Assert.IsType<Button>(view.Children[0]);
+
+        var brush = new SolidColorBrush(Color.FromRgb(7, 8, 9));
+        button.Background = brush;
+
+        // Instantiating stamps TemplatedParent on the part; the TemplateBinding one-way-tracks Button.Background.
+        var instance = button.Template!.Instantiate(button);
+        var border = Assert.IsType<Border>(instance.Root);
+        Assert.Same(brush, border.Background);
     }
 }

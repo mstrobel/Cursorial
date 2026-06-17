@@ -22,19 +22,6 @@ internal sealed class MetadataProviderEmitter
     private const string Ui = "https://cursorial.dev/ui";
     private const string Frontend = "global::Cursorial.UI.Xaml";
 
-    // The loader's ContentPropertyTable, by base-type full name (most-derived first).
-    private static readonly (string BaseType, string Property)[] ContentPropertyTable =
-    {
-        ("Cursorial.UI.Controls.ContentControl", "Content"),
-        ("Cursorial.UI.Controls.Decorator", "Child"),
-        ("Cursorial.UI.Popup", "Child"),
-        ("Cursorial.UI.Controls.Panel", "Children"),
-        ("Cursorial.UI.Controls.ControlTemplate", "Content"),
-        ("Cursorial.UI.Controls.DataTemplate", "Content"),
-        ("Cursorial.UI.Style", "Setters"),
-        ("Cursorial.Drawing.Media.GradientBrush", "Stops"),
-    };
-
     private readonly Compilation _compilation;
 
     public MetadataProviderEmitter(Compilation compilation) => _compilation = compilation;
@@ -134,7 +121,7 @@ internal sealed class MetadataProviderEmitter
 
         foreach (var type in types)
         {
-            var names = EnumerateMembers(type).Select(m => m.Name).Distinct(System.StringComparer.Ordinal).OrderBy(n => n, System.StringComparer.Ordinal);
+            var names = SymbolXamlModel.EnumerateMembers(type).Select(m => m.Name).Distinct(System.StringComparer.Ordinal).OrderBy(n => n, System.StringComparer.Ordinal);
             sb.AppendLine($"            if (clrType == typeof({Global(type)})) return new[] {{ {string.Join(", ", names.Select(n => $"\"{n}\""))} }};");
         }
 
@@ -146,9 +133,9 @@ internal sealed class MetadataProviderEmitter
     private void EmitType(StringBuilder sb, INamedTypeSymbol type)
     {
         var field = FieldName(type);
-        var members = EnumerateMembers(type).ToList();
-        var contentProperty = ResolveContentProperty(type);
-        var isCollection = contentProperty is not null && ContentIsCollection(type, contentProperty);
+        var members = SymbolXamlModel.EnumerateMembers(type).ToList();
+        var contentProperty = SymbolXamlModel.ResolveContentProperty(type);
+        var isCollection = contentProperty is not null && SymbolXamlModel.ContentIsCollection(type, contentProperty);
 
         sb.AppendLine($"        private static readonly {Frontend}.XamlType {field} = Build_{field}();");
         sb.AppendLine($"        private static {Frontend}.XamlType Build_{field}()");
@@ -165,7 +152,7 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine("            };");
         sb.AppendLine($"            return new {Frontend}.XamlType(");
         sb.AppendLine($"                clrType: typeof({Global(type)}),");
-        sb.AppendLine($"                activate: {(CanActivate(type) ? $"static () => new {Global(type)}()" : "null")},");
+        sb.AppendLine($"                activate: {(SymbolXamlModel.CanActivate(type) ? $"static () => new {Global(type)}()" : "null")},");
         sb.AppendLine($"                contentProperty: {(contentProperty is null ? "null" : $"\"{contentProperty}\"")},");
         sb.AppendLine($"                isCollection: {(isCollection ? "true" : "false")},");
         sb.AppendLine("                memberResolver: name => members.TryGetValue(name, out var m) ? m : null);");
@@ -173,7 +160,7 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine();
     }
 
-    private string EmitMember(INamedTypeSymbol owner, MemberModel member)
+    private string EmitMember(INamedTypeSymbol owner, SymbolXamlModel.MemberModel member)
     {
         var valueTypeOf = $"typeof({Global(member.ValueType)})";
         var converter = $"{Frontend}.XamlConverters.For({valueTypeOf})";
@@ -201,154 +188,10 @@ internal sealed class MetadataProviderEmitter
         return $"[\"{member.Name}\"] = new {Frontend}.XamlMember({string.Join(", ", parts)})";
     }
 
-    // ── symbol analysis (mirrors ReflectionXamlMetadata) ──────────────────────────────────────────
-
-    private IEnumerable<MemberModel> EnumerateMembers(INamedTypeSymbol type)
-    {
-        var seen = new HashSet<string>(System.StringComparer.Ordinal);
-
-        for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
-        {
-            foreach (var symbol in t.GetMembers())
-            {
-                if (symbol.DeclaredAccessibility != Accessibility.Public || symbol.IsStatic)
-                    continue;
-
-                if (symbol is IPropertySymbol { IsIndexer: false } prop && seen.Add(prop.Name))
-                {
-                    var registeredOwner = FindRegisteredPropertyOwner(type, prop.Name);
-
-                    yield return new MemberModel(prop.Name,
-                                                 prop.Type,
-                                                 CanWrite: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public },
-                                                 CanRead: prop.GetMethod is { DeclaredAccessibility: Accessibility.Public }, 
-                                                 IsEvent: false,
-                                                 registeredOwner);
-                }
-                else if (symbol is IEventSymbol evt && seen.Add(evt.Name))
-                {
-                    yield return new MemberModel(evt.Name, 
-                                                 evt.Type,
-                                                 CanWrite: false,
-                                                 CanRead: false,
-                                                 IsEvent: true,
-                                                 RegisteredFieldOwner: null);
-                }
-            }
-        }
-    }
-
-    // Finds the type that declares a `public static <name>Property` UIProperty-derived field (the registration convention).
-    private INamedTypeSymbol? FindRegisteredPropertyOwner(INamedTypeSymbol type, string memberName)
-    {
-        var fieldName = memberName + "Property";
-
-        for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
-        {
-            var field = t.GetMembers(fieldName)
-                         .OfType<IFieldSymbol>()
-                         .FirstOrDefault(f => f is { IsStatic: true, DeclaredAccessibility: Accessibility.Public } &&
-                                                IsUIPropertyType(f.Type));
-
-            if (field is not null)
-                return t;
-        }
-
-        return null;
-    }
-
-    private static bool IsUIPropertyType(ITypeSymbol type)
-    {
-        for (var t = type; t is not null; t = t.BaseType)
-        {
-            var name = t.OriginalDefinition.ToDisplayString();
-
-            if (name.StartsWith("Cursorial.UI.StyledProperty", System.StringComparison.Ordinal) ||
-                name.StartsWith("Cursorial.UI.DirectProperty", System.StringComparison.Ordinal) ||
-                name.StartsWith("Cursorial.UI.AttachedProperty", System.StringComparison.Ordinal) ||
-                name == "Cursorial.UI.UIProperty")
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private string? ResolveContentProperty(INamedTypeSymbol type)
-    {
-        // (1) An explicit [ContentProperty("Name")] attribute (matched by simple name).
-        foreach (var attr in type.GetAttributes())
-        {
-            if (attr.AttributeClass?.Name == "ContentPropertyAttribute"
-                && attr.ConstructorArguments.Length == 1
-                && attr.ConstructorArguments[0].Value is string name && name.Length > 0)
-                return name;
-        }
-
-        // (2) The known base-type table (most-derived first).
-        for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
-        {
-            var full = t.ToDisplayString();
-
-            foreach (var (baseType, property) in ContentPropertyTable)
-            {
-                if (full == baseType)
-                    return property;
-            }
-        }
-
-        return null;
-    }
-
-    private bool ContentIsCollection(INamedTypeSymbol type, string contentProperty)
-    {
-        var prop = EnumerateMembers(type).FirstOrDefault(m => m.Name == contentProperty);
-
-        if (prop.Name is null || prop.ValueType is null)
-            return false;
-
-        var ct = prop.ValueType;
-
-        if (ct.SpecialType == SpecialType.System_String || ct.SpecialType == SpecialType.System_Object)
-            return false;
-
-        if (ct.Name == "ITemplateContent")
-            return false;
-
-        return ImplementsIList(ct);
-    }
-
-    private static bool ImplementsIList(ITypeSymbol type)
-    {
-        foreach (var iface in type.AllInterfaces)
-        {
-            if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IList_T)
-                return true;
-
-            if (iface.ToDisplayString() == "System.Collections.IList")
-                return true;
-        }
-
-        return type.ToDisplayString() == "System.Collections.IList";
-    }
-
-    private static bool CanActivate(INamedTypeSymbol type)
-    {
-        if (type.IsAbstract || type.TypeKind == TypeKind.Interface)
-            return false;
-
-        if (type.IsValueType)
-            return type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T;
-
-        return type.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
-    }
+    // ── codegen helpers ───────────────────────────────────────────────────────────────────────────
 
     private static string FieldName(INamedTypeSymbol type) => type.Name;
 
     private static string Global(ITypeSymbol type)
         => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-
-    private readonly record struct MemberModel(
-        string Name, ITypeSymbol ValueType, bool CanWrite, bool CanRead, bool IsEvent, INamedTypeSymbol? RegisteredFieldOwner);
 }

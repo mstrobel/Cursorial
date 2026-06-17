@@ -1,9 +1,8 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Xml; 
+using System.Xml;
 
 // ReSharper disable UnusedParameter.Local
 // ReSharper disable UnusedMember.Local
@@ -59,13 +58,13 @@ internal sealed class XamlParser
     public static XamlDocument Parse(TextReader textReader, XamlParseOptions options, Uri? source)
     {
         var settings = new XmlReaderSettings
-        {
-            DtdProcessing = DtdProcessing.Prohibit, // matrix X39/X40 — no DTDs, no external entities
-            IgnoreComments = true,                  // matrix X37
-            IgnoreProcessingInstructions = true,    // matrix X38
-            IgnoreWhitespace = false,               // we own whitespace handling (XD19)
-            CloseInput = false,
-        };
+                       {
+                           DtdProcessing = DtdProcessing.Prohibit, // matrix X39/X40 — no DTDs, no external entities
+                           IgnoreComments = true,                  // matrix X37
+                           IgnoreProcessingInstructions = true,    // matrix X38
+                           IgnoreWhitespace = false,               // we own whitespace handling (XD19)
+                           CloseInput = false,
+                       };
 
         using var reader = XmlReader.Create(textReader, settings);
         var parser = new XamlParser(reader, options, source);
@@ -91,18 +90,21 @@ internal sealed class XamlParser
             // an XmlException; distinguish it by message for the CUR1001 vs CUR1002 banding.
             int line = xe.LineNumber > 0 ? xe.LineNumber : 1;
             int column = xe.LinePosition > 0 ? xe.LinePosition : 1;
-            bool isDtd = xe.Message.IndexOf("DTD", StringComparison.OrdinalIgnoreCase) >= 0
-                         || xe.Message.IndexOf("DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0
-                         || xe.Message.IndexOf("entity", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            bool isDtd = xe.Message.IndexOf("DTD", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         xe.Message.IndexOf("DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         xe.Message.IndexOf("entity", StringComparison.OrdinalIgnoreCase) >= 0;
+
             // An undeclared xmlns prefix surfaces as an XmlException ("namespace prefix … is not
             // defined"); re-band it to the resolution diagnostic CUR2003 (matrix X30).
-            bool isUndeclaredPrefix = xe.Message.IndexOf("prefix", StringComparison.OrdinalIgnoreCase) >= 0
-                                      && (xe.Message.IndexOf("undeclared", StringComparison.OrdinalIgnoreCase) >= 0
-                                          || (xe.Message.IndexOf("not", StringComparison.OrdinalIgnoreCase) >= 0
-                                              && xe.Message.IndexOf("defin", StringComparison.OrdinalIgnoreCase) >= 0));
+            bool isUndeclaredPrefix = xe.Message.IndexOf("prefix", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                      (xe.Message.IndexOf("undeclared", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       (xe.Message.IndexOf("not", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                        xe.Message.IndexOf("defin", StringComparison.OrdinalIgnoreCase) >= 0));
 
             string code;
             string message;
+
             if (isDtd)
             {
                 code = XamlDiagnosticCodes.DtdProhibited;
@@ -118,6 +120,7 @@ internal sealed class XamlParser
                 code = XamlDiagnosticCodes.MalformedXml;
                 message = $"Malformed XML: {xe.Message}";
             }
+
             _builder.Report(XamlDiagnostic.Error(code, message, _builder.Source, line, column));
         }
 
@@ -131,6 +134,7 @@ internal sealed class XamlParser
             if (_reader.NodeType == XmlNodeType.Element)
                 return true;
         }
+
         return false;
     }
 
@@ -162,10 +166,12 @@ internal sealed class XamlParser
         var resolution = ResolveType(ns, localName, reportLine, reportColumn);
         int typeId;
         XamlType? type = null;
+
         if (resolution.IsResolved)
         {
             type = resolution.Type;
             typeId = _builder.AddResolvedType(type);
+
             if (isRoot && type is not null)
                 _rootType = type.ClrType.UnderlyingSystemType;
         }
@@ -174,8 +180,8 @@ internal sealed class XamlParser
             typeId = _builder.AddResolvedType(null);
         }
 
-        bool isResourceDictionary = parentInResourceDictionary
-            || string.Equals(localName, "ResourceDictionary", StringComparison.Ordinal);
+        bool isResourceDictionary = parentInResourceDictionary ||
+                                    string.Equals(localName, "ResourceDictionary", StringComparison.Ordinal);
 
         var flags = ObjectFlags.None;
         if (isRoot) flags |= ObjectFlags.IsRoot;
@@ -188,7 +194,16 @@ internal sealed class XamlParser
 
         // Parse attributes (members + directives; xmlns declarations are captured on the root and rejected
         // elsewhere — the top-level-only policy, CUR2004).
-        ParseAttributes(type, localName, ns, members, parentInDeferred, isRoot, ref hasName, ref hasKey, reportLine, reportColumn);
+        ParseAttributes(type,
+                        localName,
+                        ns,
+                        members,
+                        parentInDeferred,
+                        isRoot,
+                        ref hasName,
+                        ref hasKey,
+                        reportLine,
+                        reportColumn);
 
         if (hasName) flags |= ObjectFlags.HasName;
         if (hasKey) flags |= ObjectFlags.HasKey;
@@ -198,6 +213,7 @@ internal sealed class XamlParser
         // A Style pushes its resolved TargetType so enclosed Setters resolve against it (X64/X66).
         bool isStyle = string.Equals(localName, "Style", StringComparison.Ordinal);
         bool pushedStyleTarget = false;
+
         if (isStyle)
         {
             _styleTargetStack.Push(ResolveStyleTargetType(members));
@@ -211,8 +227,13 @@ internal sealed class XamlParser
             // A deferred body has its OWN template namescope, so the enclosing resource-dictionary flag
             // does NOT propagate into it (x:Name inside a template body is a part name, not CUR2304).
             bool contentDefers = ContentPropertyDefers(type);
-            ParseElementBody(type, localName, members, parentInDeferred || contentDefers,
-                isResourceDictionary && !contentDefers, objectIndex);
+
+            ParseElementBody(type,
+                             localName,
+                             members,
+                             inDeferred: parentInDeferred || contentDefers,
+                             inResourceDictionary: isResourceDictionary && !contentDefers,
+                             ownerObjectIndex: objectIndex);
         }
 
         if (pushedStyleTarget)
@@ -222,31 +243,35 @@ internal sealed class XamlParser
         if (hasName && isResourceDictionary)
         {
             _builder.Error(XamlDiagnosticCodes.NameInResourceDictionary,
-                "x:Name is not allowed inside a resource dictionary (no namescope).", reportLine, reportColumn);
+                           "x:Name is not allowed inside a resource dictionary (no namescope).",
+                           reportLine,
+                           reportColumn);
         }
 
         // End-of-object: resolve any Setter property against the lexical TargetType (X64/X66).
         if (string.Equals(localName, "Setter", StringComparison.Ordinal))
-        {
             ResolveSetter(members, reportLine, reportColumn);
-        }
 
         // Commit members to the document's flat array.
         int memberStart = _builder.MemberCount;
+
         foreach (var m in members)
             _builder.AddMember(m);
 
         int subtreeLength = _builder.ObjectCount - subtreeStart;
-        var record = new ObjectRecord(typeId, memberStart, (ushort)members.Count, flags, subtreeLength, lineInfo);
+        var record = new ObjectRecord(typeId, memberStart, (ushort) members.Count, flags, subtreeLength, lineInfo);
+
         _builder.SetObject(objectIndex, record);
+
         return objectIndex;
     }
 
     /// <summary>True when the type's content property is ITemplateContent-typed (its children defer).</summary>
     private bool ContentPropertyDefers(XamlType? type)
     {
-        if (type?.ContentProperty is not { } contentName)
+        if (type?.ContentProperty is not {} contentName)
             return false;
+
         return type.TryGetMember(contentName)?.IsDeferredContent == true;
     }
 
@@ -290,11 +315,16 @@ internal sealed class XamlParser
             if (attrPrefix == "xmlns" || (attrPrefix.Length == 0 && attrLocal == "xmlns"))
             {
                 if (isRoot)
+                {
                     _builder.AddNamespaceDeclaration(attrPrefix == "xmlns" ? attrLocal : string.Empty, value);
+                }
                 else
+                {
                     _builder.Error(XamlDiagnosticCodes.NamespaceNotOnRoot,
-                        $"xmlns declarations are only allowed on the root element; '{_reader.Name}' is declared on " +
-                        $"'{ownerLocalName}'. Move all namespace declarations to the document root.", attrLine, attrColumn);
+                                   $"xmlns declarations are only allowed on the root element; '{_reader.Name}' is declared on " +
+                                   $"'{ownerLocalName}'. Move all namespace declarations to the document root.", attrLine, attrColumn);
+                }
+
                 continue;
             }
 
@@ -313,7 +343,10 @@ internal sealed class XamlParser
             if (attrPrefix.Length > 0 && attrNs.Length == 0)
             {
                 _builder.Error(XamlDiagnosticCodes.UndeclaredPrefix,
-                    $"Undeclared xmlns prefix '{attrPrefix}'.", attrLine, attrColumn);
+                               $"Undeclared xmlns prefix '{attrPrefix}'.",
+                               attrLine,
+                               attrColumn);
+
                 continue;
             }
 
@@ -321,15 +354,36 @@ internal sealed class XamlParser
             // An unprefixed dotted attribute uses the element's default namespace (XML attributes do not
             // inherit the default xmlns, so the reader reports an empty NamespaceURI — matrix X75).
             int dot = attrLocal.IndexOf('.');
+
             if (dot > 0)
             {
                 string ownerNs = attrPrefix.Length == 0 && attrNs.Length == 0 ? elementNamespace : attrNs;
-                HandleAttachedAttribute(attrLocal, dot, value, ownerNs, members, inDeferred, attrLineInfo, attrLine, attrColumn, valueColumn);
+
+                HandleAttachedAttribute(attrLocal,
+                                        dot,
+                                        value,
+                                        ownerNs,
+                                        members,
+                                        inDeferred,
+                                        attrLineInfo,
+                                        attrLine,
+                                        attrColumn,
+                                        valueColumn);
+
                 continue;
             }
 
             // A plain member on the owner type.
-            HandleMemberAttribute(type, ownerLocalName, attrLocal, value, members, inDeferred, attrLineInfo, attrLine, attrColumn, valueColumn);
+            HandleMemberAttribute(type,
+                                  ownerLocalName,
+                                  memberName: attrLocal,
+                                  value,
+                                  members,
+                                  inDeferred,
+                                  attrLineInfo,
+                                  attrLine,
+                                  attrColumn,
+                                  valueColumn);
         }
         while (_reader.MoveToNextAttribute());
 
@@ -352,39 +406,54 @@ internal sealed class XamlParser
                 _rootClassName = value;
                 members.Add(DirectiveMember(XamlDirectiveKind.Class, value, lineInfo));
                 break;
+
             case "Name":
                 hasName = true;
                 members.Add(DirectiveMember(XamlDirectiveKind.Name, value, lineInfo));
                 break;
+
             case "Key":
                 hasKey = true;
                 members.Add(DirectiveMember(XamlDirectiveKind.Key, value, lineInfo));
                 break;
+
             case "DataType":
                 // recorded now; build-time path validation is the X4 generator's (matrix X184)
                 members.Add(DirectiveMember(XamlDirectiveKind.DataType, value, lineInfo));
                 break;
+
             case "TypeArguments":
                 _builder.Error(XamlDiagnosticCodes.UnsupportedTypeArguments,
-                    "x:TypeArguments (generic instantiation) is unsupported in v1.", line, column);
+                               "x:TypeArguments (generic instantiation) is unsupported in v1.",
+                               line,
+                               column);
+
                 break;
+
             case "Reference":
             case "Array":
             case "FieldModifier":
             case "Shared":
             case "Uid":
                 _builder.Error(XamlDiagnosticCodes.UnsupportedIntrinsic,
-                    $"x:{local} is unsupported in v1.", line, column);
+                               $"x:{local} is unsupported in v1.",
+                               line,
+                               column);
+
                 break;
+
             default:
                 _builder.Error(XamlDiagnosticCodes.UnknownIntrinsic,
-                    $"Unknown x: intrinsic '{local}'.", line, column);
+                               $"Unknown x: intrinsic '{local}'.",
+                               line,
+                               column);
+
                 break;
         }
     }
 
     private MemberRecord DirectiveMember(XamlDirectiveKind kind, string value, int lineInfo)
-        => new(-1, XamlValueKind.Directive, _builder.InternString(value), 0, lineInfo, (int)kind);
+        => new(-1, XamlValueKind.Directive, _builder.InternString(value), 0, lineInfo, (int) kind);
 
     private void HandleAttachedAttribute(
         string attrLocal,
@@ -402,6 +471,7 @@ internal sealed class XamlParser
         string memberName = attrLocal.Substring(dot + 1);
 
         var ownerResolution = ResolveType(attrNs, ownerName, line, column);
+
         if (!ownerResolution.IsResolved)
         {
             // ResolveType already reported CUR2001/CUR2002.
@@ -410,6 +480,7 @@ internal sealed class XamlParser
         }
 
         var member = ownerResolution.Type!.TryGetMember(memberName);
+
         if (member is null)
         {
             ReportMemberNotFound(ownerResolution.Type!, memberName, line, column);
@@ -433,10 +504,10 @@ internal sealed class XamlParser
         int valueColumn)
     {
         // Setter Property/Value are deferred-resolved at end-of-object; capture them as text for now.
-        if (string.Equals(ownerLocalName, "Setter", StringComparison.Ordinal)
-            && (string.Equals(memberName, "Property", StringComparison.Ordinal)
-                || string.Equals(memberName, "Value", StringComparison.Ordinal)
-                || string.Equals(memberName, "TargetType", StringComparison.Ordinal)))
+        if (string.Equals(ownerLocalName, "Setter", StringComparison.Ordinal) &&
+            (string.Equals(memberName, "Property", StringComparison.Ordinal) || 
+             string.Equals(memberName, "Value", StringComparison.Ordinal) ||
+             string.Equals(memberName, "TargetType", StringComparison.Ordinal)))
         {
             var setterMember = type?.TryGetMember(memberName);
             int setterMemberId = setterMember is null ? -1 : _builder.AddResolvedMember(setterMember);
@@ -447,13 +518,16 @@ internal sealed class XamlParser
             // (internedNsId + 1) in the otherwise-unused Text ItemCount slot (0 = no capture); end-of-object
             // ResolveSetter reads it back to resolve the owner (the reader is dead by then).
             int ownerNsToken = 0;
+
             if (string.Equals(memberName, "Property", StringComparison.Ordinal))
             {
                 int dot = value.IndexOf('.');
+
                 if (dot > 0)
                 {
                     int colon = value.IndexOf(':');
                     string prefix = colon >= 0 && colon < dot ? value.Substring(0, colon) : string.Empty;
+
                     if (_reader.LookupNamespace(prefix) is { Length: > 0 } ownerNs)
                         ownerNsToken = _builder.InternString(ownerNs) + 1;
                 }
@@ -471,6 +545,7 @@ internal sealed class XamlParser
         }
 
         var member = type.TryGetMember(memberName);
+
         if (member is null)
         {
             ReportMemberNotFound(type, memberName, line, column);
@@ -482,7 +557,10 @@ internal sealed class XamlParser
         if (member.IsEvent && inDeferred)
         {
             _builder.Error(XamlDiagnosticCodes.EventInDeferredContent,
-                $"Events are not allowed inside deferred content in v1 (member '{memberName}').", line, column);
+                           $"Events are not allowed inside deferred content in v1 (member '{memberName}').", 
+                           line,
+                           column);
+
             return;
         }
 
@@ -519,8 +597,10 @@ internal sealed class XamlParser
         if (MarkupExtensionParser.LooksLikeExtension(value))
         {
             int extIndex = ParseAndFoldExtension(value, members, member, memberId, inDeferred, lineInfo, line, valueColumn);
+
             if (extIndex >= 0)
                 members.Add(new MemberRecord(memberId, XamlValueKind.Extension, extIndex, 0, lineInfo));
+
             return;
         }
 
@@ -556,6 +636,7 @@ internal sealed class XamlParser
         int column)
     {
         MarkupExtensionNode node;
+
         try
         {
             node = MarkupExtensionParser.Parse(value, _builder.Source, line, column);
@@ -578,6 +659,7 @@ internal sealed class XamlParser
                 members.Add(new MemberRecord(memberId, XamlValueKind.Folded, c, 0, lineInfo));
                 return -1;
             }
+
             case ExtensionKind.Type:
             case ExtensionKind.Static:
             {
@@ -587,12 +669,18 @@ internal sealed class XamlParser
                     int c = _builder.AddConstant(folded);
                     members.Add(new MemberRecord(memberId, XamlValueKind.Folded, c, 0, lineInfo));
                 }
+
                 return -1;
             }
+
             case ExtensionKind.TemplateBinding when !inDeferred:
                 _builder.Error(XamlDiagnosticCodes.TemplateBindingOutsideTemplate,
-                    "{TemplateBinding} is only legal inside a template body.", node.Line, node.Column);
+                               "{TemplateBinding} is only legal inside a template body.",
+                               node.Line,
+                               node.Column);
+
                 return -1;
+
             case ExtensionKind.StaticResource:
             case ExtensionKind.DynamicResource:
             {
@@ -601,16 +689,23 @@ internal sealed class XamlParser
                 // extension ({DynamicResource {x:Static ThemeKeys.X}}, X44a/X57a) the frontend cannot
                 // resolve it (no static resolver in netstandard2.0) — store the INNER key node and let
                 // the loader resolve it at instantiate (PayloadIsParsedExtension, XD7a).
-                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is { } keyNode)
+                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is {} keyNode)
                 {
                     int parsedKey = _builder.AddParsedExtension(keyNode);
-                    return _builder.AddExtension(new ExtensionRecord(kind, parsedKey, LineInfo.Pack(node.Line, node.Column), payloadIsParsedExtension: true));
+
+                    return _builder.AddExtension(
+                        new ExtensionRecord(kind,
+                                            parsedKey,
+                                            LineInfo.Pack(node.Line, node.Column),
+                                            payloadIsParsedExtension: true)
+                    );
                 }
 
-                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : string.Empty;
+                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 return _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
             }
+
             case ExtensionKind.Binding:
             case ExtensionKind.TemplateBinding:
             {
@@ -619,51 +714,69 @@ internal sealed class XamlParser
                 if (member.Property is null && !member.IsEvent)
                 {
                     _builder.Error(XamlDiagnosticCodes.BindingTargetNotBindable,
-                        $"Binding target '{member.Name}' is not a bindable property (only registered UIProperties can be data-bound).",
-                        node.Line, node.Column);
+                                   $"Binding target '{member.Name}' is not a bindable property " +
+                                   $"(only registered UIProperties can be data-bound).",
+                                   node.Line, node.Column);
+
                     return -1;
                 }
+
                 int parsed = _builder.AddParsedExtension(node);
-                return _builder.AddExtension(new ExtensionRecord(kind, parsed, LineInfo.Pack(node.Line, node.Column)));
+
+                return _builder.AddExtension(
+                    new ExtensionRecord(kind,
+                                        parsed,
+                                        LineInfo.Pack(node.Line, node.Column))
+                );
             }
+
             case ExtensionKind.Custom:
             default:
             {
                 // A custom extension: resolve its type to surface a CUR2002 did-you-mean at parse (X53).
                 ResolveExtensionType(node, line, column);
+
                 int parsed = _builder.AddParsedExtension(node);
-                return _builder.AddExtension(new ExtensionRecord(ExtensionKind.Custom, parsed, LineInfo.Pack(node.Line, node.Column)));
+
+                return _builder.AddExtension(
+                    new ExtensionRecord(ExtensionKind.Custom,
+                                        parsed,
+                                        LineInfo.Pack(node.Line, node.Column))
+                );
             }
         }
     }
 
-    private static ExtensionKind ClassifyExtension(string name) => name switch
-    {
-        "x:Null" or "Null" => ExtensionKind.Null,
-        "x:Static" => ExtensionKind.Static,
-        "x:Type" => ExtensionKind.Type,
-        "StaticResource" => ExtensionKind.StaticResource,
-        "DynamicResource" => ExtensionKind.DynamicResource,
-        "Binding" => ExtensionKind.Binding,
-        "TemplateBinding" => ExtensionKind.TemplateBinding,
-        _ => ExtensionKind.Custom,
-    };
+    private static ExtensionKind ClassifyExtension(string name)
+        => name switch
+           {
+               "x:Null" or "Null" => ExtensionKind.Null,
+               "x:Static"         => ExtensionKind.Static,
+               "x:Type"           => ExtensionKind.Type,
+               "StaticResource"   => ExtensionKind.StaticResource,
+               "DynamicResource"  => ExtensionKind.DynamicResource,
+               "Binding"          => ExtensionKind.Binding,
+               "TemplateBinding"  => ExtensionKind.TemplateBinding,
+               _                  => ExtensionKind.Custom,
+           };
 
     private bool TryFoldIntrinsicExtension(ExtensionKind kind, MarkupExtensionNode node, int line, int column, out object? folded)
     {
         folded = null;
-        string arg = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : string.Empty;
+        string arg = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
 
         if (kind == ExtensionKind.Type)
         {
             // {x:Type my:Button} → typeof(Button) — the argument may be prefix-qualified; bind the prefix from
             // the live reader scope (an unprefixed name uses the in-scope default xmlns).
             var resolution = ResolveQualifiedType(arg, appendExtensionSuffix: false, node.Line, node.Column, report: true);
+
             if (resolution.IsResolved)
             {
                 folded = resolution.Type!.ClrType.UnderlyingSystemType;
                 return true;
             }
+
             return false; // ResolveQualifiedType reported the miss
         }
 
@@ -713,11 +826,14 @@ internal sealed class XamlParser
 
                     // Property-element syntax: Owner.Member (a dotted element name on the owner type).
                     int dot = elemLocal.IndexOf('.');
+
                     if (dot > 0)
                     {
                         sawPropertyElement = true;
+
                         ParsePropertyElement(type, ownerLocalName, elemLocal, dot, elemNs, members,
-                            inDeferred, elemLine, elemColumn, elemLineInfo);
+                                             inDeferred, elemLine, elemColumn, elemLineInfo);
+
                         continue;
                     }
 
@@ -752,18 +868,25 @@ internal sealed class XamlParser
         {
             string text = textBuffer.ToString();
             string normalized = preserveSpace ? text : WhitespaceNormalizer.NormalizeElementText(text);
+
             if (preserveSpace ? text.Length > 0 : normalized.Length > 0)
             {
-                AddContentText(type, ownerLocalName, normalized, members,
-                    LineInfo.Pack(_lineInfo.LineNumber, _lineInfo.LinePosition),
-                    inDeferred);
+                AddContentText(type, 
+                               ownerLocalName, 
+                               normalized,
+                               members,
+                               LineInfo.Pack(_lineInfo.LineNumber, _lineInfo.LinePosition),
+                               inDeferred);
             }
         }
 
         if (sawContentChild && contentChildren.Count > 0)
         {
-            CommitContentChildren(type, ownerLocalName, contentChildren, members,
-                LineInfo.Pack(_lineInfo.LineNumber, _lineInfo.LinePosition));
+            CommitContentChildren(type, 
+                                  ownerLocalName, 
+                                  contentChildren,
+                                  members,
+                                  LineInfo.Pack(_lineInfo.LineNumber, _lineInfo.LinePosition));
         }
 
         // X5: a property set as both attribute and property element.
@@ -782,6 +905,7 @@ internal sealed class XamlParser
         // The content property names the slot. If the type has no content property, the text is
         // rejected later by the loader; at parse we record it against the content member if resolvable.
         string? contentName = type?.ContentProperty;
+
         if (contentName is null)
         {
             // No content property known (or type unresolved): record as a synthetic content text member.
@@ -790,6 +914,7 @@ internal sealed class XamlParser
         }
 
         var member = type!.TryGetMember(contentName);
+
         if (member is null)
         {
             members.Add(new MemberRecord(-1, XamlValueKind.Text, _builder.InternString(text), 0, lineInfo));
@@ -847,6 +972,7 @@ internal sealed class XamlParser
 
         // Resolve the member's owner type (may be a different type than the element for attached props).
         XamlType? memberOwner = ownerType;
+
         if (!string.Equals(ownerName, ownerLocalName, StringComparison.Ordinal))
         {
             var ownerResolution = ResolveType(elemNs, ownerName, line, column);
@@ -854,6 +980,7 @@ internal sealed class XamlParser
         }
 
         XamlMember? member = memberOwner?.TryGetMember(memberName);
+
         if (memberOwner is not null && member is null)
         {
             ReportMemberNotFound(memberOwner, memberName, line, column);
@@ -880,7 +1007,7 @@ internal sealed class XamlParser
                 childObjects.Add(ParseElement(childInDeferred, InResourceDictionary(memberName), isRoot: false));
             }
             else if (_reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA
-                     or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace)
+                                                          or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace)
             {
                 textBuffer.Append(_reader.Value);
             }
@@ -908,6 +1035,7 @@ internal sealed class XamlParser
         else
         {
             string text = WhitespaceNormalizer.NormalizeElementText(textBuffer.ToString());
+
             if (text.Length > 0 && member is not null)
                 AddValueMember(member, text, members, childInDeferred, lineInfo, line, column);
         }
@@ -930,14 +1058,17 @@ internal sealed class XamlParser
     {
         foreach (var m in members)
         {
-            if (m is { MemberId: >= 0, Kind: XamlValueKind.Text } &&
+            if (m is { MemberId: >= 0, Kind: XamlValueKind.Text } && 
                 string.Equals(_builder.ResolvedMemberName(m.MemberId), "TargetType", StringComparison.Ordinal))
             {
                 // The reader is still on the Style element here (ParseAttributes left it via MoveToElement),
                 // so a prefix-qualified TargetType (my:Foo) binds its prefix from the live scope. Quiet — an
                 // unresolvable TargetType leaves the target null, making enclosed Setters CUR2110 (X64/X66).
-                return ResolveQualifiedType(_builder.GetString(m.ValueIndex), appendExtensionSuffix: false,
-                    LineInfo.Line(m.PackedLineInfo), LineInfo.Column(m.PackedLineInfo), report: false).Type;
+                return ResolveQualifiedType(_builder.GetString(m.ValueIndex),
+                                            appendExtensionSuffix: false,
+                                            LineInfo.Line(m.PackedLineInfo),
+                                            LineInfo.Column(m.PackedLineInfo),
+                                            report: false).Type;
             }
         }
 
@@ -954,12 +1085,14 @@ internal sealed class XamlParser
         // Find the Property name and its member index.
         string? propertyName = null;
         int propertyMemberSlot = -1;
+
         for (int i = 0; i < members.Count; i++)
         {
             if (members[i].MemberId < 0)
                 continue;
-            if (string.Equals(_builder.ResolvedMemberName(members[i].MemberId), "Property", StringComparison.Ordinal)
-                && members[i].Kind == XamlValueKind.Text)
+
+            if (string.Equals(_builder.ResolvedMemberName(members[i].MemberId), "Property", StringComparison.Ordinal) &&
+                members[i].Kind == XamlValueKind.Text)
             {
                 propertyName = _builder.GetString(members[i].ValueIndex);
                 propertyMemberSlot = i;
@@ -980,6 +1113,7 @@ internal sealed class XamlParser
         int ownerNsToken = members[propertyMemberSlot].ItemCount;
         string? capturedOwnerNs = ownerNsToken > 0 ? _builder.GetString(ownerNsToken - 1) : null;
         var targetMember = TryResolveQualifiedSetterMember(propertyName, capturedOwnerNs, targetType, line, column);
+
         if (targetMember is null)
             return;
 
@@ -992,13 +1126,15 @@ internal sealed class XamlParser
             XamlValueKind.Text,
             members[propertyMemberSlot].ValueIndex,
             0,
-            members[propertyMemberSlot].PackedLineInfo);
+            members[propertyMemberSlot].PackedLineInfo
+        );
 
         // Fold the Value through the target property's converter (if any, context-free).
         for (int i = 0; i < members.Count; i++)
         {
             if (members[i].MemberId < 0 || members[i].Kind != XamlValueKind.Text)
                 continue;
+
             if (!string.Equals(_builder.ResolvedMemberName(members[i].MemberId), "Value", StringComparison.Ordinal))
                 continue;
 
@@ -1010,8 +1146,10 @@ internal sealed class XamlParser
             if (MarkupExtensionParser.LooksLikeExtension(valueText))
             {
                 var rewritten = ClassifySetterValueExtension(valueText, members[i].MemberId, line, column);
-                if (rewritten is { } extKind)
+
+                if (rewritten is {} extKind)
                     members[i] = extKind;
+
                 break;
             }
 
@@ -1021,6 +1159,7 @@ internal sealed class XamlParser
                 int constIndex = _builder.AddConstant(folded);
                 members[i] = new MemberRecord(members[i].MemberId, XamlValueKind.Folded, constIndex, 0, members[i].PackedLineInfo);
             }
+
             break;
         }
     }
@@ -1033,6 +1172,7 @@ internal sealed class XamlParser
     private MemberRecord? ClassifySetterValueExtension(string value, int valueMemberId, int line, int column)
     {
         MarkupExtensionNode node;
+
         try
         {
             node = MarkupExtensionParser.Parse(value, _builder.Source, line, column);
@@ -1045,6 +1185,7 @@ internal sealed class XamlParser
 
         // The rewritten member keeps the original Setter.Value MemberId (Name "Value").
         var kind = ClassifyExtension(node.Name);
+
         switch (kind)
         {
             case ExtensionKind.StaticResource:
@@ -1053,26 +1194,36 @@ internal sealed class XamlParser
                 // Same nested-vs-literal key split as the direct-property site (XD7a): a nested key
                 // extension ({DynamicResource {x:Static ThemeKeys.X}}) stores the inner node for the
                 // loader to resolve at instantiate; a literal key interns as before (X117 unchanged).
-                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is { } keyNode)
+                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is {} keyNode)
                 {
                     int parsedKey = _builder.AddParsedExtension(keyNode);
-                    int nestedExtIndex = _builder.AddExtension(new ExtensionRecord(kind, parsedKey, LineInfo.Pack(node.Line, node.Column), payloadIsParsedExtension: true));
+
+                    int nestedExtIndex = _builder.AddExtension(
+                        new ExtensionRecord(kind,
+                                            parsedKey,
+                                            LineInfo.Pack(node.Line, node.Column),
+                                            payloadIsParsedExtension: true)
+                    );
+
                     return new MemberRecord(valueMemberId, XamlValueKind.Extension, nestedExtIndex, 0, LineInfo.Pack(line, column));
                 }
 
-                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : string.Empty;
+                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 int extIndex = _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
                 return new MemberRecord(valueMemberId, XamlValueKind.Extension, extIndex, 0, LineInfo.Pack(line, column));
             }
+
             case ExtensionKind.Null:
             {
                 int c = _builder.AddConstant(null);
                 return new MemberRecord(valueMemberId, XamlValueKind.Folded, c, 0, LineInfo.Pack(line, column));
             }
+
             default:
                 _builder.Error(XamlDiagnosticCodes.ConversionFailed,
-                    $"A Setter.Value markup extension of kind '{node.Name}' is not supported in v1.", node.Line, node.Column);
+                               $"A Setter.Value markup extension of kind '{node.Name}' is not supported in v1.", node.Line, node.Column);
+
                 return null;
         }
     }
@@ -1084,18 +1235,22 @@ internal sealed class XamlParser
         // Compare by member name, not MemberId: an attribute and a property element resolve through
         // two TryGetMember calls and so carry distinct XamlMember instances (distinct MemberIds).
         var seen = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var m in members)
         {
             if (m.MemberId < 0 || m.Kind == XamlValueKind.Directive)
                 continue;
+
             string name = _builder.ResolvedMemberName(m.MemberId);
+
             if (name.Length == 0)
                 continue;
+
             if (!seen.Add(name))
             {
                 _builder.Error(XamlDiagnosticCodes.DuplicatePropertyAssignment,
-                    $"Property '{name}' was set both as an attribute and as a property element.",
-                    LineInfo.Line(m.PackedLineInfo), LineInfo.Column(m.PackedLineInfo));
+                               $"Property '{name}' was set both as an attribute and as a property element.",
+                               LineInfo.Line(m.PackedLineInfo), LineInfo.Column(m.PackedLineInfo));
             }
         }
     }
@@ -1116,6 +1271,7 @@ internal sealed class XamlParser
     private XamlMember? TryResolveQualifiedSetterMember(string propertyName, string? capturedOwnerNs, XamlType? targetType, int line, int column)
     {
         int dot = propertyName.IndexOf('.'); // first dot — matches the attached-attribute path (X75)
+
         if (dot < 0)
         {
             // Unqualified: the TargetType is the owner (the only such case — WPF parity). With no enclosing
@@ -1124,13 +1280,18 @@ internal sealed class XamlParser
             if (targetType is null)
             {
                 _builder.Error(XamlDiagnosticCodes.SetterNoTarget,
-                    "Setter has no resolvable target type (no enclosing Style TargetType).", line, column);
+                               "Setter has no resolvable target type (no enclosing Style TargetType).",
+                               line,
+                               column);
+
                 return null;
             }
 
             var unqualified = targetType.TryGetMember(propertyName);
+
             if (unqualified is null)
                 ReportMemberNotFound(targetType, propertyName, line, column);
+
             return unqualified;
         }
 
@@ -1144,12 +1305,15 @@ internal sealed class XamlParser
         string ownerNs = capturedOwnerNs ?? XmlnsNamespaces.CursorialUi;
 
         var ownerResolution = ResolveType(ownerNs, ownerName, line, column);
+
         if (!ownerResolution.IsResolved)
             return null; // ResolveType already emitted CUR2001/CUR2002 naming the owner
 
         var member = ownerResolution.Type!.TryGetMember(memberName);
+
         if (member is null)
             ReportMemberNotFound(ownerResolution.Type!, memberName, line, column); // names the OWNER, not the TargetType
+
         return member;
     }
 
@@ -1160,13 +1324,17 @@ internal sealed class XamlParser
 
         // Handle using:/clr-namespace: forms by delegating to the provider's URI handling.
         var resolution = _options.MetadataProvider.TryGetType(ns, localName);
+
         if (resolution.IsResolved)
             return resolution;
 
         if (resolution.IsAmbiguous)
         {
             _builder.Error(XamlDiagnosticCodes.AmbiguousType,
-                $"Ambiguous type '{localName}': {string.Join(", ", resolution.AmbiguousCandidates!)}.", line, column);
+                           $"Ambiguous type '{localName}': {string.Join(", ", resolution.AmbiguousCandidates!)}.",
+                           line,
+                           column);
+
             return resolution;
         }
 
@@ -1194,6 +1362,7 @@ internal sealed class XamlParser
         string name = maybeQualified;
         string prefix = string.Empty;
         int colon = name.IndexOf(':');
+
         if (colon > 0)
         {
             prefix = name.Substring(0, colon);
@@ -1203,16 +1372,21 @@ internal sealed class XamlParser
         string ns = _reader.LookupNamespace(prefix) is { Length: > 0 } bound ? bound : XmlnsNamespaces.CursorialUi;
 
         var resolution = ResolveTypeQuiet(ns, name);
+
         if (resolution is { IsResolved: false, IsAmbiguous: false } && appendExtensionSuffix)
             resolution = ResolveTypeQuiet(ns, name + "Extension");
 
         if (!resolution.IsResolved && report)
         {
             if (resolution.IsAmbiguous)
+            {
                 _builder.Error(XamlDiagnosticCodes.AmbiguousType,
-                    $"Ambiguous type '{name}': {string.Join(", ", resolution.AmbiguousCandidates!)}.", line, column);
+                               $"Ambiguous type '{name}': {string.Join(", ", resolution.AmbiguousCandidates!)}.", line, column);
+            }
             else
+            {
                 ReportTypeNotFound(ns, name, line, column);
+            }
         }
 
         return resolution;
@@ -1221,18 +1395,22 @@ internal sealed class XamlParser
     private void ReportTypeNotFound(string ns, string localName, int line, int column)
     {
         string suggestion = DidYouMean.Suggest(localName, _options.MetadataProvider?.GetKnownTypeNames(ns));
+
         string message = suggestion.Length > 0
-            ? $"Type '{localName}' was not found in namespace '{ns}'. Did you mean '{suggestion}'?"
-            : $"Type '{localName}' was not found in namespace '{ns}'.";
+                             ? $"Type '{localName}' was not found in namespace '{ns}'. Did you mean '{suggestion}'?"
+                             : $"Type '{localName}' was not found in namespace '{ns}'.";
+
         _builder.Error(XamlDiagnosticCodes.TypeNotFound, message, line, column);
     }
 
     private void ReportMemberNotFound(XamlType type, string memberName, int line, int column)
     {
         string suggestion = DidYouMean.Suggest(memberName, _options.MetadataProvider?.GetKnownMemberNames(type.ClrType));
+
         string message = suggestion.Length > 0
-            ? $"No member '{memberName}' on '{type.ClrType.Name}'. Did you mean '{suggestion}'?"
-            : $"No member '{memberName}' on '{type.ClrType.Name}'.";
+                             ? $"No member '{memberName}' on '{type.ClrType.Name}'. Did you mean '{suggestion}'?"
+                             : $"No member '{memberName}' on '{type.ClrType.Name}'.";
+
         _builder.Error(XamlDiagnosticCodes.MemberNotFound, message, line, column);
     }
 
@@ -1243,6 +1421,7 @@ internal sealed class XamlParser
         folded = null;
 
         var converter = member.Converter;
+
         if (converter is null || !converter.IsContextFree)
             return false;
 

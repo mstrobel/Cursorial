@@ -22,8 +22,9 @@ internal static class GeneratorHarness
 
         var cursorial = new[]
         {
-            typeof(Cursorial.UI.UIElement).Assembly.Location,          // Cursorial.UI
-            typeof(Cursorial.UI.Xaml.XamlType).Assembly.Location,      // Cursorial.UI.Xaml.Frontend
+            typeof(Cursorial.UI.UIElement).Assembly.Location,            // Cursorial.UI
+            typeof(Cursorial.UI.Xaml.XamlType).Assembly.Location,        // Cursorial.UI.Xaml.Frontend
+            typeof(Cursorial.UI.Xaml.XamlConverters).Assembly.Location,  // Cursorial.UI.Xaml (loader — XamlConverters)
         };
 
         var references = tpa.Concat(cursorial)
@@ -56,6 +57,17 @@ internal static class GeneratorHarness
             optionsProvider: optionsProvider);
 
         return driver.RunGenerators(compilation).GetRunResult();
+    }
+
+    /// <summary>Compiles <paramref name="generatedSource"/> against the framework references and returns the
+    /// error-severity diagnostics — empty means the generated provider is valid, symbol-correct C#.</summary>
+    public static IReadOnlyList<Diagnostic> CompileErrors(string generatedSource)
+    {
+        var compilation = ReferencedCompilation("GeneratedProviderCompile")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource));
+        using var ms = new System.IO.MemoryStream();
+        var result = compilation.Emit(ms);
+        return result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
     }
 
     private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText

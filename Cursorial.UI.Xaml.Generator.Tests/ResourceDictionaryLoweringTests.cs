@@ -109,4 +109,44 @@ public class ResourceDictionaryLoweringTests
         var reference = Assert.IsType<ResourceReference>(setter.Value);     // {DynamicResource} → a carrier (resolved per-element)
         Assert.Equal("Accent", reference.Key);
     }
+
+    [Fact] // X5.4h — an explicit Selector="…" bakes to a reflection-free Selectors chain; Style.Children nest
+    public void Lowered_Style_ExplicitSelectorAndChildren_Bake()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<ResourceDictionary.Styles>" +
+              "<Style Selector=\".caps-nocolor Button:focus, .caps-nocolor Button:pressed\" TargetType=\"Button\">" +
+                "<Setter Property=\"Foreground\" Value=\"{DynamicResource Accent}\"/>" +
+              "</Style>" +
+              "<Style TargetType=\"Button\">" +
+                "<Style.Children>" +
+                  "<Style Selector=\"^:pointerover\" TargetType=\"Button\">" +
+                    "<Setter Property=\"Background\" Value=\"{DynamicResource Hover}\"/>" +
+                  "</Style>" +
+                "</Style.Children>" +
+              "</Style>" +
+            "</ResourceDictionary.Styles>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The selector baked to a reflection-free Selectors chain: class, descendant, exact type, pseudo, the
+        // comma list → Or, and the ^-nesting child → Selectors.Nesting().
+        Assert.Contains("global::Cursorial.UI.Selectors.Class(null, \"caps-nocolor\")", lowered);
+        Assert.Contains(".Descendant()", lowered);
+        Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", lowered);
+        Assert.Contains(".PseudoClass(\"focus\")", lowered);
+        Assert.Contains(".Or(", lowered);
+        Assert.Contains("global::Cursorial.UI.Selectors.Nesting().PseudoClass(\"pointerover\")", lowered);
+        Assert.Contains(".Children.Add(", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        // The baked chains are valid C# that construct Styles; the tree builds + seals (nesting composes).
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var dict = InvokeBuilder(assembly, "BuildMyView");
+        Assert.Equal(2, dict.Styles!.Count);
+        Assert.Single(dict.Styles[1].Children); // the ^:pointerover nested rule
+    }
 }

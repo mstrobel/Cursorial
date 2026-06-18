@@ -348,10 +348,11 @@ internal static class LoweringEmitter
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
 
         INamedTypeSymbol? targetType = null;
-        bool hasExplicitSelector = false;
+        string? selectorText = null;
         string? basedOnExpr = null;
         string? keyExpr = null;
         int settersMember = -1;
+        int childrenMember = -1;
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
@@ -373,8 +374,8 @@ internal static class LoweringEmitter
                 case "TargetType" when member.Kind == XamlValueKind.Text:
                     targetType = XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
                     break;
-                case "Selector":
-                    hasExplicitSelector = true;
+                case "Selector" when member.Kind == XamlValueKind.Text:
+                    selectorText = c.Doc.Strings[member.ValueIndex];
                     break;
                 case "BasedOn":
                     basedOnExpr = BasedOnExpr(c, in member);
@@ -382,18 +383,32 @@ internal static class LoweringEmitter
                 case "Setters":
                     settersMember = m;
                     break;
+                case "Children":
+                    childrenMember = m;
+                    break;
             }
         }
 
-        if (hasExplicitSelector)
+        // The selector: an explicit Selector="…" is baked (it wins; a co-present TargetType is only the
+        // Setter-property resolution hint); else TargetType → an exact-type selector; else selector-less.
+        string ctor;
+        if (selectorText is { } st)
         {
-            c.Todo("a <Style> with an explicit Selector=\"…\" is not yet lowered (baked selectors are the next X5.4 sub-workstream)");
-            return;
+            if (BakeSelector(c, st) is not { } sel)
+            {
+                c.Todo($"<Style> selector \"{Escape(st)}\" uses a construct not yet baked");
+                return;
+            }
+            ctor = $"new global::Cursorial.UI.Style({sel})";
         }
-
-        var ctor = targetType is { } tt
-                       ? $"new global::Cursorial.UI.Style(global::Cursorial.UI.Selectors.OfType(null, typeof({Global(tt)})))"
-                       : "new global::Cursorial.UI.Style()"; // selector-less (an explicit element Style)
+        else if (targetType is { } tt)
+        {
+            ctor = $"new global::Cursorial.UI.Style(global::Cursorial.UI.Selectors.OfType(null, typeof({Global(tt)})))";
+        }
+        else
+        {
+            ctor = "new global::Cursorial.UI.Style()"; // selector-less (an explicit element Style)
+        }
 
         var inits = new List<string>();
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
@@ -403,6 +418,15 @@ internal static class LoweringEmitter
         if (settersMember >= 0)
             foreach (int idx in ResourceItems(c, c.Doc.Members[settersMember]))
                 EmitSetter(c, varExpr, idx, targetType);
+
+        // Nested <Style.Children> (^-rooted rules): each builds via EmitObject → EmitStyle and is added.
+        if (childrenMember >= 0)
+            foreach (int idx in ResourceItems(c, c.Doc.Members[childrenMember]))
+            {
+                var childVar = c.NextVar();
+                EmitObject(c, idx, childVar, isRoot: false, hasScope: false, dataType: null);
+                c.Line($"{varExpr}.Children.Add({childVar});");
+            }
     }
 
     // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, rawValue)). The value
@@ -502,6 +526,177 @@ internal static class LoweringEmitter
         }
 
         return null; // {StaticResource} BasedOn → not yet lowered (defer)
+    }
+
+    // ── WS-X5.4h — baked selectors (an explicit Selector="…" → a reflection-free Selectors fluent chain) ──
+
+    // Bakes a selector string into a `global::Cursorial.UI.Selectors` fluent-chain expression (mirroring
+    // SelectorParser's grammar — type / .class / #name / :pseudo / descendant / > child / /template/ / :is(…) /
+    // comma lists / ^-nesting). Returns null for any unsupported/fenced construct (the caller TODOs), so a
+    // baked selector is always exact or absent — never wrong.
+    private static string? BakeSelector(Context c, string text)
+    {
+        int pos = 0;
+        var branches = new List<string>();
+
+        while (true)
+        {
+            SelSkipWs(text, ref pos);
+            if (BakeBranch(c, text, ref pos) is not { } branch)
+                return null;
+            branches.Add(branch);
+            SelSkipWs(text, ref pos);
+
+            if (pos >= text.Length)
+                break;
+            if (text[pos] == ',') { pos++; continue; }
+            return null; // unexpected trailing character
+        }
+
+        var expr = branches[0];
+        for (int i = 1; i < branches.Count; i++)
+            expr = $"{expr}.Or({branches[i]})"; // a comma list ⇒ branch1.Or(branch2)…
+        return expr;
+    }
+
+    private static string? BakeBranch(Context c, string text, ref int pos)
+    {
+        if (BakeCompound(c, text, ref pos, leftmost: true, prev: null) is not { } expr)
+            return null;
+
+        while (true)
+        {
+            int before = pos;
+            SelSkipWs(text, ref pos);
+            bool ws = pos > before;
+
+            if (pos >= text.Length) { pos = before; break; }
+
+            char ch = text[pos];
+            string combinator;
+            if (ch == ',') { pos = before; break; }
+            else if (ch == '>') { pos++; SelSkipWs(text, ref pos); combinator = ".Child()"; }
+            else if (ch == '/')
+            {
+                if (!SelMatch(text, pos, "/template/")) return null;
+                pos += "/template/".Length; SelSkipWs(text, ref pos); combinator = ".Template()";
+            }
+            else if (ch is '+' or '~') return null; // sibling combinators are fenced
+            else if (ws && SelIsCompoundStart(ch)) combinator = ".Descendant()";
+            else { pos = before; break; }
+
+            if (BakeCompound(c, text, ref pos, leftmost: false, prev: expr + combinator) is not { } next)
+                return null;
+            expr = next;
+        }
+
+        return expr;
+    }
+
+    private static string? BakeCompound(Context c, string text, ref int pos, bool leftmost, string? prev)
+    {
+        if (pos >= text.Length || !SelIsCompoundStart(text[pos]))
+            return null;
+
+        string? expr = prev;
+        bool started = false; // whether the compound's first token has been emitted
+
+        if (text[pos] == '^')
+        {
+            if (!leftmost) return null;
+            pos++;
+            expr = "global::Cursorial.UI.Selectors.Nesting()";
+            started = true;
+        }
+
+        // Optional type token: a bare identifier, or :is( type ).
+        if (pos < text.Length)
+        {
+            char c0 = text[pos];
+            if (SelIsIdentStart(c0))
+            {
+                if (BakeTypeToken(c, text, ref pos, expr, isAssignable: false, started) is not { } e) return null;
+                expr = e; started = true;
+            }
+            else if (c0 == ':' && SelMatch(text, pos, ":is("))
+            {
+                pos += 4; SelSkipWs(text, ref pos);
+                if (BakeTypeToken(c, text, ref pos, expr, isAssignable: true, started) is not { } e) return null;
+                expr = e; started = true;
+                SelSkipWs(text, ref pos);
+                if (pos >= text.Length || text[pos] != ')') return null;
+                pos++;
+            }
+        }
+
+        // Simples in declaration order.
+        while (pos < text.Length)
+        {
+            char c1 = text[pos];
+            string kind;
+            if (c1 == '.') kind = "Class";
+            else if (c1 == '#') kind = "Name";
+            else if (c1 == ':') kind = "PseudoClass";
+            else if (c1 is '[' or '^' or '+' or '~') return null; // fenced / misplaced
+            else break;
+
+            pos++;
+            var name = SelParseIdent(text, ref pos);
+            if (name is null) return null;
+            if (kind == "PseudoClass" && IsFencedPseudo(name)) return null;
+
+            expr = started
+                       ? $"{expr}.{kind}(\"{Escape(name)}\")"
+                       : $"global::Cursorial.UI.Selectors.{kind}({(prev is null ? "null" : prev)}, \"{Escape(name)}\")";
+            started = true;
+        }
+
+        return started ? expr : null;
+    }
+
+    // Emits a type-token start: OfType / Is, chained onto prev (or a fresh Selectors.OfType(prev, typeof(T))).
+    private static string? BakeTypeToken(Context c, string text, ref int pos, string? prev, bool isAssignable, bool started)
+    {
+        var name = SelParseIdent(text, ref pos);
+        if (name is null || (pos < text.Length && text[pos] == '|'))
+            return null; // a prefix|Type token needs the doc-xmlns resolver — not yet baked
+
+        if (XamlDataTypeScope.ResolveToken(c.Doc, name, c.Resolver) is not { } type)
+            return null;
+
+        var method = isAssignable ? "Is" : "OfType";
+        return started
+                   ? $"{prev}.{method}(typeof({Global(type)}))"
+                   : $"global::Cursorial.UI.Selectors.{method}({(prev is null ? "null" : prev)}, typeof({Global(type)}))";
+    }
+
+    private static bool IsFencedPseudo(string name)
+        => name is "not" or "first-child" or "last-child" || name.StartsWith("nth-", System.StringComparison.Ordinal);
+
+    private static void SelSkipWs(string text, ref int pos)
+    {
+        while (pos < text.Length && text[pos] is ' ' or '\t') pos++;
+    }
+
+    private static bool SelMatch(string text, int pos, string lit)
+    {
+        if (pos + lit.Length > text.Length) return false;
+        for (int i = 0; i < lit.Length; i++)
+            if (text[pos + i] != lit[i]) return false;
+        return true;
+    }
+
+    private static bool SelIsIdentStart(char c) => c is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or '_';
+    private static bool SelIsIdentPart(char c) => SelIsIdentStart(c) || c is (>= '0' and <= '9') or '-';
+    private static bool SelIsCompoundStart(char c) => SelIsIdentStart(c) || c is '^' or '.' or '#' or ':';
+
+    private static string? SelParseIdent(string text, ref int pos)
+    {
+        if (pos >= text.Length || !SelIsIdentStart(text[pos]))
+            return null;
+        int start = pos++;
+        while (pos < text.Length && SelIsIdentPart(text[pos])) pos++;
+        return text.Substring(start, pos - start);
     }
 
     private static void EmitObject(Context c, int objectIndex, string varExpr, bool isRoot, bool hasScope, INamedTypeSymbol? dataType)

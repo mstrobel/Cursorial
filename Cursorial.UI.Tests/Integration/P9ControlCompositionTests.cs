@@ -76,7 +76,10 @@ public sealed class P9ControlCompositionTests
 
         var (root, list) = BuildGallery();
         host.ShowRoot(root);
-        Assert.True(host.RunUntilIdle()); // builds + lays out + renders the whole P9 control set — no throw, converged
+        // Builds + lays out + renders the whole P9 control set — no throw. (The gallery's indeterminate ProgressBar
+        // animates perpetually, so the app never reaches idle; RunUntilIdle runs to its frame cap and that's
+        // expected — layout/style still converge. The composition assertions below are the real acceptance.)
+        host.RunUntilIdle();
 
         // The deepest composition realized: TabControl > TabItem > Border > Border > ListBox > containers.
         Assert.NotNull(list.ItemContainerGenerator.ContainerFromIndex(0));
@@ -85,11 +88,11 @@ public sealed class P9ControlCompositionTests
         foreach (var tier in new ColorDepth?[] { ColorDepth.Ansi256, ColorDepth.Ansi16, ColorDepth.NoColor, ColorDepth.Truecolor })
         {
             host.Application.RequestedColorTier = tier;
-            Assert.True(host.RunUntilIdle());
+            host.RunUntilIdle();
         }
 
         host.Application.RequestedThemeBase = ThemeBase.Light;
-        Assert.True(host.RunUntilIdle());
+        host.RunUntilIdle();
         Assert.NotNull(list.ItemContainerGenerator.ContainerFromIndex(0)); // still intact after the re-skins
     }
 }

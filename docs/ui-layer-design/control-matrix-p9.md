@@ -558,8 +558,8 @@ guard against a `DivideByZero` on the cycle (C9.14), and the idempotent re-click
 ## §C10 — ProgressBar (P9.7) — tests in `Section23_ProgressBar`
 
 `ProgressBar : Control` paints itself in `Render` (no template): the track is `Background`, the determinate fill
-is `Fill` across `round((Value−Min)/(Max−Min) · width)` cells, the indeterminate sweep is a block at
-`IndeterminateOffset`.
+is `Fill` across `round((Value−Min)/(Max−Min) · width)` cells, the indeterminate marquee is a ~⅓-width block at
+`round(IndeterminatePhase · (width − blockWidth))` (the phase is the normalized animation target).
 
 | # | Setup | Action | Expectation | Source |
 |---|-------|--------|-------------|--------|
@@ -571,7 +571,8 @@ is `Fill` across `round((Value−Min)/(Max−Min) · width)` cells, the indeterm
 | C10.6 | `IsIndeterminate` true→false | inspect | `:indeterminate` flips | PIN (CD-P9-23) |
 | C10.7 | 30% of a 10-wide bar | render | cells 0–2 are filled, cell 5 is track (the fill differs from the track) | PIN (CD-P9-23) |
 | C10.8 | full / empty bar | render | uniformly filled / uniformly track | WPF |
-| C10.9 | indeterminate, `IndeterminateOffset=5` | render | the sweep block draws at the offset (distinct from the track on both sides) | PIN (CD-P9-23) |
+| C10.9 | indeterminate, 12-wide | render | a ~width/3 (=4) sweep block of fill cells is visible (distinct from the track) | PIN (CD-P9-23) |
+| C10.10 | indeterminate, attached | advance time / `IsIndeterminate=false` | the marquee perpetually advances `IndeterminatePhase` in [0,1]; turning it off stops it + resurfaces the phase to 0 (P2A) | PIN (CD-P9-23a) |
 
 **CD-P9-23 (P9.7) — ProgressBar paints in `Render`.** A terminal progress bar is a row of solid cells, so
 `ProgressBar` overrides `Render` and `FillRectangle`s the track (`Background`) then the determinate fill (`Fill`)

@@ -1,3 +1,8 @@
+using System;
+using System.Linq;
+
+using Cursorial.Drawing.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -8,8 +13,8 @@ using Cursorial.UI.Testing;
 namespace Cursorial.Tests.UI.ControlMatrix;
 
 // Control-matrix P9 §C10 — ProgressBar (P9.7): determinate fill ratio + clamping + the :indeterminate pseudo-class;
-// the bar is painted directly in Render (filled cells differ from the track). The animated composite-only
-// indeterminate sweep is deferred — v1 draws the offset block.
+// the bar is painted directly in Render (filled cells differ from the track). P2A: the indeterminate marquee is a
+// perpetual S5 animation on the normalized IndeterminatePhase (started on attach, stopped when not indeterminate).
 public sealed class Section23_ProgressBar
 {
     // A ProgressBar pinned top-left at a known size so Render cells land at a predictable origin.
@@ -121,24 +126,53 @@ public sealed class Section23_ProgressBar
         }
     }
 
-    [Fact] // C10.9: the indeterminate sweep draws a block at IndeterminateOffset (distinct from the track on both sides)
-    public void C10_9_IndeterminateBlockAtOffset()
+    [Fact] // C10.9: the indeterminate marquee renders a visible ~width/3 sweep block (distinct fill vs track cells)
+    public void C10_9_IndeterminateBlockRenders()
     {
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 6) });
         using var _ = host;
         var bar = new ProgressBar
         {
-            IsIndeterminate = true, IndeterminateOffset = 5, // block (~width/3) starts at column 5
+            IsIndeterminate = true,
+            Fill = new SolidColorBrush(Color.FromRgb(0, 200, 0)),
+            Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)),
             Width = 12, Height = 1,
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
         };
         host.ShowRoot(bar);
-        host.RunUntilIdle();
+        host.RunFrame(); // one frame: style + the marquee's first tick (RunUntilIdle never idles under a perpetual anim)
         var o = bar.TranslateToWindow(0, 0);
 
-        var track = host.GetCell(o.Column, o.Row).Style.Background;          // column 0 — before the block
-        var block = host.GetCell(o.Column + 5, o.Row).Style.Background;      // column 5 — in the block
-        Assert.NotEqual(track, block);                                       // the sweep block is visible
-        Assert.Equal(track, host.GetCell(o.Column + 11, o.Row).Style.Background); // column 11 — track again (after the block)
+        // Exactly blockWidth (12/3 = 4) cells carry the fill color; the rest are track — a visible sweep block.
+        var fillCells = Enumerable.Range(0, 12)
+            .Count(c => host.GetCell(o.Column + c, o.Row).Style.Background == Color.FromRgb(0, 200, 0));
+        Assert.Equal(4, fillCells);
+    }
+
+    [Fact] // C10.10 (P2A): IsIndeterminate runs a perpetual marquee advancing IndeterminatePhase; turning it off stops + resets it
+    public void C10_10_MarqueeAnimatesAndStops()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 6) });
+        using var _ = host;
+        var bar = new ProgressBar
+        {
+            IsIndeterminate = true, Width = 12, Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
+        };
+        host.ShowRoot(bar);
+        host.RunFrame();
+
+        var p0 = bar.IndeterminatePhase;
+        host.AdvanceTime(TimeSpan.FromMilliseconds(250));
+        Assert.NotEqual(p0, bar.IndeterminatePhase);   // the marquee advanced the normalized phase
+        Assert.InRange(bar.IndeterminatePhase, 0.0, 1.0);
+
+        // Turning indeterminate off stops the animation; the phase resurfaces to its base (0) and holds.
+        bar.IsIndeterminate = false;
+        host.RunFrame();
+        var stopped = bar.IndeterminatePhase;
+        Assert.Equal(0.0, stopped);
+        host.AdvanceTime(TimeSpan.FromMilliseconds(250));
+        Assert.Equal(stopped, bar.IndeterminatePhase); // no longer animating
     }
 }

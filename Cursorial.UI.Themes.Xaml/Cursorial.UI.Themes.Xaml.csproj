@@ -17,10 +17,12 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <!-- This is a LIBRARY: validate the theme XAML at build time, but DON'T auto-install the generated
-             provider as the consuming app's process-wide default (it only covers this assembly's closed type
-             set + ui-xmlns; the themes' draw:/input: clr-namespace types resolve through the app's reflection
-             provider at runtime). The themes load via XamlLoader.Shared as before. -->
+        <!-- Full lowering: each Themes/*.xaml (a no-x:Class <ResourceDictionary>) compiles to a reflection-free
+             GeneratedXamlLoaders.Build…() builder that CursorialXamlTheme calls — no runtime parse, no provider. -->
+        <CursorialXamlLowering>full</CursorialXamlLowering>
+        <!-- This is a LIBRARY: don't auto-install the generated provider as the consuming app's process-wide
+             default. (With full lowering the provider isn't used at runtime anyway; the .xaml stays embedded
+             only as the dual-run drift oracle.) -->
         <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
     </PropertyGroup>
 

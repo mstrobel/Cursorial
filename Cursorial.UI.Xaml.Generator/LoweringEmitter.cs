@@ -220,7 +220,13 @@ internal static class LoweringEmitter
                     break;
 
                 case "Styles":
-                    c.Todo("<ResourceDictionary.Styles> not yet lowered (Style lowering is the next X5.4 sub-workstream)");
+                    foreach (int idx in ResourceItems(c, member))
+                    {
+                        var styleVar = c.NextVar();
+                        EmitObject(c, idx, styleVar, isRoot: false, hasScope: false, dataType: null); // → EmitStyle
+                        c.Line($"{dictVar}.Styles ??= new global::Cursorial.UI.Styles();");
+                        c.Line($"{dictVar}.Styles.Add({styleVar});");
+                    }
                     break;
 
                 default:
@@ -329,12 +335,189 @@ internal static class LoweringEmitter
         return sb.ToString();
     }
 
+    // ── WS-X5.4g — Style + Setter lowering ───────────────────────────────────────────────────────────
+
+    private static bool IsStyleType(INamedTypeSymbol? type)
+        => type is { Name: "Style", ContainingNamespace.Name: "UI", ContainingNamespace.ContainingNamespace.Name: "Cursorial" };
+
+    // A <Style>: new Style(selector) { BasedOn, Key } + Setters.Add(new Setter(prop, value)). The selector is a
+    // ctor arg (TargetType → Selectors.OfType; an explicit Selector="" string is baked in a later sub-workstream).
+    // TargetType/Selector members are consumed here (mirroring the loader's activation), not the member loop.
+    private static void EmitStyle(Context c, int objectIndex, string varExpr)
+    {
+        ref readonly var obj = ref c.Doc.Objects[objectIndex];
+
+        INamedTypeSymbol? targetType = null;
+        bool hasExplicitSelector = false;
+        string? basedOnExpr = null;
+        string? keyExpr = null;
+        int settersMember = -1;
+
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+
+            if (member.Kind == XamlValueKind.Directive)
+            {
+                if (member.DirectiveKind == (int) XamlDirectiveKind.Key)
+                {
+                    var k = c.Doc.Strings[member.ValueIndex];
+                    keyExpr = k.StartsWith("{", System.StringComparison.Ordinal) ? null : $"\"{Escape(k)}\""; // Style.Key is string?
+                }
+                continue;
+            }
+
+            var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+            switch (xm?.Name)
+            {
+                case "TargetType" when member.Kind == XamlValueKind.Text:
+                    targetType = XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
+                    break;
+                case "Selector":
+                    hasExplicitSelector = true;
+                    break;
+                case "BasedOn":
+                    basedOnExpr = BasedOnExpr(c, in member);
+                    break;
+                case "Setters":
+                    settersMember = m;
+                    break;
+            }
+        }
+
+        if (hasExplicitSelector)
+        {
+            c.Todo("a <Style> with an explicit Selector=\"…\" is not yet lowered (baked selectors are the next X5.4 sub-workstream)");
+            return;
+        }
+
+        var ctor = targetType is { } tt
+                       ? $"new global::Cursorial.UI.Style(global::Cursorial.UI.Selectors.OfType(null, typeof({Global(tt)})))"
+                       : "new global::Cursorial.UI.Style()"; // selector-less (an explicit element Style)
+
+        var inits = new List<string>();
+        if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
+        if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
+        c.Line($"var {varExpr} = {ctor}{Initializers(inits)};");
+
+        if (settersMember >= 0)
+            foreach (int idx in ResourceItems(c, c.Doc.Members[settersMember]))
+                EmitSetter(c, varExpr, idx, targetType);
+    }
+
+    // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, rawValue)). The value
+    // is passed UNCONVERTED (the StyleSetterConverter runs once at Style.Seal); {DynamicResource}→ResourceReference.
+    private static void EmitSetter(Context c, string styleVar, int setterIndex, INamedTypeSymbol? targetType)
+    {
+        ref readonly var setter = ref c.Doc.Objects[setterIndex];
+        c.CurrentLineInfo = setter.PackedLineInfo;
+
+        string? propExpr = null;
+        string valueExpr = "global::Cursorial.UI.UIProperty.UnsetValue"; // a valueless setter, unless a Value member is found
+
+        for (int m = setter.MemberStart; m < setter.MemberStart + setter.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind == XamlValueKind.Directive)
+                continue;
+
+            var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+            if (xm is null)
+                continue;
+
+            if (xm.Name == "Value")
+            {
+                if (SetterValueExpr(c, in member) is { } v)
+                    valueExpr = v;
+                else
+                    c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} supported; {StaticResource}/complex deferred)");
+                continue;
+            }
+
+            // The Property member: its Text value is the property name; the resolved owner is xm.Property (parse-
+            // rewritten) or, failing that, resolved against the Style's TargetType.
+            if (member.Kind == XamlValueKind.Text)
+            {
+                var name = c.Doc.Strings[member.ValueIndex];
+                var owner = xm.Property as INamedTypeSymbol
+                            ?? (targetType is { } tt ? SymbolXamlModel.FindRegisteredPropertyOwner(tt, name) : null);
+                if (owner is not null)
+                    propExpr = $"{Global(owner)}.{name}Property";
+            }
+        }
+
+        if (propExpr is null)
+        {
+            c.Todo("Setter with an unresolved Property not yet lowered");
+            return;
+        }
+
+        c.Line($"{styleVar}.Setters.Add(new global::Cursorial.UI.Setter({propExpr}, {valueExpr}));");
+    }
+
+    // A Setter.Value expression (unconverted): a literal string, a folded null/{x:Static}, or {DynamicResource}
+    // → a ResourceReference carrier (the styling engine resolves it per-element at arm time). Null = unsupported.
+    private static string? SetterValueExpr(Context c, in MemberRecord member) => member.Kind switch
+    {
+        XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
+        XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
+        XamlValueKind.Extension => DynamicResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        _ => null,
+    };
+
+    // {DynamicResource key} as a Setter.Value → new ResourceReference(key) with the key resolved at codegen (a
+    // string literal, or an {x:Static} member). Other extensions (StaticResource/Binding) → null (unsupported).
+    private static string? DynamicResourceValueExpr(Context c, in ExtensionRecord ext)
+    {
+        if (ext.Kind != ExtensionKind.DynamicResource || ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
+            return null;
+
+        return $"new global::Cursorial.UI.ResourceReference({keyExpr})";
+    }
+
+    // The key of a *Resource extension as a C# expression: a literal string, or an {x:Static} global:: member
+    // (the nested-extension key form). Null when the key is an unsupported nested extension.
+    private static string? ResourceKeyArgExpr(Context c, in ExtensionRecord ext)
+    {
+        if (!ext.PayloadIsParsedExtension)
+            return $"\"{Escape(c.Doc.Strings[ext.Payload])}\"";
+
+        // A nested key extension, e.g. {DynamicResource {x:Static ThemeKeys.X}}.
+        if (c.Doc.ParsedExtensions[ext.Payload] is { } node &&
+            node.Name is "x:Static" or "Static" &&
+            node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } path)
+            return ResolveStaticPath(c, path);
+
+        return null;
+    }
+
+    // A Style's BasedOn: a direct nested <Style> (built + referenced) or a {StaticResource} (deferred — TODO).
+    private static string? BasedOnExpr(Context c, in MemberRecord member)
+    {
+        if (member.Kind == XamlValueKind.Object)
+        {
+            var v = c.NextVar();
+            EmitObject(c, member.ValueIndex, v, isRoot: false, hasScope: false, dataType: null);
+            return v;
+        }
+
+        return null; // {StaticResource} BasedOn → not yet lowered (defer)
+    }
+
     private static void EmitObject(Context c, int objectIndex, string varExpr, bool isRoot, bool hasScope, INamedTypeSymbol? dataType)
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
         c.CurrentLineInfo = obj.PackedLineInfo;
 
         var objType = TypeSymbolOf(c.Doc, obj.TypeId);
+
+        // A <Style> needs dedicated construction (selector-via-ctor, init-only BasedOn/Key, Setter.Property
+        // resolution) — route it before the generic object path.
+        if (!isRoot && IsStyleType(objType))
+        {
+            EmitStyle(c, objectIndex, varExpr);
+            return;
+        }
 
         // Init-only CLR value members (e.g. SolidColorBrush.Color) can't be set post-construction (CS8852) — they
         // go in the construction object initializer. Pre-scan for them so the `new T { … }` carries them and the

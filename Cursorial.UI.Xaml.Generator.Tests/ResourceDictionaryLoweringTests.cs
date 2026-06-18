@@ -3,6 +3,7 @@ using System.Reflection;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
 
 using Microsoft.CodeAnalysis.CSharp;
@@ -77,5 +78,35 @@ public class ResourceDictionaryLoweringTests
 
         var brush = Assert.IsType<SolidColorBrush>(dict[ThemeKeys.WindowBackground]);
         Assert.Equal(Color.FromRgb(0x0A, 0x0A, 0x0A), brush.Color);
+    }
+
+    [Fact] // X5.4g — a <Style TargetType> with Setters: TargetType→Selectors.OfType, Setter.Property resolved, {DynamicResource}→ResourceReference
+    public void Lowered_Style_WithTargetTypeAndSetters()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<ResourceDictionary.Styles>" +
+              "<Style TargetType=\"Button\">" +
+                "<Setter Property=\"Foreground\" Value=\"{DynamicResource Accent}\"/>" +
+              "</Style>" +
+            "</ResourceDictionary.Styles>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("new global::Cursorial.UI.Style(global::Cursorial.UI.Selectors.OfType(null, typeof(global::Cursorial.UI.Controls.Button)))", lowered);
+        Assert.Contains("ForegroundProperty", lowered);
+        Assert.Contains("new global::Cursorial.UI.ResourceReference(\"Accent\")", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var dict = InvokeBuilder(assembly, "BuildMyView");
+
+        var style = Assert.Single(dict.Styles!);
+        var setter = Assert.Single(style.Setters);
+        Assert.Same(Control.ForegroundProperty, setter.Property);          // Property resolved to the registered owner
+        var reference = Assert.IsType<ResourceReference>(setter.Value);     // {DynamicResource} → a carrier (resolved per-element)
+        Assert.Equal("Accent", reference.Key);
     }
 }

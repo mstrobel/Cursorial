@@ -155,4 +155,33 @@ public sealed class Section31_CalendarV2
         host.RunUntilIdle();
         Assert.Equal(new DateOnly(2026, 6, 20), cal.SelectedDate);
     }
+
+    // ── audit regressions (CD-P2D-2 audit) ──────────────────────────────────────────────────────────────
+
+    [Fact] // C18.9: FocusDate lands on a SELECTABLE cell (not a disabled out-of-range 1st-of-month → focus nowhere)
+    public void C18_9_FocusDateSkipsDisabled()
+    {
+        var (host, cal) = Show(); // Today=Jun18 (in-month, selectable)
+        using var _ = host;
+        cal.DisplayDateStart = new DateOnly(2026, 6, 10); // Jun 1..9 disabled
+        cal.SelectedDate = null;
+        host.RunUntilIdle();
+
+        cal.FocusDate(); // best target = Today (Jun 18), not the disabled Jun 1
+        host.RunUntilIdle();
+        Assert.True(cal.CellForDate(Jun18)!.IsFocused);
+    }
+
+    [Fact] // C18.10: a blacked-out / out-of-range "today" does not carry :today
+    public void C18_10_BlackoutTodayNotHighlighted()
+    {
+        var (host, cal) = Show();
+        using var _ = host;
+        cal.BlackoutDates = new[] { new CalendarDateRange(Jun18) }; // today is blacked out
+        host.RunUntilIdle();
+
+        var cell = cal.CellForDate(Jun18)!;
+        Assert.True(cell.IsBlackout);
+        Assert.False(cell.IsToday); // not highlighted while blacked out
+    }
 }

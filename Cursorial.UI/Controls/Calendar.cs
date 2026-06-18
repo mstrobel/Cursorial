@@ -241,11 +241,23 @@ public class Calendar : Control
     // the new month — the selected day if it is shown, else the first — so subsequent keys keep routing to the Calendar.
     private void FocusDisplayMonthCell()
     {
-        var date = SelectedDate is { } s && s.Year == DisplayDate.Year && s.Month == DisplayDate.Month
-            ? s
-            : new DateOnly(DisplayDate.Year, DisplayDate.Month, 1);
-        if (_cells.TryGetValue(date, out var cell))
+        // Focus a SELECTABLE cell — a disabled (out-of-range/blackout) target would no-op and leave focus nowhere.
+        if (BestFocusDate() is { } date && _cells.TryGetValue(date, out var cell))
             cell.Focus(FocusNavigationMethod.Directional);
+    }
+
+    // The best cell to land keyboard focus on in the shown month: the selection (if shown + selectable), else today
+    // (if shown + selectable), else the first selectable day of the month within [Start, End].
+    private DateOnly? BestFocusDate()
+    {
+        if (SelectedDate is { } s && s.Year == DisplayDate.Year && s.Month == DisplayDate.Month && IsSelectable(s))
+            return s;
+        if (Today.Year == DisplayDate.Year && Today.Month == DisplayDate.Month && IsSelectable(Today))
+            return Today;
+
+        var lo = Math.Max(EffectiveMin(), new DateOnly(DisplayDate.Year, DisplayDate.Month, 1).DayNumber);
+        var hi = Math.Min(EffectiveMax(), new DateOnly(DisplayDate.Year, DisplayDate.Month, DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month)).DayNumber);
+        return lo > hi ? null : NearestSelectable(lo, 1, lo, hi);
     }
 
     private void ChangeMonth(int months)
@@ -406,7 +418,7 @@ public class Calendar : Control
                     Date = date,
                     Content = date.Day.ToString(CultureInfo.CurrentCulture),
                     Width = CellWidth,
-                    IsToday = IsTodayHighlighted && date == Today,
+                    IsToday = IsTodayHighlighted && date == Today && !blackout, // a blacked-out/out-of-range today isn't highlighted
                     IsSelected = SelectedDate == date,
                     IsInactive = date.Month != DisplayDate.Month,
                     IsBlackout = blackout,

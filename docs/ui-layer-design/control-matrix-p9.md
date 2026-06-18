@@ -967,9 +967,22 @@ look). Keyboard nav clamps to `[Start,End]` and skips blackout dates (`NearestSe
 | C18.6 | — | set IsTodayHighlighted=false | the today cell's `:today` clears | PIN (CD-P2D-2) |
 | C18.7 | blackout Jun16, SelectedDate=Jun15 focused | Right | skips Jun16 → selects Jun17 | PIN (CD-P2D-2) |
 | C18.8 | End=Jun20, SelectedDate=Jun20 focused | Right | clamped at the bound → stays Jun20 | PIN (CD-P2D-2) |
+| C18.9 | Start=Jun10, no selection, Today=Jun18 | `FocusDate()` | focus lands on a selectable cell (Today), not the disabled Jun 1 | PIN (CD-P2D-2 audit) |
+| C18.10 | blackout Jun18 (today) | inspect the cell | `:blackout` set, `:today` NOT set (a blacked-out today isn't highlighted) | PIN (CD-P2D-2 audit) |
 
 **CD-P2D-2 — Calendar bounds + blackout.** `DisplayDate`/`SelectedDate` carry coerce callbacks
 (`UIProperty.Register(coerce:)`, the ScrollBar pattern); `OnBoundsChanged`/`OnBlackoutChanged` call `CoerceValue`
 on both + rebuild. `CalendarDateRange` (inclusive, order-agnostic `Contains`) models blackout ranges.
 `NearestSelectable(from, dir, lo, hi)` powers blackout-skipping + bound-clamped arrow nav and Home/End
 (`SelectInMonth`). `CalendarDayButton.IsBlackout` (`:blackout`). **Deferral:** the DisplayMode drill-down (v2b).
+
+**CD-P2D-2 audit (P2D follow-up).** A 2-lens adversarial audit confirmed + fixed: **(1)** `FocusDate()`/
+`FocusDisplayMonthCell()` unconditionally targeted the 1st-of-month, which is disabled when out of range, leaving
+focus nowhere (the DatePicker keyboard-entry contract broke) — `BestFocusDate()` now prefers the selection → today →
+the first *selectable* cell of the month (row C18.9). **(2)** `:today` was stamped on a blacked-out/out-of-range
+cell — now gated on `!blackout` (row C18.10). **Known limitation (not fixed here — a general binding-engine issue,
+not Calendar-specific):** a two-way binding that pushes a value the control coerces to a *different* value (e.g. a
+blacked-out `SelectedDate` → null) updates the control but does **not** write the coerced value back to the source —
+`BindingExpressionCore`'s synchronous self-echo guard drops the coercion result, so the control and its source
+diverge (the same applies to any coerced two-way property, e.g. `ScrollBar.Value`). Fixing it belongs in the binding
+lane (write back when the coerced effective value differs from the pushed value).

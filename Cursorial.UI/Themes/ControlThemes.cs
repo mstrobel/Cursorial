@@ -1,8 +1,10 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.Input;
 
 using CellStyle = Cursorial.Output.Style;
 
@@ -46,6 +48,9 @@ internal static class ControlThemes
         dict[typeof(ComboBoxItem)] = ComboBoxItemTheme();
         dict[typeof(TreeView)] = TreeViewTheme();
         dict[typeof(TreeViewItem)] = TreeViewItemTheme();
+        dict[typeof(Calendar)] = CalendarTheme();
+        dict[typeof(CalendarDayButton)] = CalendarDayButtonTheme();
+        dict[typeof(DatePicker)] = DatePickerTheme();
         dict[typeof(Menu)] = MenuTheme();
         dict[typeof(MenuItem)] = MenuItemTheme();
         dict[typeof(ContextMenu)] = ContextMenuTheme();
@@ -306,6 +311,124 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
         return theme;
     }
+
+    // ───────────────────────────── Calendar / CalendarDayButton ─────────────────────────────
+
+    // A Calendar: a bordered panel with a header row [< │ Month Year │ >] over the PART_MonthView StackPanel (the
+    // Calendar populates the day grid in code). The whole widget is a single tab stop (Once); arrow keys are handled
+    // by the Calendar to move the selected day. The prev/next glyphs are ASCII-safe (< >).
+    private static ControlTemplate CalendarTemplate() => new(ctx =>
+    {
+        // The prev/next chrome are mouse-only (Focusable=false/IsTabStop=false, like the ScrollBar line buttons):
+        // keyboard month nav is PageUp/PageDown, and a focusable arrow button would let focus sit off the day grid.
+        var prev = new Button { Content = "<", Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_PreviousButton", prev);
+        DockPanel.SetDock(prev, Dock.Left);
+
+        var next = new Button { Content = ">", Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_NextButton", next);
+        DockPanel.SetDock(next, Dock.Right);
+
+        var headerText = new TextBlock { TextAlignment = TextAlignment.Center };
+        ctx.RegisterName("PART_HeaderText", headerText);
+
+        var header = new DockPanel();
+        header.Children.Add(prev);       // docked left
+        header.Children.Add(next);       // docked right
+        header.Children.Add(headerText); // fills the center
+        DockPanel.SetDock(header, Dock.Top);
+
+        var monthView = new StackPanel(); // the Calendar fills this (the day-of-week header row + six week rows)
+        ctx.RegisterName("PART_MonthView", monthView);
+
+        var root = new DockPanel();
+        root.Children.Add(header);    // docked top (the month nav)
+        root.Children.Add(monthView); // fills the rest (the day grid)
+        KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Once); // the whole calendar is one tab stop
+
+        var border = new Border { Padding = new Margins(1, 0), Child = root };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        return border;
+    });
+
+    private static Style CalendarTheme()
+        => new Style { Key = "Theme.Calendar" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
+            .Set(Control.TemplateProperty, CalendarTemplate());
+
+    // A day cell: a fill-bounded ContentPresenter over the day number. :inactive (adjacent-month) is muted; :today is
+    // accent ink; :selected is a SelectionBrush fill; :focus-visible (keyboard cursor) is reverse-video. Ordered so a
+    // focused cell reads as focused, then selected over today over hover. Day cells don't nest, so :pointerover is safe.
+    private static ControlTemplate CalendarDayButtonTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        var border = new Border { Child = presenter };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        return border;
+    });
+
+    private static Style CalendarDayButtonTheme()
+    {
+        var theme = new Style { Key = "Theme.CalendarDayButton" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, CalendarDayButtonTemplate());
+        theme.Children.Add(new Style("^:inactive").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:today").SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
+        theme.Children.Add(new Style("^:selected")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush));
+        theme.Children.Add(new Style("^:focus-visible")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
+
+    // ───────────────────────────── DatePicker ─────────────────────────────
+
+    // A DatePicker: a recessed WellBrush field [date text … 'v' drop glyph] that toggles a Popup hosting a Calendar
+    // (PART_Calendar) — the ListBox-in-Popup recipe with a Calendar instead of a list. ASCII-safe drop glyph.
+    private static ControlTemplate DatePickerTemplate() => new(ctx =>
+    {
+        var text = new TextBlock();
+        ctx.RegisterName("PART_DisplayText", text);
+
+        var glyph = new TextBlock { Text = "v", Margin = new Margins(1, 0, 0, 0) };
+        glyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+        DockPanel.SetDock(glyph, Dock.Right);
+
+        var row = new DockPanel();
+        row.Children.Add(glyph); // docked right (the drop indicator)
+        row.Children.Add(text);  // fills the remaining width (the date / watermark)
+
+        var field = new Border { Padding = new Margins(1, 0), Child = row };
+        field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+
+        var calendar = new Calendar();
+        ctx.RegisterName("PART_Calendar", calendar);
+        var surface = new Border { Occludes = true, Child = calendar };
+        surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        surface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        var popup = new Popup { Child = surface };
+        ctx.RegisterName("PART_Popup", popup);
+
+        var root = new Grid(); // the Popup adds no layout (0×0); the field fills the cell
+        root.Children.Add(field);
+        root.Children.Add(popup);
+        return root;
+    });
+
+    private static Style DatePickerTheme()
+        => new Style { Key = "Theme.DatePicker" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(UIElement.MinWidthProperty, 12)
+            .Set(Control.TemplateProperty, DatePickerTemplate());
 
     // ───────────────────────────── Menu / MenuItem / Separator ─────────────────────────────
 

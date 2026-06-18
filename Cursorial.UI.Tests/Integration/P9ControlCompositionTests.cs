@@ -51,6 +51,9 @@ public sealed class P9ControlCompositionTests
         tree.Items.Add(treeRoot);
         form.Children.Add(tree);
 
+        form.Children.Add(new Calendar { Today = new DateOnly(2026, 6, 18), DisplayDate = new DateOnly(2026, 6, 1), SelectedDate = new DateOnly(2026, 6, 18) });
+        form.Children.Add(new DatePicker { Width = 16, Watermark = "date", DisplayDate = new DateOnly(2026, 6, 1) });
+
         form.Children.Add(new Button { Content = "_OK", IsDefault = true });
 
         var list = new ListBox

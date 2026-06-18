@@ -127,7 +127,28 @@ internal sealed class ControlGalleryDemo : IDemo
             tabs.Items.Add(new TabItem { Header = "_Form", Content = BuildForm() });
             tabs.Items.Add(new TabItem { Header = "_List", Content = BuildList() });
             tabs.Items.Add(new TabItem { Header = "T_ree", Content = BuildTreeView() });
+            tabs.Items.Add(new TabItem { Header = "_Date", Content = BuildCalendar() });
             return tabs;
+        }
+
+        private Border BuildCalendar()
+        {
+            // A live month calendar: click a day, the prev/next buttons or PageUp/PageDown change month, arrows move
+            // the selection (today is highlighted in accent ink). Uses the real system date for "today".
+            // The popup (calendar) variant: a field that drops a Calendar.
+            var picker = new DatePicker { Width = 18, Watermark = "Select a date", HorizontalAlignment = HorizontalAlignment.Left };
+            picker.SelectedDateChanged += (_, e) => Action($"picked {e.NewDate:yyyy-MM-dd}");
+
+            // The inline variant: a standalone Calendar (always visible).
+            var cal = new Calendar { HorizontalAlignment = HorizontalAlignment.Left };
+            cal.SelectedDateChanged += (_, e) => Action($"date = {e.NewDate:yyyy-MM-dd}");
+
+            var panel = new StackPanel { Spacing = 1, Margin = new Margins(1) };
+            panel.Children.Add(new TextBlock { Text = "DatePicker (popup — Down/F4/click to drop):" });
+            panel.Children.Add(picker);
+            panel.Children.Add(new TextBlock { Text = "Calendar (inline — arrows / PageUp-Down / click):" });
+            panel.Children.Add(cal);
+            return new Border { Padding = new Margins(1), Child = panel };
         }
 
         private Border BuildTreeView()

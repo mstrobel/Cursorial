@@ -771,3 +771,102 @@ removed (a tree node highlights on selection + keyboard focus only; WPF-faithful
 modifier guard, so **Ctrl+Space** (the lone real `Key.Space` wire) selected the node and swallowed the key — now
 gated `Modifiers == None` (mirroring `ButtonBase.IsActivationSpace`), so it bubbles for an ancestor command binding;
 row C13.12.
+
+---
+
+## §C14 — Calendar / CalendarDayButton (P2D, post-P9)
+
+A month-view date picker (design doc §12 — the WPF `Calendar` analog, month mode only). `Calendar : Control` shows
+`DisplayDate`'s month as a 7-column grid the control builds in code into `PART_MonthView`: a culture-ordered
+day-of-week header row (`DateTimeFormatInfo.ShortestDayNames`, from `FirstDayOfWeek`) + six week rows of
+`CalendarDayButton` cells. A header label + previous/next month buttons chrome it. Clicking a day (or arrow-key
+navigation) sets `SelectedDate`; each cell restamps `:today`/`:selected`/`:inactive` (the leading/trailing
+adjacent-month fill). The whole widget is one tab stop (`KeyboardNavigationMode.Once`); the `Calendar` handles
+arrows. Tests: `Cursorial.UI.Tests/ControlMatrix/Section27_Calendar.cs` (June 2026 pinned, Sunday-start).
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C14.1 | DisplayDate=Jun 2026, Today=Jun 18 | show | 42 day cells; Jun 18 `:today`; the May 31 / Jul 2 fill cells `:inactive` | PIN (CD-P2D-1) |
+| C14.2 | — | click Jun 10's cell | `SelectedDate==Jun 10`; the cell `:selected`; `SelectedDateChanged` raised | PIN (CD-P2D-1) |
+| C14.3 | focused cell | PageDown; PageUp×2 | `DisplayDate` moves +1 then −2 months (May); the new month's grid realizes | PIN (CD-P2D-1) |
+| C14.3b | — | click the previous button | `DisplayDate` moves back one month (the prev/next wiring) | PIN (CD-P2D-1) |
+| C14.4 | SelectedDate=Jun 15, focused | Right, Down; Jun 30 then Right | ±1 / +7 day moves; crossing into July moves `DisplayDate` to July | PIN (CD-P2D-1) |
+| C14.5 | — | click a `:inactive` trailing Jul 2 cell | selects Jul 2 and moves the view to July (now active) | PIN (CD-P2D-1) |
+| C14.6 | Sunday-start | inspect May 31; set FirstDayOfWeek=Monday | Sunday-start shows the May 31 leading fill; Monday-start begins at Jun 1 (no May 31 cell) | PIN (CD-P2D-1) |
+| C14.7 | — | set `SelectedDate=Aug 20` programmatically | `DisplayDate` syncs to August; Aug 20's cell `:selected` | PIN (CD-P2D-1) |
+| C14.8 | shown month diverges from Today | PageDown then Right | the arrow navigates within the shown month (Jul 2), not back to a Today-relative June day | PIN (CD-P2D-1 audit) |
+| C14.9 | — | click a day, then Enter | focus stays on the clicked day (Enter doesn't page the month — focus didn't jump to the prev button) | PIN (CD-P2D-1 audit) |
+| C14.10 | — | set `DisplayDate` to Dec 9999 / Jan 0001; PageDown/PageUp | no throw; the grid clamps and month nav clamps at the representable bounds | PIN (CD-P2D-1 audit) |
+
+**CD-P2D-1 — Calendar: code-built month grid, culture-ordered, selection by click + arrows.** `Calendar : Control`
+holds `DisplayDate` (the shown month), `SelectedDate : DateOnly?` (two-way), `Today` (the `:today` reference —
+defaults to the system date at construction, settable for determinism), and `FirstDayOfWeek` (defaults to the
+current culture). `RebuildMonthView` (run at `OnApplyTemplate` + on any of those changing) clears + repopulates
+`PART_MonthView`: a header row of `ShortestDayNames` and six week rows of `CalendarDayButton`s from the Sunday-/
+Monday-/…-aligned grid start (`lead = (firstOfMonth.DayOfWeek − FirstDayOfWeek + 7) % 7`), each stamped
+`IsToday`/`IsSelected`/`IsInactive` and wired `Click → SelectDate(cell.Date)`. `CalendarDayButton : Button` carries
+those three as `:today`/`:selected`/`:inactive` `PseudoClassMapping`s (day cells don't nest, so its `:pointerover`
+is safe — unlike `TreeViewItem`). Selecting a day in an adjacent month moves `DisplayDate` to it (`OnSelectedDateChanged`).
+Keyboard (the `Calendar` is the class handler): Left/Right ±1 day, Up/Down ±7 (anchored at `SelectedDate ?? Today`,
+selection-follows-focus onto the rebuilt cell), Home/End to the month edges, PageUp/PageDown ∓1 month (re-focusing a
+cell in the new month so the next key still routes here); the prev/next buttons share `ChangeMonth`. **Deferrals:**
+the year/decade drill-down `DisplayMode`s, date bounds (`DisplayDateStart`/`End` + blackout), multi-select, and the
+XAML control-theme overlay twin (it falls through to the code-first `CursorialTheme.BuiltIn` backstop).
+
+**CD-P2D-1 audit (P2D follow-up).** A 3-lens adversarial audit (date/culture, selection/nav, theme/layout — each
+finding refutation-verified through `UITestHost`) confirmed **7 real bugs** the green tests missed, fixed +
+regression-tested: **(1+6)** arrow navigation anchored at `SelectedDate ?? Today` (DisplayDate-blind), so the first
+arrow after a PageUp/PageDown/prev-next **snapped the view back** to a stale month — `ResolveAnchorDate` now anchors
+at the focused day cell (the `ListBox.ResolveCurrent` idiom) or, with no cell focused, a day in the shown month
+(`InMonthAnchor`); rows C14.8. **(2)** mouse-clicking a day rebuilt the grid without re-focusing, so focus repair
+jumped to the prev-month button (a subsequent Enter then paged the month) — `OnDayClick` now re-focuses the picked
+cell; row C14.9. **(3+4+5)** `DateOnly` overflow at the extremes — the grid-start `AddDays(-lead)` underflowed near
+Jan 0001, the 42-cell loop overflowed near Dec 9999, and `ChangeMonth`'s `AddMonths` threw crossing either bound —
+all clamped (lead clamp + day-number range guard + `ChangeMonth` bound check); row C14.10. **(7)** the prev/next
+chrome buttons were focusable tab stops (compounding #1) — set `Focusable=false`/`IsTabStop=false` (the ScrollBar
+line-button precedent), so the whole widget is genuinely one tab stop landing on the day grid.
+
+---
+
+## §C15 — DatePicker (P2E, post-P9)
+
+A drop-down date field (design doc §12 — the WPF `DatePicker` / WinUI `CalendarDatePicker` analog, the **calendar**
+variant). `DatePicker : Control` shows a read-only `SelectedDate` (formatted with the culture short-date pattern, or
+the `Watermark` when empty) plus a `v` drop button; opening drops a `Popup` hosting a `Calendar` (`PART_Calendar`).
+Picking a day commits the date (the calendar's `SelectedDateChanged` → `DatePicker.SelectedDate`) and closes. The
+**inline** variant is the standalone `Calendar` control (§C14 — a complete always-visible month picker). The
+field-click toggle reuses `Popup.KeepOpenOnAnchorPress` (the ComboBox mechanism). Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section28_DatePicker.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C15.1 | — | set `SelectedDate=Jun 18` | the field text becomes the culture short-date string; `SelectedDateChanged` raised | PIN (CD-P2E-1) |
+| C15.2 | — | set `IsDropDownOpen=true`/`false` | the `Popup` opens hosting the `Calendar`; `false` closes | PIN (CD-P2E-1) |
+| C15.3 | — | left-click the field; click again | first opens (`:open`), second closes — the anchor owns the toggle | PIN (CD-P2E-1) |
+| C15.4 | focused | Down (open); Escape (close) | Down/F4/Enter/Space opens; Escape closes | PIN (CD-P2E-1) |
+| C15.5 | open | commit a date (Enter on a day) | `SelectedDate` commits to that date and the drop-down closes | PIN (CD-P2E-1) |
+| C15.6 | no date | inspect; then set a date | the `Watermark` shows while empty; a date replaces it | PIN (CD-P2E-1) |
+| C15.7 | a date already selected | open | the drop-down stays open (the open-time calendar sync isn't a commit) | PIN (CD-P2E-1 audit) |
+| C15.8 | open, a cell focused | Right (browse); then Enter | the arrow browses without closing (`SelectedDate` unchanged); Enter commits the browsed date + closes | PIN (CD-P2E-1 audit) |
+| C15.9 | open on the selected day | Enter on that same day | still closes (the commit fires even when the date is unchanged) | PIN (CD-P2E-1 audit) |
+
+**CD-P2E-1 — DatePicker: calendar-popup date field (inline variant = the standalone Calendar).** `IsDropDownOpen`
+is a `DirectProperty` two-way with the templated `Popup` (`SetDropDownOpen` → `SetAndRaise` + imperative
+`PseudoClasses.Set(":open", …)`, drives `Popup.IsOpen`, restores field focus on close — the ComboBox shape). On open
+it pushes `SelectedDate`/`DisplayDate` into the `Calendar` and best-effort `FocusDate()`s into the grid; the
+calendar's `SelectedDateChanged` commits via `SetCurrentValue(SelectedDateProperty)` and closes. Mouse: a left press
+on the field toggles (`OnMouseDown`, anchor-owned via `KeepOpenOnAnchorPress`). Keyboard: closed Down/F4/Enter/Space
+open, open Escape closes (the popup also light-dismisses). The display text is the culture short-date (`"d"`) or the
+`Watermark`. **Deferrals:** editable text entry (typing a date), date bounds, and the XAML control-theme overlay twin
+(it falls through to the code-first `CursorialTheme.BuiltIn` backstop).
+
+**CD-P2E-1 audit (P2E follow-up).** A 2-lens adversarial audit (popup-lifecycle / commit-semantics, refutation-verified
+through `UITestHost`) confirmed **3 real bugs**, fixed + regression-tested. The root flaw: the commit-close was wired
+to the calendar's `SelectedDateChanged`, which (a) is **suppressed** when re-picking the current date (equality-gated)
+so re-confirming the selected day never closed (rows C15.9), and (b) fires on every **arrow browse** so the first
+arrow inside the open calendar committed the adjacent date and slammed the popup shut (row C15.8). The fix adds
+`Calendar.DateCommitted` — raised in `OnDayClick` (a click, or Enter/Space which a `CalendarDayButton` routes through
+`Click`) **unconditionally**, never on an arrow browse — and the `DatePicker` now closes on `DateCommitted` instead
+of `SelectedDateChanged`. (The third finding — opening with a preexisting date commit-and-closed via the open-time
+push — was caught pre-commit and fixed by the same redesign: a property push fires `SelectedDateChanged` but not
+`DateCommitted`, so it can't close; row C15.7. The interim `_syncingCalendar` guard was removed as redundant.)

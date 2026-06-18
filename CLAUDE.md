@@ -546,6 +546,20 @@ The `accesskeys`/`uixaml`/`windows`/control-gallery demos are the live canaries.
 on a real Kitty terminal (the `(DistinguishesKeyUpDown && ReportsRepeats) || Win32InputMode` verdict, ND23) is a
 **manual verification step** — it can't be exercised headlessly and needs a hands-on Kitty session.
 
+**Post-P9 controls** (the S8 gallery extended; normative spec at `docs/ui-layer-design/control-matrix-p9.md`
+§C10–§C15, tests in `Cursorial.UI.Tests/ControlMatrix/Section23…Section28`; code-first `CursorialTheme.BuiltIn`
+themes — the XAML overlay twins are deferred to the code-first backstop): an **animated indeterminate
+`ProgressBar`** (the marquee rides a perpetual S5 animation on a normalized `IndeterminatePhase`, §C10);
+**`ComboBox`/`ComboBoxItem`** (the ListBox-in-Popup single-select drop-down, §C12 — introduced
+`Popup.KeepOpenOnAnchorPress` so the anchor owns the open/close toggle, reused by `DatePicker`);
+**`TreeView`/`TreeViewItem`** (tree-wide single selection coordinated directly — not via `SelectingItemsControl`'s
+flat model; recursive-indent template, visible-tree keyboard nav, §C13); **`Calendar`/`CalendarDayButton`** (a
+month-view picker building its 7×7 grid in code, culture-ordered, §C14); **`DatePicker`** (a date field dropping a
+`Calendar` popup — the calendar variant; the standalone `Calendar` is the inline variant, §C15). Each was
+adversarially audited (each finding refutation-verified through `UITestHost`): the audits found and fixed **3 (Tree)
++ 7 (Calendar) + 3 (DatePicker)** real bugs the green tests missed — see the matrix `CD-P2C-1`/`CD-P2D-1`/`CD-P2E-1`
+audit notes. The control-gallery demo gained `T_ree` and `_Date` tabs.
+
 **Phase 10 in progress** (doc §14 — Fork C X4 generator + S2 compiled bindings; normative specs amended in
 `binding-matrix.md` BD17/B146–B186 and `xaml-matrix.md` §15). Two halves were planned B2 → X4 → B3:
 

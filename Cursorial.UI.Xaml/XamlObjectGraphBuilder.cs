@@ -656,8 +656,12 @@ internal sealed class XamlObjectGraphBuilder
     /// </summary>
     internal object? ResolveStaticMember(string memberPath, int line, int column)
     {
-        if (_options.MetadataProvider is ReflectionXamlMetadata reflection
-            && reflection.TryResolveStatic(memberPath, out var resolved))
+        // The optional x:Static seam (IXamlStaticResolver) — ReflectionXamlMetadata resolves it reflectively,
+        // the X5 generated provider via a baked switch. No hard-cast to a concrete provider type, so x:Static
+        // works under the generated/AOT provider too (and the loader no longer statically references the
+        // reflection provider here — one of the two AOT blocker sites closed).
+        if (_options.MetadataProvider is IXamlStaticResolver resolver
+            && resolver.TryResolveStatic(memberPath, out var resolved))
         {
             return resolved;
         }

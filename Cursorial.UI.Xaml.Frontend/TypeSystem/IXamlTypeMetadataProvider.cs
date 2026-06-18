@@ -44,6 +44,25 @@ public interface IXamlTypeMetadataProvider
 }
 
 /// <summary>
+/// An OPTIONAL companion seam to <see cref="IXamlTypeMetadataProvider"/>: resolves an
+/// <c>{x:Static Type.Member}</c> path to its runtime value. The loader's fold-finalize checks for this on
+/// the active metadata provider; a provider that does not implement it simply cannot resolve <c>x:Static</c>
+/// (the loader reports <c>CUR</c> member-not-found). <c>ReflectionXamlMetadata</c> implements it reflectively;
+/// the X5 generated provider bakes a switch over the document's referenced statics (AOT-clean). It is a
+/// SEPARATE interface rather than a member on <see cref="IXamlTypeMetadataProvider"/> so it stays
+/// non-breaking on netstandard2.0 (which has no default interface methods) — existing providers keep working
+/// and opt in by implementing it.
+/// </summary>
+public interface IXamlStaticResolver
+{
+    /// <summary>
+    /// Resolves an <c>{x:Static Type.Member}</c> member path (e.g. <c>"Colors.Red"</c>) to its value, or
+    /// returns <c>false</c> on an unresolvable path.
+    /// </summary>
+    bool TryResolveStatic(string memberPath, out object? value);
+}
+
+/// <summary>
 /// The outcome of a type resolution: the resolved type, an ambiguity, or a miss.
 /// </summary>
 public readonly struct XamlTypeResolution

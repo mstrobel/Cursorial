@@ -125,6 +125,21 @@ public class DualRunDriftTests
         }
     }
 
+    [Fact] // P1B — the generated provider resolves {x:Static} via its baked TryResolveStatic switch
+    public void GeneratedProvider_ResolvesXStatic_AsReflection()
+    {
+        var xaml = $"<Button {Xmlns} Background=\"{{x:Static Brushes.Red}}\"/>";
+
+        var generated = BuildGeneratedProvider(xaml);
+        var byGenerated = (Button)new XamlLoader(new XamlLoaderOptions { MetadataProvider = generated }).Load(xaml);
+        var byReflection = (Button)new XamlLoader(new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        // The generated provider resolved x:Static (it previously threw — the builder hard-cast to
+        // ReflectionXamlMetadata) to the SAME brush singleton the reflection provider does.
+        Assert.Same(Brushes.Red, byGenerated.Background);
+        Assert.Same(byReflection.Background, byGenerated.Background);
+    }
+
     private static IXamlTypeMetadataProvider BuildGeneratedProvider(string xaml)
     {
         var compilation = GeneratorHarness.ReferencedCompilation();
@@ -135,7 +150,8 @@ public class DualRunDriftTests
             .Cast<INamedTypeSymbol>()
             .ToList();
 
-        var source = new MetadataProviderEmitter(compilation).Emit(types)
+        var statics = ClosedTypeSet.CollectStatics(resolver, new[] { xaml });
+        var source = new MetadataProviderEmitter(compilation).Emit(types, statics: statics)
             ?? throw new System.InvalidOperationException("no provider emitted");
         return GeneratorHarness.CompileAndLoadProvider(source);
     }

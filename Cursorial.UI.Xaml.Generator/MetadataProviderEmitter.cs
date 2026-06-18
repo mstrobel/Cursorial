@@ -32,10 +32,17 @@ internal sealed class MetadataProviderEmitter
     /// <c>[assembly: XamlMetadataProvider]</c> / no <c>[ModuleInitializer]</c>) — for a library that ships XAML
     /// but must not hijack the consuming app's process-wide default provider.
     /// </summary>
-    public string? Emit(IReadOnlyList<INamedTypeSymbol> types, bool installModuleInit = true)
+    public string? Emit(
+        IReadOnlyList<INamedTypeSymbol> types,
+        bool installModuleInit = true,
+        IReadOnlyList<(string Path, string Expr)>? statics = null)
     {
         if (types.Count == 0)
             return null;
+
+        var staticList = (statics ?? System.Array.Empty<(string, string)>())
+                         .OrderBy(s => s.Path, System.StringComparer.Ordinal)
+                         .ToList();
 
         // Deterministic order (display name) for stable output.
         var ordered = types
@@ -53,7 +60,7 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine();
         sb.AppendLine("namespace Cursorial.UI.Xaml.Generated");
         sb.AppendLine("{");
-        sb.AppendLine($"    internal sealed class __GeneratedXamlMetadata : {Frontend}.IXamlTypeMetadataProvider");
+        sb.AppendLine($"    internal sealed class __GeneratedXamlMetadata : {Frontend}.IXamlTypeMetadataProvider, {Frontend}.IXamlStaticResolver");
         sb.AppendLine("    {");
         sb.AppendLine("        public static readonly __GeneratedXamlMetadata Instance = new();");
         sb.AppendLine();
@@ -61,6 +68,7 @@ internal sealed class MetadataProviderEmitter
         EmitTryGetType(sb, ordered);
         EmitNamespaceTables(sb, ordered);
         EmitKnownMemberNames(sb, ordered);
+        EmitTryResolveStatic(sb, staticList);
 
         foreach (var type in ordered)
             EmitType(sb, type);
@@ -138,6 +146,26 @@ internal sealed class MetadataProviderEmitter
         }
 
         sb.AppendLine("            return global::System.Array.Empty<string>();");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    // WS-X4.5 / P1B — the AOT-clean {x:Static} seam (IXamlStaticResolver): a baked switch over the document
+    // set's referenced static members → `global::FullType.Member`. The consumer's compile resolves the refs (no
+    // System.Type at generator time, identical to the converter strategy). An x:Static the generator can't
+    // resolve isn't baked (the runtime then reports member-not-found, matching the reflection provider — no drift).
+    private void EmitTryResolveStatic(StringBuilder sb, IReadOnlyList<(string Path, string Expr)> statics)
+    {
+        sb.AppendLine("        public bool TryResolveStatic(string memberPath, out object? value)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            switch (memberPath)");
+        sb.AppendLine("            {");
+
+        foreach (var (path, expr) in statics)
+            sb.AppendLine($"                case \"{Escape(path)}\": value = {expr}; return true;");
+
+        sb.AppendLine("                default: value = null; return false;");
+        sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine();
     }
@@ -228,4 +256,6 @@ internal sealed class MetadataProviderEmitter
 
     private static string Global(ITypeSymbol type)
         => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+    private static string Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

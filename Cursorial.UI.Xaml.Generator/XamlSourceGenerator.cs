@@ -101,7 +101,13 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             .Cast<INamedTypeSymbol>()
             .ToList();
 
-        if (new MetadataProviderEmitter(compilation).Emit(types, installModuleInit) is { } source)
+        // WS-X4.5 / P1B — the document set's {x:Static} references, resolved to baked `global::FullType.Member`
+        // expressions for the generated provider's TryResolveStatic switch (so x:Static works under the AOT-clean
+        // provider, not just reflection). The shared ClosedTypeSet.CollectStatics is the single source the dual-run
+        // test also uses, so the two can't drift.
+        var statics = ClosedTypeSet.CollectStatics(resolver, inputs.Select(i => i.Text));
+
+        if (new MetadataProviderEmitter(compilation).Emit(types, installModuleInit, statics) is { } source)
             spc.AddSource("__GeneratedXamlMetadata.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 

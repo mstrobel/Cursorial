@@ -20,7 +20,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);

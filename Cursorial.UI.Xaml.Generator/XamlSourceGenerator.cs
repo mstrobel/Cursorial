@@ -65,14 +65,20 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         var withCompilation = xamlFiles.Combine(context.CompilationProvider).Combine(loweringFull);
         context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left.Left, pair.Left.Right, pair.Right));
 
+        // Whether the generated provider auto-installs as the process default (an app behavior). A library that
+        // only ships XAML sets CursorialXamlInstallProvider=false so it doesn't hijack the consuming app's default.
+        var installProvider = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) =>
+            !(provider.GlobalOptions.TryGetValue("build_property.CursorialXamlInstallProvider", out var v)
+              && string.Equals(v, "false", System.StringComparison.OrdinalIgnoreCase)));
+
         // WS-X4.5 — one generated metadata provider per compilation, over the UNION of every CursorialXaml
-        // file's closed type set. A generated [ModuleInitializer] installs it as the loader default so the
-        // app's XAML loads (incl. each code-behind's cached parse) run reflection-free / AOT-clean.
-        var allXaml = xamlFiles.Collect().Combine(context.CompilationProvider);
-        context.RegisterSourceOutput(allXaml, static (spc, pair) => EmitProvider(spc, pair.Left, pair.Right));
+        // file's closed type set. A generated [ModuleInitializer] installs it as the loader default (unless
+        // opted out) so the app's XAML loads (incl. each code-behind's cached parse) run reflection-free.
+        var allXaml = xamlFiles.Collect().Combine(context.CompilationProvider).Combine(installProvider);
+        context.RegisterSourceOutput(allXaml, static (spc, pair) => EmitProvider(spc, pair.Left.Left, pair.Left.Right, pair.Right));
     }
 
-    private static void EmitProvider(SourceProductionContext spc, ImmutableArray<XamlInput> inputs, Compilation compilation)
+    private static void EmitProvider(SourceProductionContext spc, ImmutableArray<XamlInput> inputs, Compilation compilation, bool installModuleInit)
     {
         if (inputs.IsDefaultOrEmpty)
             return;
@@ -95,7 +101,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             .Cast<INamedTypeSymbol>()
             .ToList();
 
-        if (new MetadataProviderEmitter(compilation).Emit(types) is { } source)
+        if (new MetadataProviderEmitter(compilation).Emit(types, installModuleInit) is { } source)
             spc.AddSource("__GeneratedXamlMetadata.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 

@@ -1,5 +1,8 @@
 using System.Linq;
 
+using Cursorial.Drawing.Media;
+using Cursorial.Output;
+using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Xaml;
 using Cursorial.UI.Xaml.Generator;
@@ -79,6 +82,25 @@ public class DualRunDriftTests
         // The template body deferred correctly (not eagerly instantiated) → Template is a ControlTemplate on both.
         foreach (var button in new[] { byGenerated, byReflection })
             Assert.IsType<ControlTemplate>(button.Template);
+    }
+
+    [Fact] // an init-only CLR property (SolidColorBrush.Color) — the generated provider sets it (reflectively) identically to reflection
+    public void GeneratedProvider_HandlesInitOnlyClrProperty_AsReflection()
+    {
+        var xaml =
+            $"<StackPanel {Xmlns}><StackPanel.Resources>" +
+            "<SolidColorBrush x:Key=\"B\" Color=\"#3050C0\"/>" +
+            "</StackPanel.Resources></StackPanel>";
+
+        var generated = BuildGeneratedProvider(xaml);
+        var byGenerated = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = generated }).Load(xaml);
+        var byReflection = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        foreach (var root in new[] { byGenerated, byReflection })
+        {
+            var brush = Assert.IsType<SolidColorBrush>(root.Resources["B"]); // realized via the provider's activation + Color setter
+            Assert.Equal(Color.FromRgb(0x30, 0x50, 0xC0), brush.Color);      // the init-only Color set correctly, both providers
+        }
     }
 
     [Fact] // WS-X4.5 — the generated provider's [ModuleInitializer] installs it as the loader default (no opt-in)

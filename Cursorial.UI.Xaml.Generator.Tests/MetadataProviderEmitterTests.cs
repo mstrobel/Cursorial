@@ -90,4 +90,28 @@ public class MetadataProviderEmitterTests
         var source = new MetadataProviderEmitter(compilation).Emit(System.Array.Empty<INamedTypeSymbol>());
         Assert.Null(source);
     }
+
+    [Fact] // regression: an init-only CLR property (SolidColorBrush.Color) bakes a reflection setter, so the
+    // provider COMPILES — a compiled `t.Color = v` would be CS8852 (the bug the XAML themes surfaced).
+    public void Bakes_InitOnlyClrProperty_ViaReflection_AndCompiles()
+    {
+        var (source, errors) = EmitFor("SolidColorBrush");
+        Assert.Empty(errors);                                  // would be CS8852 if it emitted `((SolidColorBrush)t).Color = ...`
+        Assert.Contains("GetProperty(\"Color\")", source);     // the init-only setter goes through reflection
+    }
+
+    [Fact] // a library opt-out (installModuleInit: false) emits the provider but NOT the auto-install plumbing,
+    // so it doesn't hijack the consuming app's process-wide default.
+    public void OptOut_OmitsModuleInitializerAndAssemblyAttribute()
+    {
+        var compilation = GeneratorHarness.ReferencedCompilation();
+        var resolver = new XamlSymbolResolver(compilation);
+        var types = new[] { resolver.Resolve(Ui, "Button", out _)! }.ToList();
+        var source = new MetadataProviderEmitter(compilation).Emit(types, installModuleInit: false)!;
+
+        Assert.DoesNotContain("ModuleInitializer", source);
+        Assert.DoesNotContain("[assembly:", source);
+        Assert.Contains("__GeneratedXamlMetadata", source);     // the provider itself is still emitted
+        Assert.Empty(GeneratorHarness.CompileErrors(source));    // and is valid C#
+    }
 }

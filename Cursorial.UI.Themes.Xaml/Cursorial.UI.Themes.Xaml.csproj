@@ -6,23 +6,44 @@
         backstop, §2237). This assembly ships the BuiltIn control themes authored declaratively in XAML,
         loaded at runtime via Cursorial.UI.Xaml and layered over the BuiltIn through UIApplication.Theme.
         Phase 1 ships the Button family; the remaining controls extend the same Themes/*.xaml.
+
+        The theme .xaml are <CursorialXaml> items: the X4 generator validates them at build time (CUR2
+        type/member diagnostics at the .xaml line) AND, via the consumer .targets, embeds them as manifest
+        resources so CursorialXamlTheme still loads them at runtime through XamlLoader (these are
+        ResourceDictionary roots, not x:Class views — code-behind/lowering doesn't apply).
     -->
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <!-- This is a LIBRARY: validate the theme XAML at build time, but DON'T auto-install the generated
+             provider as the consuming app's process-wide default (it only covers this assembly's closed type
+             set + ui-xmlns; the themes' draw:/input: clr-namespace types resolve through the app's reflection
+             provider at runtime). The themes load via XamlLoader.Shared as before. -->
+        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
     </PropertyGroup>
+
+    <!-- Generator consumer props: the CompilerVisibleItemMetadata + the CursorialXamlEmbedResources default
+         (a ProjectReference doesn't auto-import an analyzer's build/ assets, so import them explicitly). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <!-- The X4 generator as an analyzer (validates the theme XAML; deps flow via its analyzer-deps target). -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <ItemGroup>
-        <!-- The themes load from embedded .xaml at runtime. Manifest name: <RootNamespace>.<dotted path>,
-             e.g. Cursorial.UI.Themes.Xaml.Themes.Controls.xaml. -->
-        <EmbeddedResource Include="Themes\*.xaml" />
+        <!-- Build-time validated by the generator; embedded for runtime by the consumer .targets. Manifest
+             name stays <RootNamespace>.<dotted path>, e.g. Cursorial.UI.Themes.Xaml.Themes.Controls.xaml. -->
+        <CursorialXaml Include="Themes\*.xaml" />
     </ItemGroup>
+
+    <!-- Generator consumer targets: maps <CursorialXaml> → AdditionalFiles (generator input) + EmbeddedResource
+         (runtime load). Imported after the items above so @(CursorialXaml) is populated. -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
 
 </Project>

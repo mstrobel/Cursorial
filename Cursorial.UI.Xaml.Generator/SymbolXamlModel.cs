@@ -36,7 +36,10 @@ internal static class SymbolXamlModel
         bool CanRead,
         bool IsEvent,
         INamedTypeSymbol? RegisteredFieldOwner,
-        bool IsAttached = false);
+        bool IsAttached = false,
+        // An init-only CLR property setter (settable in an object initializer, not post-construction). The
+        // generated provider can't emit a compiled `t.Prop = v` for it (CS8852) — it sets it reflectively.
+        bool IsInitOnly = false);
 
     /// <summary>
     /// The XAML-settable members of a type (most-derived first, deduped by name): public instance properties
@@ -70,7 +73,8 @@ internal static class SymbolXamlModel
                                                  CanWrite: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public },
                                                  CanRead: prop.GetMethod is { DeclaredAccessibility: Accessibility.Public },
                                                  IsEvent: false,
-                                                 registeredOwner);
+                                                 registeredOwner,
+                                                 IsInitOnly: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public, IsInitOnly: true });
                 }
                 else if (symbol is IEventSymbol evt && seen.Add(evt.Name))
                 {

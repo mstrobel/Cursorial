@@ -20,4 +20,26 @@
     <CompilerVisibleProperty Include="CursorialXamlLowering" />
   </ItemGroup>
 
+  <!--
+    The generated metadata provider's [ModuleInitializer] installs it as the process-wide loader default. That
+    is an APP behavior (the app owns the default). A LIBRARY that merely ships XAML (e.g. a ResourceDictionary
+    theme) must NOT hijack the consuming app's default — its provider only covers the library's own closed type
+    set and ui-xmlns. Such a library sets <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>:
+    the provider is still emitted (build-time bakeability validation) but not auto-installed; the library's XAML
+    keeps loading through the app's provider (reflection by default).
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="CursorialXamlInstallProvider" />
+  </ItemGroup>
+
+  <!--
+    A <CursorialXaml> item is ALSO embedded as a manifest resource by default (the paired .targets), so a
+    document validated/baked at build time stays loadable at runtime via XamlLoader (ResourceDictionary themes,
+    no-x:Class views). A pure compile-time / fully-lowered consumer that never runtime-loads its XAML can set
+    <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources> to skip the embed.
+  -->
+  <PropertyGroup>
+    <CursorialXamlEmbedResources Condition="'$(CursorialXamlEmbedResources)' == ''">true</CursorialXamlEmbedResources>
+  </PropertyGroup>
+
 </Project>

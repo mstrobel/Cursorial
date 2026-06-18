@@ -12,4 +12,14 @@
     <AdditionalFiles Include="@(CursorialXaml)" SourceItemType="CursorialXaml" />
   </ItemGroup>
 
+  <!--
+    Embed each <CursorialXaml> as a manifest resource too (default; opt out via CursorialXamlEmbedResources),
+    so a build-time-validated/baked document is still loadable at runtime through XamlLoader. Item metadata
+    (LogicalName, Link) flows from the CursorialXaml item, so an explicit LogicalName is honored and a plain
+    local file keeps its default RootNamespace.<path> manifest name. Authors write <CursorialXaml> once.
+  -->
+  <ItemGroup Condition="'$(CursorialXamlEmbedResources)' == 'true'">
+    <EmbeddedResource Include="@(CursorialXaml)" />
+  </ItemGroup>
+
 </Project>

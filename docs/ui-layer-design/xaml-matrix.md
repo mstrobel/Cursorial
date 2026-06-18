@@ -479,6 +479,34 @@ The WS-X5.5 `CursorialXamlLowering=full` opt-in (X183) covers no-`x:Class` `<Res
 
 **The built-in theme is fully lowered (WS-X5.4j).** `Cursorial.UI.Themes.Xaml` builds all three `Themes/*.xaml` with **0 CURG3001** and `CursorialXamlTheme` calls the builders. The **X174 dual-run drift gate** for the themes is `XamlThemeLoweringTests`: each theme loaded via the lowered builder AND the reflective `XamlLoader` over the embedded source is asserted structurally equivalent (keys, value shapes, brush colors, glyph carriers, resource references, styles + setters/children, theme-variant sub-dictionaries). The 41 `ArchOne`/`Palette`/`Styles` render tests (now through the builders) are the behavioral-parity gate against the code-first `CursorialTheme.BuiltIn`.
 
+### §15b. Strict NativeAOT (WS-X4.7 / P1E) — realized
+
+`CursorialXamlStrictAot` (generator `build/*.props`, default `$(PublishAot) or $(PublishTrimmed)`) auto-emits the
+`Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported=false` `RuntimeHostConfigurationOption` (`Trim="true"`) from
+the paired `.targets`, so the trimmer constant-folds the reflection metadata provider away — an app no longer
+hand-authors the switch (a deliberate reflection-baseline consumer sets `CursorialXamlStrictAot=false`).
+
+**The two AOT routes are NOT equivalent — full lowering (X5) is the trim-clean one:**
+
+- **X4.6 (generated provider + runtime loader):** the StrictAot switch trims `ReflectionXamlMetadata`, but the runtime
+  `XamlLoader` still has reflection that is NOT behind that switch — generic-collection `Add` (`XamlObjectGraphBuilder.
+  IsGenericList`/`InvokeGenericAdd`), the reflective `{Binding}` lane, `ValueConversion`/`TypeDescriptor`, the
+  `NamedColors`/`NamedBrushes` tables, `ReflectionXamlType.ComputeIsCollection`. So a generated-provider app still
+  emits `IL2026`/`IL3050` for those. **Not fully trim-clean.**
+- **X5 full lowering (`CursorialXamlLowering=full`):** `InitializeComponent` is straight-line construction with NO
+  runtime loader — the entire XAML loading path drops out. The XAML loader/provider/frontend reflection warnings go
+  to **zero**.
+
+**Proof:** `Cursorial.Demo.XamlAotStrict` (full lowering, `InstallProvider=false`, a literal x:Class view) publishes
+NativeAOT (`dotnet publish -c Release -r osx-arm64`) to a native Mach-O binary that **runs** (loads the view, exit 0),
+with **zero** XAML-loader/provider/frontend trim/AOT warnings and the switch baked into `runtimeconfig.json`. The
+**residual** `IL2026`/`IL3050` (≈13) are all `Cursorial.UI.Data` (the reflective binding engine `AccessorCache`/
+`ReflectionBindingExpression`/`ValueConversion`) + `DefaultSelectorTypeResolver.ExportedElementTypes` — Cursorial.UI's
+OWN reflection, reachable from the always-linked binding/styling infrastructure, NOT the XAML generator's concern.
+AOT-hardening the reflective binding lane + the selector resolver (DynamicallyAccessedMembers annotations / a
+feature-switched reflective-binding lane) is a separate S2/S3 workstream. `Cursorial.Demo.XamlAot` stays the
+reflection-baseline (`StrictAot=false`, `TrimMode=partial`); both are in `Cursorial.sln`.
+
 ---
 
 ## 16. Test authoring contract

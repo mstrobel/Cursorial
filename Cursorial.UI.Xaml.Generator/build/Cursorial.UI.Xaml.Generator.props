@@ -42,4 +42,18 @@
     <CursorialXamlEmbedResources Condition="'$(CursorialXamlEmbedResources)' == ''">true</CursorialXamlEmbedResources>
   </PropertyGroup>
 
+  <!--
+    WS-X4.7 — strict AOT. When publishing NativeAOT or trimmed, the reflection metadata provider (honestly
+    [RequiresUnreferencedCode]/[RequiresDynamicCode]) should be trimmed OUT: an app that loads its XAML through the
+    generated provider (X4.5) or full lowering (X5) never needs reflection, and dragging the reflection provider in
+    produces IL2026/IL3050 warnings. CursorialXamlStrictAot (default: PublishAot OR PublishTrimmed) flips the
+    reflection provider's trimmer feature switch off via the paired .targets, so the trimmer constant-folds it away.
+    A consumer that DELIBERATELY relies on the runtime reflection loader under AOT/trim (the reflection-baseline
+    demo) sets <CursorialXamlStrictAot>false</CursorialXamlStrictAot> and keeps the switch on.
+  -->
+  <PropertyGroup>
+    <CursorialXamlStrictAot Condition="'$(CursorialXamlStrictAot)' == '' and ('$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true')">true</CursorialXamlStrictAot>
+    <CursorialXamlStrictAot Condition="'$(CursorialXamlStrictAot)' == ''">false</CursorialXamlStrictAot>
+  </PropertyGroup>
+
 </Project>

@@ -22,4 +22,17 @@
     <EmbeddedResource Include="@(CursorialXaml)" />
   </ItemGroup>
 
+  <!--
+    WS-X4.7 — strict AOT (default under PublishAot / PublishTrimmed; see the paired .props): trim the reflection
+    metadata provider OUT by flipping its feature switch off. The trimmer constant-folds
+    IsReflectionMetadataProviderSupported to false and drops the [RequiresUnreferencedCode]/[RequiresDynamicCode]
+    reflection branch entirely, so the generated provider (X4.5) / full lowering (X5) is the only metadata source —
+    no IL2026/IL3050 from the reflection provider. A consumer that needs the reflection loader under AOT/trim sets
+    CursorialXamlStrictAot=false (and may author its own RuntimeHostConfigurationOption with Value=true).
+  -->
+  <ItemGroup Condition="'$(CursorialXamlStrictAot)' == 'true'">
+    <RuntimeHostConfigurationOption Include="Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported"
+                                    Value="false" Trim="true" />
+  </ItemGroup>
+
 </Project>

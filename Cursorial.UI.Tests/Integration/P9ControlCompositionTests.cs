@@ -43,6 +43,14 @@ public sealed class P9ControlCompositionTests
         form.Children.Add(new ProgressBar { Value = 60, Maximum = 100, Height = 1, Width = 24 });
         form.Children.Add(new ProgressBar { IsIndeterminate = true, Height = 1, Width = 24 });
         form.Children.Add(new ComboBox { ItemsSource = new[] { "One", "Two", "Three" }, SelectedIndex = 0, Width = 16 });
+
+        var treeRoot = new TreeViewItem { Header = "Root", IsExpanded = true };
+        treeRoot.Items.Add(new TreeViewItem { Header = "Child 1" });
+        treeRoot.Items.Add(new TreeViewItem { Header = "Child 2" });
+        var tree = new TreeView { Width = 22, Height = 4 };
+        tree.Items.Add(treeRoot);
+        form.Children.Add(tree);
+
         form.Children.Add(new Button { Content = "_OK", IsDefault = true });
 
         var list = new ListBox

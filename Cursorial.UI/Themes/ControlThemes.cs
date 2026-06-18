@@ -44,6 +44,8 @@ internal static class ControlThemes
         dict[typeof(ListBoxItem)] = ListBoxItemTheme();
         dict[typeof(ComboBox)] = ComboBoxTheme();
         dict[typeof(ComboBoxItem)] = ComboBoxItemTheme();
+        dict[typeof(TreeView)] = TreeViewTheme();
+        dict[typeof(TreeViewItem)] = TreeViewItemTheme();
         dict[typeof(Menu)] = MenuTheme();
         dict[typeof(MenuItem)] = MenuItemTheme();
         dict[typeof(ContextMenu)] = ContextMenuTheme();
@@ -228,6 +230,76 @@ internal static class ControlThemes
             .Set(Control.TemplateProperty, ComboBoxItemTemplate());
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
         theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:focus-visible")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
+
+    // ───────────────────────────── TreeView / TreeViewItem ─────────────────────────────
+
+    // A TreeView: a Border over a ScrollViewer whose content is the PART_ItemsHost ItemsPresenter (so a tall tree
+    // scrolls — the SCP band, C3). The tree sits on the page (no resting fill); the per-node selection bars are the
+    // only fills.
+    private static ControlTemplate TreeViewTemplate() => new(ctx =>
+    {
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
+        ctx.RegisterName("PART_ScrollViewer", scroll);
+        var border = new Border { Child = scroll };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        return border;
+    });
+
+    private static Style TreeViewTheme()
+        => new Style { Key = "Theme.TreeView" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, TreeViewTemplate());
+
+    // A tree node: a header row [twisty(2) … Header] over the indented PART_ItemsHost (the children). The twisty
+    // (PART_Twisty, fixed 2-wide; '>'/'v'/leaf-blank, set by the control) is the expander; the children host is
+    // indented 2 cells so a child's twisty aligns under its parent's header — recursive nesting indents with no
+    // depth math. Only the header bar carries Control.Background, so a :selected/:pointerover/:focus-visible fill
+    // highlights the row, not the whole subtree.
+    private static ControlTemplate TreeViewItemTemplate() => new(ctx =>
+    {
+        var twisty = new TextBlock { Width = 2 };
+        ctx.RegisterName("PART_Twisty", twisty);
+        DockPanel.SetDock(twisty, Dock.Left);
+
+        var header = new ContentPresenter { RecognizesAccessKey = true };
+        ctx.RegisterName("PART_ContentPresenter", header);
+        header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+
+        var headerRow = new DockPanel();
+        headerRow.Children.Add(twisty); // docked left (the expander)
+        headerRow.Children.Add(header); // fills the remaining width
+        var bar = new Border { Child = headerRow };
+        bar.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+        var host = new ItemsPresenter { Margin = new Margins(2, 0, 0, 0) }; // recursive indent
+        ctx.RegisterName("PART_ItemsHost", host);
+
+        var root = new StackPanel(); // vertical: the header bar, then the (indented) children
+        root.Children.Add(bar);
+        root.Children.Add(host);
+        return root;
+    });
+
+    private static Style TreeViewItemTheme()
+    {
+        var theme = new Style { Key = "Theme.TreeViewItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, TreeViewItemTemplate());
+        // NO :pointerover fill (WPF-faithful): InteractionState.PointerOver is set on EVERY ancestor of the hovered
+        // leaf, and TreeViewItems nest, so a hover rule would light the whole ancestor header-bar chain. A tree node
+        // highlights on selection + keyboard focus only.
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        // The keyboard focus-row cue (reverse-video), ordered after :selected so a focused+selected node reads as
+        // focused; :focus-visible (not :focus) so a mouse click shows :selected while keyboard nav shows the row.
         theme.Children.Add(new Style("^:focus-visible")
             .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));

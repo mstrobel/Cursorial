@@ -126,7 +126,36 @@ internal sealed class ControlGalleryDemo : IDemo
             var tabs = new TabControl();
             tabs.Items.Add(new TabItem { Header = "_Form", Content = BuildForm() });
             tabs.Items.Add(new TabItem { Header = "_List", Content = BuildList() });
+            tabs.Items.Add(new TabItem { Header = "T_ree", Content = BuildTreeView() });
             return tabs;
+        }
+
+        private Border BuildTreeView()
+        {
+            // A small file-tree: parents expand/collapse (click the > / v twisty or press Right/Left); arrows
+            // navigate the visible nodes; selection follows the keyboard cursor and is tree-wide single.
+            TreeViewItem Node(string header, params TreeViewItem[] children)
+            {
+                var node = new TreeViewItem { Header = header };
+                foreach (var child in children)
+                    node.Items.Add(child);
+                return node;
+            }
+
+            var tree = new TreeView { Width = 30, Height = 12 };
+            tree.Items.Add(Node("src",
+                Node("Controls", Node("TreeView.cs"), Node("ComboBox.cs"), Node("ListBox.cs")),
+                Node("Themes", Node("ControlThemes.cs"))));
+            tree.Items.Add(Node("docs", Node("ui-layer-design.md")));
+            tree.Items.Add(new TreeViewItem { Header = "README.md" });
+            ((TreeViewItem)tree.Items[0]!).IsExpanded = true; // open "src" so the tree shows structure at a glance
+
+            tree.SelectionChanged += (_, e) => Action($"selected {(e.NewItem as TreeViewItem)?.Header}");
+
+            var panel = new StackPanel { Spacing = 1, Margin = new Margins(1) };
+            panel.Children.Add(new TextBlock { Text = "File tree (arrows / Right-Left, click a twisty):" });
+            panel.Children.Add(tree);
+            return new Border { Padding = new Margins(1), Child = panel };
         }
 
         private Border BuildForm()

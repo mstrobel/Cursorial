@@ -709,3 +709,65 @@ the open/close (without it, a click while open dismissed *then* re-opened — a 
 `owner.HandleContainerPointerSelect` then calls `owner.CommitAndClose()`. The editable (text-entry) variant is a
 v2 deferral. The XAML control-theme overlay twin is deferred — `ComboBox`/`ComboBoxItem` fall through to the
 code-first `CursorialTheme.BuiltIn` themes (the chain backstop).
+
+---
+
+## §C13 — TreeView / TreeViewItem (P2C, post-P9)
+
+A hierarchical selector (design doc §12.6 — the headered-items recipe). `TreeView : ItemsControl` owns
+**tree-wide single selection** (a flat `SelectionModel` is per-control and can't span the nesting, so `TreeView`
+coordinates directly, not via `SelectingItemsControl`); `TreeViewItem : HeaderedItemsControl` is both a row
+(its `Header`) and a sub-items host (its `Items`). Each item template is `[twisty(2)][Header]` over a
+`PART_ItemsHost` `ItemsPresenter` indented 2 cells and `Visibility`-gated on `IsExpanded` — so nesting indents
+**recursively** (no per-item depth math) and a child's twisty aligns under its parent's header. Containers are
+`TreeViewItem`s. The tree is one tab stop (`TreeView.IsTabStop=false`, the top items panel is
+`KeyboardNavigationMode.Once`); arrows navigate the **visible** tree (collapsed subtrees are skipped) and
+selection follows the keyboard cursor. Tests: `Cursorial.UI.Tests/ControlMatrix/Section26_TreeView.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C13.1 | root with 2 child `TreeViewItem`s, one with a grandchild | show | own-container `TreeViewItem`s realize; the parent reports `HasItems`, the leaf does not | PIN (CD-P2C-1) |
+| C13.2 | a parent node | set `IsExpanded=true`/`false` | `PART_ItemsHost` `Visibility` flips `Visible`/`Collapsed`; `:expanded` mirrors `IsExpanded`; raises `Expanded`/`Collapsed` | PIN (CD-P2C-1) |
+| C13.3 | two sibling nodes | click node A's header, then node B's | A then B selected; selecting B clears A (tree-wide single); `TreeView.SelectedItem` tracks the data item; `SelectionChanged` raised | PIN (CD-P2C-1) |
+| C13.4 | a collapsed parent, selection elsewhere | click its twisty glyph | toggles `IsExpanded` only — the selection does **not** move to the parent (twisty ≠ row) | PIN (CD-P2C-1) |
+| C13.5 | a focused collapsed parent | Right; Right again | first Right expands (focus stays); second Right moves focus+selection to the first child | PIN (CD-P2C-1) |
+| C13.6 | a focused expanded-parent's first child | Left; Left again | first Left (on a leaf) moves to the parent; on an expanded node the first Left collapses, the next moves to parent | PIN (CD-P2C-1) |
+| C13.7 | expanded tree | Down from the root; Up back | Down steps root→child1→(child1's child if expanded)→child2 in visible order, selection follows; Up reverses | PIN (CD-P2C-1) |
+| C13.8 | a collapsed parent above a sibling | Down from the parent | skips the parent's hidden children → lands on the next sibling | PIN (CD-P2C-1) |
+| C13.9 | nested expanded tree | inspect a grandchild container | its window X is greater than its parent's (recursive indent) | PIN (CD-P2C-1) |
+| C13.10 | a selected child node | remove it from its parent's `Items` | the tree's `SelectedContainer`/`SelectedItem` clear (no dangling pointer) | PIN (CD-P2C-1) |
+| C13.11 | a node with `IsSelected=true` set before it is parented | show the tree; then select a sibling | the preset selection folds into the tree on realization; the later select clears it (tree-wide single) | PIN (CD-P2C-1 audit) |
+| C13.12 | a focused node | Ctrl+Space; then a modifier-free Space | Ctrl+Space does NOT select (bubbles unhandled); modifier-free Space selects | PIN (CD-P2C-1 audit) |
+
+**CD-P2C-1 — TreeView: tree-wide single selection, recursive-indent template, visible-tree keyboard nav.**
+`TreeView : ItemsControl` holds `SelectedItem` (read-only `DirectProperty`) + an internal selected-container
+pointer; `ChangeSelection(item)` deselects the prior container (`SetIsSelectedFromTree(false)`), selects the new,
+recomputes `SelectedItem` via the owning generator's `ItemFromContainer` (an own-container resolves to itself),
+and raises `SelectionChanged`. `TreeViewItem.IsSelected`/`IsExpanded` are `StyledProperty`s with
+`:selected`/`:expanded` `PseudoClassMapping`s; an external `IsSelected=true` folds into the tree
+(`ChangeSelection(this)`) under a `_treeDriven` guard (cf. `ListBoxItem._ownerDriven`), `IsExpanded` flips the
+`PART_ItemsHost` visibility + twisty glyph (`>`/`v`/leaf-blank, ASCII-safe per the ambiguous-width memory) and
+raises `Expanded`/`Collapsed`. Mouse: a press whose `OriginalSource` is within `PART_Twisty` toggles expansion
+(no select); any other press selects (`Focus()` + `ChangeSelection`). Keyboard (only when `IsFocused`, the
+`MenuItem` class-handler rule): Right expands-then-descends, Left collapses-then-ascends, Up/Down walk
+`PrevVisible`/`NextVisible` (descend into expanded subtrees, skip collapsed ones, walk up at a level's edge),
+all directional moves select-on-focus. A node caches its owning tree at attach (`_ownerTree`) so that on detach
+(its removal from a parent's `Items`) it can clear the tree's selection if it was selected — no dangling
+`SelectedContainer`/`SelectedItem`. **Realization is eager (not gated on expansion)** — collapsed children
+exist but measure 0×0 under the collapsed host (WPF-faithful; container virtualization is a v2 deferral, noted
+so the "covered everything" read is honest). v1 uses own-container `TreeViewItem`s; `HierarchicalDataTemplate`
+(data-driven hierarchy) is a v2 deferral. The XAML control-theme overlay twin is deferred — `TreeView`/
+`TreeViewItem` fall through to the code-first `CursorialTheme.BuiltIn` themes (the chain backstop).
+
+**CD-P2C-1 audit (P2C follow-up).** A 3-lens adversarial audit (selection-lifecycle / navigation / layout-theme,
+each finding independently refutation-verified through `UITestHost`) confirmed **3 real bugs** the green tests
+missed, each fixed + regression-tested: **(1)** a `TreeViewItem` with `IsSelected=true` set *before* it was parented
+under a `TreeView` dropped the intent (`OnIsSelectedChanged`'s `OwnerTree` was null) and a later selection then left
+**two** nodes `:selected` (tree-wide-single broken) — `OnAttachedToTree` now folds a preset `IsSelected` into
+`ChangeSelection` once the owner resolves (the `SelectingItemsControl.ReconcileContainers` analog); row C13.11.
+**(2)** a `^:pointerover` fill on `TreeViewItem` lit the whole **ancestor** header-bar chain, because
+`InteractionState.PointerOver` is set on every ancestor of the hovered leaf and tree items nest — the hover rule was
+removed (a tree node highlights on selection + keyboard focus only; WPF-faithful). **(3)** `IsSpace` lacked a
+modifier guard, so **Ctrl+Space** (the lone real `Key.Space` wire) selected the node and swallowed the key — now
+gated `Modifiers == None` (mirroring `ButtonBase.IsActivationSpace`), so it bubbles for an ancestor command binding;
+row C13.12.

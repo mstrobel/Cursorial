@@ -210,13 +210,13 @@ namespace TestApp
         Assert.Equal("Goodbye", label.Text);
     }
 
-    [Fact] // B3b — a {Binding} that can't compile (here a multi-hop path, no x:DataType) gracefully falls back to
-    // a faithful reflective `new Binding(...)` (not a silent drop) and still resolves live through the engine.
-    public void Lowered_Binding_Uncompilable_FallsBackToReflectiveBinding()
+    [Fact] // B3/P1D — a multi-hop x:DataType path now COMPILES (a null-safe whole-chain getter + per-hop steps) and
+    // resolves live, with INPC on the leaf hop pushing updates through the compiled chain.
+    public void Lowered_Binding_MultiHop_CompilesAndBindsLive()
     {
         var xaml =
             $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.ReflectiveView\" x:DataType=\"t:OuterVm\">" +
-            "<TextBlock x:Name=\"Label\" Text=\"{Binding Inner.Caption, Mode=OneWay}\"/>" + // multi-hop ⇒ reflective fallback
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Inner.Caption, Mode=OneWay}\"/>" + // multi-hop ⇒ compiled (P1D)
             "</StackPanel>";
 
         const string codeBehind = @"
@@ -242,11 +242,13 @@ namespace TestApp
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = Lower(xaml, compilation);
 
-        // The reflective fallback was emitted (a faithful new Binding with the carried Mode), NOT a compiled
-        // binding and NOT a silent TODO.
-        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Inner.Caption\")", lowered);
-        Assert.Contains("Mode = global::Cursorial.UI.Data.BindingMode.OneWay", lowered);
-        Assert.DoesNotContain("CompiledBinding", lowered);
+        // The multi-hop binding COMPILED (typed CompiledBinding over the OuterVm root) with a null-safe getter +
+        // per-hop steps — not a reflective Binding, not a silent TODO.
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.OuterVm, string>", lowered);
+        Assert.Contains("static __s => (__s.Inner?.Caption)", lowered);       // null-safe whole-chain getter
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledPathStep(\"Inner\"", lowered);  // per-hop step
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledPathStep(\"Caption\"", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered); // not the reflective lane
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
@@ -259,12 +261,50 @@ namespace TestApp
         var caption = inner.GetType().GetProperty("Caption")!;
         caption.SetValue(inner, "Nested");
 
-        // The reflective multi-hop binding walks Inner.Caption and resolves live on the DataContext set.
+        // The compiled multi-hop chain walks Inner.Caption and resolves live on the DataContext set.
         view.DataContext = outer;
         Assert.Equal("Nested", label.Text);
 
+        // INPC on the leaf hop (InnerVm.Caption) pushes through the compiled chain's per-hop subscription.
         caption.SetValue(inner, "Updated");
         Assert.Equal("Updated", label.Text);
+    }
+
+    [Fact] // B3b — a genuinely-uncompilable path (an indexer hop) still gracefully falls back to a faithful
+    // reflective `new Binding(...)` (not a silent drop) and resolves live through the engine.
+    public void Lowered_Binding_IndexerPath_FallsBackToReflectiveBinding()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.IndexerView\" x:DataType=\"t:ListVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Tags[0], Mode=OneWay}\"/>" + // indexer ⇒ reflective fallback
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using System.Collections.Generic;
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class ListVm { public List<string> Tags { get; } = new() { ""first"" }; }
+    public partial class IndexerView : StackPanel { public IndexerView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // The reflective fallback was emitted (a faithful new Binding with the carried Mode), NOT compiled, NOT a TODO.
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Tags[0]\")", lowered);
+        Assert.Contains("Mode = global::Cursorial.UI.Data.BindingMode.OneWay", lowered);
+        Assert.DoesNotContain("CompiledBinding", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.IndexerView")!)!;
+        var label = Assert.IsType<TextBlock>(view.Children[0]);
+
+        var vmType = assembly.GetType("TestApp.ListVm")!;
+        view.DataContext = System.Activator.CreateInstance(vmType)!;
+        Assert.Equal("first", label.Text); // the reflective indexer binding resolves Tags[0]
     }
 
     [Fact] // audit fix — an init-only leaf compiles a null setter (degrades to OneWay), never an `__s.P = v` (CS8852)

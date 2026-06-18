@@ -118,38 +118,86 @@ namespace GenApp { public partial class GapView : StackPanel { public GapView() 
         Assert.Contains("// TODO X5", GeneratedView(compilation, "GapView"));
     }
 
-    [Fact] // B3 — an x:DataType {Binding} that stays reflective (here multi-hop) emits a CURG2002 INFO naming why;
-           // a compilable single-hop sibling compiles and gets no info; both still work (no CURG3001 gap).
+    [Fact] // B3 — an x:DataType {Binding} that stays reflective (here an indexer path) emits a CURG2002 INFO naming
+           // why; a compilable single-hop sibling compiles and gets no info; both still work (no CURG3001 gap).
     public void LoweringOptIn_ReflectiveFallback_EmitsCurg2002Info()
     {
         var xaml =
             $"<StackPanel {Ns} xmlns:t=\"using:GenApp\" x:Class=\"GenApp.InfoView\" x:DataType=\"t:InfoVm\">" +
-            "<Button x:Name=\"Deep\" Content=\"{Binding Inner.Caption}\"/>" + // multi-hop ⇒ reflective ⇒ CURG2002
-            "<Button x:Name=\"Flat\" Content=\"{Binding Title}\"/>" +         // single-hop ⇒ compiled ⇒ no info
+            "<Button x:Name=\"Indexed\" Content=\"{Binding Tags[0]}\"/>" + // indexer ⇒ reflective ⇒ CURG2002
+            "<Button x:Name=\"Flat\" Content=\"{Binding Title}\"/>" +      // single-hop ⇒ compiled ⇒ no info
             "</StackPanel>";
 
         const string codeBehind = @"
+using System.Collections.Generic;
 using Cursorial.UI.Controls;
 namespace GenApp
 {
-    public sealed class Leaf { public string Caption { get; set; } = string.Empty; }
-    public sealed class InfoVm { public Leaf Inner { get; } = new(); public string Title { get; set; } = string.Empty; }
+    public sealed class InfoVm { public List<string> Tags { get; } = new(); public string Title { get; set; } = string.Empty; }
     public partial class InfoView : StackPanel { public InfoView() => InitializeComponent(); }
 }";
 
         var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("InfoView.xaml", xaml));
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
 
-        // Exactly one CURG2002 Info (the multi-hop Deep button), naming the reason.
+        // Exactly one CURG2002 Info (the indexer Indexed button), naming the reason.
         var info = Assert.Single(diagnostics, d => d.Id == "CURG2002");
         Assert.Equal(DiagnosticSeverity.Info, info.Severity);
         Assert.Contains("stays reflective", info.GetMessage());
-        Assert.Contains("multi-hop", info.GetMessage());
+        Assert.Contains("indexer", info.GetMessage());
 
-        // The single-hop binding compiled; the multi-hop one still works reflectively (no CURG3001 dropped-member gap).
+        // The single-hop binding compiled; the indexer one still works reflectively (no CURG3001 dropped-member gap).
         var view = GeneratedView(compilation, "InfoView");
-        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<", view);            // Flat → compiled
-        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Inner.Caption\")", view);  // Deep → reflective, working
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<", view);        // Flat → compiled
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Tags[0]\")", view);    // Indexed → reflective, working
         Assert.DoesNotContain(diagnostics, d => d.Id == "CURG3001");
+    }
+
+    [Fact] // B3/P1D — a multi-hop compiled binding survives a NULL intermediate (returns default(leaf), no NRE) and
+           // a TwoWay multi-hop write-back through a reference chain reaches the leaf.
+    public void LoweringOptIn_MultiHop_NullIntermediateSafe_AndTwoWayWriteBack()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:GenApp\" x:Class=\"GenApp.DeepView\" x:DataType=\"t:RootVm\">" +
+            "<TextBlock x:Name=\"Edit\" Text=\"{Binding Child.Name, Mode=TwoWay}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp
+{
+    public sealed class ChildVm { public string Name { get; set; } = string.Empty; }
+    public sealed class RootVm { public ChildVm? Child { get; set; } }
+    public partial class DeepView : StackPanel { public DeepView() => InitializeComponent(); }
+}";
+
+        var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("DeepView.xaml", xaml));
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+
+        // A TwoWay multi-hop binding emits a NULL-GUARDED reverse setter through the reference chain (a broken
+        // chain is a no-op write, never an NRE).
+        var view = GeneratedView(compilation, "DeepView");
+        Assert.Contains("if ((__s.Child) is { } __o) __o.Name = __v", view);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation);
+        var instance = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.DeepView")!)!;
+        var edit = Assert.IsType<TextBlock>(instance.Children[0]);
+
+        var rootType = assembly.GetType("GenApp.RootVm")!;
+        var root = System.Activator.CreateInstance(rootType)!; // Child is null
+
+        // A null intermediate (Child == null) yields default(string) — no NRE (the pinned compiled-multi-hop
+        // null semantics, B188).
+        instance.DataContext = root;
+        Assert.True(string.IsNullOrEmpty(edit.Text));
+
+        // With Child set, the null-safe chain resolves the leaf live.
+        var childType = assembly.GetType("GenApp.ChildVm")!;
+        var child = System.Activator.CreateInstance(childType)!;
+        childType.GetProperty("Name")!.SetValue(child, "Ada");
+        rootType.GetProperty("Child")!.SetValue(root, child);
+        instance.DataContext = null;
+        instance.DataContext = root; // re-resolve with Child present
+        Assert.Equal("Ada", edit.Text);
     }
 }

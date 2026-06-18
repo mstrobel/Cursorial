@@ -1353,10 +1353,11 @@ internal static class LoweringEmitter
         if (string.IsNullOrEmpty(path) || path == ".")
             return false; // a whole-DataContext binding has no compiled leaf — not an actionable info (reason stays null)
 
-        // Single-hop only in B3a (multi-hop getter/steps lands in B3 P1D); indexers/methods never compile here.
-        if (path!.IndexOf('.') >= 0 || path.IndexOf('[') >= 0 || path.IndexOf('(') >= 0)
+        // Indexers / method calls never compile here (the engine supports constant-index hops, but the generator's
+        // path-walk is member-access only) — they stay reflective.
+        if (path!.IndexOf('[') >= 0 || path.IndexOf('(') >= 0)
         {
-            reason = "its path is multi-hop, an indexer, or a method call";
+            reason = "its path uses an indexer or a method call";
             return false;
         }
 
@@ -1366,28 +1367,86 @@ internal static class LoweringEmitter
             return false;
         }
 
-        if (XamlDataTypeScope.FindMember(dataType, path) is not { IsStatic: false } leaf ||
-            XamlDataTypeScope.MemberType(leaf) is not { } leafType ||
-            !XamlDataTypeScope.IsReadable(leaf))
+        // Walk the (single- or multi-hop) dotted path against the x:DataType, threading the running owner type.
+        // Every hop must be a readable INSTANCE property/field (a static-named hop can't be `prev.Member`, CS0176);
+        // an intermediate must be a named type to continue the walk.
+        var hops = path.Split('.');
+        var owners = new INamedTypeSymbol[hops.Length]; // the type each hop is accessed ON
+        var types = new ITypeSymbol[hops.Length];       // each hop's value type
+        var leafWritable = false;
+        var current = dataType;
+        for (int h = 0; h < hops.Length; h++)
         {
-            // A static-named path can't be `__s.Member` (CS0176) — bail to the reflective fallback (which
-            // resolves instance-or-static identically to the runtime loader's reflective binding).
-            reason = "its path leaf is static, not found, or not readable on the x:DataType";
-            return false;
+            if (XamlDataTypeScope.FindMember(current, hops[h]) is not { IsStatic: false } member ||
+                !XamlDataTypeScope.IsReadable(member) ||
+                XamlDataTypeScope.MemberType(member) is not { } hopType)
+            {
+                reason = "a path hop is static, not found, or not readable on the x:DataType";
+                return false;
+            }
+
+            owners[h] = current;
+            types[h] = hopType;
+            if (h == hops.Length - 1)
+                leafWritable = XamlDataTypeScope.IsWritable(member);
+            else if (hopType is INamedTypeSymbol named)
+                current = named;
+            else
+            {
+                reason = "an intermediate path hop is not a named type";
+                return false;
+            }
         }
 
+        var leafType = types[hops.Length - 1];
         string data = Global(dataType);
         string value = Global(leafType);
-        string getter = $"static __s => __s.{path}";
-        // A writable leaf gets a reverse setter (TwoWay/Default-on-a-two-way-property work); a read-only leaf
-        // passes null (the engine degrades a TwoWay use to OneWay — B152), mirroring the reflective lane.
-        string setter = XamlDataTypeScope.IsWritable(leaf) ? $"static (__s, __v) => __s.{path} = __v" : "null";
-        string step = $"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(path)}\", static __o => (object?)(({data}) __o!).{path})";
+
+        // Getter — a null-safe whole-chain read: `?.` after each reference-typed hop so a null intermediate yields
+        // default(leaf), never an NRE. The pinned full-lowering compiled-multi-hop null semantics (B188) — safer
+        // than Binding.Compiled's path.Compile() (which throws on a null intermediate); it matches the reflective
+        // lane for the non-null reads B156 pins (a null intermediate is default(leaf) here vs the reflective
+        // UnsetValue — the documented, opt-in-via-full-lowering difference).
+        var chain = new StringBuilder("__s");
+        var conditional = false;
+        for (int h = 0; h < hops.Length; h++)
+        {
+            var accessor = h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".");
+            if (accessor == "?.") conditional = true;
+            chain.Append(accessor).Append(hops[h]);
+        }
+        var getter = conditional ? $"static __s => ({chain}) ?? default({value})" : $"static __s => {chain}";
+
+        // One CompiledPathStep per hop — an object-typed reader for INPC/INCC subscription rewiring (null-safe; the
+        // typed Getter does the value read). The reader casts to the type the hop is accessed on.
+        var steps = new List<string>(hops.Length);
+        for (int h = 0; h < hops.Length; h++)
+            steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(hops[h])}\", " +
+                      $"static __o => __o is {Global(owners[h])} __t ? (object?)__t.{hops[h]} : null)");
+
+        // Setter (TwoWay) — only when the leaf is writable AND its owner is a reference type (writing through a
+        // value-typed owner mutates a copy ⇒ a no-op, so degrade to OneWay/null, matching the reflective lane —
+        // B152). Multi-hop is null-guarded (a broken chain is a no-op write).
+        var setter = "null";
+        if (leafWritable && owners[hops.Length - 1].IsReferenceType)
+        {
+            if (hops.Length == 1)
+            {
+                setter = $"static (__s, __v) => __s.{hops[0]} = __v";
+            }
+            else
+            {
+                var ownerChain = new StringBuilder("__s");
+                for (int h = 0; h < hops.Length - 1; h++)
+                    ownerChain.Append(h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")).Append(hops[h]);
+                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {{ }} __o) __o.{hops[hops.Length - 1]} = __v; }}";
+            }
+        }
 
         c.Line(
             $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
             $"new global::Cursorial.UI.Data.CompiledBinding<{data}, {value}>({getter}, {setter}, " +
-            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {step} }}, \"{Escape(path)}\"){Initializers(ModeInit(modeName))});");
+            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path)}\"){Initializers(ModeInit(modeName))});");
         return true;
     }
 

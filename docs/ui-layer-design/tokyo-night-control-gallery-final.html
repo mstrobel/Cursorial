@@ -13,6 +13,8 @@
     --panel:     #222639;
     --well:      #16161e;
     --sel:       #33467c;
+    --sel-inactive: #30364d;
+    --altrow:    #272b41;
     --hover:     #414868;
     --text:      #c0caf5;
     --text-dim:  #a9b1d6;
@@ -34,6 +36,8 @@
     --panel:     #e9e9ed;
     --well:      #f6f6f8;
     --sel:       #a8aecb;
+    --sel-inactive: #d3d5dd;
+    --altrow:    #e1e2e7;
     --hover:     #cbccd1;
     --text:      #343b58;
     --text-dim:  #565a6e;
@@ -115,9 +119,12 @@
   .panel { background: var(--panel); width: max-content; }
   .panel.pad { padding: 2px 0; }
   .item { color: var(--text); padding: 0 10px; }
+  .item.alt { background: var(--altrow); }
   .item.dim { color: var(--text-dim); }
-  .item.sel { background: var(--sel); color: var(--text); }
+  .item.dim.alt { background: var(--altrow); }
   .item.hov { background: var(--hover); color: var(--text); }
+  .item.sel-inactive { background: var(--sel-inactive); color: var(--text); }
+  .item.sel { background: var(--sel); color: var(--text); }
   .item.dis { color: var(--muted); }
   .item.rev { background: var(--text); color: var(--panel); }
 
@@ -354,14 +361,30 @@
     <!-- ListBox -->
     <section>
       <div class="cell-title">▸ ListBox</div>
-      <div class="panel">
-        <div class="item dim">src/main.rs&nbsp;&nbsp;</div>
-        <div class="item sel">src/lib.rs&nbsp;&nbsp;&nbsp;</div>
-        <div class="item hov">Cargo.toml&nbsp;&nbsp;&nbsp;</div>
-        <div class="item rev">README.md&nbsp;&nbsp;&nbsp;</div>
-        <div class="item dis">target/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <div class="panel">
+            <div class="item">src/main.rs&nbsp;&nbsp;</div>
+            <div class="item alt">src/lib.rs&nbsp;&nbsp;&nbsp;</div>
+            <div class="item sel">Cargo.toml&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt hov">README.md&nbsp;&nbsp;&nbsp;</div>
+            <div class="item">build.rs&nbsp;&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt dis">target/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+          </div>
+          <div class="note">focused · alternating rows · active selection · hover · disabled</div>
+        </div>
+        <div>
+          <div class="panel">
+            <div class="item">src/main.rs&nbsp;&nbsp;</div>
+            <div class="item alt">src/lib.rs&nbsp;&nbsp;&nbsp;</div>
+            <div class="item sel-inactive">Cargo.toml&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt">README.md&nbsp;&nbsp;&nbsp;</div>
+            <div class="item">build.rs&nbsp;&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt">target/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+          </div>
+          <div class="note">unfocused · same selection in the inactive brush (neutral grey)</div>
+        </div>
       </div>
-      <div class="note">selected · hovered · focused (reverse) · disabled</div>
     </section>
 
     <!-- TabControl -->
@@ -581,6 +604,8 @@
     ['--panel',     'popup / list / grid surface'],
     ['--well',      'focused text-field fill'],
     ['--sel',       'selection fill'],
+    ['--sel-inactive','selection fill, unfocused container'],
+    ['--altrow',    'alternating-row (zebra) fill'],
     ['--hover',     'hover fill'],
     ['--text',      'primary text / reverse-video field'],
     ['--text-dim',  'secondary text'],
@@ -612,7 +637,9 @@
     ['Check/Radio','pick', 'focus',    '--text',     '--bg'],
     ['Check/Radio','pick', 'mark on',  '--bg',       '--green'],
     ['List/Menu item','pick','normal', '--panel',    '--text'],
+    ['List/Menu item','pick','alt-row','--altrow',   '--text'],
     ['List/Menu item','pick','selected','--sel',     '--text'],
+    ['List/Menu item','pick','sel (inactive)','--sel-inactive','--text'],
     ['List/Menu item','pick','hover',  '--hover',    '--text'],
     ['List/Menu item','pick','focus',  '--text',     '--panel'],
     ['List/Menu item','pick','disabled','--panel',   '--muted'],
@@ -668,7 +695,8 @@ var KEYS = [
     ["AccentForegroundBrush","--on-accent","Text on AccentBrush"],
     ["WellBrush","--well","Intensified fill for focused text fields"],
     ["SelectionActiveBrush","--sel","Selected item/text, focused container"],
-    ["SelectionInactiveBrush","--surface","Selected item, unfocused container"],
+    ["SelectionInactiveBrush","--sel-inactive","Selected item, unfocused container"],
+    ["AlternateRowBrush","--altrow","Even-row zebra fill in lists/grids"],
     ["HoverBrush","--hover","Shared pointer-over fill"],
     ["PanelBackgroundBrush","--panel","Popups, lists, grids, menus"],
     ["DisabledBackgroundBrush","--disabled-bg","Any disabled control fill"],
@@ -703,7 +731,7 @@ var KEYS = [
     ["InputBackgroundFocus","--well","Focused = well fill"],
     ["InputCaretBrush","--accent",""],
     ["InputSelectionActive","--sel","Selection, control focused"],
-    ["InputSelectionInactive","--surface","Selection, control unfocused"],
+    ["InputSelectionInactive","--sel-inactive","Selection, control unfocused"],
     ["InputForegroundDisabled","--muted",""],
     ["InputBackgroundDisabled","--disabled-bg",""],
   ]],
@@ -715,10 +743,12 @@ var KEYS = [
   ["ListItem  (ListBox, ListView)", [
     ["ListItemForegroundNormal","--text",""],
     ["ListItemBackgroundNormal","--panel",""],
+    ["ListItemBackgroundAlternate","--altrow","Even-row zebra"],
     ["ListItemBackgroundHover","--hover",""],
     ["ListItemForegroundFocus","--panel","Reverse-video on focus"],
     ["ListItemBackgroundFocus","--text",""],
-    ["ListItemBackgroundSelected","--sel",""],
+    ["ListItemBackgroundSelected","--sel","Focused container"],
+    ["ListItemBackgroundSelectedInactive","--sel-inactive","Unfocused container"],
     ["ListItemForegroundDisabled","--muted",""],
   ]],
   ["TreeViewItem", [

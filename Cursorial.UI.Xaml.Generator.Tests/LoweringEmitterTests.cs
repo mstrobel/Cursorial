@@ -307,6 +307,37 @@ namespace TestApp
         Assert.Equal("first", label.Text); // the reflective indexer binding resolves Tags[0]
     }
 
+    [Fact] // P1-REVIEW Fix A — a path through a Nullable<T> hop bails to the reflective lane: the compiled step
+    // pattern `is global::System.DateTime? __t` would not parse, and `.Value` would NRE. The lowered code COMPILES.
+    public void Lowered_Binding_NullableHop_FallsBackToReflective()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.NullableView\" x:DataType=\"t:NVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding When.HasValue, Mode=OneWay}\"/>" + // When is DateTime? → Nullable hop
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using System;
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class NVm { public DateTime? When { get; set; } }
+    public partial class NullableView : StackPanel { public NullableView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // Bailed to the reflective lane (NOT a compiled binding with a broken `is global::System.DateTime? __t` step).
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"When.HasValue\")", lowered);
+        Assert.DoesNotContain("CompiledBinding", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        // Critically: the lowered code COMPILES (the Nullable step pattern would be CS1003/CS1525 if not bailed).
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
+
     [Fact] // audit fix — an init-only leaf compiles a null setter (degrades to OneWay), never an `__s.P = v` (CS8852)
     public void Lowered_Binding_InitOnlyLeaf_CompilesWithNullSetter()
     {

@@ -42,8 +42,10 @@ internal static class ClosedTypeSet
     /// The distinct <c>{x:Static Type.Member}</c> member-path tokens a document references (a text scan, robust
     /// to parse failures + nesting — <c>{Binding …, Converter={x:Static C.D}}</c> yields <c>C.D</c>). The
     /// generated provider bakes a <c>TryResolveStatic</c> switch over these. Over-collection (a path inside a
-    /// comment, say) is harmless — an extra unreachable switch case. The path is the token after <c>{x:Static</c>
-    /// up to whitespace or <c>}</c>, exactly the <see cref="XamlStaticReference"/> path the loader resolves.
+    /// comment, say) is harmless — an extra unreachable switch case. The token after <c>{x:Static</c> runs to
+    /// whitespace, <c>,</c> (the argument separator), or <c>}</c>; a surrounding single-quote pair and <c>\</c>
+    /// escapes are then unwrapped, so the result matches the <see cref="XamlStaticReference"/> path the
+    /// markup-extension parser hands the loader (<c>{x:Static 'Brushes.Red'}</c> → <c>Brushes.Red</c>).
     /// </summary>
     public static IReadOnlyList<string> CollectStaticPaths(string xaml)
     {
@@ -65,13 +67,16 @@ internal static class ClosedTypeSet
                 p++;
 
             int start = p;
-            while (p < xaml.Length && xaml[p] != '}' && !char.IsWhiteSpace(xaml[p]))
+            // Stop at the argument separator (',') as well as '}' / whitespace — matching the runtime grammar
+            // (a bare positional ends at ',' / '}'), so a single-positional x:Static with extra args isn't captured
+            // with a trailing comma.
+            while (p < xaml.Length && xaml[p] != '}' && xaml[p] != ',' && !char.IsWhiteSpace(xaml[p]))
                 p++;
 
             if (p > start)
             {
-                var path = xaml.Substring(start, p - start);
-                if (seen.Add(path))
+                var path = CleanStaticArg(xaml.Substring(start, p - start));
+                if (path.Length > 0 && seen.Add(path))
                     paths.Add(path);
             }
 
@@ -79,6 +84,27 @@ internal static class ClosedTypeSet
         }
 
         return paths;
+    }
+
+    // Unwraps a scanned positional token the way the markup-extension parser does: strips a surrounding single-quote
+    // pair (the quoted-positional form) then resolves '\' escapes — so {x:Static 'Brushes.Red'} / {x:Static Foo\.Bar}
+    // yield the same Brushes.Red / Foo.Bar the loader resolves at runtime (no generated-vs-reflection drift).
+    private static string CleanStaticArg(string token)
+    {
+        if (token.Length >= 2 && token[0] == '\'' && token[token.Length - 1] == '\'')
+            token = token.Substring(1, token.Length - 2);
+
+        if (token.IndexOf('\\') < 0)
+            return token;
+
+        var sb = new System.Text.StringBuilder(token.Length);
+        for (int k = 0; k < token.Length; k++)
+        {
+            if (token[k] == '\\' && k + 1 < token.Length)
+                k++;
+            sb.Append(token[k]);
+        }
+        return sb.ToString();
     }
 
     /// <summary>
@@ -102,8 +128,11 @@ internal static class ClosedTypeSet
 
     /// <summary>
     /// Resolves an <c>{x:Static "Type.Member"}</c> path to a baked <c>global::FullType.Member</c> expression, or
-    /// null when it can't resolve through the default UI xmlns (mirrors <c>ReflectionXamlMetadata.TryResolveStatic</c>'s
-    /// default-xmlns scope; the xmlns-prefixed widening is P1C). Verifies a public static field / readable property.
+    /// null when it can't resolve through the default UI xmlns. Mirrors <c>ReflectionXamlMetadata.TryResolveStatic</c>
+    /// EXACTLY (default-xmlns scope; the xmlns-prefixed widening is P1C): a public static field / readable property
+    /// declared DIRECTLY on the type — NOT inherited, because the reflection side uses
+    /// <c>GetField/GetProperty(Public|Static)</c> with no <c>FlattenHierarchy</c>, so baking an inherited static
+    /// would resolve under the generated provider but throw <c>MemberNotFound</c> under reflection (X174 drift).
     /// </summary>
     public static string? ResolveStaticExpr(XamlSymbolResolver resolver, string memberPath)
     {
@@ -118,20 +147,18 @@ internal static class ClosedTypeSet
         if (type is null)
             return null;
 
-        for (INamedTypeSymbol? t = type; t is not null; t = t.BaseType)
+        // Directly-declared members only (GetMembers does not include inherited) — matches reflection's no-FlattenHierarchy.
+        foreach (var m in type.GetMembers(memberName))
         {
-            foreach (var m in t.GetMembers(memberName))
+            var ok = m switch
             {
-                var ok = m switch
-                {
-                    IFieldSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } => true,
-                    IPropertySymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public, GetMethod: not null } => true,
-                    _ => false,
-                };
+                IFieldSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } => true,
+                IPropertySymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public, GetMethod: not null } => true,
+                _ => false,
+            };
 
-                if (ok)
-                    return $"{type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{memberName}";
-            }
+            if (ok)
+                return $"{type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{memberName}";
         }
 
         return null;

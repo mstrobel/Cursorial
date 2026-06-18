@@ -1319,11 +1319,12 @@ internal static class LoweringEmitter
 
         // B3 — the reflective-fallback INFO (CURG2002): a binding that WAS a compiled-lane candidate (x:DataType in
         // scope) but stayed reflective, naming why. Only when the reflective binding actually emitted (a Converter
-        // etc. that the reflective lane also drops is a CURG3001 gap, not a "works-but-reflective" info) and a
-        // reason was recorded (a non-candidate — no x:DataType — leaves reason null and gets no noise).
+        // etc. that the reflective lane also drops is a CURG3001 gap, not a "works-but-reflective" info) AND a reason
+        // was recorded — a non-candidate (no x:DataType) and a path-walk failure (not-found → CURG2001 owns it;
+        // static/write-only → wouldn't resolve reflectively anyway) both leave reason null and get no noise. The
+        // reason already states the cause; no generic remedy clause (it varies per reason and was misleading).
         if (reflectiveEmitted && reason is not null)
-            c.Info($"{{Binding}} for '{xm.Name}' stays reflective: {reason}. It works, but for a zero-reflection " +
-                   "compiled binding under full-lowering use a DataContext-relative path with no Converter/Source/RelativeSource.");
+            c.Info($"{{Binding}} for '{xm.Name}' stays reflective ({reason}) — it works, but is not the AOT-optimal compiled form.");
     }
 
     // Emits a typed, reflection-free CompiledBinding when the binding is an x:DataType-rooted, DataContext-relative,
@@ -1377,11 +1378,22 @@ internal static class LoweringEmitter
         var current = dataType;
         for (int h = 0; h < hops.Length; h++)
         {
+            // A member accessed ON a Nullable<T> (the path walks through .Value/.HasValue) isn't compiled: the
+            // typed whole-chain read would NRE on a null intermediate, and the per-hop `is T? __t` step pattern
+            // doesn't even parse (the `?` reads as a ternary). Bail to the reflective lane, which reflects it.
+            if (current is { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T })
+            {
+                reason = "a path hop accesses a Nullable<T> member";
+                return false;
+            }
+
             if (XamlDataTypeScope.FindMember(current, hops[h]) is not { IsStatic: false } member ||
                 !XamlDataTypeScope.IsReadable(member) ||
                 XamlDataTypeScope.MemberType(member) is not { } hopType)
             {
-                reason = "a path hop is static, not found, or not readable on the x:DataType";
+                // A not-found member is the path validator's CURG2001 (don't also raise the "works-but-reflective"
+                // CURG2002); a static / write-only member won't resolve through an instance DataContext either, so
+                // no "It works" info — leave reason null. The reflective fallback still emits a (possibly inert) binding.
                 return false;
             }
 
@@ -1407,13 +1419,16 @@ internal static class LoweringEmitter
         // than Binding.Compiled's path.Compile() (which throws on a null intermediate); it matches the reflective
         // lane for the non-null reads B156 pins (a null intermediate is default(leaf) here vs the reflective
         // UnsetValue — the documented, opt-in-via-full-lowering difference).
+        // Member-access positions @-escape a hop that collides with a C# reserved keyword (a member name on a
+        // VB/F# VM can be `event`/`class`/…); the CompiledPathStep string label stays the raw name (the runtime
+        // resolves by name).
         var chain = new StringBuilder("__s");
         var conditional = false;
         for (int h = 0; h < hops.Length; h++)
         {
             var accessor = h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".");
             if (accessor == "?.") conditional = true;
-            chain.Append(accessor).Append(hops[h]);
+            chain.Append(accessor).Append(EscapeId(hops[h]));
         }
         var getter = conditional ? $"static __s => ({chain}) ?? default({value})" : $"static __s => {chain}";
 
@@ -1422,7 +1437,7 @@ internal static class LoweringEmitter
         var steps = new List<string>(hops.Length);
         for (int h = 0; h < hops.Length; h++)
             steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(hops[h])}\", " +
-                      $"static __o => __o is {Global(owners[h])} __t ? (object?)__t.{hops[h]} : null)");
+                      $"static __o => __o is {Global(owners[h])} __t ? (object?)__t.{EscapeId(hops[h])} : null)");
 
         // Setter (TwoWay) — only when the leaf is writable AND its owner is a reference type (writing through a
         // value-typed owner mutates a copy ⇒ a no-op, so degrade to OneWay/null, matching the reflective lane —
@@ -1432,14 +1447,14 @@ internal static class LoweringEmitter
         {
             if (hops.Length == 1)
             {
-                setter = $"static (__s, __v) => __s.{hops[0]} = __v";
+                setter = $"static (__s, __v) => __s.{EscapeId(hops[0])} = __v";
             }
             else
             {
                 var ownerChain = new StringBuilder("__s");
                 for (int h = 0; h < hops.Length - 1; h++)
-                    ownerChain.Append(h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")).Append(hops[h]);
-                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {{ }} __o) __o.{hops[hops.Length - 1]} = __v; }}";
+                    ownerChain.Append(h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")).Append(EscapeId(hops[h]));
+                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {{ }} __o) __o.{EscapeId(hops[hops.Length - 1])} = __v; }}";
             }
         }
 
@@ -1619,6 +1634,13 @@ internal static class LoweringEmitter
     private static string Global(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
     private static string Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    // A C#-identifier emission position (member access): verbatim-escape (@) a name that is a reserved keyword, so a
+    // member from a non-C# VM (VB/F# `event`/`class`/…) emits `__s.@event`, not the uncompilable `__s.event`.
+    private static string EscapeId(string name)
+        => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(name) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+            ? "@" + name
+            : name;
 
     // The result of an init-only member pre-scan: the object-initializer entries + the member indices to skip.
     private sealed class InitOnlyScan

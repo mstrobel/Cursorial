@@ -42,4 +42,31 @@ public class ClosedTypeSetTests
         var names = ClosedTypeSet.CollectElementNames(xaml);
         Assert.Equal(1, names.Count(n => n.LocalName == "Button"));
     }
+
+    // ── x:Static scan + resolution (P1-REVIEW fixes C/D) ──────────────────────────────────────────────
+
+    [Theory] // Fix D — the scan matches the markup-extension grammar: quotes stripped, '\' unescaped, ',' stops
+    [InlineData("{x:Static Brushes.Red}", "Brushes.Red")]
+    [InlineData("{x:Static 'Brushes.Red'}", "Brushes.Red")]          // quoted positional → quotes stripped
+    [InlineData(@"{x:Static Foo\.Bar}", "Foo.Bar")]                   // '\' escape resolved
+    [InlineData("{x:Static Colors.Red, x}", "Colors.Red")]            // stops at the ',' separator (no trailing comma)
+    [InlineData("{Binding V, Converter={x:Static C.D}}", "C.D")]      // nested: the inner x:Static's '}' precedes the comma
+    public void CollectStaticPaths_MatchesRuntimeGrammar(string xaml, string expected)
+    {
+        var paths = ClosedTypeSet.CollectStaticPaths(xaml);
+        Assert.Contains(expected, paths);
+    }
+
+    [Fact] // Fix C — an INHERITED static is NOT baked (reflection uses no FlattenHierarchy → would miss it → drift)
+    public void ResolveStaticExpr_InheritedStatic_NotBaked()
+    {
+        var resolver = new XamlSymbolResolver(GeneratorHarness.ReferencedCompilation());
+
+        // OpacityProperty is declared on UIElement and inherited by Button (no redeclaration).
+        Assert.NotNull(ResolveStaticOf(resolver, "UIElement.OpacityProperty"));   // declared-on → baked
+        Assert.Null(ResolveStaticOf(resolver, "Button.OpacityProperty"));         // inherited → NOT baked (matches reflection)
+    }
+
+    private static string? ResolveStaticOf(XamlSymbolResolver resolver, string path)
+        => ClosedTypeSet.ResolveStaticExpr(resolver, path);
 }

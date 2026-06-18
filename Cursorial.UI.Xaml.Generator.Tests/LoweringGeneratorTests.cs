@@ -200,4 +200,47 @@ namespace GenApp
         instance.DataContext = root; // re-resolve with Child present
         Assert.Equal("Ada", edit.Text);
     }
+
+    [Fact] // P1-REVIEW Fix E — a STATIC member path emits NO false "It works" CURG2002 (a static won't resolve
+           // through an instance DataContext, so the reflective binding is inert — not a "works-but-reflective" case).
+    public void LoweringOptIn_StaticMemberPath_EmitsNoCurg2002()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:GenApp\" x:Class=\"GenApp.StaticBindView\" x:DataType=\"t:SVm\">" +
+            "<Button Content=\"{Binding Shared}\"/>" + // Shared is a STATIC member
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp
+{
+    public sealed class SVm { public static string Shared { get; set; } = string.Empty; }
+    public partial class StaticBindView : StackPanel { public StaticBindView() => InitializeComponent(); }
+}";
+
+        var (_, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("StaticBindView.xaml", xaml));
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(diagnostics, d => d.Id == "CURG2002"); // no false "stays reflective … it works"
+    }
+
+    [Fact] // P1-REVIEW Fix E — a NOT-FOUND member path gets CURG2001 (the path validator) but NOT a contradictory CURG2002
+    public void LoweringOptIn_NotFoundPath_EmitsCurg2001NotCurg2002()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:GenApp\" x:Class=\"GenApp.TypoView\" x:DataType=\"t:TVm\">" +
+            "<Button Content=\"{Binding Titel}\"/>" + // typo — the VM has Title
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp
+{
+    public sealed class TVm { public string Title { get; set; } = string.Empty; }
+    public partial class TypoView : StackPanel { public TypoView() => InitializeComponent(); }
+}";
+
+        var (_, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("TypoView.xaml", xaml));
+        Assert.Contains(diagnostics, d => d.Id == "CURG2001");       // the path validator flags the typo
+        Assert.DoesNotContain(diagnostics, d => d.Id == "CURG2002"); // and no contradictory "it works" info
+    }
 }

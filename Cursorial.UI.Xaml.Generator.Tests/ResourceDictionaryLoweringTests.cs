@@ -149,4 +149,116 @@ public class ResourceDictionaryLoweringTests
         Assert.Equal(2, dict.Styles!.Count);
         Assert.Single(dict.Styles[1].Children); // the ^:pointerover nested rule
     }
+
+    [Fact] // X5.4i — a same-dictionary {StaticResource} Setter value resolves to the built entry (its load-time snapshot)
+    public void Lowered_StaticResource_SameDict_Setter_ReferencesBuiltEntry()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<ControlTemplate x:Key=\"T\" TargetType=\"Button\"><Border/></ControlTemplate>" +
+            "<Style x:Key=\"{x:Type Button}\" TargetType=\"Button\">" +
+              "<Setter Property=\"Template\" Value=\"{StaticResource T}\"/>" +
+            "</Style>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var dict = InvokeBuilder(assembly, "BuildMyView");
+
+        var template = dict["T"];
+        var style = Assert.IsType<Cursorial.UI.Style>(dict[typeof(Button)]);
+        var setter = Assert.Single(style.Setters);
+        Assert.Same(template, setter.Value); // the {StaticResource} is the SAME object as the dictionary entry
+    }
+
+    [Fact] // X5.4i — a {StaticResource} INSIDE a template captures the entry var (the factory drops `static`)
+    public void Lowered_StaticResource_InsideTemplate_CapturesEntryVar()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<ControlTemplate x:Key=\"Inner\" TargetType=\"Button\"><Border/></ControlTemplate>" +
+            "<ControlTemplate x:Key=\"Outer\" TargetType=\"Button\">" +
+              "<Button Template=\"{StaticResource Inner}\"/>" +
+            "</ControlTemplate>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        // The non-capturing Inner factory stays `static`; the capturing Outer factory drops it (it references the
+        // enclosing Inner-template local). A 12-space indent directly before `global::` ⇒ a non-static factory.
+        Assert.Contains("            static global::Cursorial.UI.UIElement __Factory", lowered);
+        Assert.Contains("            global::Cursorial.UI.UIElement __Factory", lowered);
+
+        // Compiles + builds — a `static` local function referencing the enclosing Inner local would be a CS error,
+        // so a successful build is the proof that the capturing factory was correctly emitted non-static.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        Assert.NotNull(InvokeBuilder(assembly, "BuildMyView")["Outer"]);
+    }
+
+    [Fact] // X5.4i — a keyed ControlTemplate's TargetType resolves a type TOKEN; a {TemplateBinding} resolves against it
+    public void Lowered_ControlTemplate_TargetType_And_TemplateBinding()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<ControlTemplate x:Key=\"T\" TargetType=\"Button\">" +
+              "<Border Background=\"{TemplateBinding Background}\"/>" +
+            "</ControlTemplate>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", lowered);  // TargetType = a typeof token, not a converter call
+        Assert.Contains("new global::Cursorial.UI.Data.TemplateBinding(", lowered);
+        Assert.Contains(".BackgroundProperty)", lowered);                          // resolved against the template target
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var template = Assert.IsType<ControlTemplate>(InvokeBuilder(assembly, "BuildMyView")["T"]);
+        Assert.Equal(typeof(Button), template.TargetType);
+    }
+
+    [Fact] // X5.4i — element-level {DynamicResource {x:Static}} → SetResourceReference with the resolved static key (object)
+    public void Lowered_DynamicResource_XStaticKey_OnElement()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<Border x:Key=\"B\" Background=\"{DynamicResource {x:Static ThemeKeys.TextBrush}}\"/>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("global::Cursorial.UI.ResourceExtensions.SetResourceReference(", lowered);
+        Assert.Contains("global::Cursorial.UI.Themes.ThemeKeys.TextBrush", lowered); // the resolved static member, not a string literal
+        Assert.DoesNotContain("TODO X5", lowered);
+    }
+
+    [Fact] // X5.4i — a Text Setter value is converted to the property's value type (matching the reflection fold)
+    public void Lowered_SetterValue_ConvertsToPropertyType()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<Style x:Key=\"{x:Type Button}\" TargetType=\"Button\">" +
+              "<Setter Property=\"Padding\" Value=\"2,1\"/>" +
+            "</Style>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The value runs the converter ladder (not passed as the raw "2,1" string the StyleSetterConverter can't take).
+        Assert.Contains("__ConvertXamlValue(typeof(", lowered);
+        Assert.Contains("\"2,1\"", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var style = Assert.IsType<Cursorial.UI.Style>(InvokeBuilder(assembly, "BuildMyView")[typeof(Button)]);
+        Assert.IsNotType<string>(Assert.Single(style.Setters).Value); // converted off the raw "2,1" string to the Padding type
+    }
 }

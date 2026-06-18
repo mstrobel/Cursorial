@@ -623,6 +623,16 @@ internal sealed class XamlObjectGraphBuilder
         if (memberType == typeof(string) || memberType == typeof(object))
             return text;
 
+        // A System.Type-valued member (e.g. ControlTemplate.TargetType) takes a type TOKEN resolved via the
+        // xmlns — there is no string→Type value converter (mirrors TryGetDataType's resolution). An unresolved
+        // token falls through to the converter ladder (→ raw string → the CLR setter rejects it, as before).
+        if (memberType == typeof(Type))
+        {
+            var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, text);
+            if (resolution.IsResolved)
+                return resolution.Type!.SystemType();
+        }
+
         var converter = member.Converter ?? XamlConverters.For(memberType);
         if (converter is null)
             return text; // no converter — pass the raw string (CLR setter may accept it)

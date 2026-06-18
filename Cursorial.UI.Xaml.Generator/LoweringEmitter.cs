@@ -256,6 +256,11 @@ internal static class LoweringEmitter
         var childVar = c.NextVar();
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
         c.Line($"{dictVar}.Add({keyExpr}, {childVar});");
+
+        // Track the built entry under its raw string key so a later same-dictionary {StaticResource key} references
+        // it directly (define-before-use). {x:Static}/{x:Type} keys aren't string-keyable by StaticResource — skip.
+        if (RawKey(c, childIndex) is { } rawKey && !rawKey.StartsWith("{", System.StringComparison.Ordinal))
+            c.ResourceVars[rawKey] = childVar;
     }
 
     // The object indices of a member's value run (Items → each; Object → the one), else empty.
@@ -429,15 +434,21 @@ internal static class LoweringEmitter
             }
     }
 
-    // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, rawValue)). The value
-    // is passed UNCONVERTED (the StyleSetterConverter runs once at Style.Seal); {DynamicResource}→ResourceReference.
+    // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, value)). A Text value
+    // is converted to the property's value type via the converter ladder — the reflection frontend folds a
+    // context-free converter at parse (so the loaded Setter holds the typed value; e.g. GlyphSetCarrier), and we
+    // match by converting at Build() runtime, so StyleSetterConverter passes the typed value through at Seal rather
+    // than choking on a raw string its ladder can't handle. {DynamicResource}→ResourceReference; a same-dictionary
+    // {StaticResource}→the built entry's var. The Value is resolved AFTER the loop, once the property's value type
+    // is known (member order isn't guaranteed).
     private static void EmitSetter(Context c, string styleVar, int setterIndex, INamedTypeSymbol? targetType)
     {
         ref readonly var setter = ref c.Doc.Objects[setterIndex];
         c.CurrentLineInfo = setter.PackedLineInfo;
 
         string? propExpr = null;
-        string valueExpr = "global::Cursorial.UI.UIProperty.UnsetValue"; // a valueless setter, unless a Value member is found
+        ITypeSymbol? propValueType = null;
+        int valueMember = -1;
 
         for (int m = setter.MemberStart; m < setter.MemberStart + setter.MemberCount; m++)
         {
@@ -451,22 +462,25 @@ internal static class LoweringEmitter
 
             if (xm.Name == "Value")
             {
-                if (SetterValueExpr(c, in member) is { } v)
-                    valueExpr = v;
-                else
-                    c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} supported; {StaticResource}/complex deferred)");
+                valueMember = m; // resolved after the loop, once the property's value type is known
                 continue;
             }
 
-            // The Property member: its Text value is the property name; the resolved owner is xm.Property (parse-
-            // rewritten) or, failing that, resolved against the Style's TargetType.
+            // The Property member: its Text value is the property name — for an attached/prefixed setter it's the
+            // qualified "Owner.Prop" (e.g. "ToggleGlyph.Glyphs", "input:AccessKeyManager.ShowUnderline"), so the
+            // <Name>Property field name is the segment after the last '.'. The owner is xm.Property (the parse-
+            // resolved attached owner) or, for a simple name, resolved against the Style's TargetType.
             if (member.Kind == XamlValueKind.Text)
             {
                 var name = c.Doc.Strings[member.ValueIndex];
+                var propName = name.Substring(name.LastIndexOf('.') + 1);
                 var owner = xm.Property as INamedTypeSymbol
-                            ?? (targetType is { } tt ? SymbolXamlModel.FindRegisteredPropertyOwner(tt, name) : null);
+                            ?? (targetType is { } tt ? SymbolXamlModel.FindRegisteredPropertyOwner(tt, propName) : null);
                 if (owner is not null)
-                    propExpr = $"{Global(owner)}.{name}Property";
+                {
+                    propExpr = $"{Global(owner)}.{propName}Property";
+                    propValueType = ValueTypeSymbol(xm.ValueType); // the Setter value's conversion target
+                }
             }
         }
 
@@ -476,27 +490,66 @@ internal static class LoweringEmitter
             return;
         }
 
+        var valueExpr = "global::Cursorial.UI.UIProperty.UnsetValue"; // valueless unless a Value member is present
+        if (valueMember >= 0)
+        {
+            if (SetterValueExpr(c, in c.Doc.Members[valueMember], propValueType) is { } v)
+                valueExpr = v;
+            else
+            {
+                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} / same-dict {StaticResource} supported; complex deferred)");
+                return;
+            }
+        }
+
         c.Line($"{styleVar}.Setters.Add(new global::Cursorial.UI.Setter({propExpr}, {valueExpr}));");
     }
 
-    // A Setter.Value expression (unconverted): a literal string, a folded null/{x:Static}, or {DynamicResource}
-    // → a ResourceReference carrier (the styling engine resolves it per-element at arm time). Null = unsupported.
-    private static string? SetterValueExpr(Context c, in MemberRecord member) => member.Kind switch
+    // A Setter.Value expression: a Text value converted to the property's value type (see SetterTextValueExpr), a
+    // folded null/{x:Static}, or a *Resource extension. Null = unsupported.
+    private static string? SetterValueExpr(Context c, in MemberRecord member, ITypeSymbol? propValueType) => member.Kind switch
     {
-        XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
+        XamlValueKind.Text => SetterTextValueExpr(c, c.Doc.Strings[member.ValueIndex], propValueType),
         XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
-        XamlValueKind.Extension => DynamicResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        XamlValueKind.Extension => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
         _ => null,
     };
 
-    // {DynamicResource key} as a Setter.Value → new ResourceReference(key) with the key resolved at codegen (a
-    // string literal, or an {x:Static} member). Other extensions (StaticResource/Binding) → null (unsupported).
-    private static string? DynamicResourceValueExpr(Context c, in ExtensionRecord ext)
+    // A Text Setter value, converted to the property's value type via the (AOT-clean) converter ladder — matching
+    // the reflection frontend's parse-time context-free fold. An object/string (or unknown) value type keeps the raw
+    // string (StyleSetterConverter converts enum/Color/IBrush/primitives at Seal — the no-converter fallback); a
+    // System.Type value → a typeof token (no value converter; cf. ScalarConvertExpr).
+    private static string? SetterTextValueExpr(Context c, string text, ITypeSymbol? propValueType)
     {
-        if (ext.Kind != ExtensionKind.DynamicResource || ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
-            return null;
+        if (propValueType is null
+            || propValueType.SpecialType is SpecialType.System_String or SpecialType.System_Object)
+            return $"\"{Escape(text)}\"";
 
-        return $"new global::Cursorial.UI.ResourceReference({keyExpr})";
+        if (IsSystemType(propValueType))
+            return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved
+                ? $"typeof({Global(resolved)})"
+                : null;
+
+        c.UsesConverter = true;
+        return $"__ConvertXamlValue(typeof({Global(propValueType)}), \"{Escape(text)}\")";
+    }
+
+    // A *Resource extension as a Setter.Value expression: {DynamicResource key} → a ResourceReference carrier (the
+    // styling engine resolves it per-element at arm time), key resolved at codegen (literal or {x:Static}); a
+    // same-dictionary {StaticResource key} → the already-built entry's var (its load-time snapshot). Other
+    // extensions (Binding) or an unresolvable key → null (unsupported).
+    private static string? ResourceValueExpr(Context c, in ExtensionRecord ext)
+    {
+        if (ext.Kind == ExtensionKind.DynamicResource)
+            return ResourceKeyArgExpr(c, in ext) is { } keyExpr
+                ? $"new global::Cursorial.UI.ResourceReference({keyExpr})"
+                : null;
+
+        if (ext.Kind == ExtensionKind.StaticResource && !ext.PayloadIsParsedExtension &&
+            c.ResourceVars.TryGetValue(c.Doc.Strings[ext.Payload], out var srcVar))
+            return srcVar;
+
+        return null;
     }
 
     // The key of a *Resource extension as a C# expression: a literal string, or an {x:Static} global:: member
@@ -807,8 +860,14 @@ internal static class LoweringEmitter
                     // A template body (ControlTemplate/DataTemplate Content): lower the slice to a FuncTemplateContent
                     // factory built fresh per instantiation, and assign it to the ITemplateContent member. The
                     // templated-parent type (for {TemplateBinding} inside) is the ControlTemplate's explicit
-                    // TargetType, else the enclosing control established by the Object recursion above.
+                    // TargetType, else the enclosing control established by the Object recursion above, else — for a
+                    // keyed shared ControlTemplate (no TargetType, no enclosing control) — the Control base: a
+                    // ControlTemplate is always applied to a Control, and the framework {TemplateBinding} sources
+                    // (Background/BorderPen/…) are registered on Control, so the resolved UIProperty is the exact
+                    // object the runtime resolves by name against the concrete parent at apply-time.
                     var target = ResolveTemplateTargetType(c, in obj) ?? c.TemplatedParentType;
+                    if (target is null && objType is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" })
+                        target = c.Control;
                     var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target);
                     var content = $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory})";
                     if (RegisteredOwner(xm) is { } owner)
@@ -856,19 +915,26 @@ internal static class LoweringEmitter
         var savedInTemplate = c.InTemplate;
         var savedCtxVar = c.TemplateContextVar;
         var savedTpt = c.TemplatedParentType;
+        var savedCaptures = c.CurrentFactoryCaptures;
         c.InTemplate = true;
         c.TemplateContextVar = "__ctx";
         c.TemplatedParentType = templatedParentType;
+        c.CurrentFactoryCaptures = false;
 
         EmitObject(c, sliceHead, rootVar, isRoot: false, hasScope, dataType: null);
 
+        // A factory that referenced an enclosing local (a same-dict {StaticResource} var) can't be `static` — it
+        // must capture. One that didn't stays `static` (cleaner generated code; matches the non-capturing tests).
+        var captures = c.CurrentFactoryCaptures;
         c.InTemplate = savedInTemplate;
         c.TemplateContextVar = savedCtxVar;
         c.TemplatedParentType = savedTpt;
+        c.CurrentFactoryCaptures = savedCaptures;
         c.SwapBuffer(savedBuffer);
 
         var fn = new StringBuilder();
-        fn.AppendLine($"{c.Indent}static global::Cursorial.UI.UIElement {factoryName}(global::Cursorial.UI.Controls.TemplateBuildContext __ctx)");
+        var staticMod = captures ? "" : "static ";
+        fn.AppendLine($"{c.Indent}{staticMod}global::Cursorial.UI.UIElement {factoryName}(global::Cursorial.UI.Controls.TemplateBuildContext __ctx)");
         fn.AppendLine($"{c.Indent}{{");
         fn.Append(bodyBuf);
         fn.AppendLine($"{c.Indent}    return {rootVar};");
@@ -948,12 +1014,23 @@ internal static class LoweringEmitter
 
         if (ValueTypeSymbol(xm.ValueType) is { } valueType)
         {
+            // A System.Type-valued member (e.g. ControlTemplate.TargetType) takes a type TOKEN resolved via the
+            // document xmlns → typeof(...). There is no string→Type value converter (the runtime loader has the
+            // same gap — ConvertText would pass the raw string), so the converter ladder can't handle it.
+            if (IsSystemType(valueType))
+                return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved
+                    ? $"typeof({Global(resolved)})"
+                    : null;
+
             c.UsesConverter = true;
             return $"__ConvertXamlValue(typeof({Global(valueType)}), \"{Escape(text)}\")";
         }
 
         return null;
     }
+
+    private static bool IsSystemType(ITypeSymbol type)
+        => type is { Name: "Type", ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true } };
 
     // The typed (cast) form for a CLR setter / object initializer (the converter's object? cast to the prop type).
     private static string? ScalarTypedExpr(Context c, XamlMember xm, string text)
@@ -1118,12 +1195,6 @@ internal static class LoweringEmitter
     // handler rejects direct/attached); a literal key only (a nested-extension key is deferred to a later cut).
     private static void EmitDynamicResource(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext)
     {
-        if (ext.PayloadIsParsedExtension)
-        {
-            c.Todo($"{{DynamicResource}} with a markup-extension key for '{xm.Name}' not yet lowered");
-            return;
-        }
-
         if (!XamlDataTypeScope.IsUIElement(c.CurrentObjectType))
         {
             c.Todo($"{{DynamicResource}} on a non-UIElement target ('{xm.Name}') not yet lowered");
@@ -1136,9 +1207,15 @@ internal static class LoweringEmitter
             return;
         }
 
-        var key = c.Doc.Strings[ext.Payload];
+        // The key: a literal string, or a nested {x:Static} member (SetResourceReference's key param is object).
+        if (ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
+        {
+            c.Todo($"{{DynamicResource}} with an unsupported markup-extension key for '{xm.Name}' not yet lowered");
+            return;
+        }
+
         // SetResourceReference<T> infers T from the StyledProperty<T> field; call it statically (no using).
-        c.Line($"global::Cursorial.UI.ResourceExtensions.SetResourceReference({varExpr}, {Global(owner)}.{xm.Name}Property, \"{Escape(key)}\");");
+        c.Line($"global::Cursorial.UI.ResourceExtensions.SetResourceReference({varExpr}, {Global(owner)}.{xm.Name}Property, {keyExpr});");
     }
 
     // {StaticResource Key} — eager, but deferred to end-of-InitializeComponent (see EmitDeferredStaticResources):
@@ -1149,6 +1226,18 @@ internal static class LoweringEmitter
         if (ext.PayloadIsParsedExtension)
         {
             c.Todo($"{{StaticResource}} with a markup-extension key for '{xm.Name}' not yet lowered");
+            return;
+        }
+
+        var key = c.Doc.Strings[ext.Payload];
+
+        // Same-dictionary key (lexically built before this use): reference the entry's var directly — StaticResource's
+        // exact load-time-snapshot semantics, and the only form that works inside a template factory (a non-static
+        // local function captures the var). Works inline too (the var is in the same Build() scope).
+        if (c.ResourceVars.TryGetValue(key, out var srcVar))
+        {
+            if (c.InTemplate) c.CurrentFactoryCaptures = true; // the factory references an enclosing local ⇒ not static
+            AssignResolvedResource(c, varExpr, xm, srcVar);
             return;
         }
 
@@ -1166,12 +1255,24 @@ internal static class LoweringEmitter
             return;
         }
 
-        var key = c.Doc.Strings[ext.Payload];
         var owner = RegisteredOwner(xm);
         // For a CLR (non-UIProperty) target, remember the value type so the assignment casts FindResource's
         // object? to the property type — needed even for a `string` target (object? → string is not implicit).
         var clrType = owner is null ? ValueTypeSymbol(xm.ValueType) : null;
         c.StaticResources.Add(new StaticResourceResolution(varExpr, owner, xm.Name, key, clrType));
+    }
+
+    // Assigns an already-resolved resource value expression (a built entry's var) to a member: SetValue for a
+    // registered UIProperty target; else a CLR set (cast to the member value type when it's a concrete type, so a
+    // base/interface-typed target accepts the concrete-typed var — and object/string targets need no cast).
+    private static void AssignResolvedResource(Context c, string varExpr, XamlMember xm, string valueExpr)
+    {
+        if (RegisteredOwner(xm) is { } owner)
+            c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
+        else if (!IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
+            c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){valueExpr};");
+        else
+            c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
     }
 
     // Emits the recorded {StaticResource} resolutions at the end of InitializeComponent. By here the whole tree
@@ -1450,11 +1551,42 @@ internal static class LoweringEmitter
         public List<UnloweredMember> Unlowered { get; } = [];
         public List<StaticResourceResolution> StaticResources { get; } = [];
 
+        /// <summary>
+        /// Raw-string resource key → the local var holding the already-built dictionary entry. A same-dictionary
+        /// <c>{StaticResource key}</c> (lexically defined before its use) resolves to this var — StaticResource's
+        /// exact load-time-snapshot semantics. A flat map (unique theme keys); cross-scope lexical shadowing is a
+        /// future refinement caught by the dual-run gate. Populated as <see cref="EmitDictionaryEntry"/> builds entries.
+        /// </summary>
+        public Dictionary<string, string> ResourceVars { get; } = new(System.StringComparer.Ordinal);
+
+        private INamedTypeSymbol? _control;
+        private bool _controlResolved;
+
+        /// <summary>The <c>Cursorial.UI.Controls.Control</c> symbol — a keyed <c>ControlTemplate</c>'s implicit
+        /// templated-parent base (it's always applied to a Control), so a {TemplateBinding} with no explicit
+        /// TargetType resolves its source against it. Resolved once, lazily; null if unavailable.</summary>
+        public INamedTypeSymbol? Control
+        {
+            get
+            {
+                if (!_controlResolved)
+                {
+                    _control = Resolver.Resolve(XamlSymbolResolver.CursorialUiNamespace, "Control", out _);
+                    _controlResolved = true;
+                }
+                return _control;
+            }
+        }
+
         /// <summary>The emitted template factory local functions, appended at the end of InitializeComponent (hoisted).</summary>
         public List<string> Factories { get; } = [];
 
         /// <summary>True while lowering inside a template factory (no end-of-tree FindResource anchor for {StaticResource}).</summary>
         public bool InTemplate { get; set; }
+
+        /// <summary>Set while emitting a template factory body when it references an enclosing local (a same-dict
+        /// {StaticResource} var) — so the factory drops <c>static</c> and captures it. Saved/restored per factory.</summary>
+        public bool CurrentFactoryCaptures { get; set; }
 
         /// <summary>The TemplateBuildContext var name while inside a template factory (x:Name → its RegisterName); null otherwise.</summary>
         public string? TemplateContextVar { get; set; }

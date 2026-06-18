@@ -152,6 +152,15 @@ public abstract class SelectingItemsControl : ItemsControl
         }
     }
 
+    /// <summary>Selectors navigate on type-ahead.</summary>
+    private protected override bool TextSearchNavigates => true;
+
+    /// <summary>Type-ahead cycles from the current selection.</summary>
+    private protected override int CurrentTextSearchIndex => _selectedIndex;
+
+    /// <summary>A type-ahead match selects the item (selectors); subclasses refine with focus.</summary>
+    private protected override void OnTextSearchMatch(int containerIndex) => _selection.Select(containerIndex);
+
     /// <summary>Re-target hook (CD-P9-9): the selection emptied because a removal dropped every selected item.
     /// The base does nothing; <see cref="ListBox"/> re-selects the nearest surviving item.</summary>
     private protected virtual void OnSelectionEmptiedByRemoval(int removalIndex)

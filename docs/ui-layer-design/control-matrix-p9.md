@@ -870,3 +870,39 @@ arrow inside the open calendar committed the adjacent date and slammed the popup
 of `SelectedDateChanged`. (The third finding — opening with a preexisting date commit-and-closed via the open-time
 push — was caught pre-commit and fixed by the same redesign: a property push fires `SelectedDateChanged` but not
 `DateCommitted`, so it can't close; row C15.7. The interim `_syncingCalendar` guard was removed as redundant.)
+
+---
+
+## §C16 — TextSearch (type-ahead) for ItemsControls (post-P9)
+
+A shared `ItemsControl`-level type-ahead facility (the WPF `TextSearch` model). Printable keys accumulate a prefix
+(reset after a ~1 s idle), and the control moves its current item to the first match; re-pressing a single character
+cycles among items that start with it. Per-item match text is `TextSearch.Text` (attached, on the container/item),
+else the control's `TextSearch.TextPath` (attached) evaluated against the item, else `item.ToString()`.
+`IsTextSearchEnabled` (default true) + `IsTextSearchCaseSensitive` (default false). The engine lives in
+`ItemsControl` (pure `TextSearchMatcher` + buffered `TextSearchController`); only controls that actually move a
+current item opt in (`TextSearchNavigates`) so a plain `ItemsControl`/`Menu` never swallows a key. `ListBox`/`ComboBox`
+(via `SelectingItemsControl`) select the match (ListBox also focuses it); `TreeView` matches its **top-level** nodes'
+`Header` and selects+focuses (full visible-subtree search is a follow-on). Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section29_TextSearch.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C16.1 | items alpha/apple/ant/bravo/charlie | match "c" / "br" / "z" | charlie / bravo / no-match (−1) | PIN (CD-P2F-1) |
+| C16.2 | — | repeat "a" from index 0/1/2 | cycles apple→ant→alpha (from after current, wrapping) | PIN (CD-P2F-1) |
+| C16.3 | Alpha/beta | "a" case-insensitive vs sensitive; "A" sensitive | match / no-match / match | PIN (CD-P2F-1) |
+| C16.4 | can/car/cat/dog | type c, a, t | prefix extends "c"→"ca"→"cat"; lands on cat | PIN (CD-P2F-1) |
+| C16.5 | — | leading space; then a,a,a | space ignored (−1); then alpha→apple→ant cycle | PIN (CD-P2F-1) |
+| C16.6 | ListBox | type "c"; "h" (rapid); idle; "b" | charlie; still charlie ("ch"); after reset "b"→bravo | PIN (CD-P2F-1) |
+| C16.7 | ComboBox (closed) | type "g" | selects gamma without opening the drop-down | PIN (CD-P2F-1) |
+| C16.8 | TreeView top-level apple/banana/cherry | type "c" | selects+focuses the cherry node (matched on Header) | PIN (CD-P2F-1) |
+| C16.9 | ListBox of Person, TextPath=Name | type "g" | selects "Grace" via TextPath (not ToString) | PIN (CD-P2F-1) |
+
+**CD-P2F-1 — TextSearch: shared ItemsControl type-ahead.** Attached `TextSearch.TextPath`/`Text`; `ItemsControl`
+gains `IsTextSearchEnabled`/`IsTextSearchCaseSensitive`, a lazy `TextSearchController`, an `OnTextInput` driver
+(ignores paste + control chars + a leading space; gated on `TextSearchNavigates`), and the virtuals
+`CurrentTextSearchIndex`/`GetTextSearchText`/`OnTextSearchMatch`. `TextSearchMatcher.FindMatchIndex` is the pure
+prefix search (repeat → from after current, extend → from current, both wrapping). The controller extends the prefix
+on a new char and cycles on a re-pressed single char, adopting the prefix only on a hit, with a frame-aligned
+`UITimer` idle reset. **Deferral:** TreeView full visible-subtree search (top-level only for now); a filtering
+`AutoCompleteBox`-style control is a separate item.

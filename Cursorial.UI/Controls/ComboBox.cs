@@ -91,6 +91,14 @@ public class ComboBox : SelectingItemsControl
         }
     }
 
+    /// <inheritdoc/>
+    private protected override void OnTextSearchMatch(int containerIndex)
+    {
+        base.OnTextSearchMatch(containerIndex); // selection-follows (the face updates)
+        if (_isDropDownOpen) // when open, move the keyboard highlight too, so :focus-visible tracks the match
+            ItemContainerGenerator.ContainerFromIndex(containerIndex)?.Focus(FocusNavigationMethod.Directional);
+    }
+
     // Picking an item (click) commits + closes (ComboBoxItem calls this after selecting through the base).
     internal void CommitAndClose() => SetDropDownOpen(false);
 

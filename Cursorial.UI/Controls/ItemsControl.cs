@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 
+using Cursorial.UI.Input;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -31,8 +33,17 @@ public class ItemsControl : Control
     public static readonly StyledProperty<Style?> ItemContainerStyleProperty =
         UIProperty.Register<ItemsControl, Style?>(nameof(ItemContainerStyle), changed: OnItemContainerStyleChanged);
 
+    /// <summary>Whether type-ahead (<see cref="TextSearch"/>) is on — printable keys jump the current item to the first match (default <c>true</c>).</summary>
+    public static readonly StyledProperty<bool> IsTextSearchEnabledProperty =
+        UIProperty.Register<ItemsControl, bool>(nameof(IsTextSearchEnabled), defaultValue: true);
+
+    /// <summary>Whether type-ahead matching is case-sensitive (default <c>false</c>).</summary>
+    public static readonly StyledProperty<bool> IsTextSearchCaseSensitiveProperty =
+        UIProperty.Register<ItemsControl, bool>(nameof(IsTextSearchCaseSensitive), defaultValue: false);
+
     private ItemCollection? _items;
     private bool _usingItemsSource;
+    private TextSearchController? _textSearch;
 
     /// <summary>Creates an items control.</summary>
     public ItemsControl() => ItemContainerGenerator = new ItemContainerGenerator(this);
@@ -63,6 +74,12 @@ public class ItemsControl : Control
 
     /// <inheritdoc cref="ItemContainerStyleProperty"/>
     public Style? ItemContainerStyle { get => GetValue(ItemContainerStyleProperty); set => SetValue(ItemContainerStyleProperty, value); }
+
+    /// <inheritdoc cref="IsTextSearchEnabledProperty"/>
+    public bool IsTextSearchEnabled { get => GetValue(IsTextSearchEnabledProperty); set => SetValue(IsTextSearchEnabledProperty, value); }
+
+    /// <inheritdoc cref="IsTextSearchCaseSensitiveProperty"/>
+    public bool IsTextSearchCaseSensitive { get => GetValue(IsTextSearchCaseSensitiveProperty); set => SetValue(IsTextSearchCaseSensitiveProperty, value); }
 
     /// <summary>The container generator (control-lifetime).</summary>
     public ItemContainerGenerator ItemContainerGenerator { get; }
@@ -112,6 +129,76 @@ public class ItemsControl : Control
                 control.ClearValue(ContentControl.ContentTemplateProperty);
                 break;
         }
+    }
+
+    // ── Type-ahead (TextSearch; design doc §12.6) ─────────────────────────────────────────────────────
+
+    /// <summary>Whether this control actually moves a current item on a type-ahead match. Off for a plain
+    /// <see cref="ItemsControl"/> / <c>Menu</c> (so they never swallow a printable key); selectors + the tree opt in.</summary>
+    private protected virtual bool TextSearchNavigates => false;
+
+    /// <summary>The current item index type-ahead cycles from (default −1 = none). Overridden by selectors to the selection.</summary>
+    private protected virtual int CurrentTextSearchIndex => -1;
+
+    /// <summary>The match text for the item at <paramref name="index"/>: per-item <see cref="TextSearch.TextProperty"/>, else
+    /// the control's <see cref="TextSearch.TextPathProperty"/> evaluated against the item, else the item's <c>ToString()</c>.</summary>
+    private protected virtual string? GetTextSearchText(int index)
+    {
+        if (ItemContainerGenerator.ContainerFromIndex(index) is not { } container)
+            return null;
+
+        if (TextSearch.GetText(container) is { } onContainer)
+            return onContainer;
+
+        var item = ItemContainerGenerator.ItemFromContainer(container);
+        if (item is UIElement element && TextSearch.GetText(element) is { } onItem)
+            return onItem;
+
+        if (TextSearch.GetTextPath(this) is { Length: > 0 } path && item is not null)
+            return TextSearch.EvaluatePath(item, path);
+
+        return item?.ToString();
+    }
+
+    /// <summary>Reacts to a type-ahead match (default: nothing). Selectors select it; the tree focuses + selects the node.</summary>
+    private protected virtual void OnTextSearchMatch(int containerIndex)
+    {
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnPropertyChanged(in args);
+
+        // Leaving the control resets the type-ahead buffer (the documented focus-loss reset; intra-control item-to-item
+        // focus keeps IsKeyboardFocusWithin true, so a multi-keystroke search isn't disturbed).
+        if (ReferenceEquals(args.Property, IsKeyboardFocusWithinProperty) && !args.GetNewValue<bool>())
+            _textSearch?.Reset();
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        base.OnTextInput(e);
+
+        if (e.Handled || e.FromPaste || !IsTextSearchEnabled || !TextSearchNavigates)
+            return;
+
+        var text = e.Text;
+        if (text.Length == 0 || char.IsControl(text.Span[0]))
+            return; // not printable input (e.g. a synthesized control char)
+
+        var count = ItemContainerGenerator.ContainerCount;
+        if (count == 0)
+            return;
+
+        _textSearch ??= new TextSearchController();
+        var match = _textSearch.Handle(text.ToString(), count, GetTextSearchText, CurrentTextSearchIndex, IsTextSearchCaseSensitive);
+        if (match < 0)
+            return;
+
+        OnTextSearchMatch(match);
+        e.Handled = true;
     }
 
     // ── Generator hooks (internal) ───────────────────────────────────────────────────────────────────
@@ -203,6 +290,7 @@ public class ItemsControl : Control
     protected override void OnTearDown()
     {
         base.OnTearDown();
+        _textSearch?.Reset(); // stop the idle-reset timer
         ItemContainerGenerator.ReleaseSource(); // unhook a live ItemsSource so it no longer pins this control
     }
 }

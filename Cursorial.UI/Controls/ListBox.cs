@@ -30,6 +30,13 @@ public class ListBox : SelectingItemsControl
     protected override bool IsItemItsOwnContainer(object? item) => item is ListBoxItem;
 
     /// <inheritdoc/>
+    private protected override void OnTextSearchMatch(int containerIndex)
+    {
+        base.OnTextSearchMatch(containerIndex); // selection-follows
+        ItemContainerGenerator.ContainerFromIndex(containerIndex)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
+    }
+
+    /// <inheritdoc/>
     private protected override void OnSelectionEmptiedByRemoval(int removalIndex)
     {
         // CD-P9-9: a removal dropped the whole selection — re-select the nearest surviving item (the item that

@@ -48,6 +48,44 @@ public class TreeView : ItemsControl
     /// <inheritdoc/>
     protected override bool IsItemItsOwnContainer(object? item) => item is TreeViewItem;
 
+    // Type-ahead over the TOP-LEVEL nodes (the tree's own generator). Matching against each node's Header; full
+    // visible-subtree search is a follow-on. Cycles from the selected node when it is a top-level node.
+    private protected override bool TextSearchNavigates => true;
+
+    // Cycle from the selected node's TOP-LEVEL ancestor (a nested node isn't in the tree's own generator, so its
+    // IndexFromContainer is −1 — walk up to the ancestor that is, instead of silently re-anchoring at index 0).
+    private protected override int CurrentTextSearchIndex
+    {
+        get
+        {
+            for (UIElement? node = _selectedContainer; node is not null; node = node.LogicalParent)
+                if (node is TreeViewItem item && ItemContainerGenerator.IndexFromContainer(item) is var index and >= 0)
+                    return index;
+            return -1;
+        }
+    }
+
+    /// <inheritdoc/>
+    private protected override string? GetTextSearchText(int index)
+    {
+        if (ItemContainerGenerator.ContainerFromIndex(index) is not { } container)
+            return null;
+        if (TextSearch.GetText(container) is { } explicitText)
+            return explicitText;
+        if (TextSearch.GetTextPath(this) is { Length: > 0 } path)
+            return TextSearch.EvaluatePath(ItemContainerGenerator.ItemFromContainer(container), path);
+        return (container as TreeViewItem)?.Header?.ToString();
+    }
+
+    /// <inheritdoc/>
+    private protected override void OnTextSearchMatch(int containerIndex)
+    {
+        if (ItemContainerGenerator.ContainerFromIndex(containerIndex) is not TreeViewItem node)
+            return;
+        node.Focus(FocusNavigationMethod.Directional);
+        ChangeSelection(node);
+    }
+
     /// <summary>Makes <paramref name="item"/> the tree's single selection, deselecting the prior node.</summary>
     internal void ChangeSelection(TreeViewItem? item)
     {

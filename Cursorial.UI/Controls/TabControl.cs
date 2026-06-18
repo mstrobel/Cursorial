@@ -47,6 +47,11 @@ public class TabControl : SelectingItemsControl
     /// <inheritdoc cref="ContentTemplateProperty"/>
     public DataTemplate? ContentTemplate { get => GetValue(ContentTemplateProperty); set => SetValue(ContentTemplateProperty, value); }
 
+    // No type-ahead: a TabControl's content lives in its visual subtree, so unhandled typing in the content would
+    // bubble up and switch tabs. (WPF scopes tab type-ahead to the header strip; that header-scoped form is a
+    // possible refinement — for now type-ahead is off so content typing is never hijacked.)
+    private protected override bool TextSearchNavigates => false;
+
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new TabItem();
 

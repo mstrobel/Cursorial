@@ -4,34 +4,103 @@ using Cursorial.UI.Input;
 namespace Cursorial.UI.Controls;
 
 /// <summary>
-/// A single-selection drop-down list (design doc §12.11 — the ListBox-in-Popup recipe). The face is a
-/// <see cref="ToggleButton"/> (<c>PART_Toggle</c>) showing the <see cref="SelectingItemsControl.SelectedItem"/>;
-/// clicking it (or a keyboard open) drops a <see cref="Popup"/> (<c>PART_Popup</c>) whose items host is this
-/// control's <see cref="ItemsControl"/> presenter. Containers are <see cref="ComboBoxItem"/>s; selection rides the
-/// <see cref="SelectingItemsControl"/> base. Picking an item (click or Enter) commits the selection and closes the
-/// drop-down; Escape / light-dismiss close without changing it. The editable (text-entry) variant is a v2 deferral.
+/// A single-selection drop-down list (design doc §12.11 — the ListBox-in-Popup recipe), with an optional editable
+/// text-entry mode (WPF/Avalonia parity). Non-editable: the face (<c>PART_ContentSite</c>) shows the
+/// <see cref="SelectingItemsControl.SelectedItem"/> and a click / keyboard opens the <see cref="Popup"/>
+/// (<c>PART_Popup</c>); type-ahead jumps the selection (the shared <see cref="TextSearch"/>). Editable
+/// (<see cref="IsEditable"/>): the face is a <see cref="TextBox"/> (<c>PART_EditableTextBox</c>) — typing edits
+/// <see cref="Text"/> as free text, the drop button (<c>PART_DropDown</c>) opens the list, navigating it updates the
+/// text, and Enter / focus-loss commits (an exact item match selects it; otherwise the free text is kept and the
+/// selection clears). Containers are <see cref="ComboBoxItem"/>s.
 /// </summary>
 [TemplatePart(PartPopup, typeof(Popup))]
+[TemplatePart(PartContentSite, typeof(ContentPresenter))]
+[TemplatePart(PartEditableTextBox, typeof(TextBox))]
+[TemplatePart(PartDropDown, typeof(ButtonBase))]
 public class ComboBox : SelectingItemsControl
 {
     private const string PartPopup = "PART_Popup";
+    private const string PartContentSite = "PART_ContentSite";
+    private const string PartEditableTextBox = "PART_EditableTextBox";
+    private const string PartDropDown = "PART_DropDown";
 
     /// <summary>Whether the drop-down is open (<c>:open</c>; two-way with the <see cref="Popup"/>).</summary>
     public static readonly DirectProperty<ComboBox, bool> IsDropDownOpenProperty =
         UIProperty.RegisterDirect<ComboBox, bool>(nameof(IsDropDownOpen), static c => c._isDropDownOpen, static (c, v) => c.SetDropDownOpen(v));
 
+    /// <summary>Whether the face is an editable text box (<c>:editable</c>; free text is allowed).</summary>
+    public static readonly StyledProperty<bool> IsEditableProperty =
+        UIProperty.Register<ComboBox, bool>(nameof(IsEditable), defaultValue: false, changed: OnIsEditableChanged);
+
+    /// <summary>The editable text (two-way). Mirrors the selected item's display while not editing; free text otherwise.</summary>
+    public static readonly DirectProperty<ComboBox, string?> TextProperty =
+        UIProperty.RegisterDirect<ComboBox, string?>(nameof(Text), static c => c._text, static (c, v) => c.SetText(v, fromUser: false));
+
+    /// <summary>When editable, whether the text box rejects typing (the list still drives the selection).</summary>
+    public static readonly StyledProperty<bool> IsReadOnlyProperty =
+        UIProperty.Register<ComboBox, bool>(nameof(IsReadOnly), defaultValue: false);
+
+    /// <summary>The prompt shown when the editable text box is empty.</summary>
+    public static readonly StyledProperty<string?> PlaceholderTextProperty =
+        UIProperty.Register<ComboBox, string?>(nameof(PlaceholderText));
+
+    /// <summary>The maximum height of the drop-down list (default unbounded).</summary>
+    public static readonly StyledProperty<double> MaxDropDownHeightProperty =
+        UIProperty.Register<ComboBox, double>(nameof(MaxDropDownHeight), defaultValue: double.PositiveInfinity);
+
+    /// <summary>When editable, whether typing opens / keeps the drop-down open (default <c>false</c>).</summary>
+    public static readonly StyledProperty<bool> StaysOpenOnEditProperty =
+        UIProperty.Register<ComboBox, bool>(nameof(StaysOpenOnEdit), defaultValue: false);
+
     private bool _isDropDownOpen;
+    private string? _text = ""; // never null (matches the empty PART_EditableTextBox; the public Text never reports null)
+    private bool _syncingText;  // guards the ComboBox.Text ↔ PART_EditableTextBox.Text round-trip
+    private bool _committing;   // guards the selection→Text echo while committing free text (keeps the typed text)
+    private bool _userEditing;  // the user has uncommitted typed text — a model selection change must not clobber it
     private Popup? _popup;
+    private ContentPresenter? _contentSite;
+    private TextBox? _editableTextBox;
+    private ButtonBase? _dropDown;
 
     /// <summary>Creates a combo box (single selection; focusable — the face is the tab stop).</summary>
     public ComboBox()
     {
         SelectionMode = SelectionMode.Single;
         Focusable = true;
+        SelectionChanged += OnSelectionChangedSync; // editable: the face text follows the selection
     }
 
     /// <inheritdoc cref="IsDropDownOpenProperty"/>
     public bool IsDropDownOpen { get => _isDropDownOpen; set => SetDropDownOpen(value); }
+
+    /// <inheritdoc cref="IsEditableProperty"/>
+    public bool IsEditable { get => GetValue(IsEditableProperty); set => SetValue(IsEditableProperty, value); }
+
+    /// <inheritdoc cref="TextProperty"/>
+    public string? Text { get => _text; set => SetText(value, fromUser: false); }
+
+    /// <inheritdoc cref="IsReadOnlyProperty"/>
+    public bool IsReadOnly { get => GetValue(IsReadOnlyProperty); set => SetValue(IsReadOnlyProperty, value); }
+
+    /// <inheritdoc cref="PlaceholderTextProperty"/>
+    public string? PlaceholderText { get => GetValue(PlaceholderTextProperty); set => SetValue(PlaceholderTextProperty, value); }
+
+    /// <inheritdoc cref="MaxDropDownHeightProperty"/>
+    public double MaxDropDownHeight { get => GetValue(MaxDropDownHeightProperty); set => SetValue(MaxDropDownHeightProperty, value); }
+
+    /// <inheritdoc cref="StaysOpenOnEditProperty"/>
+    public bool StaysOpenOnEdit { get => GetValue(StaysOpenOnEditProperty); set => SetValue(StaysOpenOnEditProperty, value); }
+
+    /// <summary>The item shown in the face (the current <see cref="SelectingItemsControl.SelectedItem"/>).</summary>
+    public object? SelectionBoxItem => SelectedItem;
+
+    // Test/inspection seams (template-private parts).
+    internal TextBox? EditableTextBoxPart => _editableTextBox;
+    internal ContentPresenter? ContentSitePart => _contentSite;
+    internal ButtonBase? DropDownPart => _dropDown;
+
+    // The editable text box is the typing surface, so the inherited list type-ahead must not also run in editable mode.
+    private protected override bool TextSearchNavigates => !IsEditable;
 
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new ComboBoxItem();
@@ -46,8 +115,16 @@ public class ComboBox : SelectingItemsControl
 
         if (_popup is not null)
             _popup.Closed -= OnPopupClosed;
+        if (_editableTextBox is not null)
+            _editableTextBox.TextChanged -= OnEditableTextChanged;
+        if (_dropDown is not null)
+            _dropDown.Click -= OnDropDownClick;
 
         _popup = GetTemplatePart<Popup>(PartPopup);
+        _contentSite = GetTemplatePart<ContentPresenter>(PartContentSite);
+        _editableTextBox = GetTemplatePart<TextBox>(PartEditableTextBox);
+        _dropDown = GetTemplatePart<ButtonBase>(PartDropDown);
+
         if (_popup is not null)
         {
             _popup.PlacementTarget = this;
@@ -56,17 +133,33 @@ public class ComboBox : SelectingItemsControl
             _popup.Closed += OnPopupClosed;
             _popup.SetCurrentValue(Popup.IsOpenProperty, _isDropDownOpen);
         }
+
+        if (_editableTextBox is not null)
+        {
+            _editableTextBox.SetCurrentValue(TextBox.TextProperty, _text ?? "");
+            _editableTextBox.TextChanged += OnEditableTextChanged;
+        }
+
+        if (_dropDown is not null)
+            _dropDown.Click += OnDropDownClick;
+
+        UpdateEditableState();
     }
 
     /// <inheritdoc/>
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
         if (_popup is not null)
-        {
             _popup.Closed -= OnPopupClosed;
-            _popup = null;
-        }
+        if (_editableTextBox is not null)
+            _editableTextBox.TextChanged -= OnEditableTextChanged;
+        if (_dropDown is not null)
+            _dropDown.Click -= OnDropDownClick;
 
+        _popup = null;
+        _contentSite = null;
+        _editableTextBox = null;
+        _dropDown = null;
         base.OnTemplateDetaching(old);
     }
 
@@ -78,12 +171,25 @@ public class ComboBox : SelectingItemsControl
     }
 
     /// <inheritdoc/>
+    protected override void OnGotFocus(FocusChangedEventArgs e)
+    {
+        base.OnGotFocus(e);
+
+        // Editable: focus delegates to the text box (so its caret publishes and typing lands there).
+        if (IsEditable && _editableTextBox is { IsFocused: false } box && ReferenceEquals(e.Source, this))
+            box.Focus(e.Method);
+    }
+
+    /// <inheritdoc/>
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
+        if (e.Handled || e.Button != MouseButton.Left)
+            return;
 
-        // A left click on the face (not on a dropped item — those are on the Popup's own surface) toggles the list.
-        if (!e.Handled && e.Button == MouseButton.Left)
+        // Non-editable: a click anywhere on the face toggles the list. Editable: the text box owns its clicks and the
+        // PART_DropDown button toggles — so the face press here does nothing (it would steal the caret click).
+        if (!IsEditable)
         {
             Focus();
             SetDropDownOpen(!_isDropDownOpen);
@@ -102,6 +208,12 @@ public class ComboBox : SelectingItemsControl
     // Picking an item (click) commits + closes (ComboBoxItem calls this after selecting through the base).
     internal void CommitAndClose() => SetDropDownOpen(false);
 
+    private void OnDropDownClick(object? sender, ClickEventArgs e)
+    {
+        SetDropDownOpen(!_isDropDownOpen);
+        e.Handled = true;
+    }
+
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetDropDownOpen(false); // light-dismiss / Esc
 
     private void SetDropDownOpen(bool value)
@@ -113,8 +225,134 @@ public class ComboBox : SelectingItemsControl
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value);
 
         if (!value)
-            Focus(); // restore focus to the face when the drop-down closes
+            RestoreFaceFocus(); // restore focus to the face / text box when the drop-down closes
     }
+
+    private void RestoreFaceFocus()
+    {
+        if (IsEditable && _editableTextBox is { } box)
+            box.Focus();
+        else
+            Focus();
+    }
+
+    // ── editable text ↔ selection (WPF model) ───────────────────────────────────────────────────────────
+
+    private void SetText(string? value, bool fromUser)
+    {
+        value ??= "";
+        _userEditing = fromUser; // the user typed (uncommitted) vs. a programmatic / selection / commit sync that replaces it
+
+        if (SetAndRaise(TextProperty, ref _text, value))
+            PushTextToBox(); // keep the part in sync (no-op when the user is the source)
+
+        // Typing may open the drop-down (the "type to filter" affordance) when opted in.
+        if (fromUser && IsEditable && StaysOpenOnEdit && !_isDropDownOpen && value.Length > 0)
+            SetDropDownOpen(true);
+    }
+
+    private void PushTextToBox()
+    {
+        if (_editableTextBox is null)
+            return;
+
+        _syncingText = true;
+        try
+        {
+            _editableTextBox.SetCurrentValue(TextBox.TextProperty, _text ?? "");
+        }
+        finally
+        {
+            _syncingText = false;
+        }
+    }
+
+    private void OnEditableTextChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_syncingText || _editableTextBox is null)
+            return;
+
+        SetText(_editableTextBox.Text, fromUser: true); // the user typed — adopt it as free text (no selection change yet)
+    }
+
+    // Match the typed text to an item (exact, case-insensitive) and commit it; no match keeps the free text + clears
+    // the selection (WPF editable semantics). Used on Enter and focus-loss.
+    private void CommitText()
+    {
+        var match = -1;
+        for (var i = 0; i < ItemContainerGenerator.ContainerCount; i++)
+        {
+            if (string.Equals(ItemText(ItemFromIndex(i)), _text, StringComparison.OrdinalIgnoreCase))
+            {
+                match = i;
+                break;
+            }
+        }
+
+        _committing = true;
+        try
+        {
+            Selection.Select(match); // −1 clears the selection (free text); else selects the exact match
+        }
+        finally
+        {
+            _committing = false;
+        }
+
+        _userEditing = false;
+        if (match >= 0)
+            SetText(ItemText(ItemFromIndex(match)), fromUser: false); // normalize the casing to the item's display (WPF parity)
+    }
+
+    private void OnSelectionChangedSync(object? sender, SelectionChangedEventArgs e)
+    {
+        // Editable: the face text follows the selection (list navigation / a programmatic select) — but NOT while
+        // committing free text, and NOT while the user has uncommitted typed text (a background model change that
+        // merely drops the old selection must not wipe what the user is typing — WPF parity).
+        if (IsEditable && !_committing && !_userEditing)
+            SetText(ItemText(SelectedItem), fromUser: false);
+    }
+
+    private string ItemText(object? item)
+    {
+        if (item is null)
+            return "";
+        if (TextSearch.GetTextPath(this) is { Length: > 0 } path)
+            return TextSearch.EvaluatePath(item, path) ?? "";
+        return item.ToString() ?? "";
+    }
+
+    private static void OnIsEditableChanged(UIObject sender, bool oldValue, bool newValue)
+        => (sender as ComboBox)?.UpdateEditableState();
+
+    private void UpdateEditableState()
+    {
+        var editable = IsEditable;
+        IsTabStop = !editable; // editable ⇒ the text box is the tab stop; non-editable ⇒ the face is
+
+        if (_contentSite is not null)
+            _contentSite.Visibility = editable ? Visibility.Collapsed : Visibility.Visible;
+
+        if (_editableTextBox is not null)
+        {
+            _editableTextBox.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
+            if (editable)
+            {
+                if (string.IsNullOrEmpty(_text))
+                    SetText(ItemText(SelectedItem), fromUser: false); // seed the editable text from the selection
+                PushTextToBox(); // GUARDED sync to the (possibly freshly-realized) box — never mistaken for a user edit
+            }
+        }
+
+        // A runtime IsEditable flip while focused must move the caret: into the text box when turning editable, back
+        // to the face when leaving it (OnGotFocus only delegates on a real focus event, not a property change).
+        if (editable && IsFocused && _editableTextBox is { } box)
+            box.Focus();
+        else if (!editable && _editableTextBox is { IsFocused: true })
+            Focus();
+    }
+
+    // ── keyboard ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <inheritdoc/>
     protected override void OnKeyDown(KeyEventArgs e)
@@ -123,15 +361,29 @@ public class ComboBox : SelectingItemsControl
         if (e.Handled)
             return;
 
+        var editable = IsEditable;
+
         if (!_isDropDownOpen)
         {
-            // Closed: open on Down/Up/Enter/F4/Space (Alt+Down is a Down with the Alt modifier — covered).
-            if (e.Key is Key.DownArrow or Key.UpArrow or Key.Enter or Key.F4 || IsSpace(e))
+            switch (e.Key)
             {
-                SetDropDownOpen(true);
-                e.Handled = true;
+                case Key.DownArrow or Key.UpArrow or Key.F4:
+                    SetDropDownOpen(true);
+                    break;
+                case Key.Enter when editable:
+                    CommitText(); // commit the free text without opening
+                    break;
+                case Key.Enter:
+                    SetDropDownOpen(true);
+                    break;
+                default:
+                    if (editable || !IsSpace(e)) // Space opens only in non-editable mode (it types in editable)
+                        return;
+                    SetDropDownOpen(true);
+                    break;
             }
 
+            e.Handled = true;
             return;
         }
 
@@ -145,18 +397,24 @@ public class ComboBox : SelectingItemsControl
             case Key.UpArrow when count > 0:
                 MoveSelection(SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - 1));
                 break;
-            case Key.Home when count > 0:
+            case Key.Home when count > 0 && !editable:
                 MoveSelection(0);
                 break;
-            case Key.End when count > 0:
+            case Key.End when count > 0 && !editable:
                 MoveSelection(count - 1);
                 break;
             case Key.Enter:
+                if (editable)
+                    CommitText();
+                SetDropDownOpen(false); // Enter commits the highlighted selection (or the typed text); Escape just closes
+                break;
             case Key.Escape:
-                SetDropDownOpen(false); // Enter commits the highlighted selection; Escape just closes
+                if (editable)
+                    SetText(ItemText(SelectedItem), fromUser: false); // revert the edit to the current selection
+                SetDropDownOpen(false);
                 break;
             default:
-                if (!IsSpace(e))
+                if (editable || !IsSpace(e))
                     return;
                 SetDropDownOpen(false);
                 break;
@@ -165,12 +423,24 @@ public class ComboBox : SelectingItemsControl
         e.Handled = true;
     }
 
-    // Selection-follows-highlight while open: change the selection (the face's ContentPresenter updates live) and
-    // focus the container for the :focus-visible cue. The drop-down stays open until Enter / click / Escape.
+    /// <inheritdoc/>
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        base.OnLostFocus(e);
+
+        // Editable: leaving the control commits the typed text (unless the focus just moved into our own drop-down).
+        if (IsEditable && !IsKeyboardFocusWithin)
+            CommitText();
+    }
+
+    // Selection-follows-highlight while open: change the selection (the face updates live). Non-editable also focuses
+    // the container for the :focus-visible cue; editable keeps focus in the text box (the selection drives its text).
     private void MoveSelection(int index)
     {
+        _userEditing = false; // navigating the list is a deliberate gesture: let the selection drive the face text
         Selection.Select(index);
-        ItemContainerGenerator.ContainerFromIndex(index)?.Focus(FocusNavigationMethod.Directional);
+        if (!IsEditable)
+            ItemContainerGenerator.ContainerFromIndex(index)?.Focus(FocusNavigationMethod.Directional);
     }
 
     // Modifier-free Space is (Key.Character, " ") on every wire (ND10); Key.Space is only NUL→Ctrl+Space.

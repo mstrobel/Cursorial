@@ -906,3 +906,41 @@ prefix search (repeat → from after current, extend → from current, both wrap
 on a new char and cycles on a re-pressed single char, adopting the prefix only on a hit, with a frame-aligned
 `UITimer` idle reset. **Deferral:** TreeView full visible-subtree search (top-level only for now); a filtering
 `AutoCompleteBox`-style control is a separate item.
+
+---
+
+## §C17 — ComboBox v2 (editable mode + parity, post-P9)
+
+WPF/Avalonia parity for `ComboBox`, headlined by an optional editable text-entry mode. **Non-editable** (default)
+keeps the §C12 behavior (read-only `PART_ContentSite` face, type-ahead via §C16). **Editable** (`IsEditable`,
+`:editable`): the face is a `PART_EditableTextBox` (`TextBox`) — typing edits `Text` as free text, the
+`PART_DropDown` button opens the list, navigating it updates the text, Enter / focus-loss commits (an exact
+case-insensitive item match selects it, else the free text is kept and the selection clears), and Escape reverts to
+the current selection. Focus delegates from the ComboBox to the text box (so its caret publishes); the text box is
+the tab stop when editable (`IsTabStop` flips). Parity props: `Text` (two-way), `IsReadOnly`, `PlaceholderText`,
+`MaxDropDownHeight`, `StaysOpenOnEdit`, `SelectionBoxItem`. Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section30_ComboBoxV2.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C17.1 | — | set `IsEditable` true | the text box shows + becomes the tab stop; the content site collapses (`IsTabStop` false) | PIN (CD-P2G-1) |
+| C17.2 | editable | type "ch" | `Text=="ch"` as free text; no type-ahead selection jump (`SelectedItem` null) | PIN (CD-P2G-1) |
+| C17.3 | editable | type "banana", Enter | commits the exact match (`SelectedItem=="banana"`) + closes | PIN (CD-P2G-1) |
+| C17.4 | editable, "apple" selected | overwrite with "xyzzy", Enter | free text kept (`Text=="xyzzy"`); selection cleared | PIN (CD-P2G-1) |
+| C17.5 | editable | set `SelectedItem="cherry"` | `Text` (and the box) sync to "cherry" | PIN (CD-P2G-1) |
+| C17.6 | editable, `IsReadOnly` | type | typing rejected (`Text` unchanged) | PIN (CD-P2G-1) |
+| C17.7 | editable | `ComboBox.Focus()` | focus delegates to the text box (its caret publishes) | PIN (CD-P2G-1) |
+| C17.8 | editable, `StaysOpenOnEdit` | type | the drop-down opens | PIN (CD-P2G-1) |
+| C17.9 | editable, "apple" selected, open | overwrite with "zzz", Escape | reverts `Text` to "apple" + closes | PIN (CD-P2G-1) |
+| C17.10 | non-editable | type "c" | type-ahead selects "cherry"; `SelectionBoxItem` tracks it (parity unbroken) | PIN (CD-P2G-1) |
+
+**CD-P2G-1 — ComboBox: editable text-entry + parity.** `Text` (DirectProperty, two-way) ↔ `PART_EditableTextBox.Text`
+round-trips through a `_syncingText` guard; the user's `TextChanged` adopts free text (no selection change). `Text`
+follows `SelectedItem` via the `SelectionChanged` handler EXCEPT while committing (`_committing` guard keeps the typed
+text). `CommitText` (Enter / `OnLostFocus` when keyboard focus leaves) exact-matches the text to an item
+(case-insensitive) → `Selection.Select(match)` (−1 clears). `OnGotFocus` delegates to the text box when editable;
+`UpdateEditableState` toggles the two faces' visibility + `IsTabStop`. Type-ahead is suppressed when editable
+(`TextSearchNavigates => !IsEditable`); Space opens only when non-editable (it types when editable). The
+`PART_DropDown` button toggles the list (the face press toggles only when non-editable, so an editable face click
+lands the caret). **Deferral:** inline text-completion/autocomplete + filtering (the `AutoCompleteBox`-style control)
+is a separate item.

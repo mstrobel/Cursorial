@@ -181,17 +181,29 @@ internal static class ControlThemes
     // arrows) to avoid the ambiguous-width hazard.
     private static ControlTemplate ComboBoxTemplate() => new(ctx =>
     {
+        // Read-only face: the selected item (visible when !IsEditable; the ComboBox toggles visibility).
         var selected = new ContentPresenter();
         ctx.RegisterName("PART_ContentSite", selected);
         selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SelectingItemsControl.SelectedItemProperty));
 
-        var glyph = new TextBlock { Text = "v", Margin = new Margins(1, 0, 0, 0) };
-        glyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
-        DockPanel.SetDock(glyph, Dock.Right);
+        // Editable face: a text box (visible when IsEditable). Placeholder + read-only flow from the ComboBox.
+        var editable = new TextBox { Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_EditableTextBox", editable);
+        editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(ComboBox.PlaceholderTextProperty));
+        editable.SetBinding(TextBox.IsReadOnlyProperty, new TemplateBinding(ComboBox.IsReadOnlyProperty));
+
+        var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
+        content.Children.Add(selected);
+        content.Children.Add(editable);
+
+        // Drop button (the 'v' glyph) — toggles the list (the ComboBox wires its Click). ASCII-safe glyph.
+        var drop = new Button { Content = "v", Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_DropDown", drop);
+        DockPanel.SetDock(drop, Dock.Right);
 
         var row = new DockPanel();
-        row.Children.Add(glyph);    // docked right (the drop indicator)
-        row.Children.Add(selected); // fills the remaining width (the selected item)
+        row.Children.Add(drop);    // docked right (the drop indicator + toggle)
+        row.Children.Add(content); // fills the remaining width (the face)
 
         var face = new Border { Padding = new Margins(1, 0), Child = row };
         face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -202,6 +214,7 @@ internal static class ControlThemes
         var list = new Border { Occludes = true, Child = host };
         list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
         list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        list.SetBinding(UIElement.MaxHeightProperty, new TemplateBinding(ComboBox.MaxDropDownHeightProperty)); // MaxDropDownHeight cap
         var popup = new Popup { Child = list };
         ctx.RegisterName("PART_Popup", popup);
 

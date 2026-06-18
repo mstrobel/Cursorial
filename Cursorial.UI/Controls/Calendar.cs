@@ -13,7 +13,8 @@ namespace Cursorial.UI.Controls;
 /// rows of <see cref="CalendarDayButton"/> cells), with a header label and previous/next month buttons. Clicking a
 /// day (or arrow-key navigation) sets <see cref="SelectedDate"/>; the grid restamps <c>:today</c>/<c>:selected</c>/
 /// <c>:inactive</c> per cell. Culture drives the day-name abbreviations (<see cref="DateTimeFormatInfo.ShortestDayNames"/>)
-/// and the default <see cref="FirstDayOfWeek"/>. The year/decade drill-down modes and date bounds are v2 deferrals.
+/// and the default <see cref="FirstDayOfWeek"/>. Date bounds (<see cref="DisplayDateStart"/>/<see cref="DisplayDateEnd"/>)
+/// + <see cref="BlackoutDates"/> clamp the view and gate selection. The year/decade drill-down modes are a follow-on (v2b).
 /// </summary>
 [TemplatePart(PartMonthView, typeof(StackPanel))]
 [TemplatePart(PartPreviousButton, typeof(Button))]
@@ -31,13 +32,13 @@ public class Calendar : Control
     private static readonly DateOnly MinMonth = new(1, 1, 1);
     private static readonly DateOnly MaxMonth = new(9999, 12, 1);
 
-    /// <summary>The month shown (any day in it; the grid renders that month). Defaults to <see cref="Today"/>.</summary>
+    /// <summary>The month shown (any day in it; the grid renders that month). Defaults to <see cref="Today"/>; clamped to [<see cref="DisplayDateStart"/>, <see cref="DisplayDateEnd"/>].</summary>
     public static readonly StyledProperty<DateOnly> DisplayDateProperty =
-        UIProperty.Register<Calendar, DateOnly>(nameof(DisplayDate), changed: OnDisplayDateChanged);
+        UIProperty.Register<Calendar, DateOnly>(nameof(DisplayDate), coerce: CoerceDisplayDate, changed: OnDisplayDateChanged);
 
-    /// <summary>The selected date (<c>null</c> = none), two-way bindable; selecting a day in an adjacent month moves <see cref="DisplayDate"/>.</summary>
+    /// <summary>The selected date (<c>null</c> = none), two-way bindable; a day in an adjacent month moves <see cref="DisplayDate"/>. An out-of-range / blacked-out value coerces to <c>null</c>.</summary>
     public static readonly StyledProperty<DateOnly?> SelectedDateProperty =
-        UIProperty.Register<Calendar, DateOnly?>(nameof(SelectedDate), changed: OnSelectedDateChanged);
+        UIProperty.Register<Calendar, DateOnly?>(nameof(SelectedDate), coerce: CoerceSelectedDate, changed: OnSelectedDateChanged);
 
     /// <summary>The "today" reference cell (<c>:today</c>); defaults to the system date at construction (settable for determinism).</summary>
     public static readonly StyledProperty<DateOnly> TodayProperty =
@@ -46,6 +47,23 @@ public class Calendar : Control
     /// <summary>The first column's day of week; defaults to the current culture's <see cref="DateTimeFormatInfo.FirstDayOfWeek"/>.</summary>
     public static readonly StyledProperty<DayOfWeek> FirstDayOfWeekProperty =
         UIProperty.Register<Calendar, DayOfWeek>(nameof(FirstDayOfWeek), changed: OnFirstDayOfWeekChanged);
+
+    /// <summary>The earliest selectable/displayable date (<c>null</c> = unbounded).</summary>
+    public static readonly StyledProperty<DateOnly?> DisplayDateStartProperty =
+        UIProperty.Register<Calendar, DateOnly?>(nameof(DisplayDateStart), changed: OnBoundsChanged);
+
+    /// <summary>The latest selectable/displayable date (<c>null</c> = unbounded).</summary>
+    public static readonly StyledProperty<DateOnly?> DisplayDateEndProperty =
+        UIProperty.Register<Calendar, DateOnly?>(nameof(DisplayDateEnd), changed: OnBoundsChanged);
+
+    /// <summary>Whether the <c>:today</c> cell is highlighted (default <c>true</c>).</summary>
+    public static readonly StyledProperty<bool> IsTodayHighlightedProperty =
+        UIProperty.Register<Calendar, bool>(nameof(IsTodayHighlighted), defaultValue: true,
+            changed: static (s, _, _) => (s as Calendar)?.RebuildMonthView());
+
+    /// <summary>Non-selectable date ranges (<c>:blackout</c>, disabled). <c>null</c>/empty = none.</summary>
+    public static readonly StyledProperty<IReadOnlyList<CalendarDateRange>?> BlackoutDatesProperty =
+        UIProperty.Register<Calendar, IReadOnlyList<CalendarDateRange>?>(nameof(BlackoutDates), changed: OnBlackoutChanged);
 
     private readonly Dictionary<DateOnly, CalendarDayButton> _cells = new();
     private StackPanel? _monthView;
@@ -73,6 +91,18 @@ public class Calendar : Control
 
     /// <inheritdoc cref="FirstDayOfWeekProperty"/>
     public DayOfWeek FirstDayOfWeek { get => GetValue(FirstDayOfWeekProperty); set => SetValue(FirstDayOfWeekProperty, value); }
+
+    /// <inheritdoc cref="DisplayDateStartProperty"/>
+    public DateOnly? DisplayDateStart { get => GetValue(DisplayDateStartProperty); set => SetValue(DisplayDateStartProperty, value); }
+
+    /// <inheritdoc cref="DisplayDateEndProperty"/>
+    public DateOnly? DisplayDateEnd { get => GetValue(DisplayDateEndProperty); set => SetValue(DisplayDateEndProperty, value); }
+
+    /// <inheritdoc cref="IsTodayHighlightedProperty"/>
+    public bool IsTodayHighlighted { get => GetValue(IsTodayHighlightedProperty); set => SetValue(IsTodayHighlightedProperty, value); }
+
+    /// <inheritdoc cref="BlackoutDatesProperty"/>
+    public IReadOnlyList<CalendarDateRange>? BlackoutDates { get => GetValue(BlackoutDatesProperty); set => SetValue(BlackoutDatesProperty, value); }
 
     /// <summary>Raised when <see cref="SelectedDate"/> changes (old → new) — including arrow-key <i>browse</i> moves.</summary>
     public event EventHandler<CalendarSelectedDateChangedEventArgs>? SelectedDateChanged;
@@ -140,8 +170,8 @@ public class Calendar : Control
             case Key.RightArrow: MoveSelection(ResolveAnchorDate(e), 1); break;
             case Key.UpArrow: MoveSelection(ResolveAnchorDate(e), -7); break;
             case Key.DownArrow: MoveSelection(ResolveAnchorDate(e), 7); break;
-            case Key.Home: SelectAndFocus(new DateOnly(DisplayDate.Year, DisplayDate.Month, 1)); break;
-            case Key.End: SelectAndFocus(new DateOnly(DisplayDate.Year, DisplayDate.Month, DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month))); break;
+            case Key.Home: SelectInMonth(forward: true); break;
+            case Key.End: SelectInMonth(forward: false); break;
             case Key.PageUp: ChangeMonth(-1); FocusDisplayMonthCell(); break;   // refocus a cell in the new month so
             case Key.PageDown: ChangeMonth(1); FocusDisplayMonthCell(); break;  // the next key still routes here
             default: return; // not a calendar-nav key — leave unhandled
@@ -175,11 +205,26 @@ public class Calendar : Control
         return new DateOnly(DisplayDate.Year, DisplayDate.Month, 1);
     }
 
-    // Step from the anchor, clamped to the representable DateOnly range (AddDays throws past Min/MaxValue).
+    // Step from the anchor, clamped to [DisplayDateStart, DisplayDateEnd] (and the representable DateOnly range), and
+    // skipping blacked-out dates in the direction of travel (WPF parity).
     private void MoveSelection(DateOnly anchor, int deltaDays)
     {
-        var dayNumber = Math.Clamp(anchor.DayNumber + deltaDays, DateOnly.MinValue.DayNumber, DateOnly.MaxValue.DayNumber);
-        SelectAndFocus(DateOnly.FromDayNumber(dayNumber));
+        var lo = EffectiveMin();
+        var hi = EffectiveMax();
+        var clamped = Math.Clamp(anchor.DayNumber + deltaDays, lo, hi);
+        if (NearestSelectable(clamped, deltaDays >= 0 ? 1 : -1, lo, hi) is { } target)
+            SelectAndFocus(target);
+    }
+
+    // Select the first/last selectable day of the shown month within [Start, End] (Home / End).
+    private void SelectInMonth(bool forward)
+    {
+        var lo = Math.Max(EffectiveMin(), new DateOnly(DisplayDate.Year, DisplayDate.Month, 1).DayNumber);
+        var hi = Math.Min(EffectiveMax(), new DateOnly(DisplayDate.Year, DisplayDate.Month, DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month)).DayNumber);
+        if (lo > hi)
+            return;
+        if (NearestSelectable(forward ? lo : hi, forward ? 1 : -1, lo, hi) is { } target)
+            SelectAndFocus(target);
     }
 
     // Select a date (keyboard / Home / End) and move keyboard focus onto its freshly-stamped cell.
@@ -240,6 +285,68 @@ public class Calendar : Control
     private static void OnFirstDayOfWeekChanged(UIObject sender, DayOfWeek oldValue, DayOfWeek newValue)
         => (sender as Calendar)?.RebuildMonthView();
 
+    private static void OnBoundsChanged(UIObject sender, DateOnly? oldValue, DateOnly? newValue)
+    {
+        if (sender is not Calendar c)
+            return;
+        c.CoerceValue(DisplayDateProperty);  // re-clamp the view into the new range
+        c.CoerceValue(SelectedDateProperty); // clear a now-out-of-range selection
+        c.RebuildMonthView();
+    }
+
+    private static void OnBlackoutChanged(UIObject sender, IReadOnlyList<CalendarDateRange>? oldValue, IReadOnlyList<CalendarDateRange>? newValue)
+    {
+        if (sender is not Calendar c)
+            return;
+        c.CoerceValue(SelectedDateProperty); // clear a now-blacked-out selection
+        c.RebuildMonthView();
+    }
+
+    private static DateOnly CoerceDisplayDate(UIObject sender, DateOnly value)
+    {
+        if (sender is not Calendar c)
+            return value;
+        var dayNumber = value.DayNumber;
+        if (c.DisplayDateStart is { } start)
+            dayNumber = Math.Max(dayNumber, start.DayNumber);
+        if (c.DisplayDateEnd is { } end)
+            dayNumber = Math.Min(dayNumber, end.DayNumber);
+        return DateOnly.FromDayNumber(Math.Clamp(dayNumber, DateOnly.MinValue.DayNumber, DateOnly.MaxValue.DayNumber));
+    }
+
+    private static DateOnly? CoerceSelectedDate(UIObject sender, DateOnly? value)
+        => sender is Calendar c && value is { } d && !c.IsSelectable(d) ? null : value; // out-of-range / blackout ⇒ cleared
+
+    // ── bounds + blackout helpers ───────────────────────────────────────────────────────────────────────
+
+    private int EffectiveMin() => DisplayDateStart?.DayNumber ?? DateOnly.MinValue.DayNumber;
+    private int EffectiveMax() => DisplayDateEnd?.DayNumber ?? DateOnly.MaxValue.DayNumber;
+    private bool IsInRange(DateOnly d) => d.DayNumber >= EffectiveMin() && d.DayNumber <= EffectiveMax();
+
+    private bool IsBlackoutDate(DateOnly d)
+    {
+        if (BlackoutDates is not { } ranges)
+            return false;
+        foreach (var range in ranges)
+            if (range.Contains(d))
+                return true;
+        return false;
+    }
+
+    private bool IsSelectable(DateOnly d) => IsInRange(d) && !IsBlackoutDate(d);
+
+    // The nearest selectable date to `fromDayNumber` within [lo, hi], preferring direction `dir` then the reverse.
+    private DateOnly? NearestSelectable(int fromDayNumber, int dir, int lo, int hi)
+    {
+        for (var n = fromDayNumber; n >= lo && n <= hi; n += dir)
+            if (!IsBlackoutDate(DateOnly.FromDayNumber(n)))
+                return DateOnly.FromDayNumber(n);
+        for (var n = fromDayNumber - dir; n >= lo && n <= hi; n -= dir)
+            if (!IsBlackoutDate(DateOnly.FromDayNumber(n)))
+                return DateOnly.FromDayNumber(n);
+        return null;
+    }
+
     private static void OnSelectedDateChanged(UIObject sender, DateOnly? oldValue, DateOnly? newValue)
     {
         if (sender is not Calendar calendar)
@@ -293,14 +400,17 @@ public class Calendar : Control
                 }
 
                 var date = DateOnly.FromDayNumber(dayNumber);
+                var blackout = !IsSelectable(date); // out of [Start,End] or in a BlackoutDates range
                 var cell = new CalendarDayButton
                 {
                     Date = date,
                     Content = date.Day.ToString(CultureInfo.CurrentCulture),
                     Width = CellWidth,
-                    IsToday = date == Today,
+                    IsToday = IsTodayHighlighted && date == Today,
                     IsSelected = SelectedDate == date,
                     IsInactive = date.Month != DisplayDate.Month,
+                    IsBlackout = blackout,
+                    IsEnabled = !blackout, // disabled ⇒ ButtonBase raises no Click, so it can't be picked
                 };
                 cell.Click += OnDayClick;
                 row.Children.Add(cell);
@@ -323,4 +433,19 @@ public sealed class CalendarSelectedDateChangedEventArgs(DateOnly? oldDate, Date
 
     /// <summary>The newly selected date (null if cleared).</summary>
     public DateOnly? NewDate { get; } = newDate;
+}
+
+/// <summary>An inclusive date range for <see cref="Calendar.BlackoutDates"/> (order-agnostic).</summary>
+public readonly record struct CalendarDateRange(DateOnly Start, DateOnly End)
+{
+    /// <summary>A single-date range.</summary>
+    public CalendarDateRange(DateOnly date) : this(date, date) { }
+
+    /// <summary>Whether <paramref name="date"/> falls within [<see cref="Start"/>, <see cref="End"/>] (inclusive).</summary>
+    public bool Contains(DateOnly date)
+    {
+        var lo = Start <= End ? Start : End;
+        var hi = Start <= End ? End : Start;
+        return date >= lo && date <= hi;
+    }
 }

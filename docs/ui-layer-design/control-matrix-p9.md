@@ -944,3 +944,32 @@ text). `CommitText` (Enter / `OnLostFocus` when keyboard focus leaves) exact-mat
 `PART_DropDown` button toggles the list (the face press toggles only when non-editable, so an editable face click
 lands the caret). **Deferral:** inline text-completion/autocomplete + filtering (the `AutoCompleteBox`-style control)
 is a separate item.
+
+---
+
+## §C18 — Calendar v2a (bounds + blackout, post-P9)
+
+`DisplayDateStart`/`DisplayDateEnd` (nullable, unbounded by default) clamp `DisplayDate` and gate selection;
+`BlackoutDates` (a list of `CalendarDateRange`s) marks non-selectable cells. Coercion (`CoerceDisplayDate`/
+`CoerceSelectedDate`) clamps the view and clears an out-of-range / blacked-out selection; blackout cells are
+`:blackout` + `IsEnabled=false` (so `ButtonBase` raises no Click — unpickable, muted via the existing `:disabled`
+look). Keyboard nav clamps to `[Start,End]` and skips blackout dates (`NearestSelectable`). `IsTodayHighlighted`
+(default true) gates the `:today` marker. (The DisplayMode Month/Year/Decade drill-down is v2b.) Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section31_CalendarV2.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C18.1 | — | set Start=Jun10 / End=Jun20; set DisplayDate out of range | DisplayDate clamps into [Start,End] | PIN (CD-P2D-2) |
+| C18.2 | Start=Jun10,End=Jun20 | set SelectedDate=Jun5 then Jun15 | out-of-range → null; in-range kept | PIN (CD-P2D-2) |
+| C18.3 | SelectedDate=Jun5 | set Start=Jun10 | the now-out-of-range selection clears to null | PIN (CD-P2D-2) |
+| C18.4 | BlackoutDates={Jun10} | inspect the cell; try to select Jun10 | cell `:blackout`+disabled; selection refused (null) | PIN (CD-P2D-2) |
+| C18.5 | SelectedDate=Jun12 | blackout Jun10–14 | the selection (now blacked out) clears | PIN (CD-P2D-2) |
+| C18.6 | — | set IsTodayHighlighted=false | the today cell's `:today` clears | PIN (CD-P2D-2) |
+| C18.7 | blackout Jun16, SelectedDate=Jun15 focused | Right | skips Jun16 → selects Jun17 | PIN (CD-P2D-2) |
+| C18.8 | End=Jun20, SelectedDate=Jun20 focused | Right | clamped at the bound → stays Jun20 | PIN (CD-P2D-2) |
+
+**CD-P2D-2 — Calendar bounds + blackout.** `DisplayDate`/`SelectedDate` carry coerce callbacks
+(`UIProperty.Register(coerce:)`, the ScrollBar pattern); `OnBoundsChanged`/`OnBlackoutChanged` call `CoerceValue`
+on both + rebuild. `CalendarDateRange` (inclusive, order-agnostic `Contains`) models blackout ranges.
+`NearestSelectable(from, dir, lo, hi)` powers blackout-skipping + bound-clamped arrow nav and Home/End
+(`SelectInMonth`). `CalendarDayButton.IsBlackout` (`:blackout`). **Deferral:** the DisplayMode drill-down (v2b).

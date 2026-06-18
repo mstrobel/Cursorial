@@ -21,11 +21,16 @@ public class CalendarDayButton : Button
     public static readonly StyledProperty<bool> IsInactiveProperty =
         UIProperty.Register<CalendarDayButton, bool>(nameof(IsInactive));
 
+    /// <summary>Whether this cell is blacked out / out of the calendar's date range (<c>:blackout</c>; not selectable — the calendar also disables it).</summary>
+    public static readonly StyledProperty<bool> IsBlackoutProperty =
+        UIProperty.Register<CalendarDayButton, bool>(nameof(IsBlackout));
+
     static CalendarDayButton()
     {
         PseudoClassMapping.Register<CalendarDayButton>(IsTodayProperty, ":today");
         PseudoClassMapping.Register<CalendarDayButton>(IsSelectedProperty, ":selected");
         PseudoClassMapping.Register<CalendarDayButton>(IsInactiveProperty, ":inactive");
+        PseudoClassMapping.Register<CalendarDayButton>(IsBlackoutProperty, ":blackout");
     }
 
     /// <summary>The calendar date this cell represents (set by the owning <see cref="Calendar"/>).</summary>
@@ -39,4 +44,7 @@ public class CalendarDayButton : Button
 
     /// <inheritdoc cref="IsInactiveProperty"/>
     public bool IsInactive { get => GetValue(IsInactiveProperty); set => SetValue(IsInactiveProperty, value); }
+
+    /// <inheritdoc cref="IsBlackoutProperty"/>
+    public bool IsBlackout { get => GetValue(IsBlackoutProperty); set => SetValue(IsBlackoutProperty, value); }
 }

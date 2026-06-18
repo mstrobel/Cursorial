@@ -867,14 +867,27 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <summary>Light-dismiss (§8.4): an uncaptured press closes every open non-<c>StaysOpen</c> popup except the
     /// one pressed (<paramref name="hit"/> null = a press in dead space — all dismiss). Full chain semantics is
     /// W4-b. Iterates back-to-front since <see cref="ClosePopup"/> mutates the list.</summary>
-    private void LightDismissPopups(TopLevelSurface? hit)
+    private void LightDismissPopups(TopLevelSurface? hit, int pressColumn, int pressRow)
     {
         for (var i = _popups.Count - 1; i >= 0; i--)
         {
             var popup = _popups[i];
-            if (!popup.StaysOpen && !ReferenceEquals(popup.PopupSurface, hit))
-                popup.CloseCore(PopupCloseReason.LightDismiss);
+            if (popup.StaysOpen || ReferenceEquals(popup.PopupSurface, hit) || PressOnAnchor(popup, pressColumn, pressRow))
+                continue;
+
+            popup.CloseCore(PopupCloseReason.LightDismiss);
         }
+    }
+
+    // A KeepOpenOnAnchorPress popup is not dismissed by a press on its anchor (PlacementTarget) — the anchor owns
+    // the toggle (ComboBox/DatePicker face). Screen-bounds containment of the press against the anchor.
+    private static bool PressOnAnchor(Popup popup, int pressColumn, int pressRow)
+    {
+        if (!popup.KeepOpenOnAnchorPress || popup.EffectiveTarget is not { IsAttachedToTree: true } anchor)
+            return false;
+
+        var origin = anchor.TranslateToWindow(0, 0);
+        return new LayoutRect(origin.Column, origin.Row, anchor.Bounds.Size).Contains(pressColumn, pressRow);
     }
 
     // ── Fit-to-viewport badge (P7-W5b: the WM-owned affordance for clipped windows after a resize, §8.7) ──
@@ -1014,7 +1027,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         {
             // A press over no surface still light-dismisses open popups (a click in dead space, §8.4).
             if (hitTestOnly is false && mouse.Kind == MouseEventKind.ButtonDown && _popups.Count > 0)
-                LightDismissPopups(hit: null!);
+                LightDismissPopups(hit: null!, mouse.Position.Column, mouse.Position.Row);
             return true; // routes nowhere (ND5: dropped, no throw)
         }
 
@@ -1026,7 +1039,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             // Light dismiss before activation/routing: a press closes every open light-dismiss popup except the one
             // pressed (§8.4). Pressing inside a popup keeps it (and routes into it); pressing a window/root dismisses.
             if (isPress && _popups.Count > 0)
-                LightDismissPopups(surface);
+                LightDismissPopups(surface, mouse.Position.Column, mouse.Position.Row);
 
             // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate
             // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse).

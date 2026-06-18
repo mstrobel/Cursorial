@@ -156,6 +156,13 @@ internal sealed class ControlGalleryDemo : IDemo
 
             panel.Children.Add(new Separator());
 
+            panel.Children.Add(new Label { Content = "_Theme:" });
+            var theme = new ComboBox { ItemsSource = new[] { "Default", "Tokyo Night", "High Contrast" }, SelectedIndex = 0, Width = 26 };
+            theme.SelectionChanged += (_, _) => Action($"Theme = {theme.SelectedItem}");
+            panel.Children.Add(theme);
+
+            panel.Children.Add(new Separator());
+
             panel.Children.Add(new TextBlock { Text = "Download (determinate):" });
             _progress = new ProgressBar { Value = 60, Maximum = 100, Height = 1, Width = 26 };
             panel.Children.Add(_progress);

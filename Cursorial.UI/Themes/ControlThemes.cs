@@ -42,6 +42,8 @@ internal static class ControlThemes
         dict[typeof(ItemsControl)] = ItemsControlTheme();
         dict[typeof(ListBox)] = ListBoxTheme();
         dict[typeof(ListBoxItem)] = ListBoxItemTheme();
+        dict[typeof(ComboBox)] = ComboBoxTheme();
+        dict[typeof(ComboBoxItem)] = ComboBoxItemTheme();
         dict[typeof(Menu)] = MenuTheme();
         dict[typeof(MenuItem)] = MenuItemTheme();
         dict[typeof(ContextMenu)] = ContextMenuTheme();
@@ -163,6 +165,75 @@ internal static class ControlThemes
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         return border;
     });
+
+    // ───────────────────────────── ComboBox / ComboBoxItem ─────────────────────────────
+
+    // A combo box face: a recessed WellBrush field [selected-item … 'v' drop glyph] that the control toggles on
+    // click, plus the drop-down Popup (PART_Popup) whose Child is an occluding panel over the PART_ItemsHost
+    // ItemsPresenter (the ListBox-in-Popup recipe, design doc §12.11). The glyph is ASCII-safe ('v', cf. the scroll
+    // arrows) to avoid the ambiguous-width hazard.
+    private static ControlTemplate ComboBoxTemplate() => new(ctx =>
+    {
+        var selected = new ContentPresenter();
+        ctx.RegisterName("PART_ContentSite", selected);
+        selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SelectingItemsControl.SelectedItemProperty));
+
+        var glyph = new TextBlock { Text = "v", Margin = new Margins(1, 0, 0, 0) };
+        glyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+        DockPanel.SetDock(glyph, Dock.Right);
+
+        var row = new DockPanel();
+        row.Children.Add(glyph);    // docked right (the drop indicator)
+        row.Children.Add(selected); // fills the remaining width (the selected item)
+
+        var face = new Border { Padding = new Margins(1, 0), Child = row };
+        face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        face.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var list = new Border { Occludes = true, Child = host };
+        list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        var popup = new Popup { Child = list };
+        ctx.RegisterName("PART_Popup", popup);
+
+        var root = new Grid(); // the Popup adds no layout (0×0); the face fills the cell
+        root.Children.Add(face);
+        root.Children.Add(popup);
+        return root;
+    });
+
+    private static Style ComboBoxTheme()
+        => new Style { Key = "Theme.ComboBox" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ComboBoxTemplate());
+
+    // A drop-down item — the ListBoxItem selection bar verbatim (selected = SelectionBrush, hover = HoverBrush,
+    // keyboard focus row = reverse-video :focus-visible, disabled = MutedBrush ink).
+    private static ControlTemplate ComboBoxItemTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        return border;
+    });
+
+    private static Style ComboBoxItemTheme()
+    {
+        var theme = new Style { Key = "Theme.ComboBoxItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ComboBoxItemTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:focus-visible")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        return theme;
+    }
 
     // ───────────────────────────── Menu / MenuItem / Separator ─────────────────────────────
 

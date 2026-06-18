@@ -59,6 +59,15 @@ public class Popup : UIElement
     public static readonly StyledProperty<bool> StaysOpenProperty =
         UIProperty.Register<Popup, bool>(nameof(StaysOpen));
 
+    /// <summary>
+    /// When true, a light-dismiss press that lands on the <see cref="PlacementTarget"/> (the anchor) does NOT
+    /// dismiss the popup — the anchor owns the toggle (default false). A drop-toggle control (ComboBox, DatePicker)
+    /// sets this so clicking its face while the drop-down is open routes to the face's own toggle (which closes it),
+    /// instead of the light-dismiss closing it first and the face-click then reopening it (the dismiss/toggle race).
+    /// </summary>
+    public static readonly StyledProperty<bool> KeepOpenOnAnchorPressProperty =
+        UIProperty.Register<Popup, bool>(nameof(KeepOpenOnAnchorPress));
+
     /// <summary>Whether Escape closes the popup (default true).</summary>
     public static readonly StyledProperty<bool> CloseOnEscapeProperty =
         UIProperty.Register<Popup, bool>(nameof(CloseOnEscape), defaultValue: true);
@@ -108,6 +117,9 @@ public class Popup : UIElement
 
     /// <inheritdoc cref="StaysOpenProperty"/>
     public bool StaysOpen { get => GetValue(StaysOpenProperty); set => SetValue(StaysOpenProperty, value); }
+
+    /// <inheritdoc cref="KeepOpenOnAnchorPressProperty"/>
+    public bool KeepOpenOnAnchorPress { get => GetValue(KeepOpenOnAnchorPressProperty); set => SetValue(KeepOpenOnAnchorPressProperty, value); }
 
     /// <inheritdoc cref="CloseOnEscapeProperty"/>
     public bool CloseOnEscape { get => GetValue(CloseOnEscapeProperty); set => SetValue(CloseOnEscapeProperty, value); }

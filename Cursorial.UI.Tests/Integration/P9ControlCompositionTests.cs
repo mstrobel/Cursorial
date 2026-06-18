@@ -42,6 +42,7 @@ public sealed class P9ControlCompositionTests
         form.Children.Add(new RadioButton { Content = " High", GroupName = "q", IsChecked = true });
         form.Children.Add(new ProgressBar { Value = 60, Maximum = 100, Height = 1, Width = 24 });
         form.Children.Add(new ProgressBar { IsIndeterminate = true, Height = 1, Width = 24 });
+        form.Children.Add(new ComboBox { ItemsSource = new[] { "One", "Two", "Three" }, SelectedIndex = 0, Width = 16 });
         form.Children.Add(new Button { Content = "_OK", IsDefault = true });
 
         var list = new ListBox

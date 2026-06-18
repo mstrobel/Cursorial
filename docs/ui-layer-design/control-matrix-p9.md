@@ -674,3 +674,38 @@ correct code — added: triple-click select-all (C11.16) and mouse drag-extend (
 (verified code-correct by tracing) included surrogate-pair backspace/MaxLength trimming, paste-into-selection,
 control-char filtering, the `:empty`/`SelectionStart`-preserves-length semantics, Enter/Escape bubbling, and the
 NoColor-tier `Inverse` selection path.
+
+---
+
+## §C12 — ComboBox (P2B, post-P9)
+
+A single-selection drop-down (design doc §12.11 — the ListBox-in-Popup recipe). `ComboBox : SelectingItemsControl`
+hosts a face (a `ContentPresenter` bound `{TemplateBinding SelectedItem}` plus a `v` drop glyph) and a
+`PART_Popup` whose items host is the control's own `ItemsPresenter`. Containers are `ComboBoxItem`s (a
+`ListBoxItem` twin — `ISelectableContainer`, `:selected`/`:pointerover`/`:focus-visible`/`:disabled` looks);
+selection rides the `SelectingItemsControl` base (`SelectionMode.Single`). The face is the tab stop
+(`Focusable=true`); the drop-down items live on the Popup's own surface. Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section25_ComboBox.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C12.1 | items {alpha,beta,gamma} | set `SelectedIndex=1`; set `SelectedItem="gamma"` | `SelectedItem=="beta"`; `SelectedIndex==2` (face presents it, no drop-down needed) | PIN (CD-P2B-1) |
+| C12.2 | — | set `IsDropDownOpen=true` | Popup opens; the items generate `ComboBoxItem` containers (`ContainerCount==3`); `false` closes | PIN (CD-P2B-1) |
+| C12.3 | — | left-click the face; click again | first click opens (`:open`), second closes — the anchor owns the toggle (no dismiss-then-reopen race) | PIN (CD-P2B-1) |
+| C12.4 | focused | Down (closed→open); Down, Down (highlight); Enter | open; selection follows highlight (index 0→1); Enter commits `"beta"` + closes | PIN (CD-P2B-1) |
+| C12.5 | open | Escape | closes without changing the selection | PIN (CD-P2B-1) |
+| C12.6 | open | click a drop-down item | commits a selection (`SelectedItem` non-null) + closes (exact item is surface-placement-dependent; C12.4 pins precise-item commit) | PIN (CD-P2B-1) |
+
+**CD-P2B-1 — ComboBox: ListBox-in-Popup, single-select, anchor-owned toggle.** The face is a `ContentPresenter`
+on `{TemplateBinding SelectedItem}`; `IsDropDownOpen` is a `DirectProperty` two-way with the templated `Popup`
+(`SetDropDownOpen` → `SetAndRaise` + imperative `PseudoClasses.Set(":open", …)` since it's DirectProperty-backed,
+cf. `MenuItem`; drives `Popup.IsOpen`; restores face focus on close). Open while closed on
+Down/Up/Enter/F4/Space; while open Down/Up/Home/End move the selection (selection-follows-highlight — the face
+updates live and the container takes `:focus-visible`), Enter commits the highlight + closes, Escape/light-dismiss
+close unchanged. The face-click toggle uses the new **`Popup.KeepOpenOnAnchorPress`** opt-in: the `WindowManager`'s
+light-dismiss sweep skips a press that lands on the popup's `PlacementTarget`, so the anchor's `OnMouseDown` owns
+the open/close (without it, a click while open dismissed *then* re-opened — a race). `ComboBoxItem` mirrors
+`ListBoxItem` (owner-driven `IsSelected`, `:selected` mapping); its `OnMouseDown` selects through
+`owner.HandleContainerPointerSelect` then calls `owner.CommitAndClose()`. The editable (text-entry) variant is a
+v2 deferral. The XAML control-theme overlay twin is deferred — `ComboBox`/`ComboBoxItem` fall through to the
+code-first `CursorialTheme.BuiltIn` themes (the chain backstop).

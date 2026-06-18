@@ -986,3 +986,35 @@ blacked-out `SelectedDate` → null) updates the control but does **not** write 
 `BindingExpressionCore`'s synchronous self-echo guard drops the coercion result, so the control and its source
 diverge (the same applies to any coerced two-way property, e.g. `ScrollBar.Value`). Fixing it belongs in the binding
 lane (write back when the coerced effective value differs from the pushed value).
+
+---
+
+## §C19 — DatePicker editable text entry (post-P9)
+
+`IsEditable` (`:editable`) swaps the DatePicker's read-only `PART_DisplayText` face for a `PART_EditableTextBox`:
+typing a date and pressing Enter (or leaving the field) parses it (`DateOnly.TryParse`, culture-aware) and commits
+to `SelectedDate`; an unparseable entry reverts the box to the last value; Escape reverts an uncommitted draft. The
+`PART_DropDown` button still opens the `Calendar` popup to pick visually (a calendar pick shows in the box). Focus
+delegates from the DatePicker to the text box; the text box is the tab stop when editable. Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section32_DatePickerEditable.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C19.1 | — | set `IsEditable` true | text box shows + becomes the tab stop; the display collapses (`IsTabStop` false) | PIN (CD-P2E-2) |
+| C19.2 | editable | type a valid date, Enter | parses + commits `SelectedDate` | PIN (CD-P2E-2) |
+| C19.3 | editable, Jun1 selected | type garbage, Enter | `SelectedDate` unchanged; box reverts to Jun1 | PIN (CD-P2E-2) |
+| C19.4 | editable | set `SelectedDate` | the box shows the formatted date | PIN (CD-P2E-2) |
+| C19.5 | editable | `DatePicker.Focus()` | focus delegates to the text box | PIN (CD-P2E-2) |
+| C19.6 | editable | type a date, then leave the field | the typed date commits on focus-loss | PIN (CD-P2E-2) |
+| C19.7 | editable | drop the calendar, pick a day | commits + closes + shows in the box | PIN (CD-P2E-2) |
+| C19.8 | editable, Jun1 selected | type a draft, Escape | reverts the box + selection to Jun1 | PIN (CD-P2E-2) |
+
+**CD-P2E-2 — DatePicker editable.** Mirrors the ComboBox-v2 editable shape: an `_editing` flag (set on a user
+`TextChanged`, cleared on commit/revert) distinguishes a draft from a programmatic sync, and `_syncing` guards the
+`SelectedDate`→box push. `ParseAndCommit` (Enter / `OnLostFocus` when keyboard focus leaves) runs
+`DateOnly.TryParse(box.Text, CurrentCulture)` → `SetCurrentValue(SelectedDate)` on success, else reverts via
+`PushDateToBox`. `OnSelectedDateChanged` pushes to the box only when `!_editing` (so a calendar pick or external set
+shows, but a draft isn't clobbered). `OnGotFocus` delegates to the box when editable; `UpdateEditableState` toggles
+the two faces' visibility + `IsTabStop`. `PART_DropDown` toggles the popup; the field press toggles only when
+non-editable. **Deferral:** a separate raw `Text` property (the editable text isn't exposed independently of
+`SelectedDate`).

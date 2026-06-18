@@ -407,16 +407,27 @@ internal static class ControlThemes
     // (PART_Calendar) — the ListBox-in-Popup recipe with a Calendar instead of a list. ASCII-safe drop glyph.
     private static ControlTemplate DatePickerTemplate() => new(ctx =>
     {
+        // Read-only face: the selected date / watermark (visible when !IsEditable; the DatePicker toggles visibility).
         var text = new TextBlock();
         ctx.RegisterName("PART_DisplayText", text);
 
-        var glyph = new TextBlock { Text = "v", Margin = new Margins(1, 0, 0, 0) };
-        glyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
-        DockPanel.SetDock(glyph, Dock.Right);
+        // Editable face: a text box to type a date (collapsed unless IsEditable).
+        var editable = new TextBox { Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_EditableTextBox", editable);
+        editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(DatePicker.WatermarkProperty));
+
+        var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
+        content.Children.Add(text);
+        content.Children.Add(editable);
+
+        // Drop button (the 'v' glyph) — toggles the calendar (the DatePicker wires its Click). ASCII-safe glyph.
+        var drop = new Button { Content = "v", Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_DropDown", drop);
+        DockPanel.SetDock(drop, Dock.Right);
 
         var row = new DockPanel();
-        row.Children.Add(glyph); // docked right (the drop indicator)
-        row.Children.Add(text);  // fills the remaining width (the date / watermark)
+        row.Children.Add(drop);    // docked right (the drop indicator + toggle)
+        row.Children.Add(content); // fills the remaining width (the face)
 
         var field = new Border { Padding = new Margins(1, 0), Child = row };
         field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));

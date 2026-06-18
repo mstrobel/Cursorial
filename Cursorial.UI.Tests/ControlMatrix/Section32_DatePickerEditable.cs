@@ -154,4 +154,54 @@ public sealed class Section32_DatePickerEditable
         Assert.Equal(new DateOnly(2026, 6, 1), dp.SelectedDate);                       // unchanged
         Assert.Equal(Short(new DateOnly(2026, 6, 1)), dp.EditableTextBoxPart!.Text);   // reverted
     }
+
+    // ── audit regressions (CD-P2E-2 audit) ──────────────────────────────────────────────────────────────
+
+    [Fact] // C19.9: a calendar pick after typing a draft shows the PICK in the box (not the stale draft)
+    public void C19_9_CalendarPickAfterDraftShowsPick()
+    {
+        var (host, dp) = Show();
+        using var _ = host;
+        dp.EditableTextBoxPart!.Focus();
+        host.SendText("garbage draft"); // uncommitted draft (_editing = true)
+        host.RunUntilIdle();
+
+        dp.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        var pick = new DateOnly(2026, 6, 20);
+        dp.CalendarPart!.CellForDate(pick)!.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter); // commit the calendar's day
+        host.RunUntilIdle();
+
+        Assert.Equal(pick, dp.SelectedDate);
+        Assert.Equal(Short(pick), dp.EditableTextBoxPart!.Text); // the pick, not "garbage draft"
+    }
+
+    [Fact] // C19.10: Escape while the calendar is open cancels the uncommitted draft (and closes)
+    public void C19_10_EscapeWhileOpenReverts()
+    {
+        var (host, dp) = Show();
+        using var _ = host;
+        dp.SelectedDate = new DateOnly(2026, 6, 1);
+        host.RunUntilIdle();
+        dp.EditableTextBoxPart!.Focus();
+        dp.EditableTextBoxPart!.SelectAll();
+        host.SendText("2026-12-25"); // draft
+        host.RunUntilIdle();
+
+        dp.IsDropDownOpen = true; // focus moves into the calendar
+        host.RunUntilIdle();
+        host.SendKey(Key.Escape); // the Popup consumes it ⇒ OnPopupClosed reverts the draft
+        host.RunUntilIdle();
+
+        Assert.False(dp.IsDropDownOpen);
+        Assert.Equal(new DateOnly(2026, 6, 1), dp.SelectedDate);
+        Assert.Equal(Short(new DateOnly(2026, 6, 1)), dp.EditableTextBoxPart!.Text); // draft canceled
+
+        // and the desync is cleared: a later programmatic SelectedDate now shows in the box
+        dp.SelectedDate = new DateOnly(2026, 3, 15);
+        host.RunUntilIdle();
+        Assert.Equal(Short(new DateOnly(2026, 3, 15)), dp.EditableTextBoxPart!.Text);
+    }
 }

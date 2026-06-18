@@ -315,13 +315,25 @@ public class DatePicker : Control
 
     private void OnCalendarDateCommitted(object? sender, CalendarSelectedDateChangedEventArgs e)
     {
-        // Fires only on a click / Enter / Space (a COMMIT) — never on an arrow browse or the open-time push, so the
-        // drop-down stays open while browsing and closes on the confirm gesture (even re-picking the current day).
+        // A calendar pick is a deliberate commit — clear _editing so the pick (not a stale typed draft) shows in the
+        // box (OnSelectedDateChanged's !_editing gate). Fires only on click / Enter / Space, never on an arrow browse.
+        _editing = false;
         SetCurrentValue(SelectedDateProperty, e.NewDate); // SetCurrentValue keeps a two-way binding
         SetDropDownOpen(false);
     }
 
-    private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetDropDownOpen(false); // light-dismiss / Esc
+    private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
+    {
+        // Escape cancels an uncommitted draft (the Popup consumes Escape, so the revert can't ride OnKeyDown). A
+        // light-dismiss / programmatic close keeps the draft (it commits later on Enter / focus-loss — WPF-like).
+        if (e.Reason == PopupCloseReason.EscapeKey && IsEditable && _editing)
+        {
+            _editing = false;
+            PushDateToBox();
+        }
+
+        SetDropDownOpen(false);
+    }
 
     private void SetDropDownOpen(bool value)
     {

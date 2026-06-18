@@ -1007,7 +1007,9 @@ delegates from the DatePicker to the text box; the text box is the tab stop when
 | C19.5 | editable | `DatePicker.Focus()` | focus delegates to the text box | PIN (CD-P2E-2) |
 | C19.6 | editable | type a date, then leave the field | the typed date commits on focus-loss | PIN (CD-P2E-2) |
 | C19.7 | editable | drop the calendar, pick a day | commits + closes + shows in the box | PIN (CD-P2E-2) |
-| C19.8 | editable, Jun1 selected | type a draft, Escape | reverts the box + selection to Jun1 | PIN (CD-P2E-2) |
+| C19.8 | editable, Jun1 selected | type a draft (closed), Escape | reverts the box to Jun1 (the box-focused cancel) | PIN (CD-P2E-2) |
+| C19.9 | editable, draft typed | open the calendar, pick a day | the box shows the pick, not the stale draft | PIN (CD-P2E-2 audit) |
+| C19.10 | editable, draft typed, calendar open | Escape | the draft is canceled + the drop-down closes; later sets show again | PIN (CD-P2E-2 audit) |
 
 **CD-P2E-2 — DatePicker editable.** Mirrors the ComboBox-v2 editable shape: an `_editing` flag (set on a user
 `TextChanged`, cleared on commit/revert) distinguishes a draft from a programmatic sync, and `_syncing` guards the
@@ -1018,3 +1020,11 @@ shows, but a draft isn't clobbered). `OnGotFocus` delegates to the box when edit
 the two faces' visibility + `IsTabStop`. `PART_DropDown` toggles the popup; the field press toggles only when
 non-editable. **Deferral:** a separate raw `Text` property (the editable text isn't exposed independently of
 `SelectedDate`).
+
+**CD-P2E-2 audit (follow-up).** A focused audit confirmed + fixed **2 HIGH** bugs, both `_editing` getting stuck
+true (so the `!_editing` push-gate then silently dropped every subsequent box update): **(1)** picking a calendar day
+after typing a draft left `_editing` true, so the pick didn't show in the box — `OnCalendarDateCommitted` now clears
+`_editing` (a pick is a deliberate commit; row C19.9). **(2)** Escape while the calendar is open is consumed by the
+`Popup` (`CloseOnEscape`), so the `OnKeyDown` open-branch Escape revert was dead code and the draft survived + left
+`_editing` stuck — `OnPopupClosed` now cancels the draft when `Reason == EscapeKey` (a light-dismiss / programmatic
+close keeps it, WPF-like; row C19.10).

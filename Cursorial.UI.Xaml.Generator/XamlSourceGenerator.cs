@@ -173,6 +173,10 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             foreach (var note in lowered.Unlowered)
                 spc.ReportDiagnostic(Diagnostic.Create(LoweringGap, LocationFor(input, note.Line, note.Column), note.Message));
 
+            // CURG2002 — info-level "works, but not the AOT-optimal compiled form" notes (reflective-fallback bindings).
+            foreach (var note in lowered.Infos)
+                spc.ReportDiagnostic(Diagnostic.Create(ReflectiveBindingInfo, LocationFor(input, note.Line, note.Column), note.Message));
+
             spc.AddSource(hint, SourceText.From(lowered.Source, Encoding.UTF8));
             return;
         }
@@ -252,6 +256,18 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         messageFormat: "{0}",
         category: "Cursorial.Xaml",
         defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    // WS-B3 — a generator-only assist (CURGxxxx band): under full-lowering, a {Binding} that WAS a compiled-lane
+    // candidate (x:DataType in scope) but stayed reflective, naming why. Info severity (quiet by default — it
+    // works; this only flags the non-AOT-optimal form). Only emitted in the full-lowering path; a normal build's
+    // reflective bindings are expected and get no note.
+    private static readonly DiagnosticDescriptor ReflectiveBindingInfo = new(
+        id: "CURG2002",
+        title: "Binding stays reflective under full-lowering",
+        messageFormat: "{0}",
+        category: "Cursorial.Xaml",
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
     // WS-X5.5 — a full-lowering gap: a member the lowering couldn't emit (it left a // TODO X5 marker and the

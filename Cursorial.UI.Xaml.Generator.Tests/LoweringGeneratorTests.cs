@@ -117,4 +117,39 @@ namespace GenApp { public partial class GapView : StackPanel { public GapView() 
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.Contains("// TODO X5", GeneratedView(compilation, "GapView"));
     }
+
+    [Fact] // B3 — an x:DataType {Binding} that stays reflective (here multi-hop) emits a CURG2002 INFO naming why;
+           // a compilable single-hop sibling compiles and gets no info; both still work (no CURG3001 gap).
+    public void LoweringOptIn_ReflectiveFallback_EmitsCurg2002Info()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:GenApp\" x:Class=\"GenApp.InfoView\" x:DataType=\"t:InfoVm\">" +
+            "<Button x:Name=\"Deep\" Content=\"{Binding Inner.Caption}\"/>" + // multi-hop ⇒ reflective ⇒ CURG2002
+            "<Button x:Name=\"Flat\" Content=\"{Binding Title}\"/>" +         // single-hop ⇒ compiled ⇒ no info
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp
+{
+    public sealed class Leaf { public string Caption { get; set; } = string.Empty; }
+    public sealed class InfoVm { public Leaf Inner { get; } = new(); public string Title { get; set; } = string.Empty; }
+    public partial class InfoView : StackPanel { public InfoView() => InitializeComponent(); }
+}";
+
+        var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("InfoView.xaml", xaml));
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+
+        // Exactly one CURG2002 Info (the multi-hop Deep button), naming the reason.
+        var info = Assert.Single(diagnostics, d => d.Id == "CURG2002");
+        Assert.Equal(DiagnosticSeverity.Info, info.Severity);
+        Assert.Contains("stays reflective", info.GetMessage());
+        Assert.Contains("multi-hop", info.GetMessage());
+
+        // The single-hop binding compiled; the multi-hop one still works reflectively (no CURG3001 dropped-member gap).
+        var view = GeneratedView(compilation, "InfoView");
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<", view);            // Flat → compiled
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Inner.Caption\")", view);  // Deep → reflective, working
+        Assert.DoesNotContain(diagnostics, d => d.Id == "CURG3001");
+    }
 }

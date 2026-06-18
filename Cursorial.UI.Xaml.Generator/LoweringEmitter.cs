@@ -115,7 +115,7 @@ internal static class LoweringEmitter
         if (ns is not null)
             sb.AppendLine("}");
 
-        return new LoweringResult(sb.ToString(), ctx.Unlowered);
+        return new LoweringResult(sb.ToString(), ctx.Unlowered, ctx.Infos);
     }
 
     // ── WS-X5.4f — ResourceDictionary-root lowering (no x:Class) ──────────────────────────────────────
@@ -166,7 +166,7 @@ internal static class LoweringEmitter
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        return new LoweringResult(sb.ToString(), ctx.Unlowered);
+        return new LoweringResult(sb.ToString(), ctx.Unlowered, ctx.Infos);
     }
 
     // Mirrors XamlObjectGraphBuilder.FillResourceDictionaryMembers: Source / MergedDictionaries /
@@ -1312,36 +1312,59 @@ internal static class LoweringEmitter
             return;
         }
 
-        if (TryEmitCompiledBinding(c, varExpr, owner, xm, node, dataType))
+        if (TryEmitCompiledBinding(c, varExpr, owner, xm, node, dataType, out var reason))
             return;
 
-        EmitReflectiveBinding(c, varExpr, owner, xm, node);
+        var reflectiveEmitted = EmitReflectiveBinding(c, varExpr, owner, xm, node);
+
+        // B3 — the reflective-fallback INFO (CURG2002): a binding that WAS a compiled-lane candidate (x:DataType in
+        // scope) but stayed reflective, naming why. Only when the reflective binding actually emitted (a Converter
+        // etc. that the reflective lane also drops is a CURG3001 gap, not a "works-but-reflective" info) and a
+        // reason was recorded (a non-candidate — no x:DataType — leaves reason null and gets no noise).
+        if (reflectiveEmitted && reason is not null)
+            c.Info($"{{Binding}} for '{xm.Name}' stays reflective: {reason}. It works, but for a zero-reflection " +
+                   "compiled binding under full-lowering use a DataContext-relative path with no Converter/Source/RelativeSource.");
     }
 
+    // Emits a typed, reflection-free CompiledBinding when the binding is an x:DataType-rooted, DataContext-relative,
+    // compilable path. Returns true when it emitted; false when it declined, with <paramref name="reason"/> set to
+    // a human phrase for the CURG2002 info (null when there was no x:DataType in scope — not a candidate at all).
     private static bool TryEmitCompiledBinding(
-        Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node, INamedTypeSymbol? dataType)
+        Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node, INamedTypeSymbol? dataType, out string? reason)
     {
+        reason = null;
         if (dataType is null)
-            return false;
+            return false; // no x:DataType ⇒ never a compiled candidate ⇒ no info
 
-        // Only a plain DataContext-relative binding is x:DataType-rooted; any anchor/converter/format/fallback
-        // arg changes semantics this lane doesn't yet reproduce — bail so it isn't silently dropped.
-        if (HasNamed(node, "Source") || HasNamed(node, "ElementName") || HasNamed(node, "RelativeSource") ||
-            HasNamed(node, "Converter") || HasNamed(node, "StringFormat") || HasNamed(node, "FallbackValue"))
+        // Only a plain DataContext-relative binding is x:DataType-rooted; an anchor/converter/format/fallback arg
+        // changes semantics this lane doesn't reproduce — bail to the reflective fallback.
+        if (HasNamed(node, "Source") || HasNamed(node, "ElementName") || HasNamed(node, "RelativeSource"))
         {
+            reason = "it has an explicit Source/ElementName/RelativeSource (not DataContext-relative)";
+            return false;
+        }
+        if (HasNamed(node, "Converter") || HasNamed(node, "StringFormat") || HasNamed(node, "FallbackValue"))
+        {
+            reason = "it has a Converter/StringFormat/FallbackValue";
             return false;
         }
 
         var path = BindingPathOf(node);
         if (string.IsNullOrEmpty(path) || path == ".")
-            return false;
+            return false; // a whole-DataContext binding has no compiled leaf — not an actionable info (reason stays null)
 
-        // Single-hop only in B3a (multi-hop getter/steps + null-propagation is a later workstream).
+        // Single-hop only in B3a (multi-hop getter/steps lands in B3 P1D); indexers/methods never compile here.
         if (path!.IndexOf('.') >= 0 || path.IndexOf('[') >= 0 || path.IndexOf('(') >= 0)
+        {
+            reason = "its path is multi-hop, an indexer, or a method call";
             return false;
+        }
 
-        if (CanonicalMode(node) is not { } modeName) // an unknown Mode token — bail to the reflective fallback
+        if (CanonicalMode(node) is not { } modeName)
+        {
+            reason = "its binding Mode is not recognized";
             return false;
+        }
 
         if (XamlDataTypeScope.FindMember(dataType, path) is not { IsStatic: false } leaf ||
             XamlDataTypeScope.MemberType(leaf) is not { } leafType ||
@@ -1349,6 +1372,7 @@ internal static class LoweringEmitter
         {
             // A static-named path can't be `__s.Member` (CS0176) — bail to the reflective fallback (which
             // resolves instance-or-static identically to the runtime loader's reflective binding).
+            reason = "its path leaf is static, not found, or not readable on the x:DataType";
             return false;
         }
 
@@ -1368,26 +1392,28 @@ internal static class LoweringEmitter
     }
 
     // The reflective fallback (B3b) — a faithful `new Binding(path) { … }` mirroring the runtime handler's
-    // BuildBinding (Mode/ElementName/Source/StringFormat/FallbackValue/RelativeSource), minus Converter.
-    private static void EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
+    // BuildBinding (Mode/ElementName/Source/StringFormat/FallbackValue/RelativeSource), minus Converter. Returns
+    // true when it emitted a working binding; false when it left a hard // TODO X5 gap (CURG3001, no runtime effect)
+    // — the caller uses this to decide whether a CURG2002 "works-but-reflective" info is appropriate.
+    private static bool EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
     {
         // A Converter needs eager resource/static resolution, which lowering doesn't do yet — defer (X5.4).
         if (HasNamed(node, "Converter"))
         {
             c.Todo($"{{Binding}} with a Converter for '{xm.Name}' not yet lowered (needs resource lowering)");
-            return;
+            return false;
         }
 
         if (CanonicalMode(node) is not { } modeName)
         {
             c.Todo($"{{Binding}} with an unrecognized Mode for '{xm.Name}'");
-            return;
+            return false;
         }
 
         if (RelativeSourceInit(node) is not { } relSource)
         {
             c.Todo($"{{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self/TemplatedParent only)");
-            return;
+            return false;
         }
 
         string path = Escape(BindingPathOf(node) ?? string.Empty);
@@ -1403,6 +1429,7 @@ internal static class LoweringEmitter
         c.Line(
             $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
             $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)});");
+        return true;
     }
 
     // {TemplateBinding SourceProp} (inside a template body) → a one-way TemplateBinding tracking the templated
@@ -1549,6 +1576,11 @@ internal static class LoweringEmitter
         public StringBuilder Body { get; } = new();
         public bool UsesConverter { get; set; }
         public List<UnloweredMember> Unlowered { get; } = [];
+
+        /// <summary>Info-level notes (CURG2002): the member emitted a WORKING but non-optimal form (a binding that
+        /// stayed reflective when it could have been a zero-reflection compiled binding). No <c>// TODO</c> marker.</summary>
+        public List<UnloweredMember> Infos { get; } = [];
+
         public List<StaticResourceResolution> StaticResources { get; } = [];
 
         /// <summary>
@@ -1630,13 +1662,20 @@ internal static class LoweringEmitter
             Line("// TODO X5: " + message);
             Unlowered.Add(new UnloweredMember(message, LineInfo.Line(CurrentLineInfo), LineInfo.Column(CurrentLineInfo)));
         }
+
+        /// <summary>Records a CURG2002 info note for an emitted-but-non-optimal member (no <c>// TODO</c> marker —
+        /// the member works). Stamped at the current member's source position.</summary>
+        public void Info(string message)
+            => Infos.Add(new UnloweredMember(message, LineInfo.Line(CurrentLineInfo), LineInfo.Column(CurrentLineInfo)));
     }
 
-    /// <summary>The lowered source plus the members it couldn't emit (each a build-warning candidate).</summary>
-    public readonly struct LoweringResult(string source, IReadOnlyList<UnloweredMember> unlowered)
+    /// <summary>The lowered source, the members it couldn't emit (build-warning candidates), and info-level notes
+    /// for members emitted in a non-optimal form (CURG2002 — e.g. a binding that stayed reflective).</summary>
+    public readonly struct LoweringResult(string source, IReadOnlyList<UnloweredMember> unlowered, IReadOnlyList<UnloweredMember> infos)
     {
         public string Source { get; } = source;
         public IReadOnlyList<UnloweredMember> Unlowered { get; } = unlowered;
+        public IReadOnlyList<UnloweredMember> Infos { get; } = infos;
     }
 
     /// <summary>A member the full-lowering couldn't emit, with its 1-based source position (0 if unknown).</summary>

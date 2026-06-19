@@ -189,6 +189,22 @@ public sealed class Section07_Converters : LoaderTestBase
         Assert.Same(custom, XamlConverters.For(typeof(SentinelTarget)));
     }
 
+    // ── Uri converter (Image.SourceUri — the XAML-friendly declarative image source, CD-P2K-2) ──
+
+    [Theory]
+    [InlineData("embedded://App/logo.png")]
+    [InlineData("file:///tmp/pic.png")]
+    [InlineData("Icons/logo.png")] // a bare relative path is valid (RelativeOrAbsolute)
+    public void X101_Uri_Parses(string text)
+        => Assert.Equal(new Uri(text, UriKind.RelativeOrAbsolute), Convert(typeof(Uri), text));
+
+    [Fact] // end-to-end: an Image's SourceUri attribute converts to a Uri through the loader
+    public void X102_Image_SourceUriAttribute_Converts()
+    {
+        var image = Loader.Load<UIControls.Image>(Parse("<Image SourceUri=\"embedded://App/logo.png\"/>"));
+        Assert.Equal(new Uri("embedded://App/logo.png"), image.SourceUri);
+    }
+
     private sealed class SentinelTarget { }
 
     private sealed class ConstConverter : ITypeConverter

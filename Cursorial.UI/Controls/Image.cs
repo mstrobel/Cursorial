@@ -14,9 +14,13 @@ public class Image : Control
 {
     private const string PartImagePresenter = "PART_ImagePresenter";
 
-    /// <summary>The image to display (<see langword="null"/> = none ⇒ the placeholder shows).</summary>
+    /// <summary>The image as explicit bytes (<see langword="null"/> ⇒ fall back to <see cref="SourceUri"/>, else the placeholder).</summary>
     public static readonly StyledProperty<ImageData?> SourceProperty =
         UIProperty.Register<Image, ImageData?>(nameof(Source));
+
+    /// <summary>A URI the image is loaded from (the XAML-friendly declarative source — see <see cref="ImagePresenter.SourceUri"/>).</summary>
+    public static readonly StyledProperty<Uri?> SourceUriProperty =
+        UIProperty.Register<Image, Uri?>(nameof(SourceUri));
 
     /// <summary>The placeholder content shown when no image renders.</summary>
     public static readonly StyledProperty<object?> PlaceholderContentProperty =
@@ -28,6 +32,9 @@ public class Image : Control
 
     /// <inheritdoc cref="SourceProperty"/>
     public ImageData? Source { get => GetValue(SourceProperty); set => SetValue(SourceProperty, value); }
+
+    /// <inheritdoc cref="SourceUriProperty"/>
+    public Uri? SourceUri { get => GetValue(SourceUriProperty); set => SetValue(SourceUriProperty, value); }
 
     /// <inheritdoc cref="PlaceholderContentProperty"/>
     public object? PlaceholderContent { get => GetValue(PlaceholderContentProperty); set => SetValue(PlaceholderContentProperty, value); }

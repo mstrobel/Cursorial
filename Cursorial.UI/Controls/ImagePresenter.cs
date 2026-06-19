@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Imaging;
 
 using ImageContent = Cursorial.Rendering.Content.Image;
@@ -9,37 +10,50 @@ namespace Cursorial.UI.Controls;
 /// A primitive (design doc §12 / CD-P2K-1) that hosts a graphics-protocol image, drawn through the
 /// <see cref="Cursorial.Rendering.Content.Image"/> content (the Kitty/iTerm2/Sixel <c>IBufferFragment</c> path — NOT
 /// the cell-sampling <c>ImageBrush</c>) via <see cref="RenderContext.DrawContent"/>, which auto-crops the fragment to
-/// the active clip. The image renders only when a <see cref="Source"/> is set <b>and</b> the negotiated graphics
-/// protocols can actually carry its format; otherwise the inherited placeholder shows. See
-/// <see cref="DrawnContentPresenter"/> for the placeholder plumbing, <c>ClipToBounds</c>, and the <c>:placeholder</c>
-/// pseudo-class.
+/// the active clip. The image source is either explicit bytes (<see cref="Source"/>) or a <see cref="SourceUri"/>
+/// loaded through the resource loader (the XAML-friendly path — <c>embedded://</c>/<c>file://</c>/relative). The image
+/// renders only when there is an effective source <b>and</b> the negotiated graphics protocols can carry its format;
+/// otherwise the inherited placeholder shows. See <see cref="DrawnContentPresenter"/> for the placeholder plumbing,
+/// <c>ClipToBounds</c>, and the <c>:placeholder</c> pseudo-class.
 /// </summary>
 /// <remarks>
-/// v1 uses the content's native aspect-preserving fit-within-bounds (sizing is delegated to
-/// <see cref="Cursorial.Rendering.Content.Image"/>, so a null / single-axis <see cref="ImageData.RequestedSize"/> is
-/// sized from the decoded pixels rather than collapsing to nothing); a <c>Stretch</c> property and a UI-level
-/// <c>ImageSource</c>/URI abstraction are deferrals (v1 takes <see cref="ImageData"/> directly). A mid-session
-/// renegotiation that flips graphics support re-evaluates on the next layout pass (the presenter subscribes to
-/// <see cref="UIApplication.CapabilitiesChanged"/>).
+/// Sizing is delegated to <see cref="Cursorial.Rendering.Content.Image"/> (a null / single-axis
+/// <see cref="ImageData.RequestedSize"/> is sized from the decoded pixels). A <c>Stretch</c> property is a deferral.
+/// A mid-session renegotiation that flips graphics support re-evaluates on the next layout pass (the presenter
+/// subscribes to <see cref="UIApplication.CapabilitiesChanged"/>). <see cref="SourceUri"/> loads synchronously via
+/// <see cref="ResourceLoader.Default"/> — fine for embedded/file sources; an explicit <see cref="Source"/> wins.
 /// </remarks>
 public class ImagePresenter : DrawnContentPresenter
 {
-    /// <summary>The image to display (<see langword="null"/> = none ⇒ the placeholder shows).</summary>
+    /// <summary>The image as explicit decoded-or-encoded bytes (<see langword="null"/> ⇒ fall back to <see cref="SourceUri"/>).</summary>
     public static readonly StyledProperty<ImageData?> SourceProperty =
         UIProperty.Register<ImagePresenter, ImageData?>(nameof(Source), changed: OnSourceChanged);
 
-    private ImageContent? _imageContent;  // cached per Source — a fresh content per Render would churn a new image id every frame
+    /// <summary>A URI the image is loaded from (the XAML-friendly declarative source — <c>embedded://</c>/<c>file://</c>/relative
+    /// via <see cref="ResourceLoader.Default"/>; the format is inferred from the path extension). An explicit
+    /// <see cref="Source"/> takes precedence.</summary>
+    public static readonly StyledProperty<Uri?> SourceUriProperty =
+        UIProperty.Register<ImagePresenter, Uri?>(nameof(SourceUri), changed: OnSourceUriChanged);
+
+    private ImageContent? _imageContent;  // cached per effective source — a fresh content per Render would churn a new image id every frame
+    private ImageData? _uriImage;          // the ImageData loaded from SourceUri (null when unset / load failed)
     private UIApplication? _subscribedApp; // the app whose CapabilitiesChanged we're subscribed to (for symmetric unsubscribe)
 
     static ImagePresenter()
     {
-        AffectsMeasure<ImagePresenter>(SourceProperty);
+        AffectsMeasure<ImagePresenter>(SourceProperty, SourceUriProperty);
     }
 
     /// <inheritdoc cref="SourceProperty"/>
     public ImageData? Source { get => GetValue(SourceProperty); set => SetValue(SourceProperty, value); }
 
-    /// <summary>Whether the image (not the placeholder) is currently shown — a <see cref="Source"/> is set, has bytes,
+    /// <inheritdoc cref="SourceUriProperty"/>
+    public Uri? SourceUri { get => GetValue(SourceUriProperty); set => SetValue(SourceUriProperty, value); }
+
+    /// <summary>The image actually shown — the explicit <see cref="Source"/> if set, else the <see cref="SourceUri"/>-loaded image.</summary>
+    public ImageData? EffectiveSource => Source ?? _uriImage;
+
+    /// <summary>Whether the image (not the placeholder) is currently shown — an effective source is set, has bytes,
     /// and the negotiated graphics protocols can carry its format.</summary>
     public bool IsImageVisible
     {
@@ -49,7 +63,7 @@ public class ImagePresenter : DrawnContentPresenter
             // format compatibility lives): iTerm2 carries any format; Kitty/Sixel carry PNG only. Gating on protocol
             // presence alone would collapse the placeholder on a Kitty-only terminal with a JPEG source, then show the
             // content's own "[image]" text instead (CD-P2K-1 audit).
-            if (Source is not { } s || s.Bytes.IsEmpty)
+            if (EffectiveSource is not { } s || s.Bytes.IsEmpty)
                 return false;
             if (UIApplication.Current?.Capabilities.Output.Graphics is not { } g)
                 return false;
@@ -109,7 +123,7 @@ public class ImagePresenter : DrawnContentPresenter
             context.DrawContent(context.Bounds, content); // the cached content fits within bounds + selects the protocol
     }
 
-    private ImageContent? BuildContent() => Source is { } src ? new ImageContent(src) : null;
+    private ImageContent? BuildContent() => EffectiveSource is { } src ? new ImageContent(src) : null;
 
     // A visible image must never measure to a 0 extent on either axis (Rect.IsEmpty is "any axis 0" — Render would skip
     // it and it would silently vanish). The content's null/single-axis sizing can round an axis to 0 (tiny image, or a
@@ -121,10 +135,55 @@ public class ImagePresenter : DrawnContentPresenter
     }
 
     private static void OnSourceChanged(UIObject sender, ImageData? oldValue, ImageData? newValue)
+        => (sender as ImagePresenter)?.RebuildContent();
+
+    private static void OnSourceUriChanged(UIObject sender, Uri? oldValue, Uri? newValue)
     {
         if (sender is not ImagePresenter p)
             return;
-        p._imageContent = newValue is { } src ? new ImageContent(src) : null; // rebuild the cached content (id/diff stability)
-        p.InvalidateVisual();
+        p._uriImage = LoadFromUri(newValue); // synchronous load via the resource loader (embedded/file/relative)
+        p.RebuildContent();
+    }
+
+    private void RebuildContent()
+    {
+        _imageContent = EffectiveSource is { } src ? new ImageContent(src) : null; // rebuild the cached content (id/diff stability)
+        InvalidateVisual();
+    }
+
+    // Load + decode-format an image from a URI via the default resource loader; null on a missing source / failed load.
+    // The load is defended even though TryLoadBytes is documented to return null for unresolvable URIs: the default
+    // loader's file/relative paths still throw on a malformed path (NUL char ⇒ ArgumentException, over-long ⇒
+    // PathTooLongException) — that must degrade to the placeholder, not escape the property-changed callback and crash
+    // the setter/binding (CD-P2K-2 audit). The loader itself is also hardened, so this is defense in depth.
+    private static ImageData? LoadFromUri(Uri? uri)
+    {
+        if (uri is null)
+            return null;
+        try
+        {
+            if (ResourceLoader.Default.TryLoadBytes(uri) is not { } bytes)
+                return null;
+            return new ImageData(bytes, FormatFromUri(uri)); // null RequestedSize ⇒ sized from the decoded pixels
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or System.Security.SecurityException)
+        {
+            return null; // a malformed/unloadable source degrades to the placeholder
+        }
+    }
+
+    private static ImageFormat FormatFromUri(Uri uri)
+    {
+        // For a relative URI strip any query/fragment before the extension (an absolute URI's AbsolutePath already has).
+        var path = uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
+        var cut = path.AsSpan().IndexOfAny('?', '#');
+        if (cut >= 0)
+            path = path[..cut];
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => ImageFormat.Jpeg,
+            ".gif" => ImageFormat.Gif,
+            _ => ImageFormat.Png, // best-guess default (Kitty refuses non-PNG, iTerm2 accepts most)
+        };
     }
 }

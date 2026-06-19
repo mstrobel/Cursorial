@@ -428,6 +428,7 @@ internal static class ControlThemes
         var presenter = new ImagePresenter();
         ctx.RegisterName("PART_ImagePresenter", presenter);
         presenter.SetBinding(ImagePresenter.SourceProperty, new TemplateBinding(Image.SourceProperty));
+        presenter.SetBinding(ImagePresenter.SourceUriProperty, new TemplateBinding(Image.SourceUriProperty));
         presenter.SetBinding(ImagePresenter.PlaceholderContentProperty, new TemplateBinding(Image.PlaceholderContentProperty));
         presenter.SetBinding(ImagePresenter.PlaceholderTemplateProperty, new TemplateBinding(Image.PlaceholderTemplateProperty));
         return presenter;

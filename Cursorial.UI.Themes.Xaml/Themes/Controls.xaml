@@ -576,6 +576,7 @@
   <ControlTemplate x:Key="ImageTemplate" TargetType="Image">
     <ImagePresenter x:Name="PART_ImagePresenter"
                     Source="{TemplateBinding Source}"
+                    SourceUri="{TemplateBinding SourceUri}"
                     PlaceholderContent="{TemplateBinding PlaceholderContent}"
                     PlaceholderTemplate="{TemplateBinding PlaceholderTemplate}"/>
   </ControlTemplate>

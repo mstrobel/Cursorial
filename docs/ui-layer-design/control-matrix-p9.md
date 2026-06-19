@@ -1234,6 +1234,22 @@ only on a `Source` change. The `KittyGraphics` test preset gained a cell-pixel s
 terminal reports. Dismissed: a `UIApplication.Current` null/cross-thread concern (the `?.` guard + single-app
 model handle it).
 
+**CD-P2K-2 — `SourceUri` (the XAML-friendly declarative image source).** `ImageData` (raw bytes + size) can't be
+authored in XAML, so `ImagePresenter`/`Image` gained `SourceUri : Uri?` — loaded via `ResourceLoader.Default`
+(`embedded://`/`file://`/relative; format inferred from the path extension, null `RequestedSize` ⇒ sized from the
+decoded pixels). `EffectiveSource = Source ?? <SourceUri-loaded>` (an explicit `Source` wins). A new XAML `Uri`
+converter (string → `Uri` RelativeOrAbsolute) makes `<Image SourceUri="embedded://App/logo.png"/>` parse; both the
+code-first and XAML-twin `Image` templates `TemplateBinding` it to the presenter. Rows C23.15–C23.19 +
+xaml-matrix X101/X102. **Audit (CD-P2K-2 audit):** one HIGH — a malformed `SourceUri` (NUL-char relative path /
+over-long path) made `ResourceLoader.TryLoadBytes` *throw* (its `OpenRelative`/`OpenFile` caught only
+FileNotFound/DirectoryNotFound/Unauthorized), and that escaped the property-changed callback and crashed the
+setter/binding instead of degrading to the placeholder. Fixed defense-in-depth: `ImagePresenter.LoadFromUri`
+catches `ArgumentException`/`IOException`/`NotSupportedException`/`SecurityException` → placeholder, **and**
+`ResourceLoader.OpenFile`/`OpenRelative` were hardened to honor their documented "returns null, doesn't throw for
+unresolvable" contract (the root-cause fix, benefiting `Icon` + every consumer). Plus one LOW — `FormatFromUri`
+now strips a query/fragment from a relative URI before the extension. Regression: C23.19 (a NUL-char `SourceUri`
+degrades to the placeholder, no throw).
+
 ## §C24 — Chart hosting: ChartPresenter + Chart (post-P9)
 
 The cell-rendered sibling of §C23. `ChartPresenter` (a `UIElement` primitive) hosts a

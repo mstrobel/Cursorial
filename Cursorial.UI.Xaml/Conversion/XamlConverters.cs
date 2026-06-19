@@ -62,6 +62,7 @@ public static class XamlConverters
         if (underlying == typeof(double)) return DoubleConverter.Instance;
         if (underlying == typeof(bool)) return BoolConverter.Instance;
         if (underlying == typeof(string)) return StringPassthroughConverter.Instance;
+        if (underlying == typeof(Uri)) return UriConverter.Instance;
         if (underlying == typeof(Margins)) return MarginsConverter.Instance;
         if (underlying == typeof(GridLength)) return GridLengthConverter.Instance;
         if (underlying == typeof(RelativePoint)) return RelativePointConverter.Instance;
@@ -111,6 +112,21 @@ public static class XamlConverters
             if (double.TryParse(text.Trim(), NumberStyles.Float, ctx.Culture, out double v))
                 return v;
             throw Fail($"'{text}' is not a valid number.", ctx);
+        }
+    }
+
+    // A URI value (e.g. Image.SourceUri="embedded://App/logo.png") — relative-or-absolute so embedded://, file://,
+    // http(s):// and bare relative paths all parse; the resource loader resolves the scheme at load time.
+    private sealed class UriConverter : ITypeConverter
+    {
+        public static readonly UriConverter Instance = new();
+        public bool IsContextFree => true;
+
+        public object ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            if (Uri.TryCreate(text.Trim(), UriKind.RelativeOrAbsolute, out var uri))
+                return uri;
+            throw Fail($"'{text}' is not a valid URI.", ctx);
         }
     }
 

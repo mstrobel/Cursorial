@@ -287,5 +287,108 @@ public sealed class Section35_Image
         Assert.True(emitted);
     }
 
+    // ── SourceUri (XAML-friendly declarative source, CD-P2K-2) ──────────────────────────────────────────
+
+    [Fact] // C23.15: a SourceUri loads the image via the resource loader (file://) and renders
+    public void C23_15_SourceUriLoadsAndRenders()
+    {
+        var pngPath = Path.Combine(Path.GetTempPath(), $"cursorial-image-test-{Guid.NewGuid():N}.png");
+        File.WriteAllBytes(pngPath, MinimalPng(80, 80));
+        try
+        {
+            using var host = KittyHost();
+            var presenter = new ImagePresenter
+            {
+                SourceUri = new Uri(pngPath), // an absolute path ⇒ a file:// URI
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            host.ShowRoot(presenter);
+            var emitted = RenderEmitsKittyApc(host);
+
+            Assert.True(presenter.IsImageVisible);
+            Assert.NotNull(presenter.EffectiveSource); // loaded from the URI
+            Assert.True(emitted);
+        }
+        finally
+        {
+            File.Delete(pngPath);
+        }
+    }
+
+    [Fact] // C23.16: an explicit Source (bytes) wins over a SourceUri
+    public void C23_16_ExplicitSourceWinsOverUri()
+    {
+        var presenter = new ImagePresenter
+        {
+            Source = Img(10, 5),
+            SourceUri = new Uri("embedded://Nonexistent.Assembly/none.png"),
+        };
+        Assert.Same(presenter.Source, presenter.EffectiveSource);
+    }
+
+    [Fact] // C23.17: a failed URI load shows the placeholder (no crash, no effective source)
+    public void C23_17_BadUriShowsPlaceholder()
+    {
+        using var host = KittyHost();
+        var presenter = new ImagePresenter
+        {
+            SourceUri = new Uri("embedded://Nonexistent.Assembly/none.png"),
+            PlaceholderContent = "no image",
+        };
+        host.ShowRoot(presenter);
+        host.RunUntilIdle();
+
+        Assert.Null(presenter.EffectiveSource);
+        Assert.False(presenter.IsImageVisible);
+        Assert.Equal(Visibility.Visible, presenter.PlaceholderPresenter.Visibility);
+    }
+
+    [Fact] // C23.18: the Image control's SourceUri flows through the template to the presenter
+    public void C23_18_ImageControlSourceUriFlows()
+    {
+        var pngPath = Path.Combine(Path.GetTempPath(), $"cursorial-image-test-{Guid.NewGuid():N}.png");
+        File.WriteAllBytes(pngPath, MinimalPng(80, 80));
+        try
+        {
+            using var host = KittyHost();
+            var image = new Image
+            {
+                SourceUri = new Uri(pngPath),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            host.ShowRoot(image);
+            var emitted = RenderEmitsKittyApc(host);
+
+            Assert.NotNull(image.PresenterPart);
+            Assert.Equal(image.SourceUri, image.PresenterPart!.SourceUri); // TemplateBound control → presenter
+            Assert.True(emitted);
+        }
+        finally
+        {
+            File.Delete(pngPath);
+        }
+    }
+
+    [Fact] // C23.19 (CD-P2K-2 audit): a MALFORMED SourceUri (NUL-char relative path) degrades to the placeholder, never throws
+    public void C23_19_MalformedUriDegradesNoThrow()
+    {
+        using var host = KittyHost();
+        var presenter = new ImagePresenter { PlaceholderContent = "no image" };
+        host.ShowRoot(presenter);
+        host.RunUntilIdle();
+
+        // A NUL char makes Path.GetFullPath/File.OpenRead throw (the loader only caught FileNotFound/etc. before); the
+        // ImagePresenter call-site guard + the hardened loader must turn it into a clean placeholder, not a crashed setter.
+        var ex = Record.Exception(() => presenter.SourceUri = new Uri("bad\0name.png", UriKind.RelativeOrAbsolute));
+        Assert.Null(ex);
+        host.RunUntilIdle();
+
+        Assert.Null(presenter.EffectiveSource);
+        Assert.False(presenter.IsImageVisible);
+        Assert.Equal(Visibility.Visible, presenter.PlaceholderPresenter.Visibility);
+    }
+
     private sealed class PlaceholderVm; // a content type for the by-type placeholder template (C23.5)
 }

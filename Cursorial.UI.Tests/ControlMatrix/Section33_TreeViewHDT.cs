@@ -134,4 +134,27 @@ public sealed class Section33_TreeViewHDT
         host.RunUntilIdle();
         Assert.Same(roots[0], tree.SelectedItem); // SelectedItem is the data Node, not the container
     }
+
+    // ── audit regressions (CD-P2H-1 audit) ──────────────────────────────────────────────────────────────
+
+    [Fact] // C20.7: a cyclic data graph does NOT StackOverflow — the recursion stops where a data item repeats an ancestor
+    public void C20_7_CyclicGraphDoesNotOverflow()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var a = new Node("a");
+        var b = new Node("b");
+        a.Children.Add(b);
+        b.Children.Add(a); // a → b → a → …  (cycle)
+
+        var tree = new TreeView { ItemTemplate = Hdt(), ItemsSource = new[] { a }, Width = 20, Height = 10 };
+        host.ShowRoot(tree); // must NOT crash the process with a StackOverflow
+        host.RunUntilIdle();
+
+        var ca = Container(tree, 0);     // a
+        var cb = Container(ca, 0);       // b
+        Assert.Same(b, cb.Header);
+        var ca2 = Container(cb, 0);      // a again (b's child)
+        Assert.Same(a, ca2.Header);
+        Assert.False(ca2.HasItems);      // the cycle stopped here — the repeated 'a' renders as a leaf
+    }
 }

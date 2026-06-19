@@ -1051,6 +1051,7 @@ header presenter binds `ContentTemplate` ← `HeaderTemplate` so the HDT renders
 | C20.4 | HDT ItemTemplate | inspect a container | its `HeaderTemplate` is the HDT (the header renders through it) | PIN (CD-P2H-1) |
 | C20.5 | nested data | add a child to a node's `ObservableCollection` | a new child container materializes | PIN (CD-P2H-1) |
 | C20.6 | HDT data tree | select a generated container | `TreeView.SelectedItem` is the data item (not the container) | PIN (CD-P2H-1) |
+| C20.7 | a **cyclic** data graph (a → b → a) under an HDT | show + walk down | no `StackOverflow`; the recursion stops where a data item repeats an ancestor — the repeated node renders as a leaf (`HasItems == false`) | PIN (CD-P2H-1 audit) |
 
 **CD-P2H-1 — TreeView HierarchicalDataTemplate.** `HierarchicalDataTemplate.ItemsSourcePath` (dotted reflective
 read; a `string` is not a child collection). `TreeHierarchy.Apply(owner, container, item)`: template =
@@ -1061,3 +1062,16 @@ the v1 own-container tree; container virtualization is a separate item). **Requi
 template must be registered before `ItemsSource` realizes (generation reads it at set time — XAML satisfies this
 naturally). **Deferral:** the `HierarchicalDataTemplate.ItemTemplate`/selector for heterogeneous trees (homogeneous
 trees recurse via the by-type chain / the propagated ItemTemplate).
+
+**CD-P2H-1 audit (adversarial review of the HDT landing).** Three confirmed bugs, each fixed with a regression
+test: (1 HIGH, C20.7) eager realization recursed into an **uncatchable `StackOverflow`** on a cyclic or
+pathologically-deep data graph — `TreeHierarchy.Apply` now stops a node from realizing children (renders it as a
+leaf) when its data item already appears among its `TreeViewItem` ancestors (`IsAncestorData`, a back-reference /
+cycle) or its nesting depth hits `MaxRealizationDepth = 128`. (2) `TreeHierarchy.Clear` cleared `ItemTemplate`
+**before** `ItemsSource`, so the `ItemTemplate`-change `ResetContainers` re-realized the whole (deep) subtree only
+to drop it on the next `ClearValue` — `Clear` now clears `ItemsSourceProperty` **first** (one teardown), then
+Header/HeaderTemplate/ItemTemplate. (3) the header `ContentPresenter` was `RecognizesAccessKey = true`, so an
+underscore in node data (e.g. `"a_b"`) was silently consumed as an access-key mnemonic — the HDT header presenter
+is now a plain `ContentPresenter()` (data text renders literally; access keys belong to control content, not
+data). Tests in `Section33_TreeViewHDT.cs` (C20.7) + the existing rows guard the `Clear` ordering and the
+literal-underscore render.

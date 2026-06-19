@@ -288,7 +288,7 @@ internal static class ControlThemes
         ctx.RegisterName("PART_Twisty", twisty);
         DockPanel.SetDock(twisty, Dock.Left);
 
-        var header = new ContentPresenter { RecognizesAccessKey = true };
+        var header = new ContentPresenter(); // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally
         ctx.RegisterName("PART_ContentPresenter", header);
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
         header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header

@@ -137,4 +137,34 @@ public static class TestCapabilities
             Protocol = KittyTruecolor.Output.Protocol with { MouseCursorShape = false },
         },
     };
+
+    /// <summary>The Kitty preset with the Kitty graphics protocol (APC G…) — images <b>and</b> occlusion
+    /// (<c>caps-images</c> + <c>caps-image-occlusion</c>).</summary>
+    public static TerminalCapabilities KittyGraphics { get; } = KittyTruecolor with
+    {
+        Output = KittyTruecolor.Output with
+        {
+            Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
+        },
+    };
+
+    /// <summary>The Kitty preset with DEC Sixel graphics only — images but NO occlusion (Sixel paints into the
+    /// cell grid; <c>caps-images</c> without <c>caps-image-occlusion</c>).</summary>
+    public static TerminalCapabilities SixelGraphics { get; } = KittyTruecolor with
+    {
+        Output = KittyTruecolor.Output with
+        {
+            Graphics = new GraphicsCapabilities(Sixel: true, KittyGraphics: false, ITerm2InlineImages: false),
+        },
+    };
+
+    /// <summary>The Kitty preset with iTerm2 / WezTerm inline images only — images but NO occlusion (excluded for
+    /// now; <c>caps-images</c> without <c>caps-image-occlusion</c>).</summary>
+    public static TerminalCapabilities ITerm2Graphics { get; } = KittyTruecolor with
+    {
+        Output = KittyTruecolor.Output with
+        {
+            Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+        },
+    };
 }

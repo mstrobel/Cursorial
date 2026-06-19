@@ -239,6 +239,28 @@ public sealed partial class UIApplication : IAsyncDisposable
     /// </summary>
     public bool SupportsAltKeyTracking => _supportsAltKeyTracking;
 
+    private bool _nerdFontAvailable;
+
+    /// <summary>
+    /// Whether the terminal is rendering with a Nerd Font (the <c>caps-nerdfont</c> root class — CD-P2J-1). There is
+    /// no probe (no terminal advertises Nerd Font glyph coverage), so this is an explicit opt-in for a future
+    /// user-options infrastructure to set; it defaults to <see langword="false"/>. Setting it re-stamps the
+    /// capability classes on every surface root live, and — being application state, not a negotiated capability —
+    /// it survives renegotiation.
+    /// </summary>
+    public bool NerdFontAvailable
+    {
+        get => _nerdFontAvailable;
+        set
+        {
+            Dispatcher.VerifyAccess();
+            if (_nerdFontAvailable == value)
+                return;
+            _nerdFontAvailable = value;
+            StyleEngineInternal.RestampCapabilityClasses();
+        }
+    }
+
     /// <summary>The last frame's timestamp (UI-thread read).</summary>
     public FrameTime CurrentFrameTime => _currentFrameTime;
 

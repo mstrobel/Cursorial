@@ -1395,9 +1395,13 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// tier changes (the P5 inversion-6 re-point, CD14): the color-tier class flip rides the
     /// variant-changed event, not a separate negotiated-caps hook. Non-color classes are unaffected.
     /// </summary>
-    internal void OnEffectiveTierChanged(ColorDepth tier)
+    internal void OnEffectiveTierChanged(ColorDepth tier) => RestampCapabilityClasses();
+
+    /// <summary>Re-stamps the full <c>caps-*</c> set on every stylable surface root — the shared body of the
+    /// tier-flip re-stamp and the <see cref="UIApplication.NerdFontAvailable"/> opt-in re-stamp (CD-P2J-1).</summary>
+    internal void RestampCapabilityClasses()
     {
-        foreach (var root in StylableSurfaceRoots()) // re-stamp the tier class on every surface (P7)
+        foreach (var root in StylableSurfaceRoots()) // re-stamp on every surface (P7)
             StampCapabilityClasses(root);
     }
 
@@ -1440,6 +1444,20 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
         if (capabilities.Input.Protocol.KittyKeyboardProtocol)
             replacement.Add("caps-kitty-keyboard");
+
+        // Graphics classes (CD-P2J-1): caps-images for ANY inline-image protocol; caps-image-occlusion only for
+        // Kitty graphics (z-orderable placements the framework can clip/occlude — Sixel paints inline into the cell
+        // grid, iTerm2 is excluded for now pending an occlusion model).
+        var graphics = capabilities.Output.Graphics;
+        if (graphics.Sixel || graphics.KittyGraphics || graphics.ITerm2InlineImages)
+            replacement.Add("caps-images");
+        if (graphics.KittyGraphics)
+            replacement.Add("caps-image-occlusion");
+
+        // caps-nerdfont is a no-probe opt-in (no terminal advertises Nerd Font coverage), sourced from the app's
+        // user-options flag (CD-P2J-1) — app state, so it survives renegotiation.
+        if (_app.NerdFontAvailable)
+            replacement.Add("caps-nerdfont");
 
         // caps-unicode is unconditional; caps-ascii is RESERVED and never stamped at P5 — no
         // negotiated glyph-capability source exists (SD14 recorded deferral).

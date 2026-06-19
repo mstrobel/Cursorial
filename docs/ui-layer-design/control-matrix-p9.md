@@ -1138,3 +1138,33 @@ positives / documented deferrals): the `_suppressRebuild` exception-safety (the 
 DisplayMode write is outside the `try`), the drill-down-coercion-to-wrong-month concern (a clicked cell is enabled
 only when its span has a selectable day, so coercion stays within that month/year), and the all-cells-disabled
 focus-loss edge (consistent with the existing Month-mode `FocusDisplayMonthCell` behavior).
+
+## §C22 — Capability classes for image/chart hosting (post-P9)
+
+Three new `caps-*` root classes (joining the SD14/CD14 set stamped by `StyleEngine.StampCapabilityClasses`) so a
+theme/style can branch on graphics + glyph capability. `caps-images` and `caps-image-occlusion` are sourced from the
+**negotiated** `OutputCapabilities.Graphics`; `caps-nerdfont` is an explicit **no-probe** opt-in
+(`UIApplication.NerdFontAvailable`, set by a future user-options infrastructure — no terminal advertises Nerd Font
+coverage, so it can't be detected). The image work (§C23 `ImagePresenter`) gates its render-zone occlusion on
+`caps-image-occlusion`. Tests: `Cursorial.UI.Tests/StyleMatrix/Section10_ImageCaps.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C22.1 | a terminal with any graphics protocol (Kitty / Sixel / iTerm2) | show | `caps-images` on the root | PIN (CD-P2J-1) |
+| C22.2 | no graphics protocol (Ansi16Legacy) | show | no `caps-images` | PIN (CD-P2J-1) |
+| C22.3 | Kitty graphics | show | `caps-image-occlusion` (the framework can clip/occlude Kitty placements) | PIN (CD-P2J-1) |
+| C22.4 | Sixel only | show | `caps-images` but NOT `caps-image-occlusion` (Sixel paints into the grid) | PIN (CD-P2J-1) |
+| C22.5 | iTerm2 inline images only | show | `caps-images` but NOT `caps-image-occlusion` (excluded for now) | PIN (CD-P2J-1) |
+| C22.6 | any terminal, default | show | no `caps-nerdfont` (no probe ⇒ never auto-stamped) | PIN (CD-P2J-1) |
+| C22.7 | shown tree | set `UIApplication.NerdFontAvailable = true` (then false) | `caps-nerdfont` stamped live, then removed — one restyle pass each | PIN (CD-P2J-1) |
+| C22.8 | Kitty-graphics + NerdFontAvailable, renegotiate to Ansi16Legacy | renegotiate | `caps-images`/`caps-image-occlusion` drop (new snapshot), `caps-nerdfont` persists (app state, not negotiated) | PIN (CD-P2J-1) |
+| C22.9 | Kitty-graphics host, a `.caps-image-occlusion` rule | show | the rule arms (an ordinary matchable class) | PIN (CD-P2J-1) |
+
+**CD-P2J-1 — image/glyph capability classes.** In `StampCapabilityClasses`: `caps-images` when
+`Output.Graphics` has any of `Sixel`/`KittyGraphics`/`ITerm2InlineImages`; `caps-image-occlusion` when
+`Output.Graphics.KittyGraphics` only (Sixel paints inline into the cell grid — no z-ordering; iTerm2 is excluded
+for now per the maintainer, pending an occlusion model); `caps-nerdfont` when `UIApplication.NerdFontAvailable`
+(default `false`, no probe — the opt-in setter re-stamps every surface root via the engine's
+`RestampCapabilityClasses`, the generalized form of the tier-flip re-stamp). All three join the negotiated re-stamp
+on renegotiation; the Nerd-Font opt-in is app state and survives it. New `TestCapabilities` presets:
+`KittyGraphics`, `SixelGraphics`, `ITerm2Graphics`.

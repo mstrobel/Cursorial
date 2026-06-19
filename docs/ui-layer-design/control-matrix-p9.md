@@ -1233,3 +1233,40 @@ image id every frame — the bug `FragmentContent.IsFragmentNeeded` documents) i
 only on a `Source` change. The `KittyGraphics` test preset gained a cell-pixel size (CSI 16 t), as a real Kitty
 terminal reports. Dismissed: a `UIApplication.Current` null/cross-thread concern (the `?.` guard + single-app
 model handle it).
+
+## §C24 — Chart hosting: ChartPresenter + Chart (post-P9)
+
+The cell-rendered sibling of §C23. `ChartPresenter` (a `UIElement` primitive) hosts a
+`Cursorial.Drawing.Charts.IChart`, painted via the new `RenderContext.DrawChart(chart, area)` seam (the chart
+draws itself into the presenter's bounds and clips to them). **No capability gate** — charts are ordinary cells
+and render on every terminal (unlike the graphics-protocol image). When no `Source` is set, the placeholder shows.
+`Chart` (a `Control`) wraps it — its `ControlTemplate` hosts a `PART_ChartPresenter` one-way `TemplateBound` to
+`Source`/placeholder. **Refactor:** the placeholder plumbing (the internal `ContentPresenter`, `ClipToBounds`,
+`:placeholder`, `PlaceholderContent`/`PlaceholderTemplate`) is now an abstract `DrawnContentPresenter` base shared
+by `ImagePresenter` + `ChartPresenter` (subclasses supply primary-content visibility / measure / paint). Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section36_Chart.cs`. **Deferral:** observing a chart mutated in place (assign a
+new `Source` to repaint); a chart has no intrinsic size (fills its bounded area; an unbounded axis collapses).
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C24.1 | `ChartPresenter{Source=chart}` | show | the chart's draw reaches the cells; placeholder collapsed | PIN (CD-P2L-1) |
+| C24.2 | `ChartPresenter` no Source, placeholder set | show | the placeholder renders (its `ContentPresenter` child Visible) | PIN (CD-P2L-1) |
+| C24.3 | `ChartPresenter{Source}` as root | measure | fills the available (bounded) area | PIN (CD-P2L-1) |
+| C24.4 | `ChartPresenter{Source}`, Ansi16Legacy (no graphics) | show | still renders — **no capability gate** (cells, not a graphics protocol) | PIN (CD-P2L-1) |
+| C24.5 | `ChartPresenter` toggling Source | inspect `:placeholder` | set when the placeholder shows, cleared when the chart shows | PIN (CD-P2L-1) |
+| C24.6 | `ChartPresenter{Source=BarChart(...)}` | show | a real chart draws non-blank cells | PIN (CD-P2L-1) |
+| C24.7 | `Chart{Source}` control | show | the template's `PART_ChartPresenter` gets the Source; the chart renders | PIN (CD-P2L-1) |
+| C24.8 | `Chart` control no Source, placeholder | show | the placeholder shows through the presenter | PIN (CD-P2L-1) |
+| C24.9 | `Chart{Source=null}` then set Source | set Source | placeholder→chart live | PIN (CD-P2L-1) |
+| C24.10 | placeholder a data object + a `DataTemplateKey` template | show (no Source) | the placeholder realizes via the by-type template | PIN (CD-P2L-1) |
+
+**CD-P2L-1 — ChartPresenter + Chart.** `RenderContext.DrawChart(IChart chart, in Rect area)` calls
+`chart.Render(Inner, area)` (the element translate/clip scope is already pushed, so the chart draws element-local
+and clips to bounds). `ChartPresenter : DrawnContentPresenter` with `Source : IChart?`; `IsPrimaryContentVisible =
+Source is not null` (no caps gate); `MeasurePrimaryContent` returns the available area (an unbounded axis ⇒ 0 — a
+chart has no natural size); `RenderPrimaryContent` ⇒ `DrawChart`. `DrawnContentPresenter` is the extracted base
+(also re-parents `ImagePresenter`): it owns `PlaceholderContent`/`PlaceholderTemplate` (registered on the base, so
+both presenters + the `Image`/`Chart` controls' `TemplateBinding`s resolve the inherited members), the internal
+`ContentPresenter` placeholder child, `ClipToBounds`, the `MeasureOverride`/`ArrangeOverride`/`Render` skeleton, and
+`UpdatePlaceholderState` (the `:placeholder` flip). `Chart : Control` mirrors `Image` one-way through
+`TemplateBinding`.

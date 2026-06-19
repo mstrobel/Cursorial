@@ -62,6 +62,7 @@ internal static class ControlThemes
         dict[typeof(ProgressBar)] = ProgressBarTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
         dict[typeof(Image)] = ImageTheme();
+        dict[typeof(Chart)] = ChartTheme();
         dict[typeof(Window)] = WindowTheme();
     }
 
@@ -434,6 +435,21 @@ internal static class ControlThemes
 
     private static Style ImageTheme()
         => new Style { Key = "Theme.Image" }.Set(Control.TemplateProperty, ImageTemplate());
+
+    // A Chart: its template hosts a PART_ChartPresenter with Source/placeholder one-way TemplateBound from the control.
+    // The presenter draws the cell-rendered chart (or the placeholder when none is set).
+    private static ControlTemplate ChartTemplate() => new(ctx =>
+    {
+        var presenter = new ChartPresenter();
+        ctx.RegisterName("PART_ChartPresenter", presenter);
+        presenter.SetBinding(ChartPresenter.SourceProperty, new TemplateBinding(Chart.SourceProperty));
+        presenter.SetBinding(ChartPresenter.PlaceholderContentProperty, new TemplateBinding(Chart.PlaceholderContentProperty));
+        presenter.SetBinding(ChartPresenter.PlaceholderTemplateProperty, new TemplateBinding(Chart.PlaceholderTemplateProperty));
+        return presenter;
+    });
+
+    private static Style ChartTheme()
+        => new Style { Key = "Theme.Chart" }.Set(Control.TemplateProperty, ChartTemplate());
 
     // ───────────────────────────── DatePicker ─────────────────────────────
 

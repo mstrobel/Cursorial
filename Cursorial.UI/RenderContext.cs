@@ -1,4 +1,5 @@
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
@@ -209,6 +210,13 @@ public sealed class RenderContext
     public void DrawContent(in Rect bounds, IContent content)
     {
         Inner.DrawContent(bounds, content, _capabilities);
+    }
+
+    /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>
+    public void DrawChart(IChart chart, in Rect area)
+    {
+        ArgumentNullException.ThrowIfNull(chart);
+        chart.Render(Inner, area);
     }
 
     // ───────────────────────────── strokes, boxes, panels, shadows ─────────────────────────────

@@ -209,6 +209,14 @@ public class ItemsControl : Control
         return isOwnContainer ? (UIElement)item! : GetContainerForItemOverride();
     }
 
+    /// <summary>Whether <paramref name="item"/> is its own container (the generator's recycle gate — own-containers
+    /// are never pooled). Internal accessor over the <see cref="IsItemItsOwnContainer"/> policy hook.</summary>
+    internal bool IsOwnContainer(object? item) => IsItemItsOwnContainer(item);
+
+    /// <summary>Creates a fresh generated (non-own) container via the policy hook — the recycle-miss path
+    /// (the pool was empty), so the generator never wraps an own-container here.</summary>
+    internal UIElement CreateGeneratedContainer() => GetContainerForItemOverride();
+
     internal void AddContainerLogical(UIElement container) => AddLogicalChild(container);
 
     internal void RemoveContainerLogical(UIElement container) => RemoveLogicalChild(container);
@@ -234,6 +242,20 @@ public class ItemsControl : Control
 
         ClearContainerForItemOverride(container, item);
         container.Style = null; // drop the Explicit-layer ItemContainerStyle (Style is a plain property)
+    }
+
+    internal void ResetRecycledContainer(UIElement container) => ResetRecycledContainerCore(container);
+
+    /// <summary>Resets a recycled container's owner-specific transient state before it is re-prepared for a new item
+    /// (design doc §12.6 recycle reset contract). The base clears <see cref="ISelectableContainer.IsSelected"/> (so a
+    /// previously-selected container does not show selected for an unselected item). Controls whose container carries
+    /// extra transient state (e.g. <c>TreeViewItem.IsExpanded</c>) override and call <c>base</c>. Interaction state
+    /// (<c>:pointerover</c>/<c>:pressed</c>/<c>:focus</c>) is NOT reset here — the host's visual detach clears it
+    /// before pooling (it cannot be set via <c>PseudoClasses.Set</c>).</summary>
+    protected virtual void ResetRecycledContainerCore(UIElement container)
+    {
+        if (container is ISelectableContainer selectable)
+            selectable.SetIsSelectedFromOwner(false);
     }
 
     // ── Source wiring ────────────────────────────────────────────────────────────────────────────────

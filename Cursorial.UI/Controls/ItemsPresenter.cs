@@ -104,6 +104,14 @@ public sealed class ItemsPresenter : UIElement
         if (_generator is null || _panel is null)
             return;
 
+        // In virtualizing mode the panel (a VirtualizingStackPanel, V2) owns its Children via the materialization
+        // channel (ContainersRealizedChanged) — the structural channel is for the selection model only. The eager,
+        // index-aligned adoption below assumes a dense store (ContainerFromIndex non-null, item index == child
+        // index), which the sparse store violates (it would Remove(null) / Insert past the end). So the eager
+        // ItemsPresenter no-ops structural events here; a virtualizing list needs a VirtualizingStackPanel ItemsPanel.
+        if (_generator.IsVirtualizing)
+            return;
+
         switch (e.Action)
         {
             case ContainersChangedAction.Realized:
@@ -159,6 +167,9 @@ public sealed class ItemsPresenter : UIElement
     {
         if (_generator is null || _panel is null)
             return;
+
+        if (_generator.IsVirtualizing)
+            return; // sparse store: the VirtualizingStackPanel (V2) owns adoption — see OnContainersChanged
 
         for (var i = 0; i < _generator.ContainerCount; i++)
         {

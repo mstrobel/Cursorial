@@ -64,6 +64,20 @@ public class TreeView : ItemsControl
         base.ClearContainerForItemOverride(container, item);
     }
 
+    /// <inheritdoc/>
+    protected override void ResetRecycledContainerCore(UIElement container)
+    {
+        // TreeViewItem isn't an ISelectableContainer (the tree coordinates selection itself), and carries
+        // IsExpanded — both must reset on recycle so neither bleeds to the next data node (design doc §12.6).
+        if (container is TreeViewItem node)
+        {
+            node.ClearValue(TreeViewItem.IsExpandedProperty);
+            node.ClearValue(TreeViewItem.IsSelectedProperty);
+        }
+
+        base.ResetRecycledContainerCore(container);
+    }
+
     // Type-ahead over the TOP-LEVEL nodes (the tree's own generator). Matching against each node's Header; full
     // visible-subtree search is a follow-on. Cycles from the selected node when it is a top-level node.
     private protected override bool TextSearchNavigates => true;

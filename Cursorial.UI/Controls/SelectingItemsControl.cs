@@ -75,11 +75,10 @@ public abstract class SelectingItemsControl : ItemsControl
     /// <summary>The selection model (the source of truth — the input layer drives it).</summary>
     private protected SelectionModel Selection => _selection;
 
-    /// <summary>The item at <paramref name="index"/> (via the container stamp), or null.</summary>
-    private protected object? ItemFromIndex(int index)
-        => index >= 0 && ItemContainerGenerator.ContainerFromIndex(index) is { } container
-            ? ItemContainerGenerator.ItemFromContainer(container)
-            : null;
+    /// <summary>The item at <paramref name="index"/> read from the items view, or null. Independent of realization
+    /// (so <see cref="SelectedItem"/>/<see cref="SelectedItems"/> resolve for a selected-but-unrealized index in
+    /// virtualizing mode); in eager mode this equals the realized container's stamp.</summary>
+    private protected object? ItemFromIndex(int index) => ItemContainerGenerator.ItemFromIndex(index);
 
     private protected int IndexFromItem(object? item)
     {
@@ -239,7 +238,12 @@ public abstract class SelectingItemsControl : ItemsControl
             default:
             case ContainersChangedAction.Reset:
                 RunStructural(_selection.Reset);
-                ReconcileContainers(0, ItemContainerGenerator.ContainerCount);
+                // Virtualizing Reset materializes nothing, so an O(itemCount) reconcile over an all-unrealized store
+                // would be pure waste (defeating the sparse-store scale promise — a 1M-item bind ran 1M no-op lookups).
+                // The per-realize reconcile (the ContainersRealizedChanged.Realized handler, V3) applies IsSelected as
+                // containers materialize.
+                if (!ItemContainerGenerator.IsVirtualizing)
+                    ReconcileContainers(0, ItemContainerGenerator.ContainerCount);
                 PushSelectedProperties();
                 break;
         }

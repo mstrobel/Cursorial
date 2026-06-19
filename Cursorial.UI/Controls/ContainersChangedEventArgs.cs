@@ -26,7 +26,8 @@ public sealed class ContainersChangedEventArgs(
     int startIndex,
     int count,
     int oldStartIndex = -1,
-    IReadOnlyList<UIElement>? removedContainers = null) : EventArgs
+    IReadOnlyList<UIElement>? removedContainers = null,
+    IReadOnlyList<UIElement>? realizedContainers = null) : EventArgs
 {
     /// <summary>What happened to the range.</summary>
     public ContainersChangedAction Action { get; } = action;
@@ -35,7 +36,10 @@ public sealed class ContainersChangedEventArgs(
     /// (meaningless for <see cref="ContainersChangedAction.Reset"/>).</summary>
     public int StartIndex { get; } = startIndex;
 
-    /// <summary>The number of containers in the range.</summary>
+    /// <summary>The number of containers in the range. On the <i>materialization</i> channel
+    /// (<see cref="ItemContainerGenerator.ContainersRealizedChanged"/>) this equals the authoritative
+    /// instance-list length (<see cref="RealizedContainers"/> / <see cref="RemovedContainers"/>), which can be
+    /// fewer than the requested span when a keep-alive skip or an already-(un)realized slot leaves a hole.</summary>
     public int Count { get; } = count;
 
     /// <summary>For <see cref="ContainersChangedAction.Moved"/>, the source index the range moved from; otherwise −1.</summary>
@@ -45,4 +49,12 @@ public sealed class ContainersChangedEventArgs(
     /// (the generator has already dropped them from its index list when this fires, so the host removes these
     /// directly rather than by a now-stale index). Null for the other actions.</summary>
     public IReadOnlyList<UIElement>? RemovedContainers { get; } = removedContainers;
+
+    /// <summary>For a <i>materialization</i>-channel <see cref="ContainersChangedAction.Realized"/> (scroll-in via
+    /// <see cref="ItemContainerGenerator.RealizeRange"/>), the actual newly-realized container instances in
+    /// item-index order. The host adopts <b>exactly these</b> rather than iterating <c>[StartIndex, StartIndex+Count)</c>
+    /// — the span can bridge an interior already-realized (kept-alive) container, so the instance list is the
+    /// authoritative payload (symmetric with <see cref="RemovedContainers"/>). Null for the other actions and for the
+    /// structural <see cref="ItemContainerGenerator.ContainersChanged"/> channel.</summary>
+    public IReadOnlyList<UIElement>? RealizedContainers { get; } = realizedContainers;
 }

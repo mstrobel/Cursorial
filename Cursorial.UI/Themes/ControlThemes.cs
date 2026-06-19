@@ -61,6 +61,7 @@ internal static class ControlThemes
         dict[typeof(TabItem)] = TabItemTheme();
         dict[typeof(ProgressBar)] = ProgressBarTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
+        dict[typeof(Image)] = ImageTheme();
         dict[typeof(Window)] = WindowTheme();
     }
 
@@ -416,6 +417,23 @@ internal static class ControlThemes
 
     // The Year/Decade month/year cell — identical state looks to a day cell.
     private static Style CalendarButtonTheme() => CalendarCellTheme("Theme.CalendarButton");
+
+    // ───────────────────────────── Image ─────────────────────────────
+
+    // An Image: its template hosts a PART_ImagePresenter with Source/placeholder one-way TemplateBound from the
+    // control. The presenter draws the graphics-protocol image (or the placeholder when none renders).
+    private static ControlTemplate ImageTemplate() => new(ctx =>
+    {
+        var presenter = new ImagePresenter();
+        ctx.RegisterName("PART_ImagePresenter", presenter);
+        presenter.SetBinding(ImagePresenter.SourceProperty, new TemplateBinding(Image.SourceProperty));
+        presenter.SetBinding(ImagePresenter.PlaceholderContentProperty, new TemplateBinding(Image.PlaceholderContentProperty));
+        presenter.SetBinding(ImagePresenter.PlaceholderTemplateProperty, new TemplateBinding(Image.PlaceholderTemplateProperty));
+        return presenter;
+    });
+
+    private static Style ImageTheme()
+        => new Style { Key = "Theme.Image" }.Set(Control.TemplateProperty, ImageTemplate());
 
     // ───────────────────────────── DatePicker ─────────────────────────────
 

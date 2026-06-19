@@ -1168,3 +1168,68 @@ for now per the maintainer, pending an occlusion model); `caps-nerdfont` when `U
 `RestampCapabilityClasses`, the generalized form of the tier-flip re-stamp). All three join the negotiated re-stamp
 on renegotiation; the Nerd-Font opt-in is app state and survives it. New `TestCapabilities` presets:
 `KittyGraphics`, `SixelGraphics`, `ITerm2Graphics`.
+
+## §C23 — Image hosting: ImagePresenter + Image (post-P9)
+
+`ImagePresenter` (a `UIElement` primitive in `Cursorial.UI.Controls`) hosts a graphics-protocol image, drawn via
+`Cursorial.Rendering.Content.Image` (the `IContent` over Kitty/iTerm2/Sixel `IBufferFragment`s — the
+maintainer's pinned "draw via the fragment path, NOT the cell-based `ImageBrush`" hint), through
+`RenderContext.DrawContent` (which auto-crops fragments to the active clip). The image renders only when
+`Source` is set **and** a graphics protocol is negotiated (`Output.Graphics` has any of Kitty/Sixel/iTerm2);
+otherwise the presenter shows a **placeholder** (`PlaceholderContent` + `PlaceholderTemplate`, realized through an
+internal `ContentPresenter` child — the full DataTemplate chain). The presenter is `ClipToBounds` so its image is
+cropped to its layout rect (the "framework handles clipping/occlusion" requirement; cross-element occlusion of the
+non-Kitty cell-layer protocols relies on the compositor and is best-effort — `:caps-image-occlusion` is the
+styling signal). `Image` (a `Control`) is the consumer-facing wrapper whose `ControlTemplate` hosts a
+`PART_ImagePresenter` bound to its `Source`/placeholder. The `:placeholder` pseudo-class marks the placeholder
+state. Tests: `Cursorial.UI.Tests/ControlMatrix/Section35_Image.cs`. **Deferral:** a `Stretch` property (v1 uses
+the content's native aspect-preserving fit-within-bounds); a UI-level `ImageSource`/URI-loading abstraction (v1
+takes `Cursorial.Rendering.Imaging.ImageData` directly).
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C23.1 | `ImagePresenter{Source=img(10×5)}`, Kitty graphics | measure (large available) | desired ≈ the image's natural cell size; placeholder collapsed | PIN (CD-P2K-1) |
+| C23.2 | `ImagePresenter` no Source, `PlaceholderContent="…"` | show | the placeholder renders (its `ContentPresenter` child is Visible) | PIN (CD-P2K-1) |
+| C23.3 | `ImagePresenter{Source=img}`, Ansi16Legacy (no graphics) | show | the placeholder shows — the image can't render | PIN (CD-P2K-1) |
+| C23.4 | `ImagePresenter{Source=img}`, Kitty graphics | render a frame | `LastFrameBytes` contains the Kitty APC introducer `ESC _ G` | PIN (CD-P2K-1) |
+| C23.5 | `PlaceholderContent` a data object + a `DataTemplateKey` template in Resources | show (no Source) | the placeholder realizes via the by-type template | PIN (CD-P2K-1) |
+| C23.6 | `ImagePresenter` | inspect | `ClipToBounds == true` (the image is clipped to its bounds) | PIN (CD-P2K-1) |
+| C23.7 | `ImagePresenter` toggling Source under Kitty | inspect `:placeholder` | set when the placeholder shows, cleared when the image shows | PIN (CD-P2K-1) |
+| C23.8 | `Image{Source=img}` control, Kitty graphics | show + render | the template's `PART_ImagePresenter` gets the Source; the APC is emitted | PIN (CD-P2K-1) |
+| C23.9 | `Image` control no Source, `PlaceholderContent` | show | the placeholder shows through the presenter | PIN (CD-P2K-1) |
+| C23.10 | `Image{Source=null}` then set Source, Kitty graphics | set Source | placeholder→image live (a re-render emits the APC) | PIN (CD-P2K-1) |
+| C23.11 | `Source` with a **null** `RequestedSize`, Kitty graphics (cell-pixel size reported) | show | the image is sized from the decoded pixels (DesiredSize > 0 on both axes), not 0×0; the APC emits | PIN (CD-P2K-1 audit) |
+| C23.12 | `Source` with a **single-axis** `RequestedSize` (`Size(8, 0)`) | show | the unconstrained axis is derived/floored (DesiredSize > 0 on both axes), never 0 | PIN (CD-P2K-1 audit) |
+| C23.13 | Kitty-only terminal + a **JPEG** `Source` | show | `IsImageVisible == false` ⇒ the author's placeholder shows (NOT the content's `[image]` text) | PIN (CD-P2K-1 audit) |
+| C23.14 | a `Source` shown under Ansi16 (no graphics), then renegotiate to Kitty graphics | renegotiate | placeholder → image with no stale double-content (re-evaluated on the next layout pass) | PIN (CD-P2K-1 audit) |
+
+**CD-P2K-1 — ImagePresenter + Image.** `ImagePresenter : UIElement` with `Source : ImageData?`,
+`PlaceholderContent : object?`, `PlaceholderTemplate : DataTemplate?`, and an internal `ContentPresenter`
+placeholder child (Visibility flips: Collapsed when the image shows). `IsImageVisible = Source is not null &&
+UIApplication.Current.Capabilities.Output.Graphics` has any protocol. `MeasureOverride`: image-visible ⇒
+`Source.RequestedSize` clamped to available; else the placeholder's `DesiredSize`. `Render` (image-visible):
+`context.DrawContent(Bounds, new Cursorial.Rendering.Content.Image(Source))` — the content selects the protocol
+and fits within bounds preserving aspect; the framework auto-crops to the `ClipToBounds` clip. `:placeholder`
+pseudo-class via `PseudoClasses.Set`. `Image : Control` mirrors the three properties one-way through
+`TemplateBinding` to a `PART_ImagePresenter` in `CursorialTheme.BuiltIn`. The image source is the negotiated
+snapshot (consistent with the §C22 caps classes).
+
+**CD-P2K-1 audit (adversarial review of the image-hosting landing).** Five findings confirmed (1 dismissed),
+collapsing to three real defects — all from the presenter re-implementing sizing/availability that
+`Cursorial.Rendering.Content.Image` already owns. Each fixed + regression-tested: **(1 HIGH, C23.11/C23.12)** the
+measure used `Source.RequestedSize ?? Size.Empty`, so a null or single-axis `RequestedSize` collapsed to a 0
+extent and the image silently vanished (most visibly under content-sizing parents / non-Stretch alignment). The
+measure now **delegates to the content's own `FragmentContent.Measure`** (which sizes from the decoded pixels +
+cell-pixel ratio), with a per-axis floor so a visible image never measures to 0 on either axis. **(2 HIGH,
+C23.14)** placeholder visibility + the `:placeholder` class were mutated only inside `MeasureOverride`, so a
+capability flip (renegotiation re-rasters without re-measuring the deep presenter — its measure cache early-outs)
+left the state stale (image drawn over a still-Visible placeholder, or a blank element). The presenter now
+subscribes to `UIApplication.CapabilitiesChanged` (attach/detach) and `InvalidateMeasure`+`InvalidateVisual` on a
+flip. **(3 LOW, C23.13)** `IsImageVisible` gated on graphics-protocol *presence*, so a Kitty-only terminal + a
+JPEG source collapsed the author's placeholder and showed the content's `[image]` text; it now mirrors
+`Content.Image.CreateFragment`'s producer rule (`iTerm2 || (Png && (Kitty || Sixel))`, non-empty bytes).
+Additionally, the per-frame `new Cursorial.Rendering.Content.Image(...)` in `Render` (which churned a fresh Kitty
+image id every frame — the bug `FragmentContent.IsFragmentNeeded` documents) is now a **cached** content rebuilt
+only on a `Source` change. The `KittyGraphics` test preset gained a cell-pixel size (CSI 16 t), as a real Kitty
+terminal reports. Dismissed: a `UIApplication.Current` null/cross-thread concern (the `?.` guard + single-app
+model handle it).

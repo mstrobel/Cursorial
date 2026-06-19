@@ -139,12 +139,14 @@ public static class TestCapabilities
     };
 
     /// <summary>The Kitty preset with the Kitty graphics protocol (APC G…) — images <b>and</b> occlusion
-    /// (<c>caps-images</c> + <c>caps-image-occlusion</c>).</summary>
+    /// (<c>caps-images</c> + <c>caps-image-occlusion</c>). Reports a cell-pixel size (CSI 16 t), as a real Kitty
+    /// terminal does, so an image with no requested cell footprint can be sized from its pixels.</summary>
     public static TerminalCapabilities KittyGraphics { get; } = KittyTruecolor with
     {
         Output = KittyTruecolor.Output with
         {
             Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
+            Window = KittyTruecolor.Output.Window with { CellPixelWidth = 8, CellPixelHeight = 16 },
         },
     };
 

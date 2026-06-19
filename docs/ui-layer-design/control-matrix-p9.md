@@ -1270,3 +1270,20 @@ both presenters + the `Image`/`Chart` controls' `TemplateBinding`s resolve the i
 `ContentPresenter` placeholder child, `ClipToBounds`, the `MeasureOverride`/`ArrangeOverride`/`Render` skeleton, and
 `UpdatePlaceholderState` (the `:placeholder` flip). `Chart : Control` mirrors `Image` one-way through
 `TemplateBinding`.
+
+## §C25 — XAML control-theme overlay twins for the post-P9 controls (ARCH-1 closeout)
+
+The W5 ARCH-1 deferral ("the post-P9 controls' XAML overlay twins are deferred to the code-first backstop") is
+closed: `Cursorial.UI.Themes.Xaml/Themes/Controls.xaml` now carries declarative twins for **Image, Chart,
+CalendarDayButton, CalendarButton (shared `CalendarCellTemplate`), TreeView, TreeViewItem, ComboBox, ComboBoxItem,
+Calendar, DatePicker** — every code-first `CursorialTheme.BuiltIn` control theme except `Window` (whose chrome's
+active/inactive look is code-driven). They layer over the code-first BuiltIn (which stays the backstop) and are
+proven **byte-for-byte identical** to it via `ArchOneXamlThemeTests` (the inline-renderable ones — incl. a pinned
+`Calendar` and the closed `ComboBox`/`DatePicker` faces — through `CaptureCells`; the popup-rooted drop-downs
+through runtime `Popups`/`RenderContains` tests). The Calendar twin needed the `using:Cursorial.UI.Input` xmlns
+(`input:KeyboardNavigation.TabNavigation="Once"` on the calendar root — the one part outside the default
+`https://cursorial.dev/ui` namespace); Image/Chart/TreeViewItem/ComboBox/DatePicker templates carry a `TargetType`
+so the build-lowerer resolves their control-specific `TemplateBinding`s. A focused source-diff audit (XAML twin vs
+the `ControlThemes.cs` method) confirmed every template part, binding (`{TemplateBinding}` vs `{DynamicResource}`
+distinction), style setter, and state sub-rule (selector + property + key + document order) matches — zero
+divergence.

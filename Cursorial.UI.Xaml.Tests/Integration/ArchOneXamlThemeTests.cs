@@ -141,6 +141,12 @@ public sealed class ArchOneXamlThemeTests
             typeof(UIControls.Menu), typeof(UIControls.MenuItem), typeof(UIControls.ContextMenu),
             typeof(UIControls.Separator), typeof(UIControls.ToolTip), typeof(UIControls.TabControl),
             typeof(UIControls.TabItem), typeof(UIControls.ProgressBar), typeof(UIControls.TextBox),
+            // #81 — the post-P9 twins (incl. the popup-rooted ComboBox/DatePicker the inline byte-identity can't reach)
+            typeof(UIControls.Image), typeof(UIControls.Chart),
+            typeof(UIControls.CalendarDayButton), typeof(UIControls.CalendarButton),
+            typeof(UIControls.TreeView), typeof(UIControls.TreeViewItem),
+            typeof(UIControls.ComboBox), typeof(UIControls.ComboBoxItem),
+            typeof(UIControls.Calendar), typeof(UIControls.DatePicker),
         ];
         foreach (var t in themed)
             Assert.True(dict.TryGetValue(t, out _), $"XAML theme missing the control theme for {t.Name}");
@@ -240,6 +246,94 @@ public sealed class ArchOneXamlThemeTests
         host.RunFrame();
 
         Assert.Equal(1, Popups(host)); // the themed tooltip shows on its own popup surface
+    }
+
+    // ── #81: the post-P9 control-theme XAML twins (batch 1: inline-renderable) ──
+
+    private sealed class StubChart : Cursorial.Drawing.Charts.IChart
+    {
+        public void Render(Cursorial.Drawing.DrawingContext context, in Rect area) =>
+            context.Set(area.Column, area.Row, "X", default);
+    }
+
+    [Theory] // the post-P9 inline-renderable twins render identically to the code-first BuiltIn
+    [InlineData("Chart")]             // ChartPresenter draws the stub chart's marker
+    [InlineData("Image")]             // no source ⇒ the placeholder text (no graphics protocol in the default preset)
+    [InlineData("CalendarDayButton")] // a fill-bounded ContentPresenter cell
+    [InlineData("CalendarButton")]
+    [InlineData("TreeView")]          // exercises the TreeView AND TreeViewItem XAML themes (twisty + header bar)
+    [InlineData("ComboBox")]          // the closed face: [selected … 'v']
+    [InlineData("ComboBoxItem")]
+    [InlineData("DatePicker")]        // the closed field: [date … 'v']
+    public void XamlPostP9ControlTheme_RendersIdenticallyToCSharpBuiltIn_AtRest(string control)
+    {
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: false, 16, 5, () => MakePostP9Control(control)),
+            CaptureCells(xaml: true,  focus: false, 16, 5, () => MakePostP9Control(control)));
+    }
+
+    private static UIControls.Control MakePostP9Control(string control) => control switch
+    {
+        "Chart"             => new UIControls.Chart { Source = new StubChart(), Width = 16, Height = 5 },
+        "Image"             => new UIControls.Image { PlaceholderContent = "img" },
+        "CalendarDayButton" => new UIControls.CalendarDayButton { Content = "5", Width = 4 },
+        "CalendarButton"    => new UIControls.CalendarButton { Content = "Jun", Width = 7 },
+        "TreeView"          => new UIControls.TreeView { ItemsSource = new[] { "a", "b" }, Width = 16, Height = 5 },
+        "ComboBox"          => new UIControls.ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0, Width = 12 },
+        "ComboBoxItem"      => new UIControls.ComboBoxItem { Content = "a", Width = 12 },
+        "DatePicker"        => new UIControls.DatePicker { SelectedDate = new DateOnly(2026, 6, 18), Width = 14 },
+        _                   => throw new ArgumentOutOfRangeException(nameof(control)),
+    };
+
+    [Fact] // the XAML Calendar theme renders identically to the code-first BuiltIn (the header chrome + the code-built grid)
+    public void XamlCalendarTheme_RendersIdenticallyToCSharpBuiltIn()
+    {
+        // Pin Today/DisplayDate/FirstDayOfWeek so the code-built month grid is deterministic across both renders.
+        static UIControls.Control MakeCalendar() => new UIControls.Calendar
+        {
+            Today = new DateOnly(2026, 6, 18),
+            DisplayDate = new DateOnly(2026, 6, 1),
+            FirstDayOfWeek = DayOfWeek.Sunday,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        Assert.Equal(
+            CaptureCells(xaml: false, focus: false, 30, 10, MakeCalendar),
+            CaptureCells(xaml: true,  focus: false, 30, 10, MakeCalendar));
+    }
+
+    [Fact] // the XAML DatePicker theme drops a Calendar onto a popup surface (PART_Popup → PART_Calendar)
+    public void XamlDatePickerTheme_OpensCalendarPopup()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
+        host.Application.Theme = CursorialXamlTheme.LoadControls();
+
+        var dp = new UIControls.DatePicker { DisplayDate = new DateOnly(2026, 6, 1), Width = 14 };
+        host.ShowRoot(dp);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(0, Popups(host));
+
+        dp.IsDropDownOpen = true;
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(1, Popups(host)); // the calendar dropped onto its own popup surface
+    }
+
+    [Fact] // the XAML ComboBox theme opens its drop-down on a popup surface (PART_Popup) showing the items
+    public void XamlComboBoxTheme_OpensDropDownPopup()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 10) });
+        host.Application.Theme = CursorialXamlTheme.LoadControls();
+
+        var combo = new UIControls.ComboBox { ItemsSource = new[] { "Alpha", "Beta" }, SelectedIndex = 0, Width = 14 };
+        host.ShowRoot(combo);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(0, Popups(host));
+
+        combo.IsDropDownOpen = true;
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(1, Popups(host));                  // the drop-down opened on its own surface
+        Assert.True(RenderContains(host, "Beta", 20, 10)); // the non-selected item is visible in the open list
     }
 
     private static UIControls.Control MakeControl(string control) => control switch

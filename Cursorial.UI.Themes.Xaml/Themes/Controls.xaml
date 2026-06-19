@@ -1,4 +1,5 @@
-<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
+                    xmlns:input="using:Cursorial.UI.Input">
 
   <!--
     The themeable glyph-set resources (design doc §12.7), authored declaratively as GlyphSetCarrier elements
@@ -503,6 +504,274 @@
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
       </Style>
     </Style.Children>
+  </Style>
+
+  <!-- Calendar cell (a day, or a Year/Decade month/year cell): a fill-bounded ContentPresenter over the cell text.
+       Shared by CalendarDayButton + CalendarButton (same visual contract). :inactive (adjacent-month / out-of-decade)
+       muted, :pointerover Hover, :today accent ink, :selected the SelectionBrush fill, :focus-visible reverse-video,
+       :disabled muted — ordered so a focused cell reads as focused, then selected over today over hover. The
+       declarative twin of ControlThemes.CalendarCellTheme(). -->
+  <ControlTemplate x:Key="CalendarCellTemplate">
+    <Border Background="{TemplateBinding Background}">
+      <ContentPresenter x:Name="PART_ContentPresenter"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type CalendarDayButton}" TargetType="CalendarDayButton">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource CalendarCellTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:inactive" TargetType="CalendarDayButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+      <Style Selector="^:pointerover" TargetType="CalendarDayButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:today" TargetType="CalendarDayButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="CalendarDayButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="CalendarDayButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="CalendarDayButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <Style x:Key="{x:Type CalendarButton}" TargetType="CalendarButton">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource CalendarCellTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:inactive" TargetType="CalendarButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+      <Style Selector="^:pointerover" TargetType="CalendarButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:today" TargetType="CalendarButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="CalendarButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="CalendarButton">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="CalendarButton">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- Image: its template hosts a PART_ImagePresenter with Source/placeholder one-way TemplateBound. The twin of
+       ControlThemes.ImageTheme(). -->
+  <ControlTemplate x:Key="ImageTemplate" TargetType="Image">
+    <ImagePresenter x:Name="PART_ImagePresenter"
+                    Source="{TemplateBinding Source}"
+                    PlaceholderContent="{TemplateBinding PlaceholderContent}"
+                    PlaceholderTemplate="{TemplateBinding PlaceholderTemplate}"/>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Image}" TargetType="Image">
+    <Setter Property="Template" Value="{StaticResource ImageTemplate}"/>
+  </Style>
+
+  <!-- Chart: its template hosts a PART_ChartPresenter with Source/placeholder one-way TemplateBound. The twin of
+       ControlThemes.ChartTheme(). -->
+  <ControlTemplate x:Key="ChartTemplate" TargetType="Chart">
+    <ChartPresenter x:Name="PART_ChartPresenter"
+                    Source="{TemplateBinding Source}"
+                    PlaceholderContent="{TemplateBinding PlaceholderContent}"
+                    PlaceholderTemplate="{TemplateBinding PlaceholderTemplate}"/>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Chart}" TargetType="Chart">
+    <Setter Property="Template" Value="{StaticResource ChartTemplate}"/>
+  </Style>
+
+  <!-- TreeView (design doc §12.6): a Border over a ScrollViewer whose content is the PART_ItemsHost ItemsPresenter
+       (so a tall tree scrolls — the SCP band). No resting fill; the per-node selection bars are the only fills. The
+       declarative twin of ControlThemes.TreeViewTheme(). -->
+  <ControlTemplate x:Key="TreeViewTemplate">
+    <Border Background="{TemplateBinding Background}" BorderPen="{TemplateBinding BorderPen}">
+      <ScrollViewer x:Name="PART_ScrollViewer">
+        <ItemsPresenter x:Name="PART_ItemsHost"/>
+      </ScrollViewer>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type TreeView}" TargetType="TreeView">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource TreeViewTemplate}"/>
+  </Style>
+
+  <!-- TreeViewItem (design doc §12.6): a header row [twisty(2) … Header] over the indented PART_ItemsHost (the
+       children). The twisty (PART_Twisty, fixed 2-wide; >/v/leaf-blank set by the control) is the expander; the
+       children host is indented 2 cells so a child's twisty aligns under its parent's header. Only the header bar
+       carries Background, so a :selected/:focus-visible fill highlights the row, not the whole subtree. NO
+       :pointerover (TreeViewItems nest — PointerOver is set on every ancestor of the hovered leaf). The declarative
+       twin of ControlThemes.TreeViewItemTheme(). -->
+  <ControlTemplate x:Key="TreeViewItemTemplate" TargetType="TreeViewItem">
+    <StackPanel>
+      <Border Background="{TemplateBinding Background}">
+        <DockPanel>
+          <TextBlock x:Name="PART_Twisty" Width="2" DockPanel.Dock="Left"/>
+          <ContentPresenter x:Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Header}"
+                            ContentTemplate="{TemplateBinding HeaderTemplate}"/>
+        </DockPanel>
+      </Border>
+      <ItemsPresenter x:Name="PART_ItemsHost" Margin="2,0,0,0"/>
+    </StackPanel>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type TreeViewItem}" TargetType="TreeViewItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource TreeViewItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:selected" TargetType="TreeViewItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="TreeViewItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="TreeViewItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- ComboBox (design doc §12.11): a recessed WellBrush face [selected-item|editable-text-box … 'v' drop glyph]
+       the control toggles on click, plus the drop-down Popup (PART_Popup) whose occluding Child hosts the
+       PART_ItemsHost ItemsPresenter (the ListBox-in-Popup recipe). The two faces overlap in a Grid; the editable
+       text box is Collapsed until IsEditable. ASCII-safe 'v' glyph. The declarative twin of ControlThemes.ComboBoxTheme(). -->
+  <ControlTemplate x:Key="ComboBoxTemplate" TargetType="ComboBox">
+    <Grid>
+      <Border Padding="1,0"
+              Background="{TemplateBinding Background}"
+              BorderPen="{TemplateBinding BorderPen}">
+        <DockPanel>
+          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="v" Focusable="False" IsTabStop="False"/>
+          <Grid>
+            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectedItem}"/>
+            <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed"
+                     Placeholder="{TemplateBinding PlaceholderText}"
+                     IsReadOnly="{TemplateBinding IsReadOnly}"/>
+          </Grid>
+        </DockPanel>
+      </Border>
+      <Popup x:Name="PART_Popup">
+        <Border Occludes="True"
+                Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+                BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}"
+                MaxHeight="{TemplateBinding MaxDropDownHeight}">
+          <ItemsPresenter x:Name="PART_ItemsHost"/>
+        </Border>
+      </Popup>
+    </Grid>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ComboBox}" TargetType="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ComboBoxTemplate}"/>
+  </Style>
+
+  <!-- ComboBoxItem: the ListBoxItem selection bar verbatim (hover -> selected -> focus-visible -> disabled). The
+       declarative twin of ControlThemes.ComboBoxItemTheme(). -->
+  <ControlTemplate x:Key="ComboBoxItemTemplate">
+    <Border Padding="1,0" Background="{TemplateBinding Background}">
+      <ContentPresenter x:Name="PART_ContentPresenter"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ComboBoxItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="ComboBoxItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="ComboBoxItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="ComboBoxItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- Calendar (design doc §12): a bordered panel with a header row [< | header-button | >] over the PART_MonthView
+       StackPanel (the Calendar fills the day/month/year grid in code). The header button drills up Month→Year→Decade;
+       prev/next + the header are mouse-only (Focusable/IsTabStop False) so keyboard focus stays on the grid cells; the
+       whole widget is one tab stop (Once). The declarative twin of ControlThemes.CalendarTheme(). -->
+  <ControlTemplate x:Key="CalendarTemplate">
+    <Border Padding="1,0"
+            Background="{TemplateBinding Background}"
+            BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+      <DockPanel input:KeyboardNavigation.TabNavigation="Once">
+        <DockPanel DockPanel.Dock="Top">
+          <Button x:Name="PART_PreviousButton" DockPanel.Dock="Left"  Content="&lt;" Focusable="False" IsTabStop="False"/>
+          <Button x:Name="PART_NextButton"     DockPanel.Dock="Right" Content="&gt;" Focusable="False" IsTabStop="False"/>
+          <Button x:Name="PART_HeaderButton" Focusable="False" IsTabStop="False">
+            <TextBlock x:Name="PART_HeaderText" TextAlignment="Center"/>
+          </Button>
+        </DockPanel>
+        <StackPanel x:Name="PART_MonthView"/>
+      </DockPanel>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type Calendar}" TargetType="Calendar">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource CalendarTemplate}"/>
+  </Style>
+
+  <!-- DatePicker (design doc §12): a recessed WellBrush field [date text|editable … 'v' drop glyph] that toggles a
+       Popup hosting a Calendar (PART_Calendar) — the Calendar-in-Popup recipe. The two faces overlap in a Grid; the
+       editable text box is Collapsed until IsEditable. The declarative twin of ControlThemes.DatePickerTheme(). -->
+  <ControlTemplate x:Key="DatePickerTemplate" TargetType="DatePicker">
+    <Grid>
+      <Border Padding="1,0"
+              Background="{TemplateBinding Background}"
+              BorderPen="{TemplateBinding BorderPen}">
+        <DockPanel>
+          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="v" Focusable="False" IsTabStop="False"/>
+          <Grid>
+            <TextBlock x:Name="PART_DisplayText"/>
+            <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Placeholder="{TemplateBinding Watermark}"/>
+          </Grid>
+        </DockPanel>
+      </Border>
+      <Popup x:Name="PART_Popup">
+        <Border Occludes="True"
+                Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+                BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+          <Calendar x:Name="PART_Calendar"/>
+        </Border>
+      </Popup>
+    </Grid>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type DatePicker}" TargetType="DatePicker">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="MinWidth"   Value="12"/>
+    <Setter Property="Template"   Value="{StaticResource DatePickerTemplate}"/>
   </Style>
 
 </ResourceDictionary>

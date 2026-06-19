@@ -1,5 +1,6 @@
+using Cursorial.Drawing.Charts;     // BarChart / IChart
 using Cursorial.Input;
-using Cursorial.Output;             // ColorDepth
+using Cursorial.Output;             // ColorDepth / Color
 using Cursorial.Rendering;          // Margins
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -26,7 +27,8 @@ internal sealed class ControlGalleryDemo : IDemo
 
     public string Description =>
         "P9 control gallery: every P9 control (menu, tabs, text box, list with :alternate striping + context menu, " +
-        "progress bars, tooltips) on the real frame loop — 't' cycles color tier, 'd' flips dark/light, F10 the menu, q quits.";
+        "progress bars, tooltips, tree, calendar, image + chart) on the real frame loop — 't' cycles color tier, " +
+        "'d' flips dark/light, F10 the menu, q quits.";
 
     public async Task RunAsync(string argument)
     {
@@ -128,7 +130,35 @@ internal sealed class ControlGalleryDemo : IDemo
             tabs.Items.Add(new TabItem { Header = "_List", Content = BuildList() });
             tabs.Items.Add(new TabItem { Header = "T_ree", Content = BuildTreeView() });
             tabs.Items.Add(new TabItem { Header = "_Date", Content = BuildCalendar() });
+            tabs.Items.Add(new TabItem { Header = "_Media", Content = BuildMedia() });
             return tabs;
+        }
+
+        private Border BuildMedia()
+        {
+            var panel = new StackPanel { Spacing = 1, Margin = new Margins(1) };
+
+            // Image controls via SourceUri (the XAML-friendly declarative source — embedded:// here): the Cursorial
+            // banner + logo, drawn through a graphics protocol (Kitty/iTerm2/Sixel). On a terminal with no image
+            // protocol the placeholder shows (the ImagePresenter gates on the negotiated graphics caps).
+            panel.Children.Add(new TextBlock { Text = "Image via SourceUri (graphics protocol — placeholder otherwise):" });
+            panel.Children.Add(new Image
+            {
+                SourceUri = new Uri("embedded://Cursorial.Demo/cursorial_banner.png"),
+                PlaceholderContent = "[ cursorial banner — this terminal has no image protocol ]",
+                Width = 50,
+                Height = 8,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            });
+
+            panel.Children.Add(new Separator());
+
+            // A Chart control: cell-rendered, so it works on EVERY terminal (no capability gate).
+            panel.Children.Add(new TextBlock { Text = "Chart (cell-rendered — works on every terminal):" });
+            var bars = new BarChart([4d, 7d, 5d, 9d, 6d, 8d, 3d, 7d], Color.FromRgb(120, 200, 160)) { Gap = 1 };
+            panel.Children.Add(new Chart { Source = bars, Width = 32, Height = 8, HorizontalAlignment = HorizontalAlignment.Left });
+
+            return new Border { Padding = new Margins(1), Child = panel };
         }
 
         private Border BuildCalendar()

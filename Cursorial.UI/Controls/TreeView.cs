@@ -48,6 +48,22 @@ public class TreeView : ItemsControl
     /// <inheritdoc/>
     protected override bool IsItemItsOwnContainer(object? item) => item is TreeViewItem;
 
+    /// <inheritdoc/>
+    protected override void PrepareContainerForItemOverride(UIElement container, object? item)
+    {
+        base.PrepareContainerForItemOverride(container, item);
+        if (container is TreeViewItem node) // a data item ⇒ apply the (hierarchical) item template
+            TreeHierarchy.Apply(this, node, item);
+    }
+
+    /// <inheritdoc/>
+    protected override void ClearContainerForItemOverride(UIElement container, object? item)
+    {
+        if (container is TreeViewItem node)
+            TreeHierarchy.Clear(node);
+        base.ClearContainerForItemOverride(container, item);
+    }
+
     // Type-ahead over the TOP-LEVEL nodes (the tree's own generator). Matching against each node's Header; full
     // visible-subtree search is a follow-on. Cycles from the selected node when it is a top-level node.
     private protected override bool TextSearchNavigates => true;

@@ -85,6 +85,22 @@ public class TreeViewItem : HeaderedItemsControl
     protected override bool IsItemItsOwnContainer(object? item) => item is TreeViewItem;
 
     /// <inheritdoc/>
+    protected override void PrepareContainerForItemOverride(UIElement container, object? item)
+    {
+        base.PrepareContainerForItemOverride(container, item);
+        if (container is TreeViewItem node) // recurse the hierarchical template into child nodes
+            TreeHierarchy.Apply(this, node, item);
+    }
+
+    /// <inheritdoc/>
+    protected override void ClearContainerForItemOverride(UIElement container, object? item)
+    {
+        if (container is TreeViewItem node)
+            TreeHierarchy.Clear(node);
+        base.ClearContainerForItemOverride(container, item);
+    }
+
+    /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
         base.OnAttachedToTree(in e);

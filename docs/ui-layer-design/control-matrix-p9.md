@@ -1028,3 +1028,36 @@ after typing a draft left `_editing` true, so the pick didn't show in the box �
 `Popup` (`CloseOnEscape`), so the `OnKeyDown` open-branch Escape revert was dead code and the draft survived + left
 `_editing` stuck — `OnPopupClosed` now cancels the draft when `Reason == EscapeKey` (a light-dismiss / programmatic
 close keeps it, WPF-like; row C19.10).
+
+---
+
+## §C20 — TreeView HierarchicalDataTemplate (data-driven hierarchy, post-P9)
+
+A `HierarchicalDataTemplate : DataTemplate` adds `ItemsSourcePath` (the data item's child-collection property). A
+`TreeViewItem` generated for a data object takes its `Header` from the (hierarchical) item template and its
+`ItemsSource` from that path; the template is `ItemsControl.ItemTemplate` if set, else the by-type `DataTemplate`
+chain (`DataTemplateKey(type)` in resources) — which recurses for a homogeneous tree. The shared `TreeHierarchy.Apply`
+(called from both `TreeView` and `TreeViewItem`'s `PrepareContainerForItemOverride`) sets Header/HeaderTemplate +
+propagates the `ItemTemplate` for recursion + resolves the children; `TreeHierarchy.Clear` unhooks on recycle. The
+header presenter binds `ContentTemplate` ← `HeaderTemplate` so the HDT renders the header. v1 own-container
+`TreeViewItem`s are unaffected (the data-item path is separate). Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section33_TreeViewHDT.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C20.1 | data ItemsSource + HDT ItemTemplate | show | containers per item; Header=item; ItemsSource=the path's collection; leaf has no items | PIN (CD-P2H-1) |
+| C20.2 | nested data | inspect a root container | it has child containers for the data children (recursion) | PIN (CD-P2H-1) |
+| C20.3 | HDT in `Resources[DataTemplateKey(type)]`, no ItemTemplate | show | the hierarchy builds via the by-type chain (register the template BEFORE ItemsSource realizes) | PIN (CD-P2H-1) |
+| C20.4 | HDT ItemTemplate | inspect a container | its `HeaderTemplate` is the HDT (the header renders through it) | PIN (CD-P2H-1) |
+| C20.5 | nested data | add a child to a node's `ObservableCollection` | a new child container materializes | PIN (CD-P2H-1) |
+| C20.6 | HDT data tree | select a generated container | `TreeView.SelectedItem` is the data item (not the container) | PIN (CD-P2H-1) |
+
+**CD-P2H-1 — TreeView HierarchicalDataTemplate.** `HierarchicalDataTemplate.ItemsSourcePath` (dotted reflective
+read; a `string` is not a child collection). `TreeHierarchy.Apply(owner, container, item)`: template =
+`owner.ItemTemplate ?? ContentRealization.FindImplicitTemplate(owner, item)`; sets `Header=item`,
+`HeaderTemplate=template`, propagates `ItemTemplate` to the container (recursion when ItemTemplate-set), and
+`ItemsSource = ResolveChildren(item, hdt.ItemsSourcePath)`. Realization is eager (the whole data tree builds — like
+the v1 own-container tree; container virtualization is a separate item). **Requirement:** a by-type (resources)
+template must be registered before `ItemsSource` realizes (generation reads it at set time — XAML satisfies this
+naturally). **Deferral:** the `HierarchicalDataTemplate.ItemTemplate`/selector for heterogeneous trees (homogeneous
+trees recurse via the by-type chain / the propagated ItemTemplate).

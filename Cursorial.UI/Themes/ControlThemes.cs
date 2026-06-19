@@ -291,6 +291,7 @@ internal static class ControlThemes
         var header = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", header);
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+        header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
 
         var headerRow = new DockPanel();
         headerRow.Children.Add(twisty); // docked left (the expander)

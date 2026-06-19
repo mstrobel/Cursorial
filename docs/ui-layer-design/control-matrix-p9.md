@@ -1075,3 +1075,66 @@ underscore in node data (e.g. `"a_b"`) was silently consumed as an access-key mn
 is now a plain `ContentPresenter()` (data text renders literally; access keys belong to control content, not
 data). Tests in `Section33_TreeViewHDT.cs` (C20.7) + the existing rows guard the `Clear` ordering and the
 literal-underscore render.
+
+## §C21 — Calendar v2b: DisplayMode drill-down (Month / Year / Decade, post-P9)
+
+The WPF `CalendarMode` analog. `Calendar.DisplayMode : CalendarMode { Month, Year, Decade }` (default `Month`)
+swaps the `PART_MonthView` host between three views: the day grid (Month — unchanged), a 4×3 grid of the 12
+months (Year), and a 4×3 grid of the decade's years (Decade — the 10 in-decade years + 1 leading + 1 trailing,
+the out-of-decade pair `:inactive`). The header is a clickable `PART_HeaderButton` (label `PART_HeaderText`):
+its text is `MMMM yyyy` / `yyyy` / `yyyy-yyyy` per mode and clicking it **drills up** (Month→Year→Decade; a
+no-op at Decade, the top). Clicking a Year-mode month cell **drills down** to Month mode on that month; a
+Decade-mode year cell drills down to Year mode on that year — neither selects a date (only a *day* click does).
+prev/next + PageUp/PageDown page by the mode's unit (∓1 month / ∓1 year / ∓10 years). Month/year cells whose
+whole span is unselectable (outside `[DisplayDateStart, DisplayDateEnd]` or entirely blacked out) are disabled
+drill targets; `:today`/`:selected` mark the month/year containing Today/SelectedDate. The Year/Decade cells are
+`CalendarButton`s (the `CalendarDayButton` sibling). Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section34_CalendarV2b.cs`.
+
+| Row | Setup | Action | Expected | Source |
+|-----|-------|--------|----------|--------|
+| C21.1 | default Calendar | inspect | `DisplayMode == Month`; the day grid renders (v2a behavior unchanged) | PIN (CD-P2I-1) |
+| C21.2 | `DisplayMode = Year` | show | the view is 12 month cells (the months of `DisplayDate.Year`); header = the year | PIN (CD-P2I-1) |
+| C21.3 | `DisplayMode = Decade` | show | the view shows the decade's years (10 in-decade + leading/trailing `:inactive`); header = `"start-end"` | PIN (CD-P2I-1) |
+| C21.4 | Year (or Decade) mode | click the header | drills UP one level (Year→Decade); at Decade the header is a no-op | PIN (CD-P2I-1) |
+| C21.5 | Year mode | click a month cell | `DisplayMode → Month`, `DisplayDate` = that month; no date selected | PIN (CD-P2I-1) |
+| C21.6 | Decade mode | click a year cell | `DisplayMode → Year`, `DisplayDate` = that year; no date selected | PIN (CD-P2I-1) |
+| C21.7 | Year mode | prev / next | `DisplayDate` moves ∓1 year (Month=∓1 month; Decade=∓10 years) | PIN (CD-P2I-1) |
+| C21.8 | Year mode, Today/SelectedDate set | inspect | `:today` on Today's month, `:selected` on SelectedDate's month | PIN (CD-P2I-1) |
+| C21.9 | Decade mode | inspect | out-of-decade leading/trailing cells are `:inactive`; `:today`/`:selected` on the year | PIN (CD-P2I-1) |
+| C21.10 | Year mode + `DisplayDateEnd` mid-year | inspect a past-End month cell | it is disabled (an unselectable drill target — whole month out of range) | PIN (CD-P2I-1) |
+| C21.11 | Year/Decade mode, a cell focused | arrows / PageDown | arrows move focus ±1 / ±columns among cells; PageDown pages the mode unit | PIN (CD-P2I-1) |
+| C21.12 | any mode | change `DisplayMode` | `DisplayModeChanged` fires (old → new) | PIN (CD-P2I-1) |
+| C21.13 | DatePicker hosting a Calendar drilled to Year mode | close + reopen the drop-down | the hosted Calendar resets to `Month` mode (WPF parity) | PIN (CD-P2I-1) |
+| C21.14 | Year mode, June (the directly-below cell) blacked out, Feb focused | DownArrow | focus hops a FULL row to October (same column), not July (a ±1 sideways drift) | PIN (CD-P2I-1 audit) |
+| C21.15 | DisplayDate year 5 (decadeStart = 0), Decade mode | inspect the header | reads `"1-9"` (clamped to representable years), not the nonexistent `"0-9"` | PIN (CD-P2I-1 audit) |
+
+**CD-P2I-1 — Calendar DisplayMode drill-down.** `DisplayModeProperty` (`StyledProperty<CalendarMode>`, default
+`Month`; `changed` rebuilds the view + raises `DisplayModeChanged`). `RebuildView()` dispatches on the mode:
+`RebuildMonthView` (the v2a day grid), `RebuildYearView` (12 `CalendarButton`s, one per month of
+`DisplayDate.Year`), `RebuildDecadeView` (12 `CalendarButton`s: `decadeStart−1 … decadeStart+10`, the first/last
+`:inactive`). `decadeStart = (Year / 10) * 10`. Header is `PART_HeaderButton` (a non-tab-stop `Button` whose
+`Content` is the `PART_HeaderText` `TextBlock`); `OnHeaderClick → DrillUp()`. Cell clicks route to `DrillDown`:
+Year-mode → `DisplayMode = Month` + `DisplayDate = cell.RepresentativeDate` (first-of-month); Decade-mode →
+`DisplayMode = Year` + `DisplayDate = cell.RepresentativeDate` (first-of-year). `Navigate(dir)` (prev/next +
+PageUp/Down) shifts `DisplayDate` by ∓1 month / ∓1 year / ∓10 years with the representable-range clamp (matching
+the v2a `ChangeMonth` clamp). A month/year cell is disabled iff `HasSelectableDay(first, last)` is false (range +
+blackout unified through the v2a `NearestSelectable`); `:today`/`:selected` test month/year containment;
+keyboard arrows move focus among the ordered `CalendarButton`s (4-column grid, ±1 / ±4, skipping disabled),
+Enter/Space drill down via `ButtonBase.Click`. `DatePicker.SetDropDownOpen(true)` resets the hosted calendar to
+`Month` mode (WPF parity). **Deferral:** keyboard drill-up (mouse-only via the header for v2b); cross-page arrow
+wrap (arrows clamp within the shown 12-cell page).
+
+**CD-P2I-1 audit (adversarial review of the drill-down landing).** Two confirmed bugs (3 findings dismissed), each
+fixed with a regression test: (1 HIGH, C21.14) `MoveModeFocus` stepped its disabled-cell skip by `Math.Sign(delta)`,
+collapsing the vertical ±`ModeColumns` stride to ±1 — so a Down/Up arrow that had to hop over a disabled cell drifted
+one column sideways instead of staying in its column. The skip now steps by the **full `delta`** (column-preserving
+for vertical travel, unchanged for horizontal). The sole green vertical-nav row (C21.11) never hit the skip path (its
+target cell was enabled, so the loop returned on the first probe) — mutation-verified: reverting to `Math.Sign` reds
+C21.14. (2 LOW, C21.15) the Decade header formatted `$"{decadeStart}-{decadeStart + 9}"`, so a years-1..9 decade
+(`decadeStart = 0`) advertised the nonexistent year 0 (`"0-9"`); the header endpoints are now clamped to the
+representable `[0001, 9999]` range (mirroring the per-cell blank-slot guard), reading `"1-9"`. Dismissed (false
+positives / documented deferrals): the `_suppressRebuild` exception-safety (the `finally` resets it and the
+DisplayMode write is outside the `try`), the drill-down-coercion-to-wrong-month concern (a clicked cell is enabled
+only when its span has a selectable day, so coercion stays within that month/year), and the all-cells-disabled
+focus-loss edge (consistent with the existing Month-mode `FocusDisplayMonthCell` behavior).

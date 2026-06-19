@@ -346,6 +346,7 @@ public class DatePicker : Control
         {
             // Open the calendar on the selected date's month (or the picker's DisplayDate) and reflect the selection.
             // This is a property push, not a commit (the close rides DateCommitted), so it can't close the popup.
+            _calendar.SetCurrentValue(Calendar.DisplayModeProperty, CalendarMode.Month); // reset a prior drill-down (WPF parity)
             _calendar.SetCurrentValue(Calendar.DisplayDateProperty, SelectedDate is { } d ? new DateOnly(d.Year, d.Month, 1) : DisplayDate);
             _calendar.SetCurrentValue(Calendar.SelectedDateProperty, SelectedDate);
         }

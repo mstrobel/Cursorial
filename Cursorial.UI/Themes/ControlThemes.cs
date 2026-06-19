@@ -50,6 +50,7 @@ internal static class ControlThemes
         dict[typeof(TreeViewItem)] = TreeViewItemTheme();
         dict[typeof(Calendar)] = CalendarTheme();
         dict[typeof(CalendarDayButton)] = CalendarDayButtonTheme();
+        dict[typeof(CalendarButton)] = CalendarButtonTheme();
         dict[typeof(DatePicker)] = DatePickerTheme();
         dict[typeof(Menu)] = MenuTheme();
         dict[typeof(MenuItem)] = MenuItemTheme();
@@ -346,10 +347,15 @@ internal static class ControlThemes
         var headerText = new TextBlock { TextAlignment = TextAlignment.Center };
         ctx.RegisterName("PART_HeaderText", headerText);
 
+        // The header label is a button (clicking it drills up Month→Year→Decade); mouse-only like the prev/next chrome
+        // so keyboard focus stays on the grid cells. It hosts the PART_HeaderText label and fills the center.
+        var headerButton = new Button { Content = headerText, Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_HeaderButton", headerButton);
+
         var header = new DockPanel();
-        header.Children.Add(prev);       // docked left
-        header.Children.Add(next);       // docked right
-        header.Children.Add(headerText); // fills the center
+        header.Children.Add(prev);         // docked left
+        header.Children.Add(next);         // docked right
+        header.Children.Add(headerButton); // fills the center
         DockPanel.SetDock(header, Dock.Top);
 
         var monthView = new StackPanel(); // the Calendar fills this (the day-of-week header row + six week rows)
@@ -375,7 +381,9 @@ internal static class ControlThemes
     // A day cell: a fill-bounded ContentPresenter over the day number. :inactive (adjacent-month) is muted; :today is
     // accent ink; :selected is a SelectionBrush fill; :focus-visible (keyboard cursor) is reverse-video. Ordered so a
     // focused cell reads as focused, then selected over today over hover. Day cells don't nest, so :pointerover is safe.
-    private static ControlTemplate CalendarDayButtonTemplate() => new(ctx =>
+    // A calendar cell (day, or a Year/Decade month/year): a fill-bounded ContentPresenter. Shared by CalendarDayButton
+    // + CalendarButton — same visual contract.
+    private static ControlTemplate CalendarCellTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
@@ -384,11 +392,13 @@ internal static class ControlThemes
         return border;
     });
 
-    private static Style CalendarDayButtonTheme()
+    // The shared :inactive/:pointerover/:today/:selected/:focus-visible/:disabled cell looks (ordered so a focused
+    // cell reads as focused, then selected over today over hover). Cells don't nest, so ^:pointerover is safe.
+    private static Style CalendarCellTheme(string key)
     {
-        var theme = new Style { Key = "Theme.CalendarDayButton" }
+        var theme = new Style { Key = key }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, CalendarDayButtonTemplate());
+            .Set(Control.TemplateProperty, CalendarCellTemplate());
         theme.Children.Add(new Style("^:inactive").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
         theme.Children.Add(new Style("^:today").SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
@@ -401,6 +411,11 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
         return theme;
     }
+
+    private static Style CalendarDayButtonTheme() => CalendarCellTheme("Theme.CalendarDayButton");
+
+    // The Year/Decade month/year cell — identical state looks to a day cell.
+    private static Style CalendarButtonTheme() => CalendarCellTheme("Theme.CalendarButton");
 
     // ───────────────────────────── DatePicker ─────────────────────────────
 

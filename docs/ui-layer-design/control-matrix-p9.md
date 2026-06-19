@@ -1303,3 +1303,23 @@ so the build-lowerer resolves their control-specific `TemplateBinding`s. A focus
 the `ControlThemes.cs` method) confirmed every template part, binding (`{TemplateBinding}` vs `{DynamicResource}`
 distinction), style setter, and state sub-rule (selector + property + key + document order) matches — zero
 divergence.
+
+## §C26 — ContentControl Horizontal/VerticalContentAlignment (WPF parity, post-P9)
+
+`ContentControl` gains `HorizontalContentAlignment : HorizontalAlignment` and `VerticalContentAlignment :
+VerticalAlignment` (the WPF analog; both default `Stretch`), positioning its content within the control. The
+mechanism is in `ContentPresenter.ArrangeOverride`: it reads the templated `ContentControl`'s content alignment
+and places the realized child accordingly — **default `Stretch` ⇒ `Arrange(0,0,finalSize)`, byte-identical to the
+prior fill behavior** (then the child's OWN alignment applies); Left/Center/Right (Top/Center/Bottom) give the
+child its desired size, placed. This needs **no per-template wiring** and works for every `ContentControl` (and the
+`ItemsControl`-based hosts' presenters fall back to Stretch — no `HorizontalContentAlignment` on a non-ContentControl
+parent). A live change re-arranges via a presenter-held observer on the parent's content-alignment properties
+(`AffectsArrange` on the parent can't reach the deep presenter — the same-rect re-arrange short-circuits).
+
+**Why not the presenter-`HorizontalAlignment` template-binding idiom (WPF's):** binding the presenter's own
+`HorizontalAlignment` to the parent's `HorizontalContentAlignment` shifted *centered `UIElement` content* even at
+`Stretch` (the `Calendar` header — a `Button` whose `Content` is a `TextAlignment.Center` `TextBlock`), breaking the
+§C25 `XamlCalendarTheme` byte-identity. The `ArrangeOverride` approach is a provable no-op at the default (it IS the
+prior `Arrange` call), so it sidesteps that interaction and needs no XAML-twin changes. Tests:
+`Cursorial.UI.Tests/ControlMatrix/Section37_ContentAlignment.cs` (C26.1 horizontal Left<Center<Right, C26.2 vertical
+Top<Center<Bottom, C26.3 defaults Stretch, C26.4 live re-position).

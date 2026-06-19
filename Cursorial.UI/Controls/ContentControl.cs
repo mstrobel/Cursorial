@@ -25,6 +25,18 @@ public class ContentControl : Control
     public static readonly StyledProperty<DataTemplate?> ContentTemplateProperty =
         UIProperty.Register<ContentControl, DataTemplate?>(nameof(ContentTemplate));
 
+    /// <summary>How the content is positioned horizontally within the control (the WPF analog; default
+    /// <see cref="HorizontalAlignment.Stretch"/> ⇒ the content fills, then its own alignment applies — the prior
+    /// behavior). The <see cref="ContentPresenter"/> in the control's template reads this and aligns the realized
+    /// content, so a control theme or consumer opts into Left/Center/Right without touching the content element.</summary>
+    public static readonly StyledProperty<HorizontalAlignment> HorizontalContentAlignmentProperty =
+        UIProperty.Register<ContentControl, HorizontalAlignment>(nameof(HorizontalContentAlignment), defaultValue: HorizontalAlignment.Stretch);
+
+    /// <summary>How the content is positioned vertically within the control (the WPF analog; default
+    /// <see cref="VerticalAlignment.Stretch"/>).</summary>
+    public static readonly StyledProperty<VerticalAlignment> VerticalContentAlignmentProperty =
+        UIProperty.Register<ContentControl, VerticalAlignment>(nameof(VerticalContentAlignment), defaultValue: VerticalAlignment.Stretch);
+
     static ContentControl()
     {
         AffectsMeasure<ContentControl>(ContentProperty, ContentTemplateProperty);
@@ -35,6 +47,12 @@ public class ContentControl : Control
 
     /// <inheritdoc cref="ContentTemplateProperty"/>
     public DataTemplate? ContentTemplate { get => GetValue(ContentTemplateProperty); set => SetValue(ContentTemplateProperty, value); }
+
+    /// <inheritdoc cref="HorizontalContentAlignmentProperty"/>
+    public HorizontalAlignment HorizontalContentAlignment { get => GetValue(HorizontalContentAlignmentProperty); set => SetValue(HorizontalContentAlignmentProperty, value); }
+
+    /// <inheritdoc cref="VerticalContentAlignmentProperty"/>
+    public VerticalAlignment VerticalContentAlignment { get => GetValue(VerticalContentAlignmentProperty); set => SetValue(VerticalContentAlignmentProperty, value); }
 
     /// <summary>
     /// Called after <see cref="Content"/> changed — the access-key re-registration hook (doc §12.5):

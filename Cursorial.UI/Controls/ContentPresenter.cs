@@ -16,7 +16,10 @@ public sealed class ContentPresenter : UIElement
     private bool _realizing;                    // recursion guard (C147)
     private IDisposable? _aliasContentObserver;
     private IDisposable? _aliasTemplateObserver;
-    private ContentControl? _aliasSource;        // the templated parent we read through to (CD21)
+    private ContentControl? _aliasSource;
+    private IDisposable? _hAlignObserver;
+    private IDisposable? _vAlignObserver;
+    private ContentControl? _alignmentSource;        // the templated parent we read through to (CD21)
 
     /// <summary>The presenter's content (any object); mirrors <see cref="ContentControl.Content"/>.</summary>
     public static readonly StyledProperty<object?> ContentProperty =
@@ -66,9 +69,37 @@ public sealed class ContentPresenter : UIElement
     /// <inheritdoc/>
     protected override Size ArrangeOverride(Size finalSize)
     {
-        _child?.Arrange(new Rect(0, 0, finalSize.Columns, finalSize.Rows));
+        if (_child is null)
+            return finalSize;
+
+        // Position the content per the templated ContentControl's Horizontal/VerticalContentAlignment (the WPF
+        // feature). Default Stretch ⇒ the child fills the full rect (then its OWN alignment applies) — byte-identical
+        // to the prior behavior. Non-Stretch ⇒ the child takes its desired size, placed left/center/right (top/…).
+        var (h, v) = EffectiveContentAlignment();
+        var width = h == HorizontalAlignment.Stretch ? finalSize.Columns : Math.Min(_child.DesiredSize.Columns, finalSize.Columns);
+        var height = v == VerticalAlignment.Stretch ? finalSize.Rows : Math.Min(_child.DesiredSize.Rows, finalSize.Rows);
+        var x = h switch
+        {
+            HorizontalAlignment.Right => Math.Max(0, finalSize.Columns - width),
+            HorizontalAlignment.Center => Math.Max(0, (finalSize.Columns - width) / 2),
+            _ => 0, // Left, Stretch
+        };
+        var y = v switch
+        {
+            VerticalAlignment.Bottom => Math.Max(0, finalSize.Rows - height),
+            VerticalAlignment.Center => Math.Max(0, (finalSize.Rows - height) / 2),
+            _ => 0, // Top, Stretch
+        };
+
+        _child.Arrange(new Rect(x, y, width, height));
         return finalSize;
     }
+
+    // The content alignment from the templated ContentControl (Stretch for a free-standing / non-ContentControl parent).
+    private (HorizontalAlignment Horizontal, VerticalAlignment Vertical) EffectiveContentAlignment()
+        => TemplatedParent is ContentControl cc
+            ? (cc.HorizontalContentAlignment, cc.VerticalContentAlignment)
+            : (HorizontalAlignment.Stretch, VerticalAlignment.Stretch);
 
     // ───────────────────────────── auto-alias lifecycle (CD21) ─────────────────────────────
 
@@ -77,6 +108,7 @@ public sealed class ContentPresenter : UIElement
     {
         base.OnAttachedToTree(in e);
         UpdateAliasSubscription();
+        UpdateAlignmentSubscription();
     }
 
     /// <inheritdoc/>
@@ -85,7 +117,37 @@ public sealed class ContentPresenter : UIElement
         // Lifetime = template instance: the auto-alias observers tear down with the presenter's
         // detach (which the templated parent's Detach() triggers via the Root subtree walk — CD20/CD21).
         TearDownAlias();
+        TearDownAlignment();
         base.OnDetachedFromTree(in e);
+    }
+
+    // Re-arrange when the templated ContentControl's content alignment changes (live), since ArrangeOverride reads it
+    // but AffectsArrange on the parent doesn't reach the deep presenter (the parent re-arranges it with the same rect,
+    // which short-circuits). A change to the parent's H/VContentAlignment invalidates only this presenter's arrange.
+    private void UpdateAlignmentSubscription()
+    {
+        if (TemplatedParent is ContentControl cc)
+        {
+            if (ReferenceEquals(_alignmentSource, cc))
+                return;
+            TearDownAlignment();
+            _alignmentSource = cc;
+            _hAlignObserver = cc.AddObserver(ContentControl.HorizontalContentAlignmentProperty, new HAlignObserver(this));
+            _vAlignObserver = cc.AddObserver(ContentControl.VerticalContentAlignmentProperty, new VAlignObserver(this));
+        }
+        else
+        {
+            TearDownAlignment();
+        }
+    }
+
+    private void TearDownAlignment()
+    {
+        _hAlignObserver?.Dispose();
+        _vAlignObserver?.Dispose();
+        _hAlignObserver = null;
+        _vAlignObserver = null;
+        _alignmentSource = null;
     }
 
     // The auto-alias is active when neither local property IsSet and the presenter is a template part
@@ -252,5 +314,18 @@ public sealed class ContentPresenter : UIElement
             if (presenter.AliasActive)
                 presenter.InvalidateMeasure();
         }
+    }
+
+    // The templated parent's content alignment changed → re-arrange (ArrangeOverride re-reads it).
+    private sealed class HAlignObserver(ContentPresenter presenter) : IValueObserver<HorizontalAlignment>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, HorizontalAlignment oldValue, HorizontalAlignment newValue, BindingPriority priority)
+            => presenter.InvalidateArrange();
+    }
+
+    private sealed class VAlignObserver(ContentPresenter presenter) : IValueObserver<VerticalAlignment>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, VerticalAlignment oldValue, VerticalAlignment newValue, BindingPriority priority)
+            => presenter.InvalidateArrange();
     }
 }

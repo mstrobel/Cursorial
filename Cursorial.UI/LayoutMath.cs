@@ -15,12 +15,19 @@ public static class LayoutMath
     public const int Unbounded = int.MaxValue;
 
     /// <summary>
-    /// The <c>ushort</c>-backed <c>Rect</c> cap — the hard ceiling for any arrange extent. Arrange
-    /// extents clamp to <c>[0, MaxExtent]</c> and positions to <c>[−MaxExtent, MaxExtent]</c>
-    /// (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG diagnostic) so a
-    /// misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
+    /// The hard ceiling for any arrange extent. Arrange extents clamp to <c>[0, MaxExtent]</c> and positions to
+    /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG
+    /// diagnostic) so a misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
+    /// <para>
+    /// <b>Decoupled from <see cref="Rect.MaxDimension"/>:</b> the <c>Rect</c> geometry type is <see cref="int"/>
+    /// -backed and holds the full range, but the LAYOUT cap is deliberately <c>int.MaxValue / 2</c> — it must stay
+    /// strictly below the <see cref="Unbounded"/> sentinel (<see cref="int.MaxValue"/>) so a real extent is never
+    /// mistaken for "infinity", and it bounds positions/extents so a layout-produced <c>Rect</c>'s
+    /// <c>edge + extent</c> (e.g. <see cref="Rect.RowEnd"/>) can never overflow <see cref="int"/>. Half the range
+    /// (≈ 1.07 billion cells) satisfies both and is effectively unbounded for any terminal surface.
+    /// </para>
     /// </summary>
-    public const int MaxExtent = Rect.MaxDimension;
+    public const int MaxExtent = int.MaxValue / 2;
 
     /// <summary>Whether <paramref name="value"/> is the <see cref="Unbounded"/> encoding.</summary>
     public static bool IsUnbounded(int value) => value == Unbounded;

@@ -85,7 +85,7 @@ public sealed class Section39_ScrollHost
     public void VV1_5_CapLifted_UnderHost()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
-        var stub = new StubScrollHost { Extent = new Size(5, 60_000) }; // > MaxScrollExtent (32K), ≤ Rect.MaxDimension
+        var stub = new StubScrollHost { Extent = new Size(5, 60_000) }; // > MaxScrollExtent (32K), ≤ LayoutMath.MaxExtent
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
         host.RunUntilIdle();
@@ -107,7 +107,7 @@ public sealed class Section39_ScrollHost
         host.ShowRoot(sv);
         host.RunUntilIdle();
 
-        Assert.Equal(200_000, sv.Extent.Rows); // uncapped — the Int32-Rect cap (Rect.MaxDimension) is effectively unbounded
+        Assert.Equal(200_000, sv.Extent.Rows); // uncapped — the layout cap (LayoutMath.MaxExtent) is effectively unbounded
         Assert.True(sv.Extent.Rows > ushort.MaxValue);
     }
 

@@ -13,13 +13,13 @@ public readonly record struct Rect
 {
     /// <summary>
     /// The maximum value of any <see cref="Rect"/> dimension or coordinate (<see cref="Column"/>/<see cref="Row"/>/
-    /// <see cref="Columns"/>/<see cref="Rows"/>). <c>int.MaxValue / 2</c> — the <see cref="Rect"/> is <see cref="int"/>
-    /// -backed, so this is bounded only by two constraints: it must stay strictly below the layout layer's
-    /// <c>Unbounded</c> sentinel (<see cref="int.MaxValue"/>) so a real extent is never mistaken for "infinity", and
-    /// it must keep <see cref="RowEnd"/>/<see cref="ColumnEnd"/> (<c>edge + extent</c>) from overflowing <see cref="int"/>.
-    /// Half the range satisfies both (≈ 1.07 billion cells — effectively unbounded for any terminal surface).
+    /// <see cref="Columns"/>/<see cref="Rows"/>). The <see cref="Rect"/> is <see cref="int"/>-backed, so this is the
+    /// full non-negative range. NOTE: <c>edge + extent</c> properties (<see cref="RowEnd"/>/<see cref="ColumnEnd"/>)
+    /// can overflow <see cref="int"/> for a hand-built <see cref="Rect"/> whose coordinate AND extent are both near
+    /// the cap — callers own that arithmetic. The LAYOUT clamp (<c>LayoutMath.MaxExtent</c>) is a separate, lower
+    /// ceiling that keeps every layout-produced <see cref="Rect"/> safely within range.
     /// </summary>
-    public const int MaxDimension = int.MaxValue / 2;
+    public const int MaxDimension = int.MaxValue;
 
     /// <summary>
     /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions

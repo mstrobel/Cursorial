@@ -310,12 +310,12 @@ public class ScrollContentPresenter : UIElement
             Math.Min(extent.Rows, canScrollVertically ? Math.Min(availableSize.Rows, LayoutLimits.MaxScrollExtent) : availableSize.Rows));
     }
 
-    // The host path lifts the legacy MaxScrollExtent (32K) cap. The content is still arranged at the full extent
-    // height, so the hard ceiling is the arrange-Rect dimension limit — now Rect.MaxDimension (≈ 1.07 billion cells,
-    // the Int32-backed Rect cap), effectively unbounded for any real list. The legacy (non-host) path keeps the lower
-    // MaxScrollExtent sanity cap (its content genuinely allocates that many rows).
+    // The host path lifts the legacy MaxScrollExtent (32K) cap. The content is arranged at the full extent height,
+    // which the layout clamps to LayoutMath.MaxExtent — so the host extent caps THERE (≈ 1.07 billion cells, the
+    // layout ceiling, distinct from the wider Rect geometry cap), effectively unbounded for any real list. The legacy
+    // (non-host) path keeps the lower MaxScrollExtent sanity cap (its content genuinely allocates that many rows).
     private static Size CapHostExtent(Size extent)
-        => new(Math.Clamp(extent.Columns, 0, Rect.MaxDimension), Math.Clamp(extent.Rows, 0, Rect.MaxDimension));
+        => new(Math.Clamp(extent.Columns, 0, LayoutMath.MaxExtent), Math.Clamp(extent.Rows, 0, LayoutMath.MaxExtent));
 
     /// <summary>
     /// The host's estimate-refinement back-channel (the WPF <c>InvalidateScrollInfo</c> analog, VV1.7): re-publishes

@@ -94,6 +94,10 @@ internal enum ExtensionKind : byte
 
     /// <summary>A user <c>MarkupExtension</c> subtype.</summary>
     Custom,
+
+    /// <summary><c>{x:Reference Name}</c> — resolves to the element registered under <c>Name</c> in the document
+    /// name scope (a forward reference is resolved after the whole tree is built; payload = the name string).</summary>
+    Reference,
 }
 
 /// <summary>

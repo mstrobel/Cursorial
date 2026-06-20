@@ -69,6 +69,9 @@ public static class XamlDiagnosticCodes
     /// <summary>A prefixed attached/owner-qualified <c>Setter.Property</c> owner (e.g. <c>my:Grid.Row</c>) — a v1 deferral (attached-setter Phase 2, see the investigation doc).</summary>
     public const string PrefixedSetterOwnerUnsupported = "CUR2111";
 
+    /// <summary>An <c>{x:Reference Name}</c> named no element registered in the document name scope.</summary>
+    public const string ReferenceNotFound = "CUR2112";
+
     /// <summary>A <c>StaticResource</c> key was not found / is a forward reference.</summary>
     public const string ResourceNotFound = "CUR2103";
 

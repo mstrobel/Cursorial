@@ -61,4 +61,27 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         Assert.Equal(typeof(UIControls.StackPanel), binding.RelativeSource.AncestorType);
         Assert.Equal(2, binding.RelativeSource.AncestorLevel);
     }
+
+    [Fact] // {x:Reference Name} resolves both a forward reference (named element appears later) and a backward one
+    public void XReference_ResolvesForwardAndBackward()
+    {
+        var root = Load<UIControls.StackPanel>(
+            "<StackPanel>" +
+            "<Label x:Name=\"fwd\" Target=\"{x:Reference box}\"/>" + // forward: box appears later in the document
+            "<TextBox x:Name=\"box\"/>" +
+            "<Label x:Name=\"bwd\" Target=\"{x:Reference box}\"/>" + // backward: box already registered
+            "</StackPanel>");
+
+        var box = (UIControls.TextBox) root.Children[1];
+        Assert.Same(box, ((UIControls.Label) root.Children[0]).Target); // forward ref resolved at end-of-tree
+        Assert.Same(box, ((UIControls.Label) root.Children[2]).Target); // backward ref resolved at encounter
+    }
+
+    [Fact] // {x:Reference} naming a nonexistent element is a hard error (CUR2112), never a silent null
+    public void XReference_UnknownName_Throws()
+    {
+        var ex = Assert.Throws<XamlParseException>(() => Load<UIControls.StackPanel>(
+            "<StackPanel><Label Target=\"{x:Reference nope}\"/></StackPanel>"));
+        Assert.Equal("CUR2112", ex.Code);
+    }
 }

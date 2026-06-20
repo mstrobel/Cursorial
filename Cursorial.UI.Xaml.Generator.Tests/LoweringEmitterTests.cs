@@ -436,4 +436,30 @@ namespace TestApp { public partial class AncView : StackPanel { public AncView()
 
     private static RelativeSource RelSource(Border border)
         => ((Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!).RelativeSource!;
+
+    [Fact] // {x:Reference Name} lowers to a name-scope resolution matching the runtime loader (forward reference)
+    public void Lowered_XReference_MatchesRuntimeLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.RefView\">" +
+            "<Label x:Name=\"Fwd\" Target=\"{x:Reference Box}\"/>" + // forward ref — Box appears later
+            "<TextBox x:Name=\"Box\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class RefView : StackPanel { public RefView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("RefHost");
+        var lowered = Lower(xaml, compilation);
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel) System.Activator.CreateInstance(assembly.GetType("TestApp.RefView")!)!;
+
+        var runtime = (StackPanel) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        Assert.Same(view.Children[1], ((Label) view.Children[0]).Target);       // lowered: x:Reference → the named TextBox
+        Assert.Same(runtime.Children[1], ((Label) runtime.Children[0]).Target); // …matching the runtime loader
+    }
 }

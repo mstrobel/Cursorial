@@ -66,6 +66,7 @@ internal static class LoweringEmitter
         // live ancestor chain, so el.FindResource (a throw-on-miss live walk, matching the loader) is faithful.
         // Deferring to the end of InitializeComponent is the single point where both invariants hold.
         EmitDeferredStaticResources(ctx);
+        EmitDeferredReferences(ctx); // {x:Reference} — same end-of-tree point (the name scope is now complete)
 
         // Template factory local functions go at the end of InitializeComponent (hoisted — the
         // FuncTemplateContent(...) references emitted above resolve to them).
@@ -1232,10 +1233,30 @@ internal static class LoweringEmitter
                 EmitTemplateBinding(c, varExpr, xm, node);
                 return;
 
+            case ExtensionKind.Reference:
+                EmitReference(c, varExpr, xm, c.Doc.Strings[ext.Payload]);
+                return;
+
             default:
                 c.Todo($"extension {ext.Kind} for '{xm.Name}' not yet lowered");
                 return;
         }
+    }
+
+    // {x:Reference Name} → a deferred assignment from the document name scope, emitted at the end of
+    // InitializeComponent (after every x:Name is registered) so a forward reference resolves. Document-level only:
+    // a template factory has its own scope (no __scope), so it degrades to reflective.
+    private static void EmitReference(Context c, string varExpr, XamlMember xm, string name)
+    {
+        if (c.InTemplate)
+        {
+            c.Todo($"{{x:Reference}} for '{xm.Name}' inside a template not yet lowered (no document name scope)");
+            return;
+        }
+
+        var owner = RegisteredOwner(xm);
+        var clrType = owner is null ? ValueTypeSymbol(xm.ValueType) : null;
+        c.References.Add(new ReferenceResolution(varExpr, owner, xm.Name, name, clrType));
     }
 
     // {DynamicResource Key} → ResourceExtensions.SetResourceReference(element, Owner.FooProperty, key): a live
@@ -1346,6 +1367,27 @@ internal static class LoweringEmitter
                 c.Line($"{sr.Var}.{sr.Property} = ({Global(ct)}){find}!;");
             else
                 c.Line($"{sr.Var}.{sr.Property} = {find};");
+        }
+    }
+
+    // {x:Reference} resolutions, emitted after the tree is built + every x:Name registered, so a forward
+    // reference (the named element appears later) resolves against the now-complete document name scope.
+    private static void EmitDeferredReferences(Context c)
+    {
+        if (c.References.Count == 0)
+            return;
+
+        c.Line("// {x:Reference} — resolve against the now-fully-populated document name scope (forward refs included).");
+        foreach (var r in c.References)
+        {
+            var find = $"__scope.Find(\"{Escape(r.Name)}\")";
+
+            if (r.Owner is { } owner)
+                c.Line($"{r.Var}.SetValue({Global(owner)}.{r.Property}Property, {find});");
+            else if (r.ClrType is { } ct)
+                c.Line($"{r.Var}.{r.Property} = ({Global(ct)}){find}!;");
+            else
+                c.Line($"{r.Var}.{r.Property} = {find};");
         }
     }
 
@@ -1736,6 +1778,8 @@ internal static class LoweringEmitter
 
         public List<StaticResourceResolution> StaticResources { get; } = [];
 
+        public List<ReferenceResolution> References { get; } = []; // {x:Reference} deferred assignments
+
         /// <summary>
         /// Raw-string resource key → the local var holding the already-built dictionary entry. A same-dictionary
         /// <c>{StaticResource key}</c> (lexically defined before its use) resolves to this var — StaticResource's
@@ -1856,6 +1900,15 @@ internal static class LoweringEmitter
         public INamedTypeSymbol? Owner { get; } = owner;
         public string Property { get; } = property;
         public string Key { get; } = key;
+        public ITypeSymbol? ClrType { get; } = clrType;
+    }
+
+    private readonly struct ReferenceResolution(string var, INamedTypeSymbol? owner, string property, string name, ITypeSymbol? clrType)
+    {
+        public string Var { get; } = var;
+        public INamedTypeSymbol? Owner { get; } = owner;
+        public string Property { get; } = property;
+        public string Name { get; } = name;
         public ITypeSymbol? ClrType { get; } = clrType;
     }
 }

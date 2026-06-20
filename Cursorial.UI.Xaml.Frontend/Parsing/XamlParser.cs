@@ -730,6 +730,24 @@ internal sealed class XamlParser
                 );
             }
 
+            case ExtensionKind.Reference:
+            {
+                // {x:Reference Name} (positional) or {x:Reference Name=…}: store the name; the loader/generator
+                // resolve it against the document name scope (forward refs resolved after the tree is built).
+                string refName = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } rt ? rt
+                               : node.FindNamed("Name") is { Text: { } nt } ? nt
+                               : string.Empty;
+                if (refName.Length == 0)
+                {
+                    _builder.Error(XamlDiagnosticCodes.UnsupportedIntrinsic,
+                                   "{x:Reference} requires a name (e.g. {x:Reference myButton}).", node.Line, node.Column);
+                    return -1;
+                }
+
+                return _builder.AddExtension(
+                    new ExtensionRecord(ExtensionKind.Reference, _builder.InternString(refName), LineInfo.Pack(node.Line, node.Column)));
+            }
+
             case ExtensionKind.Custom:
             default:
             {
@@ -757,6 +775,7 @@ internal sealed class XamlParser
                "DynamicResource"  => ExtensionKind.DynamicResource,
                "Binding"          => ExtensionKind.Binding,
                "TemplateBinding"  => ExtensionKind.TemplateBinding,
+               "x:Reference" or "Reference" => ExtensionKind.Reference,
                _                  => ExtensionKind.Custom,
            };
 

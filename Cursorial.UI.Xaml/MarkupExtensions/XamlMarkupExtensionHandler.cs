@@ -63,6 +63,10 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
                 AttachCustom(builder, instance, member, doc.ParsedExtensions[extension.Payload]!, line, column);
                 break;
 
+            case ExtensionKind.Reference:
+                AttachReference(builder, instance, member, doc.Strings[extension.Payload], line, column);
+                break;
+
             default:
                 // x:Null/x:Static/x:Type fold at parse (a Folded member, not an Extension) and never reach here.
                 throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound,
@@ -297,6 +301,20 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             _ => throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound,
                 $"Nested extension '{node.Name}' is not supported as a binding argument value.", line, column),
         };
+    }
+
+    // ── {x:Reference Name} (XAML2009 namescope reference) ────────────────────────────────────────
+    private void AttachReference(XamlObjectGraphBuilder builder, object instance, XamlMember? member, string name, int line, int column)
+    {
+        if (member is null)
+            throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound, "{x:Reference} has no target member.", line, column);
+
+        // Backward reference (the named element is already built) → assign now; a forward reference (not yet in
+        // the name scope) defers to the builder's end-of-tree pass, which resolves it once the scope is full.
+        if (builder.DocumentScope.Find(name) is { } element)
+            builder.AssignResolvedValue(member, instance, element, line, column);
+        else
+            builder.DeferReference(instance, member, name, line, column);
     }
 
     // ── Custom MarkupExtension (matrix X125/X126) ────────────────────────────────────────────────

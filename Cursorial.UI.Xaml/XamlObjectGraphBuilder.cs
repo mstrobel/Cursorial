@@ -78,11 +78,38 @@ internal sealed class XamlObjectGraphBuilder
         var root = InstantiateObject(0, rootInstance);
         _rootObject = root;
 
+        // The whole tree is built and the document name scope is fully populated — resolve any {x:Reference}
+        // that named an element not yet built when it was encountered (a forward reference).
+        ResolveDeferredReferences();
+
         // Attach the document namescope to a UIElement root (matrix X101/XD15).
         if (root is UIElement rootElement)
             NameScope.SetNameScope(rootElement, _documentScope);
 
         return root;
+    }
+
+    private readonly List<DeferredReference> _deferredReferences = [];
+
+    private readonly record struct DeferredReference(object Target, XamlMember Member, string Name, int Line, int Column);
+
+    /// <summary>Records an <c>{x:Reference Name}</c> whose named element was not yet in the document name scope (a
+    /// forward reference); <see cref="ResolveDeferredReferences"/> assigns it after the whole tree is built.</summary>
+    internal void DeferReference(object target, XamlMember member, string name, int line, int column)
+        => _deferredReferences.Add(new DeferredReference(target, member, name, line, column));
+
+    /// <summary>Resolves <c>{x:Reference}</c> values that were forward references, now that the name scope is full.</summary>
+    private void ResolveDeferredReferences()
+    {
+        foreach (var reference in _deferredReferences)
+        {
+            var element = _documentScope.Find(reference.Name)
+                ?? throw Fatal(XamlDiagnosticCodes.ReferenceNotFound,
+                    $"{{x:Reference}} could not resolve '{reference.Name}' — no element with that x:Name exists in the document.",
+                    reference.Line, reference.Column);
+
+            AssignResolvedValue(reference.Member, reference.Target, element, reference.Line, reference.Column);
+        }
     }
 
     /// <summary>

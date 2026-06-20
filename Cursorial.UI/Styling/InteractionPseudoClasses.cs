@@ -26,9 +26,17 @@ internal static class InteractionPseudoClasses
               [":modal-attention"] = InteractionState.ModalAttention
           }.ToFrozenDictionary(StringComparer.Ordinal);
 
+    private static readonly FrozenDictionary<InteractionState, string> ByState
+        = ByName.ToDictionary(o => o.Value, o => o.Key)
+                .ToFrozenDictionary();
+
     /// <summary>Maps a <c>':'</c>-prefixed pseudo-class name to its interaction bit, when one backs it.</summary>
     internal static bool TryGetState(string pseudoClass, out InteractionState state)
         => ByName.TryGetValue(pseudoClass, out state);
+
+    /// <summary>Maps an interaction bit to its <c>':'</c>-prefixed pseudo-class name, when it backs one.</summary>
+    internal static bool TryGetPseudoClass(InteractionState state, out string? pseudoClass)
+        => ByState.TryGetValue(state, out pseudoClass);
 
     /// <summary>Whether <paramref name="pseudoClass"/> (with leading colon) is an interaction-state-backed name.</summary>
     internal static bool IsInteractionBacked(string pseudoClass) => ByName.ContainsKey(pseudoClass);

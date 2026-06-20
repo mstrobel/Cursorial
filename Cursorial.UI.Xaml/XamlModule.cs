@@ -104,7 +104,7 @@ public sealed class EmbeddedXamlResourceProvider : IXamlResourceProvider
         if (assembly is null)
             return false;
 
-        string resourceName = $"{assemblyName}.{path.Replace('/', '.')}";
+        string resourceName = $"{assembly.GetName().Name}.{path.Replace('/', '.')}";
         using var stream = assembly.GetManifestResourceStream(resourceName);
         if (stream is null)
             return false;

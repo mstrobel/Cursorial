@@ -721,12 +721,7 @@ internal sealed class XamlObjectGraphBuilder
         var arg = node.PositionalArguments.Count > 0 ? node.PositionalArguments[0].Text : null;
 
         if (name == "Type" && arg is { } typeName)
-        {
-            var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
-            if (resolution.IsResolved)
-                return resolution.Type!.SystemType();
-            throw Fatal(XamlDiagnosticCodes.TypeNotFound, $"x:Key {{x:Type {typeName}}} could not be resolved to a type.", line, column);
-        }
+            return ResolveTypeToken(typeName, line, column);
 
         if (name == "Static" && arg is { } memberPath)
             return ResolveStaticMember(memberPath, line, column)
@@ -734,6 +729,17 @@ internal sealed class XamlObjectGraphBuilder
 
         throw Fatal(XamlDiagnosticCodes.UnsupportedIntrinsic,
             $"An x:Key markup extension must be {{x:Type T}} or {{x:Static M}}; '{node.Name}' is not supported as a key.", line, column);
+    }
+
+    // Resolves an {x:Type T} token (the default UI xmlns) to its <see cref="System.Type"/> — shared by the x:Key
+    // path and a nested {x:Type} key inside a {StaticResource}/{DynamicResource} (control themes key by {x:Type},
+    // and a Style.BasedOn references one). Mirrors the generator's XamlDataTypeScope.ResolveToken.
+    internal object ResolveTypeToken(string typeName, int line, int column)
+    {
+        var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
+        if (resolution.IsResolved)
+            return resolution.Type!.SystemType();
+        throw Fatal(XamlDiagnosticCodes.TypeNotFound, $"{{x:Type {typeName}}} could not be resolved to a type.", line, column);
     }
 
     // ── Resource dictionaries (matrix §11/§12) ─────────────────────────────────────────────────────
@@ -1120,6 +1126,12 @@ internal sealed class XamlObjectGraphBuilder
                         break;
                     case XamlValueKind.Text:
                         value = _doc.Strings[member.ValueIndex];
+                        break;
+                    case XamlValueKind.Object:
+                        // An inline object Setter.Value — e.g. <Setter Property="ItemsPanel"><ItemsPanelTemplate>…
+                        // (its deferred Content is applied by InstantiateObject's member pass). Without this the
+                        // value stayed UnsetValue and the setter was silently a no-op.
+                        value = InstantiateObject(member.ValueIndex);
                         break;
                     case XamlValueKind.Extension:
                     {

@@ -16,6 +16,9 @@
         <InternalsVisibleTo Include="Cursorial.UI.Testing" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
+        <InternalsVisibleTo Include="Cursorial.Demo" />
+        <InternalsVisibleTo Include="cursorial-demo" />
+        <InternalsVisibleTo Include="Cursorial.Demo.XamlAotStrict" />
     </ItemGroup>
 
     <ItemGroup>

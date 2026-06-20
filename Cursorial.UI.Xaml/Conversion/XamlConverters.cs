@@ -335,16 +335,6 @@ public static class XamlConverters
 
             foreach (var token in tokens)
             {
-                if (token.StartsWith("#", StringComparison.Ordinal))
-                {
-                    // Fold the #hex color stroke onto the pen (preserving the preset fields via `with`).
-                    // Previously the parsed color was discarded — an uncolored pen. (Palette / named pen
-                    // colors remain a future extension; the theme's RGB-tier pens use #hex.)
-                    pen = pen.WithColor(ColorConverter.Parse(token, ctx));
-                    any = true;
-                    continue;
-                }
-
                 switch (token.ToLowerInvariant())
                 {
                     case "light": pen = pen with { Weight = StrokeWeight.Light }; break;
@@ -354,7 +344,11 @@ public static class XamlConverters
                     case "dashed": pen = pen with { Dash = LineDash.Triple }; break;
                     case "ascii": pen = pen with { GlyphSet = GlyphSet.Ascii }; break;
                     default:
-                        throw Fail($"'{token}' is not a recognized pen preset (Light/Heavy/Double/Rounded/Dashed/Ascii).", ctx);
+                        // A non-preset token is the stroke color, folded onto the pen (preserving the preset fields
+                        // via WithColor): #hex, a named ANSI color, Palette(n), Default, or Transparent — the full
+                        // ColorConverter grammar (ColorConverter.Parse throws a color-specific error if it isn't one).
+                        pen = pen.WithColor(ColorConverter.Parse(token, ctx));
+                        break;
                 }
                 any = true;
             }

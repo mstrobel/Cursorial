@@ -1,6 +1,13 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
+
+using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
+using Cursorial.Output;
+using Cursorial.UI.Data;
 
 // ReSharper disable CheckNamespace
 
@@ -17,6 +24,27 @@ namespace Cursorial.UI;
 /// <param name="Key">The full packed <see cref="StyleSortKey"/>.</param>
 /// <param name="IsActive">Whether the rule's frame currently contributes values.</param>
 public readonly record struct MatchedRuleInfo(string SelectorText, StyleLayer Layer, StyleSortKey Key, bool IsActive);
+
+
+public readonly record struct StyleExplanation(
+    string TargetDescription,
+    ValueSourceKind Kind,
+    BindingPriority Priority,
+    BindingPriority BasePriority,
+    bool IsAnimated,
+    ImmutableArray<StyleFrameExplanation> Frames)
+{
+    /// <summary>Whether any expression is tracked for the pair.</summary>
+    public bool HasFrames => !Frames.IsDefaultOrEmpty;
+}
+
+public readonly record struct StyleFrameExplanation(StyleLayer Layer,
+                                                    string SelectorDescription,
+                                                    StyleSortKey SortKey,
+                                                    bool IsActive,
+                                                    bool HasValue,
+                                                    object? LastProducedValue,
+                                                    string Status);
 
 /// <summary>
 /// The styling engine's diagnostics surface (design doc §3.9): <see cref="Explain"/> renders every
@@ -78,6 +106,71 @@ public static class StyleDiagnostics
         return builder.ToString();
     }
 
+    /// <summary>
+    /// The one-line-per-contributor derivation of a property's value (SD13), strongest first,
+    /// newline-joined. Style lines render
+    /// <c>&lt;Property&gt; = &lt;value&gt; &lt;- &lt;Layer&gt;(&lt;n&gt;) "&lt;selector&gt;"
+    /// names=&lt;n&gt; classLike=&lt;n&gt; types=&lt;n&gt; depth=&lt;n&gt; order=&lt;n&gt;
+    /// key=0x&lt;16-hex&gt; -- winning|shadowed</c> with the entry value's invariant-culture
+    /// <c>ToString</c> (<c>(unset)</c> for valueless A8 entries), the flattened canonical selector
+    /// (<c>(explicit)</c> for selector-less explicit styles), and the full upper-case packed key.
+    /// When a non-Style lane holds the effective value the first line is
+    /// <c>&lt;Property&gt; = &lt;value&gt; &lt;- &lt;Lane&gt;</c>
+    /// (<c>LocalValue</c>/<c>Animation</c>/<c>Inherited</c>/<c>Default</c>) and every style line is
+    /// <c>shadowed</c>. Only <b>active</b> contributors render — armed-inactive rules appear in
+    /// <see cref="MatchedRules"/>, not here. Cold path.
+    /// </summary>
+    public static StyleExplanation ExplainDetails(UIElement element, UIProperty property)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(property);
+
+        var targetDescription = DescribeTarget(element, property);
+        var source = element.GetValueSource(property);
+        var styleWins = source.Priority == BindingPriority.Style;
+        
+        object? value = null;
+
+        if (!styleWins)
+        {
+            // The stronger-lane line: the effective value did not come from the Style slot.
+            value = property.GetValueUntyped(element);
+        }
+
+        var contributors = new List<(ValueFrame Frame, IValueEntry Entry)>();
+
+        element.DebugValueStore?.AppendActiveStyleContributors(property, contributors);
+
+        var frameExplanations = new StyleFrameExplanation[contributors.Count];
+        var winnerPending = styleWins;
+
+        for (var i = 0; i < contributors.Count; i++)
+        {
+            var (frame, entry) = contributors[i];
+
+            // The winning contributor is the strongest active VALUE-BEARING entry — exactly the
+            // store's arbitration (valueless A8 entries are promoted past and render shadowed).
+            var winning = winnerPending && entry.HasValue;
+
+            if (winning)
+                winnerPending = false;
+            
+            var frameExplanation = ExplainFrame(property, frame, entry, winning);
+
+            if (winning && value is null)
+                value = property.GetEntryValueBoxed(entry);
+
+            frameExplanations[i] = frameExplanation;
+        }
+
+        return new StyleExplanation(targetDescription,
+                                    source.Kind,
+                                    source.Priority,
+                                    source.BasePriority,
+                                    source.IsAnimated,
+                                    Frames: [..frameExplanations]);
+    }
+
     private static void AppendStyleLine(
         StringBuilder builder, UIProperty property, ValueFrame frame, IValueEntry entry, bool winning)
     {
@@ -99,13 +192,51 @@ public static class StyleDiagnostics
                .Append(" -- ").Append(winning ? "winning" : "shadowed");
     }
 
-    private static string FormatValue(object? value)
-        => value switch
-           {
-               null => "(null)",
-               IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-               _ => value.ToString() ?? "(null)"
-           };
+    private static StyleFrameExplanation ExplainFrame(UIProperty property,
+                                                               ValueFrame frame,
+                                                               IValueEntry entry,
+                                                               bool winning)
+    {
+        var key = frame.SortKey;
+        var selector = frame is StyleRuleFrame styleFrame
+            ? styleFrame.Rule.SelectorText.Length == 0 ? "(explicit)" : styleFrame.Rule.SelectorText
+            : "(frame)"; // a non-engine ValueFrame in the Style slot (conformance kit / future producers)
+        var layer = frame is StyleRuleFrame ruleFrame ? ruleFrame.Layer : key.Layer;
+        
+        return new StyleFrameExplanation(Layer: layer,
+                                         SelectorDescription: selector,
+                                         SortKey: frame.SortKey,
+                                         IsActive: frame.IsActive,
+                                         HasValue: entry.HasValue,
+                                         LastProducedValue: entry.HasValue ? FormatValue(property.GetEntryValueBoxed(entry)) : null,
+                                         Status: winning ? "Winning" : "Shadowed");
+
+    }
+
+    internal static string FormatValue(object? value)
+    {
+        return value switch
+               {
+                   null     => "(null)",
+                   string s => $"\"{s.Replace("\"", "\\\"")}\"",
+                   Color c  => c.Kind == ColorKind.Rgb ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}" : c.ToString(),
+                   Pen p => $"Pen {{ Brush={FormatValue(p.Brush)}, Weight={p.Weight}, Corners={FormatValue(p.Corners)}, " +
+                            $"Dash={FormatValue(p.Dash)}, EndCap={FormatValue(p.EndCap)}, Junction={FormatValue(p.Junction)}, " +
+                            $"GlyphSet={FormatValue(p.GlyphSet)}, Attributes={FormatValue(p.Attributes)} }}",
+                   SolidColorBrush sc => FormatValue(sc.Color),
+                   LinearGradientBrush lg => $"linear:({lg.StartPoint.X},{lg.StartPoint.Y}) -> ({lg.EndPoint.X},{lg.EndPoint.Y}, " +
+                                             $"{string.Join(", ", lg.Stops.Select(s => s.Color.ToString()))})",
+                   RadialGradientBrush rg => $"radial:({rg.Center.X},{rg.Center.Y}) -> ({rg.RadiusX},{rg.RadiusY}, " +
+                                             $"{string.Join(", ", rg.Stops.Select(s => s.Color.ToString()))})",
+                   ConicGradientBrush cb => $"conic:({cb.Center.X},{cb.Center.Y}) -> ({cb.AngleDegrees}º, Center={cb.Center}, " +
+                                            $"{string.Join(", ", cb.Stops.Select(s => s.Color.ToString()))})",
+                   IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+                   _                        => value.ToString() ?? "(null)"
+               };
+    }
+    
+    internal static string DescribeTarget(UIObject target, UIProperty property)
+        => BindingRegistry.DescribeTarget(target, property);
 
     /// <summary>
     /// The element's armed rules, strongest-first (larger keys first; equal keys in arm order).

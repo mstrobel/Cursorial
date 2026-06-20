@@ -268,6 +268,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             // P6 review P2-13. (The top-level {x:Static} folds at parse; a nested one inside an extension
             // argument reaches here.)
             "Static" => builder.ResolveStaticMember(FirstPositional(node) ?? string.Empty, line, column),
+            // {x:Type T} as a resource KEY ({StaticResource {x:Type Calendar}} — control themes key by {x:Type},
+            // and a Style.BasedOn references one). Resolves to the System.Type key.
+            "Type" => builder.ResolveTypeToken(FirstPositional(node) ?? string.Empty, line, column),
             "Null" => null,
             _ => throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound,
                 $"Nested extension '{node.Name}' is not supported as a binding argument value.", line, column),

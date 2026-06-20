@@ -24,8 +24,10 @@ internal static class SymbolXamlModel
         ("Cursorial.UI.Controls.Panel", "Children"),
         ("Cursorial.UI.Controls.ControlTemplate", "Content"),
         ("Cursorial.UI.Controls.DataTemplate", "Content"),
+        ("Cursorial.UI.Controls.ItemsPanelTemplate", "Content"),
         ("Cursorial.UI.Controls.ItemsControl", "Items"),
         ("Cursorial.UI.Style", "Setters"),
+        ("Cursorial.UI.Setter", "Value"),
         ("Cursorial.Drawing.Media.GradientBrush", "Stops")
     ];
 

@@ -77,7 +77,7 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
         // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
@@ -92,12 +92,12 @@ internal static class ControlThemes
     private static Style ButtonTheme()
     {
         var theme = AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.Button" })
+            .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
         // :default (the Enter-default cue) — a resting accent reverse-video fill so the primary action
         // stands out; :focus/:pressed override it when the user interacts. The ▸ OK ◂ gutter brackets are
         // a deferred content nicety (spec §3).
         theme.Children.Add(new Style("^:default")
-            .Set(Control.PaddingProperty, new Margins(1, 0))
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         return theme;

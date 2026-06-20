@@ -20,9 +20,9 @@
   -->
 
   <ControlTemplate x:Key="ButtonTemplate">
-    <Border Padding="1,0"
-            Background="{TemplateBinding Background}"
-            BorderPen="{TemplateBinding BorderPen}">
+    <Border Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}"
+            Padding="{TemplateBinding Padding}">
       <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
     </Border>
   </ControlTemplate>
@@ -30,6 +30,7 @@
   <Style x:Key="{x:Type Button}" TargetType="Button">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
       <!-- Ordered hover -> focus -> pressed -> disabled -> default (document order breaks pseudo-class ties,
@@ -225,6 +226,14 @@
        CursorialTheme.BuiltIn remains the backstop. Window is intentionally omitted — its chrome's
        active/inactive look is code-driven (Activated/Deactivated handlers), not declarative. -->
 
+  <ItemsPanelTemplate x:Key="VirtualizingItemsPanelTemplate">
+    <VirtualizingStackPanel IsItemsHost="True"
+                            KeyboardNavigation.TabNavigation="Once"
+                            IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
+                            VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
+                            ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
+  </ItemsPanelTemplate>
+  
   <!-- ItemsControl (design doc §12.6 / C2): a Border (opt-in Background/BorderPen via TemplateBindings)
        wrapping the PART_ItemsHost ItemsPresenter, which builds the ItemsPanel and lays out containers.
        The declarative twin of ControlThemes.ItemsControlTheme()/ItemsControlTemplate(). -->
@@ -236,6 +245,15 @@
 
   <Style x:Key="{x:Type ItemsControl}" TargetType="ItemsControl">
     <Setter Property="Template" Value="{StaticResource ItemsControlTemplate}"/>
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <VirtualizingStackPanel IsItemsHost="True"
+                                KeyboardNavigation.TabNavigation="Once"
+                                IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
+                                VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
+                                ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
+      </ItemsPanelTemplate>
+    </Setter>
   </Style>
 
   <!-- ListBox (design doc §11.8a): a Border (opt-in BorderPen) over a ScrollViewer whose content is the
@@ -254,6 +272,15 @@
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
     <Setter Property="Template"   Value="{StaticResource ListBoxTemplate}"/>
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <VirtualizingStackPanel IsItemsHost="True"
+                                KeyboardNavigation.TabNavigation="Once"
+                                IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
+                                VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
+                                ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
+      </ItemsPanelTemplate>
+    </Setter>
   </Style>
 
   <!-- ListBoxItem (design doc §11.8a / gallery .item): a full-width selection bar — a Border filling its row

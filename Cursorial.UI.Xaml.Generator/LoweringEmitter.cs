@@ -261,6 +261,10 @@ internal static class LoweringEmitter
         // it directly (define-before-use). {x:Static}/{x:Type} keys aren't string-keyable by StaticResource — skip.
         if (RawKey(c, childIndex) is { } rawKey && !rawKey.StartsWith("{", System.StringComparison.Ordinal))
             c.ResourceVars[rawKey] = childVar;
+
+        // Also track by the lowered KEY EXPRESSION (string literal / typeof(...) / {x:Static} ref) so a
+        // same-dictionary {StaticResource {x:Type T}} (control themes; Style.BasedOn) resolves to the entry's var.
+        c.ResourceVarsByKeyExpr[keyExpr] = childVar;
     }
 
     // The object indices of a member's value run (Items → each; Object → the one), else empty.
@@ -493,11 +497,27 @@ internal static class LoweringEmitter
         var valueExpr = "global::Cursorial.UI.UIProperty.UnsetValue"; // valueless unless a Value member is present
         if (valueMember >= 0)
         {
-            if (SetterValueExpr(c, in c.Doc.Members[valueMember], propValueType) is { } v)
+            ref readonly var value = ref c.Doc.Members[valueMember];
+            if (value.Kind == XamlValueKind.Object)
+            {
+                // An inline object Setter.Value — e.g. <Setter Property="ItemsPanel"><ItemsPanelTemplate>…</…>.
+                // Build it into a local and use that var (the reflective loader builds it the same way; a
+                // {StaticResource}-keyed value takes the same-dict var path via SetterValueExpr instead). The Style's
+                // TargetType is the templated-parent type so a {TemplateBinding} inside an inline template resolves
+                // ({Binding RelativeSource=TemplatedParent} — what VirtualizingItemsPanelTemplate uses — resolves at
+                // runtime regardless).
+                var v = c.NextVar();
+                var savedTpt = c.TemplatedParentType;
+                c.TemplatedParentType = targetType;
+                EmitObject(c, value.ValueIndex, v, isRoot: false, hasScope: false, dataType: null);
+                c.TemplatedParentType = savedTpt;
+                valueExpr = v;
+            }
+            else if (SetterValueExpr(c, in value, propValueType) is { } v)
                 valueExpr = v;
             else
             {
-                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} / same-dict {StaticResource} supported; complex deferred)");
+                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} / same-dict {StaticResource} / inline object supported)");
                 return;
             }
         }
@@ -545,30 +565,46 @@ internal static class LoweringEmitter
                 ? $"new global::Cursorial.UI.ResourceReference({keyExpr})"
                 : null;
 
-        if (ext.Kind == ExtensionKind.StaticResource && !ext.PayloadIsParsedExtension &&
-            c.ResourceVars.TryGetValue(c.Doc.Strings[ext.Payload], out var srcVar))
+        // A same-dictionary {StaticResource key} → the already-built entry's var (its load-time snapshot); the key
+        // may be a string or a nested {x:Type}/{x:Static} (control themes key by {x:Type}).
+        if (ext.Kind == ExtensionKind.StaticResource &&
+            ResourceKeyArgExpr(c, in ext) is { } srcKeyExpr &&
+            c.ResourceVarsByKeyExpr.TryGetValue(srcKeyExpr, out var srcVar))
+        {
+            if (c.InTemplate) c.CurrentFactoryCaptures = true;
             return srcVar;
+        }
 
         return null;
     }
 
-    // The key of a *Resource extension as a C# expression: a literal string, or an {x:Static} global:: member
-    // (the nested-extension key form). Null when the key is an unsupported nested extension.
+    // The key of a *Resource extension as a C# expression: a literal string, an {x:Static} global:: member, or an
+    // {x:Type} typeof(...) (the nested-extension key forms — control themes key by {x:Type}). Null when the key is
+    // an unsupported nested extension.
     private static string? ResourceKeyArgExpr(Context c, in ExtensionRecord ext)
     {
         if (!ext.PayloadIsParsedExtension)
             return $"\"{Escape(c.Doc.Strings[ext.Payload])}\"";
 
-        // A nested key extension, e.g. {DynamicResource {x:Static ThemeKeys.X}}.
+        // A nested key extension, e.g. {DynamicResource {x:Static ThemeKeys.X}} or {StaticResource {x:Type Foo}}.
         if (c.Doc.ParsedExtensions[ext.Payload] is { } node &&
-            node.Name is "x:Static" or "Static" &&
-            node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } path)
-            return ResolveStaticPath(c, path);
+            node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } arg)
+        {
+            if (node.Name is "x:Static" or "Static")
+                return ResolveStaticPath(c, arg);
+
+            if (node.Name is "x:Type" or "Type" &&
+                XamlDataTypeScope.ResolveToken(c.Doc, arg, c.Resolver) is { } typeSym)
+                return $"typeof({Global(typeSym)})";
+        }
 
         return null;
     }
 
-    // A Style's BasedOn: a direct nested <Style> (built + referenced) or a {StaticResource} (deferred — TODO).
+    // A Style's BasedOn: a direct nested <Style> (built + referenced), or a {StaticResource key} resolving to a
+    // same-dictionary keyed Style built before this use (the entry's var — its load-time snapshot; the key may be a
+    // string or a nested {x:Type}/{x:Static}, as control themes key by {x:Type}). A forward-ref / cross-dictionary
+    // {StaticResource} BasedOn stays unlowered (defer — null).
     private static string? BasedOnExpr(Context c, in MemberRecord member)
     {
         if (member.Kind == XamlValueKind.Object)
@@ -578,7 +614,16 @@ internal static class LoweringEmitter
             return v;
         }
 
-        return null; // {StaticResource} BasedOn → not yet lowered (defer)
+        if (member.Kind == XamlValueKind.Extension &&
+            c.Doc.Extensions[member.ValueIndex] is { Kind: ExtensionKind.StaticResource } ext &&
+            ResourceKeyArgExpr(c, in ext) is { } keyExpr &&
+            c.ResourceVarsByKeyExpr.TryGetValue(keyExpr, out var srcVar))
+        {
+            if (c.InTemplate) c.CurrentFactoryCaptures = true; // the factory references an enclosing entry var ⇒ not static
+            return srcVar;
+        }
+
+        return null;
     }
 
     // ── WS-X5.4h — baked selectors (an explicit Selector="…" → a reflection-free Selectors fluent chain) ──
@@ -827,10 +872,11 @@ internal static class LoweringEmitter
                 case XamlValueKind.Object:
                 {
                     var childVar = c.NextVar();
-                    // A ControlTemplate's templated parent is the enclosing control (this objType); a DataTemplate
-                    // has none. Establish it for the recursion so a {TemplateBinding} inside resolves its source.
+                    // A ControlTemplate's (or ItemsPanelTemplate's) templated parent is the enclosing control (this
+                    // objType); a DataTemplate has none. Establish it for the recursion so a {TemplateBinding} inside
+                    // resolves its source.
                     var savedTpt = c.TemplatedParentType;
-                    if (IsControlTemplateType(xm.ValueType)) c.TemplatedParentType = objType;
+                    if (IsControlTemplateType(xm.ValueType) || IsItemsPanelTemplateType(xm.ValueType)) c.TemplatedParentType = objType;
                     else if (IsDataTemplateType(xm.ValueType)) c.TemplatedParentType = null;
                     EmitObject(c, member.ValueIndex, childVar, isRoot: false, hasScope, dataType);
                     c.TemplatedParentType = savedTpt;
@@ -1111,6 +1157,9 @@ internal static class LoweringEmitter
     private static bool IsDataTemplateType(IXamlType valueType)
         => ValueTypeSymbol(valueType) is { Name: "DataTemplate", ContainingNamespace.Name: "Controls" };
 
+    private static bool IsItemsPanelTemplateType(IXamlType valueType)
+        => ValueTypeSymbol(valueType) is { Name: "ItemsPanelTemplate", ContainingNamespace.Name: "Controls" };
+
     // The ControlTemplate's explicit TargetType (a Text member naming a type), resolved via the document xmlns, or null.
     private static INamedTypeSymbol? ResolveTemplateTargetType(Context c, in ObjectRecord obj)
     {
@@ -1223,23 +1272,26 @@ internal static class LoweringEmitter
     // (where there is no end-of-tree FindResource anchor — it needs the captured lexical scope), stays a // TODO.
     private static void EmitStaticResource(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext)
     {
-        if (ext.PayloadIsParsedExtension)
-        {
-            c.Todo($"{{StaticResource}} with a markup-extension key for '{xm.Name}' not yet lowered");
-            return;
-        }
-
-        var key = c.Doc.Strings[ext.Payload];
-
-        // Same-dictionary key (lexically built before this use): reference the entry's var directly — StaticResource's
-        // exact load-time-snapshot semantics, and the only form that works inside a template factory (a non-static
-        // local function captures the var). Works inline too (the var is in the same Build() scope).
-        if (c.ResourceVars.TryGetValue(key, out var srcVar))
+        // Same-dictionary key (string OR nested {x:Type}/{x:Static}, lexically built before this use): reference the
+        // entry's var directly — StaticResource's exact load-time-snapshot semantics, and the only form that works
+        // inside a template factory (a non-static local function captures the var). Works inline too (the var is in
+        // the same Build() scope).
+        if (ResourceKeyArgExpr(c, in ext) is { } keyExpr && c.ResourceVarsByKeyExpr.TryGetValue(keyExpr, out var srcVar))
         {
             if (c.InTemplate) c.CurrentFactoryCaptures = true; // the factory references an enclosing local ⇒ not static
             AssignResolvedResource(c, varExpr, xm, srcVar);
             return;
         }
+
+        if (ext.PayloadIsParsedExtension)
+        {
+            // A nested {x:Type}/{x:Static} key that isn't a same-dictionary entry: there's no string anchor for the
+            // end-of-tree FindResource fallback (which is string-keyed), so defer.
+            c.Todo($"{{StaticResource}} with a markup-extension key for '{xm.Name}' is not a same-dictionary entry — not yet lowered");
+            return;
+        }
+
+        var key = c.Doc.Strings[ext.Payload];
 
         if (c.InTemplate)
         {
@@ -1671,6 +1723,15 @@ internal static class LoweringEmitter
         /// future refinement caught by the dual-run gate. Populated as <see cref="EmitDictionaryEntry"/> builds entries.
         /// </summary>
         public Dictionary<string, string> ResourceVars { get; } = new(System.StringComparer.Ordinal);
+
+        /// <summary>
+        /// Every built dictionary entry by its <em>key expression</em> (the C# the key lowers to — a string
+        /// literal, a <c>typeof(...)</c> for an <c>{x:Type}</c> key, or an <c>{x:Static}</c> member ref), to its
+        /// built var. The superset of <see cref="ResourceVars"/> (which is string-keys-only): this also tracks
+        /// <c>{x:Type}</c>/<c>{x:Static}</c>-keyed entries (control themes), so a same-dictionary
+        /// <c>{StaticResource {x:Type T}}</c> — including a <c>Style.BasedOn</c> — resolves to the entry's var.
+        /// </summary>
+        public Dictionary<string, string> ResourceVarsByKeyExpr { get; } = new(System.StringComparer.Ordinal);
 
         private INamedTypeSymbol? _control;
         private bool _controlResolved;

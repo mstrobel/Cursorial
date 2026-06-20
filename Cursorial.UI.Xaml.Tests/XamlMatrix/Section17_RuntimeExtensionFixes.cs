@@ -84,4 +84,28 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
             "<StackPanel><Label Target=\"{x:Reference nope}\"/></StackPanel>"));
         Assert.Equal("CUR2112", ex.Code);
     }
+
+    [Theory] // XAML2009 built-in (CLR basic) types resolve in the x: (intrinsics) namespace
+    [InlineData("String", typeof(string))]
+    [InlineData("Int32", typeof(int))]
+    [InlineData("Int64", typeof(long))]
+    [InlineData("Double", typeof(double))]
+    [InlineData("Single", typeof(float))]
+    [InlineData("Boolean", typeof(bool))]
+    [InlineData("Byte", typeof(byte))]
+    [InlineData("Char", typeof(char))]
+    [InlineData("Decimal", typeof(decimal))]
+    [InlineData("Object", typeof(object))]
+    [InlineData("TimeSpan", typeof(System.TimeSpan))]
+    [InlineData("Uri", typeof(System.Uri))]
+    public void BuiltInTypes_ResolveInIntrinsicsNamespace(string local, System.Type expected)
+        => Assert.Equal(expected, XamlSchemaContext.Default.Resolve(XamlSchemaContext.IntrinsicsNamespace, local, out _));
+
+    [Fact] // {x:Type x:String} folds to typeof(string) end-to-end (a built-in type as a type token)
+    public void XType_BuiltIn_FoldsToSystemType()
+    {
+        var template = Load<UIControls.ControlTemplate>(
+            "<ControlTemplate TargetType=\"{x:Type x:String}\"><Border/></ControlTemplate>");
+        Assert.Equal(typeof(string), template.TargetType);
+    }
 }

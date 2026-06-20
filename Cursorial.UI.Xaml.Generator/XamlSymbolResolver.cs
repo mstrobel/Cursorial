@@ -18,6 +18,16 @@ internal sealed class XamlSymbolResolver
 {
     /// <summary>The default Cursorial UI xmlns URI (mirrors <c>XmlnsNamespaces.CursorialUi</c>).</summary>
     public const string CursorialUiNamespace = "https://cursorial.dev/ui";
+    private const string IntrinsicsNamespace = "https://cursorial.dev/xaml";
+
+    // The XAML2009 built-in (CLR basic) type names, each mapping to System.<name> (System.String, System.Int32, …).
+    private static string? BuiltInMetadataName(string localName) => localName switch
+    {
+        "Object" or "Boolean" or "Byte" or "SByte" or "Char" or "Decimal" or "Single" or "Double"
+            or "Int16" or "Int32" or "Int64" or "UInt16" or "UInt32" or "UInt64" or "String"
+            or "TimeSpan" or "Uri" => "System." + localName,
+        _ => null,
+    };
 
     /// <summary>The CLR namespaces the default UI xmlns probes (mirrors <c>XamlSchemaContext</c>).</summary>
     private static readonly string[] DefaultUiNamespaces =
@@ -44,6 +54,15 @@ internal sealed class XamlSymbolResolver
         ambiguous = null;
         if (_cache.TryGetValue((xmlNamespace, localName), out var cached))
             return cached;
+
+        // XAML2009 built-in (CLR basic) types in the x: (intrinsics) namespace: x:String → System.String, etc.
+        // (mirrors the loader's XamlSchemaContext.BuiltInType — the dual-run/twin gates catch any drift).
+        if (string.Equals(xmlNamespace, IntrinsicsNamespace, System.StringComparison.Ordinal) && BuiltInMetadataName(localName) is { } metadata)
+        {
+            var builtin = _compilation.GetTypeByMetadataName(metadata);
+            _cache[(xmlNamespace, localName)] = builtin;
+            return builtin;
+        }
 
         var matches = new List<INamedTypeSymbol>();
         foreach (var clrNamespace in CandidateNamespaces(xmlNamespace))

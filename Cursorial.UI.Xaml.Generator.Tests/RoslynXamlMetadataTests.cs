@@ -41,6 +41,19 @@ public class RoslynXamlMetadataTests
     public void TryGetType_UnknownLocalName_NotFound()
         => Assert.False(Provider().TryGetType(Ui, "Buttn").IsResolved);
 
+    [Theory] // XAML2009 built-in (CLR basic) types resolve via the symbol resolver too (x: intrinsics namespace)
+    [InlineData("String")]
+    [InlineData("Int32")]
+    [InlineData("Double")]
+    [InlineData("Boolean")]
+    [InlineData("TimeSpan")]
+    public void TryGetType_BuiltIn_ResolvesInIntrinsicsNamespace(string local)
+    {
+        var res = Provider().TryGetType("https://cursorial.dev/xaml", local);
+        Assert.True(res.IsResolved);
+        Assert.Equal(local, res.Type!.ClrType.Name); // System.String → "String", System.Int32 → "Int32", …
+    }
+
     [Fact] // a registered UIProperty surfaces a non-null Property marker (the XD4 rule-1 signal)
     public void RegisteredUIProperty_HasNonNullPropertyMarker()
     {

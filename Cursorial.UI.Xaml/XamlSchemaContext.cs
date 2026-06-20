@@ -109,11 +109,40 @@ public sealed class XamlSchemaContext
         if (TryDecodeClrNamespace(xmlNamespace, out var clrNs, out var assemblyName))
             return ResolveInNamespaces(localName, [clrNs], AssembliesFor(assemblyName), out ambiguous);
 
+        // XAML2009 built-in (CLR basic) types live in the x: (intrinsics) namespace: x:String → System.String,
+        // x:Int32 → System.Int32, etc. (WPF/Avalonia parity) — used as type tokens ({x:Type x:String},
+        // x:Array Type="x:Int32") and as element-valued literals (<x:Double>1.5</x:Double>).
+        if (string.Equals(xmlNamespace, IntrinsicsNamespace, StringComparison.Ordinal) && BuiltInType(localName) is { } builtin)
+            return builtin;
+
         if (string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
             return ResolveInNamespaces(localName, SnapshotClrNamespaces(), AllAssemblies(), out ambiguous);
 
         return null;
     }
+
+    /// <summary>The XAML2009 built-in (CLR basic) type for an intrinsic-namespace local name, or <see langword="null"/>.</summary>
+    public static Type? BuiltInType(string localName) => localName switch
+    {
+        "Object"   => typeof(object),
+        "Boolean"  => typeof(bool),
+        "Byte"     => typeof(byte),
+        "SByte"    => typeof(sbyte),
+        "Char"     => typeof(char),
+        "Decimal"  => typeof(decimal),
+        "Single"   => typeof(float),
+        "Double"   => typeof(double),
+        "Int16"    => typeof(short),
+        "Int32"    => typeof(int),
+        "Int64"    => typeof(long),
+        "UInt16"   => typeof(ushort),
+        "UInt32"   => typeof(uint),
+        "UInt64"   => typeof(ulong),
+        "String"   => typeof(string),
+        "TimeSpan" => typeof(TimeSpan),
+        "Uri"      => typeof(Uri),
+        _          => null,
+    };
 
     /// <summary>The known XAML-visible type names in an xmlns URI (Levenshtein did-you-mean source).</summary>
     public string[] GetKnownTypeNames(string xmlNamespace)

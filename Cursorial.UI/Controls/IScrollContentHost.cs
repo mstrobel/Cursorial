@@ -36,6 +36,11 @@ internal interface IScrollContentHost
     /// realizes its band).</summary>
     void SetViewport(Size viewport);
 
+    /// <summary>The SCP's band re-anchored (the realization window moved) — the host must re-realize its band on the
+    /// next measure (an in-band composite slide does NOT call this, so invariant 3 holds for free; only a re-anchor
+    /// does, at the re-anchor cadence). A non-virtualizing host ignores it.</summary>
+    void InvalidateRealization();
+
     /// <summary>The cell step for a line scroll (arrow/wheel) from <paramref name="currentOffset"/> in
     /// <paramref name="sign"/> direction (+1 down/right). Cells always — the SCP's offset stays one cell axis.</summary>
     int LineStep(int currentOffset, int sign, bool vertical);

@@ -402,6 +402,11 @@ public class ScrollContentPresenter : UIElement
         BandAnchorRow = newOffset;
         BandStartRow = Math.Clamp(newOffset - BandPadding, 0, contentRows - bandLength);
         Zone?.MarkRasterDirty(); // check only — the band re-raster happens in the next RunRenderPass
+
+        // A virtualizing host must realize the new band BEFORE that re-raster — schedule its re-measure (the re-anchor
+        // cadence; an in-band slide never reaches here, so invariant 3 is preserved).
+        if (_scrollHost is { IsScrollClient: true } host)
+            host.InvalidateRealization();
     }
 
     /// <summary>
@@ -424,5 +429,9 @@ public class ScrollContentPresenter : UIElement
 
         BandStartRow = start;
         Zone?.MarkRasterDirty();
+
+        // The band moved on an extent/viewport change — a virtualizing host re-realizes the new band next measure.
+        if (_scrollHost is { IsScrollClient: true } host)
+            host.InvalidateRealization();
     }
 }

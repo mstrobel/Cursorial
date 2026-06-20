@@ -84,6 +84,15 @@ public abstract class VirtualizingPanel : Panel
         return control.GetValue(ScrollUnitProperty);
     }
 
+    /// <summary>Called by the <see cref="ItemsPresenter"/> when this panel becomes the items host (it has its owning
+    /// <see cref="ItemsControl"/> + generator). A virtualizing subclass wires its generator + opt-in here. The base
+    /// does nothing.</summary>
+    internal virtual void OnItemsHostConnected(ItemsControl owner) { }
+
+    /// <summary>Called by the <see cref="ItemsPresenter"/> before this panel is released (detach / <c>ItemsPanel</c>
+    /// swap) so a virtualizing subclass can unhook its generator subscription. The base does nothing.</summary>
+    internal virtual void OnItemsHostDisconnected() { }
+
     /// <summary>Sets <see cref="ScrollUnitProperty"/> on <paramref name="control"/>.</summary>
     public static void SetScrollUnit(ItemsControl control, ScrollUnit value)
     {

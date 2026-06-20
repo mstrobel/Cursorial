@@ -59,6 +59,7 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         // Free the containers (logical parentage stays the ItemsControl's) so a re-attach / re-template re-adopts.
         if (_panel is not null)
         {
+            (_panel as VirtualizingPanel)?.OnItemsHostDisconnected();
             _panel.Children.Clear();
             RemoveVisualChild(_panel);
             _panel = null;
@@ -75,6 +76,7 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
 
         if (_panel is not null)
         {
+            (_panel as VirtualizingPanel)?.OnItemsHostDisconnected();
             if (_panel is ILogicalScrollHost oldHost)
                 oldHost.ScrollOwner = null; // symmetric with the SCP's Content-setter disown — no stale back-channel
             _panel.Children.Clear();
@@ -108,6 +110,10 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
 
         if (PanelHost is { } host)
             host.ScrollOwner = _scrollOwner;
+
+        // A virtualizing panel wires its generator + opt-in here (V2 — it owns realization, not this presenter).
+        if (_panel is VirtualizingPanel vp)
+            vp.OnItemsHostConnected(owner);
     }
 
     private void OnContainersChanged(object? sender, ContainersChangedEventArgs e)
@@ -256,6 +262,8 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
     Size IScrollContentHost.GetExtent() => PanelHost?.GetExtent() ?? Size.Empty;
 
     void IScrollContentHost.SetViewport(Size viewport) => PanelHost?.SetViewport(viewport);
+
+    void IScrollContentHost.InvalidateRealization() => PanelHost?.InvalidateRealization();
 
     int IScrollContentHost.LineStep(int currentOffset, int sign, bool vertical)
         => PanelHost?.LineStep(currentOffset, sign, vertical) ?? 1;

@@ -408,6 +408,40 @@ public sealed class ItemContainerGenerator
         FinishUnrealizeBatch(start, count, removed);
     }
 
+    /// <summary>
+    /// Unrealizes every realized container OUTSIDE <c>[windowStart, windowEnd)</c> in one batch (the panel's
+    /// reconcile-to-window primitive — robust to a prior window of any shape, a structural index shift, or scattered
+    /// keep-alive holes). Honors the keep-alive skip + the CD-P9-3 sequence; fires one
+    /// <see cref="ContainersRealizedChanged"/> <see cref="ContainersChangedAction.Unrealized"/> carrying the removed
+    /// instances. The panel then <see cref="RealizeRange"/>s the window.
+    /// </summary>
+    public void UnrealizeOutside(int windowStart, int windowEnd)
+    {
+        RequireVirtualizing();
+
+        _shiftScratch.Clear();
+        foreach (var kv in _realized)
+            if (kv.Key < windowStart || kv.Key >= windowEnd)
+                _shiftScratch.Add(kv);
+
+        if (_shiftScratch.Count == 0)
+            return;
+
+        List<UIElement>? removed = null;
+        foreach (var (index, container) in _shiftScratch)
+        {
+            if (IsContainerPinned(container))
+                continue; // keep-alive: focused (V3 adds caret); stays realized outside the window
+
+            _owner.ClearContainerForItem(container, ItemFromContainer(container));
+            _realized.Remove(index);
+            _indexByContainer.Remove(container);
+            (removed ??= []).Add(container);
+        }
+
+        FinishUnrealizeBatch(windowStart, 0, removed); // start informational; the removed instance list is authoritative
+    }
+
     // Steps 3+4 of the unrealize sequence shared by scroll-unrealize and structural remove: fire the realized
     // channel so the host detaches the instances, then logical-detach + recycle/discard each.
     private void FinishUnrealizeBatch(int start, int count, List<UIElement>? removed)

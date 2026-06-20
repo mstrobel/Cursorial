@@ -246,6 +246,7 @@ public sealed class Section39_ScrollHost
         public bool IsLogicalScroll => true;
         public Size GetExtent() => Extent;
         public void SetViewport(Size viewport) => LastViewport = viewport;
+        public void InvalidateRealization() { }
         public int LineStep(int currentOffset, int sign, bool vertical) => 1;
         public int PageStep(int currentOffset, int sign, bool vertical) => Math.Max(1, LastViewport.Rows - 1);
         public Rect BringItemIntoView(int itemIndex) => new(0, itemIndex, 1, 1);
@@ -271,6 +272,7 @@ public sealed class Section39_ScrollHost
         public bool IsLogicalScroll => true;
         public Size GetExtent() => Extent;
         public void SetViewport(Size viewport) { }
+        public void InvalidateRealization() { }
         public int LineStep(int currentOffset, int sign, bool vertical) => 1;
         public int PageStep(int currentOffset, int sign, bool vertical) => 1;
         public Rect BringItemIntoView(int itemIndex) => new(0, itemIndex, 1, 1);

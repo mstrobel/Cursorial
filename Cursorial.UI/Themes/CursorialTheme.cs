@@ -116,6 +116,8 @@ public static class CursorialTheme
         // Opt-in chrome survives as ASCII pens; modal-dim + access-key underline stay Default (the attribute
         // — Underline — carries the cue).
         noColor[ThemeKeys.BorderPen] = Pens.Ascii;
+        noColor[ThemeKeys.SeparatorPen] = Pens.Ascii;
+        noColor[ThemeKeys.MenuSeparatorPen] = Pens.Ascii;
         noColor[ThemeKeys.FocusPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
         noColor[ThemeKeys.AccessKeyUnderlineBrush] = defaultBrush;
@@ -163,6 +165,8 @@ public static class CursorialTheme
         
         // Opt-in chrome (no shipped control reads these by default): border = faint ink, focus ring = accent heavy.
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc"));
+        rgb[ThemeKeys.SeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Heavy };
+        rgb[ThemeKeys.MenuSeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Light };
         rgb[ThemeKeys.FocusPen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.ObscuredOverlayBrush] = new SolidColorBrush(Color.FromRgba(0, 0, 0, 0x60));
         rgb[ThemeKeys.AccessKeyUnderlineBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
@@ -201,8 +205,10 @@ public static class CursorialTheme
         ansi16[ThemeKeys.AmberBrush] = Palette(3);
         ansi16[ThemeKeys.RedBrush] = Palette(dark ? 9 : 1);
         ansi16[ThemeKeys.PurpleBrush] = Palette(dark ? 13 : 5);
-        ansi16[ThemeKeys.BorderPen] = Pens.Ascii.WithColor(Color.FromPalette(8));
-        ansi16[ThemeKeys.FocusPen] = Pens.Ascii.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4)).WithWeight(StrokeWeight.Heavy);
+        ansi16[ThemeKeys.BorderPen] = Pens.Light.WithColor(Color.FromPalette(8));
+        ansi16[ThemeKeys.SeparatorPen] = Pens.Double.WithColor(Color.FromPalette(8));
+        ansi16[ThemeKeys.MenuSeparatorPen] = Pens.Light.WithBrush(Palette(dark ? 15 : 0));
+        ansi16[ThemeKeys.FocusPen] = Pens.Double.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
         ansi16[ThemeKeys.ObscuredOverlayBrush] = Palette(8);
         ansi16[ThemeKeys.AccessKeyUnderlineBrush] = Palette(dark ? 15 : 0);
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;

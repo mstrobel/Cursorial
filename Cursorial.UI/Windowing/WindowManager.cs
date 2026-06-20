@@ -834,7 +834,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // Clamp so the whole surface stays on-screen (a content larger than the viewport pins to the origin).
         surface.Left = Math.Clamp(left, 0, Math.Max(0, _viewport.Columns - size.Columns));
         surface.Top = Math.Clamp(top, 0, Math.Max(0, _viewport.Rows - size.Rows));
-        surface.Opacity = 1.0;
+        surface.Opacity = popup.Opacity;
     }
 
     /// <summary>The effective target's bounds in screen space (its surface offset + a live parent-chain walk), or

@@ -289,6 +289,20 @@
     </Style.Children>
   </Style>
 
+  <!-- The non-interactive divider control theme (design doc §12.7), the declarative twin of the code-first
+       ControlThemes.SeparatorTheme(): a 1-cell-high rule whose Border. No interactive states (Separator
+       is never focusable and never a tab stop). -->
+  <Style x:Key="{x:Type Separator}" TargetType="Separator">
+    <Setter Property="Background" Value="{x:Null}"/>
+    <Setter Property="BorderPen"  Value="{DynamicResource {x:Static ThemeKeys.SeparatorPen}}"/>
+    <Setter Property="Height"     Value="1"/>
+    <Style.Children>
+      <Style TargetType="Separator" Selector="^:within-menu">
+        <Setter Property="BorderPen"  Value="{DynamicResource {x:Static ThemeKeys.MenuSeparatorPen}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
   <!-- Menu (design doc §12.7): the horizontal menu bar — a SurfaceBrush strip hosting the top-level items.
        The Menu's ItemsPanel is a horizontal StackPanel (set in its ctor), so the template is just a fill-bound
        Border wrapping the PART_ItemsHost ItemsPresenter. NO interactive states (the bar itself never highlights —
@@ -324,8 +338,8 @@
                             Content="{TemplateBinding Header}"/>
         </DockPanel>
       </Border>
-      <Popup x:Name="PART_Popup">
-        <Border Occludes="True"
+      <Popup x:Name="PART_Popup"><!--Opacity="0.85"-->
+        <Border Occludes="False"
                 Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
           <ItemsPresenter x:Name="PART_ItemsHost"/>
@@ -368,20 +382,6 @@
   <Style x:Key="{x:Type ContextMenu}" TargetType="ContextMenu">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
     <Setter Property="Template"   Value="{StaticResource ContextMenuTemplate}"/>
-  </Style>
-
-  <!-- The non-interactive divider control theme (design doc §12.7), the declarative twin of the code-first
-       ControlThemes.SeparatorTheme(): a 1-cell-high rule whose Border fills with the templated parent's
-       Background, which the palette spine resolves to MutedBrush. No interactive states (Separator is never
-       focusable and never a tab stop). -->
-  <ControlTemplate x:Key="SeparatorTemplate">
-    <Border Background="{TemplateBinding Background}"/>
-  </ControlTemplate>
-
-  <Style x:Key="{x:Type Separator}" TargetType="Separator">
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
-    <Setter Property="Height"     Value="1"/>
-    <Setter Property="Template"   Value="{StaticResource SeparatorTemplate}"/>
   </Style>
 
   <!--
@@ -512,7 +512,8 @@
        :disabled muted — ordered so a focused cell reads as focused, then selected over today over hover. The
        declarative twin of ControlThemes.CalendarCellTheme(). -->
   <ControlTemplate x:Key="CalendarCellTemplate">
-    <Border Background="{TemplateBinding Background}">
+    <Border Background="{TemplateBinding Background}"
+            Padding="{TemplateBinding Padding}">
       <ContentPresenter x:Name="PART_ContentPresenter"/>
     </Border>
   </ControlTemplate>
@@ -720,16 +721,16 @@
        prev/next + the header are mouse-only (Focusable/IsTabStop False) so keyboard focus stays on the grid cells; the
        whole widget is one tab stop (Once). The declarative twin of ControlThemes.CalendarTheme(). -->
   <ControlTemplate x:Key="CalendarTemplate">
-    <Border Padding="1,0"
-            Background="{TemplateBinding Background}"
-            BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+    <Border Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}"
+            Padding="{TemplateBinding Padding}">
       <DockPanel input:KeyboardNavigation.TabNavigation="Once">
-        <DockPanel DockPanel.Dock="Top">
-          <Button x:Name="PART_PreviousButton" DockPanel.Dock="Left"  Content="&lt;" Focusable="False" IsTabStop="False"/>
-          <Button x:Name="PART_NextButton"     DockPanel.Dock="Right" Content="&gt;" Focusable="False" IsTabStop="False"/>
-          <Button x:Name="PART_HeaderButton" Focusable="False" IsTabStop="False">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,1">
+          <CalendarButton x:Name="PART_PreviousButton" DockPanel.Dock="Left"  Content="&lt;" Focusable="False" IsTabStop="False" Padding="1,0"/>
+          <CalendarButton x:Name="PART_NextButton"     DockPanel.Dock="Right" Content="&gt;" Focusable="False" IsTabStop="False" Padding="1,0"/>
+          <CalendarButton x:Name="PART_HeaderButton" Focusable="False" IsTabStop="False">
             <TextBlock x:Name="PART_HeaderText" TextAlignment="Center"/>
-          </Button>
+          </CalendarButton>
         </DockPanel>
         <StackPanel x:Name="PART_MonthView"/>
       </DockPanel>
@@ -738,7 +739,8 @@
 
   <Style x:Key="{x:Type Calendar}" TargetType="Calendar">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <!-- <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/> -->
+    <Setter Property="BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
     <Setter Property="Template"   Value="{StaticResource CalendarTemplate}"/>
   </Style>
 
@@ -758,13 +760,17 @@
           </Grid>
         </DockPanel>
       </Border>
-      <Popup x:Name="PART_Popup">
-        <Border Occludes="True"
-                Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+      <Popup x:Name="PART_Popup"><!--Opacity="0.85"-->
+        <Border Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-          <Calendar x:Name="PART_Calendar"/>
+          <Calendar x:Name="PART_Calendar" />
         </Border>
       </Popup>
+      <Grid.Styles>
+        <Style x:Key="{x:Type Calendar}" TargetType="Calendar" BasedOn="{StaticResource {x:Type Calendar}}">
+          <Setter Property="BorderPen" Value="{x:Null}" />
+        </Style>
+      </Grid.Styles>
     </Grid>
   </ControlTemplate>
 

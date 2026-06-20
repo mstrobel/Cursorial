@@ -356,8 +356,27 @@ public abstract class UIObject : IInheritanceNode
         if (property.IsReadOnly)
             throw new InvalidOperationException($"Property '{property}' is read-only; clearing requires the key surface (PD14).");
 
-        if (_store is { } store)
+        if (_store is {} store)
             store.TryGetEntry(property.Id)?.ClearLocal(store);
+    }
+
+    /// <summary>
+    /// Removes the local value and evicts local-priority binding entries (A9: <c>ClearValue</c> is
+    /// the binding kill; <c>SetValue</c> never kills). Promotion reports the new winning lane
+    /// (PD10) — Style, then Inherited, then Default; with no local contribution it is a silent
+    /// no-op (M21).
+    /// </summary>
+    public void ClearValue<T>(UIPropertyKey<T> key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        VerifyAccess();
+        RenderPassGuard.ThrowIfActive(); // the render pass is read-only (design doc §5.5; DEBUG only)
+
+        if (key.Property.IsDirect)
+            throw new ArgumentException($"Direct property '{key}' cannot be cleared; push the registered unset value through its setter instead.", nameof(key));
+
+        if (_store is {} store)
+            store.TryGetEntry(key.Property.Id)?.ClearLocal(store);
     }
 
     /// <summary>
@@ -578,7 +597,7 @@ public abstract class UIObject : IInheritanceNode
     /// callback and the ordinary <see cref="OnPropertyChanged"/> virtual are origin-site channels
     /// and do not fire here (matrix PD22). Args are valid only for the duration of the call.
     /// </summary>
-    protected internal virtual void OnInheritedPropertyChanged(in InheritedPropertyChangedEventArgs args)
+    protected internal virtual void OnInheritedPropertyChanged(in UIPropertyChangedEventArgs args)
     {
     }
 
@@ -710,7 +729,7 @@ public abstract class UIObject : IInheritanceNode
             var carrier = ValueChangeCarrier<T>.Rent(oldValue, newValue);
             try
             {
-                OnInheritedPropertyChanged(new InheritedPropertyChangedEventArgs(property, priority, carrier));
+                OnInheritedPropertyChanged(new UIPropertyChangedEventArgs(property, priority, carrier));
             }
             finally
             {

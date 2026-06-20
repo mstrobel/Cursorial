@@ -122,6 +122,7 @@ public sealed class ContextMenu : ItemsControl
     private Popup CreatePopup()
     {
         var popup = new Popup { Child = this, StaysOpen = false }; // StaysOpen=false ⇒ light-dismiss participant
+        popup.SetValue(MenuItem.IsWithinMenuPropertyKey, true);
         popup.Closed += OnPopupClosed;
         return popup;
     }

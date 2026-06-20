@@ -238,9 +238,12 @@ public abstract partial class UIElement
     }
 
     /// <inheritdoc/>
-    protected internal override void OnInheritedPropertyChanged(in InheritedPropertyChangedEventArgs args)
+    protected internal override void OnInheritedPropertyChanged(in UIPropertyChangedEventArgs args)
     {
         base.OnInheritedPropertyChanged(in args);
+
+        // Fork B's property → pseudo-class bridge (doc §3.2): near-free when no mappings exist.
+        PseudoClassMapping.NotifyPropertyChanged(this, in args);
 
         // The same dispatch as the ordinary channel (doc §5.5): one root write fans out to
         // inheriting descendants, and each descendant with an effects mapping invalidates itself.

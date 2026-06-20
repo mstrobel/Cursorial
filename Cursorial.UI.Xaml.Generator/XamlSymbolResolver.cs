@@ -21,9 +21,10 @@ internal sealed class XamlSymbolResolver
 
     /// <summary>The CLR namespaces the default UI xmlns probes (mirrors <c>XamlSchemaContext</c>).</summary>
     private static readonly string[] DefaultUiNamespaces =
-    {
-        "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.Drawing.Media", "Cursorial.UI.Themes",
-    };
+    [
+        "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.UI.Input",
+        "Cursorial.Drawing.Media", "Cursorial.UI.Themes"
+    ];
 
     private const string UsingPrefix = "using:";
     private const string ClrNamespacePrefix = "clr-namespace:";

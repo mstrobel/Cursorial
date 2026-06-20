@@ -19,6 +19,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 {
     private const string PartPopup = "PART_Popup";
 
+    /// <inheritdoc cref="IsWithinMenuProperty"/>
+    internal static readonly UIPropertyKey<bool> IsWithinMenuPropertyKey =
+        UIProperty.RegisterAttachedReadOnly<MenuItem, UIElement, bool>("IsWithinMenu", defaultValue: false, inherits: true);
+
+    /// <summary>Indicates whether the element is within a <see cref="Menu"/> popup.</summary>
+    public static readonly AttachedProperty<bool> IsWithinMenuProperty = (AttachedProperty<bool>) IsWithinMenuPropertyKey.Property;
+    
     /// <summary>The command invoked when a leaf item is clicked/activated.</summary>
     public static readonly StyledProperty<ICommand?> CommandProperty =
         UIProperty.Register<MenuItem, ICommand?>(nameof(Command), changed: OnCommandChanged);
@@ -63,12 +70,16 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     static MenuItem()
     {
         PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
+        PseudoClassMapping.Register<UIElement>(IsWithinMenuProperty, ":within-menu");
         // MenuItem.Header folds access-key literals ("_File" → mnemonic 'F') — the per-type flag (doc §12.5 ②).
         HeaderProperty.OverrideMetadata<MenuItem>(new PropertyMetadata<object?>(Changed: OnHeaderChanged) { ParsesAccessKeyLiterals = true });
     }
 
     /// <summary>Creates a menu item (focusable — keyboard navigation lands focus on the highlighted item).</summary>
-    public MenuItem() => Focusable = true;
+    public MenuItem()
+    {
+        Focusable = true;
+    }
 
     /// <inheritdoc cref="CommandProperty"/>
     public ICommand? Command { get => GetValue(CommandProperty); set => SetValue(CommandProperty, value); }
@@ -137,12 +148,16 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         base.OnApplyTemplate();
 
         if (_popup is not null)
+        {
             _popup.Closed -= OnPopupClosed;
+            _popup.ClearValue(IsWithinMenuPropertyKey);
+        }
 
         _popup = GetTemplatePart<Popup>(PartPopup);
 
         if (_popup is not null)
         {
+            _popup.SetValue(IsWithinMenuPropertyKey, true);
             _popup.PlacementTarget = this;
             _popup.Placement = OwnerItemsControl is Menu ? PlacementMode.Bottom : PlacementMode.Right; // bar → down, nested → right
             _popup.Closed += OnPopupClosed;
@@ -500,4 +515,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (sender is MenuItem item)
             item.InvalidateIsEnabledCore(); // the gate reads CanExecute(CommandParameter)
     }
+    
+    /// <inheritdoc cref="IsWithinMenuProperty"/>
+    public static bool GetIsWithinMenu(UIElement element) => element.GetValue(IsWithinMenuProperty);
 }

@@ -121,6 +121,16 @@ public static class ThemeKeys
     /// </summary>
     public const string BorderPen = "Theme.BorderPen";
 
+    /// <summary>
+    /// Heavy pen used for the Separator control outside of menu contexts.
+    /// </summary>
+    public const string SeparatorPen = "Theme.SeparatorPen";
+
+    /// <summary>
+    /// Light pen used for the Separator control within menu contexts.
+    /// </summary>
+    public const string MenuSeparatorPen = "Theme.MenuSeparatorPen";
+
     // ───────────────────────────── infrastructure (carried over) ─────────────────────────────
 
     /// <summary>The modal-dimming overlay brush (the <c>^.obscured</c> rule, design doc §11.8).</summary>

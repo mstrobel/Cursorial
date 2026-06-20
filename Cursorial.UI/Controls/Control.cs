@@ -25,7 +25,7 @@ public class Control : UIElement, IControlThemeHost
 
     /// <summary>The control's surface brush (<c>AffectsRender</c>; <b>not</b> inherited — doc §12.1).</summary>
     public static readonly StyledProperty<IBrush?> BackgroundProperty =
-        UIProperty.Register<Control, IBrush?>(nameof(Background));
+        Panel.BackgroundProperty.AddOwner<Control>();
 
     /// <summary>The control's text foreground — <see cref="TextElement.ForegroundProperty"/> <c>AddOwner</c> (inherits).</summary>
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
@@ -33,7 +33,7 @@ public class Control : UIElement, IControlThemeHost
 
     /// <summary>The control's border pen (<c>AffectsRender</c> + nullity escalation — doc §12.4).</summary>
     public static readonly StyledProperty<Pen?> BorderPenProperty =
-        UIProperty.Register<Control, Pen?>(nameof(BorderPen), changed: OnBorderPenChanged);
+        Border.BorderPenProperty.AddOwner<Control>();
 
     /// <summary>The control's inner padding (<c>AffectsMeasure</c>).</summary>
     public static readonly StyledProperty<Margins> PaddingProperty =
@@ -110,7 +110,7 @@ public class Control : UIElement, IControlThemeHost
     {
         // The explicit Control.Theme override changed: re-match so the new override (or, on clear, the
         // chain lookup) arms at ControlTheme(0) — the SD21 identity diff keeps shared survivors.
-        if (sender is Control control && control.IsAttachedToTree)
+        if (sender is Control { IsAttachedToTree: true } control)
             UIApplication.Current?.StyleEngineInternal.OnControlThemeChanged(control);
     }
 
@@ -129,7 +129,7 @@ public class Control : UIElement, IControlThemeHost
 
     /// <inheritdoc/>
     internal override Styles? TemplateStylesForArming
-        => _templateInstance is { } instance && instance.Template.Styles.Count > 0 ? instance.Template.Styles : null;
+        => _templateInstance is { Template.Styles.Count: > 0 } instance ? instance.Template.Styles : null;
 
     /// <inheritdoc/>
     internal override ResourceDictionary? TemplateResourcesForChainWalk
@@ -233,7 +233,7 @@ public class Control : UIElement, IControlThemeHost
     /// Returns null before the first expansion (call <see cref="ApplyTemplate"/> explicitly to force
     /// it earlier) and when the part is absent / of a different type.
     /// </summary>
-    protected T? GetTemplatePart<T>(string name) where T : UIElement
+    protected internal T? GetTemplatePart<T>(string name) where T : UIElement
     {
         ArgumentNullException.ThrowIfNull(name);
         return _templateInstance?.NameScope.Find(name) as T;

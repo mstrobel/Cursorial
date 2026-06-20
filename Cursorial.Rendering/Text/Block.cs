@@ -24,7 +24,7 @@ namespace Cursorial.Rendering.Text;
 public abstract record Block
 {
     /// <summary>Horizontal alignment of the block's content within the column budget.</summary>
-    public TextAlignment Alignment { get; init; } = TextAlignment.Left;
+    public TextAlignment? Alignment { get; init; }
 
     /// <summary>
     /// Inter-block spacing applied above and below this block when stacked in a document.

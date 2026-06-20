@@ -36,6 +36,7 @@ public class Calendar : Control
     private const int ModeCellWidth = 7; // the Year/Decade cells (4 columns × 7 ≈ the day grid's 7 × 4)
     private const int ModeColumns = 4;   // the Year/Decade grid is 4 columns × 3 rows = 12 cells
     private const int ModeRows = 3;
+    private const int ModeVerticalMargin = 1;
 
     private static readonly DateOnly MinMonth = new(1, 1, 1);
     private static readonly DateOnly MaxMonth = new(9999, 12, 1);
@@ -94,6 +95,11 @@ public class Calendar : Control
         SetValue(TodayProperty, today);
         SetValue(DisplayDateProperty, today);
         SetValue(FirstDayOfWeekProperty, CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek);
+    }
+
+    static Calendar()
+    {
+        PaddingProperty.OverrideDefaultValue<Calendar>(new(1, 0));
     }
 
     /// <inheritdoc cref="DisplayDateProperty"/>
@@ -640,6 +646,7 @@ public class Calendar : Control
                     Date = date,
                     Content = date.Day.ToString(CultureInfo.CurrentCulture),
                     Width = CellWidth,
+                    Padding = new(1, 0, 0, 0),
                     IsToday = IsTodayHighlighted && date == Today && !blackout, // a blacked-out/out-of-range today isn't highlighted
                     IsSelected = SelectedDate == date,
                     IsInactive = date.Month != DisplayDate.Month,
@@ -674,7 +681,11 @@ public class Calendar : Control
 
         for (var row = 0; row < ModeRows; row++)
         {
-            var rowPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            var rowPanel = new StackPanel
+                           {
+                               Orientation = Orientation.Horizontal,
+                               Margin = new(0, row == 0 ? ModeVerticalMargin : 0, 0, ModeVerticalMargin)
+                           };
             for (var col = 0; col < ModeColumns; col++)
             {
                 var month = row * ModeColumns + col + 1; // 1..12
@@ -685,6 +696,7 @@ public class Calendar : Control
                 {
                     RepresentativeDate = first,
                     Content = dtf.AbbreviatedMonthNames[month - 1],
+                    HorizontalContentAlignment = HorizontalAlignment.Center,
                     Width = ModeCellWidth,
                     IsToday = IsTodayHighlighted && Today.Year == year && Today.Month == month && selectable,
                     IsSelected = SelectedDate is { } s && s.Year == year && s.Month == month,
@@ -718,7 +730,12 @@ public class Calendar : Control
 
         for (var row = 0; row < ModeRows; row++)
         {
-            var rowPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            var rowPanel = new StackPanel
+                           {
+                               Orientation = Orientation.Horizontal,
+                               Margin = new(0, row == 0 ? ModeVerticalMargin : 0, 0, ModeVerticalMargin)
+                           };
+
             for (var col = 0; col < ModeColumns; col++)
             {
                 var offset = row * ModeColumns + col - 1; // -1 .. 10
@@ -736,6 +753,7 @@ public class Calendar : Control
                 {
                     RepresentativeDate = first,
                     Content = year.ToString(CultureInfo.CurrentCulture),
+                    HorizontalContentAlignment = HorizontalAlignment.Center,
                     Width = ModeCellWidth,
                     IsToday = IsTodayHighlighted && Today.Year == year && selectable,
                     IsSelected = SelectedDate is { } s && s.Year == year,

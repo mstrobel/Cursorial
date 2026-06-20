@@ -1,3 +1,6 @@
+using Cursorial.Drawing.Media;
+using Cursorial.Rendering;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -12,5 +15,20 @@ public class Separator : Control
     {
         Focusable = false;
         IsTabStop = false;
+    }
+    
+    static Separator()
+    {
+        PseudoClassMapping.Register<Separator>(MenuItem.IsWithinMenuProperty, ":within-menu");
+    }
+
+    protected override void Render(RenderContext context)
+    {
+        base.Render(context);
+
+        if (BorderPen is not {} pen)
+            return;
+
+        context.DrawLine(0, 0, context.Size.Columns - 1, 0, pen, overwrite: true);
     }
 }

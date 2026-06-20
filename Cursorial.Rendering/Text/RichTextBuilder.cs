@@ -38,7 +38,7 @@ public sealed class RichTextBuilder
     // a Run/LineBreak/etc. without a preceding Paragraph() call) gets sensible behavior — in
     // particular, WrapMode.NoWrap is NOT the desired default. FlushOpenParagraph resets these
     // to the same values after closing a paragraph.
-    private TextAlignment _openAlignment = TextAlignment.Left;
+    private TextAlignment? _openAlignment;
     private WrapMode _openWrap = WrapMode.WordWrap;
     private TextTrimming _openTrim = TextTrimming.None;
     private int? _openMaxLines;
@@ -184,7 +184,7 @@ public sealed class RichTextBuilder
     /// </summary>
     public RichTextBuilder Paragraph(
         WrapMode wrap = WrapMode.WordWrap,
-        TextAlignment alignment = TextAlignment.Left,
+        TextAlignment? alignment = null,
         TextTrimming trim = TextTrimming.None,
         int? maxLines = null,
         Margins? margin = null)
@@ -204,7 +204,7 @@ public sealed class RichTextBuilder
         // ReSharper disable once MethodOverloadWithOptionalParameter
         string glyph = "─",
         in Style style = default,
-        TextAlignment alignment = TextAlignment.Left,
+        TextAlignment? alignment = null,
         Margins? margin = null)
     {
         ArgumentNullException.ThrowIfNull(glyph);
@@ -241,7 +241,7 @@ public sealed class RichTextBuilder
     public RichTextBuilder Figlet(
         string text, IGlyphFont face,
         in Style style = default,
-        TextAlignment alignment = TextAlignment.Left,
+        TextAlignment? alignment = null,
         Margins margin = default)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -258,7 +258,7 @@ public sealed class RichTextBuilder
         string text, TextSizing sizing,
         in Style style = default,
         IGlyphFont? fallback = null,
-        TextAlignment alignment = TextAlignment.Left,
+        TextAlignment? alignment = null,
         Margins margin = default)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -277,7 +277,7 @@ public sealed class RichTextBuilder
     /// <summary>Append a block-level <see cref="IContent"/> embedding.</summary>
     public RichTextBuilder Content(
         IContent content,
-        TextAlignment alignment = TextAlignment.Left,
+        TextAlignment? alignment = null,
         Margins margin = default)
     {
         ArgumentNullException.ThrowIfNull(content);

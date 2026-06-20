@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
@@ -15,10 +16,10 @@ namespace Cursorial.Rendering.Text;
 /// The result of formatting a <see cref="RichText"/> document against a column budget. Immutable
 /// — format once and paint many times; querying <see cref="Size"/> doesn't need a buffer.
 /// </summary>
-public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, in Style DefaultStyle = default, bool FillEntireBounds = false) : IContent
+public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, int ProvidedColumns, in Style DefaultStyle = default, bool FillEntireBounds = false) : IContent
 {
     /// <summary>Empty formatted document — zero blocks, zero size.</summary>
-    public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty);
+    public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty, 0);
 
     /// <summary>
     /// Paint the formatted document into <paramref name="buffer"/> at the supplied
@@ -61,7 +62,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             if (blockHeight > 0)
             {
                 int anchorColumn = ComputeAnchorColumn(bounds, block);
-                PaintBlock(block, buffer, anchorColumn, row, blockHeight, bounds.Columns, capabilities, resolver);
+                PaintBlock(block, buffer, anchorColumn, row, blockHeight, bounds, capabilities, resolver);
                 paintedWidth = Math.Max(paintedWidth, block.Size.Columns);
             }
 
@@ -79,7 +80,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         row - bounds.Row);
     }
 
-    private static int ComputeAnchorColumn(in Rect bounds, FormattedBlock block)
+    internal static int ComputeAnchorColumn(in Rect bounds, FormattedBlock block)
     {
         var alignment = block switch
                         {
@@ -91,7 +92,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             _                             => TextAlignment.Left
                         };
 
-        int slack = Math.Max(0, bounds.Columns - block.Size.Columns);
+        return ComputeAnchorColumn(bounds, block.Size.Columns, alignment);
+    }
+
+    internal static int ComputeAnchorColumn(in Rect bounds, int columns, TextAlignment alignment)
+    {
+        int slack = Math.Max(0, bounds.Columns - columns);
 
         return alignment switch
                {
@@ -102,7 +108,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     private static void PaintBlock(
-        FormattedBlock block, in CellBufferView buffer, int column, int row, int maxRows, int boundsColumns,
+        FormattedBlock block, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
         OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
         // The block's 2-D rect — the sampling bounds for a block/document-scoped brush. Text and rules sample
@@ -116,10 +122,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         switch (block)
         {
             case FormattedParagraph paragraph:
-                PaintParagraph(paragraph, buffer, column, row, maxRows, capabilities, resolver);
+                PaintParagraph(paragraph, buffer, column, row, maxRows, bounds, capabilities, resolver);
                 break;
             case FormattedHorizontalRule rule:
-                PaintHorizontalRule(rule, buffer, column, row, boundsColumns, resolver);
+                PaintHorizontalRule(rule, buffer, column, row, bounds.Columns, resolver);
                 break;
             case FormattedFigletBlock figlet:
                 // With a brush resolver, sample it per rendered cell so a gradient flows across the big glyphs;
@@ -149,9 +155,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     private static Style ResolveStyle(BrushedTextResolver? resolver, in Style baseStyle, int column, int row, in Rect block)
         => resolver?.Invoke(new BrushedTextContext(baseStyle, column, row, block, logicalColumn: 0, scopeWidth: 0, tag: null)) ?? baseStyle;
 
-    private static void PaintParagraph(
-        FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows,
-        OutputCapabilities capabilities, BrushedTextResolver? resolver)
+    private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
+                                       OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
         int linesToPaint = Math.Min(paragraph.Lines.Length, maxRows);
 
@@ -162,7 +167,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         for (int i = 0; i < linesToPaint; i++)
         {
             var line = paragraph.Lines[i];
-            int cursor = column;
+            int cursor = ComputeAnchorColumn(bounds, line.Columns, paragraph.Alignment);
             foreach (var run in line.Runs)
             {
                 switch (run)
@@ -192,11 +197,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                     }
                     case FormattedContentRun content:
                     {
-                        var bounds = new Rect(cursor, row + i, content.Width, 1);
+                        var contentBounds = new Rect(cursor, row + i, content.Width, 1);
                         // Inline content samples one color at its center against the block rect — so a fallback
                         // glyph (when no graphics protocol) is brush-colored; a real image ignores the style.
                         var style = ResolveStyle(resolver, content.Style, cursor + content.Width / 2, row + i, blockRect);
-                        content.Content.Paint(buffer, bounds, style, capabilities);
+                        content.Content.Paint(buffer, contentBounds, style, capabilities);
                         cursor += content.Width;
                         break;
                     }
@@ -222,6 +227,82 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         }
     }
 
+    private void BufferToString(in CellBufferView buffer, StringBuilder sb, bool includeWhitespace)
+    {
+        if (buffer.IsEmpty)
+            return;
+
+        int firstNonEmptyRow = -1;
+        int lastNonEmptyRow = -1;
+
+        if (!includeWhitespace)
+        {
+            // Find the first and last rows with content
+            for (int row = 0; row < buffer.Rows; row++)
+            {
+                bool hasContent = false;
+                for (int col = 0; col < buffer.Columns; col++)
+                {
+                    var cell = buffer[col, row];
+                    if (!string.IsNullOrWhiteSpace(cell.Grapheme))
+                    {
+                        hasContent = true;
+                        break;
+                    }
+                }
+                if (hasContent)
+                {
+                    if (firstNonEmptyRow == -1)
+                        firstNonEmptyRow = row;
+                    lastNonEmptyRow = row;
+                }
+            }
+
+            // If no content found, return empty
+            if (firstNonEmptyRow == -1)
+                return;
+        }
+        else
+        {
+            firstNonEmptyRow = 0;
+            lastNonEmptyRow = buffer.Rows - 1;
+        }
+
+        for (int row = firstNonEmptyRow; row <= lastNonEmptyRow; row++)
+        {
+            int lastNonWhitespaceCol = -1;
+
+            if (!includeWhitespace)
+            {
+                // Find the last non-whitespace column in this row
+                for (int col = buffer.Columns - 1; col >= 0; col--)
+                {
+                    var cell = buffer[col, row];
+                    if (!string.IsNullOrWhiteSpace(cell.Grapheme))
+                    {
+                        lastNonWhitespaceCol = col;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                lastNonWhitespaceCol = buffer.Columns - 1;
+            }
+
+            // Append cells up to the last non-whitespace column (or all if includeWhitespace)
+            for (int col = 0; col <= lastNonWhitespaceCol; col++)
+            {
+                var cell = buffer[col, row];
+                if (cell.Kind is not (CellKind.Single or CellKind.WideLeft)) continue;
+                sb.Append(string.IsNullOrEmpty(cell.Grapheme) ? " " : cell.Grapheme);
+            }
+
+            // Add newline if not the last row
+            if (row < lastNonEmptyRow)
+                sb.AppendLine();
+        }
+    }
     private static void PaintSizedText(
         FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row,
         OutputCapabilities capabilities, in Style style)
@@ -235,6 +316,25 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                      style, capabilities);
     }
 
+    public string ToPlainText(in Rect? bounds = null, bool? fillEntireBounds = null)
+    {
+        var sb = new StringBuilder();
+
+        var effectiveBounds = bounds ?? new Rect(bounds?.Column ?? 0,
+                                                 bounds?.Row ?? 0,
+                                                 bounds?.ColumnEnd ?? ProvidedColumns,
+                                                 bounds?.RowEnd ?? Size.Rows);
+
+        var buffer = new CellBuffer(effectiveBounds.ColumnEnd, effectiveBounds.RowEnd);
+        var bufferView = buffer.AsView();
+
+        Paint(bufferView, effectiveBounds, OutputCapabilities.None);
+
+        BufferToString(bufferView, sb, fillEntireBounds ?? FillEntireBounds);
+        
+        return sb.ToString();
+    }
+
     Size IContent.Measure(Size availableSpace, OutputCapabilities capabilities)
         => Size.ClampTo(availableSpace);
 
@@ -242,12 +342,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         => Paint(buffer, bounds, capabilities);
 }
 
+
 /// <summary>
 /// Base type for an individually formatted block. Concrete subtypes mirror the
 /// <see cref="Block"/> hierarchy. <see cref="Size"/> is the block's content footprint (excluding
 /// <see cref="Margin"/>); <see cref="Margin"/> is the inter-block spacing the formatter requested.
 /// </summary>
-public abstract record FormattedBlock(Size Size)
+public abstract record FormattedBlock(Size Size, TextAlignment Alignment)
 {
     /// <summary>Inter-block top/bottom margin applied during stacking; horizontal margins are ignored at block level.</summary>
     public Margins Margin { get; init; }
@@ -258,22 +359,22 @@ public abstract record FormattedBlock(Size Size)
 /// runs have already had glyph maps applied and trimming / alignment padding inserted as
 /// regular space runs, so paint can be a straight walk.
 /// </summary>
-public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size) : FormattedBlock(Size);
+public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size, TextAlignment Alignment) : FormattedBlock(Size, Alignment);
 
 /// <summary>
 /// A formatted horizontal rule. The painter repeats <see cref="Glyph"/> across the line, up to
-/// <see cref="Size"/>.Columns, applying <see cref="Style"/> and respecting <see cref="Alignment"/>
+/// <see cref="Size"/>.Columns, applying <see cref="Style"/> and respecting <see cref="FormattedBlock.Alignment"/>
 /// when the rule is narrower than the available column budget (rare for HRs but supported).
 /// </summary>
 public sealed record FormattedHorizontalRule(
-    string Glyph, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size);
+    string Glyph, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
 
 /// <summary>
 /// A formatted FIGlet headline. <see cref="Face"/> drives both measurement (already reflected
 /// in <see cref="Size"/>) and paint; <see cref="Text"/> is the source string.
 /// </summary>
 public sealed record FormattedFigletBlock(
-    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size);
+    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
 
 /// <summary>
 /// A formatted Kitty-OSC-66 sized-text headline. When the negotiated capabilities support OSC 66,
@@ -282,14 +383,14 @@ public sealed record FormattedFigletBlock(
 /// </summary>
 public sealed record FormattedSizedTextBlock(
     string Text, TextSizing Sizing, Style Style, IGlyphFont? Fallback,
-    TextAlignment Alignment, Size Size) : FormattedBlock(Size);
+    TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
 
 /// <summary>
 /// A formatted block-level <see cref="IContent"/> embedding. The painter delegates to
 /// <see cref="IContent.Paint"/> at the block's anchor with a rect of <see cref="Size"/>.
 /// </summary>
 public sealed record FormattedContentBlock(
-    IContent Content, TextAlignment Alignment, Size Size) : FormattedBlock(Size);
+    IContent Content, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
 
 /// <summary>
 /// A single line of formatted content. <see cref="Columns"/> is the line's visible cell width

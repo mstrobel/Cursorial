@@ -22,7 +22,7 @@ public abstract partial class UIElement
     /// <see cref="InteractionState"/>-backed names are rejected and flow through
     /// <see cref="SetInteractionState"/> only; ledger B9). Lazily allocated.
     /// </summary>
-    protected PseudoClassSet PseudoClasses => _pseudoClasses ??= new PseudoClassSet(this);
+    protected internal PseudoClassSet PseudoClasses => _pseudoClasses ??= new PseudoClassSet(this);
 
     /// <summary>
     /// The element-scoped style collection: its rules apply to this element and its subtree at

@@ -16,7 +16,7 @@ public class Border : Decorator
 {
     /// <summary>The surface brush (<c>AffectsRender</c>; <b>not</b> inherited).</summary>
     public static readonly StyledProperty<IBrush?> BackgroundProperty =
-        UIProperty.Register<Border, IBrush?>(nameof(Background));
+        Panel.BackgroundProperty.AddOwner<Border>();
 
     /// <summary>The title text brush (<c>AffectsRender</c>; <b>not</b> inherited).</summary>
     public static readonly StyledProperty<IBrush?> TitleForegroundProperty =
@@ -24,7 +24,7 @@ public class Border : Decorator
 
     /// <summary>The border stroke (<c>AffectsRender</c> + nullity escalation — doc §12.4).</summary>
     public static readonly StyledProperty<Pen?> BorderPenProperty =
-        UIProperty.Register<Border, Pen?>(nameof(BorderPen), changed: OnBorderPenChanged);
+        UIProperty.Register<Border, Pen?>(nameof(BorderPen), changed: OnBorderPenChanged, defaultValue: null);
 
     /// <summary>The inner padding (<c>AffectsMeasure</c>).</summary>
     public static readonly StyledProperty<Margins> PaddingProperty =
@@ -48,7 +48,7 @@ public class Border : Decorator
 
     static Border()
     {
-        AffectsRender<Border>(BackgroundProperty, TitleForegroundProperty, BorderPenProperty, TitleProperty, TitlePositionProperty, OccludesProperty);
+        AffectsRender<Border>(TitleForegroundProperty, BorderPenProperty, TitleProperty, TitlePositionProperty, OccludesProperty);
         AffectsMeasure<Border>(PaddingProperty, BorderPenProperty);
     }
 
@@ -140,21 +140,27 @@ public class Border : Decorator
             return;
 
         var occludes = Occludes;
+        var attrs = TextElement.GetTextAttributes(this);
+        var forceOpaque = UIApplication.Current?.ActualThemeVariant is { Tier: ColorDepth.NoColor };
+
+        // An inherited TextElement.TextAttributes (e.g., the caps-nocolor reverse-video Inverse) needs an
+        // OPAQUE fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
+        // would drop it — so an attribute-bearing (or occluding) face uses FillOpaque; otherwise the
+        // default transparent tint (None ⇒ the ordinary fill path, unchanged).
+        var inverse = attrs.HasFlag(TextAttributes.Inverse);
 
         // The surface: FillOpaque for a floating surface, the glyph-transparent FillRectangle tint otherwise.
-        if (Background is {} background)
+        if (Background is { Opacity: > 0 } background)
         {
-            // An inherited TextElement.TextAttributes (e.g., the caps-nocolor reverse-video Inverse) needs an
-            // OPAQUE fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
-            // would drop it — so an attribute-bearing (or occluding) face uses FillOpaque; otherwise the
-            // default transparent tint (None ⇒ the ordinary fill path, unchanged).
-            var attrs = TextElement.GetTextAttributes(this);
-            var inverse = attrs.HasFlag(TextAttributes.Inverse);
 
-            if (occludes || inverse || background is { IsOpaque: true })
+            if (occludes || inverse || forceOpaque)
                 context.FillOpaque(bounds, background, inverse ? TextAttributes.Inverse : TextAttributes.None);
-            else
+            else if (background is { Opacity: > 0 })
                 context.FillRectangle(bounds, background);
+        }
+        else if (forceOpaque)
+        {
+            context.FillOpaque(bounds, Background ?? Brushes.Default, inverse ? TextAttributes.Inverse : TextAttributes.None);
         }
 
         // The box: a titled frame is DrawTitledBox; a plain frame is DrawBox. An occluding surface
@@ -163,7 +169,7 @@ public class Border : Decorator
 
         if (Title is { Length: > 0 } title)
         {
-            var panelTitle = new PanelTitle(title) { Position = TitlePosition };
+            var panelTitle = new PanelTitle(title) { Position = TitlePosition, Attributes = attrs};
 
             if (TitleForeground is {} titleBrush)
                 panelTitle = panelTitle with { Brush = titleBrush };
@@ -174,14 +180,14 @@ public class Border : Decorator
         if (BorderPen is {} pen)
         {
             if (optionalTitle is {} panelTitle)
-                context.DrawTitledBox(bounds, panelTitle, pen, overwrite: occludes);
+                context.DrawTitledBox(bounds, panelTitle, pen, overwrite: true);
             else
-                context.DrawBox(bounds, pen, overwrite: occludes);
+                context.DrawBox(bounds, pen, overwrite: true);
         }
         else if (optionalTitle is {} panelTitle)
         {
             // A title without an explicit pen still draws the framing edge (the GroupBox top row).
-            context.DrawTitledBox(bounds, panelTitle, Pens.Light, overwrite: occludes);
+            context.DrawTitledBox(bounds, panelTitle, Pens.Light, overwrite: true);
         }
     }
 

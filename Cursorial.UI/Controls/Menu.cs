@@ -14,6 +14,7 @@ public class Menu : ItemsControl, IMainMenu
     public Menu()
     {
         ItemsPanel = new FuncTemplateContent(static _ => new StackPanel { Orientation = Orientation.Horizontal });
+        Classes.Add(".menu");
     }
 
     static Menu()

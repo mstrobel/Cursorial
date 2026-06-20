@@ -76,6 +76,10 @@ public readonly record struct LayoutRect
     public bool Contains(int column, int row)
         => row >= Row && row < RowEnd && column >= Column && column < ColumnEnd;
 
+    /// <summary>Returns the intersection of this layout rectangle with <paramref name="other"/>.</summary>
+    public Rect Intersection(LayoutRect other)
+        => new(Math.Max(Column, other.Column), Math.Max(Row, other.Row), Math.Min(ColumnEnd, other.ColumnEnd), Math.Min(RowEnd, other.RowEnd));
+
     /// <summary>
     /// Converts to Rendering's ushort-backed <see cref="Rect"/> — the explicit narrowing
     /// affordance for callers that have proven a non-negative origin (kept as API surface; the

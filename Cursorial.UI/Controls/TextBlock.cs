@@ -51,7 +51,7 @@ public class TextBlock : UIElement
         // label, a fixed-width status line) measures identically and would never repaint unless the
         // content properties are ALSO AffectsRender. Text/Markup/TextWrapping change the painted glyphs
         // independently of size, so they carry both lanes.
-        AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty);
+        AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty);
         AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty, TextTrimmingProperty);
     }
 
@@ -167,6 +167,9 @@ public class TextBlock : UIElement
     {
         var builder = new RichTextBuilder();
         var start = 0;
+
+        text = text.Replace("[", "\\["); // Don't parse tags from plain text
+
         for (var i = 0; i < text.Length; i++)
         {
             var c = text[i];

@@ -1,4 +1,5 @@
 using Cursorial.Drawing;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
@@ -207,21 +208,29 @@ public sealed class RenderTree
         _root.VerifyAccess();
         ThrowIfDetached();
 
+        // Honor the opacity capability when switching theme variants at runtime.
+        // Opacity is available in the truecolor tier only.
+        if (UIApplication.Current?.ActualThemeVariant is { Tier: not ColorDepth.Truecolor })
+            windowOpacity = 1;
+
         // ReSharper disable once CompareOfFloatsByEqualityOperator
         var folded = windowOffsetColumn != 0 || windowOffsetRow != 0 || windowOpacity != 1.0;
 
         for (var i = 0; i < _layers.Count; i++)
         {
             var zone = _layers[i];
+
             if (zone.Scene is null)
                 continue; // RunRenderPass has not run yet for this zone
 
             var parameters = zone.Parameters;
+
             if (folded)
             {
-                var clip = parameters.Clip is { } c
-                    ? TranslateClip(c, windowOffsetColumn, windowOffsetRow)
-                    : (Rect?)null;
+                var clip = parameters.Clip is {} c
+                               ? TranslateClip(c, windowOffsetColumn, windowOffsetRow)
+                               : (Rect?) null;
+
                 parameters = new CompositeParameters(
                     parameters.OffsetColumn + windowOffsetColumn,
                     parameters.OffsetRow + windowOffsetRow,

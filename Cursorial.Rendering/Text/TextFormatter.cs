@@ -101,7 +101,11 @@ public sealed class TextFormatter
             lastBlockMargins = block.Margin;
         }
 
-        return new FormattedText(formattedBlocks.ToImmutable(), new Size(widthUsed, totalRows), text.DefaultStyle, fillEntireBounds);
+        return new FormattedText(formattedBlocks.ToImmutable(),
+                                 new Size(widthUsed, totalRows),
+                                 availableColumns,
+                                 text.DefaultStyle,
+                                 fillEntireBounds);
     }
 
     private FormattedBlock FormatBlock(Block block, int availableColumns, OutputCapabilities capabilities) =>
@@ -115,7 +119,7 @@ public sealed class TextFormatter
             _                => throw new NotSupportedException($"Block type {block.GetType().Name} is not supported by TextFormatter.")
         };
 
-    private static FormattedHorizontalRule FormatHorizontalRule(HorizontalRule rule, int availableColumns)
+    private FormattedHorizontalRule FormatHorizontalRule(HorizontalRule rule, int availableColumns)
     {
         // A horizontal rule always fills its column budget — alignment is meaningful only when
         // the caller is rendering at a width smaller than the document budget, which we don't
@@ -123,19 +127,19 @@ public sealed class TextFormatter
         if (string.IsNullOrEmpty(rule.Glyph))
             throw new InvalidOperationException("HorizontalRule.Glyph must be non-empty.");
 
-        return new FormattedHorizontalRule(rule.Glyph, rule.Style, rule.Alignment, new Size(availableColumns, 1));
+        return new FormattedHorizontalRule(rule.Glyph, rule.Style, rule.Alignment ?? Alignment, new Size(availableColumns, 1));
     }
 
-    private static FormattedFigletBlock FormatFigletBlock(FigletBlock block, int availableColumns)
+    private FormattedFigletBlock FormatFigletBlock(FigletBlock block, int availableColumns)
     {
         var measured = block.Face.Measure(block.Text);
         // Clip to the column budget; rows are whatever the face produces.
         int columns = Math.Min(measured.Columns, availableColumns);
-        return new FormattedFigletBlock(block.Text, block.Face, block.Style, block.Alignment,
+        return new FormattedFigletBlock(block.Text, block.Face, block.Style, block.Alignment ?? Alignment,
                                         new Size(columns, measured.Rows));
     }
 
-    private static FormattedSizedTextBlock FormatSizedTextBlock(
+    private FormattedSizedTextBlock FormatSizedTextBlock(
         SizedTextBlock block, int availableColumns, OutputCapabilities capabilities)
     {
         // Use ScaledText to compute the realized footprint — it already encodes the
@@ -144,16 +148,16 @@ public sealed class TextFormatter
         var scaled = new Content.ScaledText(block.Text, block.Sizing, block.Fallback);
         var measured = scaled.Measure(new Size(availableColumns, int.MaxValue), capabilities);
         return new FormattedSizedTextBlock(
-            block.Text, block.Sizing, block.Style, block.Fallback, block.Alignment, measured);
+            block.Text, block.Sizing, block.Style, block.Fallback, block.Alignment ?? Alignment, measured);
     }
 
-    private static FormattedContentBlock FormatBlockContent(
+    private FormattedContentBlock FormatBlockContent(
         BlockContent block, int availableColumns, OutputCapabilities capabilities)
     {
         var measured = block.Content.Measure(new Size(availableColumns, int.MaxValue), capabilities);
         // Clip horizontally to the column budget; let content drive its own row count.
         var size = new Size(Math.Min(measured.Columns, availableColumns), measured.Rows);
-        return new FormattedContentBlock(block.Content, block.Alignment, size);
+        return new FormattedContentBlock(block.Content, block.Alignment ?? Alignment, size);
     }
 
     private FormattedParagraph FormatParagraph(TextParagraph paragraph, int availableColumns, OutputCapabilities capabilities)
@@ -173,10 +177,12 @@ public sealed class TextFormatter
             lines[^1] = TrimLine(lines[^1], availableColumns, paragraph.Trim, forceEllipsis: true);
         }
 
+        var usedWidth = 0;
         for (int i = 0; i < lines.Count; i++)
         {
             if (lines[i].Width > availableColumns)
                 lines[i] = TrimLine(lines[i], availableColumns, paragraph.Trim, forceEllipsis: false);
+            usedWidth = Math.Max(usedWidth, lines[i].Width);
         }
 
         // 4. Alignment converts LineDraft → FormattedLine.
@@ -185,11 +191,11 @@ public sealed class TextFormatter
         {
             bool isLastLine = i == lines.Count - 1;
             bool endedByHardBreak = lines[i].EndedByHardBreak;
-            aligned.Add(ApplyAlignment(lines[i], availableColumns, paragraph.Alignment, isLastLine || endedByHardBreak));
+            aligned.Add(ApplyAlignment(lines[i], usedWidth, paragraph.Alignment ?? Alignment, isLastLine || endedByHardBreak));
         }
 
         int width = aligned.Count == 0 ? 0 : aligned.Max(l => l.Columns);
-        return new FormattedParagraph(aligned.ToImmutable(), new Size(width, aligned.Count));
+        return new FormattedParagraph(aligned.ToImmutable(), new Size(width, aligned.Count), paragraph.Alignment ?? Alignment);
     }
 
     // ---- Tokenization ----
@@ -810,7 +816,7 @@ public sealed class TextFormatter
         var trimmed = TrimLine(last, columns, Trim, forceEllipsis: true);
         kept = kept.SetItem(budget - 1, trimmed.ToFormattedLine());
 
-        return new FormattedParagraph(kept, new Size(columns, budget));
+        return new FormattedParagraph(kept, new Size(columns, budget), paragraph.Alignment);
     }
 
     // ---- Alignment ----
@@ -825,39 +831,39 @@ public sealed class TextFormatter
 
         return effective switch
                {
-                   TextAlignment.Left    => line.ToFormattedLine(),
-                   TextAlignment.Right   => PadStart(line, columns - line.Width),
-                   TextAlignment.Center  => PadStart(line, Math.Max(0, (columns - line.Width) / 2)),
+                   // TextAlignment.Left    => line.ToFormattedLine(),
+                   // TextAlignment.Right   => PadStart(line, columns - line.Width),
+                   // TextAlignment.Center  => PadStart(line, Math.Max(0, (columns - line.Width) / 2)),
                    TextAlignment.Justify => JustifyLine(line, columns),
                    _                     => line.ToFormattedLine()
                };
     }
 
-    private static FormattedLine PadStart(LineDraft line, int padding)
-    {
-        if (padding <= 0) return line.ToFormattedLine();
-        var runs = ImmutableArray.CreateBuilder<FormattedRun>(line.Runs.Count + 1);
-        runs.Add(new FormattedTextRun(new string(' ', padding), default, null));
-        foreach (var run in line.Runs) runs.Add(run);
-        return new FormattedLine(runs.ToImmutable(), line.Width + padding);
-    }
+    // private static FormattedLine PadStart(LineDraft line, int padding)
+    // {
+    //     if (padding <= 0) return line.ToFormattedLine();
+    //     var runs = ImmutableArray.CreateBuilder<FormattedRun>(line.Runs.Count + 1);
+    //     runs.Add(new FormattedTextRun(new string(' ', padding), default, null));
+    //     foreach (var run in line.Runs) runs.Add(run);
+    //     return new FormattedLine(runs.ToImmutable(), line.Width + padding, line);
+    // }
 
     private static FormattedLine JustifyLine(LineDraft line, int columns)
     {
         int slack = columns - line.Width;
         if (slack <= 0) return line.ToFormattedLine();
-
+    
         // Inter-word gaps are space-only text runs sitting between non-space runs. Content runs
         // can't be gaps; their fixed width is treated as part of an adjacent "word."
         var gapIndices = new List<int>();
         for (int i = 1; i < line.Runs.Count - 1; i++)
             if (line.Runs[i] is FormattedTextRun text && IsAllSpaces(text.Text)) gapIndices.Add(i);
-
+    
         if (gapIndices.Count == 0) return line.ToFormattedLine();
-
+    
         int extraPer = slack / gapIndices.Count;
         int remainder = slack % gapIndices.Count;
-
+    
         var newRuns = ImmutableArray.CreateBuilder<FormattedRun>(line.Runs.Count);
         for (int i = 0; i < line.Runs.Count; i++)
         {
@@ -872,7 +878,7 @@ public sealed class TextFormatter
                 newRuns.Add(line.Runs[i]);
             }
         }
-
+    
         return new FormattedLine(newRuns.ToImmutable(), columns);
     }
 
@@ -932,10 +938,9 @@ public sealed class TextFormatter
 
         public void TrimTrailingSpaces()
         {
-            while (Runs.Count > 0
-                   && Runs[^1] is FormattedTextRun text
-                   && text.Hyperlink is null
-                   && IsAllSpaces(text.Text))
+            while (Runs.Count > 0 && 
+                   Runs[^1] is FormattedTextRun { Hyperlink: null } text &&
+                   IsAllSpaces(text.Text))
             {
                 Width -= text.CellWidth;
                 Runs.RemoveAt(Runs.Count - 1);

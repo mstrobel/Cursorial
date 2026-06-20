@@ -338,11 +338,11 @@ internal static class ControlThemes
     {
         // The prev/next chrome are mouse-only (Focusable=false/IsTabStop=false, like the ScrollBar line buttons):
         // keyboard month nav is PageUp/PageDown, and a focusable arrow button would let focus sit off the day grid.
-        var prev = new Button { Content = "<", Focusable = false, IsTabStop = false };
+        var prev = new CalendarButton { Content = "<", Focusable = false, IsTabStop = false, Padding = new(1, 0)};
         ctx.RegisterName("PART_PreviousButton", prev);
         DockPanel.SetDock(prev, Dock.Left);
 
-        var next = new Button { Content = ">", Focusable = false, IsTabStop = false };
+        var next = new CalendarButton { Content = ">", Focusable = false, IsTabStop = false, Padding = new(1, 0) };
         ctx.RegisterName("PART_NextButton", next);
         DockPanel.SetDock(next, Dock.Right);
 
@@ -351,10 +351,10 @@ internal static class ControlThemes
 
         // The header label is a button (clicking it drills up Month→Year→Decade); mouse-only like the prev/next chrome
         // so keyboard focus stays on the grid cells. It hosts the PART_HeaderText label and fills the center.
-        var headerButton = new Button { Content = headerText, Focusable = false, IsTabStop = false };
+        var headerButton = new CalendarButton { Content = headerText, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_HeaderButton", headerButton);
 
-        var header = new DockPanel();
+        var header = new DockPanel { Margin = new(0, 0, 0, 1) };
         header.Children.Add(prev);         // docked left
         header.Children.Add(next);         // docked right
         header.Children.Add(headerButton); // fills the center
@@ -368,16 +368,19 @@ internal static class ControlThemes
         root.Children.Add(monthView); // fills the rest (the day grid)
         KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Once); // the whole calendar is one tab stop
 
-        var border = new Border { Padding = new Margins(1, 0), Child = root };
+        var border = new Border { /*Padding = new Margins(1, 0), */Child = root };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
     private static Style CalendarTheme()
         => new Style { Key = "Theme.Calendar" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
+            // .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen)
+            // .Set(Control.BackgroundProperty, null)
             .Set(Control.TemplateProperty, CalendarTemplate());
 
     // A day cell: a fill-bounded ContentPresenter over the day number. :inactive (adjacent-month) is muted; :today is
@@ -390,6 +393,7 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Child = presenter };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         return border;
     });
@@ -484,7 +488,7 @@ internal static class ControlThemes
         field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
-        var calendar = new Calendar();
+        var calendar = new Calendar { BorderPen = Pens.Light.WithBrush(Brushes.Red) };
         ctx.RegisterName("PART_Calendar", calendar);
         var surface = new Border { Occludes = true, Child = calendar };
         surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
@@ -495,6 +499,7 @@ internal static class ControlThemes
         var root = new Grid(); // the Popup adds no layout (0×0); the field fills the cell
         root.Children.Add(field);
         root.Children.Add(popup);
+        root.Styles.Add(new Style(Selectors.OfType<Calendar>()).Set(Control.BorderPenProperty, null));
         return root;
     });
 
@@ -519,7 +524,15 @@ internal static class ControlThemes
     });
 
     private static Style MenuTheme()
-        => new Style { Key = "Theme.Menu" }
+        => new Style
+           {
+               Key = "Theme.Menu",
+               Children =
+               {
+                   // Light separator inside menu
+                   // new Style(Selectors.Nesting().OfType<Separator>()).SetResource(Control.BorderPenProperty, ThemeKeys.MenuSeparatorPen)
+               }
+           }
             .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, MenuTemplate());
@@ -704,15 +717,18 @@ internal static class ControlThemes
 
     // A 1-row muted rule between items.
     private static Style SeparatorTheme()
-        => new Style { Key = "Theme.Separator" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.MutedBrush)
-            .Set(UIElement.HeightProperty, 1)
-            .Set(Control.TemplateProperty, new ControlTemplate(_ =>
-            {
-                var rule = new Border();
-                rule.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                return rule;
-            }));
+        => new Style
+           {
+               Key = "Theme.Separator",
+               Children =
+               {
+                   new Style(Selectors.Nesting().PseudoClass(":within-menu"))
+                       .SetResource(Control.BorderPenProperty, ThemeKeys.MenuSeparatorPen)
+               }
+           }
+            .Set(Control.BackgroundProperty, null)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.SeparatorPen)
+            .Set(UIElement.HeightProperty, 1);
 
     private static Style ListBoxItemTheme()
     {

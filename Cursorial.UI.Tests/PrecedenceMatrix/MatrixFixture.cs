@@ -39,7 +39,7 @@ public class RecordingHost : Host
     public event Action<UIPropertyChangedEventArgs>? VirtualHook;
 
     /// <summary>Invoked from the inherited-change virtual (ledger A3) with a copy of the args.</summary>
-    public event Action<InheritedPropertyChangedEventArgs>? InheritedHook;
+    public event Action<UIPropertyChangedEventArgs>? InheritedHook;
 
     protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
     {
@@ -47,7 +47,7 @@ public class RecordingHost : Host
         VirtualHook?.Invoke(args);
     }
 
-    protected internal override void OnInheritedPropertyChanged(in InheritedPropertyChangedEventArgs args)
+    protected internal override void OnInheritedPropertyChanged(in UIPropertyChangedEventArgs args)
     {
         base.OnInheritedPropertyChanged(in args);
         InheritedHook?.Invoke(args);

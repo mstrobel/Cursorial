@@ -42,7 +42,12 @@ public sealed class XamlSchemaContext
         // Themes (ThemeKeys — so {x:Static ThemeKeys.SurfaceBrush} resolves unprefixed, the same way
         // {x:Static Colors.Red} does; the colliding Themes glyph carrier was renamed GlyphSetCarrier to
         // keep the simple name GlyphSet unambiguous against Drawing.Media.GlyphSet).
-        _defaultClrNamespaces = ["Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.Drawing.Media", "Cursorial.UI.Themes"];
+        _defaultClrNamespaces =
+        [
+            "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.UI.Input",
+            "Cursorial.Drawing.Media", "Cursorial.UI.Themes"
+        ];
+
         _defaultAssemblies =
         [
             typeof(UIElement).Assembly,                    // Cursorial.UI

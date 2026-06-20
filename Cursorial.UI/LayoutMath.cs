@@ -20,7 +20,7 @@ public static class LayoutMath
     /// (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG diagnostic) so a
     /// misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
     /// </summary>
-    public const int MaxExtent = 65535;
+    public const int MaxExtent = Rect.MaxDimension;
 
     /// <summary>Whether <paramref name="value"/> is the <see cref="Unbounded"/> encoding.</summary>
     public static bool IsUnbounded(int value) => value == Unbounded;

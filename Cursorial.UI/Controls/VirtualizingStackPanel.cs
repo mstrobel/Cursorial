@@ -91,7 +91,13 @@ public sealed class VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHo
     }
 
     private void OnContainersStructurallyChanged(object? sender, ContainersChangedEventArgs e)
-        => InvalidateMeasure(); // item count / order changed → recompute + reconcile the window next measure
+    {
+        // A Move / equal-count Replace changes item ORDER or IDENTITY but not the no-op guard key
+        // (bandStart/bandLength/itemCount/width all unchanged), so bust the guard — otherwise the next measure
+        // short-circuits and never re-runs UnrealizeOutside/RealizeRange to reconcile the window (blank band rows).
+        _hasMeasured = false;
+        InvalidateMeasure();
+    }
 
     // ───────────────────────────── measure (the realization driver — §5.3) ─────────────────────────────
 
@@ -131,9 +137,12 @@ public sealed class VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHo
 
             if (!_avgMeasured && container.DesiredSize.Rows > 0)
             {
-                _avgItemRows = container.DesiredSize.Rows;
                 _avgMeasured = true;
-                refined = true;
+                if (container.DesiredSize.Rows != _avgItemRows) // only a REAL change needs the corrective re-measure pass
+                {
+                    _avgItemRows = container.DesiredSize.Rows;
+                    refined = true;
+                }
             }
         }
 

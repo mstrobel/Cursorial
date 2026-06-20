@@ -114,6 +114,13 @@ public sealed class ContentPresenter : UIElement
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
+        // A directly-hosted UIElement content (the item IS the child — its visual parent is THIS presenter) must
+        // release that parentage on detach, so the same item can be re-hosted by another presenter — e.g. a RECYCLED
+        // virtualization container — without an "already has a visual parent" crash. Built children (a TextBlock from
+        // string content) are presenter-owned and not shared, so they stay; either way the next measure re-realizes.
+        if (_child is not null && ReferenceEquals(_child, _realizedContent))
+            RebuildChild(null, null);
+
         // Lifetime = template instance: the auto-alias observers tear down with the presenter's
         // detach (which the templated parent's Detach() triggers via the Root subtree walk — CD20/CD21).
         TearDownAlias();

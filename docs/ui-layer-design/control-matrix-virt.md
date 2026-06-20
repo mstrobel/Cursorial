@@ -256,11 +256,13 @@ is a **superset of the band by construction** — the headline invariant.
 | **VV2.4** | Extent estimate. | `GetExtent().Rows == itemCount × avgItemRows` (uniform) — for 1-row items, exactly `itemCount`. Published as `SCP.Extent` via the V1 contract → `ScrollViewer.Extent` → `ScrollBar.Maximum`, all proportional without realizing all N. |
 | **VV2.5** | True-content-row arrange. | `ArrangeOverride` arranges each realized container at content row `itemIndex × avgItemRows` (uniform) within the full-extent rect (cross-axis like `StackPanel`); the SCP band fold + composite slide place the band on screen at the viewport. |
 | **VV2.6** | Band = realization coverage (no blank rows). | Every item whose rows intersect `[BandStartRow, BandStartRow+BandLength)` is realized after measure — the realized set is a superset of the band, so no band row is ever un-rastered (slack is derived FROM `BandPadding`, not guessed). |
-| **VV2.7** | **In-band scroll = zero re-raster + zero realize churn (the invariant-3 ON-path gate).** | An offset change WITHIN `±K` of the anchor (no re-anchor) does NOT re-measure the panel (the no-op measure guard: unchanged `(offset, BandStartRow, BandLength, viewport, itemCount)` ⇒ cached desired size, realize nothing) and does NOT call `RealizeRange`/`UnrealizeRange` — a pure composite slide. Asserted: `Scene.RasterVersion` unchanged + the generator's realized set unchanged across the slide. |
-| **VV2.8** | Re-anchor = exactly one realize batch. | An offset change crossing `±K` re-anchors the band (the SCP marks the zone dirty + the panel's measure dirty); the panel re-measures, `RealizeRange`s the newly-covered items and `UnrealizeRange`s the now-uncovered — O(1) per re-anchor, never O(n). |
+| **VV2.7** | **In-band scroll = zero re-raster + zero realize churn (the invariant-3 ON-path gate).** | An offset change WITHIN `±K` of the anchor (no re-anchor) does NOT re-measure the panel (the offset is `AffectsComposite`, not `AffectsMeasure`; the SCP's `RunReAnchorCheck` returns early in-band without `InvalidateRealization`) and does NOT call `RealizeRange`/`UnrealizeRange` — a pure composite slide. Asserted: the SCP band `Scene.RasterVersion` is unchanged AND the generator's realized set is unchanged across the slide. |
+| **VV2.8** | Re-anchor = exactly one realize batch. | An offset change crossing `±K` re-anchors the band (the SCP marks the zone dirty + calls `InvalidateRealization`); the panel re-measures, `RealizeRange`s the newly-covered items and `UnrealizeOutside`s the now-uncovered — O(1) per re-anchor, never O(n). |
 | **VV2.9** | Short list. | When `itemCount × avgItemRows < viewport`, the panel realizes all items and reports the EXACT realized sum as the extent (not the viewport) — a 3-item list reports 3 rows, so the `ScrollBar` hides (no false overflow). |
-| **VV2.10** | No-op measure guard. | A re-measure with `(offset, BandStartRow, BandLength, viewport, itemCount)` unchanged since the last measure returns the cached desired size and realizes nothing (enforces VV2.7 + bounds the `LayoutManager` fixpoint). |
+| **VV2.10** | No-op measure guard. | A re-measure with the **window inputs** `(BandStartRow, BandLength, itemCount, availableWidth)` unchanged returns the cached desired size and realizes nothing (the offset is deliberately NOT a key — it doesn't move the window; the band does). A structural Move/equal-Replace changes none of these but DOES move item identity, so the structural handler busts the guard (`_hasMeasured = false`) — VV2.12. |
 | **VV2.11** | End-to-end (UITestHost). | A virtualizing `ListBox` of 1000 items shows only the band's worth of `ListBoxItem`s (`CountRealized ≈ viewport + slack`, not 1000), `ContainerCount == 1000`, the visible window renders the right items, a wheel/offset scroll re-anchors and shows the new window, and selection of an off-screen index stays correct (V0 item-indexing). |
+| **VV2.12** | Structural change under virtualization. | A source `Move` of an unrealized item INTO the band, and an equal-count `Replace` at a realized index, both reconcile the window (the moved/replaced index realizes + carries the right item, no blank band row, no stray realized container) — the structural handler busts the no-op guard so the next measure re-runs `UnrealizeOutside`/`RealizeRange`. |
+| **VV2.13** | Recycle of `UIElement`-content. | A virtualizing list of `UIElement` items (each wrapped in a generated container) survives a scroll far-and-back-twice without an "already has a visual parent" crash — a recycled container's `ContentPresenter` releases its directly-hosted `UIElement` child on detach (before pooling), so the same item re-hosts cleanly. |
 
 ### Audit focus (V2)
 
@@ -272,6 +274,28 @@ measure-time self-mutation must stay within §5.3 (the panel mutates its OWN chi
 via the generator — sanctioned — and never a sibling); (e) the convergence of the extent↔band↔realize loop under
 the fixpoint (uniform mode converges in one pass; the pathological seed-`avgItemRows` case is a bounded one-frame
 transient).
+
+### Audit resolution (V2 adversarial review — 6 dimension-finders + refute-by-default verify)
+
+A 25-agent audit confirmed 11 findings (7 refuted), consolidating to 3 code defects + test gaps:
+
+- **The no-op guard swallowed a structural Move / equal-count Replace** (CRITICAL) — its key
+  `(BandStartRow, BandLength, itemCount, availableWidth)` is unchanged by a Move/Replace, so the re-measure the
+  structural handler scheduled was short-circuited → a blank band row + a stray realized container. Fixed:
+  `OnContainersStructurallyChanged` sets `_hasMeasured = false` to bust the guard (VV2.12, mutation-verified).
+- **Recycling a container whose `ContentPresenter` hosted a `UIElement` item crashed** (HIGH) on the second
+  re-anchor ("already has a visual parent") — the pooled container's `ContentPresenter` never released the child's
+  visual parentage (the rebuild is lazy/measure-time, and a pooled container never measures). Fixed:
+  `ContentPresenter.OnDetachedFromTree` releases a directly-hosted `UIElement` child (VV2.13, mutation-verified).
+- **A redundant extra measure pass on uniform 1-row lists** (LOW) — the `refined` flag fired on a no-op `1→1` avg
+  assignment. Fixed: it fires only on a real avg change.
+- **Test gaps:** no structural-change-under-virtualization test, VV2.7 never asserted `RasterVersion` (the
+  invariant-3 "zero re-raster" half), VV2.5 true-content-row arrange was unproven (no avg≠1 fixture). Closed by
+  VV2.5/VV2.7/VV2.12/VV2.13.
+
+Refuted (no code change): the no-op guard omitting the offset/viewport from its key (correct by design — the offset
+doesn't move the window, and a width-only change IS keyed via `availableWidth`); the avg-seed one-frame transient
+(documented + fixpoint-bounded).
 
 ## §V3–§V5 (sharpened when each phase lands)
 

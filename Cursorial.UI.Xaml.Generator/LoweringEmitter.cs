@@ -1128,6 +1128,11 @@ internal static class LoweringEmitter
         }
 
         c.Line($"{varExpr}.{xm.Name}.Add(\"{Escape(key)}\", {childVar});");
+
+        // Track the built entry so a same-dictionary {StaticResource key} (incl. a {Binding} Converter) resolves to
+        // its var — the inline <X.Resources> twin of the top-level dictionary-entry tracking (EmitDictionaryEntry).
+        c.ResourceVars[key] = childVar;
+        c.ResourceVarsByKeyExpr[$"\"{Escape(key)}\""] = childVar;
     }
 
     // The plain-string x:Key on an object (the dictionary key), or null when absent / an extension-syntax key.
@@ -1565,13 +1570,6 @@ internal static class LoweringEmitter
     // — the caller uses this to decide whether a CURG2002 "works-but-reflective" info is appropriate.
     private static bool EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
     {
-        // A Converter needs eager resource/static resolution, which lowering doesn't do yet — defer (X5.4).
-        if (HasNamed(node, "Converter"))
-        {
-            c.Todo($"{{Binding}} with a Converter for '{xm.Name}' not yet lowered (needs resource lowering)");
-            return false;
-        }
-
         if (CanonicalMode(node) is not { } modeName)
         {
             c.Todo($"{{Binding}} with an unrecognized Mode for '{xm.Name}'");
@@ -1584,10 +1582,17 @@ internal static class LoweringEmitter
             return false;
         }
 
+        if (ConverterInit(c, node) is not { } converterInit)
+        {
+            c.Todo($"{{Binding}} Converter for '{xm.Name}' is not a same-dictionary {{StaticResource}} / {{x:Static}} (cross-dict / custom not yet lowered)");
+            return false;
+        }
+
         string path = Escape(BindingPathOf(node) ?? string.Empty);
         var inits = new List<string>(ModeInit(modeName))
         {
             relSource,
+            converterInit,
             StringInit("ElementName", NamedText(node, "ElementName")),
             StringInit("Source", NamedText(node, "Source")),       // mirrors the handler: Source = the bare string
             StringInit("StringFormat", NamedText(node, "StringFormat")),
@@ -1692,6 +1697,33 @@ internal static class LoweringEmitter
             null when value.IsNested => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self", // WPF default
             _ => null,
         };
+    }
+
+    // {Binding Converter={StaticResource Conv}} → the same-dictionary converter resource's built var; {Binding
+    // Converter={x:Static M}} → the static converter instance. Empty when there's no Converter; null (bail to the
+    // reflective fallback) for any other Converter form (cross-dictionary {StaticResource}, a custom extension).
+    private static string? ConverterInit(Context c, MarkupExtensionNode node)
+    {
+        if (node.FindNamed("Converter") is not { } arg)
+            return string.Empty;
+
+        if (arg.IsNested && arg.Nested is { } inner &&
+            inner.PositionalArguments.Count > 0 && inner.PositionalArguments[0].Text is { } first)
+        {
+            // {StaticResource Key} — a same-dictionary converter resource (the var holds the built instance; the
+            // loader's ResolveConverter resolves the same nested {StaticResource}).
+            if (inner.Name is "StaticResource" && c.ResourceVarsByKeyExpr.TryGetValue($"\"{Escape(first)}\"", out var srcVar))
+            {
+                if (c.InTemplate) c.CurrentFactoryCaptures = true;
+                return $"Converter = {srcVar}";
+            }
+
+            // {x:Static Member} — the static converter instance.
+            if (inner.Name is "x:Static" or "Static" && ResolveStaticPath(c, first) is { } expr)
+                return $"Converter = {expr}";
+        }
+
+        return null;
     }
 
     // {RelativeSource FindAncestor, AncestorType={x:Type T} | T [, AncestorLevel=n]} → an object-initializer matching

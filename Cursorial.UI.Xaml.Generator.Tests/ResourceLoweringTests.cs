@@ -72,9 +72,11 @@ namespace GenApp { public partial class StaticView : StackPanel { public StaticV
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // The dict was populated via Add(key, value); the StaticResource resolves at end via FindResource.
+        // The dict was populated via Add(key, value); a same-document {StaticResource} (define-before-use)
+        // resolves to the entry's var directly — the load-time snapshot, the same instance FindResource would
+        // find, with no runtime ancestor walk (consistent with the top-level dictionary var shortcut).
         Assert.Contains(".Resources.Add(\"Accent\", ", lowered);
-        Assert.Contains("global::Cursorial.UI.ResourceExtensions.FindResource(", lowered);
+        Assert.DoesNotContain("global::Cursorial.UI.ResourceExtensions.FindResource(", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));

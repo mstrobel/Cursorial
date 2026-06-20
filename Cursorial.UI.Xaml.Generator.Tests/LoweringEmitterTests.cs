@@ -462,4 +462,36 @@ namespace TestApp { public partial class RefView : StackPanel { public RefView()
         Assert.Same(view.Children[1], ((Label) view.Children[0]).Target);       // lowered: x:Reference → the named TextBox
         Assert.Same(runtime.Children[1], ((Label) runtime.Children[0]).Target); // …matching the runtime loader
     }
+
+    [Fact] // {Binding Converter={StaticResource Conv}} lowers the Converter (a same-dict resource), not a // TODO drop
+    public void Lowered_BindingConverter_WiresSameDictResource()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:local=\"using:TestApp\" x:Class=\"TestApp.ConvView\">" +
+            "<StackPanel.Resources><local:PassConverter x:Key=\"conv\"/></StackPanel.Resources>" +
+            "<Border x:Name=\"B\" Width=\"{Binding Height, RelativeSource={RelativeSource Self}, Converter={StaticResource conv}}\"/>" +
+            "</StackPanel>";
+
+        const string code = @"
+using System; using System.Globalization;
+using Cursorial.UI.Controls; using Cursorial.UI.Data;
+namespace TestApp {
+  public sealed class PassConverter : IValueConverter {
+    public object? Convert(object? v, Type t, object? p, CultureInfo c) => v;
+    public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => v;
+  }
+  public partial class ConvView : StackPanel { public ConvView() => InitializeComponent(); }
+}";
+
+        // The converter + code-behind must be in the compilation BEFORE lowering, so the symbol resolver sees them.
+        var compilation = GeneratorHarness.ReferencedCompilation("ConvHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(code));
+        var lowered = Lower(xaml, compilation);
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel) System.Activator.CreateInstance(assembly.GetType("TestApp.ConvView")!)!;
+
+        var border = (Border) view.Children[0];
+        var binding = (Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
+        Assert.NotNull(binding.Converter);                            // the Converter was lowered + set (not dropped to a TODO)
+        Assert.Same(view.Resources["conv"], binding.Converter);       // …and it is the same-dictionary resource instance
+    }
 }

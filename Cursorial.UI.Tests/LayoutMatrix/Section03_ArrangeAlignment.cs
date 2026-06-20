@@ -207,7 +207,7 @@ public class Section03_ArrangeAlignment
     [Fact]
     public void L57_ArrangeOverrideResult_ClampedToMaxExtent_WithDiagnostic()
     {
-        var probe = new Probe(4, 2) { ArrangeResult = static _ => new Size(70_000, 2) };
+        var probe = new Probe(4, 2) { ArrangeResult = static _ => new Size(LayoutMath.MaxExtent + 1, 2) };
         probe.Measure(new Size(100, 100));
 
         var diagnostics = LayoutFixture.CaptureDiagnostics(

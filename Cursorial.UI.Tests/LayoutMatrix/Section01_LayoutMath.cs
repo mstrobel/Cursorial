@@ -14,10 +14,10 @@ public class Section01_LayoutMath
     public void L1_Constants_Unbounded_MaxExtent_MaxScrollExtent()
     {
         Assert.Equal(int.MaxValue, LayoutMath.Unbounded);
-        Assert.Equal(65535, LayoutMath.MaxExtent);
+        Assert.Equal(int.MaxValue / 2, LayoutMath.MaxExtent); // the Int32-Rect cap — strictly below the Unbounded sentinel
         Assert.Equal(32_000, LayoutLimits.MaxScrollExtent);
         Assert.True(LayoutMath.IsUnbounded(U));
-        Assert.False(LayoutMath.IsUnbounded(LayoutMath.MaxExtent));
+        Assert.False(LayoutMath.IsUnbounded(LayoutMath.MaxExtent)); // MaxExtent must never collide with Unbounded
     }
 
     [Fact]
@@ -75,9 +75,9 @@ public class Section01_LayoutMath
     }
 
     [Theory]
-    [InlineData(20, 65530, LayoutMath.MaxExtent)]            // positive edge: 65530 + 20 = 65550
-    [InlineData(-70_000, 0, -LayoutMath.MaxExtent)]          // negative edge (LD19 symmetric clamp)
-    [InlineData(int.MaxValue, 65530, LayoutMath.MaxExtent)]  // int fold would wrap negative — long fold keeps the edge's sign
+    [InlineData(20, LayoutMath.MaxExtent, LayoutMath.MaxExtent)] // positive edge: slot at the cap + margin clamps to MaxExtent
+    [InlineData(int.MinValue, 0, -LayoutMath.MaxExtent)]         // negative edge (LD19 symmetric clamp)
+    [InlineData(int.MaxValue, 65530, LayoutMath.MaxExtent)]      // int fold would wrap negative — long fold keeps the edge's sign
     public void L11_ArrangePosition_ClampsSymmetricallyToMaxExtent_WithDiagnostic_NoThrow(
         int marginLeft, int slotColumn, int expectedColumn)
     {

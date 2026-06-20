@@ -98,16 +98,17 @@ public sealed class Section39_ScrollHost
         Assert.Equal(60_000 - sv.Viewport.Rows, sv.VerticalOffset); // reaches the tail
     }
 
-    [Fact] // VV1.5b: the host extent caps at Rect.MaxDimension (the arrange-rect ceiling), not the int range
-    public void VV1_5b_HostExtent_CapsAtRectCeiling()
+    [Fact] // VV1.5b: a host extent far past the old 16-bit ceiling is published uncapped (the Int32-Rect cap is ~1.07B)
+    public void VV1_5b_HostExtent_PastOldCeiling()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
-        var stub = new StubScrollHost { Extent = new Size(5, 200_000) }; // beyond the Rect dimension limit
+        var stub = new StubScrollHost { Extent = new Size(5, 200_000) }; // well past the old ushort ceiling (65 535)
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
         host.RunUntilIdle();
 
-        Assert.Equal(ushort.MaxValue, sv.Extent.Rows); // clamped to the arrange-Rect ceiling (no overflow at arrange)
+        Assert.Equal(200_000, sv.Extent.Rows); // uncapped — the Int32-Rect cap (Rect.MaxDimension) is effectively unbounded
+        Assert.True(sv.Extent.Rows > ushort.MaxValue);
     }
 
     [Fact] // VV1.6: host-active arrange hands the host its viewport before its next measure

@@ -11,7 +11,15 @@ namespace Cursorial.Rendering;
 /// </summary>
 public readonly record struct Rect
 {
-    public const int MaxDimension = ushort.MaxValue;
+    /// <summary>
+    /// The maximum value of any <see cref="Rect"/> dimension or coordinate (<see cref="Column"/>/<see cref="Row"/>/
+    /// <see cref="Columns"/>/<see cref="Rows"/>). <c>int.MaxValue / 2</c> — the <see cref="Rect"/> is <see cref="int"/>
+    /// -backed, so this is bounded only by two constraints: it must stay strictly below the layout layer's
+    /// <c>Unbounded</c> sentinel (<see cref="int.MaxValue"/>) so a real extent is never mistaken for "infinity", and
+    /// it must keep <see cref="RowEnd"/>/<see cref="ColumnEnd"/> (<c>edge + extent</c>) from overflowing <see cref="int"/>.
+    /// Half the range satisfies both (≈ 1.07 billion cells — effectively unbounded for any terminal surface).
+    /// </summary>
+    public const int MaxDimension = int.MaxValue / 2;
 
     /// <summary>
     /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
@@ -220,10 +228,10 @@ public readonly record struct Rect
     public Rect Translate(int offsetColumn, int offsetRow)
         => new(Column + offsetColumn, Row + offsetRow, Columns, Rows);
     
-    internal static ushort ValidateDimension(in int value, [CallerMemberName] string? propertyName = "dimensions")
+    internal static int ValidateDimension(in int value, [CallerMemberName] string? propertyName = "dimensions")
     {
         if (value is >= 0 and <= MaxDimension)
-            return (ushort) value;
+            return value;
 
         throw new ArgumentOutOfRangeException(
             propertyName,

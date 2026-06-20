@@ -38,6 +38,7 @@ public abstract class SelectingItemsControl : ItemsControl
     {
         _selection.SelectionChanged += OnModelSelectionChanged;
         ItemContainerGenerator.ContainersChanged += OnContainersChanged;
+        ItemContainerGenerator.ContainersRealizedChanged += OnContainersRealized; // V3 reconcile-on-realize (virtualizing only)
     }
 
     /// <inheritdoc cref="SelectionModeProperty"/>
@@ -254,16 +255,35 @@ public abstract class SelectingItemsControl : ItemsControl
     private void ReconcileContainers(int start, int count)
     {
         for (var i = 0; i < count; i++)
-        {
-            var index = start + i;
-            if (ItemContainerGenerator.ContainerFromIndex(index) is not { } element || element is not ISelectableContainer container)
-                continue;
+            if (ItemContainerGenerator.ContainerFromIndex(start + i) is { } element)
+                ReconcileContainer(start + i, element);
+    }
 
-            var isOwn = ReferenceEquals(ItemContainerGenerator.ItemFromContainer(element), element);
-            if (isOwn && container.IsSelected && !_selection.IsSelected(index))
-                NotifyContainerIsSelectedChanged(element, true); // fold the preset own-container selection into the model
-            else
-                SetContainerSelected(index, _selection.IsSelected(index)); // drive from the model
+    private void ReconcileContainer(int index, UIElement element)
+    {
+        if (element is not ISelectableContainer container)
+            return;
+
+        var isOwn = ReferenceEquals(ItemContainerGenerator.ItemFromContainer(element), element);
+        if (isOwn && container.IsSelected && !_selection.IsSelected(index))
+            NotifyContainerIsSelectedChanged(element, true); // fold the preset own-container selection into the model
+        else
+            SetContainerSelected(index, _selection.IsSelected(index)); // drive from the model
+    }
+
+    // V3 reconcile-on-realize: when virtualization MATERIALIZES a container (scroll-in), re-apply its selected-ness
+    // from the model — a selected-but-unrealized item shows selected the moment it scrolls into view. Fires only in
+    // virtualizing mode (the materialization channel is dormant in eager mode), so eager selection is unchanged.
+    private void OnContainersRealized(object? sender, ContainersChangedEventArgs e)
+    {
+        if (e.Action != ContainersChangedAction.Realized || e.RealizedContainers is not { } realized)
+            return;
+
+        foreach (var element in realized)
+        {
+            var index = ItemContainerGenerator.IndexFromContainer(element);
+            if (index >= 0)
+                ReconcileContainer(index, element);
         }
     }
 

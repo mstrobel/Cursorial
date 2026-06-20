@@ -493,9 +493,12 @@ public sealed class ItemContainerGenerator
         return container;
     }
 
-    // Keep-alive predicate (VV0.8): never unrealize a container the user is interacting with. V0 pins keyboard
-    // focus; V3 adds the live-caret-publication leg (a TextBox in a virtualized item scrolled out of view).
-    private static bool IsContainerPinned(UIElement container) => container.IsKeyboardFocusWithin;
+    // Keep-alive predicate (VV0.8 / VV3): never unrealize a container the user is interacting with — keyboard focus
+    // within (V0), OR a live terminal-caret publication owned within its subtree (V3 — a TextBox editing inside a
+    // virtualized item must survive a scroll-out/in without losing its caret + edit state).
+    private static bool IsContainerPinned(UIElement container)
+        => container.IsKeyboardFocusWithin
+           || (UIApplication.Current?.CaretService.HasPublicationWithin(container) ?? false);
 
     private void RequireVirtualizing()
     {

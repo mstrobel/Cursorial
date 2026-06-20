@@ -121,6 +121,19 @@ public sealed class TerminalCaretService : ITerminalCaretService
     /// <summary>The number of live publications (test observability; stale owners prune at assembly).</summary>
     public int PublicationCount => _publications.Count;
 
+    /// <summary>Whether any live caret publication is owned by an element within <paramref name="container"/>'s visual
+    /// subtree — the virtualization keep-alive query (a <c>TextBox</c> editing inside a virtualized item pins its
+    /// container so a scroll-out does not unrealize it and strand the caret). Allocation-free.</summary>
+    internal bool HasPublicationWithin(UIElement container)
+    {
+        foreach (var publication in _publications)
+            for (UIElement? node = publication.Owner; node is not null; node = node.VisualParent)
+                if (ReferenceEquals(node, container))
+                    return true;
+
+        return false;
+    }
+
     /// <summary>
     /// Assembles the caret for this frame: drops detached owners, transforms the winning (most
     /// recent) publication to window coordinates via <see cref="UIElement.TranslateToWindow"/>

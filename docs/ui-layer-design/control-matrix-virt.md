@@ -297,13 +297,30 @@ Refuted (no code change): the no-op guard omitting the offset/viewport from its 
 doesn't move the window, and a width-only change IS keyed via `availableWidth`); the avg-seed one-frame transient
 (documented + fixpoint-bounded).
 
-## §V3–§V5 (sharpened when each phase lands)
+## §V3a — selection + caret across the realization boundary
 
-- **§V3** — `ListBox` End/PageDown over `itemCount` + `EnsureItemVisible → BringItemIntoView` realize-then-focus
-  (post-layout boundary); focus/caret keep-alive end-to-end; `SelectingItemsControl` subscribes
-  `ContainersRealizedChanged.Realized` → `ReconcileContainers` (selected-but-unrealized item's `IsSelected`
-  re-applied on realize); `TextBox`-in-virtualized-item caret survives scroll-out/in via keep-alive. input-matrix
-  N-VIRT rows.
+The correctness pieces of V3: a selected item must SHOW selected when it scrolls into view, and a container the user
+is editing (a `TextBox` publishing a terminal caret) must not be unrealized out from under them.
+
+### Rows
+
+| Row | Scenario | Expected |
+| --- | --- | --- |
+| **VV3.1** | Reconcile-on-realize. | A selected-but-unrealized item (`SelectedIndex = 700` while 700 is off-screen) shows `IsSelected`/`:selected` the moment it scrolls into view — `SelectingItemsControl` subscribes the generator's `ContainersRealizedChanged.Realized` and re-applies each materializing container's selection FROM the model. |
+| **VV3.1b** | Reconcile drives from the model. | A non-selected neighbour materializing in the same window realizes UNselected (the reconcile is model-driven, not stale-state-driven). |
+| **VV3.2** | Caret keep-alive. | A container that owns a live terminal-caret publication (within its subtree) is **pinned** — `UnrealizeRange`/`UnrealizeOutside` skip it (the generator's `IsContainerPinned` adds the caret leg via `CaretService.HasPublicationWithin`); clearing the caret unpins it. (Focus keep-alive is V0; this adds the caret leg.) |
+| **VV3.2b** | Caret keep-alive via a descendant owner. | The keep-alive honors a publication owned by a visual descendant of the container (the real shape — a `TextPresenter`/`Caret` inside a `TextBox` inside the item), not just the container itself. |
+
+Eager mode is unaffected: the materialization channel is dormant (so reconcile-on-realize never fires), and a
+non-virtualized list never `UnrealizeRange`s (so the caret leg is never consulted). Both V3a mechanisms are
+mutation-verified (dropping the reconcile subscription fails VV3.1; dropping the caret leg fails VV3.2/VV3.2b).
+
+## §V3b–§V5 (sharpened when each phase lands)
+
+- **§V3b** — `ListBox` keyboard nav across the boundary: End/Home/PageDown over `itemCount` + `BringItemIntoView`
+  realize-then-focus (scroll → realize on the next layout → focus at the post-layout boundary, since there is no
+  synchronous `UpdateLayout`). NOTE: scroll-on-focus is absent even in the eager `ListBox`, so this is a new feature,
+  not a virtualization regression — scoped as its own unit. input-matrix N-VIRT rows.
 - **§V4** — sticky per-item measured-height cache (estimate only truly-unrealized); monotone extent; prefix-sum
   arrange + `EstimateItemAt` binary search; thumb-settle ≤1 frame after a drag; convergence under the
   `LayoutManager` 16-pass fixpoint (no `LayoutCycle`/`AbandonPendingLayout` on realistic heterogeneous lists).

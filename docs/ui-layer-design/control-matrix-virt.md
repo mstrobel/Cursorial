@@ -151,15 +151,89 @@ them before pooling, and they cannot be set via `PseudoClasses.Set`); a recycle 
 
 ---
 
-## §V1–§V5 (sharpened when each phase lands)
+## §V1 — `IScrollContentHost`/`ILogicalScrollHost` + `ScrollContentPresenter` delegation
 
-- **§V1** — `IScrollContentHost { IsScrollClient, ScrollOwner, GetExtent, SetViewport, LineStep, PageStep,
-  IsLogicalScroll }` + `ILogicalScrollHost : IScrollContentHost { BringItemIntoView, ItemCount, EstimateItemAt }`
-  (internal, cell-integer throughout). SCP `_scrollHost` discovery on its direct `Content`; `InvalidateScrollExtent`
-  (the WPF `InvalidateScrollInfo` analog); gated measure (viewport-constraint, not `MaxScrollExtent`) / arrange
-  (`SetViewport`) / extent-from-host; the 32K cap lifted when `IsScrollClient`. `ItemsPresenter` forwards the
-  contract to its panel + re-establishes on `RebuildPanel` (`ScrollContentChanged` pulse). The X174-analog gate:
-  ListBox-over-ScrollViewer byte-identical pre/post (the `_scrollHost == null` path).
+The scroll abstraction (cell-integer throughout, internal): the SCP **delegates** extent reporting + viewport
+hand-off to its content when that content opts in, instead of measuring all children. Cursorial keeps ONE offset
+coordinate (the SCP's styled `ScrollOffsetRow`/`ScrollOffsetColumn`); the host only advertises the extent estimate +
+step size — the offset stays SCP-owned and storyboard-animatable (the deliberate deviation from WPF `IScrollInfo`,
+which makes the panel own the offset).
+
+```csharp
+internal interface IScrollContentHost
+{
+    bool IsScrollClient { get; }                 // false ⇒ the SCP runs its verbatim legacy measure-at-MaxScrollExtent path
+    ScrollContentPresenter? ScrollOwner { get; set; } // the SCP injects itself (adopt) / clears (disown); the back-channel
+    bool CanScrollHorizontally { get; set; }     // flow from the SCP's own axis enables
+    bool CanScrollVertically { get; set; }
+    Size GetExtent();                            // total scrollable content in CELLS (estimated); the SCP publishes it as Extent
+    void SetViewport(Size viewport);             // the SCP hands the host its arranged viewport before the host's next measure
+    int LineStep(int currentOffset, int sign, bool vertical); // step quantization (cells); consumed by ScrollViewer at V2
+    int PageStep(int currentOffset, int sign, bool vertical);
+    bool IsLogicalScroll { get; }
+}
+
+internal interface ILogicalScrollHost : IScrollContentHost
+{
+    Rect BringItemIntoView(int itemIndex);       // realize-if-needed + the item's estimated cell rect (V3)
+    int ItemCount { get; }
+    int EstimateItemAt(int offsetRow);           // inverse map (keyboard/thumb)
+}
+```
+
+### Rows
+
+| Row | Scenario | Expected |
+| --- | --- | --- |
+| **VV1.1** | The interface shape. | `IScrollContentHost`/`ILogicalScrollHost` are **internal**, cell-integer; `ILogicalScrollHost : IScrollContentHost`. The SCP consumes only the base; a panel implements the derived; `ItemsPresenter` forwards. |
+| **VV1.2** | SCP host discovery. | The SCP resolves `_scrollHost = Content as IScrollContentHost` in its `Content` setter; sets `host.ScrollOwner = this` on adopt and `= null` on disown/re-host (no stale owner across a content swap). |
+| **VV1.3** | OFF-path (no host / `IsScrollClient == false`). | A real `ListBox`-over-`ScrollViewer` (its `StackPanel` is not a host) runs the SCP's **verbatim legacy** measure/arrange/extent/coercion/band path — byte-identical. The existing `ScrollViewer`/`ListBox`/Phase5 scroll suites stay green. |
+| **VV1.4** | Host-active measure. | When `IsScrollClient`, the SCP flows its `CanScroll*` enables to the host, measures `Content` at the **viewport** on scrollable axes (`min(availableSize, MaxScrollExtent)` — never raw `MaxScrollExtent`, and the `min` keeps an `Unbounded` parent from handing the panel an `int.MaxValue` window — VV1.4b), and publishes `Extent = host.GetExtent()` instead of `content.DesiredSize`. |
+| **VV1.4b** | Finite measure constraint under an unbounded parent. | A `ScrollViewer` in a vertical `StackPanel` (which measures at `Unbounded` height) still hands the host a **finite** constraint (`MaxScrollExtent`), mirroring the legacy substitution — a virtualizing panel never receives `int.MaxValue`. |
+| **VV1.5** | The 32K cap is lifted under a host (up to the `Rect` ceiling). | A host `GetExtent()` above `MaxScrollExtent` (32K) publishes past the legacy cap — `SCP.Extent`/`ScrollViewer.Extent`/`ScrollBar.Maximum` reflect it and the offset reaches the tail (`Extent − Viewport`). **The hard ceiling is `Rect.MaxDimension` (65 535), not the int range:** the content is still arranged at the full extent height, and the arrange-`Rect` dimension is 16-bit, so a host extent beyond that clamps to 65 535 (VV1.5b — a band-relative arrange for truly huge lists is future work). The legacy (non-host) path keeps the lower `MaxScrollExtent` sanity cap + its diagnostic. |
+| **VV1.6** | Host-active arrange. | The SCP publishes `Viewport`, then hands the host `SetViewport(finalSize)` **before** the host's next measure, then arranges `Content` at `(0,0,max(extent,viewport))`, re-coerces both offsets, and `RefreshBandGeometry` (all mode-agnostic). |
+| **VV1.7** | `InvalidateScrollExtent` (the WPF `InvalidateScrollInfo` analog). | Re-publishes `Extent` from `GetExtent()`, re-coerces both offsets, and marks measure dirty — the host's estimate-refinement back-channel (called via the injected `ScrollOwner`). |
+| **VV1.7b** | `InvalidateScrollExtent` marks measure dirty. | A GROWN host extent with the offset still in range re-publishes through `InvalidateMeasure` alone (no offset change to ride the coercion side channel) — `ScrollViewer.Extent` reflects the new value, the offset is unchanged. |
+| **VV1.8** | `ItemsPresenter` forwarding + back-channel wiring. | `ItemsPresenter : ILogicalScrollHost` forwards every member to `_panel as ILogicalScrollHost` (`IsScrollClient == false` when the panel is not a host). **`EnsurePanel` wires the panel's `ScrollOwner` from the retained `_scrollOwner` on every build** (initial load, lazy build, re-attach, swap), so the host→SCP back-channel is live on the primary path, not only after a swap. |
+| **VV1.8b** | `ItemsPanel` host→host swap. | `RebuildPanel` disowns the OLD panel (`oldHost.ScrollOwner = null`, mirroring the SCP's Content-setter disown — no dangling back-channel), `EnsurePanel` wires the new one, and the SCP is pulsed via `InvalidateScrollExtent`. |
+| **VV1.9** | The X174-analog OFF-path drift gate. | A `ScrollViewer` over plain content (`IsScrollClient == false`) renders the same cells from the top + scrolls the same (`row00` at row 0 → `row05` after a 5-row scroll) with the delegation code present — the OFF-path is unperturbed. |
+
+### Audit focus (V1)
+
+(a) the OFF-path must be a pure no-op — `IsScrollClient == false` for every existing tree (the `ItemsPresenter`
+forwards `false` because no shipped panel is a host); (b) the host extent must cap at `Rect.MaxDimension` (65 535) —
+the content is arranged at the full extent height and the arrange-`Rect` is 16-bit, so an uncapped extent throws at
+arrange (the bug VV1.5b guards); (c) the viewport-constraint measure is a behavioral fork for any intervening template element
+between the SCP and the panel — audit the template subtree; (d) `ScrollOwner` lifetime across content swap / template
+re-host (no stale back-channel); (e) the host path must keep the band geometry + coercion + composite-slide invariants
+the legacy path guarantees.
+
+### Audit resolution (V1 adversarial review — 6 dimension-finders + refute-by-default verify)
+
+A 35-agent audit confirmed 22 findings (7 refuted), consolidating to 4 distinct defects + test gaps:
+
+- **The panel's `ScrollOwner` was wired only by `RebuildPanel`** (HIGH) — the back-channel was dead on the primary
+  path (a host `ItemsPanel` present at construction, and every detach/re-attach). Fixed: `EnsurePanel` wires it on
+  every build (VV1.8).
+- **`RebuildPanel` left the old panel's `ScrollOwner` dangling** on a host→host swap (MED). Fixed: it disowns the
+  old panel, mirroring the SCP's Content-setter disown (VV1.8b).
+- **`MeasureWithHost` forwarded an `Unbounded` constraint to the panel** (MED/HIGH) — the legacy path substitutes a
+  finite `MaxScrollExtent`; the host path now clamps `min(availableSize, MaxScrollExtent)` per scrollable axis, so a
+  virtualizing panel never receives an `int.MaxValue` realization window (VV1.4b).
+- **The SCP never flowed `CanScroll*` to the host** (MED). Fixed: `MeasureWithHost` flows the axis enables before
+  measuring (VV1.4).
+- **Test gaps:** the VV1.9 OFF-path drift gate was unimplemented; VV1.8 never asserted the panel received a
+  `ScrollOwner`; `InvalidateScrollExtent`'s `InvalidateMeasure` survived a mutation (the offset-coercion side channel
+  masked it). Closed by VV1.7b/VV1.8/VV1.8b/VV1.9 (VV1.7b mutation-verified).
+
+Refuted (no code change): a stale `ScrollOwner` after the host flips `IsScrollClient` false (the gate already no-ops);
+a missing SCP detach hook to clear the host owner (the ScrollViewer's `OnTemplateDetaching` clears via
+`presenter.Content = null`).
+
+---
+
+## §V2–§V5 (sharpened when each phase lands)
+
 - **§V2** — `VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHost`; band-derived realization window in
   its own `MeasureOverride` (sanctioned §5.3 self-mutation) + the no-op measure guard; true-content-row arrange;
   uniform `avgItemRows` extent; the band=realization-window coverage invariant; in-band scroll = zero re-raster +

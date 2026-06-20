@@ -10,10 +10,11 @@ namespace Cursorial.UI.Controls;
 /// children of the <see cref="ItemsControl"/> — punch 43), and keeps the panel's <see cref="Panel.Children"/> in
 /// sync with the generator. Layout delegates to the panel.
 /// </summary>
-public sealed class ItemsPresenter : UIElement
+public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
 {
     private ItemContainerGenerator? _generator;
     private Panel? _panel;
+    private ScrollContentPresenter? _scrollOwner;
 
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
@@ -74,13 +75,20 @@ public sealed class ItemsPresenter : UIElement
 
         if (_panel is not null)
         {
+            if (_panel is ILogicalScrollHost oldHost)
+                oldHost.ScrollOwner = null; // symmetric with the SCP's Content-setter disown — no stale back-channel
             _panel.Children.Clear();
             RemoveVisualChild(_panel);
             _panel = null;
         }
 
-        EnsurePanel(owner);
+        EnsurePanel(owner); // wires the new panel's ScrollOwner from the retained _scrollOwner
         SyncAll();
+
+        // Pulse the SCP so an ItemsPanel swap to a virtualizing host (ILogicalScrollHost) re-engages the delegation
+        // without a content-identity change (VV1.8) — the new panel's back-channel was just established by EnsurePanel.
+        _scrollOwner?.InvalidateScrollExtent();
+
         InvalidateMeasure();
     }
 
@@ -97,6 +105,9 @@ public sealed class ItemsPresenter : UIElement
 
         _panel.IsItemsHost = true; // its Children adopt the containers visually only (logical parent = the ItemsControl)
         AddVisualChild(_panel);
+
+        if (PanelHost is { } host)
+            host.ScrollOwner = _scrollOwner;
     }
 
     private void OnContainersChanged(object? sender, ContainersChangedEventArgs e)
@@ -204,4 +215,57 @@ public sealed class ItemsPresenter : UIElement
         _panel?.Arrange(new Rect(0, 0, finalSize.Columns, finalSize.Rows));
         return finalSize;
     }
+
+    // ───────────────────────────── IScrollContentHost / ILogicalScrollHost forwarding (VV1.8) ─────────────────────────────
+    //
+    // The SCP discovers the ItemsPresenter as its content's scroll host; the presenter forwards every member to its
+    // panel WHEN that panel is a virtualizing host (ILogicalScrollHost — the V2 VirtualizingStackPanel). A plain
+    // StackPanel is not a host, so PanelHost is null and IsScrollClient is false ⇒ the SCP runs its legacy path
+    // (the OFF-path stays byte-identical for every existing list). _scrollOwner is retained so RebuildPanel can
+    // re-establish the back-channel on a panel swap.
+
+    private ILogicalScrollHost? PanelHost => _panel as ILogicalScrollHost;
+
+    bool IScrollContentHost.IsScrollClient => PanelHost?.IsScrollClient ?? false;
+
+    bool IScrollContentHost.IsLogicalScroll => PanelHost?.IsLogicalScroll ?? false;
+
+    ScrollContentPresenter? IScrollContentHost.ScrollOwner
+    {
+        get => _scrollOwner;
+        set
+        {
+            _scrollOwner = value;
+            if (PanelHost is { } host)
+                host.ScrollOwner = value;
+        }
+    }
+
+    bool IScrollContentHost.CanScrollHorizontally
+    {
+        get => PanelHost?.CanScrollHorizontally ?? false;
+        set { if (PanelHost is { } host) host.CanScrollHorizontally = value; }
+    }
+
+    bool IScrollContentHost.CanScrollVertically
+    {
+        get => PanelHost?.CanScrollVertically ?? false;
+        set { if (PanelHost is { } host) host.CanScrollVertically = value; }
+    }
+
+    Size IScrollContentHost.GetExtent() => PanelHost?.GetExtent() ?? Size.Empty;
+
+    void IScrollContentHost.SetViewport(Size viewport) => PanelHost?.SetViewport(viewport);
+
+    int IScrollContentHost.LineStep(int currentOffset, int sign, bool vertical)
+        => PanelHost?.LineStep(currentOffset, sign, vertical) ?? 1;
+
+    int IScrollContentHost.PageStep(int currentOffset, int sign, bool vertical)
+        => PanelHost?.PageStep(currentOffset, sign, vertical) ?? 0;
+
+    Rect ILogicalScrollHost.BringItemIntoView(int itemIndex) => PanelHost?.BringItemIntoView(itemIndex) ?? default;
+
+    int ILogicalScrollHost.ItemCount => PanelHost?.ItemCount ?? 0;
+
+    int ILogicalScrollHost.EstimateItemAt(int offsetRow) => PanelHost?.EstimateItemAt(offsetRow) ?? 0;
 }

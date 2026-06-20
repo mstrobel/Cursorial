@@ -97,6 +97,7 @@ public class ScrollContentPresenter : UIElement
     }
 
     private UIElement? _content;
+    private IScrollContentHost? _scrollHost; // the content's opt-in delegation seam (null / IsScrollClient false ⇒ legacy path)
     private Size _extent;
     private Size _viewport;
     private bool _extentClampDiagnosed;
@@ -143,8 +144,22 @@ public class ScrollContentPresenter : UIElement
                     RemoveVisualChild(old);
             }
 
+            // Disown the old scroll host's back-channel before re-discovering — no stale ScrollOwner across a swap (VV1.2).
+            if (_scrollHost is not null)
+            {
+                _scrollHost.ScrollOwner = null;
+                _scrollHost = null;
+            }
+
             _content = value;
             _contentLogicallyOwned = false;
+
+            // Discover the delegation seam: a content that opts into IScrollContentHost (the ItemsPresenter forwarding
+            // to a virtualizing panel, or a test host) gets the SCP injected as its back-channel ScrollOwner. The
+            // gated branches only ENGAGE when IsScrollClient is true, so a non-virtualizing host is harmless (VV1.2/VV1.3).
+            _scrollHost = value as IScrollContentHost;
+            if (_scrollHost is not null)
+                _scrollHost.ScrollOwner = this;
 
             if (value is not null)
             {
@@ -215,6 +230,9 @@ public class ScrollContentPresenter : UIElement
     /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
+        if (_scrollHost is { IsScrollClient: true } host)
+            return MeasureWithHost(host, availableSize);
+
         var canScrollHorizontally = CanScrollHorizontally;
         var canScrollVertically = CanScrollVertically;
         var extent = Size.Empty;
@@ -256,6 +274,69 @@ public class ScrollContentPresenter : UIElement
     }
 
     /// <summary>
+    /// The host-active measure (VV1.4/VV1.5): the content is measured at the <b>available size (the viewport)</b> on
+    /// scrollable axes — NOT <see cref="LayoutLimits.MaxScrollExtent"/>, since the host reports the extent via
+    /// <see cref="IScrollContentHost.GetExtent"/> rather than its desired size — and the published <see cref="Extent"/>
+    /// is the host's estimate, <b>uncapped</b> (the band bounds the scene under a virtualizing host, so the 32K cap's
+    /// only effect — an unreachable tail — is removed; only the legacy path caps).
+    /// </summary>
+    private Size MeasureWithHost(IScrollContentHost host, Size availableSize)
+    {
+        var canScrollHorizontally = CanScrollHorizontally;
+        var canScrollVertically = CanScrollVertically;
+
+        // Flow the SCP's axis enables to the host (VV1.4) BEFORE measuring it — the panel sizes its realization
+        // window / decides its scroll axis from these during its own MeasureOverride (triggered by the Measure below).
+        host.CanScrollHorizontally = canScrollHorizontally;
+        host.CanScrollVertically = canScrollVertically;
+
+        // Measure the content (the ItemsPresenter → panel) at the viewport, never MaxScrollExtent (a virtualizing
+        // panel realizes only its band, so it must be constrained to what it will get, not the full extent). On a
+        // scrollable axis the available size can be Unbounded under an unconstrained parent; clamp it to a FINITE
+        // ceiling exactly as the legacy path does, so a virtualizing panel never receives an int.MaxValue window.
+        if (_content is { } content)
+            content.Measure(
+                new Size(canScrollHorizontally ? Math.Min(availableSize.Columns, LayoutLimits.MaxScrollExtent) : availableSize.Columns,
+                         canScrollVertically ? Math.Min(availableSize.Rows, LayoutLimits.MaxScrollExtent) : availableSize.Rows));
+
+        var extent = CapHostExtent(host.GetExtent());
+        SetAndRaise(ExtentProperty, ref _extent, extent);
+        _extentClampDiagnosed = false; // the host path uses the Rect ceiling, not the legacy diagnostic — keep it re-armed
+
+        // Desire min(extent, available) per axis — the viewport when the parent constrains (the normal case); under
+        // an Unbounded scrollable axis, fall back to the same finite ceiling the legacy path uses (never the full extent).
+        return new Size(
+            Math.Min(extent.Columns, canScrollHorizontally ? Math.Min(availableSize.Columns, LayoutLimits.MaxScrollExtent) : availableSize.Columns),
+            Math.Min(extent.Rows, canScrollVertically ? Math.Min(availableSize.Rows, LayoutLimits.MaxScrollExtent) : availableSize.Rows));
+    }
+
+    /// <summary>The arrange-<see cref="Rect"/> dimension ceiling (16-bit) — the hard limit a host extent caps at.</summary>
+    private const int MaxHostExtent = ushort.MaxValue;
+
+    // The host path lifts the legacy MaxScrollExtent (32K) cap, but the content is still arranged at the full extent
+    // height — so the hard ceiling is the arrange-Rect dimension limit (ushort, 65,535), not the int range. A list
+    // taller than that can't be addressed by an absolute-content-row arrange (a band-relative scheme is future work);
+    // cap there. The legacy (non-host) path keeps the lower MaxScrollExtent sanity cap.
+    private static Size CapHostExtent(Size extent)
+        => new(Math.Clamp(extent.Columns, 0, MaxHostExtent), Math.Clamp(extent.Rows, 0, MaxHostExtent));
+
+    /// <summary>
+    /// The host's estimate-refinement back-channel (the WPF <c>InvalidateScrollInfo</c> analog, VV1.7): re-publishes
+    /// <see cref="Extent"/> from <see cref="IScrollContentHost.GetExtent"/>, re-coerces both offsets, and marks
+    /// measure dirty. Called by a host through the injected <see cref="IScrollContentHost.ScrollOwner"/>.
+    /// </summary>
+    internal void InvalidateScrollExtent()
+    {
+        if (_scrollHost is not { IsScrollClient: true } host)
+            return;
+
+        SetAndRaise(ExtentProperty, ref _extent, CapHostExtent(host.GetExtent()));
+        CoerceValue(ScrollOffsetColumnProperty);
+        CoerceValue(ScrollOffsetRowProperty);
+        InvalidateMeasure();
+    }
+
+    /// <summary>
     /// Publishes <see cref="Viewport"/>, arranges the content at
     /// <c>(0, 0, max(extent, viewport))</c> per scrollable axis in content coordinates
     /// (non-negative — the scroll slide is composite-time), then <b>re-coerces both offsets</b>
@@ -265,6 +346,11 @@ public class ScrollContentPresenter : UIElement
     protected override Size ArrangeOverride(Size finalSize)
     {
         SetAndRaise(ViewportProperty, ref _viewport, finalSize);
+
+        // Hand the host its viewport BEFORE it next measures its band (VV1.6) — the host sizes its realization window
+        // from this. A non-engaged host (IsScrollClient false) is skipped, keeping the OFF-path untouched.
+        if (_scrollHost is { IsScrollClient: true } host)
+            host.SetViewport(finalSize);
 
         if (_content is { } content)
         {

@@ -150,6 +150,36 @@ public sealed class Section19_Menu
         Assert.True(file.ItemContainerGenerator.ContainerFromIndex(0)!.IsAttachedToTree); // sub-item hosted in the popup
     }
 
+    [Fact] // C6.6b: PageDown/PageUp in an open submenu jump to the last/first item (a menu "page")
+    public void C6_6b_Submenu_PageNav_LastFirst()
+    {
+        var file = new MenuItem { Header = "File" };
+        var a = new MenuItem { Header = "New" };
+        var b = new MenuItem { Header = "Open" };
+        var c = new MenuItem { Header = "Save" };
+        file.Items.Add(a);
+        file.Items.Add(b);
+        file.Items.Add(c);
+        using var host = Host();
+        var menu = new Menu();
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Click(host, file); // open the submenu
+        host.RunUntilIdle();
+        a.Focus(); // focus the first sub-item
+        host.RunUntilIdle();
+
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+        Assert.True(c.IsFocused); // jumped to the last item
+
+        host.SendKey(Key.PageUp);
+        host.RunUntilIdle();
+        Assert.True(a.IsFocused); // …and back to the first
+    }
+
     [Fact] // C6.7: clicking outside the menu light-dismisses the open submenu
     public void C6_7_OutsideClickDismisses()
     {

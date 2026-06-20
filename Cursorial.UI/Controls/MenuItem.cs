@@ -81,6 +81,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         Focusable = true;
     }
 
+    /// <inheritdoc/>
+    protected internal override bool HandlesScrolling => true;
+
     /// <inheritdoc cref="CommandProperty"/>
     public ICommand? Command { get => GetValue(CommandProperty); set => SetValue(CommandProperty, value); }
 
@@ -252,6 +255,12 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             case Key.UpArrow when !topLevel:
                 MoveToSibling(-1);
                 break;
+            case Key.PageDown when !topLevel:
+                MoveToEdgeSibling(last: true); // a menu isn't paged — PageDown lands on the last item
+                break;
+            case Key.PageUp when !topLevel:
+                MoveToEdgeSibling(last: false); // …PageUp on the first
+                break;
             case Key.RightArrow when topLevel:
                 MoveToSibling(+1); // next bar header
                 break;
@@ -320,6 +329,22 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     }
 
     // Moves focus to the next/previous focusable sibling at this level, wrapping and skipping Separators.
+    // Focuses the first (last:false) or last (last:true) focusable sibling — the menu "page" jump.
+    private void MoveToEdgeSibling(bool last)
+    {
+        if (OwnerItemsControl is not { } owner)
+            return;
+
+        var generator = owner.ItemContainerGenerator;
+        var count = generator.ContainerCount;
+        for (var i = last ? count - 1 : 0; i >= 0 && i < count; i += last ? -1 : 1)
+            if (generator.ContainerFromIndex(i) is { Focusable: true } target)
+            {
+                target.Focus(FocusNavigationMethod.Directional);
+                return;
+            }
+    }
+
     private void MoveToSibling(int delta)
     {
         if (OwnerItemsControl is not { } owner)

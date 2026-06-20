@@ -99,11 +99,8 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         if (_panel is not null)
             return;
 
-        var content = owner.ItemsPanel ?? new FuncTemplateContent(_ => new StackPanel());
-        var built = content.Build(new TemplateBuildContext(owner, new NameScopeDictionary()));
-
-        _panel = built as Panel ??
-                 throw new InvalidOperationException($"ItemsControl.ItemsPanel must build a Panel; got {built.GetType().Name}.");
+        var template = owner.ItemsPanel ?? new ItemsPanelTemplate(_ => new StackPanel());
+        _panel = template.Build(new TemplateBuildContext(owner, new NameScopeDictionary())); // throws if the root isn't a Panel
 
         _panel.IsItemsHost = true; // its Children adopt the containers visually only (logical parent = the ItemsControl)
         AddVisualChild(_panel);

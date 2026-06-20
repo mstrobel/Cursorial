@@ -315,12 +315,46 @@ Eager mode is unaffected: the materialization channel is dormant (so reconcile-o
 non-virtualized list never `UnrealizeRange`s (so the caret leg is never consulted). Both V3a mechanisms are
 mutation-verified (dropping the reconcile subscription fails VV3.1; dropping the caret leg fails VV3.2/VV3.2b).
 
-## §V3b–§V5 (sharpened when each phase lands)
+## §V3b (LANDED) — selector keyboard nav across the boundary + `Control.HandlesScrolling`
 
-- **§V3b** — `ListBox` keyboard nav across the boundary: End/Home/PageDown over `itemCount` + `BringItemIntoView`
-  realize-then-focus (scroll → realize on the next layout → focus at the post-layout boundary, since there is no
-  synchronous `UpdateLayout`). NOTE: scroll-on-focus is absent even in the eager `ListBox`, so this is a new feature,
-  not a virtualization regression — scoped as its own unit. input-matrix N-VIRT rows.
+The root issue surfaced in use: a `ListBox`'s nav handler (`ListBox.OnKeyDown`) sits **above** the inner
+`ScrollViewer` in the bubble route (`ListBoxItem → … → ScrollViewer → ListBox`), so the `ScrollViewer` consumed
+the arrow / Page / Home / End keys first and scrolled the extent out from under the selection before it ever moved.
+(TreeView never had the bug — `TreeViewItem.OnKeyDown` is a *descendant* of the `ScrollViewer`.) The fix is WPF's
+`Control.HandlesScrolling` seam.
+
+- **VV3b.1 — the routing gate.** `Control.HandlesScrolling` (virtual, `false`; overridden `=> true` on
+  `ListBox`/`ComboBox`/`TreeView`/`ContextMenu`/`MenuItem`). `ScrollViewer.OnKeyDown` bails when
+  `TemplatedParent is Control { HandlesScrolling: true }`, leaving the keys unhandled so they bubble to the selector.
+  A standalone `ScrollViewer` (`TemplatedParent == null`) still scrolls (C225 regression). Tests:
+  `Section18_ListBoxKeyboard` C5.17 (Down moves selection, not the extent; no premature scroll).
+- **VV3b.2 — focus-follows bring-into-view.** `ScrollViewer` subscribes `GotFocusEvent` (handledEventsToo) and
+  `EnsureVisible`s the focused descendant's content-coordinate rect (`ScrollContentPresenter.TryGetContentRect` —
+  folds `Bounds`+render-offset up to the content child; works eager AND virtualized since the VSP arranges at
+  `index×avg`). This is the general focus-into-view behavior, not ListBox-specific. Tests: C5.18 (End → bottom),
+  C5.19 (Down past viewport follows), C5.20 (Home back up).
+- **VV3b.3 — PageUp/PageDown across every `HandlesScrolling` selector.** Shared `ItemsControl.ItemsPerPage()`
+  (viewport ÷ avg via the items `ScrollViewer`; whole-list when there is no scroll viewport, so Page ≡ Home/End on
+  the non-scrolling ComboBox/Menu popups) + `FindItemsScrollViewer()`. `ListBox`/`ComboBox` page index-based;
+  `TreeViewItem` pages by `NextVisible`/`PrevVisible` × page (clamped); `MenuItem` pages to the first/last sibling.
+  Tests: C5.21 (ListBox), Section25 C12.4b (ComboBox), Section26 C13.7b (TreeView), Section19 C6.6b (Menu).
+- **VV3b.4 — realize-then-focus (virtualized off-band).** `ListBox.MoveCurrent` → realized ⇒ focus now; unrealized
+  (off-band) ⇒ park `_pendingFocusIndex` + `EnsureVisible(BringItemIntoView(target))`; the generator's realize
+  channel completes the focus, **deferred via `Dispatcher.Post`** (the channel fires DURING the VSP measure pass, so
+  synchronous focus there would re-enter layout). Re-resolves the container by index at post time (recycle-safe).
+  Tests: `Section41` VV3.3 (End → realize → focus), VV3.3b (virtualized PageDown).
+
+## §V3b-X (LANDED) — `ItemsPanelTemplate` (XAML-settable `ItemsPanel`)
+
+`ItemsControl.ItemsPanel` is retyped `ItemsPanelTemplate?` (was `ITemplateContent?`), mirroring
+`Control.Template : ControlTemplate?`: the loader instantiates `<ItemsPanelTemplate>` eagerly (the property type is
+the concrete template, not `ITemplateContent`) and defers the inner panel into its `ITemplateContent Content` — zero
+new loader logic beyond the `ContentPropertyTable` entry. Code setters use the `new ItemsPanelTemplate(_ => panel)`
+delegate ctor. Test: `Section13_DeferredContentBuild.ItemsPanelTemplate_FromXaml_BuildsDeclaredPanel`
+(`<ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>`
+→ a fresh `VirtualizingStackPanel` per `Build`).
+
+## §V4–§V5 (sharpened when each phase lands)
 - **§V4** — sticky per-item measured-height cache (estimate only truly-unrealized); monotone extent; prefix-sum
   arrange + `EstimateItemAt` binary search; thumb-settle ≤1 frame after a drag; convergence under the
   `LayoutManager` 16-pass fixpoint (no `LayoutCycle`/`AbandonPendingLayout` on realistic heterogeneous lists).

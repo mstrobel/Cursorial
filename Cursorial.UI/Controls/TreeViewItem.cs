@@ -186,6 +186,12 @@ public class TreeViewItem : HeaderedItemsControl
             case Key.UpArrow when PrevVisible() is { } prev:
                 FocusAndSelect(prev);
                 break;
+            case Key.PageDown when NextVisible() is not null:
+                MoveByPage(+1);
+                break;
+            case Key.PageUp when PrevVisible() is not null:
+                MoveByPage(-1);
+                break;
             default:
                 if (!IsSpace(e))
                     return; // not a tree-nav key — leave unhandled
@@ -261,6 +267,31 @@ public class TreeViewItem : HeaderedItemsControl
     private TreeViewItem? ChildAt(int index) => ItemContainerGenerator.ContainerFromIndex(index) as TreeViewItem;
     private TreeViewItem? FirstChild() => HasItems ? ChildAt(0) : null;
     private TreeViewItem? LastChild() => HasItems ? ChildAt(ItemContainerGenerator.ContainerCount - 1) : null;
+
+    // Moves the keyboard cursor by one scroll page through the visible (pre-order) tree — the farthest reachable
+    // node within PageSize() steps of NextVisible/PrevVisible (clamped at the first/last visible node).
+    private void MoveByPage(int sign)
+    {
+        var page = PageSize();
+        var current = this;
+        TreeViewItem? landing = null;
+        for (var step = 0; step < page; step++)
+        {
+            var next = sign > 0 ? current.NextVisible() : current.PrevVisible();
+            if (next is null)
+                break;
+            current = next;
+            landing = next;
+        }
+
+        if (landing is not null)
+            FocusAndSelect(landing);
+    }
+
+    // One page = the rows that fit in the TreeView's scroll viewport (tree node headers are ~1 row); without a
+    // viewport a page is the whole visible tree (PageUp/PageDown ≡ go to the first/last visible node).
+    private int PageSize()
+        => OwnerTree?.FindItemsScrollViewer() is { Viewport.Rows: > 0 } scroll ? Math.Max(1, scroll.Viewport.Rows) : int.MaxValue;
 
     // The next node in visible (pre-order) document order: into an expanded subtree, else the next sibling, else
     // walk up to an ancestor's next sibling.

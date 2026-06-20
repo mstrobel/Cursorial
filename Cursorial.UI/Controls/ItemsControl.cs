@@ -24,10 +24,11 @@ public class ItemsControl : Control
         UIProperty.Register<ItemsControl, DataTemplate?>(nameof(ItemTemplate), changed: OnItemTemplateChanged);
 
     /// <summary>The panel template that lays out the containers (default: a vertical <see cref="StackPanel"/>); the
-    /// <see cref="ItemsPresenter"/> sets <see cref="Panel.IsItemsHost"/> on the built panel.</summary>
-    public static readonly StyledProperty<ITemplateContent?> ItemsPanelProperty =
-        UIProperty.Register<ItemsControl, ITemplateContent?>(nameof(ItemsPanel),
-            defaultValue: new FuncTemplateContent(_ => new StackPanel()), changed: OnItemsPanelChanged);
+    /// <see cref="ItemsPresenter"/> sets <see cref="Panel.IsItemsHost"/> on the built panel. Typed
+    /// <see cref="ItemsPanelTemplate"/> (WPF parity) so it can be authored in XAML.</summary>
+    public static readonly StyledProperty<ItemsPanelTemplate?> ItemsPanelProperty =
+        UIProperty.Register<ItemsControl, ItemsPanelTemplate?>(nameof(ItemsPanel),
+            defaultValue: new ItemsPanelTemplate(_ => new StackPanel()), changed: OnItemsPanelChanged);
 
     /// <summary>A style applied to each generated container (at the Explicit layer).</summary>
     public static readonly StyledProperty<Style?> ItemContainerStyleProperty =
@@ -70,7 +71,7 @@ public class ItemsControl : Control
     public DataTemplate? ItemTemplate { get => GetValue(ItemTemplateProperty); set => SetValue(ItemTemplateProperty, value); }
 
     /// <inheritdoc cref="ItemsPanelProperty"/>
-    public ITemplateContent? ItemsPanel { get => GetValue(ItemsPanelProperty); set => SetValue(ItemsPanelProperty, value); }
+    public ItemsPanelTemplate? ItemsPanel { get => GetValue(ItemsPanelProperty); set => SetValue(ItemsPanelProperty, value); }
 
     /// <inheritdoc cref="ItemContainerStyleProperty"/>
     public Style? ItemContainerStyle { get => GetValue(ItemContainerStyleProperty); set => SetValue(ItemContainerStyleProperty, value); }
@@ -276,7 +277,7 @@ public class ItemsControl : Control
     private static void OnItemTemplateChanged(UIObject sender, DataTemplate? oldValue, DataTemplate? newValue)
         => (sender as ItemsControl)?.ResetContainers(); // runtime template change ⇒ full re-realize (v1 policy)
 
-    private static void OnItemsPanelChanged(UIObject sender, ITemplateContent? oldValue, ITemplateContent? newValue)
+    private static void OnItemsPanelChanged(UIObject sender, ItemsPanelTemplate? oldValue, ItemsPanelTemplate? newValue)
         => (sender as ItemsControl)?.ItemsHost?.RebuildPanel();
 
     private static void OnItemContainerStyleChanged(UIObject sender, Style? oldValue, Style? newValue)
@@ -306,6 +307,39 @@ public class ItemsControl : Control
     {
         base.OnApplyTemplate();
         ItemsHost = GetTemplatePart<ItemsPresenter>("PART_ItemsHost");
+    }
+
+    // ── keyboard paging support (the Control.HandlesScrolling selectors) ──────────────────────────────
+
+    /// <summary>The <see cref="ScrollViewer"/> that scrolls this control's items — the nearest
+    /// <see cref="ScrollViewer"/> ancestor of the items host (the template nests the
+    /// <see cref="ItemsPresenter"/> inside it). <see langword="null"/> when the items are not hosted in a
+    /// scroll viewport (the ComboBox / Menu popups host the items directly in v1), in which case everything
+    /// is visible and a "page" is the whole list.</summary>
+    internal ScrollViewer? FindItemsScrollViewer()
+    {
+        for (UIElement? node = ItemsHost; node is not null; node = node.VisualParent)
+            if (node is ScrollViewer scroll)
+                return scroll;
+
+        return null;
+    }
+
+    /// <summary>The number of items that move on one PageUp/PageDown step: the count of items that fit in the
+    /// scroll viewport (extent ÷ count gives the average row height; v1 items are ~1 row). When the items are
+    /// not in a scroll viewport (everything is visible), a page is the whole list so PageUp/PageDown collapse
+    /// to Home/End — the correct behavior for a non-scrolling list.</summary>
+    internal int ItemsPerPage()
+    {
+        var count = ItemContainerGenerator.ContainerCount;
+        if (count <= 0)
+            return 1;
+
+        if (FindItemsScrollViewer() is not { } scroll || scroll.Viewport.Rows <= 0)
+            return count; // not scrolling ⇒ a page is the whole list (PageUp/PageDown ≡ Home/End)
+
+        var avgRows = scroll.Extent.Rows > 0 ? Math.Max(1.0, (double) scroll.Extent.Rows / count) : 1.0;
+        return Math.Clamp((int) (scroll.Viewport.Rows / avgRows), 1, count);
     }
 
     /// <inheritdoc/>

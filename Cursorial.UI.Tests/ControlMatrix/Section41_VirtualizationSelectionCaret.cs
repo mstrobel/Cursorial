@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -19,7 +20,7 @@ public sealed class Section41_VirtualizationSelectionCaret
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
-            ItemsPanel = new FuncTemplateContent(_ => new VirtualizingStackPanel()),
+            ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
             ItemsSource = Enumerable.Range(0, count).Select(i => $"item{i:0000}").ToArray(),
         };
         VirtualizingPanel.SetIsVirtualizing(lb, true);
@@ -113,5 +114,43 @@ public sealed class Section41_VirtualizationSelectionCaret
         Assert.Same(c, gen.ContainerFromIndex(4)); // pinned by the descendant's caret
 
         host.Application.CaretService.Clear(descendant!);
+    }
+
+    [Fact] // VV3.3 (V3b): keyboard nav to an OFF-BAND item scrolls it in, realizes it, then focuses it (realize-then-focus)
+    public void VV3_3_KeyboardNav_OffBand_RealizesThenFocuses()
+    {
+        var (host, lb) = MakeVirtual(1000);
+        using var _ = host;
+        var gen = lb.ItemContainerGenerator;
+
+        gen.ContainerFromIndex(0)!.Focus();
+        host.RunUntilIdle();
+        Assert.Null(gen.ContainerFromIndex(999)); // the last item is far off-band — not realized
+
+        host.SendKey(Key.End); // jump to the last item: it must scroll into the window, realize, then focus
+        host.RunUntilIdle();
+
+        Assert.Equal(999, lb.SelectedIndex);
+        var last = gen.ContainerFromIndex(999);
+        Assert.NotNull(last);                          // the off-band target materialized
+        Assert.True(((ListBoxItem) last!).IsFocused);  // …and received focus once realized (parked-focus completion)
+    }
+
+    [Fact] // VV3.3b: PageDown in a virtualized list pages by a viewport's worth of items, realizing across the boundary
+    public void VV3_3b_PageDown_Virtualized_PagesAcrossBoundary()
+    {
+        var (host, lb) = MakeVirtual(1000);
+        using var _ = host;
+        var gen = lb.ItemContainerGenerator;
+
+        gen.ContainerFromIndex(0)!.Focus();
+        host.RunUntilIdle();
+        var page = lb.ItemsPerPage();
+        Assert.True(page >= 2);
+
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+        Assert.Equal(page, lb.SelectedIndex);          // paged down by one viewport
+        Assert.NotNull(gen.ContainerFromIndex(page));  // the landed item is realized
     }
 }

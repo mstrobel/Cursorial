@@ -23,7 +23,7 @@ public sealed class Section40_VirtualizingStackPanel
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
-            ItemsPanel = new FuncTemplateContent(_ => new VirtualizingStackPanel()),
+            ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
             ItemsSource = Enumerable.Range(0, count).Select(i => $"item{i:0000}").ToArray(),
         };
         VirtualizingPanel.SetIsVirtualizing(lb, true); // before ShowRoot — the panel reads it on connect
@@ -176,7 +176,7 @@ public sealed class Section40_VirtualizingStackPanel
         var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
-            ItemsPanel = new FuncTemplateContent(_ => new VirtualizingStackPanel()),
+            ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
             ItemsSource = items,
         };
         VirtualizingPanel.SetIsVirtualizing(lb, true);
@@ -208,7 +208,7 @@ public sealed class Section40_VirtualizingStackPanel
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
         var list = new ListBox
         {
-            ItemsPanel = new FuncTemplateContent(_ => new VirtualizingStackPanel()),
+            ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
             ItemsSource = src,
         };
         VirtualizingPanel.SetIsVirtualizing(list, true);

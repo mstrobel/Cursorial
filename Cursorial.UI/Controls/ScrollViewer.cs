@@ -28,6 +28,13 @@ public class ScrollViewer : ContentControl
     private ContentPresenter? _contentHost; // hosts the ScrollViewer's Content inside the SCP
     private ScrollBar? _verticalBar;
     private ScrollBar? _horizontalBar;
+
+    /// <summary>Wires the focus-follows-scroll behavior (a focused descendant is brought into view).</summary>
+    public ScrollViewer()
+        // handledEventsToo: a control may mark GotFocus handled, but the focused element should still
+        // scroll into view. The handler is on `this`, so it persists across template swaps (no leak —
+        // same lifetime as the ScrollViewer).
+        => AddHandler(GotFocusEvent, OnDescendantGotFocus, handledEventsToo: true);
     private IDisposable? _offsetRowObserver;
     private IDisposable? _offsetColumnObserver;
     private int _horizontalOffset;
@@ -381,6 +388,19 @@ public class ScrollViewer : ContentControl
             SetHorizontalOffset(rect.ColumnEnd - Math.Max(0, _viewport.Columns));
     }
 
+    /// <summary>
+    /// Brings a newly keyboard-focused descendant into view (the focus-follows-scroll behavior — WPF's
+    /// BringIntoView-on-focus): a minimal scroll so arrow / Tab navigation keeps the focused element
+    /// visible. Pairs with the <see cref="Control.HandlesScrolling"/> gate in <see cref="OnKeyDown"/> —
+    /// the selector moves selection + focus, this follows the focus on screen. A focus on something
+    /// outside the scrolled content (resolved by the SCP's content-coordinate translation) is ignored.
+    /// </summary>
+    private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (e.OriginalSource is { } focused && _presenter is { } presenter && presenter.TryGetContentRect(focused, out var rect))
+            EnsureVisible(rect);
+    }
+
     // ───────────────────────────── wheel + keyboard (CD28 / §12.7) ─────────────────────────────
 
     /// <inheritdoc/>
@@ -420,6 +440,14 @@ public class ScrollViewer : ContentControl
         base.OnKeyDown(e);
 
         if (e.Handled)
+            return;
+
+        // WPF parity (Control.HandlesScrolling): a templated parent that owns keyboard scroll navigation —
+        // a Selector moving its selection on the arrow / Home / End / Page keys — handles those keys itself.
+        // The inner ScrollViewer sits BELOW that control in the bubble route, so without this gate it would
+        // consume the keys first and scroll the extent out from under the selection (the "scrolls to the
+        // bottom before the selection moves" bug). Leave the event unhandled so it bubbles up to the control.
+        if (TemplatedParent is Control { HandlesScrolling: true })
             return;
 
         var viewportRows = Math.Max(1, _viewport.Rows);

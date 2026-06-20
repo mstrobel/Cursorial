@@ -13,7 +13,7 @@ public class Menu : ItemsControl, IMainMenu
     /// <summary>Creates a menu bar (items stack horizontally).</summary>
     public Menu()
     {
-        ItemsPanel = new FuncTemplateContent(static _ => new StackPanel { Orientation = Orientation.Horizontal });
+        ItemsPanel = new ItemsPanelTemplate(static _ => new StackPanel { Orientation = Orientation.Horizontal });
         Classes.Add(".menu");
     }
 

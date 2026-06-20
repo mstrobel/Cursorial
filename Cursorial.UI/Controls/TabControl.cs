@@ -26,7 +26,7 @@ public class TabControl : SelectingItemsControl
     public TabControl()
     {
         IsTabStop = false;
-        ItemsPanel = new FuncTemplateContent(static _ =>
+        ItemsPanel = new ItemsPanelTemplate(static _ =>
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
             KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the strip is one tab stop

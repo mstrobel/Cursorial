@@ -88,7 +88,7 @@ public sealed class Section15_Items
 
         var container = Gen(ic).ContainerFromIndex(0)!;
         Assert.Same(ic, container.LogicalParent);          // logical parent = the ItemsControl ⇒ inheritance flows from it
-        Assert.IsType<StackPanel>(container.VisualParent); // visual parent = the (default) items panel
+        Assert.IsAssignableFrom<Panel>(container.VisualParent); // visual parent = the (default) items panel (a VirtualizingStackPanel)
         Assert.NotSame(ic, container.VisualParent);
     }
 
@@ -327,7 +327,7 @@ public sealed class Section15_Items
         var c0 = Gen(ic).ContainerFromIndex(0)!;
         var oldPanel = c0.VisualParent;
 
-        ic.ItemsPanel = new FuncTemplateContent(_ => new StackPanel());
+        ic.ItemsPanel = new ItemsPanelTemplate(_ => new StackPanel());
         host.RunUntilIdle();
 
         Assert.Same(c0, Gen(ic).ContainerFromIndex(0)); // SAME container instance — re-hosted, not re-realized

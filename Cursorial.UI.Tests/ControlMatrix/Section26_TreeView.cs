@@ -192,6 +192,25 @@ public sealed class Section26_TreeView
         }
     }
 
+    [Fact] // C13.7b: PageDown/PageUp page across the visible tree (clamped at the last/first visible node)
+    public void C13_7b_PageDownUp_AcrossVisibleTree()
+    {
+        var t = Show(expandA: true, expandA1: true); // visible: A, A.1, A.1.x, A.2, B (fits the 14-row viewport)
+        using var _ = t.Host;
+        t.A.Focus();
+        t.Host.RunUntilIdle();
+
+        t.Host.SendKey(Key.PageDown);
+        t.Host.RunUntilIdle();
+        Assert.Same(t.B, t.View.SelectedContainer); // paged to the last visible node
+        Assert.True(t.B.IsFocused);
+
+        t.Host.SendKey(Key.PageUp);
+        t.Host.RunUntilIdle();
+        Assert.Same(t.A, t.View.SelectedContainer); // …and back to the first
+        Assert.True(t.A.IsFocused);
+    }
+
     [Fact] // C13.8: Down from a collapsed parent skips its hidden children → the next sibling
     public void C13_8_DownSkipsCollapsedSubtree()
     {

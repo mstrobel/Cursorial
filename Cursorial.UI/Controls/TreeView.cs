@@ -25,13 +25,16 @@ public class TreeView : ItemsControl
     public TreeView()
     {
         IsTabStop = false;
-        ItemsPanel = new FuncTemplateContent(static _ =>
+        ItemsPanel = new ItemsPanelTemplate(static _ =>
         {
             var panel = new StackPanel();
             KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the whole tree is one tab stop
             return panel;
         });
     }
+
+    /// <inheritdoc/>
+    protected internal override bool HandlesScrolling => true;
 
     /// <inheritdoc cref="SelectedItemProperty"/>
     public object? SelectedItem => _selectedItem;

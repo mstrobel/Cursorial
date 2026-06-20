@@ -78,6 +78,7 @@ internal static class ControlThemes
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
         // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
         // the negotiated tier. No resting pen ⇒ no frame ⇒ a 1-row button (content at row 0).
@@ -96,6 +97,7 @@ internal static class ControlThemes
         // stands out; :focus/:pressed override it when the user interacts. The ▸ OK ◂ gutter brackets are
         // a deferred content nicety (spec §3).
         theme.Children.Add(new Style("^:default")
+            .Set(Control.PaddingProperty, new Margins(1, 0))
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         return theme;
@@ -137,7 +139,47 @@ internal static class ControlThemes
     });
 
     private static Style ItemsControlTheme()
-        => new Style { Key = "Theme.ItemsControl" }.Set(Control.TemplateProperty, ItemsControlTemplate());
+        => new Style { Key = "Theme.ItemsControl" }
+            .Set(Control.TemplateProperty, ItemsControlTemplate())
+            .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
+
+    private static ItemsPanelTemplate VirtualizingItemsPanelTemplate()
+    {
+        return new ItemsPanelTemplate(
+            ctx =>
+            {
+                var virtualizingStackPanel = new VirtualizingStackPanel { IsItemsHost = true };
+
+                virtualizingStackPanel.SetBinding(
+                        VirtualizingPanel.IsVirtualizingProperty,
+                        new Binding
+                        {
+                            Path = "(VirtualizingPanel.IsVirtualizing)",
+                            Source = ctx.TemplatedParent
+                        })
+                    ;
+
+                virtualizingStackPanel.SetBinding(
+                    VirtualizingPanel.VirtualizationModeProperty,
+                    new Binding
+                    {
+                        Path = "(VirtualizingPanel.VirtualizationMode)",
+                        Source = ctx.TemplatedParent
+                    });
+
+                virtualizingStackPanel.SetBinding(
+                    VirtualizingPanel.ScrollUnitProperty,
+                    new Binding
+                    {
+                        Path = "(VirtualizingPanel.ScrollUnit)",
+                        Source = ctx.TemplatedParent
+                    });
+
+                virtualizingStackPanel.SetValue(KeyboardNavigation.TabNavigationProperty, KeyboardNavigationMode.Once);
+
+                return virtualizingStackPanel;
+            });
+    }
 
     // ───────────────────────────── ListBox / ListBoxItem ─────────────────────────────
 
@@ -160,7 +202,8 @@ internal static class ControlThemes
         => new Style { Key = "Theme.ListBox" }
             .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, ListBoxTemplate());
+            .Set(Control.TemplateProperty, ListBoxTemplate())
+            .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
 
     // A list item is a full-width selection bar: a Border filling its row, content at row 0 (no frame). Per the
     // default-theme gallery mockup (.item.sel/.hov/.dis): selected = SelectionBrush fill + TextBrush ink (NOT the
@@ -867,11 +910,11 @@ internal static class ControlThemes
         // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
         // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
         // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
-        var lineUp = new RepeatButton { Content = horizontal ? "◀" : "▲", Template = bareTemplate, Focusable = false, IsTabStop = false };
+        var lineUp = new RepeatButton { Content = horizontal ? "◀" : "▲", Template = bareTemplate, Padding = Margins.Zero, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_LineUpButton", lineUp);
         DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
 
-        var lineDown = new RepeatButton { Content = horizontal ? "▶" : "▼", Template = bareTemplate, Focusable = false, IsTabStop = false };
+        var lineDown = new RepeatButton { Content = horizontal ? "▶" : "▼", Template = bareTemplate, Padding = Margins.Zero, Focusable = false, IsTabStop = false };
         ctx.RegisterName("PART_LineDownButton", lineDown);
         DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
 
@@ -891,8 +934,21 @@ internal static class ControlThemes
         var theme = new Style { Key = "Theme.ScrollBar" }
             .Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: false))
             .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
+
         // A horizontal bar uses the rotated template (arrows on the ends of the long axis).
         theme.Children.Add(new Style("^:horizontal").Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: true)));
+        
+        // No padding in scroll bar buttons.
+        theme.Children.Add(
+                new Style(Selectors.Nesting().Template().OfType<RepeatButton>())
+                {
+                    Setters =
+                    {
+                        new Setter(Control.PaddingProperty, Margins.Zero), 
+                        new Setter(Control.WidthProperty, 1)
+                    }
+                });
+
         return theme;
     }
 

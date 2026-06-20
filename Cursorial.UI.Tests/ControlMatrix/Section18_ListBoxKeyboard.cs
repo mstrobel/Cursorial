@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 
 using Cursorial.Input;
 using Cursorial.Rendering;
+using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
@@ -247,5 +248,138 @@ public sealed class Section18_ListBoxKeyboard
         host.SendKey(Key.DownArrow); // resolves from the live focused "b" (idx 2) ⇒ Down → "c"
         host.RunUntilIdle();
         Assert.Equal("c", lb.SelectedItem); // not "b" — Down actually advances
+    }
+
+    // ── overflow keyboard routing (the Control.HandlesScrolling fix) ──────────────────────────────────
+    //
+    // When the list overflows its viewport, the inner ScrollViewer must NOT consume the arrow / Home / End
+    // keys: a Selector overrides Control.HandlesScrolling, so the ScrollViewer (which sits BELOW the ListBox
+    // in the bubble route) leaves the keys unhandled. The ListBox moves the SELECTION, and a GotFocus →
+    // EnsureVisible brings the focused item into view (focus-follows-scroll). Before the fix the ScrollViewer
+    // ate the keys and scrolled the extent to the bottom before the selection ever moved (the reported bug).
+    private static (UITestHost Host, ListBox List, ScrollViewer Scroll) ShowOverflow(int count = 50, int rows = 10)
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
+        var lb = new ListBox { ItemsSource = Enumerable.Range(0, count).Select(i => $"item{i:000}").ToArray() };
+        host.ShowRoot(lb);
+        host.RunUntilIdle();
+        return (host, lb, FindDescendant<ScrollViewer>(lb)!);
+    }
+
+    private static T? FindDescendant<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            return match;
+        if (root.VisualChildrenList is { } children)
+            foreach (var child in children)
+                if (FindDescendant<T>(child) is { } found)
+                    return found;
+        return null;
+    }
+
+    // Whether a container is rendered inside the ScrollViewer's viewport (window-coordinate overlap).
+    private static bool IsWithinViewport(ScrollViewer scroll, UIElement container)
+    {
+        var viewportTop = scroll.TranslateToWindow(0, 0).Row;
+        var itemTop = container.TranslateToWindow(0, 0).Row;
+        return itemTop >= viewportTop && itemTop < viewportTop + scroll.Viewport.Rows;
+    }
+
+    [Fact] // C5.17: an overflowing ListBox — Down moves the SELECTION (not the ScrollViewer extent); no premature scroll while the item is visible
+    public void C5_17_Overflow_Down_MovesSelection_NotExtent()
+    {
+        var (host, lb, scroll) = ShowOverflow();
+        using var _ = host;
+        Assert.True(scroll.Extent.Rows > scroll.Viewport.Rows); // genuinely overflowing
+
+        Item(lb, 0).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, lb.SelectedIndex);       // selection moved — the ScrollViewer no longer eats the arrow
+        Assert.True(Item(lb, 1).IsFocused);
+        Assert.Equal(0, scroll.VerticalOffset);  // item 1 is still on-screen → no premature scroll-to-bottom
+    }
+
+    [Fact] // C5.18: End on an overflowing ListBox selects the last item AND scrolls it into view (focus-follows-scroll)
+    public void C5_18_Overflow_End_BringsLastIntoView()
+    {
+        var (host, lb, scroll) = ShowOverflow();
+        using var _ = host;
+        var last = lb.ItemContainerGenerator.ContainerCount - 1;
+
+        Item(lb, 0).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.End);
+        host.RunUntilIdle();
+
+        Assert.Equal(last, lb.SelectedIndex);
+        var max = Math.Max(0, scroll.Extent.Rows - scroll.Viewport.Rows);
+        Assert.Equal(max, scroll.VerticalOffset);             // scrolled to the bottom to reveal the last item
+        Assert.True(IsWithinViewport(scroll, Item(lb, last))); // …and it is actually on-screen
+    }
+
+    [Fact] // C5.19: arrowing past the viewport bottom scrolls minimally so the focused item stays visible
+    public void C5_19_Overflow_DownPastViewport_ScrollsToFollow()
+    {
+        var (host, lb, scroll) = ShowOverflow();
+        using var _ = host;
+        var steps = scroll.Viewport.Rows + 3;
+
+        Item(lb, 0).Focus();
+        host.RunUntilIdle();
+        for (var i = 0; i < steps; i++)
+        {
+            host.SendKey(Key.DownArrow);
+            host.RunUntilIdle();
+        }
+
+        Assert.Equal(steps, lb.SelectedIndex);
+        Assert.True(scroll.VerticalOffset > 0);                 // the view followed the selection down
+        Assert.True(IsWithinViewport(scroll, Item(lb, steps))); // …keeping the focused item visible
+    }
+
+    [Fact] // C5.20: Up after scrolling down brings the focused item back up into view (minimal upward scroll)
+    public void C5_20_Overflow_UpFromBottom_BringsIntoView()
+    {
+        var (host, lb, scroll) = ShowOverflow();
+        using var _ = host;
+
+        Item(lb, 0).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.End); // jump to the bottom
+        host.RunUntilIdle();
+        Assert.True(scroll.VerticalOffset > 0);
+
+        host.SendKey(Key.Home); // back to the top
+        host.RunUntilIdle();
+        Assert.Equal(0, lb.SelectedIndex);
+        Assert.Equal(0, scroll.VerticalOffset); // scrolled back up to reveal item 0
+    }
+
+    [Fact] // C5.21: PageDown/PageUp move the selection by a viewport page and keep the focused item visible
+    public void C5_21_Overflow_PageDown_PageUp_MoveByPage()
+    {
+        var (host, lb, scroll) = ShowOverflow(count: 50);
+        using var _ = host;
+        var page = lb.ItemsPerPage();
+        Assert.True(page >= 2); // a 10-row viewport pages by multiple items (not a single step)
+
+        Item(lb, 0).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+        Assert.Equal(page, lb.SelectedIndex);                                   // one page down from item 0
+        Assert.True(IsWithinViewport(scroll, Item(lb, lb.SelectedIndex)));      // …kept on screen
+
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+        Assert.Equal(Math.Min(49, 2 * page), lb.SelectedIndex);                 // a second page down
+
+        host.SendKey(Key.PageUp);
+        host.RunUntilIdle();
+        Assert.Equal(Math.Max(0, Math.Min(49, 2 * page) - page), lb.SelectedIndex); // a page back up
+        Assert.True(IsWithinViewport(scroll, Item(lb, lb.SelectedIndex)));
     }
 }

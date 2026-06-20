@@ -102,6 +102,26 @@ public sealed class Section25_ComboBox
         Assert.Equal("beta", box.SelectedItem); // the highlighted selection stuck
     }
 
+    [Fact] // C12.4b: PageDown/PageUp jump to the last/first item in the open drop-down (no scroll viewport ⇒ a page is the whole list)
+    public void C12_4b_PageNav_LastFirst()
+    {
+        var (host, box) = Show();
+        using var _ = host;
+        box.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open the drop-down (no selection yet)
+        host.RunUntilIdle();
+        Assert.True(box.IsDropDownOpen);
+
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+        Assert.Equal(2, box.SelectedIndex); // last item (alpha/beta/gamma)
+
+        host.SendKey(Key.PageUp);
+        host.RunUntilIdle();
+        Assert.Equal(0, box.SelectedIndex); // first item
+    }
+
     [Fact] // C12.5: Escape closes the open drop-down
     public void C12_5_EscapeCloses()
     {

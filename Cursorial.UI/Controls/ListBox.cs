@@ -11,18 +11,26 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class ListBox : SelectingItemsControl
 {
+    private int _pendingFocusIndex = -1; // a keyboard-nav focus parked until its (virtualized) container materializes
+
     /// <summary>Creates a list box (not itself a tab stop; the items host is the single tab stop).</summary>
     public ListBox()
     {
         IsTabStop = false;
-        ItemsPanel = new FuncTemplateContent(static _ =>
-        {
-            var panel = new StackPanel();
-            KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the group is one tab stop
-            return panel;
-        });
+        // ItemsPanel = new FuncTemplateContent(static _ =>
+        // {
+        //     var panel = new StackPanel();
+        //     KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the group is one tab stop
+        //     return panel;
+        // });
+
+        // Completes a parked keyboard-nav focus once the scrolled-to container materializes (virtualizing mode).
+        ItemContainerGenerator.ContainersRealizedChanged += OnContainersRealizedForPendingFocus;
     }
 
+    /// <inheritdoc/>
+    protected internal override bool HandlesScrolling => true;
+    
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new ListBoxItem();
 
@@ -79,6 +87,12 @@ public class ListBox : SelectingItemsControl
             case Key.End:
                 MoveCurrent(count - 1, e.Modifiers);
                 break;
+            case Key.PageUp:
+                MoveCurrent(current < 0 ? 0 : Math.Max(0, current - ItemsPerPage()), e.Modifiers);
+                break;
+            case Key.PageDown:
+                MoveCurrent(current < 0 ? 0 : Math.Min(count - 1, current + ItemsPerPage()), e.Modifiers);
+                break;
             case Key.Enter:
                 if (current < 0)
                     return; // nothing anchored — no phantom activation
@@ -119,7 +133,7 @@ public class ListBox : SelectingItemsControl
 
     private void MoveCurrent(int target, KeyModifiers modifiers)
     {
-        ItemContainerGenerator.ContainerFromIndex(target)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
+        BringTargetIntoFocus(target); // ⇒ :focus-visible (realized now, or scrolled-then-focused when virtualized)
 
         // ReSharper disable once RedundantJumpStatement
         if (SelectionMode == SelectionMode.Single)
@@ -130,5 +144,48 @@ public class ListBox : SelectingItemsControl
             Selection.SelectRangeFromAnchor(target);
         else
             Selection.Select(target);
+    }
+
+    // Realized ⇒ focus immediately (its GotFocus brings it into view through the ScrollViewer). Virtualized +
+    // off-band (the container is not materialized) ⇒ scroll its ESTIMATED position into the realization window,
+    // then focus it the moment it materializes (OnContainersRealizedForPendingFocus) — keyboard nav reaches an
+    // item that does not exist yet.
+    private void BringTargetIntoFocus(int target)
+    {
+        if (ItemContainerGenerator.ContainerFromIndex(target) is { } container)
+        {
+            _pendingFocusIndex = -1; // a realized target supersedes any parked focus
+            container.Focus(FocusNavigationMethod.Directional);
+            return;
+        }
+
+        _pendingFocusIndex = target;
+        if (ItemsHost is ILogicalScrollHost logical && FindItemsScrollViewer() is { } scroll)
+            scroll.EnsureVisible(logical.BringItemIntoView(target)); // scroll the estimate in ⇒ the panel realizes it
+    }
+
+    // Completes a parked keyboard-nav focus: when the scrolled-to container materializes, focus it. Deferred via
+    // the dispatcher because the realize channel fires DURING the panel's measure pass — focusing synchronously
+    // there would re-enter layout (focus raises routed events + restyles). Re-resolves the container by index at
+    // post time so a recycle between realization and the post can't focus a stale container.
+    private void OnContainersRealizedForPendingFocus(object? sender, ContainersChangedEventArgs e)
+    {
+        if (_pendingFocusIndex < 0 || e.Action != ContainersChangedAction.Realized)
+            return;
+
+        if (ItemContainerGenerator.ContainerFromIndex(_pendingFocusIndex) is not { } container)
+            return; // the target is still outside the realized window — stay parked for the next realize pass
+
+        var index = _pendingFocusIndex;
+        _pendingFocusIndex = -1;
+
+        if (UIApplication.Current?.Dispatcher is { } dispatcher)
+            dispatcher.Post(() =>
+            {
+                if (ItemContainerGenerator.ContainerFromIndex(index) is { IsAttachedToTree: true } c)
+                    c.Focus(FocusNavigationMethod.Directional);
+            });
+        else if (container.IsAttachedToTree)
+            container.Focus(FocusNavigationMethod.Directional); // no dispatcher (BYO host) — best-effort synchronous
     }
 }

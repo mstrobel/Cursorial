@@ -70,6 +70,9 @@ public class ComboBox : SelectingItemsControl
         SelectionChanged += OnSelectionChangedSync; // editable: the face text follows the selection
     }
 
+    /// <inheritdoc/>
+    protected internal override bool HandlesScrolling => true;
+
     /// <inheritdoc cref="IsDropDownOpenProperty"/>
     public bool IsDropDownOpen { get => _isDropDownOpen; set => SetDropDownOpen(value); }
 
@@ -402,6 +405,12 @@ public class ComboBox : SelectingItemsControl
                 break;
             case Key.End when count > 0 && !editable:
                 MoveSelection(count - 1);
+                break;
+            case Key.PageUp when count > 0 && !editable:
+                MoveSelection(Math.Max(0, (SelectedIndex < 0 ? 0 : SelectedIndex) - ItemsPerPage()));
+                break;
+            case Key.PageDown when count > 0 && !editable:
+                MoveSelection(Math.Min(count - 1, (SelectedIndex < 0 ? 0 : SelectedIndex) + ItemsPerPage()));
                 break;
             case Key.Enter:
                 if (editable)

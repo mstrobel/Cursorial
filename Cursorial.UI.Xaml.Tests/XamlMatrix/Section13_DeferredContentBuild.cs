@@ -39,6 +39,20 @@ public sealed class Section13_DeferredContentBuild : LoaderTestBase
         Assert.IsType<Button>(border.Child);
     }
 
+    [Fact] // ItemsPanelTemplate: <ItemsPanelTemplate> in XAML is instantiated eagerly; its panel defers into Content and ItemsPanel.Build produces it
+    public void ItemsPanelTemplate_FromXaml_BuildsDeclaredPanel()
+    {
+        var lb = Load<ListBox>(
+            "<ListBox><ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>");
+
+        var template = Assert.IsType<ItemsPanelTemplate>(lb.ItemsPanel); // the wrapper was instantiated + assigned
+        Assert.NotNull(template.Content);                                // the inner panel was captured as deferred content
+
+        var panel = template.Build(new TemplateBuildContext(lb, new NameScopeDictionary()));
+        Assert.IsType<VirtualizingStackPanel>(panel); // …and builds the declared panel type (a fresh instance per build)
+        Assert.NotSame(panel, template.Build(new TemplateBuildContext(lb, new NameScopeDictionary())));
+    }
+
     [Fact] // X154
     public void X154_DoubleBuild_DistinctInstances()
     {

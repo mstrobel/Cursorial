@@ -409,6 +409,42 @@ public class ScrollContentPresenter : UIElement
             host.InvalidateRealization();
     }
 
+    // ───────────────────────────── bring-into-view (content-coordinate translation) ─────────────────────────────
+
+    /// <summary>
+    /// Computes <paramref name="descendant"/>'s bounds in this presenter's <b>content coordinate</b>
+    /// space — the space <see cref="ScrollOffsetRow"/>/<see cref="ScrollOffsetColumn"/> index (content
+    /// origin at 0, pre-slide; the scroll is a composite-time slide above the content child). Folds each
+    /// hop's <see cref="UIElement.Bounds"/> position + render offset from <paramref name="descendant"/>
+    /// up to (and excluding) the content child. Returns <see langword="false"/> when
+    /// <paramref name="descendant"/> is not within the content subtree. The <see cref="ScrollViewer"/>
+    /// calls this to scroll a newly-focused descendant into view (bring-focused-into-view).
+    /// </summary>
+    internal bool TryGetContentRect(UIElement descendant, out Rect rect)
+    {
+        rect = default;
+        if (_content is null)
+            return false;
+
+        var column = 0;
+        var row = 0;
+        for (UIElement? node = descendant; node is not null; node = node.VisualParent)
+        {
+            if (ReferenceEquals(node, _content))
+            {
+                // Reached the content child without crossing a scroll host — (column,row) is the
+                // descendant's origin in content coordinates; size is the descendant's own footprint.
+                rect = new Rect(column, row, Math.Max(1, descendant.Bounds.Columns), Math.Max(1, descendant.Bounds.Rows));
+                return true;
+            }
+
+            column += node.Bounds.Column + node.RenderOffsetColumn;
+            row += node.Bounds.Row + node.RenderOffsetRow;
+        }
+
+        return false; // descendant is not under this presenter's content
+    }
+
     /// <summary>
     /// Normalizes the band after extent/viewport changes (end of arrange): clamps the anchor into
     /// the new offset range and re-derives <see cref="BandStartRow"/>; a moved band start marks the

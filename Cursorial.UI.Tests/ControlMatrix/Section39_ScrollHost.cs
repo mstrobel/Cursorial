@@ -159,7 +159,7 @@ public sealed class Section39_ScrollHost
         var virt = new ListBox
         {
             ItemsSource = new[] { "a", "b", "c" },
-            ItemsPanel = new FuncTemplateContent(_ => panel = new StubLogicalPanel { Extent = new Size(5, 500) }),
+            ItemsPanel = new ItemsPanelTemplate(_ => panel = new StubLogicalPanel { Extent = new Size(5, 500) }),
         };
         onHost.ShowRoot(virt);
         onHost.RunUntilIdle();
@@ -178,13 +178,13 @@ public sealed class Section39_ScrollHost
         var lb = new ListBox
         {
             ItemsSource = new[] { "a", "b" },
-            ItemsPanel = new FuncTemplateContent(_ => first = new StubLogicalPanel()),
+            ItemsPanel = new ItemsPanelTemplate(_ => first = new StubLogicalPanel()),
         };
         host.ShowRoot(lb);
         host.RunUntilIdle();
         Assert.NotNull(first!.ScrollOwner);
 
-        lb.ItemsPanel = new FuncTemplateContent(_ => second = new StubLogicalPanel());
+        lb.ItemsPanel = new ItemsPanelTemplate(_ => second = new StubLogicalPanel());
         host.RunUntilIdle();
 
         Assert.Null(first.ScrollOwner);     // disowned on the swap — no dangling back-channel

@@ -25,7 +25,9 @@ internal static class ContentPropertyTable
         (typeof(ItemsControl), nameof(ItemsControl.Items)),
         (typeof(ControlTemplate), "Content"),
         (typeof(DataTemplate), "Content"),
+        (typeof(ItemsPanelTemplate), "Content"),    // <ItemsPanelTemplate><Panel/></ItemsPanelTemplate> → deferred Content
         (typeof(Style), nameof(Style.Setters)),     // <Style>'s implicit content is its Setters (WPF parity)
+        (typeof(Setter), nameof(Setter.Value)),     // <Setter>'s implicit content is its Value (QoL)
         (typeof(Drawing.Media.GradientBrush), nameof(Drawing.Media.GradientBrush.Stops)), // <LinearGradientBrush><GradientStop/>…
     };
 

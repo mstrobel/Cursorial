@@ -78,6 +78,13 @@ public class Control : UIElement, IControlThemeHost
     /// <summary>The live template instance, or <see langword="null"/> before first expansion / after a null template.</summary>
     protected internal TemplateInstance? TemplateInstance => _templateInstance;
 
+    /// <summary>
+    /// If control has a ScrollViewer in its style and has a custom keyboard scrolling behavior, then
+    /// HandlesScrolling should return true. Then ScrollViewer will not handle keyboard input and will
+    /// leave it up to the control.
+    /// </summary>
+    protected internal virtual bool HandlesScrolling => false;
+
     // ───────────────────────────── IControlThemeHost (S7 seam) ─────────────────────────────
 
     UIElement IControlThemeHost.Element => this;

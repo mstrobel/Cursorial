@@ -46,6 +46,9 @@ public sealed class ContextMenu : ItemsControl
     /// <inheritdoc cref="IsOpenProperty"/>
     public bool IsOpen => GetValue(IsOpenProperty);
 
+    /// <inheritdoc/>
+    protected internal override bool HandlesScrolling => true;
+
     /// <summary>
     /// Opens the menu. When <paramref name="position"/> is <see langword="null"/> it lands at the pointer
     /// (the right-click case); otherwise it drops below <paramref name="target"/> offset by the (column, row)

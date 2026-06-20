@@ -232,13 +232,49 @@ a missing SCP detach hook to clear the host owner (the ScrollViewer's `OnTemplat
 
 ---
 
-## §V2–§V5 (sharpened when each phase lands)
+## §V2 — `VirtualizingStackPanel` (uniform-height item mode)
 
-- **§V2** — `VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHost`; band-derived realization window in
-  its own `MeasureOverride` (sanctioned §5.3 self-mutation) + the no-op measure guard; true-content-row arrange;
-  uniform `avgItemRows` extent; the band=realization-window coverage invariant; in-band scroll = zero re-raster +
-  zero realize churn (invariant-3 ON-path gate); re-anchor = exactly one realize batch; short-list reports exact
-  rows.
+The panel that makes virtualization actually render: `VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHost`.
+It drives realization from its OWN `MeasureOverride` (the sanctioned §5.3 self-mutation — the panel IS the element
+being measured, like WPF/Avalonia), arranges realized containers at their TRUE content-row positions inside the
+full-extent rect, and reports the estimated extent through the `IScrollContentHost` contract (V1). v1 is
+uniform-height (every item `avgItemRows` tall, refined from the first measured container); variable-height sticky
+caching is V4.
+
+**The realization window** is read from the SCP band the V1 `ScrollOwner` exposes
+(`BandStartRow`/`BandLength`/`BandPadding` + `ScrollOffsetRow`/`Viewport`): the panel realizes every item whose
+content rows intersect `[BandStartRow, BandStartRow + BandLength)` (+ band-derived slack), so realization coverage
+is a **superset of the band by construction** — the headline invariant.
+
+### Rows
+
+| Row | Scenario | Expected |
+| --- | --- | --- |
+| **VV2.1** | Panel identity + mode. | `VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHost`; `IsScrollClient`/`IsLogicalScroll` are decided at attach from `VirtualizingPanel.GetIsVirtualizing/ScrollUnit(owner)` (NOT from item count — stable before the SCP's first measure, so no one-frame mode flip). |
+| **VV2.2** | Attach wiring. | On attach the panel resolves its owning `ItemsControl`, calls `generator.EnableVirtualization(mode)` when `IsVirtualizing`, and subscribes `ContainersRealizedChanged` to adopt (`RealizedContainers` → `Children.Add`) / release (`RemovedContainers` → `Children.Remove`) — it owns its `Children`, not the `ItemsPresenter` (whose structural handler no-ops in virtualizing mode, V0). |
+| **VV2.3** | Measure = the realization driver (§5.3). | `MeasureOverride` reads the band from `ScrollOwner`, computes `[firstItem, lastItem]` covering `[BandStartRow, BandStartRow+BandLength)` + slack (`ceil(BandPadding / avgItemRows)` each side), `UnrealizeRange` outside / `RealizeRange` inside (the panel's own measure — sanctioned), measures the realized containers, and returns the estimated full extent. |
+| **VV2.4** | Extent estimate. | `GetExtent().Rows == itemCount × avgItemRows` (uniform) — for 1-row items, exactly `itemCount`. Published as `SCP.Extent` via the V1 contract → `ScrollViewer.Extent` → `ScrollBar.Maximum`, all proportional without realizing all N. |
+| **VV2.5** | True-content-row arrange. | `ArrangeOverride` arranges each realized container at content row `itemIndex × avgItemRows` (uniform) within the full-extent rect (cross-axis like `StackPanel`); the SCP band fold + composite slide place the band on screen at the viewport. |
+| **VV2.6** | Band = realization coverage (no blank rows). | Every item whose rows intersect `[BandStartRow, BandStartRow+BandLength)` is realized after measure — the realized set is a superset of the band, so no band row is ever un-rastered (slack is derived FROM `BandPadding`, not guessed). |
+| **VV2.7** | **In-band scroll = zero re-raster + zero realize churn (the invariant-3 ON-path gate).** | An offset change WITHIN `±K` of the anchor (no re-anchor) does NOT re-measure the panel (the no-op measure guard: unchanged `(offset, BandStartRow, BandLength, viewport, itemCount)` ⇒ cached desired size, realize nothing) and does NOT call `RealizeRange`/`UnrealizeRange` — a pure composite slide. Asserted: `Scene.RasterVersion` unchanged + the generator's realized set unchanged across the slide. |
+| **VV2.8** | Re-anchor = exactly one realize batch. | An offset change crossing `±K` re-anchors the band (the SCP marks the zone dirty + the panel's measure dirty); the panel re-measures, `RealizeRange`s the newly-covered items and `UnrealizeRange`s the now-uncovered — O(1) per re-anchor, never O(n). |
+| **VV2.9** | Short list. | When `itemCount × avgItemRows < viewport`, the panel realizes all items and reports the EXACT realized sum as the extent (not the viewport) — a 3-item list reports 3 rows, so the `ScrollBar` hides (no false overflow). |
+| **VV2.10** | No-op measure guard. | A re-measure with `(offset, BandStartRow, BandLength, viewport, itemCount)` unchanged since the last measure returns the cached desired size and realizes nothing (enforces VV2.7 + bounds the `LayoutManager` fixpoint). |
+| **VV2.11** | End-to-end (UITestHost). | A virtualizing `ListBox` of 1000 items shows only the band's worth of `ListBoxItem`s (`CountRealized ≈ viewport + slack`, not 1000), `ContainerCount == 1000`, the visible window renders the right items, a wheel/offset scroll re-anchors and shows the new window, and selection of an off-screen index stays correct (V0 item-indexing). |
+
+### Audit focus (V2)
+
+(a) the band=realization coverage invariant (VV2.6) — a wrong slack or a stale `avgItemRows` must not leave blank
+band rows even for one frame (the `LayoutManager` fixpoint re-measures same-frame; the V4 sticky cache makes it
+monotone); (b) invariant-3 (VV2.7) — the offset write must NOT invalidate the panel measure on an in-band slide
+(the no-op guard is load-bearing); (c) realization churn cadence == re-anchor cadence, never per-cell; (d) the
+measure-time self-mutation must stay within §5.3 (the panel mutates its OWN children + the owner's logical children
+via the generator — sanctioned — and never a sibling); (e) the convergence of the extent↔band↔realize loop under
+the fixpoint (uniform mode converges in one pass; the pathological seed-`avgItemRows` case is a bounded one-frame
+transient).
+
+## §V3–§V5 (sharpened when each phase lands)
+
 - **§V3** — `ListBox` End/PageDown over `itemCount` + `EnsureItemVisible → BringItemIntoView` realize-then-focus
   (post-layout boundary); focus/caret keep-alive end-to-end; `SelectingItemsControl` subscribes
   `ContainersRealizedChanged.Realized` → `ReconcileContainers` (selected-but-unrealized item's `IsSelected`

@@ -229,14 +229,36 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         {
             "TemplatedParent" => RelativeSource.TemplatedParent,
             "Self" => RelativeSource.Self,
+            // {RelativeSource FindAncestor, AncestorType={x:Type T}[, AncestorLevel=n]} — the nth logical ancestor
+            // assignable to AncestorType (the engine already implements FindAncestor; this is the XAML front).
+            "FindAncestor" when value.IsNested => BuildFindAncestor(builder, value.Nested!, line, column),
             // A nested {RelativeSource} with no explicit mode defaults to Self (WPF).
             null when value.IsNested => RelativeSource.Self,
-            // An unrecognized mode (e.g., FindAncestor — not in v1) is a hard error, not a silent Self,
+            // An unrecognized mode (or a bare FindAncestor without AncestorType) is a hard error, not a silent Self,
             // so a misuse doesn't appear to have worked (P6 review P1-4).
             { Length: > 0 } => throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
-                $"RelativeSource mode '{mode}' is not supported in v1 (TemplatedParent and Self are).", line, column),
+                $"RelativeSource mode '{mode}' is not supported (Self, TemplatedParent, and FindAncestor are).", line, column),
             _ => null,
         };
+    }
+
+    // {RelativeSource FindAncestor, AncestorType={x:Type T} | T [, AncestorLevel=n]} → a FindAncestor anchor.
+    private static RelativeSource BuildFindAncestor(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
+    {
+        if (node.FindNamed("AncestorType") is not { } typeArg)
+            throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
+                "RelativeSource FindAncestor requires an AncestorType (e.g. AncestorType={x:Type ScrollViewer}).", line, column);
+
+        // AncestorType may be a nested {x:Type T} (WPF) or a bare type token T (Avalonia TypeConverter form).
+        var typeName = typeArg.IsNested
+            ? (typeArg.Nested!.PositionalArguments.Count > 0 ? typeArg.Nested.PositionalArguments[0].Text : null)
+            : typeArg.Text;
+        if (string.IsNullOrEmpty(typeName))
+            throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed, "RelativeSource AncestorType is empty.", line, column);
+
+        var ancestorType = (Type) builder.ResolveTypeToken(typeName!, line, column);
+        var level = node.FindNamed("AncestorLevel") is { Text: { } lvl } && int.TryParse(lvl, out var n) && n > 0 ? n : 1;
+        return new RelativeSource { Mode = RelativeSourceMode.FindAncestor, AncestorType = ancestorType, AncestorLevel = level };
     }
 
     private IValueConverter? ResolveConverter(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)

@@ -1,8 +1,10 @@
 using Cursorial.UI;
+using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
 using Style = Cursorial.UI.Style;
+using Binding = Cursorial.UI.Data.Binding;
 
 // ReSharper disable InconsistentNaming
 
@@ -42,5 +44,21 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         var baseStyle = Assert.IsType<Style>(dict[typeof(UIControls.Button)]); // the {x:Type Button} key IS typeof(Button)
         var derived = Assert.IsType<Style>(dict["Derived"]);
         Assert.Same(baseStyle, derived.BasedOn); // BasedOn={StaticResource {x:Type Button}} resolved the base style
+    }
+
+    [Fact] // {Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type T}, AncestorLevel=n}} builds the anchor
+    public void RelativeSource_FindAncestor_BuildsAnchor()
+    {
+        var root = Load<UIControls.StackPanel>(
+            "<StackPanel Spacing=\"3\">" +
+            "<Border Width=\"{Binding Spacing, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type StackPanel}, AncestorLevel=2}}\"/>" +
+            "</StackPanel>");
+
+        var border = (UIControls.Border) root.Children[0];
+        var binding = (Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
+        Assert.NotNull(binding.RelativeSource);
+        Assert.Equal(RelativeSourceMode.FindAncestor, binding.RelativeSource!.Mode);
+        Assert.Equal(typeof(UIControls.StackPanel), binding.RelativeSource.AncestorType);
+        Assert.Equal(2, binding.RelativeSource.AncestorLevel);
     }
 }

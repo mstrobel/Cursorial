@@ -1,6 +1,8 @@
 using System.Reflection;
 
+using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;
 using Cursorial.UI.Xaml.Generator;
 
@@ -399,4 +401,39 @@ namespace TestApp
             new XamlParseOptions { MetadataProvider = new RoslynXamlMetadata(compilation), FoldConstants = false });
         Assert.Null(LoweringEmitter.Emit(document, "x.xaml", new XamlSymbolResolver(compilation)));
     }
+
+    [Fact] // {RelativeSource FindAncestor} lowers to an anchor matching the runtime loader (cross-pipeline parity)
+    public void Lowered_FindAncestorBinding_MatchesRuntimeLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.AncView\" Spacing=\"3\">" +
+            "<Border x:Name=\"Frame\" Width=\"{Binding Spacing, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type StackPanel}, AncestorLevel=2}}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class AncView : StackPanel { public AncView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("AncHost");
+        var lowered = Lower(xaml, compilation);
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel) System.Activator.CreateInstance(assembly.GetType("TestApp.AncView")!)!;
+
+        var runtime = (StackPanel) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        var loweredRs = RelSource((Border) view.Children[0]);
+        var runtimeRs = RelSource((Border) runtime.Children[0]);
+
+        Assert.Equal(RelativeSourceMode.FindAncestor, loweredRs.Mode);     // the generator emitted the anchor (not a TODO)
+        Assert.Equal(runtimeRs.Mode, loweredRs.Mode);                      // …matching the loader
+        Assert.Equal(typeof(StackPanel), loweredRs.AncestorType);
+        Assert.Equal(runtimeRs.AncestorType, loweredRs.AncestorType);
+        Assert.Equal(2, loweredRs.AncestorLevel);
+        Assert.Equal(runtimeRs.AncestorLevel, loweredRs.AncestorLevel);
+    }
+
+    private static RelativeSource RelSource(Border border)
+        => ((Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!).RelativeSource!;
 }

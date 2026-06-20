@@ -1536,9 +1536,9 @@ internal static class LoweringEmitter
             return false;
         }
 
-        if (RelativeSourceInit(node) is not { } relSource)
+        if (RelativeSourceInit(c, node) is not { } relSource)
         {
-            c.Todo($"{{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self/TemplatedParent only)");
+            c.Todo($"{{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self / TemplatedParent / FindAncestor)");
             return false;
         }
 
@@ -1633,7 +1633,7 @@ internal static class LoweringEmitter
 
     // The `RelativeSource = …` fragment: "" not present; the Self/TemplatedParent fragment; null for an
     // unsupported mode (FindAncestor etc. — the caller TODOs), mirroring the handler's ParseRelativeSource.
-    private static string? RelativeSourceInit(MarkupExtensionNode node)
+    private static string? RelativeSourceInit(Context c, MarkupExtensionNode node)
     {
         if (node.FindNamed("RelativeSource") is not { } value)
             return string.Empty;
@@ -1646,9 +1646,29 @@ internal static class LoweringEmitter
         {
             "TemplatedParent" => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent",
             "Self" => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self",
+            "FindAncestor" when value.IsNested => FindAncestorInit(c, value.Nested!),
             null when value.IsNested => "RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self", // WPF default
             _ => null,
         };
+    }
+
+    // {RelativeSource FindAncestor, AncestorType={x:Type T} | T [, AncestorLevel=n]} → an object-initializer matching
+    // the loader's RelativeSource (Mode/AncestorType/AncestorLevel) so the dual-run renders identically. Null (bail to
+    // reflective) when AncestorType is absent / unresolvable.
+    private static string? FindAncestorInit(Context c, MarkupExtensionNode node)
+    {
+        if (node.FindNamed("AncestorType") is not { } typeArg)
+            return null;
+
+        var typeName = typeArg.IsNested
+            ? (typeArg.Nested!.PositionalArguments.Count > 0 ? typeArg.Nested.PositionalArguments[0].Text : null)
+            : typeArg.Text;
+        if (string.IsNullOrEmpty(typeName) || XamlDataTypeScope.ResolveToken(c.Doc, typeName!, c.Resolver) is not { } typeSym)
+            return null;
+
+        var level = NamedText(node, "AncestorLevel") is { } lvl && int.TryParse(lvl, out var n) && n > 0 ? n : 1;
+        return $"RelativeSource = new global::Cursorial.UI.Data.RelativeSource {{ Mode = global::Cursorial.UI.Data.RelativeSourceMode.FindAncestor, " +
+               $"AncestorType = typeof({Global(typeSym)}), AncestorLevel = {level} }}";
     }
 
     // Joins non-empty object-initializer member assignments into a ` { a, b }` suffix, or "" when none.

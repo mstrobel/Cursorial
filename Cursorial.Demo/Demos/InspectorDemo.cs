@@ -185,7 +185,7 @@ internal sealed class InspectorDemo : IDemo
         {
             _isInspecting = !_isInspecting;
             _canvas.Cursor = _isInspecting ? MouseCursorShape.Crosshair : MouseCursorShape.Default;
-            
+            _canvas.ForceCursor = _isInspecting;
             Refresh();
         }
 

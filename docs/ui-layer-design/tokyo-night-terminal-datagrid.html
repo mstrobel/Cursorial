@@ -154,7 +154,7 @@
   .editrow .grow{background:var(--well);}
   .ed{display:flex;align-items:center;gap:6px;padding:0 8px;}
   .ed-text{background:var(--bg);color:var(--text);padding:0 4px;width:100%;}
-  .ed-text .caret{background:var(--accent);color:var(--accent);}
+.ed-text .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .ed-text .selrange{background:var(--sel);color:var(--text);}
   .ed-combo{background:var(--bg);color:var(--text);padding:0 4px;width:100%;display:flex;justify-content:space-between;}
   .ed-combo .dd{color:var(--accent);}
@@ -230,7 +230,7 @@
   .dlg .fctl{background:var(--bg);color:var(--text);padding:0 6px;display:flex;justify-content:space-between;min-width:20ch;}
   .dlg .fctl .dd{color:var(--accent);}
   .dlg .fctl.focus{background:var(--well);}
-  .dlg .fctl .caret{background:var(--accent);color:var(--accent);}
+.dlg .fctl .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .dlg .seg-toggle{display:flex;gap:0;}
   .dlg .seg-toggle .opt{padding:0 10px;color:var(--text-dim);background:var(--bg);cursor:pointer;}
   .dlg .seg-toggle .opt.on{background:var(--accent);color:var(--on-accent);}
@@ -253,6 +253,119 @@
 
   /* inline group-summary alignment demo */
   .alignlabel{color:var(--muted);font-size:11px;margin:6px 0 2px;}
+
+  /* add/edit rule dialog — two-pane */
+  .ruledlg{width:max-content;background:var(--panel);}
+  .ruledlg .dtitle{background:var(--surface);color:var(--text);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .ruledlg .dtitle .x{color:var(--muted);cursor:pointer;}
+  .ruledlg .two{display:flex;}
+  .ruledlg .typelist{background:var(--bg);min-width:20ch;display:flex;flex-direction:column;padding:3px 0;}
+  .ruledlg .typelist .ti{display:flex;gap:8px;padding:0 10px;color:var(--text);cursor:pointer;}
+  .ruledlg .typelist .ti .g{color:var(--accent-2);width:2ch;display:inline-block;text-align:center;}
+  .ruledlg .typelist .ti:hover{background:var(--hover);}
+  .ruledlg .typelist .ti.sel{background:var(--sel);color:var(--text);}
+  .ruledlg .typelist .tsep{border-top:1px solid var(--surface);margin:3px 8px;}
+  .ruledlg .config{padding:5px 12px;display:flex;flex-direction:column;gap:4px;min-width:50ch;}
+  .ruledlg .ctitle{color:var(--muted);}
+  .ruledlg .field{display:flex;align-items:center;gap:10px;}
+  .ruledlg .flabel{color:var(--muted);width:14ch;display:inline-block;}
+  .ruledlg .fctl{background:var(--bg);color:var(--text);padding:0 6px;display:flex;justify-content:space-between;min-width:18ch;}
+  .ruledlg .fctl.focus{background:var(--well);}
+  .ruledlg .fctl .dd{color:var(--accent);}
+.ruledlg .fctl .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .ruledlg .seg-toggle{display:flex;}
+  .ruledlg .seg-toggle .opt{padding:0 9px;color:var(--text-dim);background:var(--bg);cursor:pointer;}
+  .ruledlg .seg-toggle .opt.on{background:var(--accent);color:var(--on-accent);}
+  /* swatches */
+  .sw-bar .f{color:var(--bar);} .sw-bar .e{color:var(--bar-track);}
+  .grad{letter-spacing:0;}
+  .grad .lo{color:var(--red);} .grad .m1{color:var(--amber);} .grad .hi{color:var(--green);}
+  .stopbox{display:flex;align-items:center;gap:6px;}
+  .stopdot.lo{color:var(--red);} .stopdot.mid{color:var(--amber);} .stopdot.hi{color:var(--green);}
+  .iconset-row{display:flex;gap:10px;}
+  .iconset-row .ic{display:flex;gap:5px;align-items:center;}
+  .iconset-row .ic .up{color:var(--green);} .iconset-row .ic .flat{color:var(--amber);} .iconset-row .ic .dn{color:var(--red);}
+  .ruledlg .preview{background:var(--bg);padding:1px 8px;margin-top:3px;display:flex;gap:10px;align-items:center;}
+  .ruledlg .preview .plabel{color:var(--muted);}
+  .ruledlg .applyto{color:var(--muted);font-size:11px;}
+  .ruledlg .dsep{border-top:1px solid var(--surface);margin:4px 0 3px;}
+  .ruledlg .dbtns{display:flex;gap:0;padding:0 8px 4px;justify-content:flex-end;}
+  .ruledlg .dbtn{padding:0 12px;cursor:pointer;}
+  .ruledlg .dbtn.ok{background:var(--accent);color:var(--on-accent);}
+  .ruledlg .dbtn.cancel{color:var(--muted);}
+  .ruledlg .dbtn.cancel:hover{background:var(--hover);color:var(--text);}
+
+  /* syntax tokens (color + attributes) */
+  .code{font-family:inherit;white-space:pre-wrap;}
+  .t-field{color:var(--accent-2);text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:2px;}
+  .t-fn{color:var(--accent);font-weight:bold;}
+  .t-kw{color:var(--purple);font-weight:bold;}
+  .t-op{color:var(--muted);}
+  .t-num{color:var(--green);}
+  .t-str{color:var(--amber);}
+  .t-param{color:var(--accent-2);font-style:italic;}
+  .t-cm{color:var(--muted);font-style:italic;opacity:.8;}
+  .t-err{color:var(--red);text-decoration:underline wavy var(--red);text-underline-offset:2px;}
+
+  /* expression / filter text editor */
+  .expred{width:max-content;max-width:100%;background:var(--panel);}
+  .expred .ehead{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .expred .ehead .x{color:var(--muted);cursor:pointer;}
+  .expred .editor{display:flex;background:var(--well);}
+  .expred .gutter{color:var(--muted);background:var(--bg);padding:0 6px;text-align:right;user-select:none;}
+  .expred .gutter div{line-height:1.5;}
+  .expred .lines{padding:0 8px;color:var(--text);min-width:54ch;}
+  .expred .lines .ln{line-height:1.5;}
+.expred .lines .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .expred .lines .selrange{background:var(--sel);color:var(--text);}
+  /* intellisense / autocomplete popup */
+  .acpop{background:var(--panel);width:max-content;margin-left:8ch;}
+  .acpop . achead{background:var(--surface);color:var(--muted);padding:0 8px;}
+  .acpop .acrow{display:flex;gap:8px;padding:0 8px;color:var(--text);cursor:pointer;}
+  .acpop .acrow .k{width:2ch;text-align:center;}
+  .acpop .acrow .k.fn{color:var(--accent);} .acpop .acrow .k.fld{color:var(--accent-2);} .acpop .acrow .k.kw{color:var(--purple);}
+  .acpop .acrow .meta{margin-left:auto;color:var(--muted);padding-left:18px;}
+  .acpop .acrow.sel{background:var(--sel);}
+  .acpop .acrow.sel .meta{color:var(--text-dim);}
+  /* validation strip */
+  .vstrip{display:flex;align-items:center;gap:8px;padding:0 10px;}
+  .vstrip.ok{background:var(--bg);color:var(--green);}
+  .vstrip.err{background:var(--bg);color:var(--red);}
+  .vstrip .vg{font-weight:bold;}
+  .expred .etoolbar{display:flex;gap:0;background:var(--bg);color:var(--muted);padding:0 6px;}
+  .expred .etoolbar .tb{padding:0 8px;cursor:pointer;}
+  .expred .etoolbar .tb:hover{background:var(--hover);color:var(--text);}
+  .expred .ebtns{display:flex;gap:0;padding:3px 8px;justify-content:flex-end;background:var(--panel);}
+  .expred .ebtn{padding:0 12px;cursor:pointer;}
+  .expred .ebtn.ok{background:var(--accent);color:var(--on-accent);}
+  .expred .ebtn.cancel{color:var(--muted);}
+  .expred .ebtn.cancel:hover{background:var(--hover);color:var(--text);}
+
+  /* filter builder (tree) */
+  .fbuild{width:max-content;max-width:100%;background:var(--panel);}
+  .fbuild .fbhead{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .fbuild .tree{padding:3px 8px;}
+  .fbuild .node{display:flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.55;}
+  .fbuild .conn{color:var(--faint);}
+  .fbuild .grouptag{color:var(--purple);font-weight:bold;cursor:pointer;}
+  .fbuild .grouptag .dd{color:var(--muted);font-weight:normal;}
+  .fbuild .addbtn{color:var(--green);cursor:pointer;}
+  .fbuild .delbtn{color:var(--muted);cursor:pointer;}
+  .fbuild .field{color:var(--accent-2);text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:2px;cursor:pointer;}
+  .fbuild .cmp{color:var(--muted);cursor:pointer;}
+  .fbuild .val{color:var(--amber);cursor:pointer;}
+  .fbuild .valnum{color:var(--green);cursor:pointer;}
+  .fbuild .node.sel{background:var(--sel);}
+  .fbuild .hint{color:var(--muted);font-size:11px;padding:2px 2px 0;}
+  .fbuild .fbfoot{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;gap:0;}
+  .fbuild .fbfoot .fb2{padding:0 8px;cursor:pointer;} .fbuild .fbfoot .fb2:hover{background:var(--hover);color:var(--text);}
+  .fbuild .ind{display:inline-block;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .ed-text .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .dlg .fctl .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .ruledlg .fctl .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .expred .lines .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
 </style>
 </head>
 <body>
@@ -668,6 +781,224 @@
     </div>
   </div>
   <div class="caption">Group summaries get the same dual treatment, plus the option that's unique to them — <b>alignment</b>. The quick menu's aggregate checklist is followed by a "Show summary" radio pair: <span style="color:var(--accent)">◉ Inline on group row</span> (the right-aligned <span style="color:var(--muted)">Σ …</span> seen on the group rows in the grouped view) versus <span style="color:var(--muted)">○ Aligned under column</span> (rendered in that column's position, like a mini per-group footer). The editor adds the format string and a header/footer placement toggle, with a live preview of the resulting group caption.</div>
+
+  <h2 class="sec">▸ Add / edit rule — Data Bar type selected</h2>
+  <div class="ruledlg">
+    <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+    <div class="two">
+      <div class="typelist">
+        <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+        <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+        <div class="ti sel"><span class="g">▭</span>Data Bar</div>
+        <div class="ti"><span class="g">▒</span>Color Scale</div>
+        <div class="ti"><span class="g">◆</span>Icon Set</div>
+        <div class="tsep"></div>
+        <div class="ti"><span class="g">ƒ</span>Expression</div>
+      </div>
+      <div class="config">
+        <div class="ctitle">Data Bar — Amount</div>
+        <div class="field"><span class="flabel">Apply to column</span><span class="fctl">Amount <span class="dd">▾</span></span></div>
+        <div class="field"><span class="flabel">Minimum</span><span class="fctl">Lowest value <span class="dd">▾</span></span></div>
+        <div class="field"><span class="flabel">Maximum</span><span class="fctl">Highest value <span class="dd">▾</span></span></div>
+        <div class="field"><span class="flabel">Bar fill</span><span class="seg-toggle"><span class="opt on">Solid</span><span class="opt">Gradient</span></span></div>
+        <div class="field"><span class="flabel">Direction</span><span class="seg-toggle"><span class="opt on">L→R</span><span class="opt">R→L</span></span></div>
+        <div class="field"><span class="flabel">Show value</span><span class="seg-toggle"><span class="opt on">Yes</span><span class="opt">Bar only</span></span></div>
+        <div class="preview"><span class="plabel">Preview:</span><span class="amtval" style="color:var(--text)">$31,900</span><span class="bar"><span class="f" style="color:var(--bar)">████████</span><span class="e" style="color:var(--bar-track)">░░</span></span></div>
+        <div class="applyto">Scope: this column · 12 rows · live-previews on the grid as you adjust</div>
+      </div>
+    </div>
+    <div class="dsep"></div>
+    <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The add/edit rule window is two-pane: a rule-type list on the left (Highlight Cell, Top/Bottom, Data Bar, Color Scale, Icon Set, and an Expression type below a separator — Data Bar selected), and a configurator on the right that <b>reshapes per type</b>. For Data Bar: the target column, min/max anchors (Lowest/Highest value, or a number/percentile), solid-vs-gradient fill, bar direction, and a show-value toggle — with a live bar preview. OK/Cancel band the bottom.</div>
+
+  <h2 class="sec">▸ Same window — Color Scale &amp; Icon Set types</h2>
+  <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti sel"><span class="g">▒</span>Color Scale</div>
+          <div class="ti"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:42ch">
+          <div class="ctitle">Color Scale — Margin</div>
+          <div class="field"><span class="flabel">Scale</span><span class="seg-toggle"><span class="opt on">3-color</span><span class="opt">2-color</span></span></div>
+          <div class="field"><span class="flabel">Low</span><span class="stopbox"><span class="stopdot lo">●</span><span class="fctl" style="min-width:13ch">Min <span class="dd">▾</span></span></span></div>
+          <div class="field"><span class="flabel">Midpoint</span><span class="stopbox"><span class="stopdot mid">●</span><span class="fctl" style="min-width:13ch">50th pct <span class="dd">▾</span></span></span></div>
+          <div class="field"><span class="flabel">High</span><span class="stopbox"><span class="stopdot hi">●</span><span class="fctl" style="min-width:13ch">Max <span class="dd">▾</span></span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span class="grad"><span class="lo">▒▒</span><span class="m1">▒▒</span><span class="hi">▒▒</span></span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti"><span class="g">▒</span>Color Scale</div>
+          <div class="ti sel"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:42ch">
+          <div class="ctitle">Icon Set — Margin</div>
+          <div class="field"><span class="flabel">Style</span><span class="fctl" style="min-width:14ch"><span class="iconset-row"><span class="ic"><span class="dn">▼</span><span class="flat">●</span><span class="up">▲</span></span></span><span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">▲ when</span><span class="fctl">&gt;= 26% <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">● when</span><span class="fctl">11–25% <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">▼ when</span><span class="fctl">&lt; 11% <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Show</span><span class="seg-toggle"><span class="opt on">Icon+value</span><span class="opt">Icon only</span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span class="up">▲ 41%</span><span class="flat">● 18%</span><span class="dn">▼ 8%</span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+  </div>
+  <div class="caption">The same window with two other types selected, showing how the right pane reconfigures. <b>Color Scale</b> swaps in a 2/3-color toggle and per-stop anchor pickers (Low/Mid/High, each with its colored stop dot), previewed as a <span class="grad"><span class="lo">▒</span><span class="m1">▒</span><span class="hi">▒</span></span> gradient strip. <b>Icon Set</b> offers a style picker plus per-icon threshold conditions (▲/●/▼ with their cutoffs) and an icon-only toggle — the rule behind the Margin badges in the flat grid. The Expression type (not shown) would swap in a single formula field for arbitrary conditions.</div>
+
+
+  <h2 class="sec">▸ Remaining format types — Highlight Cell, Top/Bottom, Expression</h2>
+  <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+
+    <!-- Highlight Cell -->
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti sel"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti"><span class="g">▒</span>Color Scale</div>
+          <div class="ti"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:40ch">
+          <div class="ctitle">Highlight Cell — Amount</div>
+          <div class="field"><span class="flabel">Condition</span><span class="fctl" style="min-width:14ch">Greater than <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Value</span><span class="fctl focus" style="min-width:14ch">25000<span class="caret">|</span></span></div>
+          <div class="field"><span class="flabel">Format</span><span class="fctl" style="min-width:14ch">Green fill <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Text</span><span class="seg-toggle"><span class="opt">Normal</span><span class="opt on">Bold</span><span class="opt">Italic</span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span class="heat-hi" style="font-weight:bold;padding:0 6px">$42,100</span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+
+    <!-- Top/Bottom -->
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti sel"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti"><span class="g">▒</span>Color Scale</div>
+          <div class="ti"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:40ch">
+          <div class="ctitle">Top / Bottom — Amount</div>
+          <div class="field"><span class="flabel">Rank</span><span class="seg-toggle"><span class="opt on">Top</span><span class="opt">Bottom</span></span></div>
+          <div class="field"><span class="flabel">Count</span><span class="fctl" style="min-width:10ch"><span class="ed-spin" style="padding:0"><span>3</span><span class="spinbtns" style="color:var(--accent)">▲▼</span></span></span></div>
+          <div class="field"><span class="flabel">Measure</span><span class="seg-toggle"><span class="opt on">Items</span><span class="opt">Percent</span></span></div>
+          <div class="field"><span class="flabel">Format</span><span class="fctl" style="min-width:12ch">Bold accent <span class="dd">▾</span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span style="color:var(--accent);font-weight:bold">$42,100 · $31,900 · $27,300</span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+  </div>
+  <div class="caption"><b>Highlight Cell</b> picks a comparison (Greater than / Between / Equals / Text contains…), a value (focused field with caret), a fill, and a text-attribute toggle — note Bold/Italic are real attributes now, not faked. <b>Top/Bottom</b> takes a Top-vs-Bottom rank, a count with a spin editor, an items-vs-percent measure, and a format; its preview lists the three values that would qualify.</div>
+
+  <h2 class="sec">▸ Expression rule — syntax-highlighted formula</h2>
+  <div class="ruledlg">
+    <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+    <div class="two">
+      <div class="typelist">
+        <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+        <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+        <div class="ti"><span class="g">▭</span>Data Bar</div>
+        <div class="ti"><span class="g">▒</span>Color Scale</div>
+        <div class="ti"><span class="g">◆</span>Icon Set</div>
+        <div class="tsep"></div>
+        <div class="ti sel"><span class="g">ƒ</span>Expression</div>
+      </div>
+      <div class="config" style="min-width:58ch">
+        <div class="ctitle">Expression — applies to the whole row</div>
+        <div class="field" style="align-items:flex-start"><span class="flabel">Condition</span>
+          <div class="expred" style="min-width:48ch">
+            <div class="editor">
+              <div class="gutter"><div>1</div></div>
+              <div class="lines"><div class="ln code"><span class="t-field">[Margin]</span>&nbsp;<span class="t-op">&lt;</span>&nbsp;<span class="t-num">0.10</span>&nbsp;<span class="t-kw">Or</span>&nbsp;<span class="t-op">(</span><span class="t-field">[Status]</span>&nbsp;<span class="t-op">=</span>&nbsp;<span class="t-str">&#x27;On Hold&#x27;</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-field">[Amount]</span>&nbsp;<span class="t-op">&gt;</span>&nbsp;<span class="t-num">20000</span><span class="t-op">)</span></div></div>
+            </div>
+            <div class="vstrip ok"><span class="vg">✓</span>Valid boolean expression</div>
+          </div>
+        </div>
+        <div class="field"><span class="flabel">Format</span><span class="fctl" style="min-width:14ch">Red fill + bold <span class="dd">▾</span></span></div>
+        <div class="preview"><span class="plabel">Applies when true →</span><span class="t-field" style="text-decoration:none">row painted</span></div>
+      </div>
+    </div>
+    <div class="dsep"></div>
+    <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The <b>Expression</b> type swaps the right pane for a formula editor. The condition is a boolean expression over the row's columns, tokenized and colored: <span class="t-field" style="text-decoration:none">[fields]</span> underlined cyan, <span class="t-kw">And/Or/Not</span> bold purple, <span class="t-str">'strings'</span> amber, <span class="t-num">numbers</span> green, operators muted. A validation strip confirms it parses to a boolean. Any row where it's true gets the chosen format — the most general formatting type, equivalent to a hand-written rule.</div>
+
+  <h2 class="sec">▸ Filter Builder — visual condition tree</h2>
+  <div class="fbuild">
+    <div class="fbhead"><span>Filter Builder</span><span>✕</span></div>
+    <div class="tree">
+      <div class="node"><span class="grouptag">And<span class="dd"> ▾</span></span><span class="addbtn">＋</span><span class="hint" style="padding:0">root group — all must match</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">├─</span><span class="field">[Region]</span><span class="cmp">is any of <span style="color:var(--muted)">▾</span></span><span class="val">'East', 'West'</span><span class="addbtn">＋</span><span class="delbtn">✕</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">├─</span><span class="field">[Amount]</span><span class="cmp">&gt;= <span style="color:var(--muted)">▾</span></span><span class="valnum">10000</span><span class="addbtn">＋</span><span class="delbtn">✕</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">├─</span><span class="grouptag">Or<span class="dd"> ▾</span></span><span class="addbtn">＋</span><span class="delbtn">✕</span><span class="hint" style="padding:0">nested group — any matches</span></div>
+      <div class="node"><span class="ind" style="width:6ch"></span><span class="conn">│&nbsp;├─</span><span class="field">[Status]</span><span class="cmp">= <span style="color:var(--muted)">▾</span></span><span class="val">'Shipped'</span><span class="delbtn">✕</span></div>
+      <div class="node sel"><span class="ind" style="width:6ch"></span><span class="conn">│&nbsp;└─</span><span class="field">[Status]</span><span class="cmp">= <span style="color:var(--muted)">▾</span></span><span class="val">'Processing'</span><span class="delbtn">✕</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">└─</span><span class="field">[Date]</span><span class="cmp">between <span style="color:var(--muted)">▾</span></span><span class="valnum">#2026-05-01# … #2026-05-31#</span><span class="delbtn">✕</span></div>
+    </div>
+    <div class="fbfoot"><span class="fb2">＋ Condition</span><span class="fb2">＋ Group</span><span class="fb2">⌫ Clear</span><span class="fb2">ƒ Edit as Text</span></div>
+  </div>
+  <div class="caption">The visual Filter Builder renders the condition as an editable tree: the green <span style="color:var(--green)">And</span>/<span style="color:var(--purple)">Or</span> group operators (clickable to toggle), child conditions connected by <span style="color:var(--muted)">├─ └─</span> box-drawing, and a nested Or-group indented one level deeper. Each condition is three clickable cells — <span class="t-field" style="text-decoration:none">field</span> · comparison · value — with ＋/✕ to add a sibling or remove. The selected condition highlights. The footer's "Edit as Text" jumps to the expression editor below.</div>
+
+  <h2 class="sec">▸ Filter — text editor with syntax highlighting &amp; IntelliSense</h2>
+  <div class="expred">
+    <div class="ehead"><span>Filter Editor — text mode</span><span class="x">✕</span></div>
+    <div class="etoolbar"><span class="tb">↶ Undo</span><span class="tb">↷ Redo</span><span class="tb">ƒ Functions ▾</span><span class="tb">[ ] Columns ▾</span><span class="tb">⛶ Visual Builder</span></div>
+    <div class="editor">
+      <div class="gutter"><div>1</div><div>2</div><div>3</div></div>
+      <div class="lines">
+        <div class="ln code"><span class="t-field">[Region]</span>&nbsp;<span class="t-kw">In</span>&nbsp;<span class="t-op">(</span><span class="t-str">&#x27;East&#x27;</span><span class="t-op">,</span>&nbsp;<span class="t-str">&#x27;West&#x27;</span><span class="t-op">)</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-field">[Amount]</span>&nbsp;<span class="t-op">&gt;=</span>&nbsp;<span class="t-num">10000</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-kw">Not</span>&nbsp;<span class="t-field">[Status]</span>&nbsp;<span class="t-op">=</span>&nbsp;<span class="t-str">&#x27;Cancelled&#x27;</span></div>
+        <div class="ln code"><span class="t-kw">And</span>&nbsp;<span class="t-fn">Contains</span><span class="t-op">(</span><span class="t-fn">Upper</span><span class="t-op">(</span><span class="t-field">[Rep]</span><span class="t-op">)</span><span class="t-op">,</span>&nbsp;<span class="t-op">&#x27;</span><span class="t-field">CH</span><span class="caret">|</span></div>
+        <div class="ln code">&nbsp;</div>
+      </div>
+    </div>
+    <!-- IntelliSense popup anchored under the caret on line 2 -->
+    <div class="acpop">
+      <div class="achead">functions &amp; columns</div>
+      <div class="acrow sel"><span class="k fn">ƒ</span>Contains(<span style="color:var(--muted)">text, substr</span>)<span class="meta">bool</span></div>
+      <div class="acrow"><span class="k fn">ƒ</span>StartsWith(<span style="color:var(--muted)">text, sub</span>)<span class="meta">bool</span></div>
+      <div class="acrow"><span class="k fld">[]</span>[Rep]<span class="meta">string</span></div>
+      <div class="acrow"><span class="k fld">[]</span>[Region]<span class="meta">string</span></div>
+      <div class="acrow"><span class="k kw">·</span>And<span class="meta">keyword</span></div>
+    </div>
+    <div class="vstrip err"><span class="vg">✕</span>Unbalanced parenthesis — expected ')' at column 26</div>
+    <div class="ebtns"><span class="ebtn ok">Apply</span><span class="ebtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The text filter editor is the power-user surface: a multi-line code field with a line-number gutter, full syntax highlighting (same tokenizer as the Expression rule), a toolbar with undo/redo plus Functions/Columns inserters and a jump back to the Visual Builder. An <b>IntelliSense</b> popup drops under the caret with functions and columns (signatures and return types shown, current item selected). The validation strip turns <span style="color:var(--red)">red</span> with a precise error and column number when the expression doesn't parse — here a deliberately unbalanced paren. A third, fully-functional example: <span class="t-fn">Contains</span><span class="t-op">(</span><span class="t-fn">Upper</span><span class="t-op">(</span><span class="t-field">[Rep]</span><span class="t-op">)</span><span class="t-op">,</span>&nbsp;<span class="t-str">&#x27;CHEN&#x27;</span><span class="t-op">)</span>&nbsp;<span class="t-kw">Or</span>&nbsp;<span class="t-field">[Date]</span>&nbsp;<span class="t-kw">Between</span>&nbsp;<span class="t-num">#2026-05-01#</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-num">#2026-05-31#</span>.</div>
 
 </div>
 

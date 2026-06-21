@@ -112,7 +112,7 @@
   .md-task.done .box{color:var(--green);}
   .md-hr{color:var(--faint);}
   .md-syn{color:var(--mdsyn);}  /* visible markdown syntax marks (on active line) */
-  .caret{background:var(--caret);color:var(--caret);}
+.caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .seltext{background:var(--sel);color:var(--text);}
   /* active line highlight */
   .ln.active{background:var(--well);}
@@ -135,6 +135,9 @@
   .status.alt .k{color:var(--accent-2);}
 
   u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--caret);animation:ibeamblink 1.06s steps(1) infinite;}
 </style>
 </head>
 <body>

@@ -68,7 +68,7 @@
   .btn.danger{background:var(--red);color:var(--on-accent);}
   /* inputs: well fill, padded */
   .field{background:var(--well);color:var(--text);padding:1px 8px;display:inline-block;}
-  .field .caret{background:var(--accent);color:var(--accent);}
+.field .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .field.focus{background:var(--well);outline:0;}
 
   /* elevation shadow: a darker fill strip on right+bottom (whole-cell, not blur) */
@@ -105,6 +105,9 @@
   .ramp{display:flex;gap:0;margin:2px 0 0;}
   .ramp div{padding:3px 12px;color:var(--text-dim);font-size:11px;}
   u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .field .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
 </style>
 </head>
 <body>

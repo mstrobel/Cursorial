@@ -53,7 +53,7 @@
   .chip.dup .x{color:var(--red);}
   .taginput .tcaret{display:inline-flex;align-items:center;color:var(--text);min-width:6ch;}
   .taginput .tcaret .ph{color:var(--muted);}
-  .taginput .tcaret .caret{background:var(--accent);color:var(--accent);}
+.taginput .tcaret .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .taginput.full{background:var(--well-warn);}
 
   /* token completion dropdown */
@@ -76,7 +76,7 @@
   .masked{display:inline-flex;background:var(--well);padding:0 8px;color:var(--text);min-width:20ch;}
   .masked.focus{background:var(--well-focus);}
   .masked .filled{color:var(--text);} .masked .slot{color:var(--muted);} .masked .lit{color:var(--muted);}
-  .masked .caret{background:var(--accent);color:var(--accent);}
+.masked .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .masked.bad{background:var(--well-err);}
 
   /* ===== part editor (date/time segments) ===== */
@@ -118,6 +118,10 @@
   .taginput.disabled .chip .x{color:var(--faint);}
 
   u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .taginput .tcaret .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .masked .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
 </style>
 </head>
 <body>

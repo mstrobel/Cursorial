@@ -111,7 +111,7 @@
   .rev-acc { background: var(--accent); color: var(--on-accent); } /* pressed / default */
   .dis   { background: var(--disabled-bg); color: var(--muted); }
   .ph    { color: var(--muted); }
-  .caret { background: var(--accent); color: var(--accent); }
+.caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   /* blinking underscore cursor for in-bracket focus (checkbox/radio) — whole-cell, no sub-cell rule */
   .ucaret { color: var(--accent); animation: blink 1.06s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -215,6 +215,9 @@
   table.keys td.c { color: var(--muted); font-size: 11px; white-space: normal; }
   table.keys td.tk { color: var(--muted); font-size: 11px; }
 
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
 </style>
 </head>
 <body>
@@ -437,11 +440,11 @@
       <div class="cell-title">▸ Hyperlink</div>
       <div class="rows">
         <div class="row"><span class="lbl">normal</span><span style="color:var(--accent)"><u>readme.md</u></span></div>
-        <div class="row"><span class="lbl">hovered</span><span class="hover" style="color:var(--accent-2)"><u>readme.md</u></span></div>
-        <div class="row"><span class="lbl">focused</span><span class="rev"><u>readme.md</u></span></div>
+        <div class="row"><span class="lbl">hovered</span><span style="color:var(--accent-2)"><u>readme.md</u></span></div>
+        <div class="row"><span class="lbl">focused</span><span style="color:var(--accent-2);font-weight:bold"><u>readme.md</u></span></div>
         <div class="row"><span class="lbl">visited</span><span style="color:var(--purple)"><u>readme.md</u></span></div>
       </div>
-      <div class="note">underline is genuine cell decoration</div>
+      <div class="note">underline is genuine cell decoration · hover brightens, focus brightens + bolds — no fill</div>
     </section>
 
     <!-- TreeView -->

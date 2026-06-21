@@ -76,7 +76,7 @@
   .cp-field{display:flex;align-items:center;gap:6px;}
   .cp-field .fl{color:var(--muted);width:5ch;display:inline-block;}
   .cp-field .fv{background:var(--bg);color:var(--text);padding:0 6px;min-width:9ch;display:flex;justify-content:space-between;}
-  .cp-field .fv.focus{background:var(--well);} .cp-field .fv .caret{background:var(--accent);color:var(--accent);}
+  .cp-field .fv.focus{background:var(--well);}.cp-field .fv .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .cp-field .fv.hex{min-width:12ch;}
   .cp-mode{display:flex;gap:0;margin:2px 0;}
   .cp-mode .mo{padding:0 8px;color:var(--text-dim);background:var(--bg);cursor:pointer;}
@@ -102,7 +102,7 @@
   .fd-pathedit .ptxt{white-space:pre;}
   .fd-pathedit .pdim{color:var(--muted);}
   .fd-pathedit .ghost{color:var(--faint);}
-  .fd-pathedit .caret{background:var(--accent);color:var(--accent);}
+.fd-pathedit .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .fd-pathedit .pe-go{margin-left:auto;color:var(--accent);padding-left:8px;cursor:pointer;}
   /* path completion popup (Claude-Code-style) */
   .pathpop{position:relative;z-index:5;background:var(--panel);width:max-content;min-width:34ch;box-shadow:0 0 0 1px var(--faint);margin:0 2px;}
@@ -156,7 +156,7 @@
   .icnf{display:inline-block;width:1ch;text-align:center;}
   .fd-newfolder .cell .nm{color:var(--green);}
   .fd-newfolder .nmedit{background:var(--well);color:var(--text);padding:0 4px;}
-  .fd-newfolder .nmedit .caret{background:var(--accent);color:var(--accent);}
+.fd-newfolder .nmedit .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
 
   /* view-mode switcher (right side of path bar) */
   .fd-viewsw{display:flex;gap:0;margin-left:4px;}
@@ -184,7 +184,7 @@
   .fd-frow{display:flex;align-items:center;gap:10px;}
   .fd-frow .fl{color:var(--muted);width:10ch;display:inline-block;}
   .fd-frow .fname{flex:1;background:var(--well);color:var(--text);padding:0 6px;min-width:30ch;display:flex;justify-content:space-between;}
-  .fd-frow .fname .caret{background:var(--accent);color:var(--accent);}
+.fd-frow .fname .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
   .fd-frow .filter{background:var(--bg);color:var(--text);padding:0 6px;min-width:24ch;display:flex;justify-content:space-between;}
   .fd-frow .filter .dd{color:var(--accent);}
   .fd-actions{display:flex;gap:0;margin-left:auto;}
@@ -209,6 +209,12 @@
   .confirm .cbtn.no{color:var(--muted);} .confirm .cbtn.no:hover{background:var(--hover);color:var(--text);}
 
   u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .cp-field .fv .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .fd-pathedit .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .fd-newfolder .nmedit .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .fd-frow .fname .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
 </style>
 </head>
 <body>

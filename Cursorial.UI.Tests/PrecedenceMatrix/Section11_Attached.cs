@@ -78,14 +78,39 @@ public class Section11_Attached
         Assert.Equal(PropertyEffects.AffectsArrange, property.GetEffects(typeof(Host))); // Global only
     }
 
-    [Fact]
-    public void M201_EffectsWrites_AfterTouch_Throw()
+    [Fact] // M201 (amended): resolving effects freezes the global lane + the resolved type's own chain (per-type).
+    public void M201_EffectsResolution_FreezesGlobalAndResolvedChain()
     {
         var property = UIProperty.RegisterAttached<Tab, Host, int>(UniqueName("M201"));
-        _ = new Host().GetValue(property); // any touch closes the registration window
+        _ = property.GetEffects(typeof(Host)); // Host resolves its effects
 
         Assert.Throws<InvalidOperationException>(() => property.GlobalEffects = PropertyEffects.AffectsRender);
         Assert.Throws<InvalidOperationException>(() => property.AddPerTypeEffects(typeof(Host), PropertyEffects.AffectsRender));
+        Assert.Throws<InvalidOperationException>(() => property.AddPerTypeEffects(typeof(UIObject), PropertyEffects.AffectsRender)); // a base
+    }
+
+    [Fact] // M201a (amended): the AddOwner cascade fix — a sibling/derived registration after another type resolved succeeds.
+    public void M201a_EffectsRegistration_AfterSiblingResolution_Succeeds()
+    {
+        var property = UIProperty.RegisterAttached<Tab, Host, int>(UniqueName("M201a"));
+        _ = property.GetEffects(typeof(Host));
+
+        property.AddPerTypeEffects(typeof(OtherHost), PropertyEffects.AffectsRender); // unrelated sibling
+        Assert.Equal(PropertyEffects.AffectsRender, property.GetEffects(typeof(OtherHost)));
+
+        property.AddPerTypeEffects(typeof(DerivedHost), PropertyEffects.AffectsMeasure); // derived
+        Assert.Equal(PropertyEffects.AffectsMeasure, property.GetEffects(typeof(DerivedHost)));
+    }
+
+    [Fact] // M201b (amended): metadata resolution does NOT freeze the effects lane (the decouple).
+    public void M201b_MetadataResolution_DoesNotFreezeEffects()
+    {
+        var property = UIProperty.RegisterAttached<Tab, Host, int>(UniqueName("M201b"));
+        _ = property.GetMetadata(typeof(Host)); // metadata-only resolution
+
+        property.GlobalEffects = PropertyEffects.AffectsRender;                   // allowed — effects not resolved
+        property.AddPerTypeEffects(typeof(Host), PropertyEffects.AffectsMeasure); // allowed
+        Assert.Equal(PropertyEffects.AffectsRender | PropertyEffects.AffectsMeasure, property.GetEffects(typeof(Host)));
     }
 
     [Fact]

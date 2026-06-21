@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 
 // ReSharper disable CheckNamespace
 
@@ -45,11 +46,13 @@ public class StyledProperty<T> : UIProperty
     /// chain (registration metadata as the root, overrides applied base-first — <c>Changed</c>
     /// callbacks chain base-first, defaults replace, other members fall through when
     /// <see langword="null"/>) and cached per concrete type with a monomorphic last-type inline
-    /// cache. The first resolution for any type closes the property's effects registration window.
+    /// cache. Caching a type's resolution seals further metadata <em>overrides</em> for it (the per-type
+    /// <see cref="OverrideMetadata{TOwner}"/> gate); it does NOT freeze the effects lane (the M201 decouple).
     /// </summary>
     public PropertyMetadata<T> GetMetadata(Type forType)
     {
         ArgumentNullException.ThrowIfNull(forType);
+
         if (_lastResolution is { } last && ReferenceEquals(forType, last.Type))
             return last.Metadata;
 
@@ -58,7 +61,10 @@ public class StyledProperty<T> : UIProperty
             resolution = new CachedResolution(forType, ResolveMetadata(forType));
             var grown = new Dictionary<Type, CachedResolution>(_resolved) { [forType] = resolution };
             _resolved = grown.ToFrozenDictionary();
-            CloseRegistrationWindow();
+            // NB: metadata resolution no longer freezes the EFFECTS lane (the M201 decouple) — it only seals
+            // metadata-override for this type (the `_resolved.Keys` gate in OverrideMetadata). Effects freeze
+            // per-type on their own resolution (GetEffects), so a sibling owner reading a value can't lock out
+            // a later sibling's AffectsX registration (the TypeInitializationException cascade fix).
         }
 
         _lastResolution = resolution; // a reference republish — atomic, allocation-free on hits
@@ -177,6 +183,9 @@ public class StyledProperty<T> : UIProperty
         List<PropertyMetadata<T>>? applicable = null;
         for (var type = forType; type is not null; type = type.BaseType)
         {
+            // Ensure static constructor of type has run (effects/overrides processed).
+            RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+
             if (overrides.TryGetValue(type, out var overrideMetadata))
                 (applicable ??= []).Add(overrideMetadata);
         }

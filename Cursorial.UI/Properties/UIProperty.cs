@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 // ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
@@ -25,9 +27,15 @@ public abstract class UIProperty
     internal static readonly UIProperty UnsetTargetProperty = new SentinelProperty("(unset)");
 
     private Dictionary<Type, PropertyEffects>? _perTypeEffects;
-    private Dictionary<Type, PropertyEffects>? _resolvedEffects;
+
+    // Per-type resolved-effects cache AND the per-type "effects touched" record (M201): a type's presence here
+    // freezes per-type effect registration for that type and its ancestors — but a SIBLING owner resolving the
+    // property no longer locks out a later sibling's registration (the cascade fix; the effects analogue of the
+    // OverrideMetadata `_resolved.Keys` gate). COW-frozen + atomically republished so the registration-side `.Keys`
+    // scan is safe against a concurrent resolve on another thread (process-global statics, parallel test hosts).
+    private FrozenDictionary<Type, PropertyEffects> _resolvedEffects = FrozenDictionary<Type, PropertyEffects>.Empty;
     private PropertyEffects _globalEffects;
-    private bool _registrationWindowClosed;
+    private readonly bool _permanentlySealed; // the A14 sentinel: never registerable
 
     private protected UIProperty(
         string name, Type propertyType, Type ownerType,
@@ -58,7 +66,7 @@ public abstract class UIProperty
         PropertyType = propertyType;
         OwnerType = typeof(UIObject);
         Id = -1;
-        _registrationWindowClosed = true;
+        _permanentlySealed = true;
     }
 
     /// <summary>
@@ -111,37 +119,62 @@ public abstract class UIProperty
         }
     }
 
-    /// <summary>Whether the registration window has closed (first metadata resolution or effects query).</summary>
-    internal bool IsRegistrationWindowClosed => _registrationWindowClosed;
+    /// <summary>Whether the GLOBAL effects lane is frozen — <see langword="true"/> once any type has resolved this
+    /// property's effects (a <see cref="GlobalEffects"/> write applies to every type, so it would alter an
+    /// already-resolved result). Per-type effect registration is gated separately and PER-TYPE
+    /// (<see cref="AddPerTypeEffects"/>), so a sibling owner's resolution does not freeze it.</summary>
+    internal bool IsRegistrationWindowClosed => _permanentlySealed || _resolvedEffects.Count > 0;
 
     /// <summary>
     /// ORs <paramref name="effects"/> into the per-type lane for <paramref name="forType"/> (ledger
     /// A1). Per-type effects are resolved through the runtime type's inheritance chain — effects
-    /// registered for a base type apply to derived types, never the reverse. Throws once the
-    /// registration window has closed.
+    /// registered for a base type apply to derived types, never the reverse. Registration for
+    /// <paramref name="forType"/> is frozen PER-TYPE (M201): it throws only once <paramref name="forType"/>
+    /// or a descendant has resolved this property's effects (which would invalidate that cached result) —
+    /// a sibling owner resolving the property first does NOT freeze it (the cascade fix), exactly mirroring
+    /// <see cref="StyledProperty{T}.OverrideMetadata{TOwner}"/>'s per-type metadata gate.
     /// </summary>
     internal void AddPerTypeEffects(Type forType, PropertyEffects effects)
     {
         ArgumentNullException.ThrowIfNull(forType);
-        ThrowIfRegistrationWindowClosed();
+        if (FindEffectsSealConflict(forType) is { } resolvedType)
+        {
+            throw new InvalidOperationException(
+                $"Cannot register per-type effects for '{this}' on '{forType.Name}': an instance of " +
+                $"'{resolvedType.Name}' (a '{forType.Name}') has already resolved this property's effects. " +
+                "Register effects from the owner type's static constructor, before any instance of it (or a " +
+                "derived type) touches the property.");
+        }
 
         var perType = _perTypeEffects ??= [];
         perType[forType] = perType.TryGetValue(forType, out var existing) ? existing | effects : effects;
+    }
+
+    // The first already-effects-resolved type S with forType.IsAssignableFrom(S) — registering effects for
+    // forType would alter S's cached resolution (S is forType or a descendant of it). null ⇒ registration for
+    // forType is still open. This is the EFFECTS analogue of OverrideMetadata's _resolved.Keys gate (M201).
+    private Type? FindEffectsSealConflict(Type forType)
+    {
+        if (_permanentlySealed)
+            return OwnerType;
+        foreach (var resolved in _resolvedEffects.Keys)
+            if (forType.IsAssignableFrom(resolved))
+                return resolved;
+        return null;
     }
 
     /// <summary>
     /// The effective <see cref="PropertyEffects"/> for <paramref name="forType"/>: the per-type lane
     /// resolved through the inheritance chain, ORed with the global lane (A1:
     /// <c>perType | Global</c>), plus <see cref="PropertyEffects.Inherits"/> when the property
-    /// inherits. The first query closes the registration window; results are cached per type.
+    /// inherits. Caching <paramref name="forType"/>'s result also freezes per-type effect registration for it
+    /// and its ancestors (M201) — but PER-TYPE, so resolving one type never freezes a sibling's registration.
     /// </summary>
     public PropertyEffects GetEffects(Type forType)
     {
         ArgumentNullException.ThrowIfNull(forType);
-        _registrationWindowClosed = true;
 
-        var cache = _resolvedEffects ??= [];
-        if (cache.TryGetValue(forType, out var effects))
+        if (_resolvedEffects.TryGetValue(forType, out var effects))
             return effects;
 
         effects = _globalEffects | (Inherits ? PropertyEffects.Inherits : PropertyEffects.None);
@@ -154,7 +187,10 @@ public abstract class UIProperty
             }
         }
 
-        cache[forType] = effects;
+        // Cache + per-type seal: forType's own effects are fully registered by now (its static ctor ran before
+        // any instance of it could resolve). COW republish so the registration-side `.Keys` scan never sees a
+        // torn dictionary (process-global statics + parallel test hosts).
+        _resolvedEffects = new Dictionary<Type, PropertyEffects>(_resolvedEffects) { [forType] = effects }.ToFrozenDictionary();
         return effects;
     }
 
@@ -251,24 +287,19 @@ public abstract class UIProperty
     internal virtual IValueEntry CreateStyleEntry(object? boxedValue, bool hasValue)
         => throw new NotSupportedException($"'{this}' does not support frame entries.");
 
-    /// <summary>
-    /// Closes the registration window: both effects lanes become read-only. Invoked on the first
-    /// metadata resolution (a <c>GetValue</c> counts — it resolves the default) and the first
-    /// <see cref="GetEffects"/> query.
-    /// </summary>
-    internal void CloseRegistrationWindow() => _registrationWindowClosed = true;
 
     /// <inheritdoc/>
     public override string ToString() => $"{OwnerType.Name}.{Name}";
 
     private void ThrowIfRegistrationWindowClosed()
     {
-        if (_registrationWindowClosed)
+        if (IsRegistrationWindowClosed)
         {
             throw new InvalidOperationException(
-                $"The registration window for '{this}' has closed (the property's metadata or effects " +
-                "have been resolved); its effects lanes are frozen. Register effects from the owner " +
-                "type's static constructor, before any instance touches the property.");
+                $"The GLOBAL effects lane for '{this}' is frozen (an instance has already resolved this " +
+                "property's effects). Register global effects from the declaring type's static constructor, " +
+                "before any instance touches the property. (Per-type effects use AddPerTypeEffects, which is " +
+                "gated per-type and is not affected by a sibling type's resolution.)");
         }
     }
 

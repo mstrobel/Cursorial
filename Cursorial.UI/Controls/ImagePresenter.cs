@@ -111,7 +111,7 @@ public class ImagePresenter : DrawnContentPresenter
         var content = _imageContent ??= BuildContent();
         if (content is null)
             return Size.Empty;
-
+        
         var size = content.Measure(availableSize, UIApplication.Current!.Capabilities.Output); // delegated sizing (handles null/single-axis)
         return FloorVisibleImageSize(size, availableSize); // a visible image must never collapse to a 0 extent on either axis
     }

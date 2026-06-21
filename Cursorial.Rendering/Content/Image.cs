@@ -35,6 +35,9 @@ namespace Cursorial.Rendering.Content;
 /// </remarks>
 public class Image : FragmentContent
 {
+    protected internal const int DefaultCellPixelHeight = 20;
+    protected internal const int DefaultCellPixelWidth = 10;
+
     private readonly ImageData? _data;
     private (int Width, int Height)? _resolvedSourcePixelSize;
     private DecodedImage? _resampledImage;
@@ -210,6 +213,9 @@ public class Image : FragmentContent
 
     internal static Size ResolveRenderSize(Size requestedSize, in Rect bounds, (int Width, int Height) pixelSize, OutputCapabilities capabilities)
     {
+        if (requestedSize.IsEmpty)
+            requestedSize = requestedSize with { Columns = bounds.Columns };
+
         var cellPixelSize = (Width: capabilities.Window.CellPixelWidth, Height: capabilities.Window.CellPixelHeight);
         var cellAspectRatio = (double?)cellPixelSize.Width / cellPixelSize.Height ?? 0.5;
         var aspectRatio = (double) pixelSize.Width / pixelSize.Height;
@@ -221,6 +227,9 @@ public class Image : FragmentContent
 
         if (requestedSize is { Columns: 0, Rows: 0 })
         {
+            if (cellPixelSize is (null, null))
+                cellPixelSize = (DefaultCellPixelWidth, DefaultCellPixelHeight);
+
             if (cellPixelSize is ({} cpWidth, _))
             {
                 var columns = (int) Math.Round((double) pixelSize.Width / cpWidth);

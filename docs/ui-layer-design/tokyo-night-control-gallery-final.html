@@ -112,6 +112,19 @@
   .dis   { background: var(--disabled-bg); color: var(--muted); }
   .ph    { color: var(--muted); }
   .caret { background: var(--accent); color: var(--accent); }
+  /* blinking underscore cursor for in-bracket focus (checkbox/radio) — whole-cell, no sub-cell rule */
+  .ucaret { color: var(--accent); animation: blink 1.06s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  /* focused+value: the glyph and the underscore cursor alternate in the same cell (two whole-cell frames) */
+  .ucell { display: inline-block; position: relative; }
+  .ucell .g { animation: glyphhide 1.06s steps(1) infinite; }
+  .ucell .u { position: absolute; left: 0; color: var(--accent); animation: glyphshow 1.06s steps(1) infinite; }
+  @keyframes glyphhide { 50% { opacity: 0; } }
+  @keyframes glyphshow { 0%, 50% { opacity: 0; } 50.01%, 100% { opacity: 1; } }
+  .boxfocus { color: var(--text); }   /* focused check/radio keeps normal colors; the cursor carries focus */
+  /* foreground-only hover for check/radio: brackets brighten to accent, no fill */
+  .boxhover { color: var(--text); }
+  .boxhover .brk { color: var(--accent); }
   .selrange { background: var(--sel); color: var(--text); }
   .marker { color: var(--accent); }     /* gutter focus marker */
   .marker-sp { color: transparent; }    /* gutter placeholder, keeps cell */
@@ -215,8 +228,8 @@
   <div class="legend">
     <b>Cell-faithful conventions:</b> no sub-cell borders or focus rings.
     Text fields show focus as an intensified <b>well</b> fill + caret · buttons & pickable items use <b>reverse-video</b> ·
-    pressed/default buttons reverse-video in accent · panels are bounded by fill, not lines ·
-    the only line accents are whole-cell underlines, brackets <b>[ ]</b>/<b>( )</b>, and a gutter <b>▸</b> marker.
+    check/radio show focus as a <b>blinking underscore cursor</b> inside the brackets · pressed/default buttons reverse-video in accent ·
+    panels are bounded by fill, not lines · the only line accents are whole-cell underlines, brackets <b>[ ]</b>/<b>( )</b>, and a gutter <b>▸</b> marker.
   </div>
 
   <div class="grid">
@@ -284,11 +297,12 @@
         <div class="row"><span class="lbl">unchecked</span><span style="color:var(--text)">[ ] verbose</span></div>
         <div class="row"><span class="lbl">checked</span><span style="color:var(--text)">[<span style="color:var(--green)">✓</span>] verbose</span></div>
         <div class="row"><span class="lbl">indeterminate</span><span style="color:var(--text)">[<span style="color:var(--amber)">▪</span>] verbose</span></div>
-        <div class="row"><span class="lbl">hovered</span><span class="hover" style="color:var(--text)">[<span style="color:var(--green)">✓</span>] verbose</span></div>
-        <div class="row"><span class="lbl">focused</span><span class="rev">[✓] verbose</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="boxhover"><span class="brk">[</span><span style="color:var(--green)">✓</span><span class="brk">]</span> verbose</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="boxfocus">[<span class="ucaret">_</span>] verbose</span></div>
+        <div class="row"><span class="lbl">focused+checked</span><span class="boxfocus">[<span class="ucell"><span class="g" style="color:var(--green)">✓</span><span class="u">_</span></span>] verbose</span></div>
         <div class="row"><span class="lbl">disabled</span><span style="color:var(--muted)">[<span style="color:var(--faint)">✓</span>] verbose</span></div>
       </div>
-      <div class="note">bracket cells are the box · focus = reverse-video</div>
+      <div class="note">bracket cells are the box · hover brightens the brackets · focus = blinking underscore cursor <span style="color:var(--accent)">_</span> inside the brackets (alternates with ✓ when checked)</div>
     </section>
 
     <!-- RadioButton -->
@@ -297,11 +311,12 @@
       <div class="rows">
         <div class="row"><span class="lbl">unselected</span><span style="color:var(--text)">( ) tcp</span></div>
         <div class="row"><span class="lbl">selected</span><span style="color:var(--text)">(<span style="color:var(--accent)">●</span>) tcp</span></div>
-        <div class="row"><span class="lbl">hovered</span><span class="hover" style="color:var(--text)">(<span style="color:var(--accent)">●</span>) tcp</span></div>
-        <div class="row"><span class="lbl">focused</span><span class="rev">(●) tcp</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="boxhover"><span class="brk">(</span><span style="color:var(--accent)">●</span><span class="brk">)</span> tcp</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="boxfocus">(<span class="ucaret">_</span>) tcp</span></div>
+        <div class="row"><span class="lbl">focused+selected</span><span class="boxfocus">(<span class="ucell"><span class="g" style="color:var(--accent)">●</span><span class="u">_</span></span>) tcp</span></div>
         <div class="row"><span class="lbl">disabled</span><span style="color:var(--muted)">(<span style="color:var(--faint)">●</span>) tcp</span></div>
       </div>
-      <div class="note">paren cells are the bullet · focus = reverse-video</div>
+      <div class="note">paren cells are the bullet · hover brightens the parens · focus = blinking underscore cursor <span style="color:var(--accent)">_</span> inside the parens (alternates with ● when selected)</div>
     </section>
 
     <!-- ToggleSwitch -->

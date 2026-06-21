@@ -56,7 +56,9 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("row 0", screen);        // the scrollable content
     }
 
-    [Fact] // The chessboard page (#107): content-assisted scrolling snaps the offset to whole tiles via IScrollContentHost.
+    [Fact] // The chessboard page (#107): content-assisted LEADING-EDGE snapping via IScrollContentHost. The viewport
+           // height (24) is a whole number of 4-row tiles, so the vertical offsets are exact (4, then 0); horizontally
+           // the viewport width depends on the vertical scrollbar, so we assert the leading-edge invariant + direction.
     public void ChessboardPage_SnapsScrollToWholeTiles()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
@@ -65,7 +67,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         {
             Content = board,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, // v1 horizontal Auto degrades; Hidden scrolls without a bar
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, // Hidden scrolls without a bar
             Focusable = true,
         };
         host.ShowRoot(sv);
@@ -75,21 +77,39 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         host.SendKey(Key.DownArrow);
         host.RunUntilIdle();
-        Assert.Equal(4, sv.VerticalOffset);   // snapped a whole 4-row tile, not 1 cell
+        Assert.Equal(4, sv.VerticalOffset);   // bottom edge snapped onto a 4-row tile boundary (24 → 28 → offset 4)
 
         host.SendKey(Key.RightArrow);
         host.RunUntilIdle();
-        Assert.Equal(8, sv.HorizontalOffset); // snapped a whole 8-column tile
+        var h = sv.HorizontalOffset;
+        Assert.InRange(h, 1, 8);              // leading-edge: scroll right advances 1..8 cells to align the right edge
 
-        // Reverse direction at an exact tile boundary snaps a WHOLE tile back (the audit-found boundary case — up/left
-        // at a boundary must step the full tile, not degenerate to a 1-cell nudge).
+        // Reverse direction returns to the start: up snaps the top edge to 0, left snaps the left edge to 0.
         host.SendKey(Key.UpArrow);
         host.RunUntilIdle();
-        Assert.Equal(0, sv.VerticalOffset);   // back a whole 4-row tile (was 3 before the LineStep boundary fix)
+        Assert.Equal(0, sv.VerticalOffset);
 
         host.SendKey(Key.LeftArrow);
         host.RunUntilIdle();
-        Assert.Equal(0, sv.HorizontalOffset); // back a whole 8-column tile
+        Assert.Equal(0, sv.HorizontalOffset);
+    }
+
+    [Fact] // Leading-edge snap math (the user's reported case), exercised directly with a controlled non-tile-multiple
+           // viewport: scrolling right brings the partially-hidden right tile fully into view rather than leaving it cut.
+    public void Chessboard_LeadingEdgeSnap_RevealsTheTrailingTile()
+    {
+        var board = new Chessboard();
+        IScrollContentHost host = board;
+        host.SetViewport(new Size(77, 24)); // 77 is NOT a multiple of the 8-wide tile → a tile would be cut
+
+        // From the far left (offset 0): right edge 77 → next boundary 80 → offset 3 (tile 9 fully visible). step 3.
+        Assert.Equal(3, host.LineStep(0, +1, vertical: false));
+        // From offset 3 (right edge already on 80): next boundary 88 → offset 11. step 8 (a whole tile further).
+        Assert.Equal(8, host.LineStep(3, +1, vertical: false));
+        // Scrolling left snaps the LEFT edge: from 11 → previous boundary 8. step 3.
+        Assert.Equal(3, host.LineStep(11, -1, vertical: false));
+        // From 8 (a boundary) → previous boundary 0. step 8.
+        Assert.Equal(8, host.LineStep(8, -1, vertical: false));
     }
 
     [Fact] // The virtualized ListBox page (#107): a 10k-item list shows instantly (only the band realized) and End jumps

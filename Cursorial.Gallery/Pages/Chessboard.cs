@@ -70,27 +70,35 @@ internal sealed class Chessboard : Panel, IScrollContentHost
 
     public void InvalidateRealization() { } // the whole board is realized — nothing to re-realize
 
-    // The unsigned cell magnitude that lands the offset on the adjacent tile boundary (the whole-tile snap), both
-    // axes: down → the next tile's top; up → the previous tile's top when already AT a boundary, else this tile's
-    // top (mid-tile up snaps to the tile's own top first). The ScrollViewer applies the sign.
+    // LEADING-EDGE snap (the chosen model): a line scroll snaps the edge you scroll TOWARD onto a tile boundary, so
+    // the tile being revealed lands fully in view — scrolling right/down aligns the FAR edge (offset+viewport) to the
+    // next tile boundary beyond it; scrolling left/up aligns the NEAR edge (offset) to the previous boundary. The
+    // trailing edge may then show a partial tile (unavoidable when the viewport isn't a whole number of tiles). The
+    // ScrollViewer applies the sign; this returns the unsigned cell magnitude.
     public int LineStep(int currentOffset, int sign, bool vertical)
     {
         var tileSize = vertical ? TileHeight : TileWidth;
-        var tile = currentOffset / tileSize;
-        var atBoundary = currentOffset % tileSize == 0;
-        var targetTile = sign >= 0 ? tile + 1 : (atBoundary ? tile - 1 : tile);
-        var target = Math.Max(0, targetTile) * tileSize;
-        return Math.Max(1, Math.Abs(target - currentOffset));
+        var viewport = Math.Max(1, vertical ? _viewport.Rows : _viewport.Columns);
+        if (sign >= 0)
+        {
+            // Snap the far edge (offset+viewport) to the next tile boundary STRICTLY beyond it (so an aligned edge
+            // still advances a whole tile), then back out the offset that puts it there.
+            var farBoundary = (currentOffset + viewport) / tileSize * tileSize + tileSize;
+            return Math.Max(1, farBoundary - viewport - currentOffset);
+        }
+
+        // Snap the near edge (offset) to the previous tile boundary strictly below it.
+        var nearBoundary = (Math.Max(0, currentOffset) - 1) / tileSize * tileSize;
+        return Math.Max(1, currentOffset - Math.Max(0, nearBoundary));
     }
 
-    // A page = as many whole tiles as fit the viewport, landing on a tile boundary relative to the current offset.
+    // A page = the whole tiles that fit the viewport (PgUp/PgDn jump by that many tiles). Coarser than the line snap;
+    // the user's report was about line scroll, so this stays a simple whole-tile page.
     public int PageStep(int currentOffset, int sign, bool vertical)
     {
         var tileSize = vertical ? TileHeight : TileWidth;
         var viewport = Math.Max(1, vertical ? _viewport.Rows : _viewport.Columns);
         var tilesPerPage = Math.Max(1, viewport / tileSize);
-        var targetTile = Math.Max(0, currentOffset / tileSize + sign * tilesPerPage);
-        var target = targetTile * tileSize;
-        return Math.Max(1, Math.Abs(target - currentOffset));
+        return tilesPerPage * tileSize;
     }
 }

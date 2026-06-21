@@ -4,6 +4,7 @@ using Cursorial.Gallery;
 using Cursorial.Gallery.Pages;
 using Cursorial.Input;
 using Cursorial.Rendering;
+using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
@@ -21,6 +22,17 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         for (var r = 0; r < rows; r++)
             sb.AppendLine(host.GetRowText(r));
         return sb.ToString();
+    }
+
+    private static T? FindDescendant<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            return match;
+        if (root.VisualChildrenList is { } children)
+            foreach (var child in children)
+                if (FindDescendant<T>(child) is { } found)
+                    return found;
+        return null;
     }
 
     [Fact]
@@ -78,5 +90,28 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         host.SendKey(Key.LeftArrow);
         host.RunUntilIdle();
         Assert.Equal(0, sv.HorizontalOffset); // back a whole 8-column tile
+    }
+
+    [Fact] // The virtualized ListBox page (#107): a 10k-item list shows instantly (only the band realized) and End jumps
+           // across the realization boundary, realizing + scrolling the last item into view (the V3/V3b proof).
+    public void VirtualizedListPage_RealizesOnlyTheBand_AndEndJumpsAcrossBoundary()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = new VirtualizedListPage().Build();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Assert.Contains("item 000000", Screen(host, 24)); // the top renders
+        var lb = FindDescendant<ListBox>(root)!;
+        var gen = lb.ItemContainerGenerator;
+
+        gen.ContainerFromIndex(0)!.Focus();
+        host.RunUntilIdle();
+        Assert.Null(gen.ContainerFromIndex(9999)); // the last item is far off-band — NOT realized (the virtualization proof)
+
+        host.SendKey(Key.End); // jump to the last item: it scrolls into the window, realizes, then focuses
+        host.RunUntilIdle();
+        Assert.Equal(9999, lb.SelectedIndex);
+        Assert.Contains("item 009999", Screen(host, 24)); // the off-band target materialized + scrolled into view
     }
 }

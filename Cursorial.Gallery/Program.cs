@@ -13,6 +13,7 @@ var pages = new IGalleryPage[]
 {
     new ScrollViewerPage(),
     new ChessboardPage(),
+    new VirtualizedListPage(),
 };
 
 var shell = new GalleryShell(pages);

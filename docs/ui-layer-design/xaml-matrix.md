@@ -560,7 +560,7 @@ elements. Tests: `Cursorial.UI.Xaml.Tests/XamlMatrix/Section18_XArray.cs` (loade
 
 ---
 
-### §15d. Attribute-driven metadata (`Cursorial.Shared`) — XM1–XM6 *(all pipelines)*
+### §15d. Attribute-driven metadata (`Cursorial.Shared`) — XM1–XM8 *(all pipelines)*
 
 The XAML metadata that was hard-coded in per-provider tables is now **attribute-driven** off
 `Cursorial.Markup` attributes in the new netstandard2.0 **`Cursorial.Shared`** assembly (referenced by every
@@ -581,16 +581,31 @@ Tests: `Cursorial.UI.Xaml.Tests/XamlMatrix/Section19_AttributeMetadata.cs` (refl
   reflection-free ladder** (no attribute lookup), so the generated/lowered providers can bake `For(typeof(T))`
   AOT-clean; a type-level `[TypeConverter]` therefore applies where the type is used as a member value (via
   `ForMember`), not through a bare `For(type)`. A `[ValueSerializer]`'s deserialize leg (`IValueSerializer.
-  ConvertFromString`) is used at load and **wins over** a co-present `[TypeConverter]`. `[TypeConverter]`/
-  `[ValueSerializer]` are matched by **full** name (distinct from the BCL `System.ComponentModel.
-  TypeConverterAttribute`, which is **not** honored) and only when the named type implements
-  `Cursorial.UI.Xaml.ITypeConverter` / `IValueSerializer`. **The generated provider emits a runtime
-  `ForMember(typeof(Owner).GetProperty(name), typeof(T))` for a member whose member-or-type carries the attribute**
-  — the identical resolution the reflection provider runs (so accessibility, the string-name ctor form, and the
-  BCL exclusion all match → zero drift, no `new T()` baking that could break on a non-public type/ctor). A member
-  with no converter attribute (every framework member) bakes the pure `For(typeof(T))` ladder, so the framework's
-  generated provider stays reflection-free; a consumer's custom-converter member resolves reflectively (honestly
-  AOT-flagged). PIN (WPF parity).
+  ConvertFromString`) is used at load and **wins over** a co-present `[TypeConverter]`. Cursorial's attributes are
+  matched by **full** name and require the named type to implement `Cursorial.UI.Xaml.ITypeConverter` /
+  `IValueSerializer`; the BCL `System.ComponentModel.TypeConverter` is **also** honored for interop, *below*
+  Cursorial's own attributes (XM-D4). **The generated provider emits a runtime
+  `ForMember(typeof(Owner).GetProperty(name), typeof(T))` for a member whose member-or-type carries a Cursorial
+  attribute, or that carries a member-level BCL `[TypeConverter]`** — the identical resolution the reflection
+  provider runs (so accessibility, the string-name ctor form, and the BCL adaptation all match → zero drift, no
+  `new T()` baking that could break on a non-public type/ctor). A member with no converter attribute (every
+  framework member) bakes the pure `For(typeof(T))` ladder, so the framework's generated provider stays
+  reflection-free; a consumer's custom-converter member resolves reflectively (honestly AOT-flagged). PIN (WPF parity).
+- **XM-D4 — the BCL `System.ComponentModel.TypeConverter` is honored for interop.** A member-level
+  `[System.ComponentModel.TypeConverter]` resolves in `ForMember` (after Cursorial's member attrs), adapting the
+  converter's `ConvertFrom(string)` leg to `ITypeConverter`. A **type-level** BCL converter
+  (`TypeDescriptor.GetConverter(memberType)` — covering `[TypeConverter]`-decorated types and BCL defaults like
+  enums / `Guid` / `Version`) is the loader's **last conversion fallback** in `ConvertText`, *after* the curated
+  ladder — so the ladder keeps precedence for the types Cursorial handles (an `int` keeps its cell-aware converter,
+  not the BCL `Int32Converter`), and `For`/`Build` stay pure (the type-level BCL is resolved at load, not baked, so
+  the generator needn't flag every BCL-convertible primitive). Both BCL legs are reflection (`TypeDescriptor` /
+  `Activator`) — an opt-in interop seam, AOT-flagged honestly; the member-level form supports both the parameterless
+  and the `(Type)` ctor (`EnumConverter`/`NullableConverter`) and is `TypeDescriptor`-cached per type. **Interop
+  fidelity:** a BCL converter brings its OWN semantics (e.g. `DateTimeOffsetConverter` maps `""`→`MinValue`,
+  `NullableConverter` `""`→`null`) — Cursorial does not second-guess them. The `[TypeConverter(typeof(X))]` (assembly-
+  qualified) form is the supported declaration; a simple-name string-ctor across assemblies may not resolve (same
+  limitation as Cursorial's own string-ctor + WPF). The generated provider's flagging matches reflection exactly
+  (Nullable unwrap + overridden-member walk) — the X174 zero-drift invariant holds for BCL members/types too. PIN (WPF interop).
 - **XM-D3 — `[ValueSerializer]` save leg + `[DictionaryKeyProperty]` are defined, not yet consumed.**
   `IValueSerializer.ConvertToString` (save) has no consumer (Cursorial has no XAML save path); the load leg is
   live (XM-D2). `Cursorial.Markup.[DictionaryKeyProperty]` is defined for consumer / future implicit-dictionary-key
@@ -602,8 +617,10 @@ Tests: `Cursorial.UI.Xaml.Tests/XamlMatrix/Section19_AttributeMetadata.cs` (refl
 | XM2 | a member-level `[TypeConverter]` on an `int` property | `ForMember` returns it (beats the built-in int ladder) | XM-D2 |
 | XM3 | a member with BOTH `[ValueSerializer]` and `[TypeConverter]` | the ValueSerializer wins (WPF `GetSerializerFor`) | XM-D2 |
 | XM4 | a type-level `[TypeConverter]` | `For`/`ForMember`(null member) returns it | XM-D2 |
-| XM5 | a BCL `System.ComponentModel.[TypeConverter]` | ignored — falls to the ladder (only `Cursorial.Markup`'s, implementing our interface, is honored) | XM-D2 |
-| XM6 | the generated provider over a member with a `[TypeConverter]`/`[ValueSerializer]` (member or type) | emits a runtime `ForMember(typeof(Owner).GetProperty(name), typeof(T))` (drift-free with reflection); a plain member bakes the pure `For(typeof(T))` ladder | XM-D2 |
+| XM5 | a member with BOTH a Cursorial `[TypeConverter]` and a BCL `[System.ComponentModel.TypeConverter]` | Cursorial's wins (its attribute is matched first) | XM-D2/D4 |
+| XM6 | the generated provider over a member with a `[TypeConverter]`/`[ValueSerializer]` (Cursorial member/type, or member-level BCL) | emits a runtime `ForMember(typeof(Owner).GetProperty(name), typeof(T))` (drift-free with reflection); a plain member bakes the pure `For(typeof(T))` ladder | XM-D2 |
+| XM7 | a member-level BCL `[System.ComponentModel.TypeConverter]` | honored — its `ConvertFrom(string)` adapted to `ITypeConverter` (below Cursorial's own) | XM-D4 |
+| XM8 | a member typed with a BCL-convertible type (`Guid`, `[TypeConverter]`-decorated, enum, …) and no member attr | converts via the `ConvertText` type-level BCL fallback (after the ladder); a type with no string converter stays the raw string | XM-D4 |
 
 ---
 

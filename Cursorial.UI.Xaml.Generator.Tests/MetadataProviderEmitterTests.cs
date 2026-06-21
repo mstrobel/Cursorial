@@ -146,4 +146,41 @@ namespace App {
         var result = compilation.AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source)).Emit(ms);
         Assert.Empty(result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
     }
+
+    [Fact] // audit drift: a NULLABLE member whose underlying enum carries a Cursorial [TypeConverter] must be flagged
+    // (emit ForMember) — TypeHasMarkupConverterAttribute unwraps Nullable<T>, mirroring the reflection ForMember.
+    public void Flags_NullableMemberOfAttributedEnum_ForMember()
+    {
+        const string app = @"
+using Cursorial.Markup; using Cursorial.UI.Xaml;
+namespace App {
+  public sealed class StarConv : ITypeConverter { public bool IsContextFree => true; public object? ConvertFromString(string t, in XamlValueContext c) => Stars.Two; }
+  [TypeConverter(typeof(StarConv))] public enum Stars { Zero, One, Two }
+  public sealed class Widget { public Stars? Rating { get; set; } }
+}";
+        var compilation = GeneratorHarness.ReferencedCompilation()
+            .AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(app));
+        var source = new MetadataProviderEmitter(compilation).Emit(new[] { compilation.GetTypeByMetadataName("App.Widget")! })!;
+
+        // Flagged because Stars? unwraps to Stars, which carries the attribute (was For(typeof(Stars?)) → drift).
+        Assert.Contains("XamlConverters.ForMember(typeof(global::App.Widget).GetProperty(\"Rating\"", source);
+    }
+
+    [Fact] // audit drift: a member OVERRIDING a base virtual that carries a Cursorial [TypeConverter] (not redeclared)
+    // must be flagged — MemberHasConverterAttribute walks the OverriddenProperty chain (reflection uses inherit:true).
+    public void Flags_OverriddenMember_WithInheritedConverter_ForMember()
+    {
+        const string app = @"
+using Cursorial.Markup; using Cursorial.UI.Xaml;
+namespace App {
+  public sealed class Doubler : ITypeConverter { public bool IsContextFree => true; public object? ConvertFromString(string t, in XamlValueContext c) => int.Parse(t) * 2; }
+  public class BaseW { [TypeConverter(typeof(Doubler))] public virtual int X { get; set; } }
+  public sealed class DerivedW : BaseW { public override int X { get; set; } }
+}";
+        var compilation = GeneratorHarness.ReferencedCompilation()
+            .AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(app));
+        var source = new MetadataProviderEmitter(compilation).Emit(new[] { compilation.GetTypeByMetadataName("App.DerivedW")! })!;
+
+        Assert.Contains("XamlConverters.ForMember(typeof(global::App.DerivedW).GetProperty(\"X\"", source);
+    }
 }

@@ -55,28 +55,25 @@ public static class XamlConverters
     }
 
     /// <summary>
-    /// The converter for a MEMBER's value, honoring precedence <b>member-<c>[TypeConverter]</c> →
-    /// member-type-<c>[TypeConverter]</c> → built-in ladder</b> (the WPF semantic — a converter declared on the
-    /// property wins over one declared on the property's type). <paramref name="member"/> is the CLR
-    /// property/field/event the value assigns to (or <see langword="null"/> when there is none, e.g. an attached
-    /// property with no instance wrapper), <paramref name="memberType"/> its value type.
-    /// </summary>
-    /// <summary>
     /// The converter for a MEMBER's value, with WPF <c>GetSerializerFor</c> precedence: member
-    /// <c>[ValueSerializer]</c> → member <c>[TypeConverter]</c> → member-type <c>[ValueSerializer]</c> →
-    /// member-type <c>[TypeConverter]</c> → the built-in ladder (<see cref="For"/>). This is the ONLY entry point
-    /// that consults attributes; <see cref="For"/> itself stays a pure, reflection-free ladder so the
+    /// Cursorial <c>[ValueSerializer]</c> → member Cursorial <c>[TypeConverter]</c> → member BCL
+    /// <c>[System.ComponentModel.TypeConverter]</c> → member-type Cursorial <c>[ValueSerializer]</c> →
+    /// member-type Cursorial <c>[TypeConverter]</c> → the built-in ladder (<see cref="For"/>). This is the ONLY
+    /// entry point that consults attributes; <see cref="For"/> itself stays a pure, reflection-free ladder so the
     /// generated/lowered providers can bake <c>For(typeof(T))</c> AOT-clean. Attribute reflection therefore lives
-    /// only here (the reflection metadata provider's metadata-build path) — never on a baked code path.
+    /// only here (the reflection metadata provider's metadata-build path) — never on a baked code path. The
+    /// member-TYPE's BCL converter is the loader's last conversion fallback (<c>BclConverterForType</c>, after the
+    /// ladder), not resolved here — so the ladder keeps precedence over a BCL converter for the types we curate.
     /// </summary>
     public static ITypeConverter? ForMember(System.Reflection.MemberInfo? member, Type memberType)
     {
         var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
-        return (member is not null ? SerializerFromAttribute(member) : null)   // member [ValueSerializer]
-            ?? (member is not null ? ConverterFromAttribute(member) : null)    // member [TypeConverter]
-            ?? SerializerFromAttribute(underlying)                             // member-type [ValueSerializer]
-            ?? ConverterFromAttribute(underlying)                             // member-type [TypeConverter]
-            ?? For(memberType);                                              // the built-in ladder
+        return (member is not null ? SerializerFromAttribute(member) : null)     // member Cursorial [ValueSerializer]
+            ?? (member is not null ? ConverterFromAttribute(member) : null)      // member Cursorial [TypeConverter]
+            ?? (member is not null ? BclConverterFromMember(member, underlying) : null) // member BCL [System.ComponentModel.TypeConverter]
+            ?? SerializerFromAttribute(underlying)                               // member-type Cursorial [ValueSerializer]
+            ?? ConverterFromAttribute(underlying)                               // member-type Cursorial [TypeConverter]
+            ?? For(memberType);                                                // the built-in ladder
     }
 
     private static ITypeConverter? Build(Type targetType)
@@ -196,6 +193,92 @@ public static class XamlConverters
     {
         public bool IsContextFree => serializer.IsContextFree;
         public object? ConvertFromString(string text, in XamlValueContext ctx) => serializer.ConvertFromString(text, in ctx);
+    }
+
+    // ── BCL System.ComponentModel.TypeConverter interop ──────────────────────────────────────────────
+
+    /// <summary>
+    /// The member-level BCL converter for a member carrying <c>[System.ComponentModel.TypeConverter]</c> — its
+    /// <c>ConvertFrom(string)</c> leg adapted to <see cref="ITypeConverter"/>. WPF parity: the BCL <c>TypeConverter</c>
+    /// model is honored for interop, below Cursorial's own <c>[TypeConverter]</c>/<c>[ValueSerializer]</c>.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "BCL TypeConverter interop is an opt-in reflection seam (consumer-declared [TypeConverter]).")]
+    private static ITypeConverter? BclConverterFromMember(System.Reflection.MemberInfo member, Type targetType)
+    {
+        if (System.Attribute.GetCustomAttribute(member, typeof(System.ComponentModel.TypeConverterAttribute), inherit: true)
+            is not System.ComponentModel.TypeConverterAttribute attr)
+            return null;
+
+        var converterType = Type.GetType(attr.ConverterTypeName, throwOnError: false);
+        return AdaptBcl(converterType, targetType);
+    }
+
+    /// <summary>
+    /// The type-level BCL converter for a value type — <c>TypeDescriptor.GetConverter(type)</c> adapted to
+    /// <see cref="ITypeConverter"/> when it can convert from string. This is the loader's LAST conversion fallback
+    /// (after the curated ladder, so our terminal-aware converters keep precedence for the types we handle), giving
+    /// XAML compatibility with any BCL/consumer type carrying a <c>[TypeConverter]</c> (and default converters for
+    /// enums, <c>Guid</c>, <c>Version</c>, …). Returns <see langword="null"/> when the type has no string converter.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, ITypeConverter?> BclCache = new();
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "BCL TypeConverter interop is an opt-in reflection seam (TypeDescriptor over a consumer type).")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2067:DynamicallyAccessedMembers",
+        Justification = "TypeDescriptor.GetConverter over a value type whose converter the consumer preserves for trimming.")]
+    public static ITypeConverter? BclConverterForType(Type type)
+        => BclCache.GetOrAdd(type, static t =>
+        {
+            var bcl = System.ComponentModel.TypeDescriptor.GetConverter(t);
+            return bcl.CanConvertFrom(typeof(string)) ? new BclTypeConverterAdapter(bcl) : null;
+        });
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:CreateInstance",
+        Justification = "BCL converter type is consumer-provided; preserved by the consumer for trimming.")]
+    private static ITypeConverter? AdaptBcl(Type? converterType, Type targetType)
+    {
+        if (converterType is null || !typeof(System.ComponentModel.TypeConverter).IsAssignableFrom(converterType))
+            return null;
+
+        try
+        {
+            // The parameterless ctor (the common converter shape), else the (Type) ctor the stock
+            // EnumConverter / NullableConverter require — passing the member's value type. Selecting the ctor by
+            // reflection (rather than letting Activator throw) lets the (Type) form be reached.
+            var bcl = converterType.GetConstructor(Type.EmptyTypes) is not null
+                ? Activator.CreateInstance(converterType) as System.ComponentModel.TypeConverter
+                : converterType.GetConstructor([typeof(Type)])?.Invoke([targetType]) as System.ComponentModel.TypeConverter;
+
+            if (bcl is not null && bcl.CanConvertFrom(typeof(string)))
+                return new BclTypeConverterAdapter(bcl);
+        }
+        catch
+        {
+            // No usable ctor / activation failure — fall through to the next resolution step.
+        }
+
+        return null;
+    }
+
+    // Adapts a System.ComponentModel.TypeConverter's ConvertFrom(string) to ITypeConverter. Context-DEPENDENT
+    // (IsContextFree=false): a BCL converter may consult the type-descriptor context, so it never folds at parse —
+    // it runs in stage 2 (load), where the (null) context + culture are passed through.
+    private sealed class BclTypeConverterAdapter(System.ComponentModel.TypeConverter inner) : ITypeConverter
+    {
+        public bool IsContextFree => false;
+
+        public object? ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            try
+            {
+                return inner.ConvertFromString(context: null, ctx.Culture, text);
+            }
+            catch (Exception ex) when (ex is not XamlParseException)
+            {
+                throw Fail($"'{text}' is not a valid value (BCL {inner.GetType().Name}): {ex.Message}", ctx);
+            }
+        }
     }
 
     internal static XamlParseException Fail(string message, in XamlValueContext ctx)

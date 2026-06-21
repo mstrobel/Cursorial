@@ -66,7 +66,7 @@ internal static class SymbolXamlModel
                                                  IsEvent: false,
                                                  registeredOwner,
                                                  IsInitOnly: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public, IsInitOnly: true },
-                                                 UsesAttributeConverter: HasMarkupConverterAttribute(prop) || TypeHasMarkupConverterAttribute(prop.Type));
+                                                 UsesAttributeConverter: MemberHasConverterAttribute(prop) || TypeHasMarkupConverterAttribute(prop.Type));
                 }
                 else if (symbol is IEventSymbol evt && seen.Add(evt.Name))
                 {
@@ -105,20 +105,39 @@ internal static class SymbolXamlModel
         }
     }
 
-    // True when the member symbol carries a Cursorial.Markup [TypeConverter]/[ValueSerializer] — the emitter then
-    // emits a runtime XamlConverters.ForMember(...) call (identical to the reflection provider, so the converter,
-    // its accessibility, the string-name ctor form, and the BCL-attribute exclusion all resolve the SAME way in
-    // both providers — zero drift, and no baking of `new T()` that could break on a non-public type/ctor).
-    private static bool HasMarkupConverterAttribute(ISymbol symbol)
-        => symbol.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString()
-               is "Cursorial.Markup.TypeConverterAttribute" or "Cursorial.Markup.ValueSerializerAttribute");
+    // True when the MEMBER carries a converter/serializer attribute — Cursorial.Markup [TypeConverter]/
+    // [ValueSerializer] OR the BCL System.ComponentModel.TypeConverter (member-level interop). The emitter then
+    // emits a runtime XamlConverters.ForMember(...) call (identical to the reflection provider — same precedence,
+    // accessibility, string-name ctor, BCL adaptation; zero drift, no `new T()` baking that could fail to compile).
+    private static bool MemberHasConverterAttribute(ISymbol symbol)
+    {
+        // Walk the overridden-property chain — the reflection provider reads member attributes with inherit:true
+        // (System.Attribute.GetCustomAttribute / GetCustomAttributes), but Roslyn's GetAttributes() is direct-only,
+        // so an attribute on a base virtual that a derived member overrides must be picked up here too (zero drift).
+        for (var s = symbol; s is not null; s = (s as IPropertySymbol)?.OverriddenProperty)
+        {
+            if (s.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString()
+                    is "Cursorial.Markup.TypeConverterAttribute" or "Cursorial.Markup.ValueSerializerAttribute"
+                    or "System.ComponentModel.TypeConverterAttribute"))
+                return true;
+        }
+        return false;
+    }
 
-    // As above for a value TYPE — walks the base chain (the attribute is Inherited, GetAttributes() is direct-only).
+    // As above for a value TYPE — walks the base chain (the attribute is Inherited; GetAttributes() is direct-only)
+    // and unwraps Nullable<T> first (mirroring XamlConverters.ForMember's `underlying` — a `MyEnum?` member must see
+    // MyEnum's [TypeConverter]). Cursorial.Markup only: a TYPE-level BCL [TypeConverter] is the loader's ConvertText
+    // fallback (after the ladder), NOT flagged here — else every primitive member (int/double/… all carry a BCL
+    // TypeConverter) would lose its AOT-clean baked For(typeof(T)) and the ladder would be bypassed.
     private static bool TypeHasMarkupConverterAttribute(ITypeSymbol type)
     {
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            type = nullable.TypeArguments[0];
+
         for (var t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
         {
-            if (HasMarkupConverterAttribute(t))
+            if (t.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString()
+                    is "Cursorial.Markup.TypeConverterAttribute" or "Cursorial.Markup.ValueSerializerAttribute"))
                 return true;
         }
         return false;

@@ -234,6 +234,26 @@ public sealed class Section44_VirtualizationVariableHeight
         Assert.NotNull(gen.ContainerFromIndex(topItem));
     }
 
+    [Fact] // VV4.15 (VV2.6 hardening): after a variable-height re-anchor, EVERY band row maps to a realized container.
+    public void VV4_15_VariableHeightReAnchor_FullBandCoverage()
+    {
+        // A bimodal list (a tall block among 1-row items) so the global estimate mis-predicts the band's items at a
+        // deep re-anchor — the case the reduced (const-2) realization slack must survive via the expand-only window.
+        var (host, lb) = MakeVar(2000, i => i is >= 900 and < 1100 ? 5 : 1);
+        using var _ = host;
+        var gen = lb.ItemContainerGenerator;
+        var logical = Logical(lb);
+        var scroll = FindDescendant<ScrollViewer>(lb)!;
+        var scp = FindDescendant<ScrollContentPresenter>(lb)!;
+
+        scroll.VerticalOffset = scroll.Extent.Rows / 2; // deep into/near the tall block
+        host.RunUntilIdle();
+
+        // Walk EVERY band row (not just the viewport top): the item at each row must be realized — no blank band row.
+        for (var row = scp.BandStartRow; row < scp.BandStartRow + scp.BandLength; row++)
+            Assert.NotNull(gen.ContainerFromIndex(logical.EstimateItemAt(row)));
+    }
+
     [Fact] // VV4.14: 0-height (empty-content) items interspersed with real items don't defeat virtualization (estimate floor).
     public void VV4_14_ZeroHeightItems_StayVirtualized()
     {

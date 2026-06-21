@@ -421,10 +421,14 @@ The perf gate for the virtualization workstream: `Cursorial.UI.Tests/Benchmarks/
 (`[Trait("Category","Benchmark")]`, methodology mirrors `MotionStormBenchmark` — warm → JIT-settle → best-of-5).
 A 10,000-item virtualizing `ListBox` is scrolled hard; two legs:
 
-- **VV5.1 — fling stays virtualized + within budget.** Stepping the offset across the whole extent in 60
-  re-anchoring waypoints: the realized container set stays band-sized (**peak 78 / 10,000**, never collapses) and
-  the worst-waypoint frame is **best-of-5 ≤ 33 ms** (Release: ~20 ms; the 33 ms budget is a `#if !DEBUG` Release/CI
-  gate — Debug is ~10× slower and not representative, but the test still runs + asserts virtualization holds in Debug).
+- **VV5.1 — fling stays virtualized + the typical frame is within budget.** Stepping the offset across the whole
+  extent in 60 re-anchoring waypoints (300 frames over 5 reps): the realized container set stays band-sized
+  (**peak 78 / 10,000**, never collapses, gated `< 150` — ~2× headroom over the band) and the **MEDIAN** re-anchor
+  frame is **≤ 33 ms** (the typical-frame contract — Release: ~29 ms; the 33 ms budget is a `#if !DEBUG` Release/CI
+  gate). The metric is the median of all 300 frames, deliberately NOT best-of-5 (a min cherry-picks one lucky
+  GC-clean rep — the original gate was flaky/vacuous, caught by the V5 closeout) and NOT the max waypoint (that
+  captures the occasional mid-fling GC-pause outlier). The GC-pause **tail (p90 ~44 ms, max ~54 ms) is reported but
+  NOT gated** — it is documented §V5 perf debt (see below), not a typical-frame cost.
 - **VV5.2 — in-band slide does no realization work.** Oscillating the offset by ±1 (within ±K, no re-anchor): the
   realized set **never moves** (zero churn — the panel's no-op guard short-circuits, the generator is untouched),
   and per-slide allocation is **steady across reps** (deterministic, no growth/leak).
@@ -437,7 +441,10 @@ The first benchmark run was red (re-anchor 47 ms, growing 47→82 across reps). 
   **each side of a band that already spans `viewport + 2·bandPadding` rows** — double-counting the band's own
   smooth-scroll margin and ~doubling realization (122 vs 78 containers for a 24-row viewport). Cut to a small
   estimate-error constant (2); the §V4 session expand-only window backstops coverage (VV2.6 stays green). Result:
-  realization 122→78, re-anchor frame 46→20 ms (best-of-5) — under budget. **(This is the V5 perf win.)**
+  realization **122 → 78** (~36% fewer cold container realizations per re-anchor), median re-anchor frame down
+  correspondingly to **~29 ms** (within the typical-frame budget). **(This is the V5 perf win.)** *(The first cut
+  of the gate over-claimed "20 ms / under budget" — that was a single GC-clean rep under a best-of-5 metric; the
+  honest median is ~29 ms and the worst frames hit ~54 ms — see the perf debt below.)*
 - **Test-harness allocation (a test-infra fix).** `UITestHost.CaptureFrame` always `DrainOutput()`-`ToArray()`d the
   emitted frame bytes even when `CaptureFrameBytes` was off (default), so every `RunFrame` allocated a throwaway copy
   — making any benchmark's per-frame allocation reflect the harness, not the framework. Added

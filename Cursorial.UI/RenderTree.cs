@@ -202,7 +202,8 @@ public sealed class RenderTree
     /// of its subtree (the zone-base rule). Call after <see cref="RunRenderPass"/>. Allocation-free
     /// beyond the caller's list growth.
     /// </summary>
-    public void CollectLayers(List<SceneLayer> target, int windowOffsetColumn = 0, int windowOffsetRow = 0, double windowOpacity = 1.0)
+    public void CollectLayers(List<SceneLayer> target, int windowOffsetColumn = 0, int windowOffsetRow = 0, double windowOpacity = 1.0,
+                              int surfaceZ = 0, bool isOccluder = false)
     {
         ArgumentNullException.ThrowIfNull(target);
         _root.VerifyAccess();
@@ -239,7 +240,7 @@ public sealed class RenderTree
                     parameters.Mode);
             }
 
-            target.Add(new SceneLayer(zone.Scene, parameters));
+            target.Add(new SceneLayer(zone.Scene, parameters) { SurfaceZ = surfaceZ, IsOccluder = isOccluder });
         }
     }
 

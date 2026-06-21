@@ -257,9 +257,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         }
 
         // ② concatenate every surface's layers, bottom→top, each at its screen offset, into ONE composite.
+        // Stamp each surface's z-index + occluder flag so the compositor can crop/suppress a lower surface's
+        // graphics-protocol image where a higher OPAQUE surface (a window/popup/badge — anything but the root)
+        // overlaps it (the terminal draws such images above the cell grid, so they'd otherwise show through).
         _layers.Clear();
         for (var i = 0; i < _surfaces.Count; i++)
-            _surfaces[i].CollectLayers(_layers);
+            _surfaces[i].CollectLayers(_layers, surfaceZ: i, isOccluder: !ReferenceEquals(_surfaces[i], _rootSurface));
 
         if (_surfaces.Count > 0)
             changed |= _compositor.Composite(CollectionsMarshal.AsSpan(_layers), new CellBufferView(target));

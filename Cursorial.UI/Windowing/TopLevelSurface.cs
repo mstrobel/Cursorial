@@ -100,7 +100,10 @@ public sealed class TopLevelSurface
     internal void RunRenderPass() => RenderTree.RunRenderPass();
 
     /// <summary>Appends this surface's layers — translated to its screen offset, scaled by its opacity — to <paramref name="target"/>.</summary>
-    internal void CollectLayers(List<SceneLayer> target) => RenderTree.CollectLayers(target, Left, Top, Opacity);
+    /// <param name="surfaceZ">This surface's z-index in the stack (stamped on every layer for the compositor's fragment-occlusion).</param>
+    /// <param name="isOccluder">Whether this surface is an opaque occluder (a window/popup/badge — not the root).</param>
+    internal void CollectLayers(List<SceneLayer> target, int surfaceZ = 0, bool isOccluder = false)
+        => RenderTree.CollectLayers(target, Left, Top, Opacity, surfaceZ, isOccluder);
 
     /// <summary>Hit-tests a screen point against this surface, returning the element or <see langword="null"/> when outside the content rect.</summary>
     public UIElement? HitTest(int column, int row)

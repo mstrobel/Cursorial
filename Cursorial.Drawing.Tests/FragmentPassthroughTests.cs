@@ -402,6 +402,78 @@ public class FragmentPassthroughTests
         Assert.Equal(1, target.AsView().Fragments.Count);
     }
 
+    // ---- Occlusion of a graphics-protocol fragment by a higher OPAQUE surface (the popup-over-image bug) ----
+
+    private static SceneLayer Occluder(Scene scene, int z, int offsetColumn = 0, int offsetRow = 0) =>
+        new(scene, new CompositeParameters(offsetColumn, offsetRow)) { SurfaceZ = z, IsOccluder = true };
+
+    [Fact] // A higher opaque surface (a popup) fully over the image suppresses it — it can't be one source-crop.
+    public void Composite_SuppressesAFragmentFullyCoveredByAHigherOccluderSurface()
+    {
+        var frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var occ = Scene.Create(10, 4);
+        occ.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+
+        Assert.Equal(0, target.AsView().Fragments.Count); // image hidden under the popup → its cells/placeholder show
+    }
+
+    [Fact] // A higher occluder over a clean edge crops the image to the visible band (re-anchored).
+    public void Composite_CropsAFragmentUnderAHigherOccluderCleanEdge()
+    {
+        var frag = new CroppableFragment(4, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var occ = Scene.Create(4, 1); // covers the top row across the fragment's full width
+        occ.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+
+        Assert.Equal(1, target.AsView().Fragments.Count);
+        foreach (var (anchor, entry) in target.AsView().Fragments)
+        {
+            Assert.Equal((0, 1), anchor);                           // re-anchored below the occluder
+            Assert.Equal(new Size(4, 1), entry.Fragment.GetSize()); // cropped to the visible bottom band
+        }
+    }
+
+    [Fact] // A higher zone of the SAME surface never occludes the surface's own image.
+    public void Composite_DoesNotOccludeAFragmentByASameSurfaceLayer()
+    {
+        IBufferFragment frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var higherZone = Scene.Create(10, 4);
+        higherZone.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite(
+            [new SceneLayer(lower) { SurfaceZ = 0 }, new SceneLayer(higherZone) { SurfaceZ = 0, IsOccluder = true }], target.AsView());
+
+        Assert.True(target.AsView().ContainsFragment(frag.Key)); // same SurfaceZ → not occluded
+    }
+
+    [Fact] // A higher surface NOT flagged as an occluder (transparent) leaves the image fully visible.
+    public void Composite_DoesNotOccludeUnderAHigherNonOccluderSurface()
+    {
+        IBufferFragment frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var higher = Scene.Create(10, 4);
+        higher.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite(
+            [new SceneLayer(lower) { SurfaceZ = 0 }, new SceneLayer(higher) { SurfaceZ = 1, IsOccluder = false }], target.AsView());
+
+        Assert.True(target.AsView().ContainsFragment(frag.Key));
+    }
+
     // A test fragment that CAN crop (returns a smaller fragment), to exercise the compositor's crop path.
     private sealed class CroppableFragment(int width, int height) : IBufferFragment
     {

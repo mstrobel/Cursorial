@@ -178,36 +178,85 @@ public sealed class SceneCompositor
             var p = layers[li].Parameters;
             var sceneBuffer = layers[li].Scene.Buffer;
             if (sceneBuffer.Fragments.Count == 0) continue;
+            int surfaceZ = layers[li].SurfaceZ;
 
             foreach (var (anchor, entry) in sceneBuffer.Fragments)
             {
                 int tc = anchor.Column + p.OffsetColumn;
                 int tr = anchor.Row + p.OffsetRow;
                 var fragment = entry.Fragment;
+                var size = fragment.GetSize();
+                int fw = Math.Max(1, size.Columns), fh = Math.Max(1, size.Rows);
 
+                // The visible target rect: the fragment footprint, intersected with this layer's clip ...
+                int vCol = tc, vRow = tr, vColEnd = tc + fw, vRowEnd = tr + fh;
                 if (p.Clip is { } clip)
                 {
-                    var size = fragment.GetSize();
-                    int fw = Math.Max(1, size.Columns), fh = Math.Max(1, size.Rows);
-                    int vCol = Math.Max(tc, clip.Column), vRow = Math.Max(tr, clip.Row);
-                    int vColEnd = Math.Min(tc + fw, clip.ColumnEnd), vRowEnd = Math.Min(tr + fh, clip.RowEnd);
+                    vCol = Math.Max(vCol, clip.Column); vRow = Math.Max(vRow, clip.Row);
+                    vColEnd = Math.Min(vColEnd, clip.ColumnEnd); vRowEnd = Math.Min(vRowEnd, clip.RowEnd);
                     if (vCol >= vColEnd || vRow >= vRowEnd) continue;   // fully outside the clip → drop
+                }
 
-                    if (vCol != tc || vRow != tr || vColEnd != tc + fw || vRowEnd != tr + fh)
-                    {
-                        // Partial overlap: crop to the visible cells, or suppress if the protocol can't crop.
-                        var cropped = fragment.Clip(new Rect(vCol - tc, vRow - tr, vColEnd - vCol, vRowEnd - vRow));
-                        if (cropped is null) continue;
-                        fragment = cropped;
-                        tc = vCol;
-                        tr = vRow;
-                    }
+                // ... minus every HIGHER OPAQUE SURFACE's footprint. A graphics-protocol image is drawn by the
+                // terminal above the cell grid, so a popup/window stacked over it must crop the image (a clean
+                // edge overlap) or suppress it (a middle/corner overlap that can't be one source-crop) — else it
+                // shows through the popup. Same-surface zones (SurfaceZ ==) never occlude their own image.
+                bool suppressed = false;
+                for (int lj = li + 1; lj < layers.Length && !suppressed; lj++)
+                {
+                    if (!layers[lj].IsOccluder || layers[lj].SurfaceZ <= surfaceZ) continue;
+                    if (!TryFootprint(layers[lj].Scene.Columns, layers[lj].Scene.Rows, layers[lj].Parameters, target.Columns, target.Rows, out var occ))
+                        continue;
+                    suppressed = !SubtractOccluder(ref vCol, ref vRow, ref vColEnd, ref vRowEnd, occ);
+                }
+                if (suppressed || vCol >= vColEnd || vRow >= vRowEnd) continue;
+
+                // Crop the fragment to the final visible sub-rect (fragment-local), or suppress if it can't crop.
+                if (vCol != tc || vRow != tr || vColEnd != tc + fw || vRowEnd != tr + fh)
+                {
+                    var cropped = fragment.Clip(new Rect(vCol - tc, vRow - tr, vColEnd - vCol, vRowEnd - vRow));
+                    if (cropped is null) continue;
+                    fragment = cropped;
+                    tc = vCol;
+                    tr = vRow;
                 }
 
                 if (target.AddFragment(tc, tr, fragment, entry.AnchorStyle))
                     _fragmentAnchors.Add((tc, tr));
             }
         }
+    }
+
+    // Subtract an occluder rect from the visible rect [c0,r0 .. c1,r1). A graphics-protocol fragment can only be
+    // re-expressed as ONE source-crop, so the remainder must be a single rectangle: an occluder covering a clean
+    // edge band narrows the rect (returns true); a full cover, a middle band, or a corner leaves a non-rectangular
+    // remainder and returns false (the caller suppresses the fragment → the popup's cells / placeholder show).
+    private static bool SubtractOccluder(ref int c0, ref int r0, ref int c1, ref int r1, in Rect o)
+    {
+        int ic0 = Math.Max(c0, o.Column), ir0 = Math.Max(r0, o.Row);
+        int ic1 = Math.Min(c1, o.ColumnEnd), ir1 = Math.Min(r1, o.RowEnd);
+        if (ic0 >= ic1 || ir0 >= ir1) return true;   // no overlap — unchanged
+
+        bool fullWidth = ic0 <= c0 && ic1 >= c1;
+        bool fullHeight = ir0 <= r0 && ir1 >= r1;
+
+        if (fullWidth && fullHeight) return false;    // fully covered → suppress
+
+        if (fullWidth)                                // a horizontal band across the whole width
+        {
+            if (ir0 <= r0) { r0 = ir1; return r0 < r1; }   // covers the top → keep the band below
+            if (ir1 >= r1) { r1 = ir0; return r0 < r1; }   // covers the bottom → keep the band above
+            return false;                             // a middle band → non-rectangular remainder
+        }
+
+        if (fullHeight)                               // a vertical band across the whole height
+        {
+            if (ic0 <= c0) { c0 = ic1; return c0 < c1; }   // covers the left → keep the band to the right
+            if (ic1 >= c1) { c1 = ic0; return c0 < c1; }   // covers the right → keep the band to the left
+            return false;                             // a middle band → non-rectangular remainder
+        }
+
+        return false;                                 // a corner / partial overlap → non-rectangular remainder
     }
 
     private void ResetCellToBase(in CellBufferView target, int column, int row) =>

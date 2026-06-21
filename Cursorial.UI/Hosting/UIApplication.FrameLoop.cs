@@ -227,6 +227,11 @@ public sealed partial class UIApplication
                                        : null
             };
 
+        // S4 owns per-window focus activation: when the active window changes, move the focus/access-key active
+        // root onto it (or back to the app root) — auto-focuses the window's first tab stop and makes Enter reach
+        // its default button. (The single-root WireRoot still does the initial app-root activation below.)
+        _windowManager.ActiveWindowChanged += (_, _) => OnActiveWindowFocusChanged();
+
         _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
         _inputDispatcher.SetWindowTopology(_windowManager); // S4 is the real topology now (replaces SingleRootWindowTopology)
         _systemsReady = true;

@@ -424,6 +424,10 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     internal TimeProvider TimeProviderInternal => _options.TimeProvider;
 
+    // The focus/access-key "active root" currently activated (the app root, or the active Window). S4 moves
+    // this per window via OnActiveWindowFocusChanged when the WindowManager's active window changes.
+    private UIElement? _lastActiveFocusRoot;
+
     private void WireRoot(UIElement root)
     {
         _windowManager!.SetRootSurface(root);  // attaches the root under a fresh LayoutManager + RenderTree
@@ -434,6 +438,30 @@ public sealed partial class UIApplication : IAsyncDisposable
         FocusManager.SetIsFocusScope(root, true);
         _focusManager.OnWindowActivated(root);
         _accessKeys.OnWindowActivated(root); // cue stamping (permanent in AlwaysVisible mode — doc §7.8)
+        _lastActiveFocusRoot = root;
+    }
+
+    /// <summary>
+    /// S4 per-window focus activation (doc §7.7): when the <see cref="WindowManager"/>'s active window changes,
+    /// move the focus + access-key "active root" to that window (or back to the app root when no window is active).
+    /// Marks the new root a focus scope, restores/auto-focuses its first tab stop, re-stamps the access-key cue,
+    /// and deactivates the previous root. WITHOUT this a freshly-activated window sits with no focus, its content
+    /// never auto-focuses, and Enter never reaches its <see cref="Controls.Button.IsDefault"/> button (its
+    /// surface-root binding is unreachable from the stale/host active root).
+    /// </summary>
+    private void OnActiveWindowFocusChanged()
+    {
+        var newRoot = (UIElement?) _windowManager?.ActiveWindow ?? _rootElement;
+        if (newRoot is null || ReferenceEquals(newRoot, _lastActiveFocusRoot))
+            return;
+
+        if (_lastActiveFocusRoot is { } old)
+            _focusManager.OnWindowDeactivated(old);
+
+        _lastActiveFocusRoot = newRoot;
+        FocusManager.SetIsFocusScope(newRoot, true);
+        _focusManager.OnWindowActivated(newRoot);
+        _accessKeys.OnWindowActivated(newRoot);
     }
 
     /// <summary>

@@ -364,6 +364,26 @@ public sealed class CellBuffer : ICellSurface
     public bool RemoveFragment(CellPosition position) => RemoveFragment(position.Column, position.Row);
 
     /// <summary>
+    /// Remove every registered fragment. Cells under the removed fragments retain whatever they held —
+    /// see <see cref="AddFragment"/> for the layering contract. Marks each removed footprint dirty so a
+    /// dirty-region renderer revisits it (and a graphics-overlay renderer emits the protocol erase).
+    /// </summary>
+    public void ClearFragments()
+    {
+        if (_fragments.Count == 0)
+            return;
+
+        foreach (var (anchor, entry) in _fragments)
+        {
+            var size = entry.Fragment.GetSize();
+            MarkDirty(anchor.Column, anchor.Row, size.Columns, size.Rows);
+        }
+
+        _fragments.Clear();
+        _fragmentsByKey.Clear();
+    }
+
+    /// <summary>
     /// True when a fragment with the given <paramref name="key"/> is currently registered on
     /// the buffer. Useful for "is this image already on screen?" checks without scanning the
     /// fragment dictionary. Comparison uses <see cref="object.Equals(object)"/>, so value-type

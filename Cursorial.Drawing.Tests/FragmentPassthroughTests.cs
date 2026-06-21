@@ -363,6 +363,45 @@ public class FragmentPassthroughTests
         }
     }
 
+    // ---- Orphaned-fragment cleanup across a compositor swap (ResetCompositor path) ----------------
+
+    [Fact] // A fresh compositor's first (full) composite clears fragments a discarded compositor left on the target.
+    public void FreshCompositor_FullComposite_ClearsOrphanedFragments()
+    {
+        IBufferFragment frag = new FakeFragment(2, 1);
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(3, 1, 2, 1), new FragmentContent(frag), OutputCapabilities.None));
+
+        var target = new CellBuffer(10, 4);
+        // Compositor A places the fragment, then is discarded — exactly the WindowManager.ResetCompositor path
+        // (a popup open/close rebuilds the SceneCompositor, losing its _fragmentAnchors).
+        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView());
+        Assert.True(target.AsView().ContainsFragment(frag.Key));
+
+        // The element is gone (tab switched away): a FRESH compositor composites a scene with NO fragment.
+        // Its first composite is a full reset, which must drop A's orphan rather than strand the image on screen.
+        using var empty = Scene.Create(10, 4);
+        empty.Draw(_ => { });
+        new SceneCompositor(Style.Default).Composite([Layer(empty)], target.AsView());
+
+        Assert.Equal(0, target.AsView().Fragments.Count); // orphan cleared (the image-not-removed bug)
+    }
+
+    [Fact] // A fresh compositor whose scene STILL has the fragment re-registers it (clear-then-rebuild loses nothing).
+    public void FreshCompositor_FullComposite_ReRegistersAStillPresentFragment()
+    {
+        IBufferFragment frag = new FakeFragment(2, 1);
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(3, 1, 2, 1), new FragmentContent(frag), OutputCapabilities.None));
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView()); // compositor A
+        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView()); // fresh B — still present
+
+        Assert.True(target.AsView().ContainsFragment(frag.Key));
+        Assert.Equal(1, target.AsView().Fragments.Count);
+    }
+
     // A test fragment that CAN crop (returns a smaller fragment), to exercise the compositor's crop path.
     private sealed class CroppableFragment(int width, int height) : IBufferFragment
     {

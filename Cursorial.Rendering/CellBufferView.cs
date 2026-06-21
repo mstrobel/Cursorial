@@ -444,6 +444,13 @@ public readonly struct CellBufferView : ICellSurface
     public bool RemoveFragment(CellPosition position) => RemoveFragment(position.Column, position.Row);
 
     /// <summary>
+    /// Remove every fragment registered against the backing buffer. The compositor uses a full-buffer
+    /// view, so this clears all of them — used on a full recomposite so fragments orphaned by a discarded
+    /// compositor (the <c>ResetCompositor</c> path) are dropped, not left stranded on the target.
+    /// </summary>
+    public void ClearFragments() => _buffer?.ClearFragments();
+
+    /// <summary>
     /// True when a fragment with the given <paramref name="key"/> is currently registered on
     /// the buffer. Useful for "is this image already on screen?" checks without scanning the
     /// fragment dictionary. Comparison uses <see cref="object.Equals(object)"/>, so value-type

@@ -141,7 +141,7 @@ public sealed class SceneCompositor
                 CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, colEnd);
         }
 
-        PassThroughFragments(layers, target);
+        PassThroughFragments(layers, target, layerSetChanged);
 
         target.MarkDirty(new Rect(colStart, rowStart, colEnd - colStart, rowEnd - rowStart));
         StashState(layers);
@@ -158,10 +158,19 @@ public sealed class SceneCompositor
     /// layer clip a fragment straddling the edge is cropped via <c>IBufferFragment.Clip</c> (Sixel pixel-crop)
     /// or, when the protocol can't crop (iTerm2 / Kitty today), suppressed rather than overdrawn.
     /// </summary>
-    private void PassThroughFragments(ReadOnlySpan<SceneLayer> layers, in CellBufferView target)
+    private void PassThroughFragments(ReadOnlySpan<SceneLayer> layers, in CellBufferView target, bool fullReset)
     {
-        foreach (var (column, row) in _fragmentAnchors)
-            target.RemoveFragment(column, row);
+        // Drop the prior work-frame's fragments. On a FULL recomposite (a wholesale layer-set change, or — the
+        // important case — a fresh compositor after WindowManager.ResetCompositor on a popup/window topology
+        // change) clear EVERY target fragment: a discarded compositor's _fragmentAnchors are gone with it, so its
+        // registered fragments would otherwise be orphaned on the persistent target. That stranded a graphics-
+        // protocol image on screen when a popup open/close reset the compositor during a tab switch (the image
+        // was never erased because the new compositor didn't know to remove it).
+        if (fullReset)
+            target.ClearFragments();
+        else
+            foreach (var (column, row) in _fragmentAnchors)
+                target.RemoveFragment(column, row);
         _fragmentAnchors.Clear();
 
         for (int li = 0; li < layers.Length; li++)

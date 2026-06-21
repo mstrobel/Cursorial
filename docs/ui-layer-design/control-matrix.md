@@ -213,6 +213,24 @@ Unit-level rows over a fresh `dict` (no host) unless a row attaches a tree.
 | C57 | child "window" (P5: a second root) does not chain to an "owner" | resolve `K` present only on the first root | not found from the second root — roots do not chain to each other (WPF-parity no owner-chaining; degenerate at P5 with no `Window` type) | WPF (CD11) |
 | C58 | `ResourceDiagnostics.Trace(leaf, K)` / `.Explain(leaf, K)` | inspect a hit and a miss | one line per hop incl. the variant probe keys tried, merged recursion, hit/miss, deferred-then-realized (R3 acceptance test; the data shape is pinned now) | PIN (doc §11.10) |
 
+### 2.5 Resource-alias (`ResourceReference`) chasing — the per-control-key spine (§11.4a addendum, P10 theme)
+
+A resource value that is a `ResourceReference(key)` is a **live alias**: the walk re-resolves its target key from the
+SAME element so an app override of either the alias key OR its target wins. This backs the style-guide per-control keys
+(`Theme.<Control><Role>` — e.g. `ButtonBackgroundNormal`) as variant-agnostic aliases of the palette role tokens, so a
+control template references its own key while one role-token brush backs every consumer; an app re-keys the per-control
+key (nearer scope) to re-skin just that control. Tests: `ControlMatrix/Section42_ResourceAlias`.
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| CA1 | `app.Resources[Alias] = ResourceReference(SurfaceBrush)`; `SurfaceBrush=Vbrush` in the chain | `leaf.FindResource(Alias)` | chases one hop → `Vbrush` (the target's value, not the `ResourceReference`) | PIN (§11.4a) |
+| CA2 | as CA1, plus `midA.Resources[Alias] = Vbrush2` (a nearer re-key of the alias key) | `leaf.FindResource(Alias)` | `Vbrush2` — the nearer override of the alias KEY wins over the indirection (the per-control override) | PIN (§11.4a) |
+| CA3 | as CA1, plus `Root.Resources[SurfaceBrush] = Vbrush` (a nearer override of the TARGET) | `leaf.FindResource(Alias)` | `Vbrush` — the chase re-resolves the target from the element, so a target override cascades through the alias | PIN (§11.4a) |
+| CA4 | `Alias → Alias2 → SurfaceBrush=Vbrush` (a 2-hop chain) | `leaf.FindResource(Alias)` | `Vbrush` — multi-hop chains resolve | PIN (§11.4a) |
+| CA5 | `app.Resources[Alias] = ResourceReference(Alias)` (self-referential) | `leaf.TryFindResource(Alias, out v)` | `false`, `v == null`, bounded at `MaxAliasChase=8`; `ResourceDiagnostics.Cycle` fires naming the key (no infinite loop) | PIN (§11.4a) |
+| CA6 | `Alias → AccentBrush`; `leaf.SetResourceReference(P, Alias)`; flip `RequestedThemeBase` Dark→Light | read `leaf.GetValue(P)` before/after | a live DynamicResource through an alias re-pushes on the variant flip (`#7aa2f7` → `#34548a`) — the CatchAll re-resolve re-chases | PIN (§11.4a/CD16) |
+| CA7 | BuiltIn per-control key (`ButtonBackgroundNormal`) at Dark | `leaf.FindResource(ButtonBackgroundNormal)` vs `FindResource(SurfaceBrush)` | the very same brush instance — the per-control key is a live alias of its role token | PIN (§11.4a) |
+
 ---
 
 ## 3. Variants live + subscriptions + the UIApplication merge + version (R1) — C59–C92

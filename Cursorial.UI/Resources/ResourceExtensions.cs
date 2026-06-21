@@ -45,8 +45,42 @@ public static class ResourceExtensions
     private static ThemeVariant ResolveVariant(ThemeVariant? explicitVariant)
         => explicitVariant ?? UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor);
 
-    /// <summary>The chain walk; <paramref name="searched"/> records hops for the diagnostic surface when non-null.</summary>
+    /// <summary>The maximum resource-alias (<see cref="ResourceReference"/>) chase depth before a cycle is declared (design doc §11.4a).</summary>
+    private const int MaxAliasChase = 8;
+
+    /// <summary>
+    /// The chain walk with <see cref="ResourceReference"/> alias chasing (design doc §11.4a):
+    /// a resolved value that is a <see cref="ResourceReference"/> is a live alias — its key is re-resolved
+    /// from the SAME <paramref name="element"/> (so an app override of either the alias key or the target
+    /// wins), bounded by <see cref="MaxAliasChase"/>. This is the per-control-key spine: the style-guide
+    /// <c>Theme.&lt;Control&gt;&lt;Role&gt;</c> keys are variant-agnostic aliases of the palette role
+    /// tokens, so a control template references its own key while a single role-token brush backs every
+    /// consumer. <paramref name="searched"/> records hops for the diagnostic surface when non-null.
+    /// </summary>
     internal static bool Walk(UIElement element, object key, ThemeVariant variant, List<string>? searched, out object? value)
+    {
+        for (var hop = 0; ; hop++)
+        {
+            if (!WalkOnce(element, key, variant, searched, out value))
+                return false;
+            if (value is not ResourceReference alias)
+                return true;
+            if (hop >= MaxAliasChase)
+                return AliasCycle(key, searched, out value);
+            searched?.Add($"  → alias → '{alias.Key}'");
+            key = alias.Key;
+        }
+    }
+
+    private static bool AliasCycle(object key, List<string>? searched, out object? value)
+    {
+        searched?.Add($"  → alias chain for '{key}' exceeded depth {MaxAliasChase} (cycle)");
+        ResourceDiagnostics.OnCycle($"Resource alias chain for '{key}' exceeded depth {MaxAliasChase} — a cyclic ResourceReference (design doc §11.4a).");
+        value = null;
+        return false;
+    }
+
+    private static bool WalkOnce(UIElement element, object key, ThemeVariant variant, List<string>? searched, out object? value)
     {
         // 1. element → logical ancestors, with the template-root resource hop (CD11).
         var node = (UIElement?)element;
@@ -90,11 +124,28 @@ public static class ResourceExtensions
             node = node.UIParent;
         }
 
-        return WalkApplicationTail(key, variant, searched, out value);
+        // Non-chasing tail: an alias found here bubbles back to Walk's loop, which re-chases from the
+        // element (so an element-scoped override of the alias target still wins).
+        return WalkApplicationTailOnce(key, variant, searched, out value);
     }
 
-    /// <summary>The application tail (shared by element-rooted and detached lookups): app Resources → app Theme → BuiltIn.</summary>
+    /// <summary>The application tail (shared by element-rooted and detached lookups) with alias chasing: app Resources → app Theme → BuiltIn.</summary>
     internal static bool WalkApplicationTail(object key, ThemeVariant variant, List<string>? searched, out object? value)
+    {
+        for (var hop = 0; ; hop++)
+        {
+            if (!WalkApplicationTailOnce(key, variant, searched, out value))
+                return false;
+            if (value is not ResourceReference alias)
+                return true;
+            if (hop >= MaxAliasChase)
+                return AliasCycle(key, searched, out value);
+            searched?.Add($"  → alias → '{alias.Key}'");
+            key = alias.Key;
+        }
+    }
+
+    private static bool WalkApplicationTailOnce(object key, ThemeVariant variant, List<string>? searched, out object? value)
     {
         if (UIApplication.Current is { } app)
         {

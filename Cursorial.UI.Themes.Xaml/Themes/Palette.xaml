@@ -1,5 +1,4 @@
-<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
-                    xmlns:draw="clr-namespace:Cursorial.Drawing;assembly=Cursorial.Drawing">
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
 
   <!--
     The cell-faithful palette spine (design doc §11.2/§11.8a), authored declaratively as ThemeDictionaries — the
@@ -7,8 +6,8 @@
     tokens live at (B,Ansi256) and serve Truecolor by descent (CD8 — descent never ascends); hand-picked palette
     indices at (B,Ansi16) beat the quantizer; the (null,NoColor) tier collapses every color role to Default so no
     RGB strands (state distinction rides the caps-nocolor TextAttributes layer in BuiltIn's style channel). The
-    two pens are opt-in chrome; ObscuredOverlay carries alpha (#AARRGGBB). Pen is reached via the clr-namespace
-    prefix (it lives in Cursorial.Drawing, not the default-mapped Cursorial.Drawing.Media).
+    pens are opt-in chrome; ObscuredOverlay carries alpha (#AARRGGBB). Pen lives in Cursorial.Drawing.Media, which
+    is part of the default UI uri namespace, so it is authored prefix-free as <Pen> (like the brushes).
   -->
   <ResourceDictionary.ThemeDictionaries>
 
@@ -43,10 +42,10 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="#24283b"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="#7aa2f7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="#0d0f19"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="#414868"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="#414868" Weight="Heavy"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="#414868" Weight="Light"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="#7aa2f7" Weight="Heavy"/>
+      <Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="#414868"/>
+      <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="#414868" Weight="Heavy"/>
+      <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="#414868" Weight="Light"/>
+      <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="#7aa2f7" Weight="Heavy"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="#60000000"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyUnderlineBrush}" Color="#c0caf5"/>
     </ResourceDictionary>
@@ -82,10 +81,10 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="#cbccd1"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="#34548a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="#e9e9ed"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="#c4c5cc"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="#c4c5cc" Weight="Heavy"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="#c4c5cc" Weight="Light"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="#34548a" Weight="Heavy"/>
+      <Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="#c4c5cc"/>
+      <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="#c4c5cc" Weight="Heavy"/>
+      <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="#c4c5cc" Weight="Light"/>
+      <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="#34548a" Weight="Heavy"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="#60000000"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyUnderlineBrush}" Color="#343b58"/>
     </ResourceDictionary>
@@ -121,10 +120,10 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="Palette(15)"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(8)"  Weight="Light"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(8)"  Weight="Double"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="Palette(8)"  Weight="Light"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(12)" Weight="Double"/>
+      <Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(8)"  Weight="Light"/>
+      <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(8)"  Weight="Double"/>
+      <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="Palette(8)"  Weight="Light"/>
+      <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(12)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyUnderlineBrush}" Color="Palette(15)"/>
     </ResourceDictionary>
@@ -160,10 +159,10 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="Palette(15)"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(8)" Weight="Light"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(8)" Weight="Double"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="Palette(8)" Weight="Light"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(4)" Weight="Double"/>
+      <Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(8)" Weight="Light"/>
+      <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(8)" Weight="Double"/>
+      <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="Palette(8)" Weight="Light"/>
+      <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(4)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyUnderlineBrush}" Color="Palette(0)"/>
     </ResourceDictionary>
@@ -194,10 +193,10 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="Default"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               GlyphSet="Ascii"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            GlyphSet="Ascii" Weight="Heavy"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        GlyphSet="Ascii"/>
-      <draw:Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                GlyphSet="Ascii" Weight="Heavy" />
+      <Pen        x:Key="{x:Static ThemeKeys.BorderPen}"               GlyphSet="Ascii"/>
+      <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            GlyphSet="Ascii" Weight="Heavy"/>
+      <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        GlyphSet="Ascii"/>
+      <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                GlyphSet="Ascii" Weight="Heavy" />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyUnderlineBrush}" Color="Default"/>
     </ResourceDictionary>

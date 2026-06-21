@@ -230,7 +230,7 @@ public sealed class Section03_SubscriptionsAndMerge
         // the Ansi16 dictionary (resources agree) — no desync.
         Assert.Equal("caps-ansi16", ColorClass(tree.Root));
         var borderPen = tree.Leaf.FindResource(ThemeKeys.BorderPen);
-        Assert.IsType<Drawing.Pen>(borderPen); // resolves at the Ansi16 tier dictionary
+        Assert.IsType<Drawing.Media.Pen>(borderPen); // resolves at the Ansi16 tier dictionary
     }
 
     [Fact] // C72 — the re-stamp rides ActualThemeVariantChanged

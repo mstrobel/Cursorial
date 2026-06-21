@@ -1,9 +1,6 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 
-// ReSharper disable CheckNamespace
-
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// A stroke definition for line / box drawing: a color source (<see cref="Brush"/>) plus the

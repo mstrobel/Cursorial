@@ -16,15 +16,15 @@ public sealed class XamlValueTypeElementTests
 {
     private static readonly XamlLoader Loader = new();
 
+    // Pen lives in Cursorial.Drawing.Media, part of the default UI uri namespace — authored prefix-free as <Pen>.
     private const string Ns =
-        " xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\"" +
-        " xmlns:draw=\"clr-namespace:Cursorial.Drawing;assembly=Cursorial.Drawing\"";
+        " xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\"";
 
     [Fact] // Multiple non-default init members on one boxed struct all persist (the mutation isn't lost to a copy).
     public void PenElement_SetsAllInitMembers_OnTheBoxedStruct()
     {
         var pen = Loader.Load<Pen>(
-            "<draw:Pen" + Ns + " Brush=\"#7aa2f7\" Weight=\"Heavy\" GlyphSet=\"Ascii\" Corners=\"Rounded\"/>");
+            "<Pen" + Ns + " Brush=\"#7aa2f7\" Weight=\"Heavy\" GlyphSet=\"Ascii\" Corners=\"Rounded\"/>");
 
         Assert.Equal(StrokeWeight.Heavy, pen.Weight);
         Assert.Equal(GlyphSet.Ascii, pen.GlyphSet);
@@ -35,7 +35,7 @@ public sealed class XamlValueTypeElementTests
     [Fact] // A value-type element with no members set default-constructs (no spurious failure) — equals default(Pen).
     public void PenElement_NoMembers_IsDefault()
     {
-        var pen = Loader.Load<Pen>("<draw:Pen" + Ns + "/>");
+        var pen = Loader.Load<Pen>("<Pen" + Ns + "/>");
         Assert.Equal(default, pen);
     }
 }

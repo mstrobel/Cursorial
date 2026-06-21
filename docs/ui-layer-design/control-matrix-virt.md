@@ -354,9 +354,67 @@ delegate ctor. Test: `Section13_DeferredContentBuild.ItemsPanelTemplate_FromXaml
 (`<ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>`
 → a fresh `VirtualizingStackPanel` per `Build`).
 
-## §V4–§V5 (sharpened when each phase lands)
-- **§V4** — sticky per-item measured-height cache (estimate only truly-unrealized); monotone extent; prefix-sum
-  arrange + `EstimateItemAt` binary search; thumb-settle ≤1 frame after a drag; convergence under the
-  `LayoutManager` 16-pass fixpoint (no `LayoutCycle`/`AbandonPendingLayout` on realistic heterogeneous lists).
+## §V4 — variable-height sticky per-item cache + prefix-sum geometry
+
+V2's single `avgItemRows` is replaced by a **sticky per-item measured-height cache** so a heterogeneous list arranges
+and scrolls at TRUE cumulative offsets, not a uniform estimate. The model (all internal to `VirtualizingStackPanel`):
+
+- **`_heights : Dictionary<int,int>`** — item index → measured rows, populated at measure and **sticky** (an item's
+  height survives unrealization — "estimate only the *truly*-unrealized", i.e. never-measured). Re-keyed on a
+  structural insert/remove (shift), cleared on Move/Reset.
+- **`Estimate`** — the running mean of measured heights (`_measuredSum / _measuredCount`, seeded 1 before any
+  measurement) — the fallback height for never-measured items.
+- **`_prefix : long[]`** — a dense prefix-sum of effective heights (`_prefix[i]` = the cell-row TOP of item `i` =
+  Σ effective-height(`j<i`); effective = measured-or-`Estimate`). Rebuilt lazily (`_prefixDirty`) inside
+  `MeasureOverride`, never on an in-band slide (the no-op guard still gates it). Cumulative double accumulation
+  rounded per index and clamped to `LayoutMath.MaxExtent` → **monotone non-decreasing** by construction.
+
+`OffsetOf(i) == _prefix[i]` (O(1)); `Extent.Rows == _prefix[itemCount]` (O(1)); `EstimateItemAt(offset)` is a
+**binary search** over `_prefix` (largest `i` with `_prefix[i] ≤ offset`) — O(log n). `ComputeWindow` maps the band
+to items via `EstimateItemAt(bandStart) ± slack`, keeping the realized set a **superset of the band** (VV2.6
+preserved). Arrange places each realized container at `_prefix[index]`. Convergence: a measured height that differs
+from the cache (`refined`) busts the no-op guard for ONE more pass; once the band's items are all measured (sticky),
+the next pass is stable — bounded well under the `LayoutManager` 16-pass fixpoint for realistic heterogeneous lists.
+
+### Rows
+
+| Row | Scenario | Expected |
+| --- | --- | --- |
+| **VV4.1** | Sticky cache survives unrealization. | Measure an item (height H), scroll it out of the band (it unrealizes), scroll back: the extent/offset geometry uses the **cached H** (not the estimate) while it was unrealized, and re-realizing measures the same H — the cache entry was never dropped on unrealize. |
+| **VV4.2** | Variable-height arrange (prefix-sum). | A list of heterogeneous heights (e.g. items of 1,3,2,1,4… rows) arranges each realized container at the **cumulative sum** of preceding effective heights (`_prefix[index]`), not `index × avg`. Item 0 at row 0; item k at Σ heights[0..k). |
+| **VV4.3** | Extent = measured Σ + unmeasured × estimate. | With only the band measured, `GetExtent().Rows == measuredSum + (itemCount − measuredCount) × round(estimate)` (== `_prefix[itemCount]`); as more items are measured it converges toward the true total. |
+| **VV4.4** | Monotone extent / offset map. | `_prefix` is non-decreasing in index (every effective height ≥ 0); `OffsetOf` is monotone and `EstimateItemAt` is its consistent inverse (`EstimateItemAt(OffsetOf(i)) == i` for any realized i). An in-band slide does **not** change the extent (no re-measure — VV2.7 preserved). |
+| **VV4.5** | `EstimateItemAt` binary search. | `EstimateItemAt(offset)` returns the item whose `[top, top+height)` contains `offset` (largest `i` with `_prefix[i] ≤ offset`), correct across the variable cache — including the exact item-top boundary and clamped at both ends (`offset ≤ 0 → 0`; `offset ≥ extent → itemCount−1`). |
+| **VV4.6** | Prefix-sum `BringItemIntoView`. | `BringItemIntoView(k)` returns `Rect(0, OffsetOf(k), viewportCols, height(k))` using the cached height when measured, the estimate otherwise — the true cell rect a `ScrollViewer.EnsureVisible` scrolls to (drives V3b realize-then-focus over variable heights). |
+| **VV4.7** | Estimate refinement. | `Estimate` is the mean of measured heights and refines as the band measures more items; a never-measured item's effective height tracks the latest estimate (the unmeasured tail's contribution to the extent updates on refinement). |
+| **VV4.8** | Convergence (no `LayoutCycle`). | A realistic heterogeneous list (mixed 1–5 row items, 1000 items) reaches a stable layout — `RunUntilIdle` completes with **no** `LayoutCycleException`/`AbandonPendingLayout`, the band fully realized, and a subsequent re-measure with the same band is a no-op (the refine→invalidate loop terminated). |
+| **VV4.9** | Thumb-settle after a re-anchor. | After a re-anchor (offset jump) the published extent settles within the same idle pump (≤ the fixpoint bound) — `ScrollViewer.Extent`/`ScrollBar.Maximum` are stable after `RunUntilIdle`, no residual `InvalidateMeasure` pending. |
+| **VV4.10** | Structural change re-keys the cache. | A source `Insert(k)` shifts cached heights at index `≥ k` up by 1 (new index `k` unmeasured); `Remove(k)` drops `k` and shifts the tail down; `Move`/`Reset` clear the cache (re-measured). The post-change arrange/extent reflect the shifted geometry with no stale height bleeding to the wrong item. |
+| **VV4.11** | Uniform list still exact (V2 parity). | An all-1-row list reports `Extent.Rows == itemCount` and arranges item k at row k (the variable model degenerates to V2's uniform case); the V2 rows VV2.1–VV2.13 stay green unchanged. |
+| **VV4.12** | In-band slide = still zero re-measure. | The variable cache does NOT add a per-cell re-measure: an in-band offset change re-rasters nothing and rebuilds no prefix (the no-op guard key is unchanged — `RasterVersion` + realized-set + `_prefix` identity all stable across the slide). |
+| **VV4.13** | Bimodal deep scroll converges + covers (no window crawl). | A list with a contiguous block of atypically-tall items (e.g. 6-row items 1500–1699 among 1-row items) scrolled deep into/near the block reaches idle within the frame budget with **no `LayoutCycle`/`ResidualLayoutWork`** and the viewport-top item realized (VV2.6). This is the §V4 convergence fix: the realization window is **session-scoped + expand-only** — re-seeded from the prefix only on a real re-anchor (`bandStart`/`bandLength` change), and across the refine passes at one scroll position it only widens to keep covering. Re-deriving the window from `EstimateItemAt(bandStart)` each pass instead chases the band-perturbed global estimate (the audit-reproduced crawl: ~157 passes ≫ the 16-pass cap → `AbandonPendingLayout`). |
+| **VV4.14** | Zero-height items stay virtualized. | A list with interspersed empty/Collapsed (0-row) items keeps the realized window band-sized — the **never-measured fallback estimate is floored at 1 row** (a genuinely measured 0-row item still uses its true 0). Without the floor, the running estimate falls below 1, the prefix collapses, `EstimateItemAt` maps every offset to the tail, and `ComputeWindow` realizes ALL N (virtualization defeated). Measured 0-row runs also resolve the `EstimateItemAt ⇄ OffsetOf` tie to the run's FIRST item (VV4.5 inverse). |
+
+### Audit resolution (V4 adversarial review — 5 dimension-finders + refute-by-default verify)
+
+A 10-agent audit confirmed 5 findings (the convergence crawl reproduced deterministically). Distinct defects fixed:
+
+- **Window crawl / non-convergence (HIGH)** — the realization window was re-derived from `EstimateItemAt(bandStart)` each refine pass over a prefix whose unmeasured tail the band's own measurements perturb, so a bimodal/density-contrast list scrolled deep crawled the window (~157 passes) past the 16-pass fixpoint → `AbandonPendingLayout` (stale/mis-realized state). Fixed: the **session-scoped expand-only window** (VV4.13) — monotone-within-a-scroll-position ⇒ bounded ⇒ converges; a genuine scroll resets the session to the now-refined prefix.
+- **All-zero-height window blowup (HIGH)** — measured 0-row items drove the estimate below 1, collapsing the prefix so the window realized all N. Fixed: the unmeasured-fallback estimate floor at 1 (VV4.14).
+- **`EstimateItemAt` inverse tie on measured 0-row runs (LOW)** — a run of 0-row items shares one prefix value; the binary search returned the run's tail, breaking `EstimateItemAt(OffsetOf(i)) == i`. Fixed: resolve the tie to the run's first index (VV4.5).
+- **Vacuous VV4.8 convergence gate (MED, test-only)** — the test asserted against a non-existent `LayoutCycleException` and ignored `RunUntilIdle`'s bool (an abandoned crawl still reports idle). Fixed: the test now bounds the frame budget AND subscribes to the real `LayoutDiagnostics` `LayoutCycle`/`ResidualLayoutWork` channel (VV4.8/VV4.13/VV4.14 share the `PumpCollectingCycles` helper).
+
+**Documented residual limitations** (deferred to V5 with proper offset-anchoring): on the *first* visit to a contrasting-density region at a deep offset the expand-only window may transiently over-realize until the sticky cache fills (it self-heals on the next scroll and never crawls/abandons); a *pathological all-zero-height* list (every item invisible) is inherently un-cell-virtualizable (the band is sized in rows) and is out of scope.
+
+### Audit focus (V4)
+(a) convergence — the refine→invalidate loop MUST terminate under the fixpoint for heterogeneous lists (VV4.8); the
+`refined` flag fires only on a real height change, and stickiness guarantees a second pass is stable; (b) monotonicity
+— `_prefix` must be non-decreasing and `EstimateItemAt` a consistent inverse (VV4.4/VV4.5), or the band window /
+binary search corrupts; (c) the sticky cache must not leak or mis-key across structural changes (VV4.10) or across
+detach/re-attach (cleared on disconnect); (d) invariant 3 — the prefix rebuild must stay gated behind the no-op guard
+so an in-band slide is still zero re-measure / zero re-raster (VV4.12); (e) the band=realization-coverage superset
+(VV2.6) must hold with the variable window mapping (slack derived from the estimate).
+
+## §V5 (sharpened when it lands)
 - **§V5** — fling-storm benchmark (10K list, <33 ms/frame, 0 B steady-state in-band slides) + control-gallery
   virtualized-list tab + adversarial closeout. Default-`ItemsPanel` flip deferred to post-soak.

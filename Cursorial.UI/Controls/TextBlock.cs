@@ -168,8 +168,6 @@ public class TextBlock : UIElement
         var builder = new RichTextBuilder();
         var start = 0;
 
-        text = text.Replace("[", "\\["); // Don't parse tags from plain text
-
         for (var i = 0; i < text.Length; i++)
         {
             var c = text[i];

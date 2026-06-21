@@ -13,7 +13,6 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
-using Cursorial.UI.Themes.Xaml;
 using Cursorial.UI.Xaml;
 
 // P9.8 — the XAML style-inspector (design doc §3.9 / proposal §2.8 "style inspector overlay"): load a .xaml
@@ -44,9 +43,11 @@ internal sealed class InspectorDemo : IDemo
                           "q / Esc exits.");
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
-        app.Theme = CursorialXamlTheme.LoadTheme();
+        // app.Theme = CursorialXamlTheme.LoadTheme();
         var controller = new Controller(app);
 
+        app.Started += (_, _) => controller.OpenDialog();
+        
         try
         {
             await app.RunAsync(controller.BuildDesktop);
@@ -174,11 +175,29 @@ internal sealed class InspectorDemo : IDemo
         private TextBlock _status = null!;
         private Border _canvas = null!; // hosts the loaded tree (or the placeholder / error)
         private StackPanel _inspectorContent = null!;
-        private string _lastDirection = "(direct)";
         private UIElement? _lastInspected;
         private UIElement? _lastInspectedParent;
         private UIElement? _lastInspectedRelative;
         private string _loaded = "(nothing)";
+        private bool _isInspecting;
+
+        public void ToggleInspection()
+        {
+            _isInspecting = !_isInspecting;
+            _canvas.Cursor = _isInspecting ? MouseCursorShape.Crosshair : MouseCursorShape.Default;
+            
+            Refresh();
+        }
+
+        private void Refresh(bool reevaluateTarget = true)
+        {
+            var target = reevaluateTarget 
+                             ? app.InputDispatcher.LastHoverTarget 
+                             : _lastInspected ?? app.InputDispatcher.LastHoverTarget;
+
+            if (target is not null && _canvas.IsAncestorOf(target))
+                Inspect(target, forceRefresh: true);
+        }
 
         public UIElement BuildDesktop()
         {
@@ -223,22 +242,33 @@ internal sealed class InspectorDemo : IDemo
             // handlers are scoped to the canvas, so hovering the inspector panel never inspects itself.
             _canvas = new Border { Child = Placeholder("Press 'o' to open a XAML source.") };
 
-            _canvas.AddHandler(UIElement.MouseMoveEvent, (_, e) => Inspect(e.Source), handledEventsToo: true);
-            _canvas.AddHandler(UIElement.GotFocusEvent, (_, e) => Inspect(e.Source));
+            _canvas.AddHandler(UIElement.MouseMoveEvent,
+                               (_, e) =>
+                               {
+                                   if (_isInspecting)
+                                       Inspect(e.Source);
+                               },
+                               handledEventsToo: true);
 
-            _canvas.AddHandler(UIElement.PreviewKeyDownEvent, (_, e) =>
-                                                              {
-                                                                  if (e is { Key: Key.Character, Text.Span: "[" })
-                                                                  {
-                                                                      Inspect(_lastInspected, -1);
-                                                                      e.Handled = true;
-                                                                  }
-                                                                  else if (e is { Key: Key.Character, Text.Span: "]" })
-                                                                  {
-                                                                      Inspect(_lastInspected, 1);
-                                                                      e.Handled = true;
-                                                                  }
-                                                              });
+            _canvas.AddHandler(UIElement.PreviewKeyDownEvent,
+                               (_, e) =>
+                               {
+                                   if (e is { Key: Key.F12, Modifiers: KeyModifiers.None })
+                                   {
+                                       ToggleInspection();
+                                       e.Handled = true;
+                                   }
+                                   else if (e is { Key: Key.Character, Modifiers: KeyModifiers.Alt, Text.Span: "[" })
+                                   {
+                                       Inspect(_lastInspected, -1);
+                                       e.Handled = true;
+                                   }
+                                   else if (e is { Key: Key.Character, Modifiers: KeyModifiers.Alt, Text.Span: "]" })
+                                   {
+                                       Inspect(_lastInspected, 1);
+                                       e.Handled = true;
+                                   }
+                               });
 
             root.Children.Add(_canvas);
 
@@ -263,7 +293,7 @@ internal sealed class InspectorDemo : IDemo
                 return;
             }
 
-            if (e.Key != Key.Character || e.Text.Length == 0 || (e.Modifiers & KeyModifiers.Alt) != 0)
+            if (e.Key != Key.Character || e.Text.Length == 0 || e.Modifiers is not KeyModifiers.Alt)
                 return;
 
             switch (char.ToLowerInvariant(e.Text.Span[0]))
@@ -278,7 +308,12 @@ internal sealed class InspectorDemo : IDemo
                     e.Handled = true;
                     break;
 
-                case 't':
+                case 'r':
+                    Refresh(reevaluateTarget: false);
+                    e.Handled = true;
+                    break;
+
+                case 't' :
                     app.RequestedColorTier = app.RequestedColorTier switch
                                              {
                                                  null                 => ColorDepth.Ansi256,
@@ -302,7 +337,7 @@ internal sealed class InspectorDemo : IDemo
 
         // ───────────────────────────── open + load ─────────────────────────────
 
-        private async void OpenDialog()
+        internal async void OpenDialog()
         {
             var list = new ListBox { ItemsSource = Samples.Select(s => s.Label).ToArray(), Height = 4 };
             list.SelectedIndex = 0;
@@ -461,11 +496,12 @@ internal sealed class InspectorDemo : IDemo
             return e ?? anchor;
         }
 
-        private void Inspect(UIElement? element, int direction = 0)
+        private void Inspect(UIElement? element, int direction = 0, bool forceRefresh = false)
         {
             var parent = TemplatedParent(element);
 
-            if (ReferenceEquals(parent, _lastInspectedParent) && direction == 0) return;
+            if (ReferenceEquals(parent, _lastInspectedParent) && direction == 0 && forceRefresh is false)
+                return;
 
             _lastInspected = element;
             _lastInspectedParent = parent;
@@ -479,8 +515,6 @@ internal sealed class InspectorDemo : IDemo
                                          > 0 => DescendTree(_lastInspected, _lastInspectedRelative),
                                          < 0 => AscendTree(_lastInspected, _lastInspectedRelative)
                                      };
-
-            _lastDirection = direction < 0 ? "ascend" : direction > 0 ? "descend" : "direct";
 
             var current = _lastInspectedRelative;
 
@@ -519,7 +553,7 @@ internal sealed class InspectorDemo : IDemo
             else
                 name = current.GetType().Name is { Length: > 0 } tName ? $"{tName}#{name}" : name;
 
-            var root = Node(name, NoValue);
+            var root = Node(name, NoValue, ThemeKeys.GreenBrush);
 
             var pseudoClasses = Enum.GetValues<InteractionState>()
                                     .Where(o => current.InteractionStateInternal.HasFlag(o))
@@ -630,7 +664,7 @@ internal sealed class InspectorDemo : IDemo
 
         private static readonly object NoValue = new();
 
-        private static TreeViewItem Node(string? name, object? value)
+        private static TreeViewItem Node(string? name, object? value, string? brush = ThemeKeys.MutedBrush)
         {
             var hasName = name is not null;
             var type = value?.GetType() ?? typeof(object);
@@ -642,8 +676,8 @@ internal sealed class InspectorDemo : IDemo
 
             var header = hasName
                              ? isSimple ?
-                                   $"[b][brush {ThemeKeys.MutedBrush}]{Sanitize(name)}:[/brush][/b] {FormatValue(value)}"
-                                   : $"[b][brush {ThemeKeys.MutedBrush}]{Sanitize(name)}[/brush][/b]"
+                                   $"[b][brush {brush}]{Sanitize(name)}:[/brush][/b] {FormatValue(value)}"
+                                   : $"[b][brush {brush}]{Sanitize(name)}[/brush][/b]"
                              : FormatValue(value);
 
             var item = new TreeViewItem
@@ -749,8 +783,10 @@ internal sealed class InspectorDemo : IDemo
         }
 
         private void UpdateStatus()
-            => _status.Text =
-                   $" loaded: {_loaded} · theme: {app.ActualThemeVariant}  —  o open · hover/Tab inspect · t tier · d dark/light · q quit  —  ${(_lastInspected?.GetType().Name ?? "(null)")}/{(_lastInspectedRelative?.GetType().Name ?? "(null)")} [{_lastDirection}]";
+        {
+            _status.Text = $" loaded: {_loaded} · theme: {app.ActualThemeVariant} — " +
+                           "⌥+o open · F12 inspect · ⌥+[, ⌥+] traverse · ⌥+r refresh · ⌥+t tier · ⌥+d dark/light · ⌥+q quit";
+        }
     }
 
     private sealed record OpenChoice(bool IsFile, string Value);

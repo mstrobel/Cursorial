@@ -102,6 +102,15 @@ public abstract partial class UIElement : UIObject
         _visualChildren ?? (IReadOnlyList<UIElement>)NoChildren;
 
     /// <summary>
+    /// Evaluates whether this element is a logical or visual ancestor of <paramref name="element"/>.
+    /// </summary>
+    /// <param name="element">The element to evaluate.</param>
+    /// <returns><c>true</c> if <paramref name="element"/> is a logical or visual descendant of this element.</returns>
+    /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
+    public bool IsAncestorOf(UIElement? element) => 
+        element != null && (element == this || IsAncestorOf(element.VisualParent ?? element.UIParent));
+
+    /// <summary>
     /// Adopts <paramref name="child"/> into the visual tree at <paramref name="index"/> (−1 =
     /// append; index = paint order). Sets the child's visual parent, rewires its inheritance parent
     /// (<c>LogicalParent ?? VisualParent</c>), and — when this element is attached — runs the

@@ -115,6 +115,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
             }
     }
 
+    /// <summary>The last hovered leaf element, or null.</summary>
+    public UIElement? LastHoverTarget => _hoverChain.Length > 0 && _hoverCount > 0 ? _hoverChain[_hoverCount - 1] : null;
+
     /// <summary>The element holding mouse capture, or null (capture is routing policy, not OS capture).</summary>
     public UIElement? MouseCaptureTarget => _captureTarget;
 
@@ -212,6 +215,11 @@ public sealed class InputDispatcher : IInputDispatchTarget
         }
 
         UpdateHoverChain(HitTestForEvent(device, hitTestOnly: true), device);
+    }
+
+    public void UpdateCursor()
+    {
+        UpdateEffectiveCursorShape();
     }
 
     /// <summary>

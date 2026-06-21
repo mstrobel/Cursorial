@@ -32,10 +32,18 @@ public class Button : ButtonBase
     }
 
     /// <inheritdoc cref="IsDefaultProperty"/>
-    public bool IsDefault { get => GetValue(IsDefaultProperty); set => SetValue(IsDefaultProperty, value); }
+    public bool IsDefault
+    {
+        get => GetValue(IsDefaultProperty);
+        set => SetValue(IsDefaultProperty, value);
+    }
 
     /// <inheritdoc cref="IsCancelProperty"/>
-    public bool IsCancel { get => GetValue(IsCancelProperty); set => SetValue(IsCancelProperty, value); }
+    public bool IsCancel
+    {
+        get => GetValue(IsCancelProperty);
+        set => SetValue(IsCancelProperty, value);
+    }
 
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
@@ -55,7 +63,7 @@ public class Button : ButtonBase
 
     private void UpdateWindowKeyBindings()
     {
-        if (_bindingRoot is not { } root)
+        if (_bindingRoot is not {} root)
             return;
 
         if (IsDefault && _defaultBinding is null)
@@ -63,7 +71,7 @@ public class Button : ButtonBase
             _defaultBinding = new KeyBinding(new KeyGesture(Key.Enter), new ActivateCommand(this));
             root.InputBindings.Add(_defaultBinding);
         }
-        else if (!IsDefault && _defaultBinding is { } existing)
+        else if (!IsDefault && _defaultBinding is {} existing)
         {
             root.InputBindings.Remove(existing);
             _defaultBinding = null;
@@ -74,7 +82,7 @@ public class Button : ButtonBase
             _cancelBinding = new KeyBinding(new KeyGesture(Key.Escape), new ActivateCommand(this));
             root.InputBindings.Add(_cancelBinding);
         }
-        else if (!IsCancel && _cancelBinding is { } existingCancel)
+        else if (!IsCancel && _cancelBinding is {} existingCancel)
         {
             root.InputBindings.Remove(existingCancel);
             _cancelBinding = null;
@@ -83,26 +91,28 @@ public class Button : ButtonBase
 
     private void RemoveWindowKeyBindings()
     {
-        if (_bindingRoot is not { } root)
+        if (_bindingRoot is not {} root)
             return;
 
-        if (_defaultBinding is { } d)
+        if (_defaultBinding is {} d)
             root.InputBindings.Remove(d);
-        if (_cancelBinding is { } c)
+
+        if (_cancelBinding is {} c)
             root.InputBindings.Remove(c);
+
         _defaultBinding = null;
         _cancelBinding = null;
     }
 
     private static void OnIsDefaultChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is Button button && button.IsAttachedToTree)
+        if (sender is Button { IsAttachedToTree: true } button)
             button.UpdateWindowKeyBindings();
     }
 
     private static void OnIsCancelChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is Button button && button.IsAttachedToTree)
+        if (sender is Button { IsAttachedToTree: true } button)
             button.UpdateWindowKeyBindings();
     }
 
@@ -110,10 +120,14 @@ public class Button : ButtonBase
     // so this only reaches the button when nothing else consumed Enter/Esc).
     private sealed class ActivateCommand(Button button) : ICommand
     {
-        public bool CanExecute(object? parameter) => button.IsEffectivelyEnabled && button.IsEffectivelyVisible;
+        public bool CanExecute(object? parameter) => button is { IsEffectivelyEnabled: true, IsEffectivelyVisible: true };
 
         public void Execute(object? parameter) => button.OnClick();
 
-        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public event EventHandler? CanExecuteChanged
+        {
+            add {}
+            remove {}
+        }
     }
 }

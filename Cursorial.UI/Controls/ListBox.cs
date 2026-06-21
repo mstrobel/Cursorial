@@ -96,7 +96,8 @@ public class ListBox : SelectingItemsControl
             case Key.Enter:
                 if (current < 0)
                     return; // nothing anchored — no phantom activation
-                RaiseItemActivated(current);
+                if (RaiseItemActivated(current) is false)
+                    return; // leave key event unhandled (Enter / Escape bubble for IsDefault / IsCancel, spec §13)
                 break;
             default:
                 if (!IsSpace(e) || current < 0)

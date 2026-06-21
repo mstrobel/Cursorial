@@ -15,6 +15,11 @@ namespace Cursorial.UI;
 public sealed partial class UIApplication
 {
     /// <summary>
+    /// Raised once the application is fully constructed and has entered its dispatcher loop.
+    /// </summary>
+    public event EventHandler? Started;
+
+    /// <summary>
     /// PREFERRED entry point: async startup on the caller (host open, negotiation), then one
     /// dedicated foreground UI thread ("Cursorial UI") runs the loop synchronously;
     /// <paramref name="rootFactory"/> is invoked <b>on the UI thread</b> before the first frame —
@@ -277,6 +282,8 @@ public sealed partial class UIApplication
     private void RunLoop()
     {
         var time = _options.TimeProvider;
+        
+        Started?.Invoke(this, EventArgs.Empty);
 
         while (!_shutdownRequested)
         {

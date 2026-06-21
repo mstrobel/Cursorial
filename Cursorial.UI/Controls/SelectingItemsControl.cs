@@ -107,12 +107,16 @@ public abstract class SelectingItemsControl : ItemsControl
     }
 
     /// <summary>Raises <see cref="ItemActivatedEvent"/> for the item at <paramref name="index"/>.</summary>
-    private protected void RaiseItemActivated(int index)
+    private protected bool RaiseItemActivated(int index)
     {
         if (index < 0)
-            return;
+            return false;
 
-        RaiseEvent(new ItemActivatedEventArgs(ItemActivatedEvent, this, ItemFromIndex(index), index));
+        var args = new ItemActivatedEventArgs(ItemActivatedEvent, this, ItemFromIndex(index), index);
+
+        RaiseEvent(args);
+        
+        return args.Handled;
     }
 
     /// <summary>A container reported a pointer selection gesture (its own <c>OnMouseDown</c>): select per the

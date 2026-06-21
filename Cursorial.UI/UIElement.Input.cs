@@ -149,7 +149,7 @@ public abstract partial class UIElement : IInteractionStateSink
     /// frame.
     /// </summary>
     public static readonly StyledProperty<MouseCursorShape?> CursorProperty =
-        UIProperty.Register<UIElement, MouseCursorShape?>(nameof(Cursor));
+        UIProperty.Register<UIElement, MouseCursorShape?>(nameof(Cursor), changed: OnCursorChanged);
 
     /// <inheritdoc cref="CursorProperty"/>
     public MouseCursorShape? Cursor { get => GetValue(CursorProperty); set => SetValue(CursorProperty, value); }
@@ -186,6 +186,12 @@ public abstract partial class UIElement : IInteractionStateSink
 
     /// <summary>Focus-manager write surface for the <see cref="IsKeyboardFocusWithinProperty"/> mirror.</summary>
     internal void SetIsKeyboardFocusWithinInternal(bool value) => SetValue(IsKeyboardFocusWithinPropertyKey, value);
+
+    private static void OnCursorChanged(UIObject sender, MouseCursorShape? oldValue, MouseCursorShape? newValue)
+    {
+        if (sender is UIElement { IsPointerOver: true })
+            UIApplication.Current?.InputDispatcher.UpdateCursor();
+    }
 
     // ───────────────────────────── interaction state (doc §3.2) ─────────────────────────────
 

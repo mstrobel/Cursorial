@@ -51,6 +51,11 @@ public interface IInputDispatchTarget
     /// </summary>
     void UpdateHover();
 
+    /// <summary>
+    /// Forces the mouse cursor to update.
+    /// </summary>
+    void UpdateCursor() {}
+
     /// <summary>The capability fan-out leg (startup and renegotiation).</summary>
     void OnCapabilitiesChanged(TerminalCapabilities capabilities);
 }

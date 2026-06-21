@@ -1,5 +1,6 @@
 using Cursorial.Input;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -12,14 +13,19 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 /// <remarks>Access-key folding of the <see cref="HeaderedContentControl.Header"/> (Alt+mnemonic selects the tab) is
 /// a recorded deferral — selection by click and keyboard is the v1 behavior.</remarks>
+[TemplatePart(PartUnderline, typeof(Separator))]
 public class TabItem : HeaderedContentControl, ISelectableContainer
 {
+    /// <summary>The active-tab accent underline rule (the gallery "active tab marked by accent bar"); shown only when selected.</summary>
+    private const string PartUnderline = "PART_Underline";
+
     /// <summary>Whether this tab is selected. Two-way bindable; <c>:selected</c> mirrors it. Setting it from outside
     /// the owner folds into the owner's single-selection model.</summary>
     public static readonly StyledProperty<bool> IsSelectedProperty =
         UIProperty.Register<TabItem, bool>(nameof(IsSelected), defaultValue: false, changed: OnIsSelectedChanged);
 
     private bool _ownerDriven; // guards the owner→container write so it never echoes back into the model
+    private Separator? _underline;
 
     static TabItem() => PseudoClassMapping.Register<TabItem>(IsSelectedProperty, ":selected");
 
@@ -28,6 +34,27 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
 
     /// <inheritdoc cref="IsSelectedProperty"/>
     public bool IsSelected { get => GetValue(IsSelectedProperty); set => SetValue(IsSelectedProperty, value); }
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        // The active-tab accent underline (the gallery "active tab marked by accent bar (━ cells)"): a
+        // Separator whose Heavy --accent pen is applied here at LocalValue — a /template/ theme rule can't
+        // override the Separator's OWN control theme pen (the Caret focus indicator is driven in code for the
+        // same reason). The pen rides SetResourceReference so it tracks variant flips; visibility is gated on
+        // selection (the bar row stays laid out — Hidden, not Collapsed — so the tab strip aligns).
+        _underline = GetTemplatePart<Separator>(PartUnderline);
+        _underline?.SetResourceReference(Control.BorderPenProperty, ThemeKeys.TabUnderlinePen);
+        UpdateUnderline();
+    }
+
+    private void UpdateUnderline()
+    {
+        if (_underline is { } underline)
+            underline.Visibility = IsSelected ? Visibility.Visible : Visibility.Hidden;
+    }
 
     void ISelectableContainer.SetIsSelectedFromOwner(bool selected)
     {
@@ -69,7 +96,11 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
 
     private static void OnIsSelectedChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is TabItem { _ownerDriven: false } item && item.OwnerSelector is { } owner)
+        if (sender is not TabItem item)
+            return;
+
+        item.UpdateUnderline(); // show/hide the accent underline as selection flips
+        if (!item._ownerDriven && item.OwnerSelector is { } owner)
             owner.NotifyContainerIsSelectedChanged(item, newValue);
     }
 }

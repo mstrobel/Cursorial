@@ -248,6 +248,20 @@ spec-named base aliases (`AccentForegroundBrush`/`SelectionActiveBrush`/`PanelBa
 | CA8 | a default-themed `Button` at Dark | override `app.Resources[ButtonBackgroundNormal]`, `RunFrame` | the button's resting fill re-skins to the override; `FindResource(SurfaceBrush)` is unchanged (per-control override, shared token untouched) | PIN (§11.4a; `Section05` C116b) |
 | CA9 | a default-themed `Button` at Dark | override `app.Resources[TextBrush]` (a role token an alias targets) | the button's ink re-skins — a keyed override of the role token cascades through the per-control alias (`Section05` C116, the R2 promise preserved) | PIN (§11.4a/R2) |
 
+### 2.7 Style-guide reconciliation (#103) — where the themes genuinely diverged from the FINAL gallery
+
+The themes already match the final gallery for the unambiguous states (and the adoption-spec's appearance criteria
+are non-authoritative — the gallery governs). These are the genuine divergences, fixed by retargeting the per-control
+alias (§2.6) to the gallery token, or a template change. Tests: `ControlMatrix/Section43_StyleGuideReconcile`.
+**Unchanged** (verified to already match the final gallery): check/radio focus = in-box caret (`.boxfocus`), the radio
+mark = `--accent` (`●`), the check mark = `--green` (`✓`), Button focus ink = `--bg` (`.rev`).
+
+| # | Control / state | Was | Now (final gallery) | Oracle |
+|---|---|---|---|---|
+| C103.1 | list / tree / calendar item reverse-video focus FOREGROUND | `--bg` (WindowBackground) | `--panel` (`ListItem/TreeItem/CalendarDay ForegroundFocus` → PanelBrush) — items sit on the panel surface (`.item.rev`/`.cal .focus`) | gallery |
+| C103.2 | ProgressBar empty track | `--well` | `--faint` (`ProgressTrackBrush` → FaintBrush) | gallery |
+| C103.3 | TabItem active look | `--sel` fill, `--text` ink on every tab, no underline | inactive ink `--text-dim`; active = `--surface` fill + `--text` ink + a Heavy `--accent` underline rule (a 1-row `PART_Underline` `Separator`, pen applied at LocalValue + visibility gated on selection in `TabItem.OnApplyTemplate` — a `/template/` theme rule can't override a child control's own theme pen) | gallery |
+
 ---
 
 ## 3. Variants live + subscriptions + the UIApplication merge + version (R1) — C59–C92

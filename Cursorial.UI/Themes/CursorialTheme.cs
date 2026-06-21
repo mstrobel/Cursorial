@@ -127,6 +127,7 @@ public static class CursorialTheme
         noColor[ThemeKeys.SeparatorPen] = Pens.Ascii;
         noColor[ThemeKeys.MenuSeparatorPen] = Pens.Ascii;
         noColor[ThemeKeys.FocusPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
+        noColor[ThemeKeys.TabUnderlinePen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
         noColor[ThemeKeys.AccessKeyUnderlineBrush] = defaultBrush;
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
@@ -178,14 +179,16 @@ public static class CursorialTheme
         Alias(ThemeKeys.ListItemForegroundNormal, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.ListItemBackgroundSelected, ThemeKeys.SelectionBrush);
-        Alias(ThemeKeys.ListItemForegroundFocus, ThemeKeys.WindowBackground);
+        // Gallery `.item.rev { background: --text; color: --panel }` (final style guide): a list item sits on the
+        // PanelBrush surface, so its reverse-video focus ink is --panel (not the universal --bg). #103.
+        Alias(ThemeKeys.ListItemForegroundFocus, ThemeKeys.PanelBrush);
         Alias(ThemeKeys.ListItemBackgroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemForegroundDisabled, ThemeKeys.MutedBrush);
 
-        // TreeViewItem.
+        // TreeViewItem (same item-on-panel reverse-video ink, #103).
         Alias(ThemeKeys.TreeItemForegroundNormal, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TreeItemBackgroundSelected, ThemeKeys.SelectionBrush);
-        Alias(ThemeKeys.TreeItemForegroundFocus, ThemeKeys.WindowBackground);
+        Alias(ThemeKeys.TreeItemForegroundFocus, ThemeKeys.PanelBrush);
         Alias(ThemeKeys.TreeItemBackgroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TreeItemForegroundDisabled, ThemeKeys.MutedBrush);
 
@@ -197,16 +200,19 @@ public static class CursorialTheme
         Alias(ThemeKeys.MenuAcceleratorForeground, ThemeKeys.MutedBrush);
         Alias(ThemeKeys.MenuForegroundDisabled, ThemeKeys.MutedBrush);
 
-        // TabItem.
-        Alias(ThemeKeys.TabForegroundNormal, ThemeKeys.TextBrush);
+        // TabItem — gallery: inactive ink = --text-dim, active = --surface fill + --text ink + an --accent
+        // underline bar (#103, was a --sel fill with --text ink on every tab).
+        Alias(ThemeKeys.TabForegroundNormal, ThemeKeys.TextDimBrush);
+        Alias(ThemeKeys.TabForegroundActive, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TabBackgroundHover, ThemeKeys.HoverBrush);
-        Alias(ThemeKeys.TabBackgroundSelected, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.TabBackgroundSelected, ThemeKeys.SurfaceBrush);
         Alias(ThemeKeys.TabForegroundDisabled, ThemeKeys.MutedBrush);
+        // TabUnderlinePen is a Pen (not a brush alias) — defined per-variant in AddTierPalette.
 
-        // ProgressBar.
+        // ProgressBar — gallery: empty track = --faint (#103, was --well).
         Alias(ThemeKeys.ProgressFillNormal, ThemeKeys.GreenBrush);
         Alias(ThemeKeys.ProgressFillIndeterminate, ThemeKeys.AccentBrush);
-        Alias(ThemeKeys.ProgressTrackBrush, ThemeKeys.WellBrush);
+        Alias(ThemeKeys.ProgressTrackBrush, ThemeKeys.FaintBrush);
 
         // Calendar (day cells + Year/Decade cells; DatePicker).
         Alias(ThemeKeys.CalendarDayForeground, ThemeKeys.TextBrush);
@@ -215,7 +221,8 @@ public static class CursorialTheme
         Alias(ThemeKeys.CalendarDayTodayForeground, ThemeKeys.AccentBrush);
         Alias(ThemeKeys.CalendarDayBackgroundSelected, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.CalendarDayForegroundSelected, ThemeKeys.TextBrush);
-        Alias(ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.WindowBackground);
+        // Gallery `.cal .focus { background: --text; color: --panel }` (#103, was --bg).
+        Alias(ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.PanelBrush);
         Alias(ThemeKeys.CalendarDayBackgroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.CalendarDayForegroundDisabled, ThemeKeys.MutedBrush);
     }
@@ -266,6 +273,8 @@ public static class CursorialTheme
         rgb[ThemeKeys.SeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.MenuSeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Light };
         rgb[ThemeKeys.FocusPen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
+        // The active-tab underline rule — a Heavy --accent pen (the gallery "━ cells" bar), themeable per variant.
+        rgb[ThemeKeys.TabUnderlinePen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.ObscuredOverlayBrush] = new SolidColorBrush(Color.FromRgba(0, 0, 0, 0x60));
         rgb[ThemeKeys.AccessKeyUnderlineBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi256)] = rgb;
@@ -309,6 +318,7 @@ public static class CursorialTheme
         ansi16[ThemeKeys.SeparatorPen] = Pens.Double.WithColor(Color.FromPalette(8));
         ansi16[ThemeKeys.MenuSeparatorPen] = Pens.Light.WithBrush(Palette(dark ? 15 : 0));
         ansi16[ThemeKeys.FocusPen] = Pens.Double.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
+        ansi16[ThemeKeys.TabUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
         ansi16[ThemeKeys.ObscuredOverlayBrush] = Palette(8);
         ansi16[ThemeKeys.AccessKeyUnderlineBrush] = Palette(dark ? 15 : 0);
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;

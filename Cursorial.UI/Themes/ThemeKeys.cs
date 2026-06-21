@@ -268,12 +268,16 @@ public static class ThemeKeys
     public const string MenuForegroundDisabled = "Theme.MenuForegroundDisabled";
 
     // TabItem.
-    /// <summary>Tab-header ink (--text).</summary>
+    /// <summary>Inactive tab-header ink (--text-dim; the gallery dims unselected tabs).</summary>
     public const string TabForegroundNormal = "Theme.TabForegroundNormal";
+    /// <summary>Active tab-header ink (--text).</summary>
+    public const string TabForegroundActive = "Theme.TabForegroundActive";
     /// <summary>Hovered tab fill (--hover).</summary>
     public const string TabBackgroundHover = "Theme.TabBackgroundHover";
-    /// <summary>Selected/active tab fill (--sel).</summary>
+    /// <summary>Selected/active tab fill (--surface).</summary>
     public const string TabBackgroundSelected = "Theme.TabBackgroundSelected";
+    /// <summary>The active tab's accent underline rule — a Heavy <c>--accent</c> pen (the gallery "active tab marked by accent bar (━ cells)").</summary>
+    public const string TabUnderlinePen = "Theme.TabUnderlinePen";
     /// <summary>Disabled tab ink (--muted).</summary>
     public const string TabForegroundDisabled = "Theme.TabForegroundDisabled";
 

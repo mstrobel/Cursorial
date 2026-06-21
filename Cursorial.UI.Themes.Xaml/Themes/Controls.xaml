@@ -455,16 +455,20 @@
     <Setter Property="Template"   Value="{StaticResource TabControlTemplate}"/>
   </Style>
 
-  <!-- TabItem (design doc TabControl/TabItem). A tab header: a fill-bounded ContentPresenter over the
-       TabItem.Header (RecognizesAccessKey). No resting border — the face fill is the TemplateBinding Background,
-       resting blank. :selected = SelectionBrush fill, :pointerover = HoverBrush, :disabled muted foreground
-       (the gallery item-bar idiom). The declarative twin of ControlThemes.TabItemTheme(). -->
+  <!-- TabItem (gallery TabControl). Inactive tabs are text-dim ink; the active tab is a surface fill +
+       text ink marked by an accent underline bar below the header (a 1-row PART_Underline Separator with
+       matching side padding, painted + shown by TabItem.OnApplyTemplate on selection); pointerover = hover.
+       The fill rides the HEADER row only, not the underline row. The declarative twin of ControlThemes.TabItemTheme(). -->
   <ControlTemplate x:Key="TabItemTemplate" TargetType="TabItem">
-    <Border Padding="1,0"
-            Background="{TemplateBinding Background}">
-      <ContentPresenter x:Name="PART_ContentPresenter"
-                        RecognizesAccessKey="True"
-                        Content="{TemplateBinding Header}"/>
+    <Border>
+      <StackPanel>
+        <Border Padding="1,0" Background="{TemplateBinding Background}">
+          <ContentPresenter x:Name="PART_ContentPresenter"
+                            RecognizesAccessKey="True"
+                            Content="{TemplateBinding Header}"/>
+        </Border>
+        <Separator x:Name="PART_Underline" Margin="1,0,1,0"/>
+      </StackPanel>
     </Border>
   </ControlTemplate>
 
@@ -479,6 +483,7 @@
       </Style>
       <Style Selector="^:selected" TargetType="TabItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundSelected}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundActive}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundDisabled}}"/>

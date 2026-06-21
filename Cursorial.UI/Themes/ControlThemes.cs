@@ -630,7 +630,7 @@ internal static class ControlThemes
         content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
         content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
         var body = new Border { Padding = new Margins(1, 0), Child = content };
-        body.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        body.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
         var root = new DockPanel();
         root.Children.Add(strip); // docked top (the header row)
@@ -643,25 +643,42 @@ internal static class ControlThemes
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, TabControlTemplate());
 
-    // A tab header: a fill-bounded ContentPresenter over the TabItem.Header (RecognizesAccessKey). :selected =
-    // SelectionBrush fill, :pointerover = HoverBrush, :disabled muted (the gallery item-bar idiom).
+    // A tab header (gallery §TabControl): inactive tabs are --text-dim ink; the active tab is a --surface fill +
+    // --text ink marked by an --accent underline bar below the header; :pointerover = --hover. The bar is a 1-row
+    // Separator under the header (the "active tab marked by accent bar (━ cells)" cue).
     private static ControlTemplate TabItemTemplate() => new(ctx =>
     {
         var header = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", header);
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
-        var face = new Border { Padding = new Margins(1, 0), Child = header };
-        face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        return face;
+        // The fill rides the HEADER row only — not the underline row (which sits on the page like the gallery bar).
+        var headerHost = new Border { Padding = new Margins(1, 0), Child = header };
+        headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        headerHost.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+
+        // The active-tab accent underline (gallery "active tab marked by accent bar (━ cells)"): a 1-row
+        // Separator below the header, with the SAME (1,0) side padding as the header so the ━ aligns under the
+        // label. TabItem.OnApplyTemplate paints its Heavy --accent pen at LocalValue (a /template/ theme rule
+        // can't override the Separator's OWN control-theme pen) and toggles its visibility on selection (the
+        // bar row stays laid out so the strip aligns). Named for GetTemplatePart.
+        var underline = new Separator { Margin = new Margins(1, 0, 1, 0) }; // matching side padding (no fill row)
+        ctx.RegisterName("PART_Underline", underline);
+
+        var stack = new StackPanel(); // vertical: the filled header row, then the page-bg underline row
+        stack.Children.Add(headerHost);
+        stack.Children.Add(underline);
+        return new Border { Child = stack }; // root container (no fill — the fill rides headerHost)
     });
 
     private static Style TabItemTheme()
     {
         var theme = new Style { Key = "Theme.TabItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundNormal)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundNormal) // inactive ink = --text-dim
             .Set(Control.TemplateProperty, TabItemTemplate());
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundHover));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundSelected));
+        theme.Children.Add(new Style("^:selected")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundSelected)  // --surface fill
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundActive));  // --text ink
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundDisabled));
         return theme;
     }

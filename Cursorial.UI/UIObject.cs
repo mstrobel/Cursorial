@@ -1110,9 +1110,16 @@ public abstract class UIObject : IInheritanceNode
         foreach (var property in properties)
         {
             ArgumentNullException.ThrowIfNull(property, nameof(properties));
-            property.AddPerTypeEffects(typeof(TOwner), effects);
+
+            // For an attached property write the GLOBAL lane FIRST: it is still all-or-nothing (a global effect
+            // applies to every host type), so it throws once any type has resolved the property — whereas the
+            // per-type write below is sibling-tolerant (M201). Doing the throwing write first means a late
+            // registration fails cleanly instead of leaving the per-type lane updated but the global lane missing
+            // (the half-applied state Finding 3 flagged). Not reachable today — attached effects register in their
+            // declaring type's own static ctor — but the ordering removes the trap for any future attached property.
             if (property.IsAttached)
                 property.GlobalEffects |= effects;
+            property.AddPerTypeEffects(typeof(TOwner), effects);
         }
     }
 

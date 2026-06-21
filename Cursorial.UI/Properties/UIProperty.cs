@@ -31,8 +31,11 @@ public abstract class UIProperty
     // Per-type resolved-effects cache AND the per-type "effects touched" record (M201): a type's presence here
     // freezes per-type effect registration for that type and its ancestors — but a SIBLING owner resolving the
     // property no longer locks out a later sibling's registration (the cascade fix; the effects analogue of the
-    // OverrideMetadata `_resolved.Keys` gate). COW-frozen + atomically republished so the registration-side `.Keys`
-    // scan is safe against a concurrent resolve on another thread (process-global statics, parallel test hosts).
+    // OverrideMetadata `_resolved.Keys` gate). COW-frozen + republished on each new resolution so the
+    // registration-side `.Keys` scan reads an immutable snapshot (never a torn dict / "collection modified").
+    // Registration and resolution are single-UI-thread by contract (invariant 6) — the COW is NOT a lock: a genuine
+    // concurrent resolve+resolve could lose a per-type seal entry (last-writer-wins), so the GLOBAL-lane freeze stays
+    // the monotonic `Count > 0` guard that can never re-open. Mirrors `_resolved`'s (metadata) COW exactly.
     private FrozenDictionary<Type, PropertyEffects> _resolvedEffects = FrozenDictionary<Type, PropertyEffects>.Empty;
     private PropertyEffects _globalEffects;
     private readonly bool _permanentlySealed; // the A14 sentinel: never registerable

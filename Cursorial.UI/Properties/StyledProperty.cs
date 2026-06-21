@@ -176,6 +176,15 @@ public class StyledProperty<T> : UIProperty
 
     private PropertyMetadata<T> ResolveMetadata(Type forType)
     {
+        // Force the inheritance chain's static ctors FIRST — a type registers its OverrideMetadata/OverrideDefaultValue
+        // only in its own static ctor, so a cold by-Type resolution (style/diagnostics) before that ctor has run would
+        // otherwise see an empty `_overrides` and return the registration default. This MUST precede the early return
+        // below (the bug: if `_overrides` is empty because no chain ctor has run yet, the early return fires before the
+        // force ever happens). Cache-miss only (off the hot path); same-thread re-entrant RunClassConstructor is a CLR
+        // no-op. (object has no UIProperty registrations — skip it.)
+        for (var type = forType; type is not null && type != typeof(object); type = type.BaseType)
+            RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+
         if (_overrides is not { Count: > 0 } overrides)
             return _registeredMetadata;
 
@@ -183,9 +192,6 @@ public class StyledProperty<T> : UIProperty
         List<PropertyMetadata<T>>? applicable = null;
         for (var type = forType; type is not null; type = type.BaseType)
         {
-            // Ensure static constructor of type has run (effects/overrides processed).
-            RuntimeHelpers.RunClassConstructor(type.TypeHandle);
-
             if (overrides.TryGetValue(type, out var overrideMetadata))
                 (applicable ??= []).Add(overrideMetadata);
         }

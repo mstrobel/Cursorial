@@ -35,6 +35,19 @@ public class PropertyEffectsTests
 
     private sealed class FxOtherHost : UIObject;
 
+    // For the by-Type cold-resolution test (audit Finding 4): a property declared on a base, overridden only in a
+    // derived type's static constructor. Resolving the property by `typeof(ByTypeDerived)` must force that static
+    // ctor so the override is visible even though no instance of it has been created.
+    private class ByTypeBase : UIObject
+    {
+        public static readonly StyledProperty<int> P = UIProperty.Register<ByTypeBase, int>("ByTypeP", defaultValue: 1);
+    }
+
+    private sealed class ByTypeDerived : ByTypeBase
+    {
+        static ByTypeDerived() => P.OverrideDefaultValue<ByTypeDerived>(99);
+    }
+
     [Fact]
     public void GlobalLane_DeliversToEveryType()
     {
@@ -116,6 +129,14 @@ public class PropertyEffectsTests
         // An unrelated sibling type can still register its per-type effects — the cascade fix.
         p.AddPerTypeEffects(typeof(FxOtherHost), PropertyEffects.AffectsRender);
         Assert.Equal(PropertyEffects.AffectsRender, p.GetEffects(typeof(FxOtherHost)));
+    }
+
+    [Fact] // Audit Finding 4: a COLD by-Type metadata resolution force-runs the chain's static ctors FIRST, so a type's
+           // OverrideDefaultValue (registered only in its static ctor) is visible even before any instance exists.
+    public void ByTypeMetadataResolution_ColdType_SeesItsOverride()
+    {
+        // typeof(ByTypeDerived) does NOT run its static ctor and no instance is created — GetMetadata must force it.
+        Assert.Equal(99, ByTypeBase.P.GetMetadata(typeof(ByTypeDerived)).DefaultValue);
     }
 
     [Fact] // M201 (amended): metadata resolution seals further metadata OVERRIDES for the resolved type, but does NOT

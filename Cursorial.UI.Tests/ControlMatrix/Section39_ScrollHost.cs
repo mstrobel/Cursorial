@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -13,12 +14,32 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // the verbatim legacy measure/arrange — byte-identical, proven by the existing ScrollViewer/ListBox suites.
 public sealed class Section39_ScrollHost
 {
-    [Fact] // VV1.1: the interface shape — ILogicalScrollHost : IScrollContentHost, internal, cell-integer
+    [Fact] // VV1.1: the interface shape — ILogicalScrollHost : IScrollContentHost, PUBLIC (#107 — consumer-implementable), cell-integer
     public void VV1_1_InterfaceShape()
     {
         Assert.True(typeof(IScrollContentHost).IsAssignableFrom(typeof(ILogicalScrollHost)));
-        Assert.False(typeof(IScrollContentHost).IsPublic); // internal
-        Assert.False(typeof(ILogicalScrollHost).IsPublic);
+        Assert.True(typeof(IScrollContentHost).IsPublic); // public so custom content can drive content-assisted scrolling
+        Assert.True(typeof(ILogicalScrollHost).IsPublic);
+    }
+
+    [Fact] // VV1.10 (#107): a standalone ScrollViewer sources its line/page step from a content-assisted host, not a fixed cell.
+    public void VV1_10_ContentAssistedLineStep()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var stub = new StubScrollHost { LineStepSize = 7, Extent = new Size(5, 400) };
+        var sv = new ScrollViewer { Content = stub, Focusable = true };
+        host.ShowRoot(sv);
+        host.RunUntilIdle();
+        sv.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+        Assert.Equal(7, sv.VerticalOffset); // the host's LineStep (7), not the legacy single cell
+
+        host.SendKey(Key.UpArrow);
+        host.RunUntilIdle();
+        Assert.Equal(0, sv.VerticalOffset); // stepped back by the host's step
     }
 
     [Fact] // VV1.2: the SCP injects itself as the host's ScrollOwner on adopt, clears it on a content swap
@@ -238,6 +259,7 @@ public sealed class Section39_ScrollHost
         public Size Extent = new(5, 400);
         public Size LastViewport;
         public Size RecordedConstraint;
+        public int LineStepSize = 1; // the cell step the host advertises for a line scroll (content-assisted snapping)
 
         public bool IsScrollClient => true;
         public ScrollContentPresenter? ScrollOwner { get; set; }
@@ -247,7 +269,7 @@ public sealed class Section39_ScrollHost
         public Size GetExtent() => Extent;
         public void SetViewport(Size viewport) => LastViewport = viewport;
         public void InvalidateRealization() { }
-        public int LineStep(int currentOffset, int sign, bool vertical) => 1;
+        public int LineStep(int currentOffset, int sign, bool vertical) => LineStepSize;
         public int PageStep(int currentOffset, int sign, bool vertical) => Math.Max(1, LastViewport.Rows - 1);
         public Rect BringItemIntoView(int itemIndex) => new(0, itemIndex, 1, 1);
         public int ItemCount => Extent.Rows;

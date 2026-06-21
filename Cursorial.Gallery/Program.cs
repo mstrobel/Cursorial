@@ -12,6 +12,7 @@ using Cursorial.UI.Input;
 var pages = new IGalleryPage[]
 {
     new ScrollViewerPage(),
+    new ChessboardPage(),
 };
 
 var shell = new GalleryShell(pages);

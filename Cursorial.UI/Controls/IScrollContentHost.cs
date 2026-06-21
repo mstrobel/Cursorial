@@ -9,9 +9,10 @@ namespace Cursorial.UI.Controls;
 /// <see cref="ScrollContentPresenter.ScrollOffsetRow"/>/<see cref="ScrollContentPresenter.ScrollOffsetColumn"/>);
 /// this host only advertises the extent estimate + step size — the offset stays SCP-owned and storyboard-animatable
 /// (the deliberate deviation from WPF <c>IScrollInfo</c>, which makes the panel own the offset). Cell-integer
-/// throughout; internal — opt-in by type.
+/// throughout; <b>public</b> — a consumer can implement it on custom content to drive content-assisted scrolling
+/// (e.g. whole-tile snapping), and the SCP delegates to any content that implements it (opt-in by type).
 /// </summary>
-internal interface IScrollContentHost
+public interface IScrollContentHost
 {
     /// <summary>When <see langword="false"/>, the SCP runs its verbatim legacy measure-at-<c>MaxScrollExtent</c>
     /// path (the OFF-path) — discovery is harmless for a non-virtualizing host.</summary>
@@ -57,7 +58,7 @@ internal interface IScrollContentHost
 /// Adds whole-item navigation helpers that need the item↔cell mapping the panel owns (design doc §12.6).
 /// Implemented by <c>VirtualizingStackPanel</c>; forwarded by <see cref="ItemsPresenter"/>.
 /// </summary>
-internal interface ILogicalScrollHost : IScrollContentHost
+public interface ILogicalScrollHost : IScrollContentHost
 {
     /// <summary>Realize (if needed) + return the estimated cell content-rect of an item so the SCP/<c>ScrollViewer</c>
     /// can bring it into view (realization rides the panel's own next measure — §5.3 — so this returns the estimate

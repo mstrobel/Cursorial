@@ -98,6 +98,10 @@ public class ScrollContentPresenter : UIElement
 
     private UIElement? _content;
     private IScrollContentHost? _scrollHost; // the content's opt-in delegation seam (null / IsScrollClient false ⇒ legacy path)
+
+    /// <summary>The content's <see cref="IScrollContentHost"/> when it opts in (the ScrollViewer reads it to source
+    /// content-assisted line/page steps); null on the legacy path.</summary>
+    internal IScrollContentHost? ScrollHost => _scrollHost;
     private Size _extent;
     private Size _viewport;
     private bool _extentClampDiagnosed;
@@ -320,9 +324,10 @@ public class ScrollContentPresenter : UIElement
     /// <summary>
     /// The host's estimate-refinement back-channel (the WPF <c>InvalidateScrollInfo</c> analog, VV1.7): re-publishes
     /// <see cref="Extent"/> from <see cref="IScrollContentHost.GetExtent"/>, re-coerces both offsets, and marks
-    /// measure dirty. Called by a host through the injected <see cref="IScrollContentHost.ScrollOwner"/>.
+    /// measure dirty. Called by a host through the injected <see cref="IScrollContentHost.ScrollOwner"/> (public, so a
+    /// custom content-assisted host can refine its published extent).
     /// </summary>
-    internal void InvalidateScrollExtent()
+    public void InvalidateScrollExtent()
     {
         if (_scrollHost is not { IsScrollClient: true } host)
             return;

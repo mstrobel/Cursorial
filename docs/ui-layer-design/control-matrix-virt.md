@@ -230,6 +230,23 @@ Refuted (no code change): a stale `ScrollOwner` after the host flips `IsScrollCl
 a missing SCP detach hook to clear the host owner (the ScrollViewer's `OnTemplateDetaching` clears via
 `presenter.Content = null`).
 
+### §V1 amendment (#107 — public seam + content-assisted stepping wired)
+
+The gallery's whole-tile-snapping chessboard surfaced two changes to make content-assisted scrolling
+**consumer-usable**:
+
+- **The seam is now `public`** — `IScrollContentHost`/`ILogicalScrollHost` (and `ScrollContentPresenter.
+  InvalidateScrollExtent`) are public so a consumer can implement content-assisted scrolling on custom content
+  (VV1.1 flipped to assert `IsPublic`). The SCP still discovers it by type (`Content as IScrollContentHost`).
+- **`LineStep`/`PageStep` are now consumed by the ScrollViewer** (the V5 closeout found them dead). A standalone
+  `ScrollViewer` whose content is a logical-scroll `IScrollContentHost` sources its arrow/page step from the host
+  (snapping to the host's units) instead of a fixed cell/viewport; the host-supplied step is clamped
+  (`Math.Max(1, …)` + the `TryScroll*` range clamp), so a misbehaving host can't break the SV. A `HandlesScrolling`
+  control still bails before this path (its selector owns the keys), and a host-less standalone SV keeps the legacy
+  fixed step — so no existing control changes. **VV1.10** asserts the wiring (a stub host with `LineStep == 7`
+  scrolls a focused SV by 7). The chessboard (`Cursorial.Gallery`) is the live consumer; `GallerySmokeTests`
+  asserts a DownArrow snaps the offset by a whole 4-row tile and a RightArrow by an 8-column tile.
+
 ---
 
 ## §V2 — `VirtualizingStackPanel` (uniform-height item mode)

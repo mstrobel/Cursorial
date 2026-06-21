@@ -271,7 +271,7 @@ public class ScrollViewer : ContentControl
     /// visibility is a separate concern, CD28).
     /// </summary>
     private static bool CanScrollVerticalAxis(ScrollBarVisibility visibility)
-        => visibility != ScrollBarVisibility.Disabled;
+        => visibility is not ScrollBarVisibility.Disabled;
 
     /// <summary>
     /// The horizontal-axis scroll-enable: <c>Visible</c> or <c>Hidden</c> scroll by wheel/keys;
@@ -450,25 +450,24 @@ public class ScrollViewer : ContentControl
         if (TemplatedParent is Control { HandlesScrolling: true })
             return;
 
-        var viewportRows = Math.Max(1, _viewport.Rows);
         var maxRow = Math.Max(0, _extent.Rows - _viewport.Rows);
 
         switch (e.Key)
         {
             case Key.UpArrow when e.Modifiers == KeyModifiers.None:
-                if (TryScrollVertically(-1)) e.Handled = true;
+                if (TryScrollVertically(LineDelta(-1, vertical: true))) e.Handled = true;
                 break;
 
             case Key.DownArrow when e.Modifiers == KeyModifiers.None:
-                if (TryScrollVertically(+1)) e.Handled = true;
+                if (TryScrollVertically(LineDelta(+1, vertical: true))) e.Handled = true;
                 break;
 
             case Key.PageUp when e.Modifiers == KeyModifiers.None:
-                if (TryScrollVertically(-viewportRows)) e.Handled = true;
+                if (TryScrollVertically(PageDelta(-1, vertical: true))) e.Handled = true;
                 break;
 
             case Key.PageDown when e.Modifiers == KeyModifiers.None:
-                if (TryScrollVertically(+viewportRows)) e.Handled = true;
+                if (TryScrollVertically(PageDelta(+1, vertical: true))) e.Handled = true;
                 break;
 
             case Key.Home when (e.Modifiers & KeyModifiers.Control) != 0:
@@ -490,13 +489,37 @@ public class ScrollViewer : ContentControl
                 break;
 
             case Key.LeftArrow when e.Modifiers == KeyModifiers.None:
-                if (TryScrollHorizontally(-1)) e.Handled = true;
+                if (TryScrollHorizontally(LineDelta(-1, vertical: false))) e.Handled = true;
                 break;
 
             case Key.RightArrow when e.Modifiers == KeyModifiers.None:
-                if (TryScrollHorizontally(+1)) e.Handled = true;
+                if (TryScrollHorizontally(LineDelta(+1, vertical: false))) e.Handled = true;
                 break;
         }
+    }
+
+    // Content-assisted line/page step (§12.6): when the content opts in as a logical-scroll IScrollContentHost it
+    // supplies the cell step, so a line/page scroll snaps to its logical units (whole items / tiles); otherwise the
+    // legacy fixed step (one cell / one viewport). The offset stays SCP-owned cells either way.
+    private IScrollContentHost? StepHost
+        => _presenter?.ScrollHost is { IsScrollClient: true, IsLogicalScroll: true } host ? host : null;
+
+    private int LineDelta(int sign, bool vertical)
+    {
+        var host = StepHost;
+        if (host is null)
+            return sign;
+        var offset = vertical ? _verticalOffset : _horizontalOffset;
+        return sign * Math.Max(1, host.LineStep(offset, sign, vertical));
+    }
+
+    private int PageDelta(int sign, bool vertical)
+    {
+        var host = StepHost;
+        var offset = vertical ? _verticalOffset : _horizontalOffset;
+        return host is null
+            ? sign * Math.Max(1, vertical ? _viewport.Rows : _viewport.Columns)
+            : sign * Math.Max(1, host.PageStep(offset, sign, vertical));
     }
 
     private bool TryScrollVertically(int rows)

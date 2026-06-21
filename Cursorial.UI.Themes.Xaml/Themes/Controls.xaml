@@ -28,31 +28,31 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type Button}" TargetType="Button">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundNormal}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
     <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
       <!-- Ordered hover -> focus -> pressed -> disabled -> default (document order breaks pseudo-class ties,
            matching AddButtonStates + the :default the code-first ButtonTheme appends). -->
       <Style Selector="^:pointerover" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundFocus}}"/>
       </Style>
       <Style Selector="^:pressed" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundDisabled}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundDisabled}}"/>
       </Style>
       <Style Selector="^:default" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -77,47 +77,47 @@
   <!-- RepeatButton / ToggleButton share the button family's spine + template + interactive states, minus the
        Button-only :default (matching the code-first Repeat/ToggleButtonTheme = AddButtonStates(spine + template)). -->
   <Style x:Key="{x:Type RepeatButton}" TargetType="RepeatButton">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundNormal}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="RepeatButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="RepeatButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundFocus}}"/>
       </Style>
       <Style Selector="^:pressed" TargetType="RepeatButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="RepeatButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundDisabled}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
 
   <Style x:Key="{x:Type ToggleButton}" TargetType="ToggleButton">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundNormal}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ToggleButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="ToggleButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundFocus}}"/>
       </Style>
       <Style Selector="^:pressed" TargetType="ToggleButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="ToggleButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundDisabled}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -132,8 +132,8 @@
         <Grid>
           <ToggleGlyph x:Name="PART_Glyph"
                        GlyphKey="{x:Static ThemeKeys.CheckBoxGlyphs}"
-                       CheckedMarkKey="{x:Static ThemeKeys.GreenBrush}"
-                       IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}"/>
+                       CheckedMarkKey="{x:Static ThemeKeys.ToggleGlyphChecked}"
+                       IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"/>
           <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
         </Grid>
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
@@ -147,8 +147,8 @@
         <Grid>
           <ToggleGlyph x:Name="PART_Glyph"
                        GlyphKey="{x:Static ThemeKeys.RadioGlyphs}"
-                       CheckedMarkKey="{x:Static ThemeKeys.AccentBrush}"
-                       IndeterminateMarkKey="{x:Static ThemeKeys.AmberBrush}"/>
+                       CheckedMarkKey="{x:Static ThemeKeys.RadioGlyphChecked}"
+                       IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"/>
           <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
         </Grid>
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
@@ -157,21 +157,21 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type CheckBox}" TargetType="CheckBox">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ToggleForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource CheckBoxTemplate}"/>
     <Style.Children>
       <Style Selector="^:disabled" TargetType="CheckBox">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ToggleForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
 
   <Style x:Key="{x:Type RadioButton}" TargetType="RadioButton">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ToggleForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource RadioButtonTemplate}"/>
     <Style.Children>
       <Style Selector="^:disabled" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ToggleForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -297,21 +297,21 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource ListBoxItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="ListBoxItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -341,8 +341,8 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type Menu}" TargetType="Menu">
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.MenuBarBackground}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MenuForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource MenuTemplate}"/>
   </Style>
 
@@ -359,7 +359,7 @@
                      DockPanel.Dock="Right"
                      Margin="2,0,0,0"
                      Text="{TemplateBinding InputGestureText}"
-                     Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                     Foreground="{DynamicResource {x:Static ThemeKeys.MenuAcceleratorForeground}}"/>
           <ContentPresenter x:Name="PART_ContentPresenter"
                             RecognizesAccessKey="True"
                             Content="{TemplateBinding Header}"/>
@@ -367,7 +367,7 @@
       </Border>
       <Popup x:Name="PART_Popup"><!--Opacity="0.85"-->
         <Border Occludes="False"
-                Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+                Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
           <ItemsPresenter x:Name="PART_ItemsHost"/>
         </Border>
@@ -376,20 +376,20 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type MenuItem}" TargetType="MenuItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MenuForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource MenuItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="MenuItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.MenuBackgroundHover}}"/>
       </Style>
       <Style Selector="^:highlighted" TargetType="MenuItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.MenuBackgroundHighlighted}}"/>
       </Style>
       <Style Selector="^:open" TargetType="MenuItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.MenuBackgroundHighlighted}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="MenuItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MenuForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -400,14 +400,14 @@
        PanelBrush/BorderPen (the code-first template sets them via SetResourceReference, not TemplateBinding). -->
   <ControlTemplate x:Key="ContextMenuTemplate">
     <Border Occludes="True"
-            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+            Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
             BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
       <ItemsPresenter x:Name="PART_ItemsHost"/>
     </Border>
   </ControlTemplate>
 
   <Style x:Key="{x:Type ContextMenu}" TargetType="ContextMenu">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MenuForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource ContextMenuTemplate}"/>
   </Style>
 
@@ -422,7 +422,7 @@
   <ControlTemplate x:Key="ToolTipTemplate">
     <Border Occludes="True"
             Padding="1,0"
-            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+            Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
             BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
       <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
     </Border>
@@ -469,19 +469,19 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type TabItem}" TargetType="TabItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource TabItemTemplate}"/>
     <Style.Children>
       <!-- Ordered pointerover -> selected -> disabled (document order breaks pseudo-class ties, matching the
            code-first TabItemTheme.Children append order). -->
       <Style Selector="^:pointerover" TargetType="TabItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundHover}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="TabItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundSelected}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TabItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -490,11 +490,11 @@
        (Background), the determinate fill is GreenBrush (Fill), and the indeterminate sweep is
        AccentBrush via the :indeterminate state. Mirrors ControlThemes.ProgressBarTheme(). -->
   <Style x:Key="{x:Type ProgressBar}" TargetType="ProgressBar">
-    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
-    <Setter Property="Fill" Value="{DynamicResource {x:Static ThemeKeys.GreenBrush}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ProgressTrackBrush}}"/>
+    <Setter Property="Fill" Value="{DynamicResource {x:Static ThemeKeys.ProgressFillNormal}}"/>
     <Style.Children>
       <Style Selector="^:indeterminate" TargetType="ProgressBar">
-        <Setter Property="Fill" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Fill" Value="{DynamicResource {x:Static ThemeKeys.ProgressFillIndeterminate}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -514,21 +514,21 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type TextBox}" TargetType="TextBox">
-    <Setter Property="Foreground"     Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="Background"     Value="{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}"/>
+    <Setter Property="Foreground"     Value="{DynamicResource {x:Static ThemeKeys.InputForegroundNormal}}"/>
+    <Setter Property="Background"     Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundNormal}}"/>
     <Setter Property="MinWidth"       Value="12"/>
-    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionActive}}"/>
     <Setter Property="Template"       Value="{StaticResource TextBoxTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundHover}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TextBox">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundDisabled}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.InputForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -546,55 +546,55 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type CalendarDayButton}" TargetType="CalendarDayButton">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForeground}}"/>
     <Setter Property="Template"   Value="{StaticResource CalendarCellTemplate}"/>
     <Style.Children>
       <Style Selector="^:inactive" TargetType="CalendarDayButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayInactiveForeground}}"/>
       </Style>
       <Style Selector="^:pointerover" TargetType="CalendarDayButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundHover}}"/>
       </Style>
       <Style Selector="^:today" TargetType="CalendarDayButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayTodayForeground}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="CalendarDayButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundSelected}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundSelected}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="CalendarDayButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="CalendarDayButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
 
   <Style x:Key="{x:Type CalendarButton}" TargetType="CalendarButton">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForeground}}"/>
     <Setter Property="Template"   Value="{StaticResource CalendarCellTemplate}"/>
     <Style.Children>
       <Style Selector="^:inactive" TargetType="CalendarButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayInactiveForeground}}"/>
       </Style>
       <Style Selector="^:pointerover" TargetType="CalendarButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundHover}}"/>
       </Style>
       <Style Selector="^:today" TargetType="CalendarButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayTodayForeground}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="CalendarButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundSelected}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundSelected}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="CalendarButton">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="CalendarButton">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -663,18 +663,18 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type TreeViewItem}" TargetType="TreeViewItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TreeItemForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource TreeViewItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:selected" TargetType="TreeViewItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TreeItemBackgroundSelected}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="TreeViewItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TreeItemBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TreeItemForegroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TreeViewItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TreeItemForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -700,7 +700,7 @@
       </Border>
       <Popup x:Name="PART_Popup">
         <Border Occludes="True"
-                Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+                Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}"
                 MaxHeight="{TemplateBinding MaxDropDownHeight}">
           <ItemsPresenter x:Name="PART_ItemsHost"/>
@@ -724,21 +724,21 @@
   </ControlTemplate>
 
   <Style x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
-    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource ComboBoxItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.HoverBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionBrush}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="ComboBoxItem">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
       </Style>
     </Style.Children>
   </Style>

@@ -79,6 +79,62 @@ public sealed class XamlPaletteValidationTests
             RenderButton(xaml: true, @base, tier));
     }
 
+    // ARCH-1b: the XAML overlay references the per-control OVERRIDE keys (§11.4a, the gallery KEYS), not the role
+    // tokens directly — so an app re-keys one control under the loaded overlay theme. The render-identity theory
+    // above can't catch a same-token mis-mapping (a wrong per-control key that aliases the same role token renders
+    // identically); only overriding the specific key and asserting the control moves proves the overlay wires the
+    // RIGHT key. Each case overrides one per-control key and asserts the target control's fill/ink re-skins.
+
+    [Fact] // overriding ButtonBackgroundNormal under the overlay theme re-skins the Button's resting fill.
+    public void XamlOverlay_ButtonBackgroundNormalOverride_ReSkinsButton()
+        => AssertOverlayKeyDrivesControl(
+            ThemeKeys.ButtonBackgroundNormal,
+            new UIControls.Button { Content = "OK" },
+            target: "OK", fill: true);
+
+    [Fact] // overriding InputBackgroundNormal under the overlay theme re-skins a TextBox's resting fill.
+    public void XamlOverlay_InputBackgroundNormalOverride_ReSkinsTextBox()
+        => AssertOverlayKeyDrivesControl(
+            ThemeKeys.InputBackgroundNormal,
+            new UIControls.TextBox { Text = "hi" },
+            target: "h", fill: true);
+
+    [Fact] // overriding ToggleForegroundNormal under the overlay theme re-skins a CheckBox's label ink.
+    public void XamlOverlay_ToggleForegroundNormalOverride_ReSkinsCheckBox()
+        => AssertOverlayKeyDrivesControl(
+            ThemeKeys.ToggleForegroundNormal,
+            new UIControls.CheckBox { Content = "X" },
+            target: "X", fill: false);
+
+    // Loads the data-shipped overlay theme, renders the control, overrides one per-control key, and asserts the
+    // target cell's fill (or ink) moved to the override — proving the overlay's setter referenced THAT key.
+    private static void AssertOverlayKeyDrivesControl(string perControlKey, UIControls.Control control, string target, bool fill)
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 4) });
+        host.Application.Theme = CursorialXamlTheme.LoadTheme();
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.ShowRoot(control);
+        Assert.True(host.RunUntilIdle());
+
+        var custom = Color.FromRgb(0xCC, 0x33, 0x99);
+        Color Sample()
+        {
+            for (var r = 0; r < host.FrameBuffer.Rows; r++)
+            for (var c = 0; c < host.FrameBuffer.Columns; c++)
+            {
+                var cell = host.GetCell(c, r);
+                if (cell.Grapheme is { Length: > 0 } g && g[0] == target[0])
+                    return fill ? cell.Style.Background : cell.Style.Foreground;
+            }
+            return Color.Default;
+        }
+
+        Assert.NotEqual(custom, Sample()); // not already the override
+        host.Application.Resources[perControlKey] = new SolidColorBrush(custom);
+        host.RunFrame();
+        Assert.Equal(custom, Sample()); // the overlay's setter referenced perControlKey → the control re-skinned
+    }
+
     private static (string Glyph, Color Fg, Color Bg)[] RenderButton(bool xaml, ThemeBase @base, ColorDepth tier)
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });

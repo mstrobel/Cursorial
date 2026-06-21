@@ -170,4 +170,18 @@ public class HeaderedContentControl : ContentControl
 
     /// <inheritdoc cref="HeaderTemplateProperty"/>
     public DataTemplate? HeaderTemplate { get => GetValue(HeaderTemplateProperty); set => SetValue(HeaderTemplateProperty, value); }
+
+    // ───────────────────────────── access key (doc §12.5) ─────────────────────────────
+    
+    /// <summary>
+    /// The folded access-key label of the header (doc §12.5 producer ③); <see cref="AccessText.HasKey"/>
+    /// is <see langword="false"/> when the header carries no mnemonic or this control does not fold
+    /// access-key literals. Overridden by controls whose mnemonic source is not <see cref="Header"/>.
+    /// </summary>
+    protected override AccessText GetAccessText()
+        => Header is string s && HeaderParsesAccessKeyLiterals() ? AccessText.Parse(s) : default;
+
+    /// <summary>Whether <see cref="HeaderProperty"/> folds access-key literals for this control's runtime type.</summary>
+    protected bool HeaderParsesAccessKeyLiterals()
+        => HeaderProperty.GetMetadata(GetType()).ParsesAccessKeyLiterals == true;
 }

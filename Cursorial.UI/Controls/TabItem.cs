@@ -14,7 +14,7 @@ namespace Cursorial.UI.Controls;
 /// <remarks>Access-key folding of the <see cref="HeaderedContentControl.Header"/> (Alt+mnemonic selects the tab) is
 /// a recorded deferral — selection by click and keyboard is the v1 behavior.</remarks>
 [TemplatePart(PartUnderline, typeof(Separator))]
-public class TabItem : HeaderedContentControl, ISelectableContainer
+public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyTarget
 {
     /// <summary>The active-tab accent underline rule (the gallery "active tab marked by accent bar"); shown only when selected.</summary>
     private const string PartUnderline = "PART_Underline";
@@ -27,13 +27,21 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
     private bool _ownerDriven; // guards the owner→container write so it never echoes back into the model
     private Separator? _underline;
 
-    static TabItem() => PseudoClassMapping.Register<TabItem>(IsSelectedProperty, ":selected");
+    static TabItem()
+    {
+        PseudoClassMapping.Register<TabItem>(IsSelectedProperty, ":selected");
+        HeaderProperty.OverrideMetadata<TabItem>(new PropertyMetadata<object?>() { ParsesAccessKeyLiterals = true });
+    }
 
     /// <summary>Creates a tab (focusable — the tab strip is a single tab stop and arrows move among the tabs).</summary>
     public TabItem() => Focusable = true;
 
     /// <inheritdoc cref="IsSelectedProperty"/>
-    public bool IsSelected { get => GetValue(IsSelectedProperty); set => SetValue(IsSelectedProperty, value); }
+    public bool IsSelected
+    {
+        get => GetValue(IsSelectedProperty);
+        set => SetValue(IsSelectedProperty, value);
+    }
 
     /// <inheritdoc/>
     protected override void OnApplyTemplate()
@@ -52,13 +60,14 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
 
     private void UpdateUnderline()
     {
-        if (_underline is { } underline)
+        if (_underline is {} underline)
             underline.Visibility = IsSelected ? Visibility.Visible : Visibility.Hidden;
     }
 
     void ISelectableContainer.SetIsSelectedFromOwner(bool selected)
     {
         _ownerDriven = true;
+
         try
         {
             SetCurrentValue(IsSelectedProperty, selected); // SetCurrentValue preserves a two-way IsSelected binding
@@ -73,7 +82,8 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left || OwnerSelector is not { } owner)
+
+        if (e.Handled || e.Button != MouseButton.Left || OwnerSelector is not {} owner)
             return;
 
         Focus();
@@ -90,6 +100,7 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
             for (UIElement? node = LogicalParent; node is not null; node = node.LogicalParent)
                 if (node is SelectingItemsControl selector)
                     return selector;
+
             return null;
         }
     }
@@ -100,7 +111,25 @@ public class TabItem : HeaderedContentControl, ISelectableContainer
             return;
 
         item.UpdateUnderline(); // show/hide the accent underline as selection flips
-        if (!item._ownerDriven && item.OwnerSelector is { } owner)
+
+        if (item is { _ownerDriven: false, OwnerSelector: {} owner })
             owner.NotifyContainerIsSelectedChanged(item, newValue);
+    }
+
+    // ───────────────────────────── access key (doc §12.5) ─────────────────────────────
+
+    /// <inheritdoc/>
+    bool IAccessKeyTarget.IsAccessKeyEligible => IsEffectivelyEnabled && IsEffectivelyVisible;
+
+    /// <inheritdoc/>
+    void IAccessKeyTarget.OnAccessKey(AccessKeyEventArgs e) => OnAccessKey(e);
+
+    /// <summary>The access-key reaction (doc §12.5): a button clicks. Multi-match focuses only (ND18).</summary>
+    protected virtual void OnAccessKey(AccessKeyEventArgs e)
+    {
+        if (IsSelected && e.IsMultiMatch)
+            return; // the manager already focused us; multi-match never invokes (ND18)
+
+        IsSelected = true;
     }
 }

@@ -529,6 +529,25 @@ public readonly struct CellBufferView : ICellSurface
         _buffer.MarkDirty(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row));
     }
 
+    /// <summary>
+    /// Mark a <see cref="Rect"/> (view-local) for unconditional re-emission on the next render —
+    /// the rect is clipped against the view's window and translated to backing-buffer coordinates.
+    /// See <see cref="CellBuffer.ForceRepaint(in Rect)"/> for the semantics (expands emission, used
+    /// to overwrite a removed Cells-layer image's lingering pixels).
+    /// </summary>
+    public void ForceRepaint(in Rect region)
+    {
+        if (_buffer is null || region.IsEmpty || IsEmpty) return;
+
+        int row = Math.Max(LocalRowStart, region.Row);
+        int col = Math.Max(LocalColumnStart, region.Column);
+        int rowEnd = Math.Min(LocalRowEnd, region.RowEnd);
+        int colEnd = Math.Min(LocalColumnEnd, region.ColumnEnd);
+        if (row >= rowEnd || col >= colEnd) return;
+
+        _buffer.ForceRepaint(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row));
+    }
+
     // ---- Sub-views ----------------------------------------------------------------------
 
     /// <summary>

@@ -1,5 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Fragments;
 
 // ReSharper disable CheckNamespace
 
@@ -48,11 +49,43 @@ public sealed class SceneCompositor
     // work-frame so a scene's fragments (images, sized text) ride the cell pass and move/disappear correctly.
     private readonly List<(int Column, int Row)> _fragmentAnchors = [];
 
+    // Footprints of Cells-layer images this compositor has committed to the terminal. These protocols
+    // (iTerm2/Sixel) have NO protocol erase — their pixels linger until a cell paints over them. Updated each
+    // work-frame to the set of such images still alive in SOME scene (an occluded-but-alive image stays — its
+    // pixels are still physically on the terminal even though it's suppressed from the target as a registered
+    // fragment). An entry that drops out (its scene unloaded) is genuinely gone, so we force-repaint its footprint
+    // to overwrite the lingering pixels. Persisted across WindowManager.ResetCompositor via AdoptGhostFootprints —
+    // without that hand-off, a tab switch performed WHILE the image is occluded by a popup couldn't erase it,
+    // because the occluded image is absent from target.Fragments and a fresh compositor would never have seen it.
+    private List<Rect> _ghostFootprints = [];
+    // Per-work-frame scratch: the (uncropped, offset-translated) footprints of every Cells-layer fragment present
+    // in a scene this frame — the "still alive" set the ghost footprints are tested against, and the next ghost set.
+    private List<Rect> _liveCellsFootprints = [];
+    // Scratch worklists for the per-ghost rectangle subtraction (ghost minus the live footprints). Reused +
+    // swapped each ghost to keep the reconciliation allocation-free.
+    private List<Rect> _ghostRemainder = [];
+    private List<Rect> _ghostRemainderNext = [];
+
     /// <summary>Composite over a uniform base fill (default: <see cref="Style.Default"/>).</summary>
     public SceneCompositor(Style baseStyle = default) => _baseStyle = baseStyle;
 
     /// <summary>Composite over a stored backdrop buffer (copied per-region on reset-to-base).</summary>
     public SceneCompositor(CellBuffer baseLayer) => _baseLayer = baseLayer ?? throw new ArgumentNullException(nameof(baseLayer));
+
+    /// <summary>
+    /// Carry the <b>ghost-footprint set</b> — Cells-layer images (iTerm2/Sixel) committed to the terminal with no
+    /// protocol erase — from a retiring compositor into this fresh one. A host that replaces its compositor on a
+    /// layer-stack change (e.g. <c>WindowManager.ResetCompositor</c>) must call this <i>before</i> the first
+    /// composite, so an image removed across the reset is still force-repainted: an occluded image isn't a
+    /// registered target fragment, so this hand-off is the only record of its lingering pixels. No-op when the
+    /// previous compositor tracked none.
+    /// </summary>
+    public void AdoptGhostFootprints(SceneCompositor previous)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        _ghostFootprints.Clear();
+        _ghostFootprints.AddRange(previous._ghostFootprints);
+    }
 
     /// <summary>
     /// Composite the ordered z-stack onto <paramref name="target"/>. Returns <see langword="true"/>
@@ -167,11 +200,43 @@ public sealed class SceneCompositor
         // protocol image on screen when a popup open/close reset the compositor during a tab switch (the image
         // was never erased because the new compositor didn't know to remove it).
         if (fullReset)
+        {
             target.ClearFragments();
+        }
         else
+        {
             foreach (var (column, row) in _fragmentAnchors)
                 target.RemoveFragment(column, row);
+        }
+
         _fragmentAnchors.Clear();
+
+        // Collect the (uncropped) target footprint of every Cells-layer fragment a scene wants to draw this
+        // work-frame — the "still alive" set for the genuine-removal test below. An occluded image keeps its
+        // entry here (its scene still has the fragment); only an unloaded scene drops out.
+        _liveCellsFootprints.Clear();
+        for (int li = 0; li < layers.Length; li++)
+        {
+            var lp = layers[li].Parameters;
+            var sb = layers[li].Scene.Buffer;
+            if (sb.Fragments.Count == 0) continue;
+            foreach (var (anchor, entry) in sb.Fragments)
+            {
+                if (entry.Fragment.Layer != FragmentLayer.Cells) continue;
+                var s = entry.Fragment.GetSize();
+                // Clamp the origin to >= 0 and shrink the extent accordingly (Rect can't carry a negative
+                // origin): a negative composite offset (scrolled content / a window dragged off the top-left)
+                // makes anchor+offset < 0. The off-screen prefix never had pixels on the terminal anyway, and
+                // the surviving on-screen portion still overlaps any ghost the full footprint would. Mirrors
+                // TryFootprint's clamp; a footprint wholly off the top-left collapses to empty and is skipped.
+                int colStart = anchor.Column + lp.OffsetColumn;
+                int rowStart = anchor.Row + lp.OffsetRow;
+                int width = Math.Max(1, s.Columns) + Math.Min(0, colStart);
+                int height = Math.Max(1, s.Rows) + Math.Min(0, rowStart);
+                if (width <= 0 || height <= 0) continue;
+                _liveCellsFootprints.Add(new Rect(Math.Max(0, colStart), Math.Max(0, rowStart), width, height));
+            }
+        }
 
         for (int li = 0; li < layers.Length; li++)
         {
@@ -225,6 +290,54 @@ public sealed class SceneCompositor
                     _fragmentAnchors.Add((tc, tr));
             }
         }
+
+        // Force-repaint the part of each GHOST (a Cells-layer image committed to the terminal) NOT covered by a
+        // live footprint. SUBTRACTION, not an all-or-nothing overlap test, is required so a removed image is
+        // erased exactly where no surviving image now sits: a removed image partially overlapped by a different
+        // live image, or a single image that SHRINKS in place (window resize), leaves an uncovered remainder
+        // whose pixels would otherwise linger (Cells-layer images have no protocol erase). Subtraction also
+        // preserves the occlusion non-goal — an occluded-but-alive image keeps its full uncropped footprint in
+        // the live set, which covers its ghost exactly, leaving an empty remainder (nothing force-repainted) —
+        // and it never force-repaints a cell under a surviving image (which would partially erase it, since a
+        // stable live fragment is not re-transmitted). Matching by geometry, not fragment Key, is deliberate: an
+        // occlusion crop re-encodes the fragment into a fresh-identity instance (Sixel), so a Key check would
+        // mis-read a merely-occluded image as removed.
+        foreach (var ghost in _ghostFootprints)
+        {
+            _ghostRemainder.Clear();
+            _ghostRemainder.Add(ghost);
+            foreach (var live in _liveCellsFootprints)
+            {
+                _ghostRemainderNext.Clear();
+                foreach (var part in _ghostRemainder)
+                    SubtractRect(part, live, _ghostRemainderNext);
+                (_ghostRemainder, _ghostRemainderNext) = (_ghostRemainderNext, _ghostRemainder);
+                if (_ghostRemainder.Count == 0) break;
+            }
+            foreach (var rem in _ghostRemainder)
+                target.ForceRepaint(rem);
+        }
+
+        // The new ghost set IS this frame's live footprints — every Cells-layer image alive in a scene now (its
+        // pixels are, or imminently will be, on the terminal). Swap the lists (zero-alloc); _liveCellsFootprints
+        // becomes scratch that's cleared before reuse next frame.
+        (_ghostFootprints, _liveCellsFootprints) = (_liveCellsFootprints, _ghostFootprints);
+    }
+
+    // Append the parts of <paramref name="a"/> not covered by <paramref name="b"/> to <paramref name="output"/>,
+    // decomposing the (possibly L-/U-shaped) remainder into up to four non-overlapping axis-aligned bands. When
+    // the two are disjoint, <paramref name="a"/> passes through unchanged; when b fully covers a, nothing is added.
+    private static void SubtractRect(in Rect a, in Rect b, List<Rect> output)
+    {
+        if (!a.Intersects(b)) { output.Add(a); return; }
+
+        int ic0 = Math.Max(a.Column, b.Column), ir0 = Math.Max(a.Row, b.Row);
+        int ic1 = Math.Min(a.ColumnEnd, b.ColumnEnd), ir1 = Math.Min(a.RowEnd, b.RowEnd);
+
+        if (a.Row < ir0)       output.Add(new Rect(a.Column, a.Row, a.Columns, ir0 - a.Row));       // top band
+        if (ir1 < a.RowEnd)    output.Add(new Rect(a.Column, ir1, a.Columns, a.RowEnd - ir1));      // bottom band
+        if (a.Column < ic0)    output.Add(new Rect(a.Column, ir0, ic0 - a.Column, ir1 - ir0));      // left band
+        if (ic1 < a.ColumnEnd) output.Add(new Rect(ic1, ir0, a.ColumnEnd - ic1, ir1 - ir0));       // right band
     }
 
     // Subtract an occluder rect from the visible rect [c0,r0 .. c1,r1). A graphics-protocol fragment can only be

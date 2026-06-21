@@ -52,6 +52,15 @@ public sealed class CellBuffer : ICellSurface
     private readonly Dictionary<object, (int Column, int Row)> _fragmentsByKey = new();
     private readonly List<Rect> _dirtyRegions = [];
 
+    // Regions the renderer must re-emit unconditionally on the next render — even where the cell
+    // content is byte-identical to the front buffer. Distinct from _dirtyRegions: dirty marks
+    // RESTRICT emission (opt-in), force-repaint marks EXPAND it. The motivating case is a removed
+    // Cells-layer image (iTerm2/Sixel): its pixels have no protocol erase, so they linger on the
+    // terminal until a cell overwrites them — but the front buffer recorded those cells as the
+    // bg-only covered placeholder, so if the new content matches that placeholder a plain diff
+    // emits nothing and the image persists. The compositor marks the vacated footprint here.
+    private readonly List<Rect> _forceRepaintRegions = [];
+
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
     public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null)
     {
@@ -267,6 +276,7 @@ public sealed class CellBuffer : ICellSurface
         _fragments.Clear();
         _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
+        _forceRepaintRegions.Clear();
 
         FillWithDefaultStyleIfKnown();
     }
@@ -456,6 +466,44 @@ public sealed class CellBuffer : ICellSurface
     public void ClearDirty() => _dirtyRegions.Clear();
 
     /// <summary>
+    /// Rectangles the renderer must re-emit on the next render <em>regardless</em> of whether the
+    /// cell content differs from the front buffer. Unlike <see cref="DirtyRegions"/> (which, when
+    /// opted in, <i>restricts</i> emission to the marked area), this <i>expands</i> it: cells inside
+    /// a force-repaint region are always eligible to emit even when they compare equal to the front
+    /// buffer. Used to overwrite content the front buffer can't see is stale — chiefly the pixels of
+    /// a removed <see cref="FragmentLayer.Cells"/> image, which has no protocol erase and lingers
+    /// until a cell paints over it.
+    /// </summary>
+    public IReadOnlyList<Rect> ForceRepaintRegions => _forceRepaintRegions;
+
+    /// <summary>
+    /// Mark a rectangular region for unconditional re-emission on the next render — see
+    /// <see cref="ForceRepaintRegions"/>. Empty rectangles are dropped silently.
+    /// </summary>
+    public void ForceRepaint(int column, int row, int columns, int rows)
+        => ForceRepaint(new Rect(column, row, columns, rows));
+
+    /// <summary>Mark a <see cref="Rect"/> for unconditional re-emission on the next render.</summary>
+    public void ForceRepaint(in Rect region)
+    {
+        if (region.IsEmpty) return;
+        if (region.Row >= _rows || region.Column >= _columns) return;
+        if (region.RowEnd <= 0 || region.ColumnEnd <= 0) return;
+
+        int col = Math.Max(0, region.Column);
+        int row = Math.Max(0, region.Row);
+        int colEnd = Math.Min(_columns, region.ColumnEnd);
+        int rowEnd = Math.Min(_rows, region.RowEnd);
+        _forceRepaintRegions.Add(new Rect(col, row, colEnd - col, rowEnd - row));
+    }
+
+    /// <summary>
+    /// Drop all force-repaint marks. The <see cref="FrameRenderer"/> calls this automatically at the
+    /// end of each render so consumers don't manage the lifecycle themselves.
+    /// </summary>
+    public void ClearForceRepaint() => _forceRepaintRegions.Clear();
+
+    /// <summary>
     /// Replace every cell with <paramref name="cell"/>, blending its <see cref="Style"/> against
     /// each position's existing cell through <see cref="CurrentBlendingMode"/>. When the active
     /// mode is <see cref="BlendingModes.Default"/>, the fast path is a single <c>Array.Fill</c>
@@ -597,6 +645,7 @@ public sealed class CellBuffer : ICellSurface
         _fragments.Clear();
         _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
+        _forceRepaintRegions.Clear();
 
         FillWithDefaultStyleIfKnown();
     }

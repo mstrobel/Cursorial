@@ -225,7 +225,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// the cells a closed/moved surface vacated repaint from the layers behind.</summary>
     private void ResetCompositor()
     {
+        var previous = _compositor;
         _compositor = new SceneCompositor();
+        // Carry the ghost-footprint set across the reset. A Cells-layer image (iTerm2/Sixel) has no protocol
+        // erase, so its pixels linger on the terminal until overwritten — and when occluded by a popup it isn't
+        // a registered target fragment, so a fresh compositor would have no record of it. Without this hand-off,
+        // switching tabs WHILE an occluding popup is open would strand the (now-unloaded) image's pixels on screen.
+        _compositor.AdoptGhostFootprints(previous);
         _needsComposite = true;
     }
 
@@ -264,8 +270,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = 0; i < _surfaces.Count; i++)
             _surfaces[i].CollectLayers(_layers, surfaceZ: i, isOccluder: !ReferenceEquals(_surfaces[i], _rootSurface));
 
-        if (_surfaces.Count > 0)
-            changed |= _compositor.Composite(CollectionsMarshal.AsSpan(_layers), new CellBufferView(target));
+        // Composite unconditionally — even with zero surfaces. An empty layer set is the signal that the surface
+        // stack just emptied (null root / last surface closed): the compositor's full-reset path then erases any
+        // ghost footprint (a removed Cells-layer image whose pixels linger with no protocol erase). When the stack
+        // was already empty across frames it early-returns with no work, so there's no per-frame churn.
+        changed |= _compositor.Composite(CollectionsMarshal.AsSpan(_layers), new CellBufferView(target));
 
         // A surface-stack change (open/close/z/resize) reset the compositor to force a full recomposite; that
         // recomposite has now run, so clear the pending flag. (When a popup/window closes, the remaining

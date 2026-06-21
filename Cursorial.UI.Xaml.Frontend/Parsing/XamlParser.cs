@@ -162,6 +162,12 @@ internal sealed class XamlParser
         string ns = _reader.NamespaceURI;
         bool isEmpty = _reader.IsEmptyElement;
 
+        // The XAML2009 <x:Array Type="T"> intrinsic element is not a resolvable type — it builds a T[] from
+        // its item children (XD27). Recognize it before normal type resolution.
+        if (XmlnsNamespaces.IsIntrinsics(ns) && string.Equals(localName, "Array", StringComparison.Ordinal))
+            return ParseArrayElement(objectIndex, lineInfo, reportLine, reportColumn, isEmpty,
+                                     parentInDeferred, parentInResourceDictionary, isRoot);
+
         // Resolve the element type.
         var resolution = ResolveType(ns, localName, reportLine, reportColumn);
         int typeId;
@@ -262,6 +268,145 @@ internal sealed class XamlParser
         var record = new ObjectRecord(typeId, memberStart, (ushort) members.Count, flags, subtreeLength, lineInfo);
 
         _builder.SetObject(objectIndex, record);
+
+        return objectIndex;
+    }
+
+    /// <summary>
+    /// Parses an <c>&lt;x:Array Type="T"&gt;</c> intrinsic element (XAML2009, XD27): the unqualified
+    /// <c>Type</c> attribute names the element type T (prefix-bound from the live reader scope, like
+    /// <c>{x:Type}</c>); each child element is an array item; the object is flagged <see cref="ObjectFlags.IsArray"/>
+    /// with <c>T</c> as its <see cref="ObjectRecord.TypeId"/>. The loader/generator build a <c>T[]</c>. A missing
+    /// <c>Type</c> is <c>CUR1204</c>; <c>x:Key</c>/<c>x:Name</c> are honored (an array is a valid keyed resource /
+    /// named element); any other attribute is <c>CUR2102</c>.
+    /// </summary>
+    private int ParseArrayElement(
+        int objectIndex, int lineInfo, int reportLine, int reportColumn, bool isEmpty,
+        bool parentInDeferred, bool parentInResourceDictionary, bool isRoot)
+    {
+        var members = new List<MemberRecord>();
+        XamlType? elementType = null;
+        bool hasName = false, hasKey = false, sawType = false;
+
+        if (_reader.MoveToFirstAttribute())
+        {
+            do
+            {
+                string attrNs = _reader.NamespaceURI;
+                string attrLocal = _reader.LocalName;
+                string attrPrefix = _reader.Prefix;
+                string value = _reader.Value;
+                int attrLine = _lineInfo.LineNumber;
+                int attrColumn = _lineInfo.LinePosition;
+                int attrLineInfo = LineInfo.Pack(attrLine, attrColumn);
+
+                if (attrPrefix == "xmlns" || (attrPrefix.Length == 0 && attrLocal == "xmlns"))
+                {
+                    if (!isRoot)
+                        _builder.Error(XamlDiagnosticCodes.NamespaceNotOnRoot,
+                                       "xmlns declarations are only allowed on the root element.", attrLine, attrColumn);
+                    continue;
+                }
+
+                if (string.Equals(attrPrefix, "xml", StringComparison.Ordinal))
+                    continue;
+
+                // x:Key / x:Name directives — an array is a valid keyed resource / named element.
+                if (XmlnsNamespaces.IsIntrinsics(attrNs))
+                {
+                    HandleIntrinsicDirective(attrLocal, value, members, attrLineInfo, attrLine, attrColumn, ref hasName, ref hasKey);
+                    continue;
+                }
+
+                // The unqualified Type attribute names the element type (prefix-bound from the reader scope).
+                if (attrNs.Length == 0 && string.Equals(attrLocal, "Type", StringComparison.Ordinal))
+                {
+                    sawType = true;
+                    var res = ResolveQualifiedType(value, appendExtensionSuffix: false, attrLine, attrColumn, report: true);
+                    if (res.IsResolved)
+                        elementType = res.Type;
+                    continue;
+                }
+
+                _builder.Error(XamlDiagnosticCodes.MemberNotFound,
+                               $"x:Array accepts only the 'Type' attribute (plus x:Key/x:Name); '{attrLocal}' is not valid.",
+                               attrLine, attrColumn);
+            }
+            while (_reader.MoveToNextAttribute());
+
+            _reader.MoveToElement();
+        }
+
+        if (!sawType)
+            _builder.Error(XamlDiagnosticCodes.ArrayMissingType,
+                           "x:Array requires a Type attribute (e.g. <x:Array Type=\"x:String\">).", reportLine, reportColumn);
+
+        // TypeId carries the ELEMENT type T (null when unresolved — the loader reports the miss).
+        int typeId = _builder.AddResolvedType(elementType);
+
+        var flags = ObjectFlags.IsArray;
+        if (isRoot) flags |= ObjectFlags.IsRoot;
+        if (parentInDeferred) flags |= ObjectFlags.InDeferredContent;
+        if (parentInResourceDictionary) flags |= ObjectFlags.InResourceDictionary;
+        if (hasName) flags |= ObjectFlags.HasName;
+        if (hasKey) flags |= ObjectFlags.HasKey;
+
+        int subtreeStart = objectIndex;
+
+        if (!isEmpty)
+        {
+            var children = new List<int>();
+
+            while (_reader.Read())
+            {
+                switch (_reader.NodeType)
+                {
+                    case XmlNodeType.Element:
+                        if (_reader.LocalName.IndexOf('.') > 0)
+                        {
+                            _builder.Error(XamlDiagnosticCodes.MemberNotFound,
+                                           "x:Array does not accept property elements; its children are array items.",
+                                           _lineInfo.LineNumber, CurrentElementColumn());
+
+                            // Do NOT use _reader.Skip(): it advances PAST this element's EndElement, so the loop's
+                            // next Read() would over-advance — dropping the following sibling item, or (for a trailing
+                            // property element) skipping the array's own </x:Array> and swallowing the array's siblings
+                            // into it. Drain to this element's OWN EndElement so the loop's Read() advances exactly once.
+                            if (!_reader.IsEmptyElement)
+                            {
+                                int propDepth = _reader.Depth;
+                                while (_reader.Read() &&
+                                       !(_reader.NodeType == XmlNodeType.EndElement && _reader.Depth == propDepth))
+                                { }
+                            }
+
+                            continue;
+                        }
+
+                        children.Add(ParseElement(parentInDeferred, parentInResourceDictionary, isRoot: false));
+                        continue;
+
+                    case XmlNodeType.EndElement:
+                        goto done;
+                }
+            }
+
+        done:
+            if (children.Count > 0)
+                members.Add(new MemberRecord(-1, XamlValueKind.Items, children[0], children.Count, lineInfo));
+        }
+
+        if (hasName && parentInResourceDictionary)
+            _builder.Error(XamlDiagnosticCodes.NameInResourceDictionary,
+                           "x:Name is not allowed inside a resource dictionary (no namescope).", reportLine, reportColumn);
+
+        int memberStart = _builder.MemberCount;
+        foreach (var m in members)
+            _builder.AddMember(m);
+
+        int subtreeLength = _builder.ObjectCount - subtreeStart;
+        _builder.SetObject(objectIndex,
+            new ObjectRecord(typeId, memberStart, (ushort) members.Count, flags, subtreeLength, lineInfo));
 
         return objectIndex;
     }

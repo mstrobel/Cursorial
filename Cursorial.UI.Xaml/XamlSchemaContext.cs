@@ -144,6 +144,17 @@ public sealed class XamlSchemaContext
         _          => null,
     };
 
+    private static readonly HashSet<Type> BuiltInClrTypes =
+    [
+        typeof(object), typeof(bool), typeof(byte), typeof(sbyte), typeof(char), typeof(decimal),
+        typeof(float), typeof(double), typeof(short), typeof(int), typeof(long), typeof(ushort),
+        typeof(uint), typeof(ulong), typeof(string), typeof(TimeSpan), typeof(Uri),
+    ];
+
+    /// <summary>True for a XAML2009 built-in (CLR basic) type — the set a primitive element initializes from
+    /// its content text (<c>&lt;x:Int32&gt;5&lt;/x:Int32&gt;</c>, XD28).</summary>
+    public static bool IsBuiltInType(Type type) => BuiltInClrTypes.Contains(type);
+
     /// <summary>The known XAML-visible type names in an xmlns URI (Levenshtein did-you-mean source).</summary>
     public string[] GetKnownTypeNames(string xmlNamespace)
     {

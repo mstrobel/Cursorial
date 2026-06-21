@@ -140,6 +140,29 @@ public class DualRunDriftTests
         Assert.Same(byReflection.Background, byGenerated.Background);
     }
 
+    [Fact] // XD27/XD28 — the generated provider builds an x:Array (object + built-in-primitive items) like reflection
+    public void GeneratedProvider_HandlesXArray_AsReflection()
+    {
+        var xaml =
+            $"<StackPanel {Xmlns}><StackPanel.Resources>" +
+            "<x:Array x:Key=\"btns\" Type=\"Button\"><Button Width=\"3\"/><Button Width=\"5\"/></x:Array>" +
+            "<x:Array x:Key=\"names\" Type=\"x:String\"><x:String>a</x:String><x:String>b</x:String></x:Array>" +
+            "<x:Int32 x:Key=\"n\">42</x:Int32>" +
+            "</StackPanel.Resources></StackPanel>";
+
+        var generated = BuildGeneratedProvider(xaml);
+        var byGenerated = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = generated }).Load(xaml);
+        var byReflection = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        foreach (var root in new[] { byGenerated, byReflection })
+        {
+            var btns = Assert.IsType<Button[]>(root.Resources["btns"]);
+            Assert.Equal([3, 5], btns.Select(b => b.Width!.Value));
+            Assert.Equal(["a", "b"], Assert.IsType<string[]>(root.Resources["names"]));
+            Assert.Equal(42, Assert.IsType<int>(root.Resources["n"]));
+        }
+    }
+
     private static IXamlTypeMetadataProvider BuildGeneratedProvider(string xaml)
     {
         var compilation = GeneratorHarness.ReferencedCompilation();

@@ -32,6 +32,10 @@ internal enum ObjectFlags : ushort
 
     /// <summary>This object lives inside a resource dictionary (no namescope — x:Name is CUR2304).</summary>
     InResourceDictionary = 1 << 6,
+
+    /// <summary>An <c>&lt;x:Array Type="T"&gt;</c> intrinsic: <see cref="ObjectRecord.TypeId"/> is the
+    /// ELEMENT type T (not the object's own type), and the object's items build a <c>T[]</c> (XD27).</summary>
+    IsArray = 1 << 7,
 }
 
 /// <summary>

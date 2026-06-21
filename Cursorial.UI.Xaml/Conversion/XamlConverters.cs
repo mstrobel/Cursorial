@@ -63,6 +63,7 @@ public static class XamlConverters
         if (underlying == typeof(bool)) return BoolConverter.Instance;
         if (underlying == typeof(string)) return StringPassthroughConverter.Instance;
         if (underlying == typeof(Uri)) return UriConverter.Instance;
+        if (underlying == typeof(TimeSpan)) return TimeSpanConverter.Instance;
         if (underlying == typeof(Margins)) return MarginsConverter.Instance;
         if (underlying == typeof(GridLength)) return GridLengthConverter.Instance;
         if (underlying == typeof(RelativePoint)) return RelativePointConverter.Instance;
@@ -140,6 +141,21 @@ public static class XamlConverters
             if (bool.TryParse(text.Trim(), out bool v))
                 return v;
             throw Fail($"'{text}' is not a valid Boolean.", ctx);
+        }
+    }
+
+    // A TimeSpan value (e.g. <x:TimeSpan>00:00:05</x:TimeSpan>) — TimeSpan is a XAML2009 built-in but is neither
+    // IsPrimitive nor IConvertible, so it would otherwise fall through Build to null (XD28 — the lone built-in gap).
+    private sealed class TimeSpanConverter : ITypeConverter
+    {
+        public static readonly TimeSpanConverter Instance = new();
+        public bool IsContextFree => true;
+
+        public object ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            if (TimeSpan.TryParse(text.Trim(), ctx.Culture, out var v))
+                return v;
+            throw Fail($"'{text}' is not a valid TimeSpan.", ctx);
         }
     }
 

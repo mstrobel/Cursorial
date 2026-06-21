@@ -19,7 +19,7 @@ Canonical semantics sources, in precedence order: `docs/ui-layer-design.md` §4 
 - **X2** — markup extensions end-to-end (`{Binding}`/`{StaticResource}`/`{DynamicResource}`/`{TemplateBinding}`/`{x:Static}`/`{x:Null}`/`{x:Type}` + custom), resource dictionaries incl. `MergedDictionaries` + separate-file theme dicts + deferred (lazy) entries, the `AttachTo`/`SetResourceReference`/`BindingOperations` attach routing. *(loader.)*
 - **X3** — deferred content: a property typed `ITemplateContent` captures a node-graph slice instantiated per-target at expansion; the template namescope (fresh per `Build`, sealed from the document scope); lexical resource-scope capture for templates; access-key literal folding. *(loader.)*
 
-Deferred beyond P6 (recorded, doc §4.13): events inside deferred content (CUR2301 — pinned, parse-time rejected now); `x:TypeArguments`/`x:Shared="False"`/`x:Array`/`x:Reference`/attached events/`x:FieldModifier`; localization/`x:Uid`; East-Asian-aware whitespace; per-instance designer metadata; the X4/X5 generator deliverables; trimmed/AOT publish (`[RequiresUnreferencedCode]`/`[RequiresDynamicCode]` honest annotations now, generated provider at X5).
+Deferred beyond P6 (recorded, doc §4.13): events inside deferred content (CUR2301 — pinned, parse-time rejected now); `x:TypeArguments`/`x:Shared="False"`/attached events/`x:FieldModifier`; localization/`x:Uid`; East-Asian-aware whitespace; per-instance designer metadata; trimmed/AOT publish (`[RequiresUnreferencedCode]`/`[RequiresDynamicCode]` honest annotations now, generated provider at X5). **Post-P9 (implemented since): `x:Reference` (the markup-extension form, §Section17), the X4/X5 generator deliverables, and `x:Array` + element-valued built-in primitives (§15c, XD27/XD28).** The bare directive-attribute forms `x:Array="…"`/`x:Reference="…"` remain `CUR1203` (X29 — not valid XAML).
 
 Stage mapping (rows for a later stage may stay unimplemented — not red — until that stage opens, but every row is binding from now):
 
@@ -74,7 +74,7 @@ Namespace for the public surface is **`Cursorial.UI.Xaml`** (the doc §4.2 sketc
 Each goes beyond — but never against — the canonical doc text; deliberate and binding until amended.
 
 - **XD1 — diagnostics are 1-based line *and* column, on every record, at every stage.** `XamlDiagnostic.Line`/`Column` come from the `XmlReader`'s `IXmlLineInfo` for X0/X1 errors and from the current `ObjectRecord`/`MemberRecord`'s packed `LineInfo` for X2/X3 (instantiation) errors. A diagnostic with `Line == 0`/`Column == 0` is a loader bug. The `CUR1xxx` (parse) / `CUR2xxx` (resolve) / `CUR3xxx` (instantiate) banding is fixed (doc §4.2). PIN (doc §4.2/§4.10).
-- **XD2 — the parse fence throws *with position*, never silently degrades.** Every construct on the deferred list (§"Phase 6 scope fence") — `x:TypeArguments`, `x:Array`, `x:Reference`, attached events, `x:FieldModifier`, `x:Shared`, `x:Uid`, DTDs/external entities, events inside deferred content — produces a specific `CUR1xxx`/`CUR2xxx` diagnostic naming the unsupported construct and its line/col. No construct is silently dropped. PIN/DEV (doc §4.13; recorded outs).
+- **XD2 — the parse fence throws *with position*, never silently degrades.** Every construct on the deferred list (§"Phase 6 scope fence") — `x:TypeArguments`, the bare directive-attribute forms `x:Array="…"`/`x:Reference="…"`, attached events, `x:FieldModifier`, `x:Shared`, `x:Uid`, DTDs/external entities, events inside deferred content — produces a specific `CUR1xxx`/`CUR2xxx` diagnostic naming the unsupported construct and its line/col. No construct is silently dropped. (The `<x:Array>` element form + `{x:Reference}` markup-extension form are now implemented — §15c / §Section17.) PIN/DEV (doc §4.13; recorded outs).
 - **XD3 — `FoldConstants` folds iff the member's converter `IsContextFree`.** A context-free converter (Thickness/Margins, Color/hex, GridLength, enum, bool/int/double, TimeSpan, TextAttributes) runs once at parse, the boxed result stored in `Constants` and shared by every `Load`/template `Build`. A context-dependent value (needs services / relative URI / target-type knowledge unavailable at parse) stays `Text` and converts in stage 2 with the cached converter reference. `FoldConstants = false` defers *all* folding to stage 2 (the profiling knob) without changing results. PIN (doc §4.3/§4.6; proposal §3.2 step 5).
 - **XD4 — member resolution order is registered `UIProperty` first, then CLR, then `CUR2102`.** Per element/attribute: (1) the Fork A registry (`UIPropertyRegistry.Find(ownerType, name)` — reflection-free, base-walking; attached via `FindOwnersByShortName`/the attached registry); (2) a CLR property via the metadata provider; (3) `CUR2102` with the type's available member list. A `UIProperty` match assigns through `SetValue(prop, value, provenance)`; a CLR-only match through the cached setter delegate. PIN (doc §4.3; proposal §3.2 step 3; `UIPropertyRegistry` confirmed). **Setter `Property` addendum (attached-setter Phase 1):** a *dotted* Setter `Property` name (`Grid.Row`, `Control.Foreground`, `TextElement.TextAttributes`) resolves the **owner** xmlns-aware (the lexical `TargetType` is **ignored** — WPF parity), and therefore needs **no enclosing `TargetType`** at all — `CUR2110` ("no resolvable target type") fires **only** for an *undotted* Setter that lacks a `TargetType` (an undotted name resolves against the lexical Style `TargetType`, the only case the `TargetType` is the owner). This lets a multi-type theme rule (e.g. `.caps-nocolor Button:focus, …:pressed { TextElement.TextAttributes: Inverse }`) carry no `TargetType`. **Phase 2 (4C) landed:** a `prefix:`-qualified dotted owner (`my:Owner.Member`) now resolves too — its namespace is captured at the attribute (via `_reader.LookupNamespace`, while the xmlns scope is live) and stashed in the `Property` member's `ItemCount` slot, which end-of-object `ResolveSetter` reads back to resolve the owner in the prefix's namespace (the `CUR2111` deferral is retired; the prefix can map outside the Cursorial.UI namespaces). Rows X64a–X64e / X66b–X66d. **The sibling prefix gaps landed (#22):** one shared `ResolveQualifiedType(maybeQualified, …)` primitive binds the prefix from the live reader scope for a custom markup-extension name (`{my:Foo}`), an `{x:Type my:Foo}` argument, and a Style `TargetType="my:X"`; the loader's runtime `Selector` synthesis from `TargetType` strips the prefix before `Selector.Parse` (whose grammar reads `:` as the pseudo-class separator). Rows X24b/X64e. The in-selector-string namespace form (`Selector="t|Foo"`) is the separate XD26 mechanism.
 - **XD5 — type resolution is xmlns-stack + short-name registry, ambiguity is a diagnostic.** A URI xmlns maps via `XmlnsDefinitionAttribute` to one-or-more CLR namespaces; a local name resolves to a CLR type within the mapped set (the default Cursorial map covers `Cursorial.UI`/`Cursorial.UI.Controls`/`Cursorial.UI.Data`). Two types of the same local name across mapped namespaces is `CUR2001` (ambiguous) listing the candidates; no type is `CUR2002` with a Levenshtein did-you-mean. `using:Ns` and `clr-namespace:Ns;assembly=Asm` both resolve directly (AV + WPF muscle memory). PIN (doc §4.3; proposal §3.2 step 1).
@@ -506,6 +506,57 @@ OWN reflection, reachable from the always-linked binding/styling infrastructure,
 AOT-hardening the reflective binding lane + the selector resolver (DynamicallyAccessedMembers annotations / a
 feature-switched reflective-binding lane) is a separate S2/S3 workstream. `Cursorial.Demo.XamlAot` stays the
 reflection-baseline (`StrictAot=false`, `TrimMode=partial`); both are in `Cursorial.sln`.
+
+---
+
+### §15c. `x:Array` + element-valued built-in primitives (XAML2009) — XA1–XA10 *(all pipelines)*
+
+The XAML2009 `<x:Array Type="T">` intrinsic and element-valued built-in primitives (`<x:String>`, `<x:Int32>`, …),
+implemented across the frontend parser + node-graph, the runtime loader, and the generator (symbol-backed parse,
+generated provider, full lowering). The **attribute-directive** forms `x:Array="…"` / `x:Reference="…"` stay
+`CUR1203` (X29 — those are not valid XAML); these rows are the **element** form `<x:Array>` and built-in primitive
+elements. Tests: `Cursorial.UI.Xaml.Tests/XamlMatrix/Section18_XArray.cs` (loader), `LoweringEmitterTests` +
+`DualRunDriftTests` (generator).
+
+- **XD27 — `<x:Array Type="T">` is a special element, not a resolvable type.** The parser recognizes the intrinsic
+  element `(x-namespace, "Array")` BEFORE normal type resolution: it reads the unqualified `Type` attribute
+  (prefix-bound from the live reader scope, like `{x:Type}`), resolves it to the element type T (`CUR2002` on a
+  miss), stamps the object `ObjectFlags.IsArray` with T as its `TypeId` (the ELEMENT type, not the object's own
+  type), and captures child elements as the array's items (a synthetic `Items` member, `MemberId = -1`). A missing
+  `Type` is `CUR1204`; `x:Key`/`x:Name` are honored (an array is a valid keyed resource / named element); any other
+  attribute is `CUR2102`. The loader builds `Array.CreateInstance(T, n)` and fills it (an item not assignable to T
+  is `CUR2401`, positioned); the generator lowers to `new T[] { … }` (a named array's code-behind field is typed
+  `T[]`). The generated metadata provider needs no x:Array entry (the construct is structural in the parser) — only
+  the element type T (and built-in item types) enter the closed set, resolved exactly as the reflection provider.
+  PIN/DEV (XAML2009; WPF `ArrayExtension` parity in element position).
+- **XD28 — a built-in primitive element initializes from its content text.** `<x:String>hi</x:String>` → `"hi"`;
+  `<x:Int32>5</x:Int32>` → `5`; etc. — the element's content text is converted to the built-in's CLR type through
+  the same converter ladder a member value uses (XD3 fold-equivalence: loader `ConvertInitText` ≡ generator
+  `__ConvertXamlValue` ≡ `XamlConverters.For(T)`). An empty element converts the empty string (string→`""`; a
+  primitive that rejects `""` is `CUR2401`). This is the minimum initialization-text slice (the general
+  `x:Arguments`/`x:FactoryMethod` stays deferred); it exists so a primitive `x:Array` (`String[]`, `Int32[]`) has
+  authorable items, and so a standalone primitive resource (`<x:Double x:Key="Pi">3.5</x:Double>`) works. The
+  detection is by CLR-type membership in the built-in set (`XamlSchemaContext.IsBuiltInType`), independent of whether
+  the type happens to be activatable — a value type would otherwise activate to its default and reject the text. PIN.
+  **Known limitation (recorded out):** the supported form is the intrinsics-namespace one (`x:Int32`, `x:String`,
+  `x:TimeSpan`), consistent across all three pipelines. Referencing a built-in via a `using:System` / `clr-namespace:System`
+  xmlns (`<sys:Int32 xmlns:sys="using:System">`) is **not** a supported form: the runtime loader's `XamlSchemaContext`
+  does not probe the corelib assembly for it (CUR2002), so it is rejected by the reflection loader and the generated
+  provider — a pre-existing resolver asymmetry (`XamlSymbolResolver` resolves it; `XamlSchemaContext` does not), not an
+  x:Array guarantee. Use the `x:` form.
+
+| Row | XAML | stage | expected | source |
+|-----|------|-------|----------|--------|
+| XA1 | `<x:Array x:Key="b" Type="Button"><Button/><Button/></x:Array>` in a dictionary | `Load` | a `Button[]` of length 2 with the two built Buttons (object items) | XAML2009 |
+| XA2 | `<x:Array Type="x:String"><x:String>a</x:String><x:String>b</x:String></x:Array>` | `Load` | a `string[]` `["a","b"]` (element-valued built-ins as items) | XAML2009 |
+| XA3 | `<x:Array Type="x:Int32"><x:Int32>7</x:Int32><x:Int32>42</x:Int32></x:Array>` | `Load` | an `int[]` `[7,42]` (each item's text converted) | XAML2009 |
+| XA4 | `<x:Array Type="x:String"/>` (empty) | `Load` | a zero-length `string[]` | XAML2009 |
+| XA5 | `<x:Array x:Key="x"><Button/></x:Array>` (no `Type`) | parse | `CUR1204` "x:Array requires a Type attribute" with position (XD27) | DEV (XD27) |
+| XA6 | `<x:Double x:Key="Pi">3.5</x:Double>` / `<x:Boolean>true</…>` / `<x:String>hello</…>` | `Load` | the converted primitive value (`3.5` / `true` / `"hello"`) per XD28 | XAML2009 |
+| XA7 | `<ListBox.ItemsSource><x:Array Type="x:String">…</x:Array></ListBox.ItemsSource>` | `Load` | the `string[]` is assigned to the `IEnumerable` member (an array IS `IEnumerable`) | XAML2009 |
+| XA8 | `<x:Array Type="x:Int32"><x:String>nope</x:String></x:Array>` | realize | `CUR2401` (positioned at the item) — the string item is not assignable to `int` (XD27) | DEV (XD27) |
+| XA9 | the same `<x:Array>` (object + primitive items) through the **generated provider** | `Load` | byte-identical to the reflection provider — the X174 dual-run gate over x:Array (`DualRunDriftTests`) | PIN (X174) |
+| XA10 | `<x:Array Type="x:String">…</x:Array>` under full lowering (`CursorialXamlLowering=full`) | lower | `new string[] { … }` (built-in items as literals / converter calls), matching the loader (`LoweringEmitterTests`) | PIN (X188) |
 
 ---
 

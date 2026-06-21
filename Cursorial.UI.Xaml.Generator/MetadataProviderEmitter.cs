@@ -20,7 +20,26 @@ namespace Cursorial.UI.Xaml.Generator;
 internal sealed class MetadataProviderEmitter
 {
     private const string Ui = "https://cursorial.dev/ui";
+    private const string Intrinsics = "https://cursorial.dev/xaml";
     private const string Frontend = "global::Cursorial.UI.Xaml";
+
+    // The XAML2009 built-in (CLR basic) local names — resolved via the intrinsics (x:) namespace, keyed by the
+    // System type's Name (System.Int32 → "Int32", etc., which equals the XAML2009 local name).
+    private static readonly HashSet<string> BuiltInLocalNames =
+    [
+        "Object", "Boolean", "Byte", "SByte", "Char", "Decimal", "Single", "Double", "Int16", "Int32",
+        "Int64", "UInt16", "UInt32", "UInt64", "String", "TimeSpan", "Uri",
+    ];
+
+    private static bool IsIntrinsicBuiltIn(INamedTypeSymbol s)
+        => s.ContainingNamespace is { Name: "System", ContainingNamespace.IsGlobalNamespace: true }
+           && BuiltInLocalNames.Contains(s.Name);
+
+    private static string ArrayLiteral(IEnumerable<string> quotedItems)
+    {
+        var list = quotedItems.ToList();
+        return list.Count == 0 ? "global::System.Array.Empty<string>()" : $"new[] {{ {string.Join(", ", list)} }}";
+    }
 
     private readonly Compilation _compilation;
 
@@ -95,41 +114,59 @@ internal sealed class MetadataProviderEmitter
 
     private void EmitTryGetType(StringBuilder sb, List<INamedTypeSymbol> types)
     {
+        var uiTypes = types.Where(t => !IsIntrinsicBuiltIn(t)).ToList();
+        var builtins = types.Where(IsIntrinsicBuiltIn).ToList();
+
         sb.AppendLine($"        public {Frontend}.XamlTypeResolution TryGetType(string xmlNamespace, string localName)");
         sb.AppendLine("        {");
-        sb.AppendLine($"            if (!string.Equals(xmlNamespace, \"{Ui}\", global::System.StringComparison.Ordinal))");
-        sb.AppendLine($"                return {Frontend}.XamlTypeResolution.NotFound();");
-        sb.AppendLine("            return localName switch");
-        sb.AppendLine("            {");
 
-        foreach (var type in types)
-            sb.AppendLine($"                \"{type.Name}\" => {Frontend}.XamlTypeResolution.Resolved({FieldName(type)}),");
+        EmitNamespaceSwitch(sb, Ui, uiTypes);
+        // The XAML2009 built-in (CLR basic) types resolve via the intrinsics (x:) namespace — the canonical
+        // <x:Int32>/<x:Array Type="x:String"> form, matching the reflection provider's XamlSchemaContext.
+        if (builtins.Count > 0)
+            EmitNamespaceSwitch(sb, Intrinsics, builtins);
 
-        sb.AppendLine($"                _ => {Frontend}.XamlTypeResolution.NotFound(),");
-        sb.AppendLine("            };");
+        sb.AppendLine($"            return {Frontend}.XamlTypeResolution.NotFound();");
         sb.AppendLine("        }");
         sb.AppendLine();
     }
 
+    private void EmitNamespaceSwitch(StringBuilder sb, string xmlNamespace, List<INamedTypeSymbol> types)
+    {
+        sb.AppendLine($"            if (string.Equals(xmlNamespace, \"{xmlNamespace}\", global::System.StringComparison.Ordinal))");
+        sb.AppendLine("                return localName switch");
+        sb.AppendLine("                {");
+        foreach (var type in types)
+            sb.AppendLine($"                    \"{type.Name}\" => {Frontend}.XamlTypeResolution.Resolved({FieldName(type)}),");
+        sb.AppendLine($"                    _ => {Frontend}.XamlTypeResolution.NotFound(),");
+        sb.AppendLine("                };");
+    }
+
     private void EmitNamespaceTables(StringBuilder sb, List<INamedTypeSymbol> types)
     {
-        var namespaces = types.Select(t => t.ContainingNamespace.ToDisplayString())
-                              .Distinct(System.StringComparer.Ordinal)
-                              .OrderBy(n => n, System.StringComparer.Ordinal);
+        var uiTypes = types.Where(t => !IsIntrinsicBuiltIn(t)).ToList();
+        var builtins = types.Where(IsIntrinsicBuiltIn).ToList();
 
-        var typeNames = types.Select(t => t.Name).Distinct(System.StringComparer.Ordinal).OrderBy(n => n, System.StringComparer.Ordinal);
+        var uiNamespaces = uiTypes.Select(t => t.ContainingNamespace.ToDisplayString())
+                                  .Distinct(System.StringComparer.Ordinal).OrderBy(n => n, System.StringComparer.Ordinal)
+                                  .Select(n => $"\"{n}\"");
+        var uiNames = uiTypes.Select(t => t.Name).Distinct(System.StringComparer.Ordinal)
+                             .OrderBy(n => n, System.StringComparer.Ordinal).Select(n => $"\"{n}\"");
+        var builtinNames = builtins.Select(t => t.Name).Distinct(System.StringComparer.Ordinal)
+                                   .OrderBy(n => n, System.StringComparer.Ordinal).Select(n => $"\"{n}\"");
 
         sb.AppendLine("        public string[] GetClrNamespaces(string xmlNamespace) =>");
-
         sb.AppendLine(
-            $"            string.Equals(xmlNamespace, \"{Ui}\", global::System.StringComparison.Ordinal) ? new[] {{ {string.Join(", ", namespaces.Select(n => $"\"{n}\""))} }} : global::System.Array.Empty<string>();");
-
+            $"            string.Equals(xmlNamespace, \"{Ui}\", global::System.StringComparison.Ordinal) ? {ArrayLiteral(uiNamespaces)}");
+        sb.AppendLine($"            : global::System.Array.Empty<string>();");
         sb.AppendLine();
+
         sb.AppendLine("        public string[] GetKnownTypeNames(string xmlNamespace) =>");
-
         sb.AppendLine(
-            $"            string.Equals(xmlNamespace, \"{Ui}\", global::System.StringComparison.Ordinal) ? new[] {{ {string.Join(", ", typeNames.Select(n => $"\"{n}\""))} }} : global::System.Array.Empty<string>();");
-
+            $"            string.Equals(xmlNamespace, \"{Ui}\", global::System.StringComparison.Ordinal) ? {ArrayLiteral(uiNames)}");
+        sb.AppendLine(
+            $"            : string.Equals(xmlNamespace, \"{Intrinsics}\", global::System.StringComparison.Ordinal) ? {ArrayLiteral(builtinNames)}");
+        sb.AppendLine($"            : global::System.Array.Empty<string>();");
         sb.AppendLine();
     }
 
@@ -141,8 +178,11 @@ internal sealed class MetadataProviderEmitter
 
         foreach (var type in types)
         {
-            var names = SymbolXamlModel.EnumerateMembers(type).Select(m => m.Name).Distinct(System.StringComparer.Ordinal).OrderBy(n => n, System.StringComparer.Ordinal);
-            sb.AppendLine($"            if (clrType == typeof({Global(type)})) return new[] {{ {string.Join(", ", names.Select(n => $"\"{n}\""))} }};");
+            var names = SymbolXamlModel.EnumerateMembers(type).Select(m => m.Name).Distinct(System.StringComparer.Ordinal).OrderBy(n => n, System.StringComparer.Ordinal).ToList();
+            // A type with no XAML-visible members (e.g. a built-in primitive like System.Int32 used as an
+            // <x:Int32> element) emits Array.Empty — `new[] { }` is a CS0826 (no best type for an empty array).
+            var ret = names.Count == 0 ? "global::System.Array.Empty<string>()" : $"new[] {{ {string.Join(", ", names.Select(n => $"\"{n}\""))} }}";
+            sb.AppendLine($"            if (clrType == typeof({Global(type)})) return {ret};");
         }
 
         sb.AppendLine("            return global::System.Array.Empty<string>();");

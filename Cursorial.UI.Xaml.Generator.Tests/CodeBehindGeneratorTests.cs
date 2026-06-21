@@ -30,8 +30,8 @@ public class CodeBehindGeneratorTests
 
         Assert.Contains("namespace App", src);
         Assert.Contains("partial class View", src);
-        Assert.Contains("internal global::Cursorial.UI.Controls.Button Ok = null!;", src);
-        Assert.Contains("internal global::Cursorial.UI.Controls.Border Frame = null!;", src);
+        Assert.Contains("internal global::Cursorial.UI.Controls.Button Ok = default!;", src);
+        Assert.Contains("internal global::Cursorial.UI.Controls.Border Frame = default!;", src);
         Assert.Contains("void InitializeComponent()", src);
         Assert.Contains("LoadComponent(this", src);
         Assert.Contains("this.Ok = (global::Cursorial.UI.Controls.Button)", src);
@@ -53,8 +53,8 @@ public class CodeBehindGeneratorTests
             "<Button x:Name=\"Ok\"><Button.Template><ControlTemplate><Border x:Name=\"Part\"/></ControlTemplate></Button.Template></Button>" +
             "</StackPanel>"));
 
-        Assert.Contains("Button Ok = null!;", src);        // document scope → field
-        Assert.DoesNotContain("Part = null!", src);         // template scope → NOT a field
+        Assert.Contains("Button Ok = default!;", src);      // document scope → field
+        Assert.DoesNotContain("Part = default!", src);      // template scope → NOT a field
         Assert.DoesNotContain("this.Part =", src);          // … nor assigned (the name only appears in the inlined XAML)
     }
 

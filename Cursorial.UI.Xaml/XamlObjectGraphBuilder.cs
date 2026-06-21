@@ -134,8 +134,19 @@ internal sealed class XamlObjectGraphBuilder
         int line = LineInfo.Line(record.PackedLineInfo);
         int column = LineInfo.Column(record.PackedLineInfo);
 
+        // <x:Array Type="T"> builds a T[] from its items (XD27); TypeId is the ELEMENT type T, not the
+        // object's own type, so this must precede the type-null throw and the normal activation path.
+        if (record.HasFlag(ObjectFlags.IsArray))
+            return BuildArray(objectIndex, in record, type, line, column);
+
         if (type is null)
             throw Fatal(XamlDiagnosticCodes.TypeNotFound, "The element's type did not resolve.", line, column);
+
+        // A built-in primitive element initializes from its content text (XD28): <x:String>hi</x:String> → "hi",
+        // <x:Int32>5</x:Int32> → 5. It has no parameterless-activate-then-set-content path (a value type would
+        // activate to its default and then reject the content text), so intercept before activation.
+        if (existingInstance is null && XamlSchemaContext.IsBuiltInType(type.SystemType()))
+            return BuildInitTextPrimitive(objectIndex, in record, type, line, column);
 
         // A <Setter> is construction-immutable (no parameterless ctor): build it from its Property/Value
         // members directly (matrix X117/X129 — Setters in style/resource dictionaries).
@@ -182,6 +193,112 @@ internal sealed class XamlObjectGraphBuilder
             return activate();
         throw Fatal(XamlDiagnosticCodes.NoParameterlessConstructor,
             $"Type '{type.ClrType.Name}' has no usable public parameterless constructor.", line, column);
+    }
+
+    /// <summary>
+    /// Builds a <c>T[]</c> for an <c>&lt;x:Array Type="T"&gt;</c> object (XD27): <paramref name="elementType"/>
+    /// is the element type T (the object's <see cref="ObjectRecord.TypeId"/>), and the single <c>Items</c>
+    /// member (synthetic <c>MemberId == -1</c>) holds the array's elements, walked depth-first by subtree length.
+    /// </summary>
+    private object BuildArray(int objectIndex, in ObjectRecord record, XamlType? elementType, int line, int column)
+    {
+        if (elementType is null)
+            throw Fatal(XamlDiagnosticCodes.TypeNotFound, "The x:Array element type did not resolve.", line, column);
+
+        Type clr = elementType.SystemType();
+
+        int first = -1, count = 0;
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            var m = _doc.Members[record.MemberStart + i];
+            if (m.Kind == XamlValueKind.Items) { first = m.ValueIndex; count = m.ItemCount; break; }
+        }
+
+        var array = Array.CreateInstance(clr, count);
+        if (count > 0)
+        {
+            int k = 0;
+            foreach (var childIndex in EnumerateItems(first, count))
+            {
+                var item = InstantiateObject(childIndex);
+
+                // Let Array.SetValue be the arbiter — it accepts reference assignability AND primitive widening
+                // (an int item into a long[]/double[]), which IsInstanceOfType would reject. A genuinely
+                // incompatible item surfaces as a positioned CUR2401.
+                try
+                {
+                    array.SetValue(item, k);
+                }
+                catch (Exception ex) when (ex is InvalidCastException or ArgumentException)
+                {
+                    ref readonly var childRecord = ref _doc.Objects[childIndex];
+                    throw Fatal(XamlDiagnosticCodes.ConversionFailed,
+                        $"x:Array element {k} is a '{item?.GetType().Name ?? "null"}', not assignable to the array type '{clr.Name}'.",
+                        LineInfo.Line(childRecord.PackedLineInfo), LineInfo.Column(childRecord.PackedLineInfo));
+                }
+
+                k++;
+            }
+        }
+
+        RegisterSpecialObjectName(objectIndex, in record, array);
+        return array;
+    }
+
+    /// <summary>
+    /// Builds a built-in primitive value from its content text (XD28): the element's synthetic content-text
+    /// member (or the empty string when absent) is converted to the built-in's CLR type through the same
+    /// converter ladder a member value uses (XD3 fold-equivalence).
+    /// </summary>
+    private object BuildInitTextPrimitive(int objectIndex, in ObjectRecord record, XamlType type, int line, int column)
+    {
+        Type clr = type.SystemType();
+
+        string text = string.Empty;
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            var m = _doc.Members[record.MemberStart + i];
+            if (m.Kind == XamlValueKind.Text && m.MemberId < 0) { text = _doc.Strings[m.ValueIndex]; break; }
+        }
+
+        object value = ConvertInitText(clr, text, line, column);
+        RegisterSpecialObjectName(objectIndex, in record, value);
+        return value;
+    }
+
+    /// <summary>Converts a built-in primitive element's initialization text to its CLR value (XD28).</summary>
+    private object ConvertInitText(Type clr, string text, int line, int column)
+    {
+        if (clr == typeof(string) || clr == typeof(object))
+            return text;
+
+        var converter = XamlConverters.For(clr);
+        if (converter is null)
+            return text; // no converter — return the raw string (matches ConvertText's fall-through)
+
+        var ctx = new XamlValueContext(_options.ConverterCulture, targetMember: null, clr, _source, line, column);
+        return converter.ConvertFromString(text, in ctx)
+            ?? throw Fatal(XamlDiagnosticCodes.ConversionFailed, $"Could not convert '{text}' to '{clr.Name}'.", line, column);
+    }
+
+    /// <summary>Registers an <c>x:Name</c> on a special-built object (an x:Array / built-in primitive) into the
+    /// active name scope — the directive path the normal <see cref="ApplyMembers"/> loop runs for ordinary
+    /// objects (x:Key is consumed by the parent dictionary path, not here).</summary>
+    private void RegisterSpecialObjectName(int objectIndex, in ObjectRecord record, object instance)
+    {
+        if (!record.HasFlag(ObjectFlags.HasName))
+            return;
+
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            var m = _doc.Members[record.MemberStart + i];
+            if (m.Kind == XamlValueKind.Directive && (XamlDirectiveKind) m.DirectiveKind == XamlDirectiveKind.Name)
+            {
+                RegisterName(_doc.Strings[m.ValueIndex], instance, objectIndex,
+                             LineInfo.Line(m.PackedLineInfo), LineInfo.Column(m.PackedLineInfo));
+                return;
+            }
+        }
     }
 
     /// <summary>

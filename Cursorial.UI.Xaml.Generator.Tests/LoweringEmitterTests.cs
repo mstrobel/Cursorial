@@ -494,4 +494,163 @@ namespace TestApp {
         Assert.NotNull(binding.Converter);                            // the Converter was lowered + set (not dropped to a TODO)
         Assert.Same(view.Resources["conv"], binding.Converter);       // …and it is the same-dictionary resource instance
     }
+
+    [Fact] // XD27/XD28 — <x:Array Type="x:String"> with <x:String> items lowers to new string[]{…}, matching the loader
+    public void Lowered_XArray_StringItems_MatchesLoader()
+    {
+        var xaml =
+            $"<ListBox {Ns} x:Class=\"TestApp.ArrView\">" +
+            "<ListBox.ItemsSource>" +
+            "<x:Array Type=\"x:String\"><x:String>one</x:String><x:String>two</x:String></x:Array>" +
+            "</ListBox.ItemsSource></ListBox>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class ArrView : ListBox { public ArrView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("new string[] {", lowered); // a typed array literal — not a TODO drop
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (ListBox) System.Activator.CreateInstance(assembly.GetType("TestApp.ArrView")!)!;
+
+        var array = Assert.IsType<string[]>(view.ItemsSource);
+        Assert.Equal(["one", "two"], array);
+
+        var runtime = (ListBox) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        Assert.Equal((string[]) runtime.ItemsSource!, array); // byte-identical to the reflective loader
+    }
+
+    [Fact] // an x:Array of x:Int32 lowers each item through the converter (new int[]{…}) and matches the loader
+    public void Lowered_XArray_Int32Items_MatchesLoader()
+    {
+        var xaml =
+            $"<ListBox {Ns} x:Class=\"TestApp.IntArrView\">" +
+            "<ListBox.ItemsSource>" +
+            "<x:Array Type=\"x:Int32\"><x:Int32>7</x:Int32><x:Int32>42</x:Int32></x:Array>" +
+            "</ListBox.ItemsSource></ListBox>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class IntArrView : ListBox { public IntArrView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("new int[] {", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (ListBox) System.Activator.CreateInstance(assembly.GetType("TestApp.IntArrView")!)!;
+
+        var array = Assert.IsType<int[]>(view.ItemsSource);
+        Assert.Equal([7, 42], array);
+
+        var runtime = (ListBox) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        Assert.Equal((int[]) runtime.ItemsSource!, array);
+    }
+
+    // ── Audit regressions (the adversarial pass found these generator bugs; happy-path tests missed them) ──
+
+    private const BindingFlags FieldFlags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+    [Fact] // AUDIT: a NAMED <x:Array> must declare a T[] field (not T) and assign + register it (CS0029 before)
+    public void Lowered_NamedXArray_FieldTypedArray_AndAssigned()
+    {
+        var xaml =
+            $"<ListBox {Ns} x:Class=\"TestApp.NamedArrView\">" +
+            "<ListBox.ItemsSource><x:Array x:Name=\"Names\" Type=\"x:String\"><x:String>a</x:String></x:Array></ListBox.ItemsSource></ListBox>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class NamedArrView : ListBox { public NamedArrView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("internal string[] Names", lowered); // field typed string[], not string (CS0029 otherwise)
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var viewType = assembly.GetType("TestApp.NamedArrView")!;
+        var view = (ListBox) System.Activator.CreateInstance(viewType)!;
+
+        var names = (string[]) viewType.GetField("Names", FieldFlags)!.GetValue(view)!;
+        Assert.Equal(["a"], names);
+        Assert.Same(view.ItemsSource, names);
+    }
+
+    [Fact] // AUDIT: a NAMED value-type built-in primitive compiles (default!, not null! → CS0037) + sets field + registers
+    public void Lowered_NamedValueTypePrimitive_CompilesSetsFieldRegisters()
+    {
+        var xaml =
+            $"<ContentControl {Ns} x:Class=\"TestApp.NamedIntView\">" +
+            "<ContentControl.Content><x:Int32 x:Name=\"N\">42</x:Int32></ContentControl.Content></ContentControl>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class NamedIntView : ContentControl { public NamedIntView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("internal int N = default!;", lowered); // default!, not null! (CS0037 on a value type)
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var viewType = assembly.GetType("TestApp.NamedIntView")!;
+        var view = (ContentControl) System.Activator.CreateInstance(viewType)!;
+
+        Assert.Equal(42, viewType.GetField("N", FieldFlags)!.GetValue(view));          // field set
+        Assert.Equal(42, Cursorial.UI.NameScope.GetNameScope(view)!.Find("N"));         // registered in the name scope
+    }
+
+    [Fact] // AUDIT: a NAMED reference-type built-in primitive sets its field + registers (hasScope was hardcoded false)
+    public void Lowered_NamedStringPrimitive_SetsFieldAndRegisters()
+    {
+        var xaml =
+            $"<ContentControl {Ns} x:Class=\"TestApp.NamedStrView\">" +
+            "<ContentControl.Content><x:String x:Name=\"S\">hi</x:String></ContentControl.Content></ContentControl>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class NamedStrView : ContentControl { public NamedStrView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var viewType = assembly.GetType("TestApp.NamedStrView")!;
+        var view = (ContentControl) System.Activator.CreateInstance(viewType)!;
+
+        Assert.Equal("hi", viewType.GetField("S", FieldFlags)!.GetValue(view));         // field set (was null before)
+        Assert.Equal("hi", Cursorial.UI.NameScope.GetNameScope(view)!.Find("S"));       // registered (missing before)
+    }
+
+    [Fact] // AUDIT: a built-in primitive with an embedded newline (xml:space=preserve) lowers to a COMPILING literal (CS1010 before)
+    public void Lowered_PrimitiveWithEmbeddedNewline_Compiles()
+    {
+        var xaml =
+            $"<ContentControl {Ns} x:Class=\"TestApp.NlView\">" +
+            "<ContentControl.Content><x:String xml:space=\"preserve\">line1\nline2</x:String></ContentControl.Content></ContentControl>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class NlView : ContentControl { public NlView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        // The lowered literal escapes the newline (\n), so it compiles (a raw newline would be CS1010).
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (ContentControl) System.Activator.CreateInstance(assembly.GetType("TestApp.NlView")!)!;
+
+        // … and round-trips to the same two-line string the reflection loader produces.
+        var runtime = (ContentControl) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        Assert.Equal(runtime.Content, view.Content);
+        Assert.Contains("\n", (string) view.Content!);
+    }
 }

@@ -87,8 +87,10 @@ internal static class LoweringEmitter
         string ci = ns is null ? string.Empty : "    ";
         sb.AppendLine($"{ci}partial class {className}");
         sb.AppendLine($"{ci}{{");
+        // The array-aware field type (T[] for an <x:Array>) + a value-type-safe `default!` initializer — shared with
+        // CodeBehindEmitter (the X4-v1 path) so the two code-behind pipelines can't drift (CS0029/CS0037 otherwise).
         foreach (var ne in named)
-            sb.AppendLine($"{ci}    internal {Global(ne.Type)} {ne.Name} = null!;");
+            sb.AppendLine($"{ci}    internal {CodeBehindEmitter.FieldType(ne)} {ne.Name} = default!;");
         if (named.Count > 0)
             sb.AppendLine();
         sb.AppendLine($"{ci}    private bool __contentLoaded;");
@@ -805,6 +807,20 @@ internal static class LoweringEmitter
 
         var objType = TypeSymbolOf(c.Doc, obj.TypeId);
 
+        // <x:Array Type="T"> → a typed T[] built from its items (XD27); objType is the ELEMENT type T.
+        if (obj.HasFlag(ObjectFlags.IsArray))
+        {
+            EmitArray(c, objectIndex, in obj, varExpr, objType, hasScope, dataType);
+            return;
+        }
+
+        // A built-in primitive element initializes from its content text (XD28): <x:Int32>5</x:Int32> → 5.
+        if (!isRoot && objType is { } prim && IsBuiltInPrimitive(prim))
+        {
+            EmitInitTextPrimitive(c, objectIndex, in obj, varExpr, prim, hasScope);
+            return;
+        }
+
         // A <Style> needs dedicated construction (selector-via-ctor, init-only BasedOn/Key, Setter.Property
         // resolution) — route it before the generic object path.
         if (!isRoot && IsStyleType(objType))
@@ -941,6 +957,100 @@ internal static class LoweringEmitter
                     c.Todo($"member '{xm.Name}' kind {member.Kind} not yet lowered");
                     break;
             }
+        }
+    }
+
+    // The XAML2009 built-in (CLR basic) type local names — the set a primitive element initializes from its
+    // content text (XD28), mirroring XamlSchemaContext.BuiltInType / XamlSymbolResolver.BuiltInMetadataName.
+    private static readonly HashSet<string> BuiltInPrimitiveLocalNames =
+    [
+        "Object", "Boolean", "Byte", "SByte", "Char", "Decimal", "Single", "Double", "Int16", "Int32",
+        "Int64", "UInt16", "UInt32", "UInt64", "String", "TimeSpan", "Uri",
+    ];
+
+    private static bool IsBuiltInPrimitive(INamedTypeSymbol s)
+        => s.ContainingNamespace is { Name: "System", ContainingNamespace.IsGlobalNamespace: true }
+           && BuiltInPrimitiveLocalNames.Contains(s.Name);
+
+    /// <summary>Lowers an <c>&lt;x:Array Type="T"&gt;</c> to <c>new T[] { … }</c> (XD27): each item lowers via
+    /// the generic object path (so a <c>&lt;x:String&gt;</c> item lowers through <see cref="EmitInitTextPrimitive"/>).</summary>
+    private static void EmitArray(Context c, int objectIndex, in ObjectRecord obj, string varExpr, INamedTypeSymbol? elementType, bool hasScope, INamedTypeSymbol? dataType)
+    {
+        if (elementType is null)
+        {
+            c.Todo($"x:Array element type unresolved (object {objectIndex})");
+            c.Line($"var {varExpr} = global::System.Array.Empty<object>();");
+            return;
+        }
+
+        var itemVars = new List<string>();
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind != XamlValueKind.Items)
+                continue;
+
+            int childIndex = member.ValueIndex;
+            for (int i = 0; i < member.ItemCount; i++)
+            {
+                var childVar = c.NextVar();
+                EmitObject(c, childIndex, childVar, isRoot: false, hasScope, dataType);
+                itemVars.Add(childVar);
+                childIndex += c.Doc.Objects[childIndex].SubtreeLength; // depth-first contiguous
+            }
+        }
+
+        c.Line($"var {varExpr} = new {Global(elementType)}[] {{ {string.Join(", ", itemVars)} }};");
+        EmitSpecialObjectName(c, in obj, varExpr, hasScope);
+    }
+
+    /// <summary>Lowers a built-in primitive element to its converted value (XD28): string/object → the raw
+    /// literal; else the runtime converter (drift-free with the loader's <c>ConvertInitText</c>).</summary>
+    private static void EmitInitTextPrimitive(Context c, int objectIndex, in ObjectRecord obj, string varExpr, INamedTypeSymbol primType, bool hasScope)
+    {
+        string text = string.Empty;
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind == XamlValueKind.Text && member.MemberId < 0) { text = c.Doc.Strings[member.ValueIndex]; break; }
+        }
+
+        string expr;
+        if (primType.SpecialType is SpecialType.System_String or SpecialType.System_Object)
+        {
+            expr = $"\"{Escape(text)}\"";
+        }
+        else
+        {
+            c.UsesConverter = true;
+            expr = $"({Global(primType)})__ConvertXamlValue(typeof({Global(primType)}), \"{Escape(text)}\")!";
+        }
+
+        c.Line($"var {varExpr} = {expr};");
+        EmitSpecialObjectName(c, in obj, varExpr, hasScope); // a document-scope x:Name registers + sets the field
+    }
+
+    /// <summary>Registers an <c>x:Name</c> on a special-built object (x:Array / built-in primitive) — the
+    /// document-scope leg of <see cref="EmitObject"/>'s directive handling (a template-scope name on a non-
+    /// UIElement value has no registration target, matching the loader).</summary>
+    private static void EmitSpecialObjectName(Context c, in ObjectRecord obj, string varExpr, bool hasScope)
+    {
+        if (!obj.HasFlag(ObjectFlags.HasName))
+            return;
+
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind != XamlValueKind.Directive || member.DirectiveKind != (int) XamlDirectiveKind.Name)
+                continue;
+
+            if (c.TemplateContextVar is null && hasScope)
+            {
+                var name = c.Doc.Strings[member.ValueIndex];
+                c.Line($"this.{name} = {varExpr};");
+                c.Line($"__scope.Register(\"{name}\", {varExpr});");
+            }
+            return;
         }
     }
 
@@ -1779,7 +1889,13 @@ internal static class LoweringEmitter
 
     private static string Global(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-    private static string Escape(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    // A payload for a NON-verbatim C# string literal ("…"): the backslash + quote escapes, plus the control
+    // characters that would otherwise break the literal (CR/LF → CS1010 "newline in constant"; tab/NUL). Every
+    // Escape call site wraps the result in "…", so escaping control chars centrally is always correct. Runs the
+    // control-char replacements AFTER the backslash-doubling so the inserted \r/\n/\t backslashes are not re-doubled.
+    private static string Escape(string text) => text
+        .Replace("\\", "\\\\").Replace("\"", "\\\"")
+        .Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\0", "\\0");
 
     // A C#-identifier emission position (member access): verbatim-escape (@) a name that is a reserved keyword, so a
     // member from a non-C# VM (VB/F# `event`/`class`/…) emits `__s.@event`, not the uncompilable `__s.event`.

@@ -34,6 +34,9 @@ public static class XamlDiagnosticCodes
     /// <summary>A recorded-out <c>x:</c> intrinsic (Reference / Array / FieldModifier / Shared / Uid).</summary>
     public const string UnsupportedIntrinsic = "CUR1203";
 
+    /// <summary>An <c>&lt;x:Array&gt;</c> element with no <c>Type</c> attribute (the element type is required).</summary>
+    public const string ArrayMissingType = "CUR1204";
+
     /// <summary>An unterminated markup extension (no closing brace).</summary>
     public const string UnterminatedExtension = "CUR1301";
 

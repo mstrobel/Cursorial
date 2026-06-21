@@ -22,8 +22,9 @@ namespace Cursorial.UI.Xaml.Generator;
 /// </remarks>
 internal static class CodeBehindEmitter
 {
-    /// <summary>A document-scope named element: its <c>x:Name</c> and resolved element type.</summary>
-    internal readonly record struct NamedElement(string Name, INamedTypeSymbol Type);
+    /// <summary>A document-scope named element: its <c>x:Name</c> and resolved type. For an <c>&lt;x:Array&gt;</c>
+    /// (<paramref name="IsArray"/>) <paramref name="Type"/> is the ELEMENT type T and the field is typed <c>T[]</c>.</summary>
+    internal readonly record struct NamedElement(string Name, INamedTypeSymbol Type, bool IsArray = false);
 
     /// <summary>Collects the <c>x:Class</c> name + the document-scope (name → type) pairs from a parsed document.</summary>
     public static (string? RootClass, IReadOnlyList<NamedElement> Named) Collect(XamlDocument document)
@@ -66,8 +67,9 @@ internal static class CodeBehindEmitter
 
             // The element's resolved type identity is a RoslynXamlType (symbol-backed parse). Skip if the type
             // did not resolve (can't emit a typed field) — the parser already reported the resolution failure.
+            // For an <x:Array> the resolved type is the ELEMENT type; the field is typed T[] (IsArray).
             if (obj.TypeId >= 0 && resolvedTypes[obj.TypeId]?.ClrType is RoslynXamlType { Symbol: INamedTypeSymbol symbol })
-                named.Add(new NamedElement(name, symbol));
+                named.Add(new NamedElement(name, symbol, obj.HasFlag(ObjectFlags.IsArray)));
         }
 
         return (document.RootClassName, named);
@@ -105,9 +107,10 @@ internal static class CodeBehindEmitter
         sb.AppendLine($"{indent}partial class {className}");
         sb.AppendLine($"{indent}{{");
 
-        // Typed x:Name fields. `null!` (the value is always assigned by InitializeComponent before any read).
+        // Typed x:Name fields. `default!` (the value is always assigned by InitializeComponent before any read) —
+        // `default!` (not `null!`) so a value-type built-in field (e.g. `internal int N`) is valid (CS0037 otherwise).
         foreach (var ne in named)
-            sb.AppendLine($"{indent}    internal {Global(ne.Type)} {ne.Name} = null!;");
+            sb.AppendLine($"{indent}    internal {FieldType(ne)} {ne.Name} = default!;");
 
         if (named.Count > 0)
             sb.AppendLine();
@@ -137,7 +140,7 @@ internal static class CodeBehindEmitter
             sb.AppendLine($"{indent}        var __scope = global::Cursorial.UI.NameScope.GetNameScope(this);");
 
             foreach (var ne in named)
-                sb.AppendLine($"{indent}        this.{ne.Name} = ({Global(ne.Type)})__scope!.Find(\"{ne.Name}\")!;");
+                sb.AppendLine($"{indent}        this.{ne.Name} = ({FieldType(ne)})__scope!.Find(\"{ne.Name}\")!;");
         }
 
         sb.AppendLine($"{indent}    }}");
@@ -151,6 +154,10 @@ internal static class CodeBehindEmitter
     }
 
     private static string Global(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+    /// <summary>The field/cast type for a named element — <c>T[]</c> for an <c>&lt;x:Array&gt;</c>, else <c>T</c>.
+    /// Shared with <c>LoweringEmitter</c>'s full-lowering code-behind so the two pipelines can't drift.</summary>
+    internal static string FieldType(NamedElement ne) => ne.IsArray ? Global(ne.Type) + "[]" : Global(ne.Type);
 
     // A C# verbatim string literal (@"...") with embedded double-quotes doubled. Backslashes are literal.
     private static string Verbatim(string text) => "@\"" + text.Replace("\"", "\"\"") + "\"";

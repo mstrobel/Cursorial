@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        Cross-cutting shared infrastructure referenced by every layer of the stack. netstandard2.0 so the
+        lowest assemblies (and the netstandard2.0 XAML frontend / Roslyn generator) can reference it without
+        pulling in a net10.0 dependency. Holds the markup-metadata attributes ([ContentProperty],
+        [DictionaryKeyProperty], [TypeConverter], [ValueSerializer]) the framework decorates its types with —
+        read by both the reflection metadata provider and the build-time symbol provider. Other shared
+        infrastructure (e.g. JetBrains-style nullability/contract annotations) can land here later.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>false</ImplicitUsings>
+        <AssemblyName>Cursorial.Shared</AssemblyName>
+        <RootNamespace>Cursorial</RootNamespace>
+        <IsPackable>true</IsPackable>
+        <PackageId>Cursorial.Shared</PackageId>
+        <Description>Cross-cutting shared infrastructure for Cursorial — markup-metadata attributes consumed by the XAML metadata providers.</Description>
+        <PackageTags>cursorial;xaml;markup;attributes</PackageTags>
+    </PropertyGroup>
+
+</Project>

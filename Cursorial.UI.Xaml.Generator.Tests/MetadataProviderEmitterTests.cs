@@ -114,4 +114,36 @@ public class MetadataProviderEmitterTests
         Assert.Contains("__GeneratedXamlMetadata", source);     // the provider itself is still emitted
         Assert.Empty(GeneratorHarness.CompileErrors(source));    // and is valid C#
     }
+
+    [Fact] // a member (or its type) carrying [TypeConverter]/[ValueSerializer] emits a runtime ForMember(...) call —
+    // the SAME path the reflection provider uses (zero drift, no baking accessibility traps); a plain member bakes
+    // the pure, reflection-free For(typeof(T)) ladder (the AOT-clean common path).
+    public void Emits_ForMember_ForAttributedMembers_PureFor_ForPlain()
+    {
+        const string app = @"
+using Cursorial.Markup; using Cursorial.UI.Xaml;
+namespace App {
+  public sealed class Doubler : ITypeConverter { public bool IsContextFree => true; public object? ConvertFromString(string t, in XamlValueContext c) => int.Parse(t) * 2; }
+  public sealed class Widget {
+    [TypeConverter(typeof(Doubler))] public int Converted { get; set; }
+    public int Plain { get; set; }
+  }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation()
+            .AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(app));
+        var widget = compilation.GetTypeByMetadataName("App.Widget")!;
+        var source = new MetadataProviderEmitter(compilation).Emit(new[] { widget })!;
+
+        // The attributed member → a runtime ForMember over the reflected property (NOT a baked `new Doubler()`).
+        Assert.Contains("XamlConverters.ForMember(typeof(global::App.Widget).GetProperty(\"Converted\"", source);
+        Assert.DoesNotContain("new global::App.Doubler()", source);
+        // The plain member → the pure ladder (reflection-free, AOT-clean).
+        Assert.Contains("XamlConverters.For(typeof(int))", source);
+
+        // And the whole thing compiles.
+        using var ms = new System.IO.MemoryStream();
+        var result = compilation.AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source)).Emit(ms);
+        Assert.Empty(result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+    }
 }

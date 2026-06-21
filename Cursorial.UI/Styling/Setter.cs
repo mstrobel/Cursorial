@@ -13,6 +13,7 @@ namespace Cursorial.UI;
 /// contributes nothing while the rule is active. Resource references and bindings join the
 /// vocabulary at P5/P4.
 /// </summary>
+[Cursorial.Markup.ContentProperty("Value")]
 public sealed class Setter
 {
     /// <summary>Creates a setter for <paramref name="property"/> with the raw (unconverted) <paramref name="value"/>.</summary>

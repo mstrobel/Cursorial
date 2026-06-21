@@ -12,6 +12,7 @@ namespace Cursorial.Drawing.Media;
 /// straight-alpha compositing). Sampled directly per cell — no lookup table; terminal cell counts
 /// are small and full-precision sampling avoids the banding a 256-entry ramp would introduce.
 /// </summary>
+[Cursorial.Markup.ContentProperty("Stops")]
 public abstract class GradientBrush : IBrush
 {
     private protected const double Epsilon = 1e-9;

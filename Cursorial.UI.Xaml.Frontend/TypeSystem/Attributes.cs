@@ -31,22 +31,6 @@ public sealed class XmlnsDefinitionAttribute : Attribute
 }
 
 /// <summary>
-/// Names the content property of a type — the member implicit child content fills (matrix X70:
-/// the attribute is additive metadata on the relevant <c>Cursorial.UI</c> types). A type without
-/// it has no content property and rejects implicit content (<c>CUR2104</c>).
-/// </summary>
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
-public sealed class ContentPropertyAttribute : Attribute
-{
-    /// <summary>Names the content property.</summary>
-    public ContentPropertyAttribute(string name)
-        => Name = name ?? throw new ArgumentNullException(nameof(name));
-
-    /// <summary>The content-property name.</summary>
-    public string Name { get; }
-}
-
-/// <summary>
 /// Registers a generated <see cref="IXamlTypeMetadataProvider"/> for trim/AOT-clean loading
 /// (the X5 endgame). Present now as the seam; the generated provider is deferred (matrix XD16/X186).
 /// </summary>

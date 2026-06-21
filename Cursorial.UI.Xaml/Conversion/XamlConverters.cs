@@ -54,6 +54,31 @@ public static class XamlConverters
         Overrides[targetType] = converter;
     }
 
+    /// <summary>
+    /// The converter for a MEMBER's value, honoring precedence <b>member-<c>[TypeConverter]</c> →
+    /// member-type-<c>[TypeConverter]</c> → built-in ladder</b> (the WPF semantic — a converter declared on the
+    /// property wins over one declared on the property's type). <paramref name="member"/> is the CLR
+    /// property/field/event the value assigns to (or <see langword="null"/> when there is none, e.g. an attached
+    /// property with no instance wrapper), <paramref name="memberType"/> its value type.
+    /// </summary>
+    /// <summary>
+    /// The converter for a MEMBER's value, with WPF <c>GetSerializerFor</c> precedence: member
+    /// <c>[ValueSerializer]</c> → member <c>[TypeConverter]</c> → member-type <c>[ValueSerializer]</c> →
+    /// member-type <c>[TypeConverter]</c> → the built-in ladder (<see cref="For"/>). This is the ONLY entry point
+    /// that consults attributes; <see cref="For"/> itself stays a pure, reflection-free ladder so the
+    /// generated/lowered providers can bake <c>For(typeof(T))</c> AOT-clean. Attribute reflection therefore lives
+    /// only here (the reflection metadata provider's metadata-build path) — never on a baked code path.
+    /// </summary>
+    public static ITypeConverter? ForMember(System.Reflection.MemberInfo? member, Type memberType)
+    {
+        var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
+        return (member is not null ? SerializerFromAttribute(member) : null)   // member [ValueSerializer]
+            ?? (member is not null ? ConverterFromAttribute(member) : null)    // member [TypeConverter]
+            ?? SerializerFromAttribute(underlying)                             // member-type [ValueSerializer]
+            ?? ConverterFromAttribute(underlying)                             // member-type [TypeConverter]
+            ?? For(memberType);                                              // the built-in ladder
+    }
+
     private static ITypeConverter? Build(Type targetType)
     {
         var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -80,6 +105,97 @@ public static class XamlConverters
             return new ConvertibleConverter(underlying);
 
         return null;
+    }
+
+    // Resolves an ITypeConverter declared by a Cursorial.Markup.[TypeConverter] on the type (matched by FULL
+    // name to distinguish it from the BCL System.ComponentModel.TypeConverterAttribute; only honored when the
+    // named converter implements OUR ITypeConverter). Inherited, so a subclass picks up its base's converter.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "Reads a [TypeConverter]-shaped attribute and instantiates the named ITypeConverter — an opt-in consumer reflection seam.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2057:TypeGetType", Justification = "Late-bound converter type name is consumer-provided.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:CreateInstance", Justification = "Converter type is consumer-provided; preserved by the consumer for trimming.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "Converter activation is an opt-in consumer reflection seam.")]
+    private static ITypeConverter? ConverterFromAttribute(System.Reflection.MemberInfo target)
+    {
+        foreach (var attr in target.GetCustomAttributes(inherit: true))
+        {
+            var attrType = attr.GetType();
+            if (attrType.FullName != "Cursorial.Markup.TypeConverterAttribute")
+                continue;
+
+            var converterType = attrType.GetProperty("ConverterType")?.GetValue(attr) as Type;
+            if (converterType is null &&
+                attrType.GetProperty("ConverterTypeName")?.GetValue(attr) is string typeName && typeName.Length > 0)
+            {
+                converterType = Type.GetType(typeName, throwOnError: false);
+            }
+
+            if (converterType is null || !typeof(ITypeConverter).IsAssignableFrom(converterType))
+                continue; // a BCL [TypeConverter] (System.ComponentModel) or a misdeclared converter → fall to the ladder
+
+            try
+            {
+                if (Activator.CreateInstance(converterType) is ITypeConverter converter)
+                    return converter;
+            }
+            catch
+            {
+                // No usable parameterless ctor — fall through to the ladder rather than crashing resolution.
+            }
+        }
+
+        return null;
+    }
+
+    // Resolves an IValueSerializer declared by a Cursorial.Markup.[ValueSerializer] on the member/type, adapted
+    // to an ITypeConverter (its ConvertFromString leg) for the load path — WPF's GetSerializerFor prefers a
+    // ValueSerializer over a TypeConverter. Matched by FULL name; only honored for our IValueSerializer.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "Reads a [ValueSerializer]-shaped attribute and instantiates the named IValueSerializer — an opt-in consumer reflection seam.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2057:TypeGetType", Justification = "Late-bound serializer type name is consumer-provided.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:CreateInstance", Justification = "Serializer type is consumer-provided; preserved by the consumer for trimming.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "Serializer activation is an opt-in consumer reflection seam.")]
+    private static ITypeConverter? SerializerFromAttribute(System.Reflection.MemberInfo target)
+    {
+        foreach (var attr in target.GetCustomAttributes(inherit: true))
+        {
+            var attrType = attr.GetType();
+            if (attrType.FullName != "Cursorial.Markup.ValueSerializerAttribute")
+                continue;
+
+            var serializerType = attrType.GetProperty("ValueSerializerType")?.GetValue(attr) as Type;
+            if (serializerType is null &&
+                attrType.GetProperty("ValueSerializerTypeName")?.GetValue(attr) is string typeName && typeName.Length > 0)
+            {
+                serializerType = Type.GetType(typeName, throwOnError: false);
+            }
+
+            if (serializerType is null || !typeof(IValueSerializer).IsAssignableFrom(serializerType))
+                continue;
+
+            try
+            {
+                if (Activator.CreateInstance(serializerType) is IValueSerializer serializer)
+                    return AdaptSerializer(serializer);
+            }
+            catch
+            {
+                // No usable parameterless ctor — fall through (TypeConverter / ladder).
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Adapts an <see cref="IValueSerializer"/> to an <see cref="ITypeConverter"/> for the load path
+    /// (its deserialize leg). Public so a generated provider can bake the same adaptation.</summary>
+    public static ITypeConverter AdaptSerializer(IValueSerializer serializer)
+        => new ValueSerializerConverter(serializer ?? throw new ArgumentNullException(nameof(serializer)));
+
+    private sealed class ValueSerializerConverter(IValueSerializer serializer) : ITypeConverter
+    {
+        public bool IsContextFree => serializer.IsContextFree;
+        public object? ConvertFromString(string text, in XamlValueContext ctx) => serializer.ConvertFromString(text, in ctx);
     }
 
     internal static XamlParseException Fail(string message, in XamlValueContext ctx)

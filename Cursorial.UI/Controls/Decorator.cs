@@ -7,6 +7,7 @@ namespace Cursorial.UI.Controls;
 /// default, measures/arranges it 1:1. The base for <see cref="Border"/>. Not a <see cref="Control"/> —
 /// a decorator has no template.
 /// </summary>
+[Cursorial.Markup.ContentProperty("Child")]
 public class Decorator : UIElement
 {
     private UIElement? _child;

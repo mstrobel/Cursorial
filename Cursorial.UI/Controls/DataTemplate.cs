@@ -14,6 +14,7 @@ namespace Cursorial.UI.Controls;
 /// <c>DataContext</c> is set to the data on the root.
 /// </para>
 /// </remarks>
+[Cursorial.Markup.ContentProperty("Content")]
 public class DataTemplate
 {
     /// <summary>The data type this template is keyed for (the implicit-template key, CD22).</summary>

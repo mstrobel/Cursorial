@@ -255,7 +255,15 @@ internal sealed class MetadataProviderEmitter
     private string EmitMember(INamedTypeSymbol owner, SymbolXamlModel.MemberModel member)
     {
         var valueTypeOf = $"typeof({Global(member.ValueType)})";
-        var converter = $"{Frontend}.XamlConverters.For({valueTypeOf})";
+
+        // A member (or its value type) carrying a [TypeConverter]/[ValueSerializer] resolves through the runtime
+        // ForMember — the SAME method the reflection provider uses, so the WPF precedence, the converter's
+        // accessibility, the string-name ctor form, and the BCL-attribute exclusion all resolve identically (zero
+        // drift; no `new T()` baking that could break on a non-public type/ctor). A member with NO converter
+        // attribute bakes the pure, reflection-free For(typeof(T)) ladder — the AOT-clean common path.
+        var converter = member.UsesAttributeConverter
+            ? $"{Frontend}.XamlConverters.ForMember(typeof({Global(owner)}).GetProperty(\"{member.Name}\", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance), {valueTypeOf})"
+            : $"{Frontend}.XamlConverters.For({valueTypeOf})";
 
         // An ITemplateContent-typed member is deferred content (its children are a deferred slice with their
         // own template name scope) — mirror ReflectionXamlMetadata's IsDeferredContent stamp.

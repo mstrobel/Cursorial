@@ -25,6 +25,7 @@ internal static class GeneratorHarness
                             typeof(Cursorial.UI.UIElement).Assembly.Location,           // Cursorial.UI
                             typeof(Cursorial.UI.Xaml.XamlType).Assembly.Location,       // Cursorial.UI.Xaml.Frontend
                             typeof(Cursorial.UI.Xaml.XamlConverters).Assembly.Location, // Cursorial.UI.Xaml (loader — XamlConverters)
+                            typeof(Cursorial.Markup.ContentPropertyAttribute).Assembly.Location, // Cursorial.Shared (markup attributes)
                         };
 
         var references = tpa.Concat(cursorial)

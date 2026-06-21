@@ -12,6 +12,7 @@ namespace Cursorial.UI.Controls;
 /// <see cref="Resources"/> (legalizing the sealed-exempt shared-slot rule, CD5) and the
 /// <see cref="Styles"/> collection. A sealed template is freely shared across controls.
 /// </remarks>
+[Cursorial.Markup.ContentProperty("Content")]
 public sealed class ControlTemplate
 {
     private ITemplateContent? _content;

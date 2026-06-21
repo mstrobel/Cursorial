@@ -13,6 +13,7 @@ namespace Cursorial.UI.Controls;
 /// in the control template hosts them in the <see cref="ItemsPanel"/>. Containers are logical children of this
 /// control (inheritance flows from here) and visual children of the panel (punch 43).
 /// </summary>
+[Cursorial.Markup.ContentProperty("Items")]
 public class ItemsControl : Control
 {
     /// <summary>The bound items source (mutually exclusive with a populated <see cref="Items"/>).</summary>

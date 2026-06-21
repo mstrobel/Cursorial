@@ -9,6 +9,7 @@
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Animation\Cursorial.Animation.csproj" />
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
+        <ProjectReference Include="..\Cursorial.Shared\Cursorial.Shared.csproj" />
     </ItemGroup>
 
     <ItemGroup>

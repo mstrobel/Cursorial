@@ -27,6 +27,7 @@ namespace Cursorial.UI;
 /// append after base; the derived selector alone carries specificity — S46) and are cycle-checked.
 /// </para>
 /// </remarks>
+[Cursorial.Markup.ContentProperty("Setters")]
 public sealed class Style
 {
     private static readonly DataCondition[] NoConditions = [];

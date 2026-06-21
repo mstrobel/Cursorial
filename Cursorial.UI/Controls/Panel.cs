@@ -8,6 +8,7 @@ namespace Cursorial.UI.Controls;
 /// surface brush, painted before children via <c>FillOpaque</c> — always glyph-occluding
 /// (translucent brushes still frost).
 /// </summary>
+[Cursorial.Markup.ContentProperty("Children")]
 public abstract class Panel : UIElement
 {
     /// <summary>

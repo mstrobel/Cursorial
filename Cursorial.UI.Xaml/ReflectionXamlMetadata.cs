@@ -187,11 +187,14 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         var uiProperty = UIPropertyRegistry.Find(ownerType, name);
         if (uiProperty is not null)
         {
+            // A member-level [TypeConverter] on the CLR wrapper property (if any) wins over the property type's
+            // (ForMember precedence). An attached property has no instance wrapper → null member → type-level.
+            var wrapper = ownerType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
             return new XamlMember(
                 name,
                 uiProperty.PropertyType,
                 property: uiProperty,
-                converter: XamlConverters.For(uiProperty.PropertyType),
+                converter: XamlConverters.ForMember(wrapper, uiProperty.PropertyType),
                 isEvent: false,
                 isAttachable: uiProperty.IsAttached)
             {
@@ -217,7 +220,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 property: null,
                 setClr: setClr,
                 get: get,
-                converter: XamlConverters.For(prop.PropertyType),
+                converter: XamlConverters.ForMember(prop, prop.PropertyType), // member [TypeConverter] wins over the type's
                 isEvent: false,
                 isAttachable: false)
             {

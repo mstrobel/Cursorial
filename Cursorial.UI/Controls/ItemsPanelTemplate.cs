@@ -17,6 +17,7 @@ namespace Cursorial.UI.Controls;
 /// member <em>is</em> typed <see cref="ITemplateContent"/>) — no special loader handling beyond the
 /// <c>ContentProperty</c> registration.
 /// </summary>
+[Cursorial.Markup.ContentProperty("Content")]
 public sealed class ItemsPanelTemplate
 {
     /// <summary>Creates an empty template; assign <see cref="Content"/> before building.</summary>

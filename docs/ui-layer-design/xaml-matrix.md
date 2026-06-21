@@ -560,6 +560,53 @@ elements. Tests: `Cursorial.UI.Xaml.Tests/XamlMatrix/Section18_XArray.cs` (loade
 
 ---
 
+### §15d. Attribute-driven metadata (`Cursorial.Shared`) — XM1–XM6 *(all pipelines)*
+
+The XAML metadata that was hard-coded in per-provider tables is now **attribute-driven** off
+`Cursorial.Markup` attributes in the new netstandard2.0 **`Cursorial.Shared`** assembly (referenced by every
+layer, so the framework decorates its own types and both providers — reflection + symbol — read the same source).
+Tests: `Cursorial.UI.Xaml.Tests/XamlMatrix/Section19_AttributeMetadata.cs` (reflection precedence) +
+`MetadataProviderEmitterTests.Bakes_MemberLevelConverterAndSerializer` (generator baking).
+
+- **XM-D1 — `[ContentProperty]` is attribute-only (the base-type tables are retired).** The framework base types
+  carry `Cursorial.Markup.[ContentProperty("Name")]` (`Inherited`), so a subclass picks up its nearest decorated
+  ancestor; both providers read it (reflection `GetCustomAttributes(inherit:true)`; the generator walks the base
+  chain, since Roslyn `GetAttributes()` is direct-only). The former hard-coded base-type maps
+  (`ContentPropertyTable.Known` + the generator's mirror) are **deleted**. Matched by attribute simple name (any
+  equivalent attribute is honored). PIN/DEV.
+- **XM-D2 — converter/serializer resolution follows WPF `GetSerializerFor` precedence, in `ForMember` only.** A
+  member's string converter resolves **member `[ValueSerializer]` → member `[TypeConverter]` → type
+  `[ValueSerializer]` → type `[TypeConverter]` → the built-in ladder** via `XamlConverters.ForMember(member,
+  memberType)` — the **single** attribute-consulting entry point. `XamlConverters.For(type)` stays a **pure,
+  reflection-free ladder** (no attribute lookup), so the generated/lowered providers can bake `For(typeof(T))`
+  AOT-clean; a type-level `[TypeConverter]` therefore applies where the type is used as a member value (via
+  `ForMember`), not through a bare `For(type)`. A `[ValueSerializer]`'s deserialize leg (`IValueSerializer.
+  ConvertFromString`) is used at load and **wins over** a co-present `[TypeConverter]`. `[TypeConverter]`/
+  `[ValueSerializer]` are matched by **full** name (distinct from the BCL `System.ComponentModel.
+  TypeConverterAttribute`, which is **not** honored) and only when the named type implements
+  `Cursorial.UI.Xaml.ITypeConverter` / `IValueSerializer`. **The generated provider emits a runtime
+  `ForMember(typeof(Owner).GetProperty(name), typeof(T))` for a member whose member-or-type carries the attribute**
+  — the identical resolution the reflection provider runs (so accessibility, the string-name ctor form, and the
+  BCL exclusion all match → zero drift, no `new T()` baking that could break on a non-public type/ctor). A member
+  with no converter attribute (every framework member) bakes the pure `For(typeof(T))` ladder, so the framework's
+  generated provider stays reflection-free; a consumer's custom-converter member resolves reflectively (honestly
+  AOT-flagged). PIN (WPF parity).
+- **XM-D3 — `[ValueSerializer]` save leg + `[DictionaryKeyProperty]` are defined, not yet consumed.**
+  `IValueSerializer.ConvertToString` (save) has no consumer (Cursorial has no XAML save path); the load leg is
+  live (XM-D2). `Cursorial.Markup.[DictionaryKeyProperty]` is defined for consumer / future implicit-dictionary-key
+  use (resources use explicit `x:Key` today, so it is not yet read by the loader). Recorded out.
+
+| Row | scenario | expected | source |
+|-----|----------|----------|--------|
+| XM1 | a decorated framework base type (`ContentControl`/`Panel`/`Style`/…) resolves its content property | the inherited `[ContentProperty]` name; the retired tables are gone | XM-D1 |
+| XM2 | a member-level `[TypeConverter]` on an `int` property | `ForMember` returns it (beats the built-in int ladder) | XM-D2 |
+| XM3 | a member with BOTH `[ValueSerializer]` and `[TypeConverter]` | the ValueSerializer wins (WPF `GetSerializerFor`) | XM-D2 |
+| XM4 | a type-level `[TypeConverter]` | `For`/`ForMember`(null member) returns it | XM-D2 |
+| XM5 | a BCL `System.ComponentModel.[TypeConverter]` | ignored — falls to the ladder (only `Cursorial.Markup`'s, implementing our interface, is honored) | XM-D2 |
+| XM6 | the generated provider over a member with a `[TypeConverter]`/`[ValueSerializer]` (member or type) | emits a runtime `ForMember(typeof(Owner).GetProperty(name), typeof(T))` (drift-free with reflection); a plain member bakes the pure `For(typeof(T))` ladder | XM-D2 |
+
+---
+
 ## 16. Test authoring contract
 
 Each numbered row above becomes **exactly one** xUnit test in `Cursorial.UI.Xaml.Tests`, named after its row id with a behavior slug (`X060_FoldedMargins_SharedAcrossLoads`), one file per section under `Cursorial.UI.Xaml.Tests/XamlMatrix/` (`Section01_Parsing.cs` … `Section15_Generator.cs`), namespace `Cursorial.Tests.UI.Xaml.XamlMatrix`. Rows whose Expected cell enumerates a family (the `[Theory]` rows — X29 the recorded-out intrinsics, X55 the three folded intrinsics, X83 the margin arities, X86/X87 color forms, X89 brush kinds, X93 grid lengths, X94 pens, X98 easings, X99 `Optional<T>`, X168 the access-key escapes) become a single `[Theory]` with one case per family member, keeping the row↔test bijection at the row level.

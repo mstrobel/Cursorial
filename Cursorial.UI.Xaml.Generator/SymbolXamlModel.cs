@@ -15,22 +15,6 @@ namespace Cursorial.UI.Xaml.Generator;
 /// </summary>
 internal static class SymbolXamlModel
 {
-    // The loader's ContentPropertyTable, by base-type full name (most-derived first).
-    private static readonly (string BaseType, string Property)[] ContentPropertyTable =
-    [
-        ("Cursorial.UI.Controls.ContentControl", "Content"),
-        ("Cursorial.UI.Controls.Decorator", "Child"),
-        ("Cursorial.UI.Popup", "Child"),
-        ("Cursorial.UI.Controls.Panel", "Children"),
-        ("Cursorial.UI.Controls.ControlTemplate", "Content"),
-        ("Cursorial.UI.Controls.DataTemplate", "Content"),
-        ("Cursorial.UI.Controls.ItemsPanelTemplate", "Content"),
-        ("Cursorial.UI.Controls.ItemsControl", "Items"),
-        ("Cursorial.UI.Style", "Setters"),
-        ("Cursorial.UI.Setter", "Value"),
-        ("Cursorial.Drawing.Media.GradientBrush", "Stops")
-    ];
-
     /// <summary>One XAML-settable member resolved from symbols (a property, an event, or an attached property).</summary>
     public readonly record struct MemberModel(
         string Name,
@@ -42,7 +26,11 @@ internal static class SymbolXamlModel
         bool IsAttached = false,
         // An init-only CLR property setter (settable in an object initializer, not post-construction). The
         // generated provider can't emit a compiled `t.Prop = v` for it (CS8852) — it sets it reflectively.
-        bool IsInitOnly = false);
+        bool IsInitOnly = false,
+        // True when the member OR its value type carries a Cursorial.Markup [TypeConverter]/[ValueSerializer]. The
+        // emitter then emits a runtime XamlConverters.ForMember(...) call (identical to the reflection provider, so
+        // zero drift + no baking accessibility traps) instead of the AOT-clean pure-ladder For(typeof(T)).
+        bool UsesAttributeConverter = false);
 
     /// <summary>
     /// The XAML-settable members of a type (most-derived first, deduped by name): public instance properties
@@ -77,7 +65,8 @@ internal static class SymbolXamlModel
                                                  CanRead: prop.GetMethod is { DeclaredAccessibility: Accessibility.Public },
                                                  IsEvent: false,
                                                  registeredOwner,
-                                                 IsInitOnly: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public, IsInitOnly: true });
+                                                 IsInitOnly: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public, IsInitOnly: true },
+                                                 UsesAttributeConverter: HasMarkupConverterAttribute(prop) || TypeHasMarkupConverterAttribute(prop.Type));
                 }
                 else if (symbol is IEventSymbol evt && seen.Add(evt.Name))
                 {
@@ -109,10 +98,30 @@ internal static class SymbolXamlModel
                                                  CanRead: true,
                                                  IsEvent: false,
                                                  RegisteredFieldOwner: t,
-                                                 IsAttached: attached);
+                                                 IsAttached: attached,
+                                                 UsesAttributeConverter: TypeHasMarkupConverterAttribute(valueType));
                 }
             }
         }
+    }
+
+    // True when the member symbol carries a Cursorial.Markup [TypeConverter]/[ValueSerializer] — the emitter then
+    // emits a runtime XamlConverters.ForMember(...) call (identical to the reflection provider, so the converter,
+    // its accessibility, the string-name ctor form, and the BCL-attribute exclusion all resolve the SAME way in
+    // both providers — zero drift, and no baking of `new T()` that could break on a non-public type/ctor).
+    private static bool HasMarkupConverterAttribute(ISymbol symbol)
+        => symbol.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString()
+               is "Cursorial.Markup.TypeConverterAttribute" or "Cursorial.Markup.ValueSerializerAttribute");
+
+    // As above for a value TYPE — walks the base chain (the attribute is Inherited, GetAttributes() is direct-only).
+    private static bool TypeHasMarkupConverterAttribute(ITypeSymbol type)
+    {
+        for (var t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
+        {
+            if (HasMarkupConverterAttribute(t))
+                return true;
+        }
+        return false;
     }
 
     private const string PropertyFieldSuffix = "Property";
@@ -198,32 +207,24 @@ internal static class SymbolXamlModel
         return false;
     }
 
-    /// <summary>The content property name ([ContentProperty] attribute, then the known base-type table), or null.</summary>
+    /// <summary>The content property name from an inherited <c>[ContentProperty("Name")]</c> attribute, or null.</summary>
     public static string? ResolveContentProperty(INamedTypeSymbol type)
     {
-        // (1) An explicit [ContentProperty("Name")] attribute (matched by simple name).
-        foreach (var attr in type.GetAttributes())
-        {
-            // ReSharper disable MergeIntoPattern - explicit indexing (not a list pattern) — netstandard2.0 has no System.Index.
-            if (attr.AttributeClass?.Name == "ContentPropertyAttribute" &&
-                attr.ConstructorArguments.Length == 1 &&
-                attr.ConstructorArguments[0].Value is string name &&
-                name.Length > 0)
-            {
-                return name;
-            }
-            // ReSharper restore MergeIntoPattern
-        }
-
-        // (2) The known base-type table (most-derived first).
+        // The attribute is Inherited, but Roslyn's GetAttributes() returns only directly-declared attributes —
+        // so walk the base chain and take the nearest decorated ancestor (mirroring the reflection provider's
+        // GetCustomAttributes(inherit:true)). Matched by attribute simple name, like the loader.
         for (INamedTypeSymbol? t = type; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
         {
-            var full = t.ToDisplayString();
-
-            foreach (var (baseType, property) in ContentPropertyTable)
+            foreach (var attr in t.GetAttributes())
             {
-                if (full == baseType)
-                    return property;
+                // ReSharper disable once MergeIntoPattern - explicit indexing (not a list pattern) — netstandard2.0 has no System.Index.
+                if (attr.AttributeClass?.Name == "ContentPropertyAttribute" &&
+                    attr.ConstructorArguments.Length == 1 &&
+                    attr.ConstructorArguments[0].Value is string name &&
+                    name.Length > 0)
+                {
+                    return name;
+                }
             }
         }
 

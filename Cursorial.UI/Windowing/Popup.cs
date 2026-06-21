@@ -25,6 +25,7 @@ public sealed class PopupClosedEventArgs(PopupCloseReason reason) : EventArgs
 /// Child is the Popup's logical child), and the two-way <see cref="IsOpen"/> write-back. Content-swap scene
 /// reuse, hit-test-transparent tooltip surfaces, anchor tracking, and chain semantics are W4-b refinements.
 /// </remarks>
+[Cursorial.Markup.ContentProperty("Child")]
 public class Popup : UIElement
 {
     /// <summary>The element shown in the popup surface (swappable while open).</summary>

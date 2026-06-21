@@ -415,6 +415,43 @@ detach/re-attach (cleared on disconnect); (d) invariant 3 — the prefix rebuild
 so an in-band slide is still zero re-measure / zero re-raster (VV4.12); (e) the band=realization-coverage superset
 (VV2.6) must hold with the variable window mapping (slack derived from the estimate).
 
-## §V5 (sharpened when it lands)
-- **§V5** — fling-storm benchmark (10K list, <33 ms/frame, 0 B steady-state in-band slides) + control-gallery
-  virtualized-list tab + adversarial closeout. Default-`ItemsPanel` flip deferred to post-soak.
+## §V5 — fling-storm perf gate
+
+The perf gate for the virtualization workstream: `Cursorial.UI.Tests/Benchmarks/VirtualizationFlingBenchmark.cs`
+(`[Trait("Category","Benchmark")]`, methodology mirrors `MotionStormBenchmark` — warm → JIT-settle → best-of-5).
+A 10,000-item virtualizing `ListBox` is scrolled hard; two legs:
+
+- **VV5.1 — fling stays virtualized + within budget.** Stepping the offset across the whole extent in 60
+  re-anchoring waypoints: the realized container set stays band-sized (**peak 78 / 10,000**, never collapses) and
+  the worst-waypoint frame is **best-of-5 ≤ 33 ms** (Release: ~20 ms; the 33 ms budget is a `#if !DEBUG` Release/CI
+  gate — Debug is ~10× slower and not representative, but the test still runs + asserts virtualization holds in Debug).
+- **VV5.2 — in-band slide does no realization work.** Oscillating the offset by ±1 (within ±K, no re-anchor): the
+  realized set **never moves** (zero churn — the panel's no-op guard short-circuits, the generator is untouched),
+  and per-slide allocation is **steady across reps** (deterministic, no growth/leak).
+
+### The §V5 optimization (the perf gate caught real cost)
+
+The first benchmark run was red (re-anchor 47 ms, growing 47→82 across reps). Profiling localized it:
+
+- **Redundant realization slack (the fix).** `ComputeWindow` added `ceil(bandPadding/estimate)` items of slack on
+  **each side of a band that already spans `viewport + 2·bandPadding` rows** — double-counting the band's own
+  smooth-scroll margin and ~doubling realization (122 vs 78 containers for a 24-row viewport). Cut to a small
+  estimate-error constant (2); the §V4 session expand-only window backstops coverage (VV2.6 stays green). Result:
+  realization 122→78, re-anchor frame 46→20 ms (best-of-5) — under budget. **(This is the V5 perf win.)**
+- **Test-harness allocation (a test-infra fix).** `UITestHost.CaptureFrame` always `DrainOutput()`-`ToArray()`d the
+  emitted frame bytes even when `CaptureFrameBytes` was off (default), so every `RunFrame` allocated a throwaway copy
+  — making any benchmark's per-frame allocation reflect the harness, not the framework. Added
+  `SyntheticTerminalHost.DiscardOutput()` (advances the reader, allocates nothing); `CaptureFrame` discards
+  non-allocatingly unless capture is requested.
+
+**Recorded perf debt (a general renderer optimization, NOT a virtualization issue):** an in-band slide of a list
+**with a side scrollbar** can't use terminal `SU`/`SD` scrolling (the scrollbar column would scroll with the
+content), so a 1-row content shift re-emits the viewport cells (~6 KB of inherent repaint bytes per frame at a
+40×24 viewport). A future FrameRenderer **"scroll-with-exceptions"** detection (apply `SU`/`SD`, then repaint the
+few mismatched cells — the scrollbar column + the newly-revealed row) would cut this to ~the scrollbar column. The
+re-anchor frame's residual cost is realizing/rendering ~78 templated `ListBoxItem`s (cold) — a general control-render
+cost, addressable by the same scroll-detection win + container-render optimization. Both are out of §V5 scope (they
+are general rendering perf, and V4/virtualization invariants all hold).
+
+- **Demo canary + default-`ItemsPanel` flip** remain deferred (the demo tab touches the control-gallery demo, and
+  the default-panel flip is a separate reversible post-soak change).

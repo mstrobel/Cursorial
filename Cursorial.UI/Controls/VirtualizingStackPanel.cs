@@ -170,7 +170,7 @@ public sealed class VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHo
             return _cachedDesired;
 
         EnsurePrefix(itemCount);
-        var (firstItem, lastItem) = ComputeWindow(bandStart, bandLength, _scrollOwner.BandPadding, itemCount);
+        var (firstItem, lastItem) = ComputeWindow(bandStart, bandLength, itemCount);
 
         // Reconcile the generator to EXACTLY the window (robust to any prior window / structural shift / keep-alive).
         _generator.UnrealizeOutside(firstItem, lastItem);
@@ -221,7 +221,7 @@ public sealed class VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHo
         return _cachedDesired;
     }
 
-    private (int First, int Last) ComputeWindow(int bandStart, int bandLength, int bandPadding, int itemCount)
+    private (int First, int Last) ComputeWindow(int bandStart, int bandLength, int itemCount)
     {
         if (itemCount <= 0 || bandLength <= 0)
         {
@@ -229,9 +229,12 @@ public sealed class VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHo
             return (0, 0);
         }
 
-        // The window that covers the band per the CURRENT prefix (slack in ITEMS; +1 on last to include the item
-        // straddling the band end) — a superset of the band even with variable heights (VV2.6).
-        var slack = (int) Math.Ceiling(bandPadding / Math.Max(1.0, Estimate));
+        // The window that covers the band per the CURRENT prefix (+1 on last to include the item straddling the band
+        // end) — a superset of the band even with variable heights (VV2.6). The band ALREADY spans
+        // viewport + 2·bandPadding rows (its own smooth-scroll margin), so only a small ESTIMATE-ERROR slack is
+        // needed here, not a second bandPadding-worth of items (which ~doubled realization); the session expand-only
+        // window (the convergence fix) backstops any residual under-coverage on the next refine pass.
+        const int slack = 2;
         var coverFirst = Math.Max(0, EstimateItemAtCore(bandStart) - slack);
         var coverLast = Math.Max(coverFirst, Math.Min(itemCount, EstimateItemAtCore(bandStart + bandLength) + slack + 1));
 

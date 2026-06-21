@@ -156,6 +156,21 @@ public sealed class SyntheticTerminalHost : ITerminalHost
     }
 
     /// <summary>
+    /// Drains everything the application has written since the last call WITHOUT copying it out — advances the
+    /// reader to release the pipe (bounding its growth) but allocates nothing. Used by the frame loop when the
+    /// caller isn't capturing frame bytes, so a benchmark's per-frame allocation reflects the framework rather
+    /// than the harness's <see cref="DrainOutput"/> <c>ToArray</c>.
+    /// </summary>
+    public void DiscardOutput()
+    {
+        if (_disposed)
+            return;
+        if (!_outputPipe.Reader.TryRead(out var result))
+            return;
+        _outputPipe.Reader.AdvanceTo(result.Buffer.End);
+    }
+
+    /// <summary>
     /// The bytes the application wrote between the last <see cref="DrainOutput"/> and disposal —
     /// the canonical-teardown sequence (renderer close, show cursor, SGR reset, leave alt screen),
     /// captured by <see cref="DisposeAsync"/> before the sink closes.

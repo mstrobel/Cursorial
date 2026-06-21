@@ -321,8 +321,12 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
 
     private void CaptureFrame()
     {
-        var emitted = _terminal.DrainOutput(); // always drain (bounds pipe growth)
+        // Drain the output pipe each frame to bound its growth. Only COPY the bytes out (an allocation) when the
+        // caller asked to capture them — otherwise discard non-allocatingly, so a benchmark's measured per-frame
+        // allocation reflects the framework, not the harness's ToArray (CaptureFrameBytes is off by default).
         if (_options.CaptureFrameBytes)
-            _lastFrameBytes = emitted;
+            _lastFrameBytes = _terminal.DrainOutput();
+        else
+            _terminal.DiscardOutput();
     }
 }

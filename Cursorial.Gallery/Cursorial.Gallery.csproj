@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The standalone control gallery (#107): a real UIApplication over a TerminalSession, NOT a Cursorial.Demo
+        REPL command. One page per complex control (or group of related simple controls), each with live toggles
+        that exercise the control thoroughly — a living manual-test harness and a showcase. The built-in code-first
+        theme (CursorialTheme.BuiltIn, the chain backstop) themes every control, so no XAML reference is needed.
+    -->
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Cursorial.Gallery</RootNamespace>
+        <AssemblyName>Cursorial.Gallery</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
+        <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
+        <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->
+        <InternalsVisibleTo Include="Cursorial.UI.Tests" />
+    </ItemGroup>
+
+</Project>

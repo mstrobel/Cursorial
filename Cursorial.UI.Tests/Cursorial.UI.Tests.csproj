@@ -49,6 +49,8 @@
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
+        <!-- The standalone gallery (#107) — referenced for the headless smoke canary (no TTY to run the real app). -->
+        <ProjectReference Include="..\Cursorial.Gallery\Cursorial.Gallery.csproj" />
     </ItemGroup>
 
 </Project>

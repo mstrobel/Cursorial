@@ -131,7 +131,7 @@ internal static class EventRouting
 
     private static void InvokeNode(UIElement node, RoutedEvent routedEvent, RoutedEventArgs args)
     {
-        if (!args.Handled)
+        if (!args.Handled || routedEvent.ClassStageHandledEventsToo)
             routedEvent.InvokeClassStage(node, args);
 
         node.InvokeInstanceHandlers(routedEvent, args);

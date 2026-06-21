@@ -850,9 +850,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
         if (!_trackCursorShape)
             return;
 
-        var resolved = _captureTarget is {} holder
-                           ? ResolveCursor(holder)
-                           : ResolveCursorFromHoverChain();
+        // The resolution leaf: while capture is held the capture target owns the shape (capture redirects the
+        // pointer's meaning); otherwise the element directly under the pointer (the deepest hover-chain node).
+        var leaf = _captureTarget ?? (_hoverCount > 0 ? _hoverChain[_hoverCount - 1] : null);
+        var resolved = leaf is not null ? ResolveCursor(leaf) : null;
 
         if (resolved == _effectiveCursorShape)
             return;
@@ -861,28 +862,26 @@ public sealed class InputDispatcher : IInputDispatchTarget
         CursorShapeChangedInternal?.Invoke(resolved);
     }
 
-    /// <summary>First non-null <see cref="UIElement.Cursor"/> on <paramref name="leaf"/>'s self→root chain (the route walk's parent hop).</summary>
+    /// <summary>
+    /// Resolves the pointer shape by raising the bubbling <see cref="UIElement.QueryCursorEvent"/> from
+    /// <paramref name="leaf"/> to the root (design doc §7.6, WPF parity): each node's <c>OnQueryCursor</c>
+    /// contributes its <see cref="UIElement.Cursor"/> honoring <see cref="UIElement.ForceCursor"/>, so the
+    /// deepest cursor wins unless an ancestor forces its own, and app handlers can override. Pooled args +
+    /// pooled route → allocation-free on this per-frame hover/capture path.
+    /// </summary>
     private static MouseCursorShape? ResolveCursor(UIElement leaf)
     {
-        for (var node = (UIElement?) leaf; node is not null; node = node.VisualParent ?? node.UIParent)
+        var args = EventArgsPool<QueryCursorEventArgs>.Rent();
+        args.Initialize(UIElement.QueryCursorEvent, leaf);
+        try
         {
-            if (node.GetValue(UIElement.CursorProperty) is {} cursor)
-                return cursor;
+            EventRouting.Raise(leaf, args);
+            return args.Cursor;
         }
-
-        return null;
-    }
-
-    /// <summary>First non-null <see cref="UIElement.Cursor"/> walking the retained hover chain leaf→root.</summary>
-    private MouseCursorShape? ResolveCursorFromHoverChain()
-    {
-        for (var i = _hoverCount - 1; i >= 0; i--)
+        finally
         {
-            if (_hoverChain[i].GetValue(UIElement.CursorProperty) is {} cursor)
-                return cursor;
+            args.ReturnToPool();
         }
-
-        return null;
     }
 
     /// <summary>The last shape pushed through the S6 seam (test observability); null = the terminal default.</summary>

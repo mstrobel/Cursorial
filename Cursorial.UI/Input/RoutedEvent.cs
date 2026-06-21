@@ -41,6 +41,14 @@ public abstract class RoutedEvent
     internal bool SweepsInputBindings;
 
     /// <summary>
+    /// Whether the per-node class stage (the <c>On*</c> virtual) runs even after a nearer node set
+    /// <see cref="RoutedEventArgs.Handled"/> — set only for <c>UIElement.QueryCursorEvent</c>, whose
+    /// <c>OnQueryCursor</c> must still run on ancestors so <c>ForceCursor</c> can override an already-claimed
+    /// cursor (design doc §7.6, WPF parity). Instance handlers keep the normal handled-gating.
+    /// </summary>
+    internal bool ClassStageHandledEventsToo;
+
+    /// <summary>
     /// Invokes the class-handler stage — the <c>On*</c> virtual — for this event at
     /// <paramref name="element"/> (ND1: the virtual runs at every route node before that node's
     /// instance handlers and is skipped once <see cref="RoutedEventArgs.Handled"/>). Null for

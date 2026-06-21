@@ -398,4 +398,62 @@ public class MouseCursorTests
         Assert.True(fixture.Host.Application.IsIdle);
         Assert.Equal(MouseCursorShape.Crosshair, fixture.Leaf.Cursor);
     }
+
+    // ───────────────────────────── ForceCursor + the QueryCursor event (P10, §7.6) ─────────────────────────────
+
+    [Fact] // ForceCursor on an ancestor overrides a nearer descendant's cursor (WPF parity).
+    public void ForceCursor_OnAncestor_OverridesDescendant()
+    {
+        using var fixture = CursorHost.Create();
+        fixture.Leaf.Cursor = MouseCursorShape.Text;
+        fixture.Left.Cursor = MouseCursorShape.Pointer;
+        fixture.Left.ForceCursor = true;
+
+        var bytes = fixture.MoveAndPump(13, 7); // over Leaf — but Left forces its Pointer over Leaf's Text
+
+        Assert.Equal(MouseCursorShape.Pointer, fixture.Dispatcher.EffectiveCursorShapeInternal);
+        Assert.Equal(1, Count(bytes, SetSequence(MouseCursorShape.Pointer)));
+    }
+
+    [Fact] // ForceCursor with no Cursor set is inert — the descendant still wins.
+    public void ForceCursor_WithoutCursor_IsInert()
+    {
+        using var fixture = CursorHost.Create();
+        fixture.Leaf.Cursor = MouseCursorShape.Text;
+        fixture.Left.ForceCursor = true; // Left.Cursor is null → nothing to force
+
+        fixture.MoveAndPump(13, 7);
+
+        Assert.Equal(MouseCursorShape.Text, fixture.Dispatcher.EffectiveCursorShapeInternal);
+    }
+
+    [Fact] // A QueryCursor handler that claims the cursor (Handled) overrides the resolved shape.
+    public void QueryCursorHandler_OverridesTheResolvedCursor()
+    {
+        using var fixture = CursorHost.Create();
+        fixture.Left.Cursor = MouseCursorShape.Pointer;
+        fixture.Leaf.AddHandler(UIElement.QueryCursorEvent, static (_, e) =>
+        {
+            e.Cursor = MouseCursorShape.Crosshair;
+            e.Handled = true; // claim it so the ancestor's class stage doesn't override
+        });
+
+        fixture.MoveAndPump(13, 7); // over Leaf
+
+        Assert.Equal(MouseCursorShape.Crosshair, fixture.Dispatcher.EffectiveCursorShapeInternal);
+    }
+
+    [Fact] // QueryCursor bubbles leaf→root.
+    public void QueryCursor_Bubbles_LeafToRoot()
+    {
+        using var fixture = CursorHost.Create();
+        var order = new List<string>();
+        fixture.Leaf.AddHandler(UIElement.QueryCursorEvent, (_, _) => order.Add("leaf"));
+        fixture.Left.AddHandler(UIElement.QueryCursorEvent, (_, _) => order.Add("left"));
+        fixture.Root.AddHandler(UIElement.QueryCursorEvent, (_, _) => order.Add("root"));
+
+        fixture.MoveAndPump(13, 7);
+
+        Assert.Equal(new[] { "leaf", "left", "root" }, order);
+    }
 }

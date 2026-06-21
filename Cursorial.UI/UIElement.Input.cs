@@ -101,6 +101,17 @@ public abstract partial class UIElement : IInteractionStateSink
     public static readonly RoutedEvent<RoutedEventArgs> LostMouseCaptureEvent =
         RegisterClassEvent<RoutedEventArgs>("LostMouseCapture", RoutingStrategy.Direct, static (e, a) => e.OnLostMouseCapture(a));
 
+    /// <summary>
+    /// Raised (Bubble) when the framework resolves the pointer shape over an element (design doc §7.6; WPF
+    /// parity). Bubbles from the element directly under the pointer to the root; the class stage
+    /// (<see cref="OnQueryCursor"/>) fills <see cref="QueryCursorEventArgs.Cursor"/> from
+    /// <see cref="Cursor"/> honoring <see cref="ForceCursor"/>. A handler may override the result. The
+    /// framework raises it on the pooled per-frame hover/capture re-resolution path, so handlers must be cheap.
+    /// </summary>
+    public static readonly RoutedEvent<QueryCursorEventArgs> QueryCursorEvent =
+        RegisterClassEvent<QueryCursorEventArgs>("QueryCursor", RoutingStrategy.Bubble, static (e, a) => e.OnQueryCursor(a),
+            classStageHandledEventsToo: true); // OnQueryCursor runs on ancestors even after a descendant claimed it, so ForceCursor can override
+
     // ───────────────────────────── focus properties (doc §7.3) ─────────────────────────────
 
     /// <summary>
@@ -154,6 +165,19 @@ public abstract partial class UIElement : IInteractionStateSink
     /// <inheritdoc cref="CursorProperty"/>
     public MouseCursorShape? Cursor { get => GetValue(CursorProperty); set => SetValue(CursorProperty, value); }
 
+    /// <summary>
+    /// When <see langword="true"/>, this element's <see cref="Cursor"/> is forced over the pointer even when a
+    /// nearer element (a descendant under the pointer) already set one (design doc §7.6; WPF parity). The
+    /// <c>QueryCursor</c> route is leaf→root, so by default the deepest element with a <see cref="Cursor"/>
+    /// wins; an ancestor that <see cref="ForceCursor"/>s overrides it. Has no effect unless <see cref="Cursor"/>
+    /// is also set. Honored only on terminals reporting OSC 22 (like <see cref="Cursor"/>).
+    /// </summary>
+    public static readonly StyledProperty<bool> ForceCursorProperty =
+        UIProperty.Register<UIElement, bool>(nameof(ForceCursor), changed: OnForceCursorChanged);
+
+    /// <inheritdoc cref="ForceCursorProperty"/>
+    public bool ForceCursor { get => GetValue(ForceCursorProperty); set => SetValue(ForceCursorProperty, value); }
+
     private static readonly UIPropertyKey<bool> IsFocusedPropertyKey =
         UIProperty.RegisterReadOnly<UIElement, bool>(nameof(IsFocused));
 
@@ -188,6 +212,14 @@ public abstract partial class UIElement : IInteractionStateSink
     internal void SetIsKeyboardFocusWithinInternal(bool value) => SetValue(IsKeyboardFocusWithinPropertyKey, value);
 
     private static void OnCursorChanged(UIObject sender, MouseCursorShape? oldValue, MouseCursorShape? newValue)
+    {
+        if (sender is UIElement { IsPointerOver: true })
+            UIApplication.Current?.InputDispatcher.UpdateCursor();
+    }
+
+    // A ForceCursor flip on an element in the hover chain (every ancestor of the hovered leaf has
+    // IsPointerOver) re-runs the QueryCursor resolution — the ancestor may now win or yield.
+    private static void OnForceCursorChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is UIElement { IsPointerOver: true })
             UIApplication.Current?.InputDispatcher.UpdateCursor();
@@ -623,16 +655,33 @@ public abstract partial class UIElement : IInteractionStateSink
     /// <summary>Class stage for <see cref="LostMouseCaptureEvent"/> (Direct) — release pressed visuals here.</summary>
     protected virtual void OnLostMouseCapture(RoutedEventArgs e) {}
 
+    /// <summary>
+    /// Class stage for <see cref="QueryCursorEvent"/> (Bubble; design doc §7.6, WPF parity). Contributes this
+    /// element's <see cref="Cursor"/> to the resolution: it claims the cursor when it has one and either the
+    /// route hasn't settled yet (no nearer element set it) or this element <see cref="ForceCursor"/>s — so the
+    /// deepest cursor wins unless an ancestor forces its own. Override to compute a cursor dynamically.
+    /// </summary>
+    protected virtual void OnQueryCursor(QueryCursorEventArgs e)
+    {
+        if (Cursor is { } cursor && (!e.Handled || ForceCursor))
+        {
+            e.Cursor = cursor;
+            e.Handled = true;
+        }
+    }
+
     private static RoutedEvent<TArgs> RegisterClassEvent<TArgs>(
         string name,
         RoutingStrategy strategy,
         Action<UIElement, TArgs> classStage,
-        bool sweepsInputBindings = false)
+        bool sweepsInputBindings = false,
+        bool classStageHandledEventsToo = false)
         where TArgs : RoutedEventArgs
     {
         var routedEvent = RoutedEvent<TArgs>.Register(name, strategy, typeof(UIElement));
         routedEvent.ClassStage = classStage;
         routedEvent.SweepsInputBindings = sweepsInputBindings;
+        routedEvent.ClassStageHandledEventsToo = classStageHandledEventsToo;
         return routedEvent;
     }
 

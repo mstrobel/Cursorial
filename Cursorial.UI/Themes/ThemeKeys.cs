@@ -38,8 +38,14 @@ public static class ThemeKeys
     /// <summary>Intensified fill for a focused <i>text</i> field.</summary>
     public const string WellBrush = "Theme.WellBrush";
 
-    /// <summary>Selection fill (selected item/text).</summary>
+    /// <summary>Selection fill (selected item/text) in a focused container.</summary>
     public const string SelectionBrush = "Theme.SelectionBrush";
+
+    /// <summary>Selection fill in an <b>unfocused</b> container (the neutral-grey inactive selection, spec --sel-inactive).</summary>
+    public const string SelectionInactiveBrush = "Theme.SelectionInactiveBrush";
+
+    /// <summary>Even-row zebra fill in lists/grids (spec --altrow; consumed by the opt-in <c>:alternate</c> row look).</summary>
+    public const string AlternateRowBrush = "Theme.AlternateRowBrush";
 
     /// <summary>Shared pointer-over (hover) fill.</summary>
     public const string HoverBrush = "Theme.HoverBrush";

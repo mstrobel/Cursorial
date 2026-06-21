@@ -26,7 +26,8 @@ public static class CursorialTheme
     private static readonly string[] RoleTokenKeys =
     {
         ThemeKeys.WindowBackground, ThemeKeys.SurfaceBrush, ThemeKeys.PanelBrush, ThemeKeys.WellBrush,
-        ThemeKeys.SelectionBrush, ThemeKeys.HoverBrush, ThemeKeys.TextBrush, ThemeKeys.TextDimBrush,
+        ThemeKeys.SelectionBrush, ThemeKeys.SelectionInactiveBrush, ThemeKeys.AlternateRowBrush,
+        ThemeKeys.HoverBrush, ThemeKeys.TextBrush, ThemeKeys.TextDimBrush,
         ThemeKeys.MutedBrush, ThemeKeys.FaintBrush, ThemeKeys.DisabledBackgroundBrush,
         ThemeKeys.DisabledForegroundBrush, ThemeKeys.AccentBrush, ThemeKeys.Accent2Brush,
         ThemeKeys.OnAccentBrush, ThemeKeys.GreenBrush, ThemeKeys.AmberBrush, ThemeKeys.RedBrush,
@@ -137,11 +138,13 @@ public static class CursorialTheme
         rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#e9e9ed"));
         rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd2"));
-        rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f18") : Color.FromHex("#e6e7ec"));
+        rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e6e7ec"));
         rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
         rgb[ThemeKeys.PanelBrush] = new SolidColorBrush(dark ? Color.FromHex("#222639") : Color.FromHex("#e9e9ed"));
         rgb[ThemeKeys.WellBrush] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.SelectionBrush] = new SolidColorBrush(dark ? Color.FromHex("#33467c") : Color.FromHex("#a8aecb"));
+        rgb[ThemeKeys.SelectionInactiveBrush] = new SolidColorBrush(dark ? Color.FromHex("#30364d") : Color.FromHex("#d3d5dd"));
+        rgb[ThemeKeys.AlternateRowBrush] = new SolidColorBrush(dark ? Color.FromHex("#272b41") : Color.FromHex("#e1e2e7"));
         // Light --hover nudged off --surface (#cbccd1) so a hovered control reads as a fill (spec §1.1).
         rgb[ThemeKeys.HoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
         rgb[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
@@ -152,16 +155,16 @@ public static class CursorialTheme
         rgb[ThemeKeys.DisabledForegroundBrush] = new SolidColorBrush(dark ? Color.FromHex("#565f89") : Color.FromHex("#9699a3"));
         rgb[ThemeKeys.AccentBrush] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
         rgb[ThemeKeys.Accent2Brush] = new SolidColorBrush(dark ? Color.FromHex("#7dcfff") : Color.FromHex("#0f4b6e"));
-        rgb[ThemeKeys.OnAccentBrush] = new SolidColorBrush(dark ? Color.FromHex("#0d0f18") : Color.FromHex("#e9e9ed"));
+        rgb[ThemeKeys.OnAccentBrush] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e9e9ed"));
         rgb[ThemeKeys.GreenBrush] = new SolidColorBrush(dark ? Color.FromHex("#9ece6a") : Color.FromHex("#485e30"));
         rgb[ThemeKeys.AmberBrush] = new SolidColorBrush(dark ? Color.FromHex("#e0af68") : Color.FromHex("#8f5e15"));
         rgb[ThemeKeys.RedBrush] = new SolidColorBrush(dark ? Color.FromHex("#f7768e") : Color.FromHex("#8c4351"));
         rgb[ThemeKeys.PurpleBrush] = new SolidColorBrush(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e"));
         rgb[ThemeKeys.StatusBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
         rgb[ThemeKeys.StatusBarAltBackground] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
-        // Branch/alt status text reads on the accent fill → the on-accent ink (was hand-copied from --accent,
-        // making light-tier text invisible; dark was the stale pre-fix on-accent #0d0f19). Review finding #3.
-        rgb[ThemeKeys.StatusBarAltForeground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f18") : Color.FromHex("#e9e9ed"));
+        // Branch/alt status text reads on the accent fill → the on-accent ink (spec StatusBranchForeground =
+        // --on-accent, so it tracks OnAccentBrush exactly: #0d0f19 dark / #e9e9ed light).
+        rgb[ThemeKeys.StatusBarAltForeground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e9e9ed"));
         
         // Opt-in chrome (no shipped control reads these by default): border = faint ink, focus ring = accent heavy.
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc"));
@@ -186,6 +189,8 @@ public static class CursorialTheme
         ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.WellBrush] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.SelectionBrush] = Palette(8);
+        ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(8);    // 16-color: no distinct inactive shade — tracks active selection
+        ansi16[ThemeKeys.AlternateRowBrush] = Palette(dark ? 0 : 7); // 16-color: tracks the panel fill (zebra needs RGB)
         ansi16[ThemeKeys.HoverBrush] = Palette(8);
         ansi16[ThemeKeys.TextBrush] = Palette(dark ? 15 : 0);
         ansi16[ThemeKeys.TextDimBrush] = Palette(dark ? 7 : 8);

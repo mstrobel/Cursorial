@@ -160,6 +160,150 @@ public static class ThemeKeys
 
     /// <summary>The <see cref="Controls.ScrollBar"/> line-button arrow glyphs (the reserved ASCII base <c>^ v</c> / <c>&lt; &gt;</c>). NOTE: the BuiltIn ScrollBar template currently hardcodes Unicode arrows (◀▲▶▼) and does NOT yet read this resource — a caps-ascii opt-down is future work (same caps-ascii deferral as the Unicode check/radio marks; design doc §12.7).</summary>
     public const string ScrollArrowGlyphs = "Theme.ScrollArrowGlyphs";
+
+    // ───────────────────────────── per-control override keys (style-guide KEYS, §11.4a) ─────────────────────────────
+    //
+    // The style-guide per-control resource keys (docs/ui-layer-design/tokyo-night-control-gallery-final.html, the
+    // KEYS table). Each is a LIVE ALIAS (a ResourceReference, registered in CursorialTheme) of a palette role token,
+    // so a control template references its OWN key while one role-token brush backs every consumer — and an app
+    // re-keys a single control's brush at a nearer chain scope (e.g. `Resources[ThemeKeys.ButtonBackgroundNormal] =
+    // myBrush`) to re-skin just that control, without disturbing the shared role token. Alias chasing
+    // (ResourceExtensions §11.4a) resolves the indirection; a variant flip / role-token override still cascades
+    // through the alias. The constant NAMES match the style guide so an app author finds them by the guide.
+
+    // Base / shared — spec-named aliases of the existing role tokens (the 3 whose guide name differs from ours).
+    /// <summary>Text on an accent/colored fill (spec <c>AccentForegroundBrush</c>, --on-accent) — aliases <see cref="OnAccentBrush"/>.</summary>
+    public const string AccentForegroundBrush = "Theme.AccentForegroundBrush";
+    /// <summary>Selection fill in a focused container (spec <c>SelectionActiveBrush</c>, --sel) — aliases <see cref="SelectionBrush"/>.</summary>
+    public const string SelectionActiveBrush = "Theme.SelectionActiveBrush";
+    /// <summary>Popup/list/grid/menu surface (spec <c>PanelBackgroundBrush</c>, --panel) — aliases <see cref="PanelBrush"/>.</summary>
+    public const string PanelBackgroundBrush = "Theme.PanelBackgroundBrush";
+
+    // Button (Button / RepeatButton / ToggleButton).
+    /// <summary>Standard + default button ink (--text).</summary>
+    public const string ButtonForegroundNormal = "Theme.ButtonForegroundNormal";
+    /// <summary>Resting button fill (--surface).</summary>
+    public const string ButtonBackgroundNormal = "Theme.ButtonBackgroundNormal";
+    /// <summary>Hovered button fill (--hover).</summary>
+    public const string ButtonBackgroundHover = "Theme.ButtonBackgroundHover";
+    /// <summary>Focused button ink — reverse-video (--bg).</summary>
+    public const string ButtonForegroundFocus = "Theme.ButtonForegroundFocus";
+    /// <summary>Focused button fill — reverse-video (--text).</summary>
+    public const string ButtonBackgroundFocus = "Theme.ButtonBackgroundFocus";
+    /// <summary>Pressed + IsDefault button ink (--on-accent).</summary>
+    public const string ButtonForegroundPressed = "Theme.ButtonForegroundPressed";
+    /// <summary>Pressed + IsDefault button fill (--accent).</summary>
+    public const string ButtonBackgroundPressed = "Theme.ButtonBackgroundPressed";
+    /// <summary>Disabled button ink (--muted).</summary>
+    public const string ButtonForegroundDisabled = "Theme.ButtonForegroundDisabled";
+    /// <summary>Disabled button fill (--disabled-bg).</summary>
+    public const string ButtonBackgroundDisabled = "Theme.ButtonBackgroundDisabled";
+
+    // ToggleSwitch / CheckBox / RadioButton.
+    /// <summary>Check/radio glyph + label ink (--text).</summary>
+    public const string ToggleForegroundNormal = "Theme.ToggleForegroundNormal";
+    /// <summary>The CheckBox checked mark (--green).</summary>
+    public const string ToggleGlyphChecked = "Theme.ToggleGlyphChecked";
+    /// <summary>The tri-state indeterminate mark (--amber).</summary>
+    public const string ToggleGlyphIndeterminate = "Theme.ToggleGlyphIndeterminate";
+    /// <summary>The RadioButton checked dot (--accent; the radio variant of <see cref="ToggleGlyphChecked"/>).</summary>
+    public const string RadioGlyphChecked = "Theme.RadioGlyphChecked";
+    /// <summary>Disabled check/radio ink (--muted).</summary>
+    public const string ToggleForegroundDisabled = "Theme.ToggleForegroundDisabled";
+
+    // Input (TextBox, editable ComboBox, cell-edit).
+    /// <summary>Input text ink (--text).</summary>
+    public const string InputForegroundNormal = "Theme.InputForegroundNormal";
+    /// <summary>Resting input fill (--surface).</summary>
+    public const string InputBackgroundNormal = "Theme.InputBackgroundNormal";
+    /// <summary>Hovered input fill (--hover).</summary>
+    public const string InputBackgroundHover = "Theme.InputBackgroundHover";
+    /// <summary>Focused input fill — the recessed well (--well).</summary>
+    public const string InputBackgroundFocus = "Theme.InputBackgroundFocus";
+    /// <summary>Input selection fill, control focused (--sel).</summary>
+    public const string InputSelectionActive = "Theme.InputSelectionActive";
+    /// <summary>Disabled input ink (--muted).</summary>
+    public const string InputForegroundDisabled = "Theme.InputForegroundDisabled";
+    /// <summary>Disabled input fill (--disabled-bg).</summary>
+    public const string InputBackgroundDisabled = "Theme.InputBackgroundDisabled";
+
+    // ListItem (ListBox / ComboBox drop-down item).
+    /// <summary>List-item ink (--text).</summary>
+    public const string ListItemForegroundNormal = "Theme.ListItemForegroundNormal";
+    /// <summary>Hovered list-item fill (--hover).</summary>
+    public const string ListItemBackgroundHover = "Theme.ListItemBackgroundHover";
+    /// <summary>Selected list-item fill, focused container (--sel).</summary>
+    public const string ListItemBackgroundSelected = "Theme.ListItemBackgroundSelected";
+    /// <summary>Keyboard-focused list-item ink — reverse-video.</summary>
+    public const string ListItemForegroundFocus = "Theme.ListItemForegroundFocus";
+    /// <summary>Keyboard-focused list-item fill — reverse-video (--text).</summary>
+    public const string ListItemBackgroundFocus = "Theme.ListItemBackgroundFocus";
+    /// <summary>Disabled list-item ink (--muted).</summary>
+    public const string ListItemForegroundDisabled = "Theme.ListItemForegroundDisabled";
+
+    // TreeViewItem.
+    /// <summary>Tree-node ink (--text).</summary>
+    public const string TreeItemForegroundNormal = "Theme.TreeItemForegroundNormal";
+    /// <summary>Selected tree-node fill (--sel).</summary>
+    public const string TreeItemBackgroundSelected = "Theme.TreeItemBackgroundSelected";
+    /// <summary>Keyboard-focused tree-node ink — reverse-video.</summary>
+    public const string TreeItemForegroundFocus = "Theme.TreeItemForegroundFocus";
+    /// <summary>Keyboard-focused tree-node fill — reverse-video (--text).</summary>
+    public const string TreeItemBackgroundFocus = "Theme.TreeItemBackgroundFocus";
+    /// <summary>Disabled tree-node ink (--muted).</summary>
+    public const string TreeItemForegroundDisabled = "Theme.TreeItemForegroundDisabled";
+
+    // Menu (MenuBar / MenuItem / ContextMenu).
+    /// <summary>Menu-item ink (--text).</summary>
+    public const string MenuForegroundNormal = "Theme.MenuForegroundNormal";
+    /// <summary>The horizontal menu-bar strip fill (--surface).</summary>
+    public const string MenuBarBackground = "Theme.MenuBarBackground";
+    /// <summary>Hovered menu-item fill (--hover).</summary>
+    public const string MenuBackgroundHover = "Theme.MenuBackgroundHover";
+    /// <summary>Highlighted / open menu-item fill (--sel).</summary>
+    public const string MenuBackgroundHighlighted = "Theme.MenuBackgroundHighlighted";
+    /// <summary>The ^X accelerator/gesture hint text (--muted).</summary>
+    public const string MenuAcceleratorForeground = "Theme.MenuAcceleratorForeground";
+    /// <summary>Disabled menu-item ink (--muted).</summary>
+    public const string MenuForegroundDisabled = "Theme.MenuForegroundDisabled";
+
+    // TabItem.
+    /// <summary>Tab-header ink (--text).</summary>
+    public const string TabForegroundNormal = "Theme.TabForegroundNormal";
+    /// <summary>Hovered tab fill (--hover).</summary>
+    public const string TabBackgroundHover = "Theme.TabBackgroundHover";
+    /// <summary>Selected/active tab fill (--sel).</summary>
+    public const string TabBackgroundSelected = "Theme.TabBackgroundSelected";
+    /// <summary>Disabled tab ink (--muted).</summary>
+    public const string TabForegroundDisabled = "Theme.TabForegroundDisabled";
+
+    // ProgressBar.
+    /// <summary>Determinate progress fill (--green).</summary>
+    public const string ProgressFillNormal = "Theme.ProgressFillNormal";
+    /// <summary>Indeterminate progress sweep fill (--accent).</summary>
+    public const string ProgressFillIndeterminate = "Theme.ProgressFillIndeterminate";
+    /// <summary>Progress track fill.</summary>
+    public const string ProgressTrackBrush = "Theme.ProgressTrackBrush";
+
+    // Calendar (day cells + Year/Decade cells; DatePicker).
+    /// <summary>Calendar day-cell ink.</summary>
+    public const string CalendarDayForeground = "Theme.CalendarDayForeground";
+    /// <summary>Adjacent-month (inactive) day ink (--muted).</summary>
+    public const string CalendarDayInactiveForeground = "Theme.CalendarDayInactiveForeground";
+    /// <summary>Hovered day fill (--hover).</summary>
+    public const string CalendarDayBackgroundHover = "Theme.CalendarDayBackgroundHover";
+    /// <summary>Today's day ink (--accent).</summary>
+    public const string CalendarDayTodayForeground = "Theme.CalendarDayTodayForeground";
+    /// <summary>Selected day fill (--sel).</summary>
+    public const string CalendarDayBackgroundSelected = "Theme.CalendarDayBackgroundSelected";
+    /// <summary>Selected day ink (--text).</summary>
+    public const string CalendarDayForegroundSelected = "Theme.CalendarDayForegroundSelected";
+    /// <summary>Keyboard-focused day ink — reverse-video.</summary>
+    public const string CalendarDayForegroundFocus = "Theme.CalendarDayForegroundFocus";
+    /// <summary>Keyboard-focused day fill — reverse-video (--text).</summary>
+    public const string CalendarDayBackgroundFocus = "Theme.CalendarDayBackgroundFocus";
+    /// <summary>Disabled day ink (--muted).</summary>
+    public const string CalendarDayForegroundDisabled = "Theme.CalendarDayForegroundDisabled";
 }
 
 /// <summary>

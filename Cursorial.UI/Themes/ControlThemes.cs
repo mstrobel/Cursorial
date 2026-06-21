@@ -37,8 +37,8 @@ internal static class ControlThemes
         dict[typeof(Label)] = LabelTheme();
         dict[typeof(RepeatButton)] = RepeatButtonTheme();
         dict[typeof(ToggleButton)] = ToggleButtonTheme();
-        dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.GreenBrush, ThemeKeys.AmberBrush);
-        dict[typeof(RadioButton)] = ToggleGlyphTheme("Theme.RadioButton", ThemeKeys.RadioGlyphs, ThemeKeys.AccentBrush, ThemeKeys.AmberBrush);
+        dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.ToggleGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
+        dict[typeof(RadioButton)] = ToggleGlyphTheme("Theme.RadioButton", ThemeKeys.RadioGlyphs, ThemeKeys.RadioGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
         dict[typeof(ScrollBar)] = ScrollBarTheme();
         dict[typeof(ScrollViewer)] = ScrollViewerTheme();
         dict[typeof(ItemsControl)] = ItemsControlTheme();
@@ -91,15 +91,15 @@ internal static class ControlThemes
 
     private static Style ButtonTheme()
     {
-        var theme = AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.Button" })
+        var theme = AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.Button" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
         // :default (the Enter-default cue) — a resting accent reverse-video fill so the primary action
-        // stands out; :focus/:pressed override it when the user interacts. The ▸ OK ◂ gutter brackets are
-        // a deferred content nicety (spec §3).
+        // stands out; :focus/:pressed override it when the user interacts. Reuses the Pressed per-control
+        // keys (spec: "Pressed + IsDefault"). The ▸ OK ◂ gutter brackets are a deferred content nicety (spec §3).
         theme.Children.Add(new Style("^:default")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         return theme;
     }
 
@@ -258,7 +258,7 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var list = new Border { Occludes = true, Child = host };
-        list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
         list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         list.SetBinding(UIElement.MaxHeightProperty, new TemplateBinding(ComboBox.MaxDropDownHeightProperty)); // MaxDropDownHeight cap
         var popup = new Popup { Child = list };
@@ -290,14 +290,14 @@ internal static class ControlThemes
     private static Style ComboBoxItemTheme()
     {
         var theme = new Style { Key = "Theme.ComboBoxItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
             .Set(Control.TemplateProperty, ComboBoxItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
         theme.Children.Add(new Style("^:focus-visible")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
         return theme;
     }
 
@@ -357,18 +357,18 @@ internal static class ControlThemes
     private static Style TreeViewItemTheme()
     {
         var theme = new Style { Key = "Theme.TreeViewItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TreeItemForegroundNormal)
             .Set(Control.TemplateProperty, TreeViewItemTemplate());
         // NO :pointerover fill (WPF-faithful): InteractionState.PointerOver is set on EVERY ancestor of the hovered
         // leaf, and TreeViewItems nest, so a hover rule would light the whole ancestor header-bar chain. A tree node
         // highlights on selection + keyboard focus only.
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.TreeItemBackgroundSelected));
         // The keyboard focus-row cue (reverse-video), ordered after :selected so a focused+selected node reads as
         // focused; :focus-visible (not :focus) so a mouse click shows :selected while keyboard nav shows the row.
         theme.Children.Add(new Style("^:focus-visible")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TreeItemBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TreeItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.TreeItemForegroundDisabled));
         return theme;
     }
 
@@ -446,18 +446,18 @@ internal static class ControlThemes
     private static Style CalendarCellTheme(string key)
     {
         var theme = new Style { Key = key }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayForeground)
             .Set(Control.TemplateProperty, CalendarCellTemplate());
-        theme.Children.Add(new Style("^:inactive").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
-        theme.Children.Add(new Style("^:today").SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
+        theme.Children.Add(new Style("^:inactive").SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayInactiveForeground));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.CalendarDayBackgroundHover));
+        theme.Children.Add(new Style("^:today").SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayTodayForeground));
         theme.Children.Add(new Style("^:selected")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.CalendarDayBackgroundSelected)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayForegroundSelected));
         theme.Children.Add(new Style("^:focus-visible")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.CalendarDayBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayForegroundDisabled));
         return theme;
     }
 
@@ -534,7 +534,7 @@ internal static class ControlThemes
         var calendar = new Calendar { BorderPen = Pens.Light.WithBrush(Brushes.Red) };
         ctx.RegisterName("PART_Calendar", calendar);
         var surface = new Border { Occludes = true, Child = calendar };
-        surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
         surface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         var popup = new Popup { Child = surface };
         ctx.RegisterName("PART_Popup", popup);
@@ -576,8 +576,8 @@ internal static class ControlThemes
                    // new Style(Selectors.Nesting().OfType<Separator>()).SetResource(Control.BorderPenProperty, ThemeKeys.MenuSeparatorPen)
                }
            }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBarBackground)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundNormal)
             .Set(Control.TemplateProperty, MenuTemplate());
 
     // A ContextMenu: a popup-rooted occluding panel (overwrites the content it floats over) hosting the
@@ -587,14 +587,14 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Occludes = true, Child = host };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
         border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         return border;
     });
 
     private static Style ContextMenuTheme()
         => new Style { Key = "Theme.ContextMenu" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundNormal)
             .Set(Control.TemplateProperty, ContextMenuTemplate());
 
     // A ToolTip: an occluding bordered panel (overwrites the content it floats over) wrapping a ContentPresenter;
@@ -604,7 +604,7 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Occludes = true, Padding = new Margins(1, 0), Child = presenter };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
         border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         return border;
     });
@@ -658,11 +658,11 @@ internal static class ControlThemes
     private static Style TabItemTheme()
     {
         var theme = new Style { Key = "Theme.TabItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundNormal)
             .Set(Control.TemplateProperty, TabItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundHover));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundSelected));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundDisabled));
         return theme;
     }
 
@@ -673,9 +673,9 @@ internal static class ControlThemes
     private static Style ProgressBarTheme()
     {
         var theme = new Style { Key = "Theme.ProgressBar" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
-            .SetResource(ProgressBar.FillProperty, ThemeKeys.GreenBrush);
-        theme.Children.Add(new Style("^:indeterminate").SetResource(ProgressBar.FillProperty, ThemeKeys.AccentBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ProgressTrackBrush)
+            .SetResource(ProgressBar.FillProperty, ThemeKeys.ProgressFillNormal);
+        theme.Children.Add(new Style("^:indeterminate").SetResource(ProgressBar.FillProperty, ThemeKeys.ProgressFillIndeterminate));
         return theme;
     }
 
@@ -699,15 +699,15 @@ internal static class ControlThemes
 
     private static Style TextBoxTheme()
     {
-        var theme = ApplyPaletteSpine(new Style { Key = "Theme.TextBox" })
+        var theme = ApplyPaletteSpine(new Style { Key = "Theme.TextBox" }, ThemeKeys.InputForegroundNormal, ThemeKeys.InputBackgroundNormal)
             .Set(UIElement.MinWidthProperty, 12)
-            .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.SelectionBrush)
+            .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionActive)
             .Set(Control.TemplateProperty, TextBoxTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
-        theme.Children.Add(new Style("^:focus").SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover));
+        theme.Children.Add(new Style("^:focus").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
         theme.Children.Add(new Style("^:disabled")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundDisabled)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundDisabled));
         return theme;
     }
 
@@ -722,7 +722,7 @@ internal static class ControlThemes
 
         var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
         gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(MenuItem.InputGestureTextProperty));
-        gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+        gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
         DockPanel.SetDock(gesture, Dock.Right);
 
         var row = new DockPanel();
@@ -735,7 +735,7 @@ internal static class ControlThemes
         var itemsHost = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", itemsHost);
         var submenu = new Border { Occludes = true, Child = itemsHost };
-        submenu.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+        submenu.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
         submenu.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         var popup = new Popup { Child = submenu };
         ctx.RegisterName("PART_Popup", popup);
@@ -749,12 +749,12 @@ internal static class ControlThemes
     private static Style MenuItemTheme()
     {
         var theme = new Style { Key = "Theme.MenuItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundNormal)
             .Set(Control.TemplateProperty, MenuItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
-        theme.Children.Add(new Style("^:highlighted").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
-        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHover));
+        theme.Children.Add(new Style("^:highlighted").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted));
+        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundDisabled));
         return theme;
     }
 
@@ -776,26 +776,26 @@ internal static class ControlThemes
     private static Style ListBoxItemTheme()
     {
         var theme = new Style { Key = "Theme.ListBoxItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
             .Set(Control.TemplateProperty, ListBoxItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.SelectionBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
         // The keyboard focus-row cue (gallery .item.rev): reverse-video — ordered AFTER :selected so a
         // focused+selected current item reads as focused (adoption-spec lines 108-110). :focus-visible (not :focus)
         // so a mouse click — Pointer modality — shows :selected, while keyboard nav shows the reverse row.
         theme.Children.Add(new Style("^:focus-visible")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
         return theme;
     }
 
     private static Style RepeatButtonTheme()
-        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" })
+        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
 
     private static Style ToggleButtonTheme()
-        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" })
+        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
 
     // The cell-faithful interactive states shared by the button family (design doc §11.8a): hover = a
@@ -806,16 +806,16 @@ internal static class ControlThemes
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
     private static Style AddButtonStates(Style theme)
     {
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.HoverBrush));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
         theme.Children.Add(new Style("^:focus")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.WindowBackground));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         theme.Children.Add(new Style("^:pressed")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
 
@@ -826,10 +826,10 @@ internal static class ControlThemes
     // sets always wins. Cell-faithful reversal of the WPF transparent-Background default: the resting
     // SurfaceBrush fill IS the control's extent (no border). The toggle-glyph controls (CheckBox/Radio)
     // do NOT take this spine — they stay transparent at rest (gallery: their normal fill is the page bg).
-    private static Style ApplyPaletteSpine(Style theme)
+    private static Style ApplyPaletteSpine(Style theme, string foregroundKey, string backgroundKey)
         => theme
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush);
+            .SetResource(Control.ForegroundProperty, foregroundKey)
+            .SetResource(Control.BackgroundProperty, backgroundKey);
 
     // ───────────────────────────── CheckBox / RadioButton ─────────────────────────────
 
@@ -881,9 +881,9 @@ internal static class ControlThemes
     private static Style ToggleGlyphTheme(string themeKey, string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
     {
         var theme = new Style { Key = themeKey }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ToggleForegroundNormal)
             .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey, checkedMarkKey, indeterminateMarkKey));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ToggleForegroundDisabled));
         return theme;
     }
 

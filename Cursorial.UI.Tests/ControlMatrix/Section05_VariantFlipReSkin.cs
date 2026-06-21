@@ -183,6 +183,26 @@ public sealed class Section05_VariantFlipReSkin
         Assert.Equal(custom, FindForeground(host, "OK"));
     }
 
+    [Fact] // C116b — overriding a single per-control key (ButtonBackgroundNormal) re-skins that control without touching the shared role token (§11.4a per-control override).
+    public void C116b_PerControlKeyOverride_ReSkinsControl_RoleTokenUntouched()
+    {
+        using var host = TruecolorHost();
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+
+        var button = new Button { Content = "OK", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        host.ShowRoot(button);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(DarkFill, FillColor(host, "OK")); // resting fill = the SurfaceBrush role token (via the ButtonBackgroundNormal alias)
+
+        // Override just the button's per-control fill key. The button re-skins; the shared SurfaceBrush role
+        // token is untouched, so a control that reads SurfaceBrush directly would not move.
+        var custom = Color.FromRgb(0xCC, 0x33, 0x99);
+        host.Application.Resources[ThemeKeys.ButtonBackgroundNormal] = new SolidColorBrush(custom);
+        host.RunFrame();
+        Assert.Equal(custom, FillColor(host, "OK"));
+        Assert.Equal(DarkFill, ((SolidColorBrush)button.FindResource(ThemeKeys.SurfaceBrush)!).Color); // role token unchanged
+    }
+
     // ───────────────────────────── C117 — the honest tier-flip expectation ─────────────────────────────
 
     [Fact] // C117 — a tier flip re-resolves the palette to a different-KIND brush even on a fixed terminal.

@@ -58,13 +58,20 @@ public static class ResourceExtensions
     /// consumer. <paramref name="searched"/> records hops for the diagnostic surface when non-null.
     /// </summary>
     internal static bool Walk(UIElement element, object key, ThemeVariant variant, List<string>? searched, out object? value)
+        => Walk(element, key, variant, searched, out value, out _);
+
+    /// <param name="chasedAlias">True iff resolution followed at least one <see cref="ResourceReference"/> hop — the
+    /// subscription registry uses this to keep an aliased subscription interested in keyed pulses of the target.</param>
+    internal static bool Walk(UIElement element, object key, ThemeVariant variant, List<string>? searched, out object? value, out bool chasedAlias)
     {
+        chasedAlias = false;
         for (var hop = 0; ; hop++)
         {
             if (!WalkOnce(element, key, variant, searched, out value))
                 return false;
             if (value is not ResourceReference alias)
                 return true;
+            chasedAlias = true;
             if (hop >= MaxAliasChase)
                 return AliasCycle(key, searched, out value);
             searched?.Add($"  → alias → '{alias.Key}'");

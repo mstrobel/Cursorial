@@ -81,6 +81,13 @@ public static class CursorialTheme
         dict[ThemeKeys.RadioGlyphs] = new GlyphSetCarrier("( )", "(*)", "(-)");
         dict[ThemeKeys.ScrollArrowGlyphs] = new GlyphSetCarrier("^", "v");
 
+        // The per-control override keys (style-guide KEYS; design doc §11.4a): variant-agnostic LIVE
+        // ALIASES of the palette role tokens, so a control template references its own key while one
+        // role-token brush backs every consumer — and an app re-keys a single control's brush at a
+        // nearer chain scope to re-skin just that control. Registered BEFORE the control themes (which
+        // reference these keys) — order is irrelevant for resolution but keeps the read top-down.
+        AddControlKeyAliases(dict);
+
         // The Type-keyed control themes (S8 content authored into S7's structure, CD30): selector-less
         // Styles rooted at '^', armed at ControlTheme(0). Their templates + pseudo-class child rules
         // ship the default look for every P5 control.
@@ -123,6 +130,94 @@ public static class CursorialTheme
         noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
         noColor[ThemeKeys.AccessKeyUnderlineBrush] = defaultBrush;
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
+    }
+
+    // The per-control override keys (style-guide KEYS), each a live ResourceReference alias of a palette
+    // role token (design doc §11.4a). Variant-agnostic top-level entries — the alias resolves the same on
+    // every (base × tier) because it chases the role token, which IS per-variant. Behavior-preserving: each
+    // key aliases exactly the role token its control theme already consumed, so wiring the themes to these
+    // keys is a pure indirection (the render output is byte-identical). An app overrides a single control by
+    // re-keying its per-control key at a nearer scope.
+    private static void AddControlKeyAliases(ResourceDictionary dict)
+    {
+        void Alias(string key, string target) => dict[key] = new ResourceReference(target);
+
+        // Base / shared — the 3 spec-named aliases whose guide name differs from our role token.
+        Alias(ThemeKeys.AccentForegroundBrush, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.SelectionActiveBrush, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.PanelBackgroundBrush, ThemeKeys.PanelBrush);
+
+        // Button (Button / RepeatButton / ToggleButton).
+        Alias(ThemeKeys.ButtonForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ButtonBackgroundNormal, ThemeKeys.SurfaceBrush);
+        Alias(ThemeKeys.ButtonBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.ButtonForegroundFocus, ThemeKeys.WindowBackground);
+        Alias(ThemeKeys.ButtonBackgroundFocus, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ButtonForegroundPressed, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.ButtonBackgroundPressed, ThemeKeys.AccentBrush);
+        Alias(ThemeKeys.ButtonForegroundDisabled, ThemeKeys.DisabledForegroundBrush);
+        Alias(ThemeKeys.ButtonBackgroundDisabled, ThemeKeys.DisabledBackgroundBrush);
+
+        // ToggleSwitch / CheckBox / RadioButton.
+        Alias(ThemeKeys.ToggleForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ToggleGlyphChecked, ThemeKeys.GreenBrush);
+        Alias(ThemeKeys.ToggleGlyphIndeterminate, ThemeKeys.AmberBrush);
+        Alias(ThemeKeys.RadioGlyphChecked, ThemeKeys.AccentBrush);
+        Alias(ThemeKeys.ToggleForegroundDisabled, ThemeKeys.DisabledForegroundBrush);
+
+        // Input (TextBox, editable ComboBox).
+        Alias(ThemeKeys.InputForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.InputBackgroundNormal, ThemeKeys.SurfaceBrush);
+        Alias(ThemeKeys.InputBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.InputBackgroundFocus, ThemeKeys.WellBrush);
+        Alias(ThemeKeys.InputSelectionActive, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.InputForegroundDisabled, ThemeKeys.DisabledForegroundBrush);
+        Alias(ThemeKeys.InputBackgroundDisabled, ThemeKeys.DisabledBackgroundBrush);
+
+        // ListItem (ListBox / ComboBox drop-down item).
+        Alias(ThemeKeys.ListItemForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ListItemBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.ListItemBackgroundSelected, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.ListItemForegroundFocus, ThemeKeys.WindowBackground);
+        Alias(ThemeKeys.ListItemBackgroundFocus, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ListItemForegroundDisabled, ThemeKeys.MutedBrush);
+
+        // TreeViewItem.
+        Alias(ThemeKeys.TreeItemForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.TreeItemBackgroundSelected, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.TreeItemForegroundFocus, ThemeKeys.WindowBackground);
+        Alias(ThemeKeys.TreeItemBackgroundFocus, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.TreeItemForegroundDisabled, ThemeKeys.MutedBrush);
+
+        // Menu (MenuBar / MenuItem / ContextMenu).
+        Alias(ThemeKeys.MenuForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.MenuBarBackground, ThemeKeys.SurfaceBrush);
+        Alias(ThemeKeys.MenuBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.MenuBackgroundHighlighted, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.MenuAcceleratorForeground, ThemeKeys.MutedBrush);
+        Alias(ThemeKeys.MenuForegroundDisabled, ThemeKeys.MutedBrush);
+
+        // TabItem.
+        Alias(ThemeKeys.TabForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.TabBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.TabBackgroundSelected, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.TabForegroundDisabled, ThemeKeys.MutedBrush);
+
+        // ProgressBar.
+        Alias(ThemeKeys.ProgressFillNormal, ThemeKeys.GreenBrush);
+        Alias(ThemeKeys.ProgressFillIndeterminate, ThemeKeys.AccentBrush);
+        Alias(ThemeKeys.ProgressTrackBrush, ThemeKeys.WellBrush);
+
+        // Calendar (day cells + Year/Decade cells; DatePicker).
+        Alias(ThemeKeys.CalendarDayForeground, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.CalendarDayInactiveForeground, ThemeKeys.MutedBrush);
+        Alias(ThemeKeys.CalendarDayBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.CalendarDayTodayForeground, ThemeKeys.AccentBrush);
+        Alias(ThemeKeys.CalendarDayBackgroundSelected, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.CalendarDayForegroundSelected, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.WindowBackground);
+        Alias(ThemeKeys.CalendarDayBackgroundFocus, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.CalendarDayForegroundDisabled, ThemeKeys.MutedBrush);
     }
 
     private static void AddTierPalette(ResourceDictionary dict, ThemeBase @base)

@@ -231,6 +231,23 @@ key (nearer scope) to re-skin just that control. Tests: `ControlMatrix/Section42
 | CA6 | `Alias → AccentBrush`; `leaf.SetResourceReference(P, Alias)`; flip `RequestedThemeBase` Dark→Light | read `leaf.GetValue(P)` before/after | a live DynamicResource through an alias re-pushes on the variant flip (`#7aa2f7` → `#34548a`) — the CatchAll re-resolve re-chases | PIN (§11.4a/CD16) |
 | CA7 | BuiltIn per-control key (`ButtonBackgroundNormal`) at Dark | `leaf.FindResource(ButtonBackgroundNormal)` vs `FindResource(SurfaceBrush)` | the very same brush instance — the per-control key is a live alias of its role token | PIN (§11.4a) |
 
+### 2.6 The per-control override keys (style-guide KEYS) — behavior-preserving aliases
+
+`ThemeKeys` exposes the style-guide per-control resource keys (the gallery KEYS table) as live `ResourceReference`
+aliases registered in `CursorialTheme` (`AddControlKeyAliases`); BuiltIn's control themes reference these keys instead
+of the role tokens directly. Each alias targets **exactly** the role token its control theme already consumed, so the
+wiring is a pure indirection (every existing control-matrix + ArchOne render row stays green, byte-identical). The
+override surface: an app re-keys one control's brush (`app.Resources[ThemeKeys.ButtonBackgroundNormal] = …`) and only
+that control re-skins; the shared role token — and every other control — is untouched. The keys span Button (9, shared
+by RepeatButton/ToggleButton + `:default` reusing the Pressed pair), Toggle/Check/Radio (5), Input/TextBox (7), ListItem
+(6, ListBox + ComboBox items), TreeItem (5), Menu (6), Tab (4), ProgressBar (3), Calendar day-cell (9), plus 3
+spec-named base aliases (`AccentForegroundBrush`/`SelectionActiveBrush`/`PanelBackgroundBrush`).
+
+| # | Setup | Operation | Expected | Oracle |
+|---|---|---|---|---|
+| CA8 | a default-themed `Button` at Dark | override `app.Resources[ButtonBackgroundNormal]`, `RunFrame` | the button's resting fill re-skins to the override; `FindResource(SurfaceBrush)` is unchanged (per-control override, shared token untouched) | PIN (§11.4a; `Section05` C116b) |
+| CA9 | a default-themed `Button` at Dark | override `app.Resources[TextBrush]` (a role token an alias targets) | the button's ink re-skins — a keyed override of the role token cascades through the per-control alias (`Section05` C116, the R2 promise preserved) | PIN (§11.4a/R2) |
+
 ---
 
 ## 3. Variants live + subscriptions + the UIApplication merge + version (R1) — C59–C92

@@ -119,4 +119,17 @@ public sealed class Section42_ResourceAlias
         var light = Assert.IsType<SolidColorBrush>(tree.Leaf.GetValue(Probe.P));
         Assert.Equal(Color.FromHex("#34548a"), light.Color);
     }
+
+    [Fact] // CA7 — the BuiltIn per-control key (ButtonBackgroundNormal) is a live alias of the SurfaceBrush role token.
+    public void BuiltInPerControlKey_AliasesRoleToken()
+    {
+        using var host = UITestHost.Create();
+        var tree = BuildTree();
+        host.ShowRoot(tree.Root);
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+
+        var perControl = tree.Leaf.FindResource(ThemeKeys.ButtonBackgroundNormal);
+        var roleToken = tree.Leaf.FindResource(ThemeKeys.SurfaceBrush);
+        Assert.Same(roleToken, perControl); // chases to the very same brush instance
+    }
 }

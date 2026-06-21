@@ -14,6 +14,12 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
     // no segregated active list). Keyed buckets accelerate the keyed-pulse path.
     private readonly Dictionary<object, List<Node>> _byKey = new(ResourceKeyComparer.Instance);
     private readonly List<Node> _all = [];
+    // Nodes whose resolved value chased through ≥1 ResourceReference alias (§11.4a). A keyed pulse for a role
+    // token must reach a subscription bucketed on a per-control ALIAS key whose chain targets that token — the
+    // alias key isn't in the pulsed key's bucket, so these are re-resolved on every keyed pulse (each short-
+    // circuits on an unchanged value). Stale entries (a node that stopped depending on an alias) are skipped by
+    // the DependsOnAlias check and dropped at compaction.
+    private readonly List<Node> _aliasNodes = [];
     private int _sweepDepth;          // >0 ⇒ mid-sweep (snapshot/tombstone semantics)
     private bool _needsCompaction;
     private int _pendingFollowups;    // re-entrant mutation queues a follow-up pulse
@@ -48,7 +54,19 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
 
         _all.Add(node);
         Bucket(key).Add(node);
+        TrackAlias(node, resolved.chased);
         return node;
+    }
+
+    // Adds the node to the alias-dependent set the first time it resolves through an alias (§11.4a).
+    private void TrackAlias(Node node, bool chased)
+    {
+        node.DependsOnAlias = chased;
+        if (chased && !node.InAliasList)
+        {
+            node.InAliasList = true;
+            _aliasNodes.Add(node);
+        }
     }
 
     private List<Node> Bucket(object key)
@@ -66,6 +84,13 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
         if (_byKey.TryGetValue(key, out var bucket))
             Sweep(bucket, pulsingScope, key);
 
+        // Alias-dependent subscriptions (§11.4a): a per-control alias whose chain targets `key` is bucketed on
+        // the alias key, not `key`, so it isn't in the bucket above — re-resolve them too. The per-pulse Version
+        // guard in Sweep dedups any node already handled in the key bucket; each re-resolve short-circuits on an
+        // unchanged value (a keyed pulse of an unrelated key touches no alias node's value).
+        if (_aliasNodes.Count > 0)
+            Sweep(_aliasNodes, pulsingScope, key, aliasOnly: true);
+
         DrainFollowups();
     }
 
@@ -77,7 +102,7 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
         DrainFollowups();
     }
 
-    private void Sweep(List<Node> candidates, UIElement? pulsingScope, object? key)
+    private void Sweep(List<Node> candidates, UIElement? pulsingScope, object? key, bool aliasOnly = false)
     {
         // Snapshot/tombstone: copy the candidate list so mid-sweep Subscribe/Dispose is safe (a node
         // subscribed during the sweep isn't visited; a disposed one is Dead-skipped) — design doc §11.6.
@@ -88,6 +113,14 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
             foreach (var node in snapshot)
             {
                 if (node.Dead || node.Paused)
+                    continue;
+
+                // Already re-resolved earlier in THIS pulse (the alias sweep runs after the key bucket — §11.4a).
+                if (node.ResolvedVersion == Version)
+                    continue;
+
+                // Stale alias-list entry: the node stopped depending on an alias (dropped at compaction).
+                if (aliasOnly && !node.DependsOnAlias)
                     continue;
 
                 // Scope containment (design doc §11.6): only nodes whose scope is the pulsing scope
@@ -112,6 +145,9 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
         node.ResolvedVersion = Version;
         var resolved = Resolve(node.Scope, node.Key);
         var newValue = resolved.found ? resolved.value : UIProperty.UnsetValue;
+
+        // Keep alias-dependency current: an app re-keying a resource can turn a direct node into an aliased one.
+        TrackAlias(node, resolved.chased);
 
         if (Equals(node.LastValue, newValue))
             return; // identity / value short-circuit (design doc §11.6)
@@ -159,6 +195,17 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
         _all.RemoveAll(static n => n.Dead);
         foreach (var bucket in _byKey.Values)
             bucket.RemoveAll(static n => n.Dead);
+        // Drop dead nodes AND stale entries (nodes that stopped depending on an alias); clear InAliasList on the
+        // latter so a later re-aliasing re-adds them.
+        _aliasNodes.RemoveAll(static n =>
+        {
+            if (n.Dead)
+                return true;
+            if (n.DependsOnAlias)
+                return false;
+            n.InAliasList = false;
+            return true;
+        });
     }
 
     /// <summary>Re-entrant resource mutation during a sweep queues a follow-up pulse, drained to a fixpoint (design doc §11.6).</summary>
@@ -185,12 +232,12 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
         }
     }
 
-    private (bool found, object? value) Resolve(UIElement scope, object key)
+    private (bool found, object? value, bool chased) Resolve(UIElement scope, object key)
     {
         var variant = app.ActualThemeVariant;
-        return ResourceExtensions.Walk(scope, key, variant, searched: null, out var value)
-            ? (true, value)
-            : (false, null);
+        return ResourceExtensions.Walk(scope, key, variant, searched: null, out var value, out var chased)
+            ? (true, value, chased)
+            : (false, null, chased);
     }
 
     private static bool IsContained(UIElement node, UIElement scope)
@@ -227,6 +274,12 @@ internal sealed class ResourceSubscriptionRegistry(UIApplication app)
         public int ResolvedVersion { get; set; }
         public bool Paused { get; private set; }
         public bool Dead { get; set; }
+
+        /// <summary>Whether this node's value currently resolves through ≥1 <see cref="ResourceReference"/> alias (§11.4a).</summary>
+        public bool DependsOnAlias { get; set; }
+
+        /// <summary>Whether this node is currently a member of the registry's alias-node list (de-dups adds).</summary>
+        public bool InAliasList { get; set; }
 
         public void Pause() => Paused = true;
 

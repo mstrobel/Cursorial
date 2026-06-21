@@ -6,9 +6,9 @@ namespace Cursorial.UI.Xaml;
 
 /// <summary>
 /// The well-known XAML xmlns URIs and the helpers that classify a namespace string. The default
-/// Cursorial namespace maps (via <see cref="XmlnsDefinitionAttribute"/> in <c>Cursorial.UI</c>) to
-/// <c>Cursorial.UI</c> + <c>Cursorial.UI.Controls</c> + <c>Cursorial.UI.Data</c> (matrix ③); the
-/// intrinsics namespace carries the <c>x:</c> directives.
+/// Cursorial namespace maps (via <c>[assembly: XmlnsDefinition]</c> declarations discovered by the
+/// metadata providers) to <c>Cursorial.UI</c> + <c>Cursorial.UI.Controls</c> + <c>Cursorial.UI.Data</c>
+/// + … (matrix ③); the intrinsics namespace carries the <c>x:</c> directives.
 /// </summary>
 internal static class XmlnsNamespaces
 {

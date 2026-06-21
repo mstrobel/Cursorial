@@ -29,20 +29,46 @@ internal sealed class XamlSymbolResolver
         _ => null,
     };
 
-    /// <summary>The CLR namespaces the default UI xmlns probes (mirrors <c>XamlSchemaContext</c>).</summary>
-    private static readonly string[] DefaultUiNamespaces =
-    [
-        "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.UI.Input",
-        "Cursorial.Drawing.Media", "Cursorial.UI.Themes"
-    ];
-
     private const string UsingPrefix = "using:";
     private const string ClrNamespacePrefix = "clr-namespace:";
 
     private readonly Compilation _compilation;
     private readonly Dictionary<(string, string), INamedTypeSymbol?> _cache = new();
+    private string[]? _defaultUiNamespaces;
 
     public XamlSymbolResolver(Compilation compilation) => _compilation = compilation;
+
+    /// <summary>
+    /// The CLR namespaces the default UI xmlns probes — DISCOVERED from <c>[assembly: XmlnsDefinition]</c>
+    /// declarations on the compilation's own + referenced assemblies (the build-time analog of the loader's
+    /// <c>XamlSchemaContext</c> discovery; the dual-run gate catches any drift). Matched on the attribute's simple
+    /// name, purely from symbols — <c>Cursorial.UI</c> is never loaded into the compiler.
+    /// </summary>
+    private string[] DefaultUiNamespaces => _defaultUiNamespaces ??= DiscoverDefaultUiNamespaces();
+
+    private string[] DiscoverDefaultUiNamespaces()
+    {
+        var namespaces = new List<string>();
+
+        void Scan(IAssemblySymbol assembly)
+        {
+            foreach (var attribute in assembly.GetAttributes())
+            {
+                if (attribute.AttributeClass?.Name != "XmlnsDefinitionAttribute" || attribute.ConstructorArguments.Length < 2)
+                    continue;
+                if (attribute.ConstructorArguments[0].Value as string != CursorialUiNamespace)
+                    continue;
+                if (attribute.ConstructorArguments[1].Value is string clrNamespace && clrNamespace.Length > 0 && !namespaces.Contains(clrNamespace))
+                    namespaces.Add(clrNamespace);
+            }
+        }
+
+        Scan(_compilation.Assembly);
+        foreach (var referenced in _compilation.SourceModule.ReferencedAssemblySymbols)
+            Scan(referenced);
+
+        return namespaces.ToArray();
+    }
 
     /// <summary>
     /// Resolves a type, or <see langword="null"/> on a miss. <paramref name="ambiguous"/> carries the

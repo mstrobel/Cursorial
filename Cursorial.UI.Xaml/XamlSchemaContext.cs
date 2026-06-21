@@ -1,8 +1,5 @@
 using System.Reflection;
 
-using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
-
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
@@ -37,24 +34,51 @@ public sealed class XamlSchemaContext
     /// <summary>Creates a schema context seeded with the default Cursorial map.</summary>
     public XamlSchemaContext()
     {
-        // The default xmlns map covers UI/Controls/Data plus Drawing.Media (where brushes/colors/Colors/
-        // Brushes live — the XD13 color mini-language and {x:Static Colors.Red}/{x:Static Brushes.Red}) and
-        // Themes (ThemeKeys — so {x:Static ThemeKeys.SurfaceBrush} resolves unprefixed, the same way
-        // {x:Static Colors.Red} does; the colliding Themes glyph carrier was renamed GlyphSetCarrier to
-        // keep the simple name GlyphSet unambiguous against Drawing.Media.GlyphSet).
-        _defaultClrNamespaces =
-        [
-            "Cursorial.UI", "Cursorial.UI.Controls", "Cursorial.UI.Data", "Cursorial.UI.Input",
-            "Cursorial.Drawing.Media", "Cursorial.UI.Themes"
-        ];
-
+        // The seed assemblies that form the default https://cursorial.dev/ui map. Their CLR namespaces are NOT
+        // hardcoded here — each assembly DECLARES them via [assembly: XmlnsDefinition], discovered below (and an app
+        // assembly registered later auto-extends the map the same way — #108). Cursorial.UI declares UI / Controls /
+        // Data / Input / Themes (ThemeKeys, so {x:Static ThemeKeys.SurfaceBrush} resolves unprefixed); Cursorial.Drawing
+        // declares Drawing.Media (the XD13 color mini-language + {x:Static Colors.Red}/{x:Static Brushes.Red}).
         _defaultAssemblies =
         [
-            typeof(UIElement).Assembly,                    // Cursorial.UI
-            typeof(Control).Assembly,                      // Cursorial.UI.Controls (same assembly)
-            typeof(Binding).Assembly,                      // Cursorial.UI.Data (same assembly)
-            typeof(Drawing.Media.SolidColorBrush).Assembly // Cursorial.Drawing (brushes / Colors / Brushes)
+            typeof(UIElement).Assembly,                     // Cursorial.UI (UI / Controls / Data / Input / Themes)
+            typeof(Drawing.Media.SolidColorBrush).Assembly  // Cursorial.Drawing (Drawing.Media)
         ];
+
+        _defaultClrNamespaces = [];
+        foreach (var assembly in _defaultAssemblies)
+            DiscoverDefaultNamespaces(assembly, _defaultClrNamespaces);
+    }
+
+    /// <summary>
+    /// Adds to <paramref name="into"/> every CLR namespace the assembly maps to the default Cursorial UI xmlns via
+    /// <c>[assembly: XmlnsDefinition]</c>. Matched on the attribute's SIMPLE NAME (the <c>Cursorial.Shared</c>
+    /// markup-attribute pattern — an app may use this attribute or any equivalently named one), read through
+    /// <see cref="CustomAttributeData"/> so no compile-time reference to the attribute type is needed.
+    /// </summary>
+    private static void DiscoverDefaultNamespaces(Assembly assembly, List<string> into)
+    {
+        foreach (var data in SafeGetCustomAttributesData(assembly))
+        {
+            if (data.AttributeType.Name != "XmlnsDefinitionAttribute" || data.ConstructorArguments.Count < 2)
+                continue;
+            if (data.ConstructorArguments[0].Value as string != CursorialUiNamespace)
+                continue;
+            if (data.ConstructorArguments[1].Value is string clrNs && clrNs.Length > 0 && !into.Contains(clrNs))
+                into.Add(clrNs);
+        }
+    }
+
+    private static IList<CustomAttributeData> SafeGetCustomAttributesData(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetCustomAttributesData();
+        }
+        catch (Exception ex) when (ex is NotSupportedException or TypeLoadException)
+        {
+            return [];
+        }
     }
 
     /// <summary>
@@ -69,6 +93,10 @@ public sealed class XamlSchemaContext
         {
             if (!_additionalAssemblies.Contains(assembly))
                 _additionalAssemblies.Add(assembly);
+
+            // Auto-extend the default map from the assembly's own [assembly: XmlnsDefinition] declarations, so an app
+            // assembly's unprefixed types resolve without a separate RegisterDefaultNamespace call (#108).
+            DiscoverDefaultNamespaces(assembly, _defaultClrNamespaces);
         }
     }
 

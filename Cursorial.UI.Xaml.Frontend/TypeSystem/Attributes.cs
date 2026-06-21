@@ -4,31 +4,9 @@ using System;
 
 namespace Cursorial.UI.Xaml;
 
-/// <summary>
-/// Declares that a CLR namespace in the annotated assembly is exposed under a XAML xmlns URI.
-/// Multiple instances map several CLR namespaces to one URI (the default Cursorial map points
-/// <c>https://cursorial.dev/ui</c> at <c>Cursorial.UI</c> + <c>Cursorial.UI.Controls</c> +
-/// <c>Cursorial.UI.Data</c>). Design doc §4.2.
-/// </summary>
-[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true, Inherited = false)]
-public sealed class XmlnsDefinitionAttribute : Attribute
-{
-    /// <summary>Creates an xmlns→CLR-namespace mapping.</summary>
-    public XmlnsDefinitionAttribute(string xmlNamespace, string clrNamespace)
-    {
-        XmlNamespace = xmlNamespace ?? throw new ArgumentNullException(nameof(xmlNamespace));
-        ClrNamespace = clrNamespace ?? throw new ArgumentNullException(nameof(clrNamespace));
-    }
-
-    /// <summary>The XAML xmlns URI.</summary>
-    public string XmlNamespace { get; }
-
-    /// <summary>The CLR namespace exposed under it.</summary>
-    public string ClrNamespace { get; }
-
-    /// <summary>The assembly the CLR namespace lives in (defaults to the annotated assembly).</summary>
-    public string? AssemblyName { get; set; }
-}
+// XmlnsDefinitionAttribute moved to Cursorial.Shared (Cursorial.Markup namespace) so every assembly can declare
+// its xmlns→CLR map without depending on the XAML frontend, and both metadata providers discover it uniformly
+// (the Cursorial.Shared markup-attribute pattern — #96/#108).
 
 /// <summary>
 /// Registers a generated <see cref="IXamlTypeMetadataProvider"/> for trim/AOT-clean loading

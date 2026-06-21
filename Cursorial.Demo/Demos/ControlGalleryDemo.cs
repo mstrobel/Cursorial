@@ -56,10 +56,6 @@ internal sealed class ControlGalleryDemo : IDemo
 
         public UIElement BuildTree()
         {
-            // A page-level striping rule so the ListBox shows the :alternate pseudo-class (W2) — a SurfaceBrush
-            // tint over the WellBrush well; DynamicResource so it re-skins on a tier/base flip.
-            app.Styles.Add(new Style(Selectors.OfType<ListBoxItem>().PseudoClass("alternate"))
-                .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush));
 
             var root = new DockPanel();
             root.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.WindowBackground);
@@ -87,7 +83,7 @@ internal sealed class ControlGalleryDemo : IDemo
 
         private Menu BuildMenu()
         {
-            var menu = new Menu();
+            var menu = new Menu { Margin = new Margins(0, 0, 0, 1) };
 
             var file = new MenuItem { Header = "_File" };
             file.Items.Add(Leaf("_New", "Ctrl+N"));
@@ -125,7 +121,7 @@ internal sealed class ControlGalleryDemo : IDemo
 
         private TabControl BuildTabs()
         {
-            var tabs = new TabControl();
+            var tabs = new TabControl { BorderPen = null };
             tabs.Items.Add(new TabItem { Header = "_Form", Content = BuildForm() });
             tabs.Items.Add(new TabItem { Header = "_List", Content = BuildList() });
             tabs.Items.Add(new TabItem { Header = "T_ree", Content = BuildTreeView() });

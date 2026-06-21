@@ -14,19 +14,26 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public interface IScrollContentHost
 {
-    /// <summary>When <see langword="false"/>, the SCP runs its verbatim legacy measure-at-<c>MaxScrollExtent</c>
-    /// path (the OFF-path) — discovery is harmless for a non-virtualizing host.</summary>
+    /// <summary>The master opt-in: when <see langword="true"/> the SCP delegates extent/viewport/steps to this host;
+    /// when <see langword="false"/> the SCP ignores the host and runs its legacy path (measure the content at the
+    /// full scroll extent), exactly as if the interface were not implemented. A consumer implementing this interface
+    /// to drive scrolling returns <see langword="true"/>; the <see langword="false"/> state lets a forwarder
+    /// (e.g. <c>ItemsPresenter</c>) advertise "no virtualizing panel right now" without the SCP null-checking.</summary>
     bool IsScrollClient { get; }
 
     /// <summary>The SCP injects itself once (adopt) / clears (disown); the host raises
     /// <see cref="ScrollContentPresenter.InvalidateScrollExtent"/> through it when its estimate refines (the
-    /// back-channel).</summary>
+    /// back-channel). <b>Set by the SCP, not the consumer</b> — read it to observe adopt/disown (non-null ⇒
+    /// adopted). A plain auto-property satisfies the contract.</summary>
     ScrollContentPresenter? ScrollOwner { get; set; }
 
-    /// <summary>Whether the host scrolls horizontally — flows from the SCP's own axis enable.</summary>
+    /// <summary>Whether the host scrolls horizontally. <b>Written by the SCP</b> (it pushes its own axis-enable into
+    /// the host before each measure); a consumer exposes a settable backing field and reads it — setting it from
+    /// outside the SCP has no effect (the SCP overwrites it next measure).</summary>
     bool CanScrollHorizontally { get; set; }
 
-    /// <summary>Whether the host scrolls vertically — flows from the SCP's own axis enable.</summary>
+    /// <summary>Whether the host scrolls vertically. <b>Written by the SCP</b> — see
+    /// <see cref="CanScrollHorizontally"/>.</summary>
     bool CanScrollVertically { get; set; }
 
     /// <summary>The total scrollable content in CELLS, estimated (realized-exact + estimated-unrealized). The SCP
@@ -42,15 +49,23 @@ public interface IScrollContentHost
     /// does, at the re-anchor cadence). A non-virtualizing host ignores it.</summary>
     void InvalidateRealization();
 
-    /// <summary>The cell step for a line scroll (arrow/wheel) from <paramref name="currentOffset"/> in
-    /// <paramref name="sign"/> direction (+1 down/right). Cells always — the SCP's offset stays one cell axis.</summary>
+    /// <summary>The line-scroll (arrow/wheel) step as an UNSIGNED cell <b>magnitude</b> from
+    /// <paramref name="currentOffset"/>: the caller applies <paramref name="sign"/> (+1 = down/right) — return a
+    /// positive distance, never a signed value (a value &lt; 1 is clamped to 1, so a signed return silently
+    /// degrades to 1). <paramref name="sign"/> is supplied so the host can land on the boundary in that direction
+    /// (e.g. up snaps to the previous unit's top once already at a boundary). Cells always — the SCP's offset stays
+    /// one cell axis. Only consulted when <see cref="IsLogicalScroll"/> is <see langword="true"/>.</summary>
     int LineStep(int currentOffset, int sign, bool vertical);
 
-    /// <summary>The cell step for a page scroll. Cells always.</summary>
+    /// <summary>The page-scroll step as an UNSIGNED cell magnitude from <paramref name="currentOffset"/> — see
+    /// <see cref="LineStep"/> for the sign/magnitude contract. Only consulted when <see cref="IsLogicalScroll"/> is
+    /// <see langword="true"/>.</summary>
     int PageStep(int currentOffset, int sign, bool vertical);
 
-    /// <summary>Whether this host scrolls by whole items (diagnostics + which step source <c>ScrollViewer</c>
-    /// consults); the offset stays cells regardless.</summary>
+    /// <summary>Whether this host scrolls by whole logical units (items/tiles). <b>Gates step delegation</b>: the
+    /// <c>ScrollViewer</c> sources its keyboard line/page step from <see cref="LineStep"/>/<see cref="PageStep"/>
+    /// only when this is <see langword="true"/> (and <see cref="IsScrollClient"/> is <see langword="true"/>);
+    /// otherwise it uses the legacy fixed step (one cell / one viewport). The offset stays cells regardless.</summary>
     bool IsLogicalScroll { get; }
 }
 

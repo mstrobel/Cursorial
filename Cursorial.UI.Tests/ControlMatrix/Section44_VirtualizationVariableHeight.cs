@@ -84,6 +84,28 @@ public sealed class Section44_VirtualizationVariableHeight
         return s;
     }
 
+    [Fact] // §V2/V4 LineStep boundary (audit fix, commit 860434c): UP at an exact item top steps a WHOLE item back,
+           // not a 1-cell nudge. LineStep was dead until the ScrollViewer wired it (V5/§V1) — the degenerate boundary
+           // case surfaced only once a consumer existed; uniform 1-row items hid it (item step == cell step == 1).
+    public void VV4_LineStep_UpFromItemBoundary_StepsWholeItem()
+    {
+        var (host, lb) = MakeVar(50, _ => 3); // multi-row items ⇒ an item step ≠ a cell step
+        using var _ = host;
+        var gen = lb.ItemContainerGenerator;
+        IScrollContentHost host2 = Logical(lb);
+
+        var top1 = gen.ContainerFromIndex(1)!.Bounds.Row; // item 1's true top (a multi-row offset)
+        var top2 = gen.ContainerFromIndex(2)!.Bounds.Row;
+        Assert.True(top1 > 1, $"need multi-row items for a meaningful boundary test (top1={top1})");
+
+        // UP from an exact boundary (offset == item 1's top) → item 0's top (row 0): magnitude top1, NOT 1.
+        Assert.Equal(top1, host2.LineStep(top1, -1, vertical: true));
+        // DOWN from the same boundary → item 2's top: magnitude == item 1's height.
+        Assert.Equal(top2 - top1, host2.LineStep(top1, +1, vertical: true));
+        // UP from one cell INTO item 1 → snap to item 1's OWN top: magnitude 1.
+        Assert.Equal(1, host2.LineStep(top1 + 1, -1, vertical: true));
+    }
+
     [Fact] // VV4.2: heterogeneous items arrange at the CUMULATIVE sum of preceding heights (prefix-sum), not index × const.
     public void VV4_2_PrefixSumArrange()
     {

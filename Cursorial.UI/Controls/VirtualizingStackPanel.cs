@@ -495,14 +495,18 @@ public sealed class VirtualizingStackPanel : VirtualizingPanel, ILogicalScrollHo
 
     void IScrollContentHost.InvalidateRealization() => InvalidateMeasure();
 
-    // Cells from the offset to the next/current item top (item mode), else a single cell (cell mode).
+    // Cells from the offset to the adjacent item top (item mode), else a single cell (cell mode): down → the NEXT
+    // item's top; up → the PREVIOUS item's top when already at an exact item boundary, else THIS item's top (so a
+    // partway-scrolled item snaps up to its own top first, then steps item-by-item — without the boundary case, up
+    // at an item top would degenerate to a 1-cell nudge). The ScrollViewer applies the sign; this returns magnitude.
     int IScrollContentHost.LineStep(int currentOffset, int sign, bool vertical)
     {
         if (!_isLogicalScroll || !vertical)
             return 1;
 
         var item = EstimateItemAtCore(currentOffset);
-        var targetItem = sign >= 0 ? item + 1 : item; // down → next item top; up → this item top (V2 parity)
+        var atBoundary = OffsetOf(item) == currentOffset;
+        var targetItem = sign >= 0 ? item + 1 : (atBoundary && item > 0 ? item - 1 : item);
         var step = (int) Math.Abs(OffsetOf(targetItem) - currentOffset);
         return Math.Max(1, step);
     }

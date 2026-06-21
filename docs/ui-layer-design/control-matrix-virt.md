@@ -246,6 +246,15 @@ The gallery's whole-tile-snapping chessboard surfaced two changes to make conten
   fixed step — so no existing control changes. **VV1.10** asserts the wiring (a stub host with `LineStep == 7`
   scrolls a focused SV by 7). The chessboard (`Cursorial.Gallery`) is the live consumer; `GallerySmokeTests`
   asserts a DownArrow snaps the offset by a whole 4-row tile and a RightArrow by an 8-column tile.
+- **`LineStep`/`PageStep` return an unsigned cell MAGNITUDE** (the ScrollViewer applies the sign; a value `< 1` is
+  clamped to 1, so a signed return silently degrades to 1) — documented on the now-public interface. The boundary
+  semantics: down → the next unit's top; up → the **previous** unit's top when already AT an exact boundary, else
+  this unit's top (a partway-scrolled unit snaps to its own top first). **The audit (post-860434c) found both
+  `VirtualizingStackPanel.LineStep` and the chessboard returned `1` when stepping up FROM an exact unit boundary**
+  (`target == currentOffset` → magnitude 0 → clamped to 1, a 1-cell nudge instead of a whole-unit step) — invisible
+  for uniform 1-row items (item step == cell step) and latent until the SV became the first consumer. Fixed in both;
+  `Section44.VV4_LineStep_UpFromItemBoundary` (mutation-verified) and `GallerySmokeTests` (Up/Left from a boundary
+  snap a whole tile back) are the regression rows.
 
 ---
 

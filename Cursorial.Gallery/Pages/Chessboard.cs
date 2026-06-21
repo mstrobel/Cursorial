@@ -70,21 +70,27 @@ internal sealed class Chessboard : Panel, IScrollContentHost
 
     public void InvalidateRealization() { } // the whole board is realized — nothing to re-realize
 
-    // The cell step that lands the offset on the next/current tile boundary (the whole-tile snap), both axes.
+    // The unsigned cell magnitude that lands the offset on the adjacent tile boundary (the whole-tile snap), both
+    // axes: down → the next tile's top; up → the previous tile's top when already AT a boundary, else this tile's
+    // top (mid-tile up snaps to the tile's own top first). The ScrollViewer applies the sign.
     public int LineStep(int currentOffset, int sign, bool vertical)
     {
         var tileSize = vertical ? TileHeight : TileWidth;
         var tile = currentOffset / tileSize;
-        var target = (sign >= 0 ? tile + 1 : tile) * tileSize;
+        var atBoundary = currentOffset % tileSize == 0;
+        var targetTile = sign >= 0 ? tile + 1 : (atBoundary ? tile - 1 : tile);
+        var target = Math.Max(0, targetTile) * tileSize;
         return Math.Max(1, Math.Abs(target - currentOffset));
     }
 
-    // A page = as many whole tiles as fit the viewport, snapped to a tile boundary.
+    // A page = as many whole tiles as fit the viewport, landing on a tile boundary relative to the current offset.
     public int PageStep(int currentOffset, int sign, bool vertical)
     {
         var tileSize = vertical ? TileHeight : TileWidth;
         var viewport = Math.Max(1, vertical ? _viewport.Rows : _viewport.Columns);
         var tilesPerPage = Math.Max(1, viewport / tileSize);
-        return tilesPerPage * tileSize;
+        var targetTile = Math.Max(0, currentOffset / tileSize + sign * tilesPerPage);
+        var target = targetTile * tileSize;
+        return Math.Max(1, Math.Abs(target - currentOffset));
     }
 }

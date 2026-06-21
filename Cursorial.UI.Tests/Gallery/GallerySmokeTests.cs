@@ -68,5 +68,15 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         host.SendKey(Key.RightArrow);
         host.RunUntilIdle();
         Assert.Equal(8, sv.HorizontalOffset); // snapped a whole 8-column tile
+
+        // Reverse direction at an exact tile boundary snaps a WHOLE tile back (the audit-found boundary case — up/left
+        // at a boundary must step the full tile, not degenerate to a 1-cell nudge).
+        host.SendKey(Key.UpArrow);
+        host.RunUntilIdle();
+        Assert.Equal(0, sv.VerticalOffset);   // back a whole 4-row tile (was 3 before the LineStep boundary fix)
+
+        host.SendKey(Key.LeftArrow);
+        host.RunUntilIdle();
+        Assert.Equal(0, sv.HorizontalOffset); // back a whole 8-column tile
     }
 }

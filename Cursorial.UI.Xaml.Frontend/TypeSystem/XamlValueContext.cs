@@ -6,7 +6,7 @@ using System.Globalization;
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
-/// The context handed to an <see cref="ITypeConverter"/> when it converts a string to a value.
+/// The context handed to an <see cref="Cursorial.UI.Xaml.ITypeConverter"/> when it converts a string to a value.
 /// Carries everything a converter legitimately needs at parse time (culture, the target member,
 /// the source position for diagnostics) without exposing the live object tree — context-free
 /// converters ignore all of it. A <c>readonly ref struct</c> so it never escapes the convert call.

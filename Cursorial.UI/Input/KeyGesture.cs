@@ -1,4 +1,9 @@
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+
 using Cursorial.Input;
+using Cursorial.UI.Xaml;
 
 namespace Cursorial.UI.Input;
 
@@ -8,6 +13,7 @@ namespace Cursorial.UI.Input;
 /// so the binding surface (<see cref="InputBinding.Gesture"/>) does not source-break when other
 /// gesture kinds arrive.
 /// </summary>
+[TypeConverter(typeof(InputGestureConverter))]
 public abstract record InputGesture
 {
     /// <summary>
@@ -81,15 +87,46 @@ public sealed record KeyGesture : InputGesture
     /// compiling to the character gesture <c>" "</c> per ND10) then the <see cref="Key"/> enum
     /// names.
     /// </summary>
+    /// <param name="gesture">The gesture string.</param>
     /// <exception cref="FormatException">An empty/unrecognized token (e.g. <c>"Ctrl+"</c>, <c>"Bogus+X"</c>, <c>""</c>).</exception>
     public static KeyGesture Parse(string gesture)
     {
+        if (TryParse(gesture, out var result, out var ex) && result is not null)
+            return result;
+
+        throw ex!;
+    }
+
+    /// <summary>
+    /// Parses a gesture string (ND13): <c>'+'</c>-separated, tokens trimmed, case-insensitive.
+    /// Modifier tokens: <c>Ctrl|Control</c>, <c>Shift</c>, <c>Alt</c>, <c>Super|Win|Cmd</c>,
+    /// <c>Meta</c>, <c>Hyper</c>. The final token: a single character produces a character gesture
+    /// with <see cref="Character"/> canonicalized upper-invariant (<c>"ctrl+s"</c> and
+    /// <c>"Ctrl+S"</c> produce the same gesture and the same <see cref="ToString"/>; matching is
+    /// ordinal case-insensitive regardless — amended ND13);
+    /// a multi-character token resolves through the aliases (<c>Esc</c>, <c>Return</c>, <c>Del</c>,
+    /// <c>Ins</c>, <c>PgUp</c>/<c>PgDn</c>, <c>Up/Down/Left/Right</c>, <c>Space</c> — the last
+    /// compiling to the character gesture <c>" "</c> per ND10) then the <see cref="Key"/> enum
+    /// names.
+    /// </summary>
+    /// <param name="gesture">The gesture string to parse.</param>
+    /// <param name="result">The parsed gesture, if successful.</param>
+    /// <param name="ex">
+    /// A format exception, if parsing failed (an empty/unrecognized token (e.g. <c>"Ctrl+"</c>,
+    /// <c>"Bogus+X"</c>, <c>""</c>).).
+    /// </param>
+    public static bool TryParse(string gesture, out KeyGesture? result, out Exception? ex)
+    {
         ArgumentNullException.ThrowIfNull(gesture);
+
+        result = null;
+        ex = null;
 
         var modifiers = KeyModifiers.None;
         var remaining = gesture.AsSpan();
 
         int plus;
+
         while ((plus = remaining.IndexOf('+')) >= 0)
         {
             modifiers |= ParseModifier(remaining[..plus].Trim(), gesture);
@@ -97,26 +134,38 @@ public sealed record KeyGesture : InputGesture
         }
 
         var token = remaining.Trim();
+
         if (token.IsEmpty)
-            throw new FormatException($"Invalid key gesture '{gesture}': missing the key token.");
+        {
+            ex = new FormatException($"Invalid key gesture '{gesture}': missing the key token.");
+            return false;
+        }
 
         if (token.Length == 1)
-            return new KeyGesture(Key.Character, modifiers, char.ToUpperInvariant(token[0]).ToString());
+        {
+            result = new KeyGesture(Key.Character, modifiers, char.ToUpperInvariant(token[0]).ToString());
+            return true;
+        }
 
         // Multi-character: aliases first (Space pins to the character gesture per ND10), then enum names.
         if (token.Equals("Space", StringComparison.OrdinalIgnoreCase))
-            return new KeyGesture(Key.Character, modifiers, " ");
-
-        var key = ResolveAlias(token);
-        if (key == Key.None
-            && (char.IsAsciiDigit(token[0])
-                || !Enum.TryParse(token, ignoreCase: true, out key)
-                || key is Key.None or Key.Character))
         {
-            throw new FormatException($"Invalid key gesture '{gesture}': unrecognized key '{token}'.");
+            result = new KeyGesture(Key.Character, modifiers, " ");
+            return true;
         }
 
-        return new KeyGesture(key, modifiers);
+        var key = ResolveAlias(token);
+
+        if (key == Key.None && (char.IsAsciiDigit(token[0]) ||
+                                !Enum.TryParse(token, ignoreCase: true, out key) ||
+                                key is Key.None or Key.Character))
+        {
+            ex = new FormatException($"Invalid key gesture '{gesture}': unrecognized key '{token}'.");
+            return false;
+        }
+
+        result = new KeyGesture(key, modifiers);
+        return true;
     }
 
     /// <inheritdoc/>
@@ -134,8 +183,8 @@ public sealed record KeyGesture : InputGesture
             return false;
 
         return Key == Key.Character
-            ? e.Key == Key.Character && e.Text.Span.Equals(Character.AsSpan(), StringComparison.OrdinalIgnoreCase)
-            : e.Key == Key;
+                   ? e.Key == Key.Character && e.Text.Span.Equals(Character.AsSpan(), StringComparison.OrdinalIgnoreCase)
+                   : e.Key == Key;
     }
 
     /// <inheritdoc/>
@@ -146,10 +195,13 @@ public sealed record KeyGesture : InputGesture
     {
         if (token.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) || token.Equals("Control", StringComparison.OrdinalIgnoreCase))
             return KeyModifiers.Control;
+
         if (token.Equals("Shift", StringComparison.OrdinalIgnoreCase))
             return KeyModifiers.Shift;
+
         if (token.Equals("Alt", StringComparison.OrdinalIgnoreCase))
             return KeyModifiers.Alt;
+
         if (token.Equals("Super", StringComparison.OrdinalIgnoreCase)
             || token.Equals("Win", StringComparison.OrdinalIgnoreCase)
             || token.Equals("Cmd", StringComparison.OrdinalIgnoreCase))
@@ -159,6 +211,7 @@ public sealed record KeyGesture : InputGesture
 
         if (token.Equals("Meta", StringComparison.OrdinalIgnoreCase))
             return KeyModifiers.Meta;
+
         if (token.Equals("Hyper", StringComparison.OrdinalIgnoreCase))
             return KeyModifiers.Hyper;
 
@@ -169,25 +222,87 @@ public sealed record KeyGesture : InputGesture
     {
         if (token.Equals("Esc", StringComparison.OrdinalIgnoreCase))
             return Key.Escape;
+
         if (token.Equals("Return", StringComparison.OrdinalIgnoreCase))
             return Key.Enter;
+
         if (token.Equals("Del", StringComparison.OrdinalIgnoreCase))
             return Key.Delete;
+
         if (token.Equals("Ins", StringComparison.OrdinalIgnoreCase))
             return Key.Insert;
+
         if (token.Equals("PgUp", StringComparison.OrdinalIgnoreCase))
             return Key.PageUp;
+
         if (token.Equals("PgDn", StringComparison.OrdinalIgnoreCase))
             return Key.PageDown;
+
         if (token.Equals("Up", StringComparison.OrdinalIgnoreCase))
             return Key.UpArrow;
+
         if (token.Equals("Down", StringComparison.OrdinalIgnoreCase))
             return Key.DownArrow;
+
         if (token.Equals("Left", StringComparison.OrdinalIgnoreCase))
             return Key.LeftArrow;
+
         if (token.Equals("Right", StringComparison.OrdinalIgnoreCase))
             return Key.RightArrow;
 
         return Key.None;
+    }
+}
+
+/// <summary>
+/// An <see cref="InputGesture"/> <see cref="ITypeConverter">type converter</see>.
+/// Currently only handles <see cref="KeyGesture"/>, but will eventually handle
+/// mouse/pointer gestures.
+/// </summary>
+public sealed class InputGestureConverter : TypeConverter, ITypeConverter
+{
+    public static readonly InputGestureConverter Instance = new();
+
+    // KeyGesture.Parse needs no services and never touches the tree — context-free.
+    public bool IsContextFree => true;
+
+    public object ConvertFromString(string text, in XamlValueContext ctx)
+    {
+        if (KeyGesture.TryParse(text, out KeyGesture? result, out var ex) && result is not null)
+            return result;
+
+        throw ex!;
+    }
+
+    public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
+    {
+        if (sourceType == typeof(string))
+            return true;
+
+        return base.CanConvertFrom(context, sourceType);
+    }
+
+    public override bool CanConvertTo(ITypeDescriptorContext? context, [NotNullWhen(true)] Type? destinationType)
+    {
+        if (destinationType == typeof(string))
+            return true;
+
+        return base.CanConvertTo(context, destinationType);
+    }
+
+    public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
+    {
+        if (value is string text)
+            return ConvertFromString(text, ctx: default);
+
+        return base.ConvertFrom(context, culture, value);
+    }
+
+    public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType)
+    {
+        if (destinationType == typeof(string) && value is KeyGesture gesture)
+            return gesture.ToString();
+
+        return base.ConvertTo(context, culture, value, destinationType);
     }
 }

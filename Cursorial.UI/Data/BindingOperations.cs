@@ -43,6 +43,10 @@ public static class BindingOperations
             }
         }
 
+        // DataContext lives on UIElement and does not flow to a plain UIObject. A UIElement target anchors on
+        // itself; a non-UIElement target (an InputBinding/KeyBinding whose Command="{Binding}") has a null
+        // anchor here and re-anchors on the nearest UIElement up its inheritance chain inside the expression —
+        // see BindingExpressionCore.Activate / its InheritanceParentChanged hook (BD13).
         var anchor = target as UIElement;
         // §20/PD24: a free-standing binding installed inside a template-instantiation scope captures
         // the Template lane now (the entry may materialize on a later attach, outside the scope).

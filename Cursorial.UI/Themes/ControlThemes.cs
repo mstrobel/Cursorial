@@ -86,6 +86,7 @@ internal static class ControlThemes
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
         // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
         // the negotiated tier. No resting pen ⇒ no frame ⇒ a 1-row button (content at row 0).
@@ -1152,6 +1153,8 @@ internal static class ControlThemes
 
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
+        presenter.SetBinding(UIElement.MarginProperty, new TemplateBinding(Control.PaddingProperty)); // opt-in frame only
+        
 
         var root = new Border();
         root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -1177,7 +1180,7 @@ internal static class ControlThemes
         // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
         // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
         // intentionally leaves Close off).
-        var closeButton = new Button { Content = "✕", Background = Brushes.Transparent, Focusable = false, IsTabStop = false };
+        var closeButton = new Button { Content = "✕", Focusable = false, IsTabStop = false };
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
         closeButton.Click += (_, _) =>
                              {
@@ -1190,14 +1193,24 @@ internal static class ControlThemes
 
         // Maximize ▢ — a role-driven glyph (its press bubbles to the window, which toggles Maximized via the
         // Maximize role, like the ◢ grip's ResizeSE). Only when the window can resize.
-        TextBlock? maximizeGlyph = null;
+        Button? maximizeButton = null;
         if (window.CanResize)
         {
-            maximizeGlyph = new TextBlock { Text = "▢" };
-            WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
-            DockPanel.SetDock(maximizeGlyph, Dock.Right);
-            titleBarContent.Children.Add(maximizeGlyph); // docked right → left of the close glyph
-            ctx.RegisterName("PART_MaximizeButton", maximizeGlyph);
+            maximizeButton = new Button { Content = "▢", Focusable = false, IsTabStop = false };
+            // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
+            DockPanel.SetDock(maximizeButton, Dock.Right);
+            titleBarContent.Children.Add(maximizeButton); // docked right → left of the close glyph
+            ctx.RegisterName("PART_MaximizeButton", maximizeButton);
+            
+            maximizeButton.Click += (_, _) =>
+                                 {
+                                     if (window.CanClose)
+                                     {
+                                         window.ApplyMaximizeState(window.WindowState is WindowState.Maximized 
+                                                                       ? WindowState.Normal 
+                                                                       : WindowState.Maximized);
+                                     }
+                                 };
         }
 
         var titleText = new TextBlock { Text = window.Title ?? string.Empty };
@@ -1208,6 +1221,61 @@ internal static class ControlThemes
         DockPanel.SetDock(titleBar, Dock.Top);
         layout.Children.Add(titleBar);
 
+        titleBar.Style =
+            new Style
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting())
+                        .SetResource(Border.BackgroundProperty, ThemeKeys.ElevationRaised)
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window"))
+                        .SetResource(Border.BackgroundProperty, ThemeKeys.AccentBrush)
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window").Descendant().OfType<Button>())
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                    
+                }
+            };
+        
+        closeButton.Style =
+            new Style
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting())
+                        .Set(Control.BackgroundProperty, null)
+                        .SetResource(Control.ForegroundProperty, ThemeKeys.RedBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window"))
+                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":pointerover"))
+                        .SetResource(Control.BackgroundProperty, ThemeKeys.RedBrush)
+                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":pressed"))
+                        .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationHighest)
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush)
+                }
+            };
+
+        maximizeButton?.Style =
+            new Style
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting())
+                        .Set(Control.BackgroundProperty, null)
+                        .SetResource(Control.ForegroundProperty, ThemeKeys.GreenBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window"))
+                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":pointerover"))
+                        .SetResource(Control.BackgroundProperty, ThemeKeys.GreenBrush)
+                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":pressed"))
+                        .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationHighest)
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush)
+                }
+            };
+        
         // The active-state look (the band/ink that tracks Window.IsActive) is wired in Window.OnApplyTemplate
         // against the PART_TitleBar/PART_Title/PART_CloseButton/PART_MaximizeButton parts and unhooked in
         // Window.OnTemplateDetaching — so re-templating a live window never leaks the Activated/Deactivated
@@ -1246,6 +1314,7 @@ internal static class ControlThemes
         => new Style { Key = "Theme.Window" }
             .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush) // borderless body surface; a consumer LocalValue Background wins
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.PaddingProperty, new(2, 1))
             .Set(Control.TemplateProperty, WindowChromeTemplate());
 }
 

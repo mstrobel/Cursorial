@@ -44,7 +44,8 @@ public readonly record struct StyleFrameExplanation(StyleLayer Layer,
                                                     bool IsActive,
                                                     bool HasValue,
                                                     object? LastProducedValue,
-                                                    string Status);
+                                                    string Status,
+                                                    object? ResourceKey);
 
 /// <summary>
 /// The styling engine's diagnostics surface (design doc §3.9): <see cref="Explain"/> renders every
@@ -202,14 +203,16 @@ public static class StyleDiagnostics
             ? styleFrame.Rule.SelectorText.Length == 0 ? "(explicit)" : styleFrame.Rule.SelectorText
             : "(frame)"; // a non-engine ValueFrame in the Style slot (conformance kit / future producers)
         var layer = frame is StyleRuleFrame ruleFrame ? ruleFrame.Layer : key.Layer;
-        
+        var resourceKey = frame.TryGetResourceKey(property, out var k) ? k : null;
+
         return new StyleFrameExplanation(Layer: layer,
                                          SelectorDescription: selector,
                                          SortKey: frame.SortKey,
                                          IsActive: frame.IsActive,
                                          HasValue: entry.HasValue,
                                          LastProducedValue: entry.HasValue ? FormatValue(property.GetEntryValueBoxed(entry)) : null,
-                                         Status: winning ? "Winning" : "Shadowed");
+                                         Status: winning ? "Winning" : "Shadowed",
+                                         ResourceKey: resourceKey);
 
     }
 

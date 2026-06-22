@@ -528,6 +528,16 @@ public abstract partial class UIElement : UIObject
         OnTearDown(); // subclass-owned release of non-binding external subscriptions (e.g. ItemsControl's source view)
         TearDownValueStore();
         Data.BindingOperations.TearDown(this); // the second sweep leg (doc §5.1 / §6.5)
+
+        // InputBindings are non-UIElement UIObjects anchored on this element (a Command="{Binding}" anchors on
+        // its owner's DataContext, BD13); they are neither visual nor logical children, so the sweep above never
+        // reaches them. Tear down each gesture's bindings here — disposing the owner-side DataContext observer and
+        // the InheritanceParentChanged subscription the binding installed.
+        if (_inputBindings is { } inputBindings)
+        {
+            for (var i = 0; i < inputBindings.Count; i++)
+                Data.BindingOperations.TearDown(inputBindings[i]);
+        }
     }
 
     /// <summary>

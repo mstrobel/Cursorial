@@ -583,7 +583,14 @@ public abstract class UIObject : IInheritanceNode
         // registration, §2.6-3). Shadowed properties and equal-value diffs are silent.
         foreach (var property in UIPropertyRegistry.InheritingProperties)
             property.NotifyInheritanceParentChanged(this, oldParent);
+
+        InheritanceParentChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised after this object's inheritance parent changes (the binding engine uses it to (re)resolve a
+    /// non-UIElement target's DataContext anchor — an InputBinding gets its owner only when added to the collection,
+    /// after its <c>Command="{Binding}"</c> was installed).</summary>
+    internal event EventHandler? InheritanceParentChanged;
 
     /// <summary>The node this object inherits property values from, or <see langword="null"/> (the <see cref="IInheritanceNode"/> seam).</summary>
     public UIObject? GetInheritanceParent() => _inheritanceParent;

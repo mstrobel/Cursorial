@@ -28,12 +28,18 @@
 
     <ItemGroup>
         <!-- The shell + page views are loaded at runtime from embedded XAML (the runtime-loader path). -->
-        <EmbeddedResource Include="Views\**\*.xaml" />
+        <CursorialXaml Include="Views\**\*.xaml" />
     </ItemGroup>
 
     <ItemGroup>
         <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->
         <InternalsVisibleTo Include="Cursorial.UI.Tests" />
     </ItemGroup>
+
+    <!-- Generator consumer props (CompilerVisibleProperty/Item + the CursorialXamlStrictAot default). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
+
+    <!-- Generator consumer targets (CursorialXaml → AdditionalFiles + EmbeddedResource; the StrictAot switch). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
 
 </Project>

@@ -1,9 +1,6 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
 using Cursorial.UI.Input;
-using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
@@ -84,6 +81,10 @@ public partial class Window : ContentControl
     /// <summary>A code-behind seam fired when a blocked window is poked (the theme flash rides §8.6's pulse, W2).</summary>
     public static readonly RoutedEvent<RoutedEventArgs> ModalAttentionEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(ModalAttention), RoutingStrategy.Bubble, typeof(Window));
+
+    /// <summary>A code-behind seam fired when a window is first shown.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> ShownEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Shown), RoutingStrategy.Direct, typeof(Window));
 
     private Window? _owner;
     private bool _closing; // reentrancy guard
@@ -242,6 +243,13 @@ public partial class Window : ContentControl
     /// <summary>Fired when the window stops being active.</summary>
     public event EventHandler? Deactivated;
 
+    /// <summary>The CLR sugar over <see cref="ShownEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Shown
+    {
+        add => AddHandler(ShownEvent, value!);
+        remove => RemoveHandler(ShownEvent, value!);
+    }
+
     /// <summary>The CLR sugar over <see cref="ModalAttentionEvent"/>.</summary>
     public event EventHandler<RoutedEventArgs>? ModalAttention
     {
@@ -274,6 +282,7 @@ public partial class Window : ContentControl
 
         Manager = manager;
         manager.ShowWindow(this);
+        RaiseEvent(new RoutedEventArgs(ShownEvent, this));
     }
 
     /// <summary>Activates the window (brings it to the top of its band). Returns false when no manager hosts it (or it is modal-blocked).</summary>
@@ -428,17 +437,16 @@ public partial class Window : ContentControl
         if (GetTemplatePart<Border>("PART_TitleBar") is not { } titleBar)
             return;
 
-        var titleText = GetTemplatePart<TextBlock>("PART_Title");
         var closeButton = GetTemplatePart<Button>("PART_CloseButton");
-        var maximizeGlyph = GetTemplatePart<TextBlock>("PART_MaximizeButton");
+        var maximizeButton = GetTemplatePart<Button>("PART_MaximizeButton");
 
         void ApplyActiveLook(bool active)
         {
-            titleBar.SetResourceReference(Border.BackgroundProperty, active ? ThemeKeys.AccentBrush : ThemeKeys.SurfaceBrush);
-            var ink = active ? ThemeKeys.OnAccentBrush : ThemeKeys.TextDimBrush;
-            titleText?.SetResourceReference(TextElement.ForegroundProperty, ink);
-            closeButton?.SetResourceReference(TextElement.ForegroundProperty, ink);
-            maximizeGlyph?.SetResourceReference(TextElement.ForegroundProperty, ink);
+            // Propagate :active-window pseudoclass to title bar elements so their
+            // styles can trigger on it.
+            titleBar.SetInteractionStateInternal(InteractionState.ActiveWindow, active);
+            closeButton?.SetInteractionStateInternal(InteractionState.ActiveWindow, active);
+            maximizeButton?.SetInteractionStateInternal(InteractionState.ActiveWindow, active);
         }
 
         ApplyActiveLook(IsActive); // resting look for the current state

@@ -1,5 +1,8 @@
+using System.Windows.Input;
+
 using Cursorial.UI;
 using Cursorial.UI.Data;
+using Cursorial.UI.Input;
 
 // ReSharper disable InconsistentNaming
 
@@ -125,18 +128,61 @@ public class Section04_DataContextAnchoring
     }
 
     [Fact]
-    public void B044_DefaultSourceOnNonElement_InstallError()
+    public void B044_DefaultSourceOnNonElement_NoInheritanceParent_ParksSilently()
     {
         var nonElement = new NonElementObject();
         var binding = new Binding("Name");
-        // Activation parks SourceMissing and traces — no DataContext on a non-UIElement target. This
-        // case can never recover (no element to carry a DataContext), so it traces a tailored
-        // install-time message naming the workaround rather than the generic "parked until attach".
+        // A non-UIElement target has no DataContext of its own; it anchors on the nearest UIElement up its
+        // inheritance chain (BD13). With no inheritance parent yet, it parks SourceMissing SILENTLY (it
+        // recovers if a parent leading to a UIElement is later set) — no tailored install-time trace.
         BindingDiagnostics.Level = BindingTraceLevel.Warning;
         var expr = BindingOperations.Install(nonElement, NonElementObject.ValueProperty, binding);
         Assert.Equal(BindingStatus.SourceMissing, expr.Status);
-        Assert.Contains(BindingDiagnostics.RecentEvents,
-            e => e.Kind == BindingFailureKind.SourceMissing && e.Message.Contains("non-UIElement target has no DataContext; use Source"));
+        Assert.DoesNotContain(BindingDiagnostics.RecentEvents, e => e.Kind == BindingFailureKind.SourceMissing);
+    }
+
+    [Fact]
+    public void B044a_InputBindingCommand_BoundThenAdded_ResolvesViaOwnerDataContext()
+    {
+        var cmd = new StubCommand();
+        var owner = new BindWidget { DataContext = new CommandVm { Cmd = cmd } };
+
+        var kb = new KeyBinding();
+        // The XAML/loader order: the Command="{Binding}" installs BEFORE the gesture is added to its owner.
+        kb.SetBinding(InputBinding.CommandProperty, new Binding("Cmd"));
+        Assert.Null(kb.Command); // no inheritance parent yet → parked SourceMissing
+
+        owner.InputBindings.Add(kb); // SetInheritanceParent(owner) → re-anchors on owner and resolves
+        Assert.Same(cmd, kb.Command);
+    }
+
+    [Fact]
+    public void B044a_InputBindingCommand_AddedThenBound_ResolvesAtInstall()
+    {
+        var cmd = new StubCommand();
+        var owner = new BindWidget { DataContext = new CommandVm { Cmd = cmd } };
+
+        var kb = new KeyBinding();
+        owner.InputBindings.Add(kb); // owner (and its DataContext) set first
+        kb.SetBinding(InputBinding.CommandProperty, new Binding("Cmd")); // resolves at install
+        Assert.Same(cmd, kb.Command);
+    }
+
+    [Fact]
+    public void B044a_InputBindingCommand_RemovedFromOwner_ReParks()
+    {
+        var cmd = new StubCommand();
+        var owner = new BindWidget { DataContext = new CommandVm { Cmd = cmd } };
+
+        var kb = new KeyBinding();
+        owner.InputBindings.Add(kb);
+        kb.SetBinding(InputBinding.CommandProperty, new Binding("Cmd"));
+        Assert.Same(cmd, kb.Command);
+
+        owner.InputBindings.Remove(kb); // SetInheritanceParent(null) → anchor lost
+        Assert.Equal(BindingStatus.SourceMissing,
+            BindingOperations.GetBindingExpression(kb, InputBinding.CommandProperty)!.Status);
+        Assert.Null(kb.Command);
     }
 
     [Fact]
@@ -159,7 +205,7 @@ public class Section04_DataContextAnchoring
     }
 }
 
-/// <summary>A non-<c>UIElement</c> <c>UIObject</c> with a styled property — the B44 install-error target.</summary>
+/// <summary>A non-<c>UIElement</c> <c>UIObject</c> with a styled property — the B44 silent-park target.</summary>
 public sealed class NonElementObject : UIObject
 {
     public static readonly StyledProperty<string?> ValueProperty =
@@ -170,4 +216,20 @@ public sealed class NonElementObject : UIObject
         get => GetValue(ValueProperty);
         set => SetValue(ValueProperty, value);
     }
+}
+
+/// <summary>A view-model exposing a command — the B44a InputBinding-anchoring source.</summary>
+public sealed class CommandVm
+{
+    public ICommand? Cmd { get; set; }
+}
+
+/// <summary>A do-nothing <see cref="ICommand"/> for identity assertions.</summary>
+public sealed class StubCommand : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) { }
 }

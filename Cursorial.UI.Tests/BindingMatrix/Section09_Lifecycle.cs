@@ -1,5 +1,6 @@
 using Cursorial.UI;
 using Cursorial.UI.Data;
+using Cursorial.UI.Input;
 
 // ReSharper disable InconsistentNaming
 
@@ -118,6 +119,23 @@ public class Section09_Lifecycle
         // Every INPC handler removed from vm: a later change does not deliver.
         vm.Name = "after";
         Assert.NotEqual("after", a.Text);
+    }
+
+    [Fact]
+    public void B108b_TeardownSweep_DisposesInputBindingCommandBinding()
+    {
+        // An InputBinding's Command="{Binding}" anchors on its owner element (BD13) but is neither a visual nor
+        // a logical child, so TearDown reaches it via the dedicated InputBindings sweep leg — disposing the
+        // expression, its owner-side DataContext observer, and the InheritanceParentChanged subscription.
+        var cmd = new StubCommand();
+        var owner = new BindWidget { DataContext = new CommandVm { Cmd = cmd } };
+        var kb = new KeyBinding();
+        owner.InputBindings.Add(kb);
+        var expr = kb.SetBinding(InputBinding.CommandProperty, new Binding("Cmd"));
+        Assert.Same(cmd, kb.Command);
+
+        owner.TearDown();
+        Assert.True(expr.IsDisposed);
     }
 
     [Fact]

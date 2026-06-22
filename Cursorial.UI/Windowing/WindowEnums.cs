@@ -65,7 +65,10 @@ public enum WindowCloseReason : byte
     OwnerClosed,
 
     /// <summary>The window manager is shutting down — <c>CloseAllAsync</c> (not cancelable).</summary>
-    ManagerShutdown
+    ManagerShutdown,
+    
+    /// <summary>The <see cref="Window.DialogResult"/> was set on a modal dialog.</summary>
+    DialogResult
 }
 
 /// <summary>Where a <c>Popup</c> places its surface relative to its placement target (design doc §8.4). Default <see cref="Bottom"/>.</summary>

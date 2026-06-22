@@ -10,6 +10,7 @@ using Cursorial.UI.Input;
 
 var app = UIApplication.CreateBuilder()
     .WithFrameRate(60)
+    .WithKeyReleaseSynthesis()
     .Build();
 
 try
@@ -23,7 +24,8 @@ try
         {
             if (e.Modifiers != KeyModifiers.None)
                 return; // leave Ctrl/Alt chords for bindings + the Ctrl+C exit gesture
-            if (e.Key == Key.Escape || (e.Key == Key.Character && e.Text.Length == 1 && e.Text.Span[0] == 'q'))
+
+            if (e is { Key: Key.Escape, IsRepeat: true })
             {
                 app.Shutdown(0);
                 e.Handled = true;

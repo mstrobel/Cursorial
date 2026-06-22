@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text;
 
+using Cursorial.Animation;
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
@@ -195,7 +196,7 @@ internal sealed class InspectorDemo : IDemo
                              ? app.InputDispatcher.LastHoverTarget 
                              : _lastInspected ?? app.InputDispatcher.LastHoverTarget;
 
-            if (target is not null && _canvas.IsAncestorOf(target))
+            if (target is not null/* && _canvas.IsAncestorOf(target)*/)
                 Inspect(target, forceRefresh: true);
         }
 
@@ -242,33 +243,7 @@ internal sealed class InspectorDemo : IDemo
             // handlers are scoped to the canvas, so hovering the inspector panel never inspects itself.
             _canvas = new Border { Child = Placeholder("Press 'o' to open a XAML source.") };
 
-            _canvas.AddHandler(UIElement.MouseMoveEvent,
-                               (_, e) =>
-                               {
-                                   if (_isInspecting)
-                                       Inspect(e.Source);
-                               },
-                               handledEventsToo: true);
-
-            _canvas.AddHandler(UIElement.PreviewKeyDownEvent,
-                               (_, e) =>
-                               {
-                                   if (e is { Key: Key.F12, Modifiers: KeyModifiers.None })
-                                   {
-                                       ToggleInspection();
-                                       e.Handled = true;
-                                   }
-                                   else if (e is { Key: Key.Character, Modifiers: KeyModifiers.Alt, Text.Span: "[" })
-                                   {
-                                       Inspect(_lastInspected, -1);
-                                       e.Handled = true;
-                                   }
-                                   else if (e is { Key: Key.Character, Modifiers: KeyModifiers.Alt, Text.Span: "]" })
-                                   {
-                                       Inspect(_lastInspected, 1);
-                                       e.Handled = true;
-                                   }
-                               });
+            HookHandlers(root);
 
             root.Children.Add(_canvas);
 
@@ -355,7 +330,7 @@ internal sealed class InspectorDemo : IDemo
             buttons.Children.Add(open);
             buttons.Children.Add(cancel);
 
-            var body = new StackPanel { Margin = new Margins(1) };
+            var body = new StackPanel();
             body.Children.Add(new Label { Content = "_Sample:" });
             body.Children.Add(list);
             body.Children.Add(new TextBlock("\nOr load a file:"));
@@ -368,8 +343,8 @@ internal sealed class InspectorDemo : IDemo
                              Content = body,
                              WindowStartupLocation = WindowStartupLocation.CenterScreen,
                              Width = 50,
-                             Height = 15,
-                             CanResize = false,
+                             SizeToContent = SizeToContent.Height,
+                             CanResize = false
                          };
 
             dialog.SetResourceReference(Control.BackgroundProperty, ThemeKeys.PanelBrush);
@@ -384,8 +359,41 @@ internal sealed class InspectorDemo : IDemo
 
             cancel.Click += (_, _) => dialog.Close(null);
 
+            // HookHandlers(dialog);
+
             if (await dialog.ShowDialogAsync() is OpenChoice choice)
                 LoadAndShow(choice);
+        }
+
+        private void HookHandlers(UIElement element)
+        {
+            element.AddHandler(UIElement.MouseMoveEvent,
+                              (_, e) =>
+                              {
+                                  if (_isInspecting)
+                                      Inspect(e.Source);
+                              },
+                              handledEventsToo: true);
+
+            element.AddHandler(UIElement.PreviewKeyDownEvent,
+                              (_, e) =>
+                              {
+                                  if (e is { Key: Key.F12, Modifiers: KeyModifiers.None })
+                                  {
+                                      ToggleInspection();
+                                      e.Handled = true;
+                                  }
+                                  else if (e is { Key: Key.Character, Modifiers: KeyModifiers.Alt, Text.Span: "[" })
+                                  {
+                                      Inspect(_lastInspected, -1);
+                                      e.Handled = true;
+                                  }
+                                  else if (e is { Key: Key.Character, Modifiers: KeyModifiers.Alt, Text.Span: "]" })
+                                  {
+                                      Inspect(_lastInspected, 1);
+                                      e.Handled = true;
+                                  }
+                              });
         }
 
         private void LoadAndShow(OpenChoice choice)
@@ -596,12 +604,15 @@ internal sealed class InspectorDemo : IDemo
                            };
                 }
 
-                var item = Node(nameof(e.TargetDescription), e.TargetDescription);
+                var item = Node($"{property.OwnerType.Name}.{property.Name}", NoValue);
 
-                AttachStyleExplanation(item, e);
+                item.Items.Add(Node(nameof(e.TargetDescription), e.TargetDescription));
+                item.Items.Add(Node("Value", FormatValue(current.GetValue(property))));
 
                 if (resourceKey is not null)
-                    item.Items.Add(Node("Resource Key", resourceKey));
+                    item.Items.Add(Node("Resource Key", FormatValue(resourceKey)));
+
+                AttachStyleExplanation(item, e);
 
                 if (BindingDiagnostics.Explain(current, property) is { HasBindings: true } bd)
                     AttachBindingExplanation(bd, item);
@@ -687,7 +698,7 @@ internal sealed class InspectorDemo : IDemo
                        };
 
             if (hasName && !isSimple && value != NoValue)
-                item.Items.Add(Node(null, value));
+                item.Items.Add(Node(null, FormatValue(value)));
 
             return item;
         }
@@ -711,6 +722,7 @@ internal sealed class InspectorDemo : IDemo
                         ConicGradientBrush cb => $"conic:({cb.Center.X},{cb.Center.Y}) -> ({cb.AngleDegrees}º, Center={cb.Center}, " +
                                                  $"{string.Join(", ", cb.Stops.Select(s => s.Color.ToString()))})",
                         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+                        GlyphSetCarrier gc       => gc.ToString().Replace("[", "\\["),
                         _                        => HasToStringOverride(value) ? (value.ToString() ?? "(null)") : $"{{{value.GetType().Name}}}"
                     };
 
@@ -785,7 +797,7 @@ internal sealed class InspectorDemo : IDemo
         private void UpdateStatus()
         {
             _status.Text = $" loaded: {_loaded} · theme: {app.ActualThemeVariant} — " +
-                           "⌥+o open · F12 inspect · ⌥+[, ⌥+] traverse · ⌥+r refresh · ⌥+t tier · ⌥+d dark/light · ⌥+q quit";
+                           "⌥+o open · F12 inspect · ⌥+[, ⌥+] traverse · ⌥+r refresh · ⌥+t tier · ⌥+d dark/light · ⌥+q quit".Replace("[", "\\[");
         }
     }
 

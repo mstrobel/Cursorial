@@ -15,7 +15,7 @@ namespace Cursorial.UI.Input;
 /// their own <c>CanExecuteChanged</c> (cross-thread raises must be marshaled via
 /// <c>UIDispatcher.Post</c>).
 /// </remarks>
-public class InputBinding
+public class InputBinding : UIObject
 {
     /// <summary>
     /// The gesture that triggers <see cref="Command"/>; a binding without one never matches.
@@ -23,22 +23,45 @@ public class InputBinding
     /// <c>MouseBinding</c> — doc §7.12) arrive without a source break; <see cref="KeyGesture"/> is
     /// the only concrete kind in v1.
     /// </summary>
-    public InputGesture? Gesture { get; set; }
+    public static readonly StyledProperty<InputGesture?>
+        GestureProperty = UIProperty.Register<InputBinding, InputGesture?>(nameof(Gesture));
 
     /// <summary>The command to execute; a binding without one never matches.</summary>
-    public ICommand? Command { get; set; }
+    public static readonly StyledProperty<ICommand?>
+        CommandProperty = UIProperty.Register<InputBinding, ICommand?>(nameof(Command));
 
     /// <summary>Passed to both <c>CanExecute</c> and <c>Execute</c>.</summary>
-    public object? CommandParameter { get; set; }
+    public static readonly StyledProperty<object?>
+        CommandParameterProperty = UIProperty.Register<InputBinding, object?>(nameof(CommandParameter));
+
+    /// <inheritdoc cref="GestureProperty"/>
+    public InputGesture? Gesture
+    {
+        get => GetValue(GestureProperty);
+        set => SetValue(GestureProperty, value);
+    }
+
+    /// <inheritdoc cref="CommandParameter"/>
+    public ICommand? Command
+    {
+        get => GetValue(CommandProperty);
+        set => SetValue(CommandProperty, value);
+    }
+
+
+    /// <inheritdoc cref="CommandParameterProperty"/>
+    public object? CommandParameter
+    {
+        get => GetValue(CommandParameterProperty);
+        set => SetValue(CommandParameterProperty, value);
+    }
 }
 
 /// <summary>A key-gesture <see cref="InputBinding"/> (the only gesture kind in v1 — doc §7.12).</summary>
 public sealed class KeyBinding : InputBinding
 {
     /// <summary>Creates an empty binding (object-initializer / XAML shape).</summary>
-    public KeyBinding()
-    {
-    }
+    public KeyBinding() {}
 
     /// <summary>Creates a bound gesture.</summary>
     /// <param name="gesture">The triggering gesture.</param>
@@ -57,4 +80,41 @@ public sealed class KeyBinding : InputBinding
 /// priority mechanism</b> (doc §7.9): the sweep executes the first matching gesture whose command
 /// can execute and never consults later entries.
 /// </summary>
-public sealed class InputBindingCollection : Collection<InputBinding>;
+public sealed class InputBindingCollection : Collection<InputBinding>
+{
+    private readonly UIElement _owner;
+
+    public InputBindingCollection(UIElement owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        _owner = owner;
+    }
+
+    protected override void ClearItems()
+    {
+        while (Count > 0)
+            RemoveAt(Count - 1);
+    }
+
+    protected override void InsertItem(int index, InputBinding item)
+    {
+        base.InsertItem(index, item);
+        item.SetInheritanceParent(_owner);
+    }
+
+    protected override void RemoveItem(int index)
+    {
+        Items[index].SetInheritanceParent(null);
+        base.RemoveItem(index);
+    }
+
+    protected override void SetItem(int index, InputBinding item)
+    {
+        if (Items[index] is {} oldItem)
+            oldItem.SetInheritanceParent(null);
+
+        base.SetItem(index, item);
+
+        Items[index].SetInheritanceParent(_owner);
+    }
+}

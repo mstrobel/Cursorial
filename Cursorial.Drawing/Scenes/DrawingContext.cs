@@ -1159,7 +1159,7 @@ public sealed class DrawingContext
         var current = _surface[column, row];
 
         // A glyph (or a wide glyph's continuation) already here survives unless this layer overwrites.
-        if (!overwrite && (current.Kind == CellKind.WideContinuation || !string.IsNullOrEmpty(current.Grapheme)))
+        if (!overwrite && (current.Kind == CellKind.WideContinuation || !string.IsNullOrWhiteSpace(current.Grapheme)))
             return;
 
         // Normally the stroke keeps a transparent background so a fill / the composite target shows under the

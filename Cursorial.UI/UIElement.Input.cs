@@ -324,7 +324,7 @@ public abstract partial class UIElement : IInteractionStateSink
         get
         {
             VerifyAccess();
-            return _inputBindings ??= [];
+            return _inputBindings ??= new InputBindingCollection(this);
         }
     }
 

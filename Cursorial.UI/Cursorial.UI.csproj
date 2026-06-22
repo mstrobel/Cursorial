@@ -10,6 +10,7 @@
         <ProjectReference Include="..\Cursorial.Animation\Cursorial.Animation.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
         <ProjectReference Include="..\Cursorial.Shared\Cursorial.Shared.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
     </ItemGroup>
 
     <ItemGroup>

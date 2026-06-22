@@ -20,7 +20,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private protected readonly AnchoredBinding _binding;
     private protected readonly UIObject _target;
     private protected readonly UIProperty _targetProperty;
-    private protected readonly UIElement? _anchorElement;
+    private protected UIElement? _anchorElement;          // mutable: a non-UIElement target re-anchors on its owner element late (BD13)
     private protected readonly ValueFrame? _hostFrame;
     private protected readonly Action<object?>? _watchCallback;
     private protected readonly BindingMode _effectiveMode;
@@ -38,6 +38,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private protected bool _isWritingToSource;
     private bool _lostFocusSubscribed;
     private bool _editCommitSubscribed;
+    private bool _inheritanceParentSubscribed;             // a non-UIElement target's late-anchor watch (BD13)
     private protected bool _watchModeDegraded;
     private protected object? _lastPushedValue = NoPushSentinel;
     private protected object? _lastProducedValue;
@@ -135,6 +136,48 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         BindingLeakTracker.Track(this, _target, _binding is Binding b ? b.Path : DescribePath(),
             BindingRegistry.DescribeTarget(_target, _targetProperty));
 
+        // A non-UIElement target (an InputBinding/KeyBinding whose Command="{Binding}") has no DataContext
+        // of its own; it anchors on the nearest UIElement up its inheritance chain — the owner element set
+        // via SetInheritanceParent (BD13). That owner is assigned AFTER the binding installs (the gesture is
+        // bound, then added to its element's collection), so resolve it now if already present and watch for
+        // it to arrive / change. UIElement targets anchor on themselves and never take this path.
+        if (_target is not UIElement)
+        {
+            _anchorElement = NearestInheritanceElement();
+            _target.InheritanceParentChanged += OnTargetInheritanceParentChanged;
+            _inheritanceParentSubscribed = true;
+        }
+
+        WireAnchorObserver();
+        ResolveRootAndWire();
+    }
+
+    // The nearest UIElement up a non-UIElement target's inheritance chain — its DataContext anchor.
+    private UIElement? NearestInheritanceElement()
+    {
+        for (var node = _target.GetInheritanceParent(); node is not null; node = node.GetInheritanceParent())
+            if (node is UIElement element)
+                return element;
+        return null;
+    }
+
+    // The target's inheritance parent changed (an InputBinding added to / removed from a collection, or
+    // reparented): re-resolve the anchor element and re-wire against it. Tears down the old element's
+    // subscriptions first. A null resolution (detached gesture) parks the binding SourceMissing.
+    private void OnTargetInheritanceParentChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+            return;
+
+        var resolved = NearestInheritanceElement();
+        if (ReferenceEquals(resolved, _anchorElement))
+            return;
+
+        _anchorObserverToken?.Dispose();
+        _anchorObserverToken = null;
+        UnsubscribeTreeEvents();
+
+        _anchorElement = resolved;
         WireAnchorObserver();
         ResolveRootAndWire();
     }
@@ -249,13 +292,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             _root = null;
             Status = failure == BindingFailureKind.NameNotFound ? BindingStatus.PathError : BindingStatus.SourceMissing;
 
-            // SourceMissing normally parks silently (it recovers on attach). The default-source /
-            // non-UIElement-target case (B44 / BD13) can NEVER recover — there is no element to carry
-            // a DataContext — so trace it as an install-time error with a tailored message.
-            var permanentNoDataContext = failure == BindingFailureKind.SourceMissing
-                && _anchorElement is null
-                && _anchorKind is AnchorKind.DataContext or AnchorKind.ParentDataContext;
-            if (failure != BindingFailureKind.SourceMissing || permanentNoDataContext || _watchCallback is not null)
+            // SourceMissing parks silently — it recovers on attach (a UIElement) or when the inheritance
+            // parent arrives (a non-UIElement gesture target re-anchors on its owner element, BD13). Other
+            // failures, and any unresolved watch-only binding, trace a warning.
+            if (failure != BindingFailureKind.SourceMissing || _watchCallback is not null)
                 MaybeTrace(failure, BindingTraceLevel.Warning, FailureMessage(failure));
             ProduceUnsetOrFallback();
             return;
@@ -873,6 +913,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             _editCommitHandler = null;
         }
 
+        if (_inheritanceParentSubscribed)
+        {
+            _target.InheritanceParentChanged -= OnTargetInheritanceParentChanged;
+            _inheritanceParentSubscribed = false;
+        }
+
         if (_entry is not null && !fromEviction)
             _entry.Dispose();
         _entry = null;
@@ -896,10 +942,6 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
     private string FailureMessage(BindingFailureKind kind) => kind switch
     {
-        // A default-source binding on a non-UIElement target has no DataContext to anchor on (B44).
-        BindingFailureKind.SourceMissing when _anchorElement is null
-            && _anchorKind is AnchorKind.DataContext or AnchorKind.ParentDataContext =>
-            "non-UIElement target has no DataContext; use Source.",
         BindingFailureKind.SourceMissing => "the binding source (anchor) is unresolved; parked until attach.",
         BindingFailureKind.NameNotFound => $"the element name '{_binding.ElementName}' was not found in scope.",
         BindingFailureKind.AncestorNotFound => $"no ancestor of type '{_binding.RelativeSource?.AncestorType?.Name}' was found.",

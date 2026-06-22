@@ -114,31 +114,18 @@ public sealed class WindowChromeTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        // A custom chrome with a captured PART_TitleBar so we can inspect its active-look state after re-template.
-        Border? oldTitleBar = null;
-        var firstTemplate = new ControlTemplate(ctx =>
-        {
-            oldTitleBar = new Border();
-            ctx.RegisterName("PART_TitleBar", oldTitleBar); // Window.OnApplyTemplate wires the active look against it
-            var presenter = new ContentPresenter();
-            ctx.RegisterName("PART_ContentPresenter", presenter);
-            var dock = new DockPanel();
-            DockPanel.SetDock(oldTitleBar, Dock.Top);
-            dock.Children.Add(oldTitleBar);
-            dock.Children.Add(presenter);
-            return dock;
-        });
-
         var window = new Window
-        {
-            Template = firstTemplate,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 2, Top = 2, Width = 20, Height = 8,
-            Content = "Body",
-        };
+                     {
+                         WindowStartupLocation = WindowStartupLocation.Manual,
+                         Left = 2, Top = 2, Width = 20, Height = 8,
+                         Content = "Body",
+                     };
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(window.IsActive);
+        Assert.True(window.InteractionStateInternal.HasFlag(InteractionState.ActiveWindow));
+
+        var oldTitleBar = window.GetTemplatePart<Border>("PART_TitleBar");
         Assert.NotNull(oldTitleBar);
 
         // Sanity: while active, the active look installed an AccentBrush DynamicResource on the title bar (its

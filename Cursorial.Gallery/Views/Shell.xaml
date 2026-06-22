@@ -1,17 +1,25 @@
 <DockPanel xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
-           Background="#181C24">
+           xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
+           Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
+           TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}">
+    <DockPanel.InputBindings>
+      <KeyBinding Gesture="Alt+T" Command="{Binding CycleColorTier}" />
+      <KeyBinding Gesture="Alt+D" Command="{Binding CycleThemeVariant}" />
+      <KeyBinding Gesture="Alt+Q" Command="{Binding Quit}" />
+      <KeyBinding Gesture="Esc"   Command="{Binding Quit}" CommandParameter="True" />
+    </DockPanel.InputBindings>
 
     <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
     <DockPanel.Resources>
 
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">
             <DockPanel>
-                <Border DockPanel.Dock="Top" Background="#1E222A" Padding="1,0">
+                <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}" Padding="1,0">
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Text="{Binding Title}" Foreground="#DCE2EB"/>
-                        <TextBlock Text="{Binding Summary}" Foreground="#8A93A5"/>
+                        <TextBlock Text="{Binding Title}" />
+                        <TextBlock Text="{Binding Summary}" />
                         <WrapPanel>
                             <Button Margin="1,0" Content="Cycle V-bar" Command="{Binding CycleVerticalCommand}"/>
                             <Button Margin="1,0" Content="Cycle H-bar" Command="{Binding CycleHorizontalCommand}"/>
@@ -21,8 +29,8 @@
                     </StackPanel>
                 </Border>
 
-                <Border DockPanel.Dock="Bottom" Background="#1E222A" Padding="1,0">
-                    <TextBlock Text="{Binding Status}" Foreground="#B4BCC8"/>
+                <Border DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}" Padding="1,0">
+                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
                 </Border>
 
                 <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
@@ -30,7 +38,7 @@
                     <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Label}" Foreground="#D6DCE6"/>
+                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -40,28 +48,28 @@
 
         <DataTemplate DataType="vm:InputsPageViewModel">
             <DockPanel>
-                <Border DockPanel.Dock="Top" Background="#1E222A" Padding="1,0">
+                <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}" Padding="1,0">
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Text="{Binding Title}" Foreground="#DCE2EB"/>
-                        <TextBlock Text="{Binding Summary}" Foreground="#8A93A5"/>
+                        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+                        <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
                     </StackPanel>
                 </Border>
 
-                <Border DockPanel.Dock="Bottom" Background="#1E222A" Padding="1,0">
-                    <TextBlock Text="{Binding Status}" Foreground="#B4BCC8"/>
+                <Border DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}" Padding="1,0">
+                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
                 </Border>
 
                 <StackPanel Orientation="Vertical" Margin="1,1">
-                    <TextBlock Text="Name" Foreground="#8A93A5"/>
+                    <TextBlock Text="Name" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
                     <TextBox Width="28" Text="{Binding Name, Mode=TwoWay}"/>
 
-                    <TextBlock Text="Password" Foreground="#8A93A5"/>
+                    <TextBlock Text="Password" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
                     <PasswordBox Width="28" Text="{Binding Password, Mode=TwoWay}" RevealPassword="{Binding ShowPassword}"/>
                     <CheckBox Content="Reveal password" IsChecked="{Binding ShowPassword, Mode=TwoWay}"/>
 
                     <CheckBox Content="Subscribe to updates" IsChecked="{Binding Subscribed, Mode=TwoWay}"/>
 
-                    <TextBlock Text="Volume" Foreground="#8A93A5"/>
+                    <TextBlock Text="Volume" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
                     <Slider Width="28" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}"/>
                 </StackPanel>
             </DockPanel>
@@ -70,9 +78,9 @@
     </DockPanel.Resources>
 
     <!-- Title bar -->
-    <Border DockPanel.Dock="Top" Background="#242A36" Padding="1,0">
+    <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}" Padding="1,0">
         <TextBlock Text=" Cursorial — Control Gallery   (Up/Down or click to switch pages · q / Esc to quit)"
-                   Foreground="#DCE2EB"/>
+                   Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
     </Border>
 
     <!-- Nav: a real ListBox so arrow-key / click navigation is itself part of the showcase -->

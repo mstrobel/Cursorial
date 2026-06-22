@@ -89,6 +89,12 @@ while (true)
     {
         Console.WriteLine($"Error: {ex.Message}");
         Console.WriteLine($"{ex.StackTrace}");
+        
+        for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            Console.WriteLine($"Inner: {inner.Message}");
+            Console.WriteLine($"{inner.StackTrace}");
+        }
     }
 }
 

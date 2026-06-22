@@ -132,6 +132,44 @@ public sealed class PrefixedTypeRefEndToEndTests
 
         Assert.True(ex.Line > 0 && ex.Column > 0); // line+col present (a XamlParseException, not a leaked library exception)
     }
+
+    [Fact] // a BARE (non-{x:Type}) prefixed DataType on a Type-valued member resolves via the captured ns (ConvertText
+           // path). Pre-fix it hardcoded the default xmlns → the custom-namespace type was never found.
+    public void DataTemplate_BarePrefixedDataType_ResolvesTypeMember()
+    {
+        _ = XamlPrefixTarget.MarkerProperty;
+
+        var template = Loader.Load<UIControls.DataTemplate>(
+            "<DataTemplate" + Ns + TestClrNs + " DataType=\"t:XamlPrefixTarget\"/>");
+
+        Assert.Equal(typeof(XamlPrefixTarget), template.DataType);
+    }
+
+    [Fact] // a BARE prefixed DataType on a DataTemplate INSIDE a ResourceDictionary resolves to the implicit
+           // DataTemplateKey (TryGetDataType path — the implicit-template lookup the gallery's MVVM nav relies on).
+    public void DataTemplate_BarePrefixedDataType_ResolvesImplicitKey()
+    {
+        _ = XamlPrefixTarget.MarkerProperty;
+
+        var dict = (ResourceDictionary)Loader.Load(
+            "<ResourceDictionary" + Ns + TestClrNs + ">" +
+              "<DataTemplate DataType=\"t:XamlPrefixTarget\"><TextBlock/></DataTemplate>" +
+            "</ResourceDictionary>");
+
+        Assert.True(dict.ContainsKey(new DataTemplateKey(typeof(XamlPrefixTarget))));
+    }
+
+    [Fact] // An UNBOUND prefix in an implicit-key DataTemplate DataType is a loud, positioned error — parity with TargetType.
+    public void DataTemplate_UnboundPrefixDataType_IsXamlDiagnostic()
+    {
+        var ex = Assert.Throws<XamlParseException>(() => Loader.Load(
+            "<ResourceDictionary" + Ns + ">" +
+              "<DataTemplate DataType=\"undeclared:XamlPrefixTarget\"><TextBlock/></DataTemplate>" +
+            "</ResourceDictionary>"));
+
+        Assert.Equal(XamlDiagnosticCodes.UndeclaredPrefix, ex.Code);
+        Assert.True(ex.Line > 0 && ex.Column > 0);
+    }
 }
 
 /// <summary>A test-only <see cref="UIElement"/> that lives OUTSIDE the Cursorial.UI namespaces — the probe for

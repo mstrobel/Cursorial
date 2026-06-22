@@ -768,13 +768,18 @@ internal sealed class XamlObjectGraphBuilder
             return text;
 
         // A System.Type-valued member (e.g. ControlTemplate.TargetType) takes a type TOKEN resolved via the
-        // xmlns — there is no string→Type value converter (mirrors TryGetDataType's resolution). An unresolved
-        // token falls through to the converter ladder (→ raw string → the CLR setter rejects it, as before).
+        // xmlns — there is no string→Type value converter. The token honors its xmlns prefix / the document's
+        // default xmlns (the same resolution as the implicit DataTemplate key). An unresolved token falls through
+        // to the converter ladder (→ raw string → the CLR setter rejects it, as before).
         if (memberType == typeof(Type))
         {
-            var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, text);
-            if (resolution.IsResolved)
-                return resolution.Type!.SystemType();
+            if (TryResolveTypeToken(text, out var resolved, out var unboundPrefix))
+                return resolved;
+            // An unbound prefix is unambiguously an author error — report it precisely (parity with the
+            // DataTemplate DataType path) rather than falling through to a raw CLR-setter type mismatch. A
+            // bound-but-unresolved token still falls through to the converter ladder (the documented behavior).
+            if (unboundPrefix is not null)
+                throw Fatal(XamlDiagnosticCodes.UndeclaredPrefix, $"Unbound xmlns prefix '{unboundPrefix}' in type '{text}'.", line, column);
         }
 
         // member.Converter is the provider's resolved converter (member attributes + the ladder, via ForMember);
@@ -1188,15 +1193,16 @@ internal sealed class XamlObjectGraphBuilder
         for (int i = 0; i < record.MemberCount; i++)
         {
             var member = _doc.Members[record.MemberStart + i];
+            // A DataType resolution error reports the DataType member's OWN position (not the enclosing
+            // dictionary/.Resources member), so the diagnostic points at the offending attribute (audit finding).
+            int line = LineInfo.Line(member.PackedLineInfo);
+            int column = LineInfo.Column(member.PackedLineInfo);
+
             // DataType may be the x:DataType directive or a CLR DataType member with a folded Type value.
             if (member is { Kind: XamlValueKind.Directive, DirectiveKind: (int)XamlDirectiveKind.DataType })
             {
-                var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, _doc.Strings[member.ValueIndex]);
-                if (resolution.IsResolved)
-                {
-                    dataType = resolution.Type!.SystemType();
-                    return true;
-                }
+                dataType = ResolveTypeToken(_doc.Strings[member.ValueIndex], "DataTemplate DataType", line, column);
+                return true;
             }
             if (member.MemberId >= 0 && _doc.ResolvedMembers[member.MemberId]?.Name == "DataType")
             {
@@ -1207,16 +1213,65 @@ internal sealed class XamlObjectGraphBuilder
                 }
                 if (member.Kind == XamlValueKind.Text)
                 {
-                    var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, _doc.Strings[member.ValueIndex]);
-                    if (resolution.IsResolved)
-                    {
-                        dataType = resolution.Type!.SystemType();
-                        return true;
-                    }
+                    dataType = ResolveTypeToken(_doc.Strings[member.ValueIndex], "DataTemplate DataType", line, column);
+                    return true;
                 }
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// Resolves a (possibly xmlns-prefixed) type token against the document's namespace map — the same
+    /// resolution <see cref="BuildTargetTypeSelector"/> uses, so a type-valued member honors
+    /// <c>using:</c>/<c>clr-namespace:</c> prefixes (and a root-redeclared default xmlns) rather than assuming
+    /// the Cursorial UI namespace. Returns <see langword="false"/> on an unbound prefix or unresolved type
+    /// (the caller decides whether that is fatal or a fall-through), reporting <paramref name="unboundPrefix"/>
+    /// so a precise diagnostic can distinguish the two.
+    /// </summary>
+    private bool TryResolveTypeToken(string token, out Type type, out string? unboundPrefix)
+    {
+        type = typeof(object);
+        unboundPrefix = null;
+
+        int colon = token.IndexOf(':');
+        if (colon > 0)
+        {
+            string prefix = token.Substring(0, colon);
+            string local = token.Substring(colon + 1);
+            if (!_doc.Namespaces.TryGetValue(prefix, out var ns))
+            {
+                unboundPrefix = prefix;
+                return false;
+            }
+
+            var prefixed = _options.MetadataProvider.TryGetType(ns, local);
+            if (!prefixed.IsResolved)
+                return false;
+
+            type = prefixed.Type!.SystemType();
+            return true;
+        }
+
+        string defaultNs = _doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSchemaContext.CursorialUiNamespace;
+        var resolution = _options.MetadataProvider.TryGetType(defaultNs, token);
+        if (!resolution.IsResolved)
+            return false;
+
+        type = resolution.Type!.SystemType();
+        return true;
+    }
+
+    /// <summary>The fatal-on-miss wrapper over <see cref="TryResolveTypeToken"/> (for sites where the token MUST
+    /// resolve — e.g. an implicit <c>DataTemplate</c> key); <paramref name="usage"/> names the site.</summary>
+    private Type ResolveTypeToken(string token, string usage, int line, int column)
+    {
+        if (TryResolveTypeToken(token, out var type, out var unboundPrefix))
+            return type;
+
+        throw unboundPrefix is not null
+            ? Fatal(XamlDiagnosticCodes.UndeclaredPrefix, $"Unbound xmlns prefix '{unboundPrefix}' in {usage} '{token}'.", line, column)
+            : Fatal(XamlDiagnosticCodes.TypeNotFound, $"{usage} '{token}' was not found.", line, column);
     }
 
     /// <summary>

@@ -230,4 +230,43 @@ public sealed class Section29_TextSearch
         host.RunUntilIdle();
         Assert.Same(car, tree.SelectedContainer);
     }
+
+    // ── own-container items: match the displayed Content/Header, not the container's type name ────────────
+
+    [Fact] // C16.14: ListBox type-ahead over ListBoxItem containers matches the item's Content, not "ListBoxItem"
+    public void C16_14_ListBox_OwnContainerItems_MatchContent()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var list = new ListBox { Width = 20, Height = 8 };
+        list.Items.Add(new ListBoxItem { Content = "apple" });
+        list.Items.Add(new ListBoxItem { Content = "banana" });
+        list.Items.Add(new ListBoxItem { Content = "cherry" });
+        host.ShowRoot(list);
+        host.RunUntilIdle();
+        list.ItemContainerGenerator.ContainerFromIndex(0)!.Focus();
+        host.RunUntilIdle();
+
+        host.SendText("b");
+        host.RunUntilIdle();
+        Assert.Same(list.Items[1], list.SelectedItem); // banana — matched via Content (was the type name → no match)
+    }
+
+    [Fact] // C16.15: ComboBox (closed) type-ahead over ComboBoxItem containers matches the item's Content
+    public void C16_15_ComboBox_OwnContainerItems_MatchContent()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var box = new ComboBox { Width = 14 };
+        box.Items.Add(new ComboBoxItem { Content = "alpha" });
+        box.Items.Add(new ComboBoxItem { Content = "beta" });
+        box.Items.Add(new ComboBoxItem { Content = "gamma" });
+        host.ShowRoot(box);
+        host.RunUntilIdle();
+        box.Focus();
+        host.RunUntilIdle();
+
+        host.SendText("g");
+        host.RunUntilIdle();
+        Assert.Same(box.Items[2], box.SelectedItem); // gamma
+        Assert.False(box.IsDropDownOpen);
+    }
 }

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 
+using Cursorial.Markup;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -13,7 +14,7 @@ namespace Cursorial.UI.Controls;
 /// in the control template hosts them in the <see cref="ItemsPanel"/>. Containers are logical children of this
 /// control (inheritance flows from here) and visual children of the panel (punch 43).
 /// </summary>
-[Cursorial.Markup.ContentProperty("Items")]
+[ContentProperty("Items")]
 public class ItemsControl : Control
 {
     /// <summary>The bound items source (mutually exclusive with a populated <see cref="Items"/>).</summary>
@@ -159,7 +160,14 @@ public class ItemsControl : Control
         if (TextSearch.GetTextPath(this) is { Length: > 0 } path && item is not null)
             return TextSearch.EvaluatePath(item, path);
 
-        return item?.ToString();
+        // An own-container item (a ComboBoxItem/ListBoxItem used directly as an item) is a control element, not
+        // data — its ToString() is a type name. A ContentControl displays its Content, so match that. Data items
+        // (strings/view-models) aren't ContentControls and pass through unchanged. Header-based navigating
+        // containers match their own text by overriding this (TreeView → TreeViewItem.Header); Menu and TabControl
+        // don't type-ahead-navigate (TextSearchNavigates is false), so they never reach here.
+        var display = item is ContentControl contentControl ? contentControl.Content : item;
+
+        return display?.ToString();
     }
 
     /// <summary>Reacts to a type-ahead match (default: nothing). Selectors select it; the tree focuses + selects the node.</summary>

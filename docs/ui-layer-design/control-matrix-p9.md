@@ -878,7 +878,9 @@ push — was caught pre-commit and fixed by the same redesign: a property push f
 A shared `ItemsControl`-level type-ahead facility (the WPF `TextSearch` model). Printable keys accumulate a prefix
 (reset after a ~1 s idle), and the control moves its current item to the first match; re-pressing a single character
 cycles among items that start with it. Per-item match text is `TextSearch.Text` (attached, on the container/item),
-else the control's `TextSearch.TextPath` (attached) evaluated against the item, else `item.ToString()`.
+else the control's `TextSearch.TextPath` (attached) evaluated against the item, else — for an **own-container item**
+(a `ComboBoxItem`/`ListBoxItem` used directly) — the container's displayed `Content` rather than its type name,
+else `item.ToString()`. *(amended 2026-06-22)*
 `IsTextSearchEnabled` (default true) + `IsTextSearchCaseSensitive` (default false). The engine lives in
 `ItemsControl` (pure `TextSearchMatcher` + buffered `TextSearchController`); only controls that actually move a
 current item opt in (`TextSearchNavigates`) so a plain `ItemsControl`/`Menu` never swallows a key. `ListBox`/`ComboBox`
@@ -897,6 +899,8 @@ current item opt in (`TextSearchNavigates`) so a plain `ItemsControl`/`Menu` nev
 | C16.7 | ComboBox (closed) | type "g" | selects gamma without opening the drop-down | PIN (CD-P2F-1) |
 | C16.8 | TreeView top-level apple/banana/cherry | type "c" | selects+focuses the cherry node (matched on Header) | PIN (CD-P2F-1) |
 | C16.9 | ListBox of Person, TextPath=Name | type "g" | selects "Grace" via TextPath (not ToString) | PIN (CD-P2F-1) |
+| C16.14 | ListBox of `ListBoxItem{Content="apple/banana/cherry"}` (own-container items) | type "b" | selects banana — matched on the container's `Content`, not its type name | PIN (own-container unwrap) |
+| C16.15 | ComboBox (closed) of `ComboBoxItem{Content="alpha/beta/gamma"}` | type "g" | selects gamma without opening — matched on `Content` | PIN (own-container unwrap) |
 
 **CD-P2F-1 — TextSearch: shared ItemsControl type-ahead.** Attached `TextSearch.TextPath`/`Text`; `ItemsControl`
 gains `IsTextSearchEnabled`/`IsTextSearchCaseSensitive`, a lazy `TextSearchController`, an `OnTextInput` driver

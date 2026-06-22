@@ -1323,3 +1323,41 @@ parent). A live change re-arranges via a presenter-held observer on the parent's
 prior `Arrange` call), so it sidesteps that interaction and needs no XAML-twin changes. Tests:
 `Cursorial.UI.Tests/ControlMatrix/Section37_ContentAlignment.cs` (C26.1 horizontal Left<Center<Right, C26.2 vertical
 Top<Center<Bottom, C26.3 defaults Stretch, C26.4 live re-position).
+
+## §C27 — GridSplitter (post-P9)
+
+`GridSplitter : Thumb` — a draggable divider that redistributes cells between two adjacent `Grid` tracks
+(the WPF/Avalonia control). It reuses `Thumb`'s capture + cumulative `DragStarted`/`DragDelta`/`DragCompleted`
+(deltas in stable screen coordinates), so it does not move itself — it interprets the delta as a track resize.
+It must be a direct child of the `Grid` it resizes; its track index comes from `Grid.GetColumn`/`GetRow`.
+
+- **`ResizeDirection`** (`Auto`/`Columns`/`Rows`, default `Auto`). `Auto` follows the WPF heuristic: an explicit
+  `HorizontalAlignment` (≠ `Stretch`) with columns present ⇒ `Columns`; an explicit `VerticalAlignment` ⇒ `Rows`;
+  else the narrower arranged axis (`ActualWidth ≤ ActualHeight` ⇒ `Columns`). Falls back to whichever axis has
+  definitions.
+- **`ResizeBehavior`** (`BasedOnAlignment`/`CurrentAndNext`/`PreviousAndCurrent`/`PreviousAndNext`, default
+  `BasedOnAlignment`). `BasedOnAlignment`: an edge alignment (`Left`/`Top` ⇒ `PreviousAndCurrent`,
+  `Right`/`Bottom` ⇒ `CurrentAndNext`) grows toward that edge; a stretched/centered splitter (the splitter-in-its-
+  own-track idiom) ⇒ `PreviousAndNext`. A pair that falls outside the definition range is a no-op.
+- **Redistribution** is conservative: the dragged pair's combined size is held constant; `delta` cells move from
+  `next` to `prev`. Both definitions' `Min`/`Max` are honored — `prev` is pulled back so the conserved partner
+  never breaches *its* bound (`Min` wins a `Min>Max` conflict, LD18). A pinned drag (both at a wall) is a no-op
+  (no spurious measure invalidation). An **over-constrained pair** (`prev.Min + next.Min > total`, or the Max
+  analog) can't satisfy both bounds while conserving the total; the resolution is deterministic and `prev`-wins
+  (`prev` is re-clamped to its own bound last), so `next` may end slightly past its Min/Max in that degenerate
+  case — v1; the alternative (growing the total) would fight the Grid's own track sizing.
+- **Unit-type preservation** (the pinned decision): a definition keeps its `GridLength` unit across a resize. A
+  `*` track stays `*` with its **weight rewritten to the new cell count** (so the resized pair holds its new ratio
+  on a subsequent container resize); a `Cell`/`Auto` track becomes a fixed cell count. Known quirk (shared with
+  WPF/Avalonia): rewriting a star pair's weights to absolute cell counts shifts their share relative to *other*
+  untouched star tracks — predictable, accepted for v1.
+- **Keyboard** (focusable by default): arrow keys nudge by `KeyboardIncrement` (default 1) — Left/Right for
+  columns, Up/Down for rows — incrementally from the *current* sizes (drag is cumulative from a grab snapshot).
+- **Cursor**: the resting `Cursor` reflects the resolved axis (`ColResize` / `RowResize`), set in `ArrangeOverride`
+  (equality-gated, no layout churn).
+- **Theme** (`CursorialTheme.BuiltIn`): no template — the `Thumb` paints its `Background` (a `MutedBrush` groove,
+  brightening to `AccentBrush` on `:pointerover`). XAML overlay twin deferred to the code-first backstop.
+
+Tests: `Cursorial.UI.Tests/GridSplitterTests.cs` (column + row drag conserving the pair total, `Min`/`Max` clamp
+with the conserved partner, star-unit preservation + new ratio, keyboard nudge, resolved cursor, not-in-a-grid
+no-op).

@@ -61,6 +61,7 @@ internal static class ControlThemes
         dict[typeof(TabItem)] = TabItemTheme();
         dict[typeof(ProgressBar)] = ProgressBarTheme();
         dict[typeof(Slider)] = SliderTheme();
+        dict[typeof(GridSplitter)] = GridSplitterTheme();
         dict[typeof(StatusBar)] = StatusBarTheme();
         dict[typeof(StatusBarItem)] = StatusBarItemTheme();
         dict[typeof(Expander)] = ExpanderTheme();
@@ -724,6 +725,18 @@ internal static class ControlThemes
         template.Styles.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush));
         return template;
+    }
+
+    // ───────────────────────────── GridSplitter ─────────────────────────────
+
+    // A draggable divider (a Thumb that fills its grid cell with its Background): a muted groove that brightens to
+    // the accent on hover so the resize affordance reads. No template — Thumb.Render paints the Background.
+    private static Style GridSplitterTheme()
+    {
+        var theme = new Style { Key = "Theme.GridSplitter" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.MutedBrush);
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush));
+        return theme;
     }
 
     // ───────────────────────────── StatusBar / StatusBarItem ─────────────────────────────

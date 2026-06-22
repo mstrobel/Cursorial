@@ -78,37 +78,53 @@ internal sealed class XamlObjectGraphBuilder
         var root = InstantiateObject(0, rootInstance);
         _rootObject = root;
 
-        // The whole tree is built and the document name scope is fully populated — resolve any {x:Reference}
-        // that named an element not yet built when it was encountered (a forward reference).
+        // The whole tree is built and the document name scope is fully populated — resolve any forward name
+        // reference ({x:Reference}, or a {Binding ElementName=…}/{Binding Source={x:Reference …}} whose named
+        // element appeared later in the document).
         ResolveDeferredReferences();
 
-        // Attach the document namescope to a UIElement root (matrix X101/XD15).
+        // Attach the document namescope to a UIElement root (matrix X101/XD15) for runtime FindName / code-first
+        // ElementName resolution.
         if (root is UIElement rootElement)
             NameScope.SetNameScope(rootElement, _documentScope);
 
         return root;
     }
 
-    private readonly List<DeferredReference> _deferredReferences = [];
+    private readonly List<DeferredNameResolution> _deferredReferences = [];
 
-    private readonly record struct DeferredReference(object Target, XamlMember Member, string Name, int Line, int Column);
+    private readonly record struct DeferredNameResolution(string Name, int Line, int Column, Action<object> Assign);
 
-    /// <summary>Records an <c>{x:Reference Name}</c> whose named element was not yet in the document name scope (a
-    /// forward reference); <see cref="ResolveDeferredReferences"/> assigns it after the whole tree is built.</summary>
+    /// <summary>The name scope the current build resolves <c>x:Name</c> references against — the per-build template
+    /// scope inside a template slice (matrix X155), else the document scope.</summary>
+    private INameScope ResolutionScope => TemplateContext?.NameScope ?? _documentScope;
+
+    /// <summary>Finds the element registered under <paramref name="name"/> in the current build's name scope (the
+    /// document scope, or a template slice's per-build scope). Null when not (yet) registered — a forward reference.</summary>
+    internal object? ResolveName(string name) => ResolutionScope.Find(name);
+
+    /// <summary>Records an <c>{x:Reference Name}</c> direct-value reference whose named element was not yet built (a
+    /// forward reference); <see cref="ResolveDeferredReferences"/> assigns it after the (sub)tree is built.</summary>
     internal void DeferReference(object target, XamlMember member, string name, int line, int column)
-        => _deferredReferences.Add(new DeferredReference(target, member, name, line, column));
+        => DeferNameResolution(name, line, column, element => AssignResolvedValue(member, target, element, line, column));
 
-    /// <summary>Resolves <c>{x:Reference}</c> values that were forward references, now that the name scope is full.</summary>
+    /// <summary>Records a forward name reference resolved to its element at end-of-(sub)tree (generalizes
+    /// <see cref="DeferReference"/> for the binding <c>ElementName</c> / <c>Source={x:Reference}</c> cases, which
+    /// set the resolved element as the binding's source and install it).</summary>
+    internal void DeferNameResolution(string name, int line, int column, Action<object> assign)
+        => _deferredReferences.Add(new DeferredNameResolution(name, line, column, assign));
+
+    /// <summary>Resolves forward name references now that the (sub)tree's name scope is full.</summary>
     private void ResolveDeferredReferences()
     {
         foreach (var reference in _deferredReferences)
         {
-            var element = _documentScope.Find(reference.Name)
+            var element = ResolutionScope.Find(reference.Name)
                 ?? throw Fatal(XamlDiagnosticCodes.ReferenceNotFound,
-                    $"{{x:Reference}} could not resolve '{reference.Name}' — no element with that x:Name exists in the document.",
+                    $"Could not resolve the x:Name reference '{reference.Name}' — no element with that name exists in this scope.",
                     reference.Line, reference.Column);
 
-            AssignResolvedValue(reference.Member, reference.Target, element, reference.Line, reference.Column);
+            reference.Assign(element);
         }
     }
 
@@ -122,7 +138,12 @@ internal sealed class XamlObjectGraphBuilder
         // Push the captured definition-site lexical chain so {StaticResource} inside the body resolves
         // against the template's enclosing definition scope, not the instantiation site (matrix X162/X163).
         _scopes.PushChain(CapturedTemplateScope);
-        return InstantiateObject(sliceHead);
+        var root = InstantiateObject(sliceHead);
+        // Resolve forward name references INSIDE the template against the per-build template name scope (the slice's
+        // counterpart of Build's resolution pass) — so an ElementName / {x:Reference} binding works in a DataTemplate
+        // exactly as at the document level, regardless of part order.
+        ResolveDeferredReferences();
+        return root;
     }
 
     // ── Object instantiation ─────────────────────────────────────────────────────────────────────

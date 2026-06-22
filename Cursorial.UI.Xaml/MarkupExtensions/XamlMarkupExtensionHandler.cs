@@ -176,8 +176,36 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 "Binding target is not a UIObject.", line, column);
 
-        var binding = BuildBinding(builder, node, line, column);
-        BindingOperations.Install(target, property, binding);
+        // {Binding ElementName=name} and {Binding Source={x:Reference name}} both anchor on a named element in the
+        // active name scope — the document scope, or, inside a DataTemplate / ControlTemplate, that template
+        // instance's own scope. Resolve the name to the concrete element and build the binding with it as the
+        // Source, reusing x:Reference's backward(now)/forward(end-of-(sub)tree defer) resolution. This avoids the
+        // runtime ElementName lookup racing the namescope attach (which the loader / DataTemplate.Build performs
+        // only AFTER building the subtree), so it resolves identically at the document level and inside templates,
+        // in either part order. (Binding source/anchor properties are init-only, so the element must be known at
+        // construction — hence build-with-source, not mutate-after.)
+        if (NamedElementAnchor(node) is { } name)
+        {
+            if (builder.ResolveName(name) is { } resolved)
+                BindingOperations.Install(target, property, BuildBinding(builder, node, line, column, resolved));
+            else
+                builder.DeferNameResolution(name, line, column,
+                    element => BindingOperations.Install(target, property, BuildBinding(builder, node, line, column, element)));
+            return;
+        }
+
+        BindingOperations.Install(target, property, BuildBinding(builder, node, line, column));
+    }
+
+    // The name a binding anchors on, from ElementName=name OR Source={x:Reference name} (both resolve a named
+    // element in the active scope); null when the binding has neither.
+    private static string? NamedElementAnchor(MarkupExtensionNode node)
+    {
+        if (Named(node, "ElementName") is { Length: > 0 } elementName)
+            return elementName;
+        if (node.FindNamed("Source") is { IsNested: true } source && StripPrefix(source.Nested!.Name) == "Reference")
+            return FirstPositional(source.Nested!);
+        return null;
     }
 
     private void AttachTemplateBinding(XamlObjectGraphBuilder builder, object instance, XamlMember? member, MarkupExtensionNode node, int line, int column)
@@ -200,7 +228,10 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         BindingOperations.Install(target, property, templateBinding);
     }
 
-    private Binding BuildBinding(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
+    // Builds a Binding from the markup node. <paramref name="namedElementSource"/>, when supplied, is the element a
+    // resolved ElementName / Source={x:Reference} anchor points at — it becomes the binding's Source directly
+    // (binding source/anchor properties are init-only, so the anchor must be resolved before construction).
+    private Binding BuildBinding(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column, object? namedElementSource = null)
     {
         // Path: the first positional, or the Path= named arg.
         string path = FirstPositional(node) ?? Named(node, "Path") ?? string.Empty;
@@ -208,14 +239,26 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
 
         return new Binding(path)
         {
-            Source = Named(node, "Source"),
-            ElementName = Named(node, "ElementName"),
+            Source = namedElementSource ?? ParseSourceValue(builder, node, line, column),
             RelativeSource = ParseRelativeSource(builder, node, line, column),
             Mode = ParseEnum<BindingMode>(builder, node, "Mode", line, column) ?? BindingMode.Default,
             Converter = ResolveConverter(builder, node, line, column),
             StringFormat = Named(node, "StringFormat"),
             FallbackValue = fallback ?? UIProperty.UnsetValue,
         };
+    }
+
+    // Resolves a Binding's non-anchor Source argument (the ElementName / Source={x:Reference} anchor forms are
+    // resolved to a concrete element by AttachBinding and passed as namedElementSource). Source may be a plain
+    // value, or a nested {StaticResource key} / {x:Static member} resolved eagerly to a source object.
+    private object? ParseSourceValue(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
+    {
+        if (node.FindNamed("Source") is not { } sourceArg)
+            return null;
+
+        return sourceArg.IsNested
+            ? ResolveNestedExtension(builder, sourceArg.Nested!, line, column)
+            : sourceArg.Text;
     }
 
     private static RelativeSource? ParseRelativeSource(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
@@ -310,8 +353,10 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound, "{x:Reference} has no target member.", line, column);
 
         // Backward reference (the named element is already built) → assign now; a forward reference (not yet in
-        // the name scope) defers to the builder's end-of-tree pass, which resolves it once the scope is full.
-        if (builder.DocumentScope.Find(name) is { } element)
+        // the name scope) defers to the builder's end-of-(sub)tree pass, which resolves it once the scope is full.
+        // ResolveName uses the active scope (document, or a template slice's own scope — so {x:Reference} works
+        // inside a DataTemplate/ControlTemplate too).
+        if (builder.ResolveName(name) is { } element)
             builder.AssignResolvedValue(member, instance, element, line, column);
         else
             builder.DeferReference(instance, member, name, line, column);

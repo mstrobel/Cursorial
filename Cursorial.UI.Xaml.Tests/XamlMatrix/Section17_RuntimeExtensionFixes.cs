@@ -1,5 +1,7 @@
+using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Data;
+using Cursorial.UI.Testing;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -107,5 +109,98 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         var template = Load<UIControls.ControlTemplate>(
             "<ControlTemplate TargetType=\"{x:Type x:String}\"><Border/></ControlTemplate>");
         Assert.Equal(typeof(string), template.TargetType);
+    }
+
+    [Fact] // {Binding ElementName=x} resolves the named element's property once the tree is shown
+    public void Binding_ElementName_ResolvesNamedElement()
+    {
+        using var host = UITestHost.Create();
+        var root = Load<UIControls.StackPanel>(
+            "<StackPanel>" +
+            "<TextBox x:Name=\"src\" Text=\"hello\"/>" +
+            "<TextBlock x:Name=\"dst\" Text=\"{Binding Text, ElementName=src}\"/>" +
+            "</StackPanel>");
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Assert.Equal("hello", ((UIControls.TextBlock) root.Children[1]).Text);
+    }
+
+    [Fact] // {Binding Source={x:Reference x}} resolves the named element as the binding source
+    public void Binding_SourceXReference_ResolvesNamedElement()
+    {
+        using var host = UITestHost.Create();
+        var root = Load<UIControls.StackPanel>(
+            "<StackPanel>" +
+            "<TextBox x:Name=\"src\" Text=\"world\"/>" +
+            "<TextBlock x:Name=\"dst\" Text=\"{Binding Text, Source={x:Reference src}}\"/>" +
+            "</StackPanel>");
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Assert.Equal("world", ((UIControls.TextBlock) root.Children[1]).Text);
+    }
+
+    [Fact] // {Binding ElementName=…} resolves a FORWARD reference (the named element appears after the binding)
+    public void Binding_ElementName_ResolvesForwardReference()
+    {
+        using var host = UITestHost.Create();
+        var root = Load<UIControls.StackPanel>(
+            "<StackPanel>" +
+            "<TextBlock x:Name=\"dst\" Text=\"{Binding Text, ElementName=src}\"/>" + // binding precedes the named element
+            "<TextBox x:Name=\"src\" Text=\"forward\"/>" +
+            "</StackPanel>");
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Assert.Equal("forward", ((UIControls.TextBlock) root.Children[0]).Text);
+    }
+
+    [Fact] // ElementName resolves inside a DataTemplate (against that template instance's own name scope)
+    public void Binding_ElementName_ResolvesInsideDataTemplate()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 8) });
+        var root = Load<UIControls.ContentControl>(
+            "<ContentControl Content=\"d\">" +
+            "<ContentControl.ContentTemplate><DataTemplate>" +
+            "<StackPanel>" +
+            "<TextBox x:Name=\"src\" Text=\"tmplname\"/>" +
+            "<TextBlock Text=\"{Binding Text, ElementName=src}\"/>" +
+            "</StackPanel>" +
+            "</DataTemplate></ContentControl.ContentTemplate>" +
+            "</ContentControl>");
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        // Both the TextBox and the bound TextBlock render the template-local name's text — 2 rows, not 1.
+        Assert.Equal(2, RowsContaining(host, 8, "tmplname"));
+    }
+
+    [Fact] // {x:Reference} inside a DataTemplate resolves against the template instance scope (forward, inside)
+    public void Binding_SourceXReference_ResolvesInsideDataTemplate()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 8) });
+        var root = Load<UIControls.ContentControl>(
+            "<ContentControl Content=\"d\">" +
+            "<ContentControl.ContentTemplate><DataTemplate>" +
+            "<StackPanel>" +
+            "<TextBlock Text=\"{Binding Text, Source={x:Reference src}}\"/>" + // forward, inside the template
+            "<TextBox x:Name=\"src\" Text=\"tmplref\"/>" +
+            "</StackPanel>" +
+            "</DataTemplate></ContentControl.ContentTemplate>" +
+            "</ContentControl>");
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Assert.Equal(2, RowsContaining(host, 8, "tmplref"));
+    }
+
+    private static int RowsContaining(UITestHost host, int rows, string text)
+    {
+        var count = 0;
+        for (var r = 0; r < rows; r++)
+            if (host.GetRowText(r).Contains(text, StringComparison.Ordinal))
+                count++;
+        return count;
     }
 }

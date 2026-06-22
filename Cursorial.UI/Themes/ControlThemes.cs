@@ -60,6 +60,7 @@ internal static class ControlThemes
         dict[typeof(TabControl)] = TabControlTheme();
         dict[typeof(TabItem)] = TabItemTheme();
         dict[typeof(ProgressBar)] = ProgressBarTheme();
+        dict[typeof(Slider)] = SliderTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
         dict[typeof(Image)] = ImageTheme();
         dict[typeof(Chart)] = ChartTheme();
@@ -695,6 +696,29 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:indeterminate").SetResource(ProgressBar.FillProperty, ThemeKeys.ProgressFillIndeterminate));
         return theme;
     }
+
+    // ───────────────────────────── Slider ─────────────────────────────
+
+    // A RangeBase value picker: the BorderPen draws the rail (Slider.Render); the PART_Thumb marker fills with the
+    // accent and rides the rail at the value fraction.
+    private static Style SliderTheme()
+    {
+        var theme = new Style { Key = "Theme.Slider" }
+            .Set(Control.TemplateProperty, SliderTemplate())
+            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
+
+        // The thumb part's fill — the accent (re-skins on a theme flip).
+        theme.Children.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
+            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush));
+        return theme;
+    }
+
+    private static ControlTemplate SliderTemplate() => new(ctx =>
+    {
+        var thumb = new Thumb();
+        ctx.RegisterName("PART_Thumb", thumb);
+        return thumb;
+    });
 
     // ───────────────────────────── TextBox ─────────────────────────────
 

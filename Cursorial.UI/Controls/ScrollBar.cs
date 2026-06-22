@@ -20,7 +20,7 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartTrack, typeof(Track), IsRequired = true)]
 [TemplatePart(PartLineUp, typeof(RepeatButton))]
 [TemplatePart(PartLineDown, typeof(RepeatButton))]
-public class ScrollBar : Control
+public class ScrollBar : RangeBase
 {
     private const string PartTrack = "PART_Track";
     private const string PartLineUp = "PART_LineUpButton";
@@ -34,41 +34,27 @@ public class ScrollBar : Control
     public static readonly StyledProperty<Orientation> OrientationProperty =
         UIProperty.Register<ScrollBar, Orientation>(nameof(Orientation), defaultValue: Orientation.Vertical, changed: OnOrientationChanged);
 
-    /// <summary>The current scroll value, coerced into <c>[Minimum, Maximum]</c> (<c>AffectsRender</c>).</summary>
-    public static readonly StyledProperty<double> ValueProperty =
-        UIProperty.Register<ScrollBar, double>(nameof(Value), coerce: CoerceValue, changed: OnValueChanged);
-
-    /// <summary>The minimum value (default 0). <c>AffectsRender</c>.</summary>
-    public static readonly StyledProperty<double> MinimumProperty =
-        UIProperty.Register<ScrollBar, double>(nameof(Minimum), changed: OnRangeChanged);
-
-    /// <summary>The maximum value (default 0 ⇒ no travel until set). <c>AffectsRender</c>.</summary>
-    public static readonly StyledProperty<double> MaximumProperty =
-        UIProperty.Register<ScrollBar, double>(nameof(Maximum), changed: OnRangeChanged);
-
     /// <summary>The viewport size in value units (the proportional thumb length input). <c>AffectsRender</c>.</summary>
     public static readonly StyledProperty<double> ViewportSizeProperty =
-        UIProperty.Register<ScrollBar, double>(nameof(ViewportSize), changed: OnRangeChanged);
-
-    /// <summary>The line-step delta (arrow buttons; default 1).</summary>
-    public static readonly StyledProperty<double> SmallChangeProperty =
-        UIProperty.Register<ScrollBar, double>(nameof(SmallChange), defaultValue: 1.0);
-
-    /// <summary>The page-step delta (track click; default 0 ⇒ falls back to <see cref="ViewportSize"/>).</summary>
-    public static readonly StyledProperty<double> LargeChangeProperty =
-        UIProperty.Register<ScrollBar, double>(nameof(LargeChange));
+        UIProperty.Register<ScrollBar, double>(nameof(ViewportSize));
 
     /// <summary>The thumb fill brush (the proportional <c>█</c> run; <c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<IBrush?> ThumbBrushProperty =
         UIProperty.Register<ScrollBar, IBrush?>(nameof(ThumbBrush));
 
-    /// <summary>The bubbling scroll event raised whenever <see cref="Value"/> changes (<see cref="ScrollEventArgs"/>).</summary>
+    /// <summary>The bubbling scroll event raised whenever <see cref="RangeBase.Value"/> changes (<see cref="ScrollEventArgs"/>).</summary>
     public static readonly RoutedEvent<ScrollEventArgs> ScrollEvent =
         RoutedEvent<ScrollEventArgs>.Register(nameof(Scroll), RoutingStrategy.Bubble, typeof(ScrollBar));
 
     static ScrollBar()
     {
-        AffectsRender<ScrollBar>(ValueProperty, MinimumProperty, MaximumProperty, ViewportSizeProperty, ThumbBrushProperty);
+        // Min/Max/Value come from RangeBase (already AffectsRender there). ScrollBar overrides the inherited
+        // defaults: Maximum 0 (no travel until the owner sets it) and LargeChange 0 (⇒ EffectiveLargeChange falls
+        // back to ViewportSize) — both differ from RangeBase's WPF defaults of 1.
+        MaximumProperty.OverrideDefaultValue<ScrollBar>(0);
+        LargeChangeProperty.OverrideDefaultValue<ScrollBar>(0);
+
+        AffectsRender<ScrollBar>(ViewportSizeProperty, ThumbBrushProperty);
         AffectsMeasure<ScrollBar>(OrientationProperty);
 
         // :horizontal / :vertical select glyph + rail orientation styling (a control-semantic class
@@ -82,23 +68,8 @@ public class ScrollBar : Control
     /// <inheritdoc cref="OrientationProperty"/>
     public Orientation Orientation { get => GetValue(OrientationProperty); set => SetValue(OrientationProperty, value); }
 
-    /// <inheritdoc cref="ValueProperty"/>
-    public double Value { get => GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
-
-    /// <inheritdoc cref="MinimumProperty"/>
-    public double Minimum { get => GetValue(MinimumProperty); set => SetValue(MinimumProperty, value); }
-
-    /// <inheritdoc cref="MaximumProperty"/>
-    public double Maximum { get => GetValue(MaximumProperty); set => SetValue(MaximumProperty, value); }
-
     /// <inheritdoc cref="ViewportSizeProperty"/>
     public double ViewportSize { get => GetValue(ViewportSizeProperty); set => SetValue(ViewportSizeProperty, value); }
-
-    /// <inheritdoc cref="SmallChangeProperty"/>
-    public double SmallChange { get => GetValue(SmallChangeProperty); set => SetValue(SmallChangeProperty, value); }
-
-    /// <inheritdoc cref="LargeChangeProperty"/>
-    public double LargeChange { get => GetValue(LargeChangeProperty); set => SetValue(LargeChangeProperty, value); }
 
     /// <inheritdoc cref="ThumbBrushProperty"/>
     public IBrush? ThumbBrush { get => GetValue(ThumbBrushProperty); set => SetValue(ThumbBrushProperty, value); }
@@ -220,24 +191,13 @@ public class ScrollBar : Control
         RaiseEvent(args);
     }
 
-    // ───────────────────────────── coercion + change handlers ─────────────────────────────
+    // ───────────────────────────── change handlers ─────────────────────────────
 
-    private static double CoerceValue(UIObject sender, double value)
-        => sender is ScrollBar bar ? Math.Clamp(value, bar.Minimum, Math.Max(bar.Minimum, bar.Maximum)) : value;
-
-    private static void OnValueChanged(UIObject sender, double oldValue, double newValue)
-    {
-        // A direct Value set (not via a Step/Page/drag) still raises a Scroll event so the owner's
-        // mirror stays in sync — except when the owner originated it (SetValueSilently).
-        if (sender is ScrollBar bar)
-            bar.RaiseScroll(newValue, ScrollEventType.ThumbPosition);
-    }
-
-    private static void OnRangeChanged(UIObject sender, double oldValue, double newValue)
-    {
-        if (sender is ScrollBar bar)
-            bar.CoerceValue(ValueProperty); // a range change re-clamps the value
-    }
+    /// <summary>A value change (post-coercion) raises the <see cref="Scroll"/> event so the owner's mirror stays in
+    /// sync — unless suppressed (a Step/Page/drag re-raises with its own type, or the owner originated it via
+    /// <see cref="SetValueSilently"/>). Coercion + the range-change re-clamp are inherited from <see cref="RangeBase"/>.</summary>
+    protected override void OnValueChanged(double oldValue, double newValue)
+        => RaiseScroll(newValue, ScrollEventType.ThumbPosition);
 
     private static void OnOrientationChanged(UIObject sender, Orientation oldValue, Orientation newValue)
     {

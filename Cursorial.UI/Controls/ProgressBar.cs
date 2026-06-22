@@ -17,22 +17,10 @@ namespace Cursorial.UI.Controls;
 /// holds the phase, AD15). The phase is width-independent, so no re-arm on resize. (The composite-only persistent
 /// highlight layer of §3.9 resolution 1 — an <c>AffectsComposite</c> target instead of the per-frame
 /// <c>AffectsRender</c> re-raster of this small bar — stays a recorded perf refinement.)</remarks>
-public class ProgressBar : Control
+public class ProgressBar : RangeBase
 {
     // The marquee bounces the phase [0,1] over this period each way (a perpetual AutoReverse).
     private static readonly TimeSpan MarqueePeriod = TimeSpan.FromMilliseconds(1100);
-
-    /// <summary>The lower bound of <see cref="Value"/> (default 0; AffectsRender).</summary>
-    public static readonly StyledProperty<double> MinimumProperty =
-        UIProperty.Register<ProgressBar, double>(nameof(Minimum), defaultValue: 0);
-
-    /// <summary>The upper bound of <see cref="Value"/> (default 100; AffectsRender).</summary>
-    public static readonly StyledProperty<double> MaximumProperty =
-        UIProperty.Register<ProgressBar, double>(nameof(Maximum), defaultValue: 100);
-
-    /// <summary>The current value, coerced into [<see cref="Minimum"/>, <see cref="Maximum"/>] (default 0; AffectsRender).</summary>
-    public static readonly StyledProperty<double> ValueProperty =
-        UIProperty.Register<ProgressBar, double>(nameof(Value), defaultValue: 0, coerce: CoerceValue);
 
     /// <summary>Whether the bar shows the indeterminate marquee instead of a determinate fill (<c>:indeterminate</c>).</summary>
     public static readonly StyledProperty<bool> IsIndeterminateProperty =
@@ -50,19 +38,12 @@ public class ProgressBar : Control
 
     static ProgressBar()
     {
+        // Min/Max/Value (+ clamp coercion) come from RangeBase; only the default Maximum differs (100, not 1).
+        MaximumProperty.OverrideDefaultValue<ProgressBar>(100);
+
         PseudoClassMapping.Register<ProgressBar>(IsIndeterminateProperty, ":indeterminate");
-        AffectsRender<ProgressBar>(MinimumProperty, MaximumProperty, ValueProperty, IsIndeterminateProperty,
-            FillProperty, IndeterminatePhaseProperty);
+        AffectsRender<ProgressBar>(IsIndeterminateProperty, FillProperty, IndeterminatePhaseProperty);
     }
-
-    /// <inheritdoc cref="MinimumProperty"/>
-    public double Minimum { get => GetValue(MinimumProperty); set => SetValue(MinimumProperty, value); }
-
-    /// <inheritdoc cref="MaximumProperty"/>
-    public double Maximum { get => GetValue(MaximumProperty); set => SetValue(MaximumProperty, value); }
-
-    /// <inheritdoc cref="ValueProperty"/>
-    public double Value { get => GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
 
     /// <inheritdoc cref="IsIndeterminateProperty"/>
     public bool IsIndeterminate { get => GetValue(IsIndeterminateProperty); set => SetValue(IsIndeterminateProperty, value); }
@@ -72,16 +53,6 @@ public class ProgressBar : Control
 
     /// <inheritdoc cref="IndeterminatePhaseProperty"/>
     public double IndeterminatePhase { get => GetValue(IndeterminatePhaseProperty); set => SetValue(IndeterminatePhaseProperty, value); }
-
-    /// <summary>The filled fraction in [0, 1] (0 when the range is empty). Determinate only.</summary>
-    public double FilledFraction
-    {
-        get
-        {
-            var range = Maximum - Minimum;
-            return range > 0 ? Math.Clamp((Value - Minimum) / range, 0, 1) : 0;
-        }
-    }
 
     /// <summary>The bar stretches horizontally and is one row tall by default.</summary>
     protected override Size MeasureOverride(Size availableSize) => new(0, 1);
@@ -147,13 +118,4 @@ public class ProgressBar : Control
     }
 
     private void StopMarquee() => this.StopAnimation(IndeterminatePhaseProperty);
-
-    // Clamp the value into [Minimum, Maximum]; a misconfigured range (Max < Min) is left as-is (Render clamps the ratio).
-    private static double CoerceValue(UIObject owner, double value)
-    {
-        var bar = (ProgressBar)owner;
-        var lo = bar.Minimum;
-        var hi = bar.Maximum;
-        return hi < lo ? value : Math.Clamp(value, lo, hi);
-    }
 }

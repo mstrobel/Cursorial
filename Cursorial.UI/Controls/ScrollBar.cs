@@ -5,10 +5,10 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// A scroll bar (design doc §12.7, CD28): a 1-cell-wide (or 1-cell-tall) <see cref="Control"/> with a
-/// <see cref="Value"/> ∈ <c>[Minimum, Maximum]</c> model, a proportional draggable thumb on a
-/// <see cref="Track"/> rail, click-track paging (±<see cref="LargeChange"/>), and optional
+/// <see cref="RangeBase.Value"/> ∈ <c>[Minimum, Maximum]</c> model, a proportional draggable thumb on a
+/// <see cref="Track"/> rail, click-track paging (±<see cref="RangeBase.LargeChange"/>), and optional
 /// line-step <see cref="RepeatButton"/>s (<c>PART_LineUpButton</c>/<c>PART_LineDownButton</c>) that
-/// repeat ±<see cref="SmallChange"/> while held. <see cref="Orientation"/> (S1-owned) selects the
+/// repeat ±<see cref="RangeBase.SmallChange"/> while held. <see cref="Orientation"/> (S1-owned) selects the
 /// axis; the <c>:horizontal</c>/<c>:vertical</c> pseudo-classes select glyph/orientation styling. A
 /// value change raises the bubbling <see cref="Scroll"/> event (<see cref="ScrollEventArgs"/>); the
 /// owning <see cref="ScrollViewer"/> wires it code-behind in <c>OnApplyTemplate</c>.
@@ -77,7 +77,7 @@ public class ScrollBar : RangeBase
     /// <summary>CLR sugar over <see cref="ScrollEvent"/>.</summary>
     public event EventHandler<ScrollEventArgs>? Scroll { add => AddHandler(ScrollEvent, value!); remove => RemoveHandler(ScrollEvent, value!); }
 
-    /// <summary>The effective page step: <see cref="LargeChange"/> when set, else <see cref="ViewportSize"/>, else 1.</summary>
+    /// <summary>The effective page step: <see cref="RangeBase.LargeChange"/> when set, else <see cref="ViewportSize"/>, else 1.</summary>
     private double EffectiveLargeChange
     {
         get
@@ -168,7 +168,7 @@ public class ScrollBar : RangeBase
         RaiseScroll(clamped, type);
     }
 
-    /// <summary>Sets <see cref="Value"/> from the owner without re-raising the <see cref="Scroll"/> event (the two-way mirror back-path, CD28).</summary>
+    /// <summary>Sets <see cref="RangeBase.Value"/> from the owner without re-raising the <see cref="Scroll"/> event (the two-way mirror back-path, CD28).</summary>
     internal void SetValueSilently(double value)
     {
         _suppressScrollEvent = true;

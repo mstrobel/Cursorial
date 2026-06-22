@@ -12,7 +12,7 @@ namespace Cursorial.UI.Controls;
 /// <summary>
 /// The rail + draggable thumb of a <see cref="ScrollBar"/> (design doc §12.7) — an internal primitive
 /// (the doc defers <c>Thumb</c>/<c>Track</c> as public types until a second consumer appears). The
-/// track maps the owning <see cref="ScrollBar"/>'s <see cref="ScrollBar.Value"/> to a thumb cell
+/// track maps the owning <see cref="ScrollBar"/>'s <see cref="RangeBase.Value"/> to a thumb cell
 /// position along its long axis: a click above/left of the thumb pages back, below/right pages
 /// forward, and a drag on the thumb (mouse capture, cell-quantized) reports a continuous value. The
 /// track draws a <c>│</c> (or <c>─</c>) rail via the owning bar's <c>BorderPen</c> and a
@@ -54,7 +54,7 @@ public sealed class Track : UIElement
     /// <summary>
     /// The thumb's start cell and length along the long axis (matrix C232): length is proportional to
     /// <c>ViewportSize / (Extent = Max − Min + ViewportSize)</c>, clamped to a minimum of 1 cell; the
-    /// start maps <see cref="ScrollBar.Value"/> across the remaining travel.
+    /// start maps <see cref="RangeBase.Value"/> across the remaining travel.
     /// </summary>
     internal (int Start, int Length) ThumbGeometry()
     {

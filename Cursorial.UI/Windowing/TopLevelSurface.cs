@@ -100,6 +100,7 @@ public sealed class TopLevelSurface
     internal void RunRenderPass() => RenderTree.RunRenderPass();
 
     /// <summary>Appends this surface's layers — translated to its screen offset, scaled by its opacity — to <paramref name="target"/>.</summary>
+    /// <param name="target">The shared layer list the compositor concatenates across surfaces.</param>
     /// <param name="surfaceZ">This surface's z-index in the stack (stamped on every layer for the compositor's fragment-occlusion).</param>
     /// <param name="isOccluder">Whether this surface is an opaque occluder (a window/popup/badge — not the root).</param>
     internal void CollectLayers(List<SceneLayer> target, int surfaceZ = 0, bool isOccluder = false)

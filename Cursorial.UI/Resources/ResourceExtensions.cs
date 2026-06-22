@@ -60,8 +60,11 @@ public static class ResourceExtensions
     internal static bool Walk(UIElement element, object key, ThemeVariant variant, List<string>? searched, out object? value)
         => Walk(element, key, variant, searched, out value, out _);
 
-    /// <param name="chasedAlias">True iff resolution followed at least one <see cref="ResourceReference"/> hop — the
-    /// subscription registry uses this to keep an aliased subscription interested in keyed pulses of the target.</param>
+    /// <summary>
+    /// The full chain walk (see the sibling overload's remarks). <c>chasedAlias</c> reports whether resolution
+    /// followed at least one <see cref="ResourceReference"/> hop — the subscription registry uses it to keep an
+    /// aliased subscription interested in keyed pulses of the target.
+    /// </summary>
     internal static bool Walk(UIElement element, object key, ThemeVariant variant, List<string>? searched, out object? value, out bool chasedAlias)
     {
         chasedAlias = false;

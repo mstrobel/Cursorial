@@ -59,7 +59,7 @@ public sealed class ScrollEventArgs : RoutedEventArgs
         ScrollEventType = scrollEventType;
     }
 
-    /// <summary>The requested new <see cref="ScrollBar.Value"/>.</summary>
+    /// <summary>The requested new <see cref="RangeBase.Value"/>.</summary>
     public double NewValue { get; init; }
 
     /// <summary>The action that produced the scroll.</summary>

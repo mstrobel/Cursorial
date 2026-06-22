@@ -61,6 +61,8 @@ internal static class ControlThemes
         dict[typeof(TabItem)] = TabItemTheme();
         dict[typeof(ProgressBar)] = ProgressBarTheme();
         dict[typeof(Slider)] = SliderTheme();
+        dict[typeof(StatusBar)] = StatusBarTheme();
+        dict[typeof(StatusBarItem)] = StatusBarItemTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
         dict[typeof(Image)] = ImageTheme();
         dict[typeof(Chart)] = ChartTheme();
@@ -718,6 +720,36 @@ internal static class ControlThemes
         var thumb = new Thumb();
         ctx.RegisterName("PART_Thumb", thumb);
         return thumb;
+    });
+
+    // ───────────────────────────── StatusBar / StatusBarItem ─────────────────────────────
+
+    // A one-row docked bar: a Border (StatusBarBackground) wrapping the PART_ItemsHost; the StatusBar's own
+    // DockPanel ItemsPanel docks the StatusBarItems left-to-right (right-dockable per item).
+    private static Style StatusBarTheme()
+        => new Style { Key = "Theme.StatusBar" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.StatusBarBackground)
+            .Set(Control.TemplateProperty, StatusBarTemplate());
+
+    private static ControlTemplate StatusBarTemplate() => new(ctx =>
+    {
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+        var border = new Border { Child = host };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        return border;
+    });
+
+    // A status-bar cell: a padded ContentPresenter.
+    private static Style StatusBarItemTheme()
+        => new Style { Key = "Theme.StatusBarItem" }
+            .Set(Control.TemplateProperty, StatusBarItemTemplate());
+
+    private static ControlTemplate StatusBarItemTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        return new Border { Padding = new Margins(1, 0), Child = presenter };
     });
 
     // ───────────────────────────── TextBox ─────────────────────────────

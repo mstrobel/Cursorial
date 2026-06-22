@@ -261,7 +261,7 @@ internal static class ControlThemes
         editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(ComboBox.PlaceholderTextProperty));
         editable.SetBinding(TextBox.IsReadOnlyProperty, new TemplateBinding(ComboBox.IsReadOnlyProperty));
 
-        var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
+        var content = new Grid { Margin = new(1, 0) }; // the two faces overlap in one cell; the collapsed one takes no space
         content.Children.Add(selected);
         content.Children.Add(editable);
 
@@ -275,7 +275,7 @@ internal static class ControlThemes
         row.Children.Add(drop);    // docked right (the drop indicator + toggle)
         row.Children.Add(content); // fills the remaining width (the face)
 
-        var face = new Border { Padding = new Margins(1, 0), Child = row };
+        var face = new Border { Child = row };
         face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         face.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 

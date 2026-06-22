@@ -1,9 +1,8 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 
-using Cursorial.Animation;
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
@@ -44,7 +43,7 @@ internal sealed class InspectorDemo : IDemo
                           "q / Esc exits.");
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
-        // app.Theme = CursorialXamlTheme.LoadTheme();
+        // app.Theme = Cursorial.UI.Themes.Xaml.CursorialXamlTheme.LoadTheme();
         var controller = new Controller(app);
 
         app.Started += (_, _) => controller.OpenDialog();
@@ -101,6 +100,15 @@ internal sealed class InspectorDemo : IDemo
                            <Label Content="_Password:"/>
                            <TextBox Placeholder="••••••••" Width="24"/>
                            <CheckBox Content="_Remember me"/>
+                           <ComboBox HorizontalAlignment="Left">
+                               <ComboBox.ItemsSource>
+                                 <x:Array Type="x:String">
+                                     <x:String>Item 1</x:String>
+                                     <x:String>Item 2</x:String>
+                                     <x:String>Item 3</x:String>
+                                 </x:Array>
+                               </ComboBox.ItemsSource>
+                           </ComboBox>
                            <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,1,0,0">
                                <Button Content="_Sign in" IsDefault="True"/>
                                <Button Content="_Cancel"/>
@@ -607,10 +615,10 @@ internal sealed class InspectorDemo : IDemo
                 var item = Node($"{property.OwnerType.Name}.{property.Name}", NoValue);
 
                 item.Items.Add(Node(nameof(e.TargetDescription), e.TargetDescription));
-                item.Items.Add(Node("Value", FormatValue(current.GetValue(property))));
+                item.Items.Add(Node("Value", current.GetValue(property)));
 
                 if (resourceKey is not null)
-                    item.Items.Add(Node("Resource Key", FormatValue(resourceKey)));
+                    item.Items.Add(Node("Resource Key", resourceKey));
 
                 AttachStyleExplanation(item, e);
 
@@ -710,6 +718,7 @@ internal sealed class InspectorDemo : IDemo
                     {
                         null     => "(null)",
                         string s => s,
+                        Array a  => $"[{string.Join(", ", a.Cast<object>().Select(FormatValue))}]" + (a.Length > 0 ? " " : ""),
                         Color c  => c.Kind == ColorKind.Rgb ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}" : c.ToString(),
                         Pen p => $"Pen {{ Brush={FormatValue(p.Brush)}, Weight={p.Weight}, Corners={FormatValue(p.Corners)}, " +
                                  $"Dash={FormatValue(p.Dash)}, EndCap={FormatValue(p.EndCap)}, Junction={FormatValue(p.Junction)}, " +
@@ -767,7 +776,8 @@ internal sealed class InspectorDemo : IDemo
 
         private static string Sanitize(object? value)
         {
-            return value?.ToString()?.Replace("[", "\\[") ?? "(null)";
+            if (value?.ToString() is not {} s) return "(null)";
+            return Regex.Replace(s, @"(?<!\\)\[", "\\[");
         }
 
         private static string BuildElementPath(UIElement current)

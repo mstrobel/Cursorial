@@ -690,13 +690,13 @@
        text box is Collapsed until IsEditable. ASCII-safe 'v' glyph. The declarative twin of ControlThemes.ComboBoxTheme(). -->
   <ControlTemplate x:Key="ComboBoxTemplate" TargetType="ComboBox">
     <Grid>
-      <Border Padding="1,0"
-              Background="{TemplateBinding Background}"
+      <Border Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
           <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False"/>
           <Grid>
-            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectedItem}"/>
+            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectedItem}"
+                              Margin="1,0"/>
             <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed"
                      Placeholder="{TemplateBinding PlaceholderText}"
                      IsReadOnly="{TemplateBinding IsReadOnly}"/>

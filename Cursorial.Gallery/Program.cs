@@ -1,6 +1,5 @@
 using Cursorial.Gallery;
 using Cursorial.Input;
-using Cursorial.Input.Events;
 using Cursorial.UI;
 using Cursorial.UI.Input;
 
@@ -10,7 +9,6 @@ using Cursorial.UI.Input;
 
 var app = UIApplication.CreateBuilder()
     .WithFrameRate(60)
-    .WithKeyReleaseSynthesis()
     .Build();
 
 try
@@ -20,7 +18,7 @@ try
         var root = GalleryApp.BuildRoot();
 
         // Global exit: q / Esc leave; Ctrl+C falls through to the S6 default gesture (unhandled).
-        root.AddHandler(UIElement.KeyDownEvent, (object _, KeyEventArgs e) =>
+        root.AddHandler(UIElement.KeyDownEvent, (object? _, KeyEventArgs e) =>
         {
             if (e.Modifiers != KeyModifiers.None)
                 return; // leave Ctrl/Alt chords for bindings + the Ctrl+C exit gesture

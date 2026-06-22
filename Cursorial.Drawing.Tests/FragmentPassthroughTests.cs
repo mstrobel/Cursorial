@@ -11,6 +11,11 @@ using Cursorial.Rendering.Imaging;
 
 namespace Cursorial.Tests.Drawing;
 
+// FragmentDictionary exposes Count + a struct enumerator but does not implement IEnumerable, so xUnit's
+// Assert.Empty/Assert.Single (which require IEnumerable) do not apply — Assert.Equal(N, …Count) is the only
+// idiomatic form here. Silence the xUnit2013 "use Assert.Empty/Single" suggestion (a false positive).
+#pragma warning disable xUnit2013
+
 // Phase 6b.1: DrawContent registers an out-of-band fragment on the scene buffer, and SceneCompositor carries
 // it onto the composite target (offset-translated) so the frame renderer can emit it.
 public class FragmentPassthroughTests

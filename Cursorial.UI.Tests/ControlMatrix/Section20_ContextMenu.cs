@@ -26,7 +26,7 @@ public sealed class Section20_ContextMenu
         public int Runs;
         public bool CanExecute(object? parameter) => CanRun;
         public void Execute(object? parameter) => Runs++;
-        public event EventHandler? CanExecuteChanged;
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
     }
 
     // A root element bearing a ContextMenu, sized to fill the host so a click anywhere hits it.

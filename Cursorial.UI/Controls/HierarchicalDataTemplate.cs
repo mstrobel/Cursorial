@@ -23,15 +23,15 @@ public class HierarchicalDataTemplate : DataTemplate
 /// (both generate <see cref="TreeViewItem"/> containers for data items).</summary>
 internal static class TreeHierarchy
 {
-    /// <summary>Templates a generated <paramref name="container"/> for a data <paramref name="item"/>: the header is
-    /// the item rendered via its (hierarchical) template, and the children come from the template's
-    /// <see cref="HierarchicalDataTemplate.ItemsSourcePath"/>.</summary>
     // Realization is eager (the whole shown data tree builds at once — virtualization is the v2 item, #80). To keep a
     // cyclic or pathologically-deep data graph from recursing into an uncatchable StackOverflow, a node stops
     // recursing (renders as a leaf) when its data item already appears among its ancestors (a back-reference / cycle)
     // or its depth hits the cap.
     private const int MaxRealizationDepth = 128;
 
+    /// <summary>Templates a generated <paramref name="container"/> for a data <paramref name="item"/>: the header is
+    /// the item rendered via its (hierarchical) template, and the children come from the template's
+    /// <see cref="HierarchicalDataTemplate.ItemsSourcePath"/>.</summary>
     public static void Apply(ItemsControl owner, TreeViewItem container, object? item)
     {
         var template = owner.ItemTemplate ?? ContentRealization.FindImplicitTemplate(owner, item);

@@ -227,7 +227,7 @@ public sealed class CommandVm
 /// <summary>A do-nothing <see cref="ICommand"/> for identity assertions.</summary>
 public sealed class StubCommand : ICommand
 {
-    public event EventHandler? CanExecuteChanged;
+    public event EventHandler? CanExecuteChanged { add { } remove { } }
 
     public bool CanExecute(object? parameter) => true;
 

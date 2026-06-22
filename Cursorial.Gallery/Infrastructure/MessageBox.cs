@@ -63,10 +63,8 @@ public static class MessageBox
                          WindowStartupLocation = WindowStartupLocation.CenterScreen
                      };
 
-        for (var i = 0; i < actualButtons.Length; i++)
+        foreach (var button in actualButtons)
         {
-            var button = actualButtons[i];
-
             if (buttons?.HasFlag(button) is true)
             {
                 var b = new Button
@@ -76,7 +74,8 @@ public static class MessageBox
                             IsCancel = cancelButton == button
                         };
 
-                b.Click += (_, _) => window.Close(dialogResult: button);
+                var button1 = button;
+                b.Click += (_, _) => window.Close(dialogResult: button1);
 
                 buttonPanel.Children.Add(b);
 
@@ -97,7 +96,7 @@ public static class MessageBox
         {
             return await window.ShowDialogAsync<MessageBoxButton?>();
         }
-        catch (OperationCanceledException e)
+        catch (OperationCanceledException)
         {
             return null;
         }

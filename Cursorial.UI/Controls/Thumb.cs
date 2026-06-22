@@ -62,7 +62,10 @@ public class Thumb : Control
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left)
+        // Ignore a press while already dragging: capture routes EVERY ButtonDown to the holder, so without this a
+        // rapid second press (or a duplicated wire event) would re-anchor _origin and raise a second DragStarted with
+        // no DragCompleted between — corrupting all later deltas (WPF's Thumb ignores presses while IsDragging).
+        if (e.Handled || e.Button != MouseButton.Left || _dragging)
             return;
 
         e.Handled = true;
@@ -95,8 +98,9 @@ public class Thumb : Control
         e.Handled = true;
         var position = e.ScreenPosition;
 
-        // Clear the flag BEFORE releasing capture: ReleaseMouseCapture raises LostMouseCapture, whose handler would
-        // otherwise re-complete the drag (the double-raise the Track guards against, C-style).
+        // Clear the flag BEFORE releasing capture: ReleaseMouseCapture synchronously raises LostMouseCapture, whose
+        // handler would otherwise re-complete the drag (a double DragCompleted). This is the correct ordering — Track
+        // historically had it backwards (clearing after release) and double-raised its EndScroll.
         _dragging = false;
         ReleaseMouseCapture();
         Raise(DragCompletedEvent, position.Column - _origin.Column, position.Row - _origin.Row);

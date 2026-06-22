@@ -425,6 +425,41 @@ public sealed class Section13_Scrolling
         Assert.Equal(10, bar.Value); // paged by LargeChange
     }
 
+    [Fact] // Audit P3 regression: a thumb drag release raises EndScroll EXACTLY once (Track cleared _dragging only
+           // AFTER ReleaseMouseCapture, so OnLostMouseCapture re-fired OnDragEnd → a double EndScroll).
+    public void C233b_ThumbDragRelease_RaisesEndScrollExactlyOnce()
+    {
+        var bar = new ScrollBar
+        {
+            Orientation = Orientation.Vertical, Width = 1, Height = 12,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Minimum = 0, Maximum = 100, ViewportSize = 10, LargeChange = 10,
+        };
+        var endScrolls = 0;
+        bar.Scroll += (_, e) => { if (e.ScrollEventType == ScrollEventType.EndScroll) endScrolls++; };
+        using var host = Show(bar);
+        var dispatcher = host.Application.InputDispatcher;
+
+        var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
+        var (start, _) = track.ThumbGeometry();           // thumb start in TRACK-LOCAL rows
+        var (col, trackTop) = track.TranslateToWindow(0, 0); // the Track's screen origin (line buttons inset it)
+
+        MouseEvent At(MouseEventKind kind, int localRow, MouseButton button, MouseButtons held) => new()
+        {
+            Kind = kind, Position = new CellPosition(col, trackTop + localRow), Button = button, ButtonsHeld = held,
+            Modifiers = KeyModifiers.None, Timestamp = DateTimeOffset.UnixEpoch,
+        };
+
+        dispatcher.ProcessEvent(At(MouseEventKind.ButtonDown, start, MouseButton.Left, MouseButtons.None)); // grab the thumb
+        host.RunFrame();
+        dispatcher.ProcessEvent(At(MouseEventKind.Move, start + 3, MouseButton.None, MouseButtons.Left));    // drag down
+        host.RunFrame();
+        dispatcher.ProcessEvent(At(MouseEventKind.ButtonUp, start + 3, MouseButton.Left, MouseButtons.None)); // release
+        host.RunFrame();
+
+        Assert.Equal(1, endScrolls);
+    }
+
     [Fact] // C234 — arrow RepeatButtons step ±SmallChange repeating
     public void C234_ArrowRepeatButtonsStep()
     {

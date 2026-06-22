@@ -182,8 +182,10 @@ public sealed class Track : UIElement
             return;
 
         e.Handled = true;
-        ReleaseMouseCapture();
+        // Clear _dragging BEFORE releasing capture: ReleaseMouseCapture synchronously fires OnLostMouseCapture, whose
+        // `if (_dragging)` guard would otherwise call OnDragEnd a second time (a double EndScroll). (Mirror of Thumb.)
         _dragging = false;
+        ReleaseMouseCapture();
         Owner.OnDragEnd();
     }
 

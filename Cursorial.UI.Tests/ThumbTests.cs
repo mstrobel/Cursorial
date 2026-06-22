@@ -96,6 +96,26 @@ public class ThumbTests
         Assert.False(thumb.IsDragging);
     }
 
+    [Fact] // Audit P1: a second press mid-drag is ignored (capture routes it here) — no re-anchor, no double DragStarted.
+    public void SecondPress_MidDrag_IsIgnored()
+    {
+        var (host, thumb) = Make();
+        using var _ = host;
+
+        var started = 0;
+        var deltas = new List<(int H, int V)>();
+        thumb.DragStarted += (_, _) => started++;
+        thumb.DragDelta += (_, e) => deltas.Add((e.HorizontalChange, e.VerticalChange));
+
+        Down(host, 10, 5);
+        Down(host, 20, 15); // second press while dragging — must be ignored (no re-anchor)
+        Assert.Equal(1, started);
+
+        Move(host, 15, 8); // delta from the ORIGINAL grab (10,5) → (5,3), NOT from (20,15)
+        Assert.Equal([(5, 3)], deltas);
+        Assert.True(thumb.IsDragging);
+    }
+
     [Fact] // A non-release capture loss (e.g. detach / surface close) cancels the drag exactly once.
     public void CaptureLoss_CancelsDragOnce()
     {

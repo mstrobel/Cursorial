@@ -709,16 +709,22 @@ internal static class ControlThemes
             .Set(Control.TemplateProperty, SliderTemplate())
             .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
 
-    private static ControlTemplate SliderTemplate() => new(ctx =>
+    // The thumb's accent fill is authored as a `^ /template/ Thumb` rule in the TEMPLATE's Styles — the Template(1)
+    // layer (CD30), the engine's sanctioned crossing into a template part. (The same rule placed in the control
+    // theme's Children would be element-addressed and never match the part — #115; ControlTemplate.Styles is the
+    // canonical home for part rules, and the resource reference still re-skins live on a theme flip.)
+    private static ControlTemplate SliderTemplate()
     {
-        var thumb = new Thumb();
-        // Set the accent fill directly on the part (a live resource ref — still re-skins on a theme flip). A nested
-        // `^ /template/ Thumb` control-theme rule does NOT match a cross-template part in a type-keyed theme (a
-        // styling-engine gap; the identical dead form is in ScrollBarTheme's RepeatButton Width, masked there).
-        thumb.SetResourceReference(Control.BackgroundProperty, ThemeKeys.AccentBrush);
-        ctx.RegisterName("PART_Thumb", thumb);
-        return thumb;
-    });
+        var template = new ControlTemplate(ctx =>
+        {
+            var thumb = new Thumb();
+            ctx.RegisterName("PART_Thumb", thumb);
+            return thumb;
+        });
+        template.Styles.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
+            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush));
+        return template;
+    }
 
     // ───────────────────────────── StatusBar / StatusBarItem ─────────────────────────────
 
@@ -1043,17 +1049,11 @@ internal static class ControlThemes
 
         // A horizontal bar uses the rotated template (arrows on the ends of the long axis).
         theme.Children.Add(new Style("^:horizontal").Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: true)));
-        
-        // No padding in scroll bar buttons.
-        theme.Children.Add(
-                new Style(Selectors.Nesting().Template().OfType<RepeatButton>())
-                {
-                    Setters =
-                    {
-                        new Setter(Control.PaddingProperty, Margins.Zero), 
-                        new Setter(Control.WidthProperty, 1)
-                    }
-                });
+
+        // (The line buttons' zero padding is set directly in ScrollBarTemplate; their 1-cell width follows from the
+        // 1-wide bar constraining its docked parts. A `^ /template/ RepeatButton` rule placed here would be
+        // element-addressed and never match the parts — part rules belong in ControlTemplate.Styles, see
+        // SliderTemplate — #115.)
 
         return theme;
     }

@@ -285,11 +285,15 @@ internal static class StyleDebugDiagnostics
     /// <summary>The SD23-④ category: an ancestor-state rule whose chain exceeds the 64-element placement bitmap (greedy fallback).</summary>
     internal const string ChainTruncationCategory = "style-chain-truncation";
 
+    /// <summary>The #115 category: a multi-compound reach-in rule in an element-addressed (control-theme / explicit) style — it can never match.</summary>
+    internal const string ElementAddressedReachInCategory = "style-element-addressed-reach-in";
+
 #if DEBUG
     private static readonly HashSet<CompiledRule> WarnedUniversal = [];
     private static readonly HashSet<CompiledRule> WarnedAncestorState = [];
     private static readonly HashSet<Style> WarnedHoverParity = [];
     private static readonly HashSet<CompiledRule> WarnedChainTruncation = [];
+    private static readonly HashSet<CompiledRule> WarnedElementAddressedReachIn = [];
     private static readonly Lock WarnedLock = new();
 #endif
 
@@ -369,6 +373,24 @@ internal static class StyleDebugDiagnostics
         => Emit(StyleLoopCategory,
                 $"Style rules '{first.SelectorText}' and '{second.SelectorText}' toggled each other within one " +
                 "activation drain (A→B→A) — a style loop (design doc §3.3).");
+
+    [Conditional("DEBUG")]
+    internal static void WarnElementAddressedReachIn(CompiledRule rule, StyleLayer layer)
+    {
+#if DEBUG
+        lock (WarnedLock)
+        {
+            if (!WarnedElementAddressedReachIn.Add(rule))
+                return;
+        }
+
+        Emit(ElementAddressedReachInCategory,
+             $"Style rule '{rule.SelectorText}' (style '{rule.OwnerStyle.IdentityForDiagnostics}') is a multi-compound " +
+             $"reach-in rule in an element-addressed {layer} style — it can never match, because that channel matches the " +
+             "subject against the styled element itself. Author '/template/' part rules in ControlTemplate.Styles " +
+             "(the Template layer, CD30); the control-theme Style carries only the '^'-rooted self/state rules (#115).");
+#endif
+    }
 
     private static void Emit(string category, string message) => DiagnosticEmitted?.Invoke(category, message);
 }

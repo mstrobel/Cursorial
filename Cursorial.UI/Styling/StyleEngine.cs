@@ -785,10 +785,15 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     }
 
     /// <summary>
-    /// Arms a selector-less or <c>^</c>-rooted style element-addressed at <paramref name="layer"/>
-    /// (the shared shape of the Explicit and ControlTheme channels): a selector-less rule is
-    /// always-active; a single-compound <c>^</c>-anchored rule matches against the element itself
-    /// (reach-in <c>^ /template/ #part</c> / <c>^ &gt; Child</c> shapes arm parts/descendants).
+    /// Arms a selector-less or single-compound <c>^</c>-rooted style element-addressed at
+    /// <paramref name="layer"/> (the shared shape of the Explicit and ControlTheme channels): a
+    /// selector-less rule is always-active; a single-compound <c>^</c>-anchored rule (incl. its
+    /// <c>^:pseudo</c> state forms) matches against the element itself. This channel matches the
+    /// subject against the styled element only — it does <b>not</b> reach into a template or down
+    /// the tree: a multi-compound reach-in rule (<c>^ /template/ part</c>, <c>^ &gt; child</c>) can
+    /// never match here and is dropped with a DEBUG diagnostic (#115). Template-part rules belong in
+    /// <see cref="Controls.ControlTemplate.Styles"/> (the <c>Template(1)</c> layer, CD30), which the
+    /// part-arming pass in <see cref="GatherMatches"/> consumes.
     /// </summary>
     private void GatherElementAddressedStyle(UIElement element, Style style, StyleLayer layer, List<ScopeCandidate> matches)
     {
@@ -804,7 +809,17 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 continue;
             }
 
-            if (branch.Compounds.Length == 1 && MatchCompound(element, branch.Subject, anchor: element))
+            // Element-addressed channels match the subject against the element itself, so only a
+            // single-compound rule can apply. A multi-compound reach-in rule — the #115 footgun:
+            // a `^ /template/ part` authored in a control theme's Children instead of the template's
+            // Styles — would silently never match; warn (DEBUG) and skip rather than drop it silently.
+            if (branch.Compounds.Length != 1)
+            {
+                StyleDebugDiagnostics.WarnElementAddressedReachIn(rule, layer);
+                continue;
+            }
+
+            if (MatchCompound(element, branch.Subject, anchor: element))
                 matches.Add(new ScopeCandidate(rule, key, layer, element));
         }
     }

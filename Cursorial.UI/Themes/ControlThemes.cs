@@ -66,6 +66,7 @@ internal static class ControlThemes
         dict[typeof(StatusBarItem)] = StatusBarItemTheme();
         dict[typeof(Expander)] = ExpanderTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
+        dict[typeof(PasswordBox)] = TextBoxTheme(); // a masked TextBox — same PART_TextPresenter chrome (the presenter masks)
         dict[typeof(Image)] = ImageTheme();
         dict[typeof(Chart)] = ChartTheme();
         dict[typeof(Window)] = WindowTheme();

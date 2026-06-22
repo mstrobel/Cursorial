@@ -125,6 +125,20 @@ public class TextBox : Control
     /// <summary>The realized <c>PART_TextPresenter</c> (test observability; null before the template applies).</summary>
     internal TextPresenter? Presenter => _presenter;
 
+    // ───────────────────────────── display projection seam (PasswordBox masking) ─────────────────────────────
+    // The presenter renders, lays out, scrolls, and measures against these — not the model directly — and the
+    // pointer-hit maps back through them. The default is identity, so an unmasked TextBox is unchanged; a
+    // PasswordBox overrides them to a per-cluster mask while the model (Text/caret/selection) stays plaintext.
+
+    /// <summary>The text the presenter renders + measures (identity for a TextBox; masked for a PasswordBox).</summary>
+    internal virtual string DisplayText => Text;
+
+    /// <summary>Maps a model char offset to its offset in <see cref="DisplayText"/> (identity by default).</summary>
+    internal virtual int ToDisplayIndex(int modelIndex) => modelIndex;
+
+    /// <summary>Maps a <see cref="DisplayText"/> char offset back to the model (identity by default) — pointer hit.</summary>
+    internal virtual int ToModelIndex(int displayIndex) => displayIndex;
+
     /// <summary>Selects the whole text (caret at the end).</summary>
     public void SelectAll() => SetCaretAndSelection(anchor: 0, caret: Text.Length);
 
@@ -402,7 +416,9 @@ public class TextBox : Control
     // ───────────────────────────── clipboard ─────────────────────────────
 
     // Returns whether the gesture was consumed (there was a selection to copy).
-    private bool Copy()
+    /// <summary>Copies the selection to the clipboard. Returns false when there is nothing to copy (the chord
+    /// bubbles). Overridden by <see cref="PasswordBox"/> to suppress copying the plaintext.</summary>
+    private protected virtual bool Copy()
     {
         var text = SelectedText;
         if (text.Length == 0)
@@ -412,7 +428,9 @@ public class TextBox : Control
         return true;
     }
 
-    private bool Cut()
+    /// <summary>Cuts the selection to the clipboard. Returns false when there is nothing to cut. Overridden by
+    /// <see cref="PasswordBox"/> to suppress.</summary>
+    private protected virtual bool Cut()
     {
         if (IsReadOnly || SelectionLength == 0)
             return false;
@@ -438,12 +456,15 @@ public class TextBox : Control
 
         var local = e.GetPosition(_presenter);
         var column = Math.Max(0, local.Column) + _presenter.ScrollOffset;
-        var layout = GraphemeLayout.Build(Text);
+        // The pointer hits the DISPLAYED text — round in display space, then map the boundary back to the model
+        // (identity for a TextBox; the per-cluster mask correspondence for a PasswordBox).
+        var layout = GraphemeLayout.Build(DisplayText);
 
         var before = layout.CharIndexAtOrBeforeColumn(column);
         var after = layout.NextBoundary(before);
         // Round to the nearer cluster boundary so a click on a wide glyph's right half lands after it.
-        return column - layout.ColumnOf(before) <= layout.ColumnOf(after) - column ? before : after;
+        var displayIndex = column - layout.ColumnOf(before) <= layout.ColumnOf(after) - column ? before : after;
+        return ToModelIndex(displayIndex);
     }
 
     private void SelectWordAt(int index)

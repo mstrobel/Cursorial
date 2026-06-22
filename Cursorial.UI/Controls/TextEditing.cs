@@ -28,6 +28,17 @@ internal readonly struct GraphemeLayout
     /// <summary>The char length of the text.</summary>
     public int Length => _charIndex[^1];
 
+    /// <summary>The number of grapheme clusters (display columns when each masks to a width-1 glyph).</summary>
+    public int ClusterCount => _charIndex.Length - 1;
+
+    /// <summary>The cluster ordinal (0-based) of the boundary at or before <paramref name="charIndex"/> — the
+    /// display index when each cluster maps to one masked glyph (PasswordBox).</summary>
+    public int ClusterIndexAtOrBefore(int charIndex) => BoundaryAtOrBefore(charIndex);
+
+    /// <summary>The char index where cluster <paramref name="clusterIndex"/> starts (clamped to <see cref="Length"/>) —
+    /// the inverse of <see cref="ClusterIndexAtOrBefore"/> for masked-display ↔ model index mapping.</summary>
+    public int CharIndexOfCluster(int clusterIndex) => _charIndex[Math.Clamp(clusterIndex, 0, _charIndex.Length - 1)];
+
     /// <summary>Builds the layout for <paramref name="text"/> (null/empty ⇒ a single zero boundary).</summary>
     public static GraphemeLayout Build(string? text)
     {

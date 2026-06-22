@@ -1361,3 +1361,33 @@ It must be a direct child of the `Grid` it resizes; its track index comes from `
 Tests: `Cursorial.UI.Tests/GridSplitterTests.cs` (column + row drag conserving the pair total, `Min`/`Max` clamp
 with the conserved partner, star-unit preservation + new ratio, keyboard nudge, resolved cursor, not-in-a-grid
 no-op).
+
+## §C28 — PasswordBox (post-P9)
+
+`PasswordBox : TextBox` — a single-line masked field. It reuses TextBox's whole editing model (caret,
+selection, navigation, `MaxLength`, the `PART_TextPresenter` chrome — the BuiltIn theme is `typeof(TextBox)`'s
+template registered under `typeof(PasswordBox)` too) while **masking the display**.
+
+- **The display-projection seam** (added to TextBox, identity by default — an unmasked TextBox is byte-unchanged,
+  proven by the 28 existing TextBox rows staying green): `internal virtual string DisplayText => Text`,
+  `ToDisplayIndex(modelIndex)`, `ToModelIndex(displayIndex)`. The `TextPresenter` lays out / measures / scrolls /
+  renders against `DisplayText` and projects the caret + selection through `ToDisplayIndex`; `IndexFromPointer`
+  rounds in display space then maps the hit back with `ToModelIndex`.
+- **Masking** (`PasswordBox` overrides the seam): `DisplayText` is one `PasswordChar` (default `'*'`) **per grapheme
+  cluster** of the real text — so a wide/multi-char cluster (emoji, CJK) collapses to a single width-1 glyph (not
+  two columns, not a half-cluster), and the caret/selection map model↔display through the cluster boundary array
+  (`GraphemeLayout.ClusterIndexAtOrBefore` / `CharIndexOfCluster`). Mask glyph default `'*'` is ASCII width-1 —
+  deliberately avoiding the ambiguous-width hazard of bullet/middle-dot masks (the renderer-desync memory).
+- **`RevealPassword`** (default false): the seam returns identity (the plaintext shows) — the "show password"
+  affordance. `PasswordChar`/`RevealPassword` are `AffectsMeasure`; a change re-projects (presenter caret/scroll +
+  visual refresh) the same frame.
+- **Security** (terminal-scope v1): clipboard **Copy and Cut are suppressed** — overridden to return false so a
+  password is never written via OSC 52 (Cut is a full no-op, not even a delete — WPF parity). Verified: with
+  `ClipboardWrite` capability + a full selection, Ctrl+C / Ctrl+X emit **no `]52;`** sequence. Paste INTO the field
+  works (the terminal's `PasteEvent` ⇒ `TextInput{FromPaste}`). The plaintext lives in the managed
+  `Text`/`Password` string (no `SecureString` — adequate for a terminal library; in-process callers are trusted).
+- **`Password`** is a CLR alias for `Text` (the WPF name).
+
+Tests: `Cursorial.UI.Tests/PasswordBoxTests.cs` (masking, custom mask glyph, reveal round-trip, typing/backspace
+into the model, Copy + Cut OSC-52 suppression with capability + selection, paste-in, and the wide-cluster
+single-glyph + cluster-level edit). The seam's identity preservation is covered by the unchanged §C11 TextBox rows.

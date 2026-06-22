@@ -42,9 +42,9 @@ public sealed class TextPresenter : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
-        // Desire the text's display width plus one column for the end caret; the field stretches when given
+        // Desire the displayed text's width plus one column for the end caret; the field stretches when given
         // more and scrolls when given less (the arrange clamps; RefreshCaretAndScroll re-anchors the offset).
-        var text = Owner?.Text ?? string.Empty;
+        var text = Owner?.DisplayText ?? string.Empty;
         return new Size(GraphemeWidth.StringWidth(text) + 1, 1);
     }
 
@@ -74,8 +74,8 @@ public sealed class TextPresenter : UIElement
         if (owner is null)
             return;
 
-        var layout = GraphemeLayout.Build(owner.Text);
-        var caretColumn = layout.ColumnOf(owner.CaretIndex);
+        var layout = GraphemeLayout.Build(owner.DisplayText);
+        var caretColumn = layout.ColumnOf(owner.ToDisplayIndex(owner.CaretIndex));
         var viewport = _viewportColumns;
 
         if (viewport > 0)
@@ -126,7 +126,7 @@ public sealed class TextPresenter : UIElement
             return;
 
         var foreground = owner.Foreground ?? ResolveBrush(ThemeKeys.TextBrush);
-        var text = owner.Text ?? string.Empty;
+        var text = owner.DisplayText ?? string.Empty;
 
         if (text.Length == 0)
         {
@@ -142,7 +142,10 @@ public sealed class TextPresenter : UIElement
         }
 
         var layout = GraphemeLayout.Build(text);
-        var (selectionStart, selectionEnd) = owner.SelectionBounds;
+        // SelectionBounds are MODEL offsets — project them into the displayed text (identity for a TextBox).
+        var (modelSelectionStart, modelSelectionEnd) = owner.SelectionBounds;
+        var selectionStart = owner.ToDisplayIndex(modelSelectionStart);
+        var selectionEnd = owner.ToDisplayIndex(modelSelectionEnd);
 
         // The visible char window covers the viewport — boundary at/before the left edge through the
         // boundary at/after the right edge; the boundary clip absorbs the straddle on each side.

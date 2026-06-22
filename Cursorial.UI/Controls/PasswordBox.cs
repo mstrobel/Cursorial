@@ -3,7 +3,7 @@ namespace Cursorial.UI.Controls;
 /// <summary>
 /// A single-line masked text field (the WPF/Avalonia <c>PasswordBox</c>): a <see cref="TextBox"/> whose
 /// <em>display</em> is masked — every grapheme cluster of the entered text renders as <see cref="PasswordChar"/>
-/// (default <c>'*'</c>, an ASCII width-1 glyph chosen to dodge the ambiguous-width hazard of bullet/dot masks) —
+/// (default <c>'●'</c> U+25CF, the design-guide password dot; the renderer's ambiguous-width defense handles wide-rendering terminals) —
 /// while the model (caret, selection, navigation, <see cref="TextBox.MaxLength"/>) operates on the real text.
 /// The plaintext is the inherited <see cref="TextBox.Text"/>, also surfaced as <see cref="Password"/>.
 /// <para>
@@ -16,11 +16,12 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class PasswordBox : TextBox
 {
-    /// <summary>The glyph each cluster is masked with (default <c>'*'</c>). ASCII width-1 — see the type remarks. Must
-    /// be a single non-whitespace character: in XAML a whitespace/empty/multi-char value is rejected at load (the
-    /// <c>char</c> converter trims), so set those (degenerate for a mask) in code.</summary>
+    /// <summary>The glyph each cluster is masked with (default <c>'●'</c>, U+25CF — the design-guide password dot;
+    /// the renderer's ambiguous-width defense handles terminals that render it wide; set an ASCII char such as
+    /// <c>'*'</c> for strictly single-width). Must be a single non-whitespace character: in XAML a
+    /// whitespace/empty/multi-char value is rejected at load (the <c>char</c> converter trims), so set those in code.</summary>
     public static readonly StyledProperty<char> PasswordCharProperty =
-        UIProperty.Register<PasswordBox, char>(nameof(PasswordChar), defaultValue: '*',
+        UIProperty.Register<PasswordBox, char>(nameof(PasswordChar), defaultValue: '●',
             changed: static (sender, _, _) => Reproject(sender));
 
     /// <summary>When <see langword="true"/>, the field shows the plaintext instead of the mask (default false).</summary>

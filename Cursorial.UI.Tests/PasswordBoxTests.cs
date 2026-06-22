@@ -56,7 +56,7 @@ public class PasswordBoxTests
         using var _ = host;
 
         var row = Row0(host);
-        Assert.StartsWith("******", row);          // six masked glyphs
+        Assert.StartsWith("●●●●●●", row);          // six masked glyphs
         Assert.DoesNotContain("secret", row);       // the plaintext never renders
         Assert.Equal("secret", box.Password);       // ...but the model holds it
         Assert.Equal("secret", box.Text);           // Password is an alias for Text
@@ -85,7 +85,7 @@ public class PasswordBoxTests
 
         box.RevealPassword = false;
         host.RunUntilIdle();
-        Assert.StartsWith("*******", Row0(host));
+        Assert.StartsWith("●●●●●●●", Row0(host));
         Assert.DoesNotContain("hunter2", Row0(host));
     }
 
@@ -100,7 +100,7 @@ public class PasswordBoxTests
 
         Assert.Equal("pw", box.Password);
         Assert.Equal(2, box.CaretIndex); // caret advances per character
-        Assert.StartsWith("**", Row0(host));
+        Assert.StartsWith("●●", Row0(host));
     }
 
     [Fact]
@@ -169,7 +169,7 @@ public class PasswordBoxTests
         host.RunUntilIdle();
 
         Assert.Equal("pasted", box.Password);
-        Assert.StartsWith("******", Row0(host));
+        Assert.StartsWith("●●●●●●", Row0(host));
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class PasswordBoxTests
         host.RunUntilIdle();
 
         Assert.Equal("ab", box.Password);
-        Assert.StartsWith("**", Row0(host));
+        Assert.StartsWith("●●", Row0(host));
     }
 
     [Fact] // the hard case: a wide/multi-char cluster masks to ONE width-1 glyph; cluster-level editing still works
@@ -194,7 +194,7 @@ public class PasswordBoxTests
         using var _ = host;
 
         // Three clusters → three width-1 mask glyphs (the emoji collapses to ONE '*', not two columns).
-        Assert.Equal("***", Row0(host).TrimEnd());
+        Assert.Equal("●●●", Row0(host).TrimEnd());
 
         box.CaretIndex = box.Text.Length; // model end (char index 4: 1 + 2 + 1)
         host.RunUntilIdle();
@@ -202,12 +202,12 @@ public class PasswordBoxTests
         host.SendKey(Key.Backspace); // deletes the 'b' cluster
         host.RunUntilIdle();
         Assert.Equal("a\U0001F600", box.Password);
-        Assert.Equal("**", Row0(host).TrimEnd());
+        Assert.Equal("●●", Row0(host).TrimEnd());
 
         host.SendKey(Key.Backspace); // deletes the whole emoji cluster (both chars), not a half
         host.RunUntilIdle();
         Assert.Equal("a", box.Password);
-        Assert.Equal("*", Row0(host).TrimEnd());
+        Assert.Equal("●", Row0(host).TrimEnd());
     }
 
     private static bool ContainsSequence(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle)

@@ -43,7 +43,7 @@ public class ExpanderTests
         using var _ = host;
 
         Assert.Equal(Visibility.Collapsed, Part<ContentPresenter>(exp, "PART_Content").Visibility);
-        Assert.Equal(">", Part<TextBlock>(exp, "PART_Glyph").Text);
+        Assert.Equal("▸", Part<TextBlock>(exp, "PART_Glyph").Text);
 
         var screen = Screen(host);
         Assert.Contains("Details", screen);       // header always shown
@@ -57,7 +57,7 @@ public class ExpanderTests
         using var _ = host;
 
         Assert.Equal(Visibility.Visible, Part<ContentPresenter>(exp, "PART_Content").Visibility);
-        Assert.Equal("v", Part<TextBlock>(exp, "PART_Glyph").Text);
+        Assert.Equal("▾", Part<TextBlock>(exp, "PART_Glyph").Text);
         Assert.Contains("Body text", Screen(host));
     }
 

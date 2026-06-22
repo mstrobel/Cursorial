@@ -94,4 +94,21 @@ internal static class CursorialThemeStyles
         style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Faint));
         return style;
     }
+
+    /// <summary>
+    /// The caps-nocolor SELECTION layer (companion to <see cref="CapsNoColorInteractiveInverse"/>): under
+    /// <c>.caps-nocolor</c> the SelectionBrush resolves to <see cref="Colors.Default"/>, so a selected item is
+    /// indistinguishable; <see cref="TextAttributes.Inverse"/> reverse-videos the row instead (the design guide's
+    /// monochrome-selection rule). Subjects are the FLAT input-list item types (the inherited TextAttributes would
+    /// leak Inverse into a TreeViewItem's nested children, so the tree's header-bar reverse is left to a future
+    /// part-targeted rule). Armed at Theme layer.
+    /// </summary>
+    internal static Style CapsNoColorSelectionInverse()
+    {
+        var style = new Style(
+            ".caps-nocolor ListBoxItem:selected, .caps-nocolor ComboBoxItem:selected, .caps-nocolor TabItem:selected")
+        { Key = "Theme.CapsNoColor.SelectionInverse" };
+        style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Inverse));
+        return style;
+    }
 }

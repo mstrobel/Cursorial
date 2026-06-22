@@ -137,6 +137,12 @@ public static class ThemeKeys
     /// </summary>
     public const string MenuSeparatorPen = "Theme.MenuSeparatorPen";
 
+    /// <summary>The Slider's FILLED (value-side) rail — a Heavy <c>━</c> in the accent (design guide).</summary>
+    public const string SliderFilledPen = "Theme.SliderFilledPen";
+
+    /// <summary>The Slider's UNFILLED (empty) rail — a Heavy <c>━</c> in the faint ink (design guide).</summary>
+    public const string SliderTrackPen = "Theme.SliderTrackPen";
+
     // ───────────────────────────── infrastructure (carried over) ─────────────────────────────
 
     /// <summary>The modal-dimming overlay brush (the <c>^.obscured</c> rule, design doc §11.8).</summary>

@@ -1,8 +1,7 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Input;
-
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.Controls;
 
@@ -30,11 +29,18 @@ public class Slider : RangeBase
     public static readonly StyledProperty<Orientation> OrientationProperty =
         UIProperty.Register<Slider, Orientation>(nameof(Orientation), defaultValue: Orientation.Horizontal, changed: OnOrientationChanged);
 
+    /// <summary>The FILLED (value-side) rail pen — the design guide's accent <c>━</c> from the start to the thumb
+    /// (the unfilled remainder uses <see cref="Control.BorderPen"/>). <c>AffectsRender</c>.</summary>
+    public static readonly StyledProperty<Pen?> FilledPenProperty =
+        UIProperty.Register<Slider, Pen?>(nameof(FilledPen));
+
     static Slider()
     {
         FocusableProperty.OverrideDefaultValue<Slider>(true); // an interactive value picker takes keyboard focus
         AffectsMeasure<Slider>(OrientationProperty);
         AffectsArrange<Slider>(ValueProperty, MinimumProperty, MaximumProperty);
+        // The two-tone rail's filled/empty split moves with the value, so the track re-renders on a value/range/pen change.
+        AffectsRender<Slider>(ValueProperty, MinimumProperty, MaximumProperty, OrientationProperty, FilledPenProperty);
 
         PseudoClassMapping.Register<Slider, Orientation>(
             OrientationProperty,
@@ -44,6 +50,9 @@ public class Slider : RangeBase
 
     /// <inheritdoc cref="OrientationProperty"/>
     public Orientation Orientation { get => GetValue(OrientationProperty); set => SetValue(OrientationProperty, value); }
+
+    /// <inheritdoc cref="FilledPenProperty"/>
+    public Pen? FilledPen { get => GetValue(FilledPenProperty); set => SetValue(FilledPenProperty, value); }
 
     private bool Vertical => Orientation == Orientation.Vertical;
 
@@ -110,20 +119,35 @@ public class Slider : RangeBase
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
-        if (context.Bounds.IsEmpty || BorderPen is not { } pen)
+        if (context.Bounds.IsEmpty)
             return;
 
-        // The rail down/across the center line; the thumb child renders its block on top at the value position.
+        // Two heavy ━ segments split at the thumb (design guide): the FILLED (value) side in FilledPen, the empty
+        // remainder in BorderPen. The thumb child renders its marker on top at the split. Either pen may be null.
         var size = context.Size;
+        var filled = FilledPen;
+        var empty = BorderPen;
+        var fraction = FilledFraction;
+
         if (Vertical)
         {
             var x = size.Columns / 2;
-            context.DrawLine(x, 0, x, size.Rows - 1, pen);
+            var travel = Math.Max(0, size.Rows - ThumbExtent);
+            var thumbY = (int)Math.Round((1 - fraction) * travel); // Minimum at the bottom
+            if (empty is { } e && thumbY > 0)
+                context.DrawLine(x, 0, x, thumbY, e);                 // empty: top → thumb
+            if (filled is { } f)
+                context.DrawLine(x, thumbY, x, size.Rows - 1, f);     // filled: thumb → bottom
         }
         else
         {
             var y = size.Rows / 2;
-            context.DrawLine(0, y, size.Columns - 1, y, pen);
+            var travel = Math.Max(0, size.Columns - ThumbExtent);
+            var thumbX = (int)Math.Round(fraction * travel);
+            if (filled is { } f)
+                context.DrawLine(0, y, thumbX, y, f);                 // filled: left → thumb
+            if (empty is { } e && thumbX < size.Columns - 1)
+                context.DrawLine(thumbX, y, size.Columns - 1, y, e);  // empty: thumb → right
         }
     }
 

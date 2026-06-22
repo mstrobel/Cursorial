@@ -5,7 +5,7 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// A collapsible header/content region (the WPF/Avalonia <c>Expander</c>): a <see cref="HeaderedContentControl"/>
-/// whose <see cref="Header"/> rides a clickable header (with a <c>&gt;</c>/<c>v</c> twisty) and whose
+/// whose <see cref="HeaderedContentControl.Header"/> rides a clickable header (with a <c>▸</c>/<c>▾</c> twisty) and whose
 /// <see cref="ContentControl.Content"/> shows only while <see cref="IsExpanded"/> (gated via the <c>PART_Content</c>
 /// visibility; <c>:expanded</c>). Clicking the header — or Space/Enter while the expander has focus — toggles;
 /// <see cref="Expanded"/>/<see cref="Collapsed"/> bubble on the transition. (v1 expands downward.)
@@ -111,7 +111,7 @@ public class Expander : HeaderedContentControl
     private void UpdateExpansionVisuals()
     {
         if (_glyph is not null)
-            _glyph.Text = IsExpanded ? "v" : ">";
+            _glyph.Text = IsExpanded ? "▾" : "▸"; // design-guide carets (U+25BE / U+25B8)
         if (_content is not null)
             _content.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;
     }

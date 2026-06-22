@@ -256,7 +256,7 @@ public class TreeViewItem : HeaderedItemsControl
     private void UpdateExpansionVisuals()
     {
         if (_twisty is not null)
-            _twisty.Text = HasItems ? (IsExpanded ? "v" : ">") : ""; // ASCII-safe (ambiguous-width memory)
+            _twisty.Text = HasItems ? (IsExpanded ? "▾" : "▸") : ""; // design-guide carets (U+25BE / U+25B8)
 
         if (ItemsHost is { } host)
             host.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;

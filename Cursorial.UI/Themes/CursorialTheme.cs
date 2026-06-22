@@ -110,7 +110,8 @@ public static class CursorialTheme
             // button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill +
             // content text) and disabled dims to Faint.
             CursorialThemeStyles.CapsNoColorInteractiveInverse(),
-            CursorialThemeStyles.CapsNoColorDisabledFaint()
+            CursorialThemeStyles.CapsNoColorDisabledFaint(),
+            CursorialThemeStyles.CapsNoColorSelectionInverse()
         };
 
         // (·,NoColor): every fill/foreground role token resolves to Colors.Default — no stranded RGB. State
@@ -128,6 +129,9 @@ public static class CursorialTheme
         noColor[ThemeKeys.MenuSeparatorPen] = Pens.Ascii;
         noColor[ThemeKeys.FocusPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         noColor[ThemeKeys.TabUnderlinePen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
+        // No color to distinguish filled vs empty — both are an ASCII heavy rail; the thumb + reverse-video focus carry it.
+        noColor[ThemeKeys.SliderFilledPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
+        noColor[ThemeKeys.SliderTrackPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
         noColor[ThemeKeys.AccessKeyUnderlineBrush] = defaultBrush;
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
@@ -272,6 +276,9 @@ public static class CursorialTheme
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc"));
         rgb[ThemeKeys.SeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.MenuSeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Light };
+        // Slider rail (design guide): a Heavy ━ — the filled (value) side in --accent, the empty side in --faint.
+        rgb[ThemeKeys.SliderFilledPen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
+        rgb[ThemeKeys.SliderTrackPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#c4c5cc")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.FocusPen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
         // The active-tab underline rule — a Heavy --accent pen (the gallery "━ cells" bar), themeable per variant.
         rgb[ThemeKeys.TabUnderlinePen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
@@ -319,6 +326,8 @@ public static class CursorialTheme
         ansi16[ThemeKeys.MenuSeparatorPen] = Pens.Light.WithBrush(Palette(dark ? 15 : 0));
         ansi16[ThemeKeys.FocusPen] = Pens.Double.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
         ansi16[ThemeKeys.TabUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
+        ansi16[ThemeKeys.SliderFilledPen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4)); // accent
+        ansi16[ThemeKeys.SliderTrackPen] = Pens.Heavy.WithColor(Color.FromPalette(8));                          // faint/grey
         ansi16[ThemeKeys.ObscuredOverlayBrush] = Palette(8);
         ansi16[ThemeKeys.AccessKeyUnderlineBrush] = Palette(dark ? 15 : 0);
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;

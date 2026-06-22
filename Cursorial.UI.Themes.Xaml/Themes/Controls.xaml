@@ -694,7 +694,7 @@
               Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
-          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="v" Focusable="False" IsTabStop="False"/>
+          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False"/>
           <Grid>
             <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectedItem}"/>
             <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed"
@@ -785,7 +785,7 @@
               Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
-          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="v" Focusable="False" IsTabStop="False"/>
+          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False"/>
           <Grid>
             <TextBlock x:Name="PART_DisplayText"/>
             <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Placeholder="{TemplateBinding Watermark}"/>

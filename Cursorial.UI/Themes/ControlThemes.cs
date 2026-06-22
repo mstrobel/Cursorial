@@ -264,8 +264,9 @@ internal static class ControlThemes
         content.Children.Add(selected);
         content.Children.Add(editable);
 
-        // Drop button (the 'v' glyph) — toggles the list (the ComboBox wires its Click). ASCII-safe glyph.
-        var drop = new Button { Content = "v", Focusable = false, IsTabStop = false };
+        // Drop caret (▾) — a bare 1-cell muted glyph at the right edge that toggles the list (the ComboBox wires
+        // its Click), NOT a chromed button (the design guide shows a hugging caret, not a sub-button face).
+        var drop = DropDownCaret();
         ctx.RegisterName("PART_DropDown", drop);
         DockPanel.SetDock(drop, Dock.Right);
 
@@ -297,6 +298,20 @@ internal static class ControlThemes
             .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, ComboBoxTemplate());
+
+    // The drop-down caret: a bare 1-cell ▾ (no button chrome — the BareGlyphButtonTemplate, like the scroll arrows),
+    // still clickable so the consumer can toggle the list on it. The caret inherits the field's foreground. Shared
+    // by ComboBox + DatePicker; the consumer registers it as PART_DropDown and wires Click. (▾ is the design-guide
+    // glyph; geometric, like the scroll arrows — the renderer's ambiguous-width defense covers the edge terminals.)
+    private static Button DropDownCaret()
+        => new()
+        {
+            Content = "▾",
+            Template = BareGlyphButtonTemplate(),
+            Padding = Margins.Zero,
+            Focusable = false,
+            IsTabStop = false,
+        };
 
     // A drop-down item — the ListBoxItem selection bar verbatim (selected = SelectionBrush, hover = HoverBrush,
     // keyboard focus row = reverse-video :focus-visible, disabled = MutedBrush ink).
@@ -540,8 +555,8 @@ internal static class ControlThemes
         content.Children.Add(text);
         content.Children.Add(editable);
 
-        // Drop button (the 'v' glyph) — toggles the calendar (the DatePicker wires its Click). ASCII-safe glyph.
-        var drop = new Button { Content = "v", Focusable = false, IsTabStop = false };
+        // Drop caret (▾) — the bare muted glyph that toggles the calendar (the DatePicker wires its Click).
+        var drop = DropDownCaret();
         ctx.RegisterName("PART_DropDown", drop);
         DockPanel.SetDock(drop, Dock.Right);
 
@@ -720,12 +735,18 @@ internal static class ControlThemes
 
     // ───────────────────────────── Slider ─────────────────────────────
 
-    // A RangeBase value picker: the BorderPen draws the rail (Slider.Render); the PART_Thumb marker fills with the
-    // accent and rides the rail at the value fraction.
+    // A RangeBase value picker: Slider.Render draws two heavy ━ rail segments — the FILLED (value) side in the
+    // accent SliderFilledPen, the empty remainder in the faint SliderTrackPen (= BorderPen here); the PART_Thumb
+    // marker fills with the accent and rides the split. Disabled collapses the filled side to the faint track.
     private static Style SliderTheme()
-        => new Style { Key = "Theme.Slider" }
+    {
+        var theme = new Style { Key = "Theme.Slider" }
             .Set(Control.TemplateProperty, SliderTemplate())
-            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
+            .SetResource(Slider.FilledPenProperty, ThemeKeys.SliderFilledPen)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.SliderTrackPen);
+        theme.Children.Add(new Style("^:disabled").SetResource(Slider.FilledPenProperty, ThemeKeys.SliderTrackPen));
+        return theme;
+    }
 
     // The thumb's accent fill is authored as a `^ /template/ Thumb` rule in the TEMPLATE's Styles — the Template(1)
     // layer (CD30), the engine's sanctioned crossing into a template part. (The same rule placed in the control
@@ -796,7 +817,7 @@ internal static class ControlThemes
 
     private static ControlTemplate ExpanderTemplate() => new(ctx =>
     {
-        var glyph = new TextBlock { Text = ">" };
+        var glyph = new TextBlock { Text = "▸" }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
         ctx.RegisterName("PART_Glyph", glyph);
 
         // The header presenter binds the Header — directly in the template (TemplatedParent is the Expander), NOT
@@ -1025,6 +1046,10 @@ internal static class ControlThemes
         var theme = new Style { Key = themeKey }
             .SetResource(Control.ForegroundProperty, ThemeKeys.ToggleForegroundNormal)
             .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey, checkedMarkKey, indeterminateMarkKey));
+        // Hover brightens the ink to the accent (the design guide's box-brightens-on-hover cue) — these fill-less
+        // controls can't use a background highlight (it would span the full stretched width), so the foreground IS
+        // the affordance. (The mark keeps its own checked color, set by the ToggleGlyph leaf.)
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ToggleForegroundDisabled));
         return theme;
     }

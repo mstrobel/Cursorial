@@ -89,12 +89,6 @@ public class Popup : UIElement
 
     static Popup()
     {
-        AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, IsOpenProperty);
-    }
-
-    /// <summary>Creates a popup.</summary>
-    public Popup()
-    {
         // The Popup's role in the HOST tree is purely structural: it is the logical parent of Child and the
         // placement anchor, and it contributes nothing visual (MeasureOverride => 0×0). But a parent panel still
         // ARRANGES it (a Stretch child fills its cell), giving the closed popup full Bounds with no rendered
@@ -102,8 +96,13 @@ public class Popup : UIElement
         // stealing hover/clicks. The popup's REAL content is hit-tested on its own TopLevelSurface when open, so
         // the host-tree element must never be a hit leaf. (It has no visual children here — Child is logical-only —
         // so gating the leaf gates the whole element.)
-        IsHitTestVisible = false;
+        IsHitTestVisibleProperty.OverrideMetadata<Popup>(new(DefaultValue: false, Coerce: (_, _) => false));
+
+        AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, IsOpenProperty);
     }
+
+    /// <summary>Creates a popup.</summary>
+    public Popup() {}
 
     /// <inheritdoc cref="ChildProperty"/>
     public UIElement? Child { get => GetValue(ChildProperty); set => SetValue(ChildProperty, value); }

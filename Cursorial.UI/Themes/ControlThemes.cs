@@ -63,6 +63,7 @@ internal static class ControlThemes
         dict[typeof(Slider)] = SliderTheme();
         dict[typeof(StatusBar)] = StatusBarTheme();
         dict[typeof(StatusBarItem)] = StatusBarItemTheme();
+        dict[typeof(Expander)] = ExpanderTheme();
         dict[typeof(TextBox)] = TextBoxTheme();
         dict[typeof(Image)] = ImageTheme();
         dict[typeof(Chart)] = ChartTheme();
@@ -704,20 +705,17 @@ internal static class ControlThemes
     // A RangeBase value picker: the BorderPen draws the rail (Slider.Render); the PART_Thumb marker fills with the
     // accent and rides the rail at the value fraction.
     private static Style SliderTheme()
-    {
-        var theme = new Style { Key = "Theme.Slider" }
+        => new Style { Key = "Theme.Slider" }
             .Set(Control.TemplateProperty, SliderTemplate())
             .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
-
-        // The thumb part's fill — the accent (re-skins on a theme flip).
-        theme.Children.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
-            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush));
-        return theme;
-    }
 
     private static ControlTemplate SliderTemplate() => new(ctx =>
     {
         var thumb = new Thumb();
+        // Set the accent fill directly on the part (a live resource ref — still re-skins on a theme flip). A nested
+        // `^ /template/ Thumb` control-theme rule does NOT match a cross-template part in a type-keyed theme (a
+        // styling-engine gap; the identical dead form is in ScrollBarTheme's RepeatButton Width, masked there).
+        thumb.SetResourceReference(Control.BackgroundProperty, ThemeKeys.AccentBrush);
         ctx.RegisterName("PART_Thumb", thumb);
         return thumb;
     });
@@ -750,6 +748,41 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         return new Border { Padding = new Margins(1, 0), Child = presenter };
+    });
+
+    // ───────────────────────────── Expander ─────────────────────────────
+
+    // A collapsible region: a clickable header Button (PART_HeaderButton) carrying the >/v twisty (PART_Glyph) +
+    // the Header, over a PART_Content presenter the Expander shows/hides by IsExpanded. Down-expanding (v1).
+    private static Style ExpanderTheme()
+        => new Style { Key = "Theme.Expander" }
+            .Set(Control.TemplateProperty, ExpanderTemplate());
+
+    private static ControlTemplate ExpanderTemplate() => new(ctx =>
+    {
+        var glyph = new TextBlock { Text = ">" };
+        ctx.RegisterName("PART_Glyph", glyph);
+
+        // The header presenter binds the Header — directly in the template (TemplatedParent is the Expander), NOT
+        // nested in a Button, or the TemplateBinding would resolve against the button instead.
+        var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
+        headerPresenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+
+        var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
+        headerRow.Children.Add(glyph);
+        headerRow.Children.Add(new TextBlock { Text = " " });
+        headerRow.Children.Add(headerPresenter);
+
+        var header = new Border { Child = headerRow }; // the clickable header region (Expander.OnMouseDown hit-tests it)
+        ctx.RegisterName("PART_Header", header);
+
+        var content = new ContentPresenter(); // auto-aliases to the Expander's Content (A22)
+        ctx.RegisterName("PART_Content", content);
+
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(header);
+        root.Children.Add(content);
+        return root;
     });
 
     // ───────────────────────────── TextBox ─────────────────────────────

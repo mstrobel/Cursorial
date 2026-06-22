@@ -112,6 +112,15 @@ public class SliderTests
         Assert.Equal(100, slider.Value);
     }
 
+    [Fact] // Audit F1: the thumb's accent fill resolves (was null — an invisible thumb — when wired via a nested
+           // ^/template/Thumb control-theme rule that doesn't match a cross-template part; now set on the part directly).
+    public void Thumb_Background_ResolvesToAccentFill()
+    {
+        var (host, _, thumb) = Make(value: 50);
+        using var _ = host;
+        Assert.NotNull(thumb.Background);
+    }
+
     [Fact]
     public void ThumbDrag_ChangesValue()
     {

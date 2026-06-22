@@ -250,10 +250,12 @@ internal static class ControlThemes
     // arrows) to avoid the ambiguous-width hazard.
     private static ControlTemplate ComboBoxTemplate() => new(ctx =>
     {
-        // Read-only face: the selected item (visible when !IsEditable; the ComboBox toggles visibility).
+        // Read-only face: the selection-box value (visible when !IsEditable; the ComboBox toggles visibility). Bound
+        // to SelectionBoxItem, NOT SelectedItem directly — when the item is its own ComboBoxItem container, the face
+        // must show the unwrapped content, never the live container element (which belongs to the drop-down).
         var selected = new ContentPresenter();
         ctx.RegisterName("PART_ContentSite", selected);
-        selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SelectingItemsControl.SelectedItemProperty));
+        selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
 
         // Editable face: a text box (visible when IsEditable). Placeholder + read-only flow from the ComboBox.
         var editable = new TextBox { Visibility = Visibility.Collapsed };

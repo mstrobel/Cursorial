@@ -695,7 +695,7 @@
         <DockPanel>
           <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False"/>
           <Grid>
-            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectedItem}"
+            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"
                               Margin="1,0"/>
             <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed"
                      Placeholder="{TemplateBinding PlaceholderText}"

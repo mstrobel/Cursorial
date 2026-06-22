@@ -52,7 +52,19 @@ public class ComboBox : SelectingItemsControl
     public static readonly StyledProperty<bool> StaysOpenOnEditProperty =
         UIProperty.Register<ComboBox, bool>(nameof(StaysOpenOnEdit), defaultValue: false);
 
+    /// <summary>
+    /// The value shown in the face (read-only; the template's <c>PART_ContentSite</c> binds its <c>Content</c> to
+    /// this). It is the <see cref="SelectingItemsControl.SelectedItem"/> <b>unwrapped to its content</b> when the
+    /// item is its own <see cref="ComboBoxItem"/> container — the live container element belongs to the drop-down
+    /// and must never be hosted in the face too (a <see cref="UIElement"/> cannot be in two places; hosting it
+    /// would reparent it out of the list and route the face's mouse interaction to the container). WPF
+    /// <c>SelectionBoxItem</c> parity (doc §12.11).
+    /// </summary>
+    public static readonly DirectProperty<ComboBox, object?> SelectionBoxItemProperty =
+        UIProperty.RegisterDirect<ComboBox, object?>(nameof(SelectionBoxItem), static c => c._selectionBoxItem);
+
     private bool _isDropDownOpen;
+    private object? _selectionBoxItem;
     private string? _text = ""; // never null (matches the empty PART_EditableTextBox; the public Text never reports null)
     private bool _syncingText;  // guards the ComboBox.Text ↔ PART_EditableTextBox.Text round-trip
     private bool _committing;   // guards the selection→Text echo while committing free text (keeps the typed text)
@@ -94,8 +106,8 @@ public class ComboBox : SelectingItemsControl
     /// <inheritdoc cref="StaysOpenOnEditProperty"/>
     public bool StaysOpenOnEdit { get => GetValue(StaysOpenOnEditProperty); set => SetValue(StaysOpenOnEditProperty, value); }
 
-    /// <summary>The item shown in the face (the current <see cref="SelectingItemsControl.SelectedItem"/>).</summary>
-    public object? SelectionBoxItem => SelectedItem;
+    /// <inheritdoc cref="SelectionBoxItemProperty"/>
+    public object? SelectionBoxItem => _selectionBoxItem;
 
     // Test/inspection seams (template-private parts).
     internal TextBox? EditableTextBoxPart => _editableTextBox;
@@ -309,6 +321,8 @@ public class ComboBox : SelectingItemsControl
 
     private void OnSelectionChangedSync(object? sender, SelectionChangedEventArgs e)
     {
+        UpdateSelectionBox(); // the read-only face value follows the selection (both modes)
+
         // Editable: the face text follows the selection (list navigation / a programmatic select) — but NOT while
         // committing free text, and NOT while the user has uncommitted typed text (a background model change that
         // merely drops the old selection must not wipe what the user is typing — WPF parity).
@@ -316,8 +330,25 @@ public class ComboBox : SelectingItemsControl
             SetText(ItemText(SelectedItem), fromUser: false);
     }
 
+    // Computes the value shown in the (non-editable) face. The SelectedItem, but a ComboBoxItem (its own container)
+    // is a LIVE element already hosted in the drop-down; a UIElement cannot live in two places, so the face's
+    // ContentPresenter would steal it from the list and mouse interaction with the face would drive the stolen
+    // container. Unwrap a ComboBoxItem to its content; fall back to a text representation for any remaining
+    // UIElement (a UIElement-valued content, or a raw UIElement item) so the face never hosts a live element.
+    private void UpdateSelectionBox()
+    {
+        var value = SelectedItem;
+        if (value is ComboBoxItem item)
+            value = item.Content;
+        if (value is UIElement element)
+            value = ItemText(element);
+        SetAndRaise(SelectionBoxItemProperty, ref _selectionBoxItem, value);
+    }
+
     private string ItemText(object? item)
     {
+        if (item is ComboBoxItem cbi)
+            item = cbi.Content; // a ComboBoxItem displays its content, not the container's type name (editable face / match / seed)
         if (item is null)
             return "";
         if (TextSearch.GetTextPath(this) is { Length: > 0 } path)

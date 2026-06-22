@@ -1,0 +1,93 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
+           Background="#181C24">
+
+    <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
+    <DockPanel.Resources>
+
+        <DataTemplate DataType="vm:ScrollViewerPageViewModel">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Background="#1E222A" Padding="1,0">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="{Binding Title}" Foreground="#DCE2EB"/>
+                        <TextBlock Text="{Binding Summary}" Foreground="#8A93A5"/>
+                        <WrapPanel>
+                            <Button Margin="1,0" Content="Cycle V-bar" Command="{Binding CycleVerticalCommand}"/>
+                            <Button Margin="1,0" Content="Cycle H-bar" Command="{Binding CycleHorizontalCommand}"/>
+                            <Button Margin="1,0" Content="Toggle height" Command="{Binding ToggleHeightCommand}"/>
+                            <Button Margin="1,0" Content="Toggle width" Command="{Binding ToggleWidthCommand}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" Background="#1E222A" Padding="1,0">
+                    <TextBlock Text="{Binding Status}" Foreground="#B4BCC8"/>
+                </Border>
+
+                <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
+                              HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}">
+                    <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Label}" Foreground="#D6DCE6"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="vm:InputsPageViewModel">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Background="#1E222A" Padding="1,0">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="{Binding Title}" Foreground="#DCE2EB"/>
+                        <TextBlock Text="{Binding Summary}" Foreground="#8A93A5"/>
+                    </StackPanel>
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" Background="#1E222A" Padding="1,0">
+                    <TextBlock Text="{Binding Status}" Foreground="#B4BCC8"/>
+                </Border>
+
+                <StackPanel Orientation="Vertical" Margin="1,1">
+                    <TextBlock Text="Name" Foreground="#8A93A5"/>
+                    <TextBox Width="28" Text="{Binding Name, Mode=TwoWay}"/>
+
+                    <TextBlock Text="Password" Foreground="#8A93A5"/>
+                    <PasswordBox Width="28" Text="{Binding Password, Mode=TwoWay}" RevealPassword="{Binding ShowPassword}"/>
+                    <CheckBox Content="Reveal password" IsChecked="{Binding ShowPassword, Mode=TwoWay}"/>
+
+                    <CheckBox Content="Subscribe to updates" IsChecked="{Binding Subscribed, Mode=TwoWay}"/>
+
+                    <TextBlock Text="Volume" Foreground="#8A93A5"/>
+                    <Slider Width="28" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}"/>
+                </StackPanel>
+            </DockPanel>
+        </DataTemplate>
+
+    </DockPanel.Resources>
+
+    <!-- Title bar -->
+    <Border DockPanel.Dock="Top" Background="#242A36" Padding="1,0">
+        <TextBlock Text=" Cursorial — Control Gallery   (Up/Down or click to switch pages · q / Esc to quit)"
+                   Foreground="#DCE2EB"/>
+    </Border>
+
+    <!-- Nav: a real ListBox so arrow-key / click navigation is itself part of the showcase -->
+    <ListBox DockPanel.Dock="Left" Width="22"
+             ItemsSource="{Binding Pages}"
+             SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
+        <ListBox.ItemTemplate>
+            <DataTemplate>
+                <TextBlock Text="{Binding Title}"/>
+            </DataTemplate>
+        </ListBox.ItemTemplate>
+    </ListBox>
+
+    <!-- Content host: the selected page view-model, resolved to its view by the implicit DataTemplates above.
+         ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
+    <ContentControl Content="{Binding SelectedPage}" Margin="1,0"/>
+
+</DockPanel>

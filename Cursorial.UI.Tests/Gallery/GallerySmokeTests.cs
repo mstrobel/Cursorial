@@ -2,6 +2,7 @@ using System.Text;
 
 using Cursorial.Gallery;
 using Cursorial.Gallery.Pages;
+using Cursorial.Gallery.ViewModels;
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -12,8 +13,9 @@ using Xunit.Abstractions;
 
 namespace Cursorial.Tests.UI.Gallery;
 
-// The standalone gallery (#107) is a real TTY app, so it can't be run in CI — this headless canary builds its shell +
-// pages through UITestHost and asserts they render without error (the manual harness still gets exercised on every run).
+// The standalone gallery (#107) is a real TTY app, so it can't be run in CI — this headless canary loads its
+// XAML-first MVVM shell through UITestHost and asserts the implicit-DataTemplate page resolution + navigation work
+// (the manual harness still gets exercised on every run).
 public sealed class GallerySmokeTests(ITestOutputHelper output)
 {
     private static string Screen(UITestHost host, int rows)
@@ -35,31 +37,80 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         return null;
     }
 
-    [Fact]
-    public void Shell_WithScrollViewerPage_RendersWithoutError()
+    [Fact] // the shell loads from embedded XAML, binds to the ShellViewModel, and the first page (ScrollViewer) resolves
+    public void Shell_LoadsFromXaml_RendersFirstPage()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var shell = new GalleryShell([new ScrollViewerPage()]);
 
+        UIElement root = null!;
         var ex = Record.Exception(() =>
         {
-            host.ShowRoot(shell.Build());
+            root = GalleryApp.BuildRoot();
+            host.ShowRoot(root);
             host.RunUntilIdle();
         });
         Assert.Null(ex);
 
         var screen = Screen(host, 24);
         output.WriteLine(screen);
-        Assert.Contains("Gallery", screen);      // the title bar
-        Assert.Contains("ScrollViewer", screen); // the nav entry
-        Assert.Contains("V-bar", screen);        // the ScrollViewer page's toggle bar
-        Assert.Contains("row 0", screen);        // the scrollable content
+        Assert.Contains("Gallery", screen);        // the title bar
+        Assert.Contains("ScrollViewer", screen);   // the nav entry (first page, selected)
+        Assert.Contains("Inputs", screen);         // the second nav entry
+        Assert.Contains("Cycle V-bar", screen);    // the ScrollViewer page's toggle bar (the implicit template resolved)
+        Assert.Contains("row 000", screen);        // the scrollable content
+        Assert.NotNull(FindDescendant<ScrollViewer>(root)); // the page view materialized
     }
 
-    [Fact] // The chessboard page (#107): content-assisted LEADING-EDGE snapping via IScrollContentHost. The viewport
-           // height (24) is a whole number of 4-row tiles, so the vertical offsets are exact (4, then 0); horizontally
-           // the viewport width depends on the vertical scrollbar, so we assert the leading-edge invariant + direction.
-    public void ChessboardPage_SnapsScrollToWholeTiles()
+    [Fact] // selecting a different page VM swaps the ContentControl's view via the implicit DataTemplate (the MVVM nav proof)
+    public void Shell_Navigation_SwapsPageViaImplicitDataTemplate()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        Assert.IsType<ScrollViewerPageViewModel>(shell.SelectedPage); // starts on the first page
+
+        // Navigate to the Inputs page by moving the selection (the nav ListBox's SelectedItem is two-way bound to this).
+        shell.SelectedPage = shell.Pages.OfType<InputsPageViewModel>().Single();
+        host.RunUntilIdle();
+
+        var screen = Screen(host, 24);
+        output.WriteLine(screen);
+        Assert.Contains("Password", screen);            // the Inputs view rendered
+        Assert.Contains("Subscribe to updates", screen);
+        Assert.DoesNotContain("Cycle V-bar", screen);   // the ScrollViewer page's chrome is gone
+        Assert.NotNull(FindDescendant<PasswordBox>(root)); // the new control is in the showcase
+        Assert.NotNull(FindDescendant<Slider>(root));
+    }
+
+    [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)
+    public void InputsPage_TwoWayBinding_RoundTrips()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        var inputs = shell.Pages.OfType<InputsPageViewModel>().Single();
+        shell.SelectedPage = inputs;
+        host.RunUntilIdle();
+
+        var textBox = FindDescendant<TextBox>(root)!; // the first editable field is the Name TextBox
+        textBox.Focus();
+        host.RunUntilIdle();
+        host.SendText("Ada");
+        host.RunUntilIdle();
+
+        Assert.Equal("Ada", inputs.Name);              // control -> VM (two-way)
+        Assert.Contains("Name=\"Ada\"", inputs.Status); // and the live status reflects it
+    }
+
+    [Fact] // The chessboard primitive (#107, a future page): content-assisted LEADING-EDGE snapping via IScrollContentHost.
+           // The viewport height (24) is a whole number of 4-row tiles, so the vertical offsets are exact (4, then 0).
+    public void Chessboard_SnapsScrollToWholeTiles()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
         var board = new Chessboard();
@@ -81,10 +132,8 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         host.SendKey(Key.RightArrow);
         host.RunUntilIdle();
-        var h = sv.HorizontalOffset;
-        Assert.InRange(h, 1, 8);              // leading-edge: scroll right advances 1..8 cells to align the right edge
+        Assert.InRange(sv.HorizontalOffset, 1, 8); // leading-edge: scroll right advances 1..8 cells to align the right edge
 
-        // Reverse direction returns to the start: up snaps the top edge to 0, left snaps the left edge to 0.
         host.SendKey(Key.UpArrow);
         host.RunUntilIdle();
         Assert.Equal(0, sv.VerticalOffset);
@@ -94,44 +143,16 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Equal(0, sv.HorizontalOffset);
     }
 
-    [Fact] // Leading-edge snap math (the user's reported case), exercised directly with a controlled non-tile-multiple
-           // viewport: scrolling right brings the partially-hidden right tile fully into view rather than leaving it cut.
+    [Fact] // Leading-edge snap math (the reported case), exercised directly with a controlled non-tile-multiple viewport.
     public void Chessboard_LeadingEdgeSnap_RevealsTheTrailingTile()
     {
         var board = new Chessboard();
         IScrollContentHost host = board;
         host.SetViewport(new Size(77, 24)); // 77 is NOT a multiple of the 8-wide tile → a tile would be cut
 
-        // From the far left (offset 0): right edge 77 → next boundary 80 → offset 3 (tile 9 fully visible). step 3.
         Assert.Equal(3, host.LineStep(0, +1, vertical: false));
-        // From offset 3 (right edge already on 80): next boundary 88 → offset 11. step 8 (a whole tile further).
         Assert.Equal(8, host.LineStep(3, +1, vertical: false));
-        // Scrolling left snaps the LEFT edge: from 11 → previous boundary 8. step 3.
         Assert.Equal(3, host.LineStep(11, -1, vertical: false));
-        // From 8 (a boundary) → previous boundary 0. step 8.
         Assert.Equal(8, host.LineStep(8, -1, vertical: false));
-    }
-
-    [Fact] // The virtualized ListBox page (#107): a 10k-item list shows instantly (only the band realized) and End jumps
-           // across the realization boundary, realizing + scrolling the last item into view (the V3/V3b proof).
-    public void VirtualizedListPage_RealizesOnlyTheBand_AndEndJumpsAcrossBoundary()
-    {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = new VirtualizedListPage().Build();
-        host.ShowRoot(root);
-        host.RunUntilIdle();
-
-        Assert.Contains("item 000000", Screen(host, 24)); // the top renders
-        var lb = FindDescendant<ListBox>(root)!;
-        var gen = lb.ItemContainerGenerator;
-
-        gen.ContainerFromIndex(0)!.Focus();
-        host.RunUntilIdle();
-        Assert.Null(gen.ContainerFromIndex(9999)); // the last item is far off-band — NOT realized (the virtualization proof)
-
-        host.SendKey(Key.End); // jump to the last item: it scrolls into the window, realizes, then focuses
-        host.RunUntilIdle();
-        Assert.Equal(9999, lb.SelectedIndex);
-        Assert.Contains("item 009999", Screen(host, 24)); // the off-band target materialized + scrolled into view
     }
 }

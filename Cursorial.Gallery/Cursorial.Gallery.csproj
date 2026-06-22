@@ -2,9 +2,11 @@
 
     <!--
         The standalone control gallery (#107): a real UIApplication over a TerminalSession, NOT a Cursorial.Demo
-        REPL command. One page per complex control (or group of related simple controls), each with live toggles
-        that exercise the control thoroughly — a living manual-test harness and a showcase. The built-in code-first
-        theme (CursorialTheme.BuiltIn, the chain backstop) themes every control, so no XAML reference is needed.
+        REPL command. It is XAML-first MVVM by design — a showcase of the declarative stack: the shell + every page
+        is authored in XAML (loaded at runtime via XamlLoader), each page is an MVVM view-model selected in a nav
+        list, and the page's view is materialized by an IMPLICIT DataTemplate keyed on the view-model's type. Live
+        bindings exercise the controls; the ScrollViewer page is first (scrolling is the framework's biggest bug
+        surface). The CursorialTheme.BuiltIn code-first theme is the chain backstop.
     -->
 
     <PropertyGroup>
@@ -21,6 +23,12 @@
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The shell + page views are loaded at runtime from embedded XAML (the runtime-loader path). -->
+        <EmbeddedResource Include="Views\**\*.xaml" />
     </ItemGroup>
 
     <ItemGroup>

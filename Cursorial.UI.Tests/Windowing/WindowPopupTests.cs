@@ -472,4 +472,34 @@ public sealed class WindowPopupTests
 
         Assert.Same(other, host.Application.FocusManager.FocusedElement); // NOT yanked back to the trigger
     }
+
+    [Fact] // A CLOSED Popup sitting in a template's visual tree must contribute NO hit-test footprint: its only
+           // job in the host tree is structural (logical parent of Child, placement anchor) — its real content
+           // lives in a separate surface when open. Otherwise the invisible, full-bounds (Stretch-arranged) popup
+           // steals hover/clicks from the content it is layered over (the ComboBox/DatePicker face).
+    public void ClosedPopupInTemplateDoesNotStealHitTesting()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var face = new UIControls.Border { Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        // The drop-toggle template pattern: a 0-DesiredSize Popup added AFTER the face (z-topmost) in a Grid cell.
+        var popup = new Popup { Child = new UIControls.Border { Width = 6, Height = 3 } };
+
+        var grid = new UIControls.Grid();
+        grid.Children.Add(face);
+        grid.Children.Add(popup);
+        host.ShowRoot(grid);
+        host.RunUntilIdle();
+        Assert.False(popup.IsOpen);
+
+        // The pure query (the inspector / ToolTipService / cursor-resolution path) resolves the face, not the popup.
+        Assert.Same(face, host.Application.InputDispatcher.HitTest(new CellPosition(30, 10)));
+
+        // And hover lands on the face — its :pointerover would otherwise never fire under the invisible popup.
+        host.SendMouseMove(30, 10);
+        host.RunUntilIdle();
+        Assert.True(face.IsPointerOver);
+        Assert.False(popup.IsPointerOver);
+    }
 }

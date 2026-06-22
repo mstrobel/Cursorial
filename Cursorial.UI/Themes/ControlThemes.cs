@@ -35,6 +35,7 @@ internal static class ControlThemes
     {
         dict[typeof(Button)] = ButtonTheme();
         dict[typeof(Label)] = LabelTheme();
+        dict[typeof(ContentControl)] = ContentControlTheme();
         dict[typeof(RepeatButton)] = RepeatButtonTheme();
         dict[typeof(ToggleButton)] = ToggleButtonTheme();
         dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.ToggleGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
@@ -129,6 +130,21 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
         return theme;
     }
+
+    // The neutral content host (WPF/Avalonia parity): a bare ContentPresenter that auto-aliases the
+    // ContentControl's Content (A22) and resolves it through the DataTemplate-by-type chain. Without this default
+    // theme a ContentControl has no presenter and renders blank — the host an MVVM `Content="{Binding}"` needs.
+    // (Keyed by the exact type, so ContentControl-derived controls keep their own themes.)
+    private static ControlTemplate ContentControlTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        return presenter;
+    });
+
+    private static Style ContentControlTheme()
+        => new Style { Key = "Theme.ContentControl" }
+            .Set(Control.TemplateProperty, ContentControlTemplate());
 
     // ───────────────────────────── ItemsControl ─────────────────────────────
 

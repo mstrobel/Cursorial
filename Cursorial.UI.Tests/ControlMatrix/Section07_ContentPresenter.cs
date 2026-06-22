@@ -199,4 +199,63 @@ public sealed class Section07_ContentPresenter
         var text = Assert.IsType<TextBlock>(cp.Child);
         Assert.Equal("42", text.Text); // Convert.ToString(42), CurrentCulture
     }
+
+    [Fact] // ContentStringFormat applies to the text fallback (explicit on the presenter)
+    public void ContentStringFormat_FormatsTextFallback()
+    {
+        var cp = new ContentPresenter { Content = 42, ContentStringFormat = "V={0}" };
+        using var host = Attach(cp);
+
+        Assert.Equal("V=42", Assert.IsType<TextBlock>(cp.Child).Text);
+    }
+
+    [Fact] // ContentStringFormat auto-aliases from the templated ContentControl (the default-theme path)
+    public void ContentStringFormat_AutoAliasesFromTemplatedParent()
+    {
+        var control = new HostControl { Content = 42, ContentStringFormat = "V={0}" };
+        using var host = Attach(control);
+
+        var cp = control.Presenter!;
+        Assert.False(cp.IsSet(ContentPresenter.ContentStringFormatProperty)); // read-through, no installed value
+        Assert.Equal("V=42", Assert.IsType<TextBlock>(cp.Child).Text);
+    }
+
+    [Fact] // a live ContentStringFormat change on the templated parent re-renders the fallback
+    public void ContentStringFormat_LiveChange_ReRenders()
+    {
+        var control = new HostControl { Content = 42, ContentStringFormat = "V={0}" };
+        using var host = Attach(control);
+        Assert.Equal("V=42", Assert.IsType<TextBlock>(control.Presenter!.Child).Text);
+
+        control.ContentStringFormat = "[{0}]";
+        host.RunFrame();
+        Assert.Equal("[42]", Assert.IsType<TextBlock>(control.Presenter!.Child).Text);
+    }
+
+    [Fact] // a MALFORMED ContentStringFormat degrades to the unformatted text — never a thrown FormatException
+           // escaping MeasureOverride (which would kill the frame loop — audit finding)
+    public void ContentStringFormat_Malformed_DegradesInsteadOfThrowing()
+    {
+        var cp = new ContentPresenter { Content = 42, ContentStringFormat = "Total: {0" }; // unbalanced brace
+        var ex = Record.Exception(() =>
+        {
+            using var host = Attach(cp);
+        });
+        Assert.Null(ex);                                                  // no crash
+        Assert.Equal("42", Assert.IsType<TextBlock>(cp.Child).Text);     // fell back to the unformatted content
+    }
+
+    [Fact] // ContentStringFormat is ignored when a DataTemplate handles the content (WPF parity)
+    public void ContentStringFormat_IgnoredUnderTemplate()
+    {
+        var cp = new ContentPresenter
+        {
+            Content = 42,
+            ContentStringFormat = "V={0}",
+            ContentTemplate = new DataTemplate { Content = new FuncTemplateContent(_ => new TextBlock { Text = "templated" }) },
+        };
+        using var host = Attach(cp);
+
+        Assert.Equal("templated", Assert.IsType<TextBlock>(cp.Child).Text); // the template wins; format unused
+    }
 }

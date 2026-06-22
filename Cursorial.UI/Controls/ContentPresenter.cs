@@ -16,7 +16,9 @@ public sealed class ContentPresenter : UIElement
     private bool _realizing;                    // recursion guard (C147)
     private IDisposable? _aliasContentObserver;
     private IDisposable? _aliasTemplateObserver;
+    private IDisposable? _aliasStringFormatObserver;
     private ContentControl? _aliasSource;
+    private string? _realizedStringFormat; // the string format the current Child was built from (no-template reuse key)
     private IDisposable? _hAlignObserver;
     private IDisposable? _vAlignObserver;
     private ContentControl? _alignmentSource;        // the templated parent we read through to (CD21)
@@ -29,13 +31,21 @@ public sealed class ContentPresenter : UIElement
     public static readonly StyledProperty<DataTemplate?> ContentTemplateProperty =
         UIProperty.Register<ContentPresenter, DataTemplate?>(nameof(ContentTemplate), changed: OnContentTemplateChanged);
 
+    /// <summary>A composite format applied to non-templated content rendered as text; mirrors
+    /// <see cref="ContentControl.ContentStringFormat"/> and auto-aliases to it (CD21).</summary>
+    public static readonly StyledProperty<string?> ContentStringFormatProperty =
+        UIProperty.Register<ContentPresenter, string?>(nameof(ContentStringFormat), changed: OnContentStringFormatChanged);
+
     /// <summary>Whether a plain-string content is parsed for an access-key mnemonic (default false — doc §12.3/§12.5).</summary>
     public static readonly StyledProperty<bool> RecognizesAccessKeyProperty =
         UIProperty.Register<ContentPresenter, bool>(nameof(RecognizesAccessKey), changed: OnRecognizesAccessKeyChanged);
 
     static ContentPresenter()
     {
-        AffectsMeasure<ContentPresenter>(ContentProperty, ContentTemplateProperty, RecognizesAccessKeyProperty);
+        AffectsMeasure<ContentPresenter>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty, RecognizesAccessKeyProperty);
+        // The realized child swaps on any of these even when its desired size is unchanged, so the zone must
+        // re-render too (a same-length string-format change, an access-key re-fold).
+        AffectsRender<ContentPresenter>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty, RecognizesAccessKeyProperty);
     }
 
     /// <inheritdoc cref="ContentProperty"/>
@@ -43,6 +53,9 @@ public sealed class ContentPresenter : UIElement
 
     /// <inheritdoc cref="ContentTemplateProperty"/>
     public DataTemplate? ContentTemplate { get => GetValue(ContentTemplateProperty); set => SetValue(ContentTemplateProperty, value); }
+
+    /// <inheritdoc cref="ContentStringFormatProperty"/>
+    public string? ContentStringFormat { get => GetValue(ContentStringFormatProperty); set => SetValue(ContentStringFormatProperty, value); }
 
     /// <inheritdoc cref="RecognizesAccessKeyProperty"/>
     public bool RecognizesAccessKey { get => GetValue(RecognizesAccessKeyProperty); set => SetValue(RecognizesAccessKeyProperty, value); }
@@ -119,7 +132,7 @@ public sealed class ContentPresenter : UIElement
         // virtualization container — without an "already has a visual parent" crash. Built children (a TextBlock from
         // string content) are presenter-owned and not shared, so they stay; either way the next measure re-realizes.
         if (_child is not null && ReferenceEquals(_child, _realizedContent))
-            RebuildChild(null, null);
+            RebuildChild(null, null, null);
 
         // Lifetime = template instance: the auto-alias observers tear down with the presenter's
         // detach (which the templated parent's Detach() triggers via the Root subtree walk — CD20/CD21).
@@ -174,6 +187,7 @@ public sealed class ContentPresenter : UIElement
             _aliasSource = parent;
             _aliasContentObserver = parent.AddObserver(ContentControl.ContentProperty, new AliasObserver(this));
             _aliasTemplateObserver = parent.AddObserver(ContentControl.ContentTemplateProperty, new AliasTemplateObserver(this));
+            _aliasStringFormatObserver = parent.AddObserver(ContentControl.ContentStringFormatProperty, new AliasStringFormatObserver(this));
         }
         else
         {
@@ -185,8 +199,10 @@ public sealed class ContentPresenter : UIElement
     {
         _aliasContentObserver?.Dispose();
         _aliasTemplateObserver?.Dispose();
+        _aliasStringFormatObserver?.Dispose();
         _aliasContentObserver = null;
         _aliasTemplateObserver = null;
+        _aliasStringFormatObserver = null;
         _aliasSource = null;
     }
 
@@ -201,6 +217,11 @@ public sealed class ContentPresenter : UIElement
            : AliasActive && TemplatedParent is ContentControl parent ? parent.ContentTemplate
            : ContentTemplate;
 
+    private string? EffectiveContentStringFormat
+        => IsSet(ContentStringFormatProperty) ? ContentStringFormat
+           : AliasActive && TemplatedParent is ContentControl parent ? parent.ContentStringFormat
+           : ContentStringFormat;
+
     // ───────────────────────────── realization (the lookup chain, CD22) ─────────────────────────────
 
     private void EnsureChild()
@@ -214,10 +235,12 @@ public sealed class ContentPresenter : UIElement
         var content = EffectiveContent;
         var explicitTemplate = EffectiveContentTemplate;
         var resolvedTemplate = explicitTemplate ?? ContentRealization.FindImplicitTemplate(this, content);
+        var stringFormat = EffectiveContentStringFormat;
 
         // Same resolved template identity on a content change reuses the subtree (CD22/C157): only the
         // DataContext updates. A template-identity change rebuilds (C158). With no template (string /
-        // element / AccessText content), reuse keys on content identity instead.
+        // element / AccessText content), reuse keys on content identity AND the string format (the latter
+        // re-renders the text fallback).
         if (_child is not null && ReferenceEquals(_realizedTemplate, resolvedTemplate))
         {
             if (resolvedTemplate is not null)
@@ -225,21 +248,21 @@ public sealed class ContentPresenter : UIElement
                 if (!ReferenceEquals(_realizedContent, content))
                 {
                     _realizedContent = content;
-                    _child.DataContext = content; // data-context update only — subtree reused
+                    _child.DataContext = content; // data-context update only — subtree reused (format ignored under a template)
                 }
 
                 return;
             }
 
-            // No template: reuse only when the content identity is unchanged too.
-            if (ReferenceEquals(_realizedContent, content))
+            // No template: reuse only when the content identity AND the string format are unchanged.
+            if (ReferenceEquals(_realizedContent, content) && string.Equals(_realizedStringFormat, stringFormat, StringComparison.Ordinal))
                 return;
         }
 
         _realizing = true;
         try
         {
-            RebuildChild(content, resolvedTemplate);
+            RebuildChild(content, resolvedTemplate, stringFormat);
         }
         finally
         {
@@ -249,7 +272,7 @@ public sealed class ContentPresenter : UIElement
 
     private bool _childLogicallyOwned; // the presenter adopted the element content logically (free-standing case, chain ③)
 
-    private void RebuildChild(object? content, DataTemplate? template)
+    private void RebuildChild(object? content, DataTemplate? template, string? stringFormat)
     {
         if (_child is { } old)
         {
@@ -260,10 +283,11 @@ public sealed class ContentPresenter : UIElement
             _childLogicallyOwned = false;
         }
 
-        var built = ContentRealization.Realize(this, content, template, RecognizesAccessKey);
+        var built = ContentRealization.Realize(this, content, template, RecognizesAccessKey, stringFormat);
 
         _realizedContent = content;
         _realizedTemplate = template;
+        _realizedStringFormat = stringFormat;
         _child = built;
 
         if (built is not null)
@@ -293,6 +317,12 @@ public sealed class ContentPresenter : UIElement
             presenter.Refresh();
     }
 
+    private static void OnContentStringFormatChanged(UIObject sender, string? oldValue, string? newValue)
+    {
+        if (sender is ContentPresenter presenter)
+            presenter.Refresh(); // a local explicit format stops the read-through and re-renders the text fallback
+    }
+
     private static void OnRecognizesAccessKeyChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is ContentPresenter presenter)
@@ -317,6 +347,15 @@ public sealed class ContentPresenter : UIElement
     private sealed class AliasTemplateObserver(ContentPresenter presenter) : IValueObserver<DataTemplate?>
     {
         public void OnPropertyChanged(UIObject source, UIProperty property, DataTemplate? oldValue, DataTemplate? newValue, BindingPriority priority)
+        {
+            if (presenter.AliasActive)
+                presenter.InvalidateMeasure();
+        }
+    }
+
+    private sealed class AliasStringFormatObserver(ContentPresenter presenter) : IValueObserver<string?>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, string? oldValue, string? newValue, BindingPriority priority)
         {
             if (presenter.AliasActive)
                 presenter.InvalidateMeasure();

@@ -26,6 +26,12 @@ public class ContentControl : Control
     public static readonly StyledProperty<DataTemplate?> ContentTemplateProperty =
         UIProperty.Register<ContentControl, DataTemplate?>(nameof(ContentTemplate));
 
+    /// <summary>A composite format string applied to non-templated <see cref="Content"/> when it renders as text
+    /// (the WPF analog, e.g. <c>"Total: {0:0.0}"</c>); ignored when a <see cref="ContentTemplate"/> / implicit
+    /// DataTemplate handles the content. The <see cref="ContentPresenter"/> in the template auto-aliases it (CD21).</summary>
+    public static readonly StyledProperty<string?> ContentStringFormatProperty =
+        UIProperty.Register<ContentControl, string?>(nameof(ContentStringFormat));
+
     /// <summary>How the content is positioned horizontally within the control (the WPF analog; default
     /// <see cref="HorizontalAlignment.Stretch"/> ⇒ the content fills, then its own alignment applies — the prior
     /// behavior). The <see cref="ContentPresenter"/> in the control's template reads this and aligns the realized
@@ -40,7 +46,10 @@ public class ContentControl : Control
 
     static ContentControl()
     {
-        AffectsMeasure<ContentControl>(ContentProperty, ContentTemplateProperty);
+        AffectsMeasure<ContentControl>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty);
+        // A content/template/format change re-renders the zone, not just relayout (the realized child swaps even
+        // when its desired size is unchanged — e.g. a same-length string format).
+        AffectsRender<ContentControl>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty);
     }
 
     /// <inheritdoc cref="ContentProperty"/>
@@ -48,6 +57,9 @@ public class ContentControl : Control
 
     /// <inheritdoc cref="ContentTemplateProperty"/>
     public DataTemplate? ContentTemplate { get => GetValue(ContentTemplateProperty); set => SetValue(ContentTemplateProperty, value); }
+
+    /// <inheritdoc cref="ContentStringFormatProperty"/>
+    public string? ContentStringFormat { get => GetValue(ContentStringFormatProperty); set => SetValue(ContentStringFormatProperty, value); }
 
     /// <inheritdoc cref="HorizontalContentAlignmentProperty"/>
     public HorizontalAlignment HorizontalContentAlignment { get => GetValue(HorizontalContentAlignmentProperty); set => SetValue(HorizontalContentAlignmentProperty, value); }

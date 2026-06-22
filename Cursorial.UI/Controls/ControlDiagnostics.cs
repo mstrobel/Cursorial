@@ -15,7 +15,10 @@ public enum ControlDiagnosticKind
     ContentRecursion,
 
     /// <summary>A <see cref="ScrollViewer"/> requested horizontal <c>Auto</c>, which v1 treats as <c>Disabled</c> (the horizontal axis is unbanded — doc §5.7/CD28).</summary>
-    HorizontalAutoUnsupported
+    HorizontalAutoUnsupported,
+
+    /// <summary>A <see cref="ContentControl.ContentStringFormat"/> was a malformed composite format — the content rendered unformatted instead (never a thrown <see cref="FormatException"/>).</summary>
+    BadStringFormat
 }
 
 /// <summary>One emitted control diagnostic.</summary>
@@ -54,6 +57,12 @@ public static class ControlDiagnostics
         => Emit(ControlDiagnosticKind.HorizontalAutoUnsupported, element,
                 $"ScrollViewer '{element.GetType().Name}': HorizontalScrollBarVisibility.Auto acts as Disabled in v1 — "
                 + "the horizontal axis is unbanded (doc §5.7). Use Hidden to allow wheel/key scrolling, or Visible.");
+
+    [Conditional("DEBUG")]
+    internal static void BadStringFormat(UIElement element, string format)
+        => Emit(ControlDiagnosticKind.BadStringFormat, element,
+                $"ContentStringFormat '{format}' on '{element.GetType().Name}' is a malformed composite format — "
+                + "the content rendered unformatted. Fix the format string (e.g. balance the braces, use {0}).");
 
     [Conditional("DEBUG")]
     private static void Emit(ControlDiagnosticKind kind, UIElement? element, string message)

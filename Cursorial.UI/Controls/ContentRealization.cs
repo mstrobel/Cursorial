@@ -42,9 +42,11 @@ internal static class ContentRealization
     /// <param name="content">The content object.</param>
     /// <param name="template">The resolved template, or null.</param>
     /// <param name="recognizesAccessKey">Whether a plain string is parsed for an access-key mnemonic (chain ④ extension).</param>
-    internal static UIElement? Realize(ContentPresenter host, object? content, DataTemplate? template, bool recognizesAccessKey)
+    /// <param name="stringFormat">A composite format applied to the text fallbacks (chains ④-string/⑤); ignored when a template handles the content (WPF parity).</param>
+    internal static UIElement? Realize(ContentPresenter host, object? content, DataTemplate? template, bool recognizesAccessKey, string? stringFormat = null)
     {
-        // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null).
+        // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
+        // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
         if (template is not null)
             return template.Build(content);
 
@@ -65,17 +67,39 @@ internal static class ContentRealization
             case AccessText accessText:
                 return new AccessTextPresenter(accessText);
 
-            // ④ extension: a plain string under RecognizesAccessKey folds to an AccessText (doc §12.5).
+            // ④ extension: a plain string under RecognizesAccessKey folds to an AccessText (doc §12.5). The access
+            // key is parsed from the RAW content — the same text ContentControl registers with the AccessKeyManager
+            // — so the underlined mnemonic always matches the active gesture (a ContentStringFormat never injects
+            // or moves a mnemonic, and never disagrees with the registration).
             case string s when recognizesAccessKey:
                 return new AccessTextPresenter(AccessText.Parse(s));
 
             // ⑤ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
-            // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22).
+            // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22), through the string format.
             case string s:
-                return new TextBlock(s);
+                return new TextBlock(SafeFormat(host, stringFormat, s));
 
             default:
-                return new TextBlock(Convert.ToString(content, CultureInfo.CurrentCulture));
+                return new TextBlock(SafeFormat(host, stringFormat, content));
+        }
+    }
+
+    // Applies a composite format to content (null format ⇒ Convert.ToString, the prior behavior). A MALFORMED
+    // format degrades to the unformatted text + a DEBUG diagnostic — never a thrown FormatException, which would
+    // escape the measure pass (EnsureChild runs inside MeasureOverride) and kill the frame loop (audit finding).
+    private static string? SafeFormat(ContentPresenter host, string? stringFormat, object? content)
+    {
+        if (stringFormat is null)
+            return Convert.ToString(content, CultureInfo.CurrentCulture);
+
+        try
+        {
+            return string.Format(CultureInfo.CurrentCulture, stringFormat, content);
+        }
+        catch (FormatException)
+        {
+            ControlDiagnostics.BadStringFormat(host, stringFormat);
+            return Convert.ToString(content, CultureInfo.CurrentCulture);
         }
     }
 

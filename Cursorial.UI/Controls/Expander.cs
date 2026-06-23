@@ -10,13 +10,15 @@ namespace Cursorial.UI.Controls;
 /// visibility; <c>:expanded</c>). Clicking the header — or Space/Enter while the expander has focus — toggles;
 /// <see cref="Expanded"/>/<see cref="Collapsed"/> bubble on the transition. (v1 expands downward.)
 /// </summary>
+[TemplatePart(PartHeader, typeof(ToggleButton))]
+[TemplatePart(PartGlyph, typeof(TextBlock))]
+[TemplatePart(PartContent, typeof(UIElement))]
 public class Expander : HeaderedContentControl
 {
     private const string PartHeader = "PART_Header";
     private const string PartGlyph = "PART_Glyph";
     private const string PartContent = "PART_Content";
 
-    private UIElement? _header;
     private TextBlock? _glyph;
     private UIElement? _content;
 
@@ -36,6 +38,7 @@ public class Expander : HeaderedContentControl
     {
         FocusableProperty.OverrideDefaultValue<Expander>(true); // the header takes keyboard focus to toggle
         PseudoClassMapping.Register<Expander>(IsExpandedProperty, ":expanded");
+        BindsTwoWayByDefault<Expander>(IsExpandedProperty);
     }
 
     /// <inheritdoc cref="IsExpandedProperty"/>
@@ -51,7 +54,7 @@ public class Expander : HeaderedContentControl
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
-        _header = GetTemplatePart<UIElement>(PartHeader);
+        GetTemplatePart<ToggleButton>(PartHeader);
         _glyph = GetTemplatePart<TextBlock>(PartGlyph);
         _content = GetTemplatePart<UIElement>(PartContent);
         UpdateExpansionVisuals();
@@ -60,26 +63,9 @@ public class Expander : HeaderedContentControl
     /// <inheritdoc/>
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
-        _header = null;
         _glyph = null;
         _content = null;
         base.OnTemplateDetaching(old);
-    }
-
-    /// <inheritdoc/>
-    protected override void OnMouseDown(MouseButtonEventArgs e)
-    {
-        base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left)
-            return;
-
-        // Only a click on the header toggles (a click in the content does not).
-        if (IsWithin(e.OriginalSource, _header))
-        {
-            Focus();
-            Toggle();
-            e.Handled = true;
-        }
     }
 
     /// <inheritdoc/>
@@ -90,7 +76,7 @@ public class Expander : HeaderedContentControl
             return;
 
         // Enter or the spacebar (the modifier-free character form, ND10) toggles.
-        if (e.Key == Key.Enter || (e.Key == Key.Character && e.Text.Length == 1 && e.Text.Span[0] == ' '))
+        if (e.Key == Key.Enter || (e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' '))
         {
             Toggle();
             e.Handled = true;
@@ -111,18 +97,8 @@ public class Expander : HeaderedContentControl
     private void UpdateExpansionVisuals()
     {
         if (_glyph is not null)
-            _glyph.Text = IsExpanded ? "▾" : "▸"; // design-guide carets (U+25BE / U+25B8)
+            _glyph.Text = IsExpanded ? "⏷" : "⏵"; // design-guide carets (U+23F7 / U+23F5)
         if (_content is not null)
             _content.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private static bool IsWithin(UIElement? node, UIElement? ancestor)
-    {
-        if (ancestor is null)
-            return false;
-        for (; node is not null; node = node.VisualParent)
-            if (ReferenceEquals(node, ancestor))
-                return true;
-        return false;
     }
 }

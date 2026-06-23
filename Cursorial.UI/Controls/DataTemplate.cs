@@ -40,7 +40,7 @@ public class DataTemplate
         // styles override them (data-template content is app-styleable, CD18). The DataContext write
         // below stays OUTSIDE the scope — it is the real data, not a template default.
         UIElement root;
-        using (TemplateInstantiationScope.Enter())
+        // using (TemplateInstantiationScope.Enter())
             root = Content.Build(context)
                 ?? throw new InvalidOperationException("The DataTemplate's ITemplateContent produced a null root element.");
 

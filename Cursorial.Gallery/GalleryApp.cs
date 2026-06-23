@@ -35,9 +35,9 @@ public static class GalleryApp
                                                    $"({d.Element?.GetType().Name}" +
                                                    (d.Element is { Name: { Length: > 0 } n } ? $"#{n})" : ")"));
 
-        // BindingDiagnostics.TraceEmitted += d => vm.Diagnostics.Add(
-        //                                        $"[Binding  ] {d.Level} - {d.Kind}: {d.Message} " +
-        //                                        $"(Target={d.TargetDescription}; Path={d.Path})");
+        BindingDiagnostics.TraceEmitted += d => vm.Diagnostics.Add(
+                                               $"[Binding  ] {d.Level} - {d.Kind}: {d.Message} " +
+                                               $"(Target={d.TargetDescription}; Path={d.Path})");
 
         LayoutDiagnostics.DiagnosticRaised += d => vm.Diagnostics.Add(
                                                   $"[Layout   ] {d.Kind}: {d.Message} ({FormatElement(d.Element)})");

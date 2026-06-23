@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -6,6 +8,7 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
+using Calendar = Cursorial.UI.Controls.Calendar;
 using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.Themes;
@@ -823,42 +826,101 @@ internal static class ControlThemes
         => new Style { Key = "Theme.Expander" }
             .Set(Control.TemplateProperty, ExpanderTemplate());
 
-    private static ControlTemplate ExpanderTemplate() => new(ctx =>
+    private static ControlTemplate ExpanderTemplate()
     {
-        var glyph = new TextBlock { Text = "▸" }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
-        ctx.RegisterName("PART_Glyph", glyph);
+        var t = new ControlTemplate( 
+            ctx =>
+           {
+               // The header presenter binds the Header — directly in the template (TemplatedParent is the Expander), NOT
+               // nested in a Button, or the TemplateBinding would resolve against the button instead.
+               var header = new ToggleButton { Name = "PART_Header" };
 
-        // The header presenter binds the Header — directly in the template (TemplatedParent is the Expander), NOT
-        // nested in a Button, or the TemplateBinding would resolve against the button instead.
-        var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
-        headerPresenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+               header.SetBinding(ContentControl.ContentProperty, 
+                                 new TemplateBinding(HeaderedContentControl.HeaderProperty));
 
-        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
-        headerRow.Children.Add(glyph);
-        headerRow.Children.Add(new TextBlock { Text = " " });
-        headerRow.Children.Add(headerPresenter);
+               header.SetBinding(ToggleButton.IsCheckedProperty,
+                                 new Binding
+                                 {
+                                     RelativeSource = RelativeSource.TemplatedParent,
+                                     Path = nameof(Expander.IsExpanded),
+                                     Mode = BindingMode.TwoWay
+                                 });
 
-        var header = new Border { Child = headerRow }; // the clickable header region (Expander.OnMouseDown hit-tests it)
-        ctx.RegisterName("PART_Header", header);
+               ctx.RegisterName("PART_Header", header);
 
-        var content = new ContentPresenter(); // auto-aliases to the Expander's Content (A22)
-        ctx.RegisterName("PART_Content", content);
+               var content = new ContentPresenter(); // auto-aliases to the Expander's Content (A22)
+               ctx.RegisterName("PART_Content", content);
 
-        var root = new StackPanel { Orientation = Orientation.Vertical };
-        root.Children.Add(header);
-        root.Children.Add(content);
-        
-        header.Styles.Add(
-            new Style(Selectors.OfType<Border>())
-            {
-                Children =
-                {
-                    new Style(Selectors.Nesting().PseudoClass(":pointerover"))
-                }
-            }
-        );
-        return root;
-    });
+               var root = new StackPanel { Orientation = Orientation.Vertical };
+               root.Children.Add(header);
+               root.Children.Add(content);
+
+               return root;
+           });
+
+        var headerStyle = AddButtonStates(new Style(Selectors.Nesting().Template().OfType<ToggleButton>().Name("PART_Header")))
+            .Set(
+                Control.TemplateProperty,
+                new ControlTemplate(
+                    build: tbCtx =>
+                           {
+                               var border = new Border();
+
+                               border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                               border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                               border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+                               var glyph = new TextBlock { Margin = new(0, 0, 1, 0) }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
+
+                               var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
+                               var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
+
+                               glyph.SetBinding(TextBlock.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+                               glyph.SetBinding(
+                                   TextBlock.TextProperty,
+                                   new Binding
+                                   {
+                                       Path = nameof(ToggleButton.IsChecked),
+                                       Converter = new ExpandedToGlyphConverter(),
+                                       Mode = BindingMode.OneWay,
+                                       RelativeSource = RelativeSource.TemplatedParent
+                                   }
+                               );
+
+                               tbCtx.RegisterName("PART_Glyph", glyph);
+
+                               headerRow.Children.Add(glyph);
+                               headerRow.Children.Add(headerPresenter);
+
+                               border.Child = headerRow;
+                               return border;
+                           }));
+
+        t.Styles.Add(new Style(Selectors.OfType<Expander>()) { Children = { headerStyle } });
+
+        return t;
+    }
+
+    private sealed class ExpandedToGlyphConverter : IValueConverter
+    {
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (targetType != typeof(string))
+                return UIProperty.UnsetValue;
+
+            return value switch
+                   {
+                       true  => "⏷",
+                       false => "⏵",
+                       _     => "?"
+                   };
+        }
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
 
     // ───────────────────────────── TextBox ─────────────────────────────
 
@@ -1065,6 +1127,10 @@ internal static class ControlThemes
             {
                 Children =
                 {
+                    new Style(Selectors.Nesting().Template().Name("PART_Glyph"))
+                        .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.MutedBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_Glyph"))
+                        .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.TextBrush),
                     new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.AccentBrush),
                     new Style(Selectors.Nesting().PseudoClass(":disabled").Template().Name("PART_Glyph"))

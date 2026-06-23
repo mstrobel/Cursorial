@@ -1,3 +1,5 @@
+using Cursorial.UI.Input;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -8,4 +10,30 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class CheckBox : ToggleButton
 {
+    private bool _focusedByAccessKey;
+
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        _focusedByAccessKey = false;
+        base.OnLostFocus(e);
+    }
+
+    protected override void OnAccessKey(AccessKeyEventArgs e)
+    {
+        if (_focusedByAccessKey)
+        {
+            _focusedByAccessKey = false;
+            return;
+        }
+
+        base.OnAccessKey(e);
+    }
+
+    protected override void OnGotFocus(FocusChangedEventArgs e)
+    {
+        base.OnGotFocus(e);
+
+        if (e.Method is FocusNavigationMethod.AccessKey)
+            _focusedByAccessKey = true;
+    }
 }

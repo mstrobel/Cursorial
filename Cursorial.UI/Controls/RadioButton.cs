@@ -13,6 +13,8 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class RadioButton : ToggleButton
 {
+    private bool _focusedByAccessKey;
+
     /// <summary>The named radio group (default empty ⇒ logical-parent grouping). All same-named radios under the surface root are peers (CD27).</summary>
     public static readonly StyledProperty<string?> GroupNameProperty =
         UIProperty.Register<RadioButton, string?>(nameof(GroupName));
@@ -144,5 +146,30 @@ public class RadioButton : ToggleButton
                     yield return descendant;
             }
         }
+    }
+    
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        _focusedByAccessKey = false;
+        base.OnLostFocus(e);
+    }
+
+    protected override void OnAccessKey(AccessKeyEventArgs e)
+    {
+        if (_focusedByAccessKey)
+        {
+            _focusedByAccessKey = false;
+            return;
+        }
+
+        base.OnAccessKey(e);
+    }
+
+    protected override void OnGotFocus(FocusChangedEventArgs e)
+    {
+        base.OnGotFocus(e);
+
+        if (e.Method is FocusNavigationMethod.AccessKey)
+            _focusedByAccessKey = true;
     }
 }

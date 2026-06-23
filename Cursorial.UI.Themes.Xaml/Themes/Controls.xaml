@@ -139,6 +139,18 @@
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
       </StackPanel>
     </Border>
+    <ControlTemplate.Styles>
+      <Style Selector="CheckBox">
+        <Style.Children>
+          <Style Selector="^:pointerover /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" />
+          </Style>
+          <Style Selector="^:disabled /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}" />
+          </Style>
+        </Style.Children>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <ControlTemplate x:Key="RadioButtonTemplate">
@@ -154,6 +166,18 @@
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
       </StackPanel>
     </Border>
+    <ControlTemplate.Styles>
+      <Style Selector="RadioButton">
+        <Style.Children>
+          <Style Selector="^:pointerover /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" />
+          </Style>
+          <Style Selector="^:disabled /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}" />
+          </Style>
+        </Style.Children>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <Style x:Key="{x:Type CheckBox}" TargetType="CheckBox">

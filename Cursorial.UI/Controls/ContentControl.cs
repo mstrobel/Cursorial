@@ -1,3 +1,4 @@
+using Cursorial.Markup;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -15,7 +16,7 @@ namespace Cursorial.UI.Controls;
 /// <see cref="AccessKeyManager"/> on attach and re-registered on a <see cref="Content"/> change. A
 /// <see cref="ContentControl"/> that is not an <see cref="IAccessKeyTarget"/> registers nothing.
 /// </remarks>
-[Cursorial.Markup.ContentProperty("Content")]
+[ContentProperty("Content")]
 public class ContentControl : Control
 {
     /// <summary>The control's content (<c>AffectsMeasure</c>; any object).</summary>

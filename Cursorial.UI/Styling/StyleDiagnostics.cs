@@ -271,7 +271,7 @@ public static class StyleDiagnostics
 /// offending style/rule, DEBUG builds only. Tests observe through <see cref="DiagnosticEmitted"/>
 /// (InternalsVisibleTo); release builds compile the emission sites out.
 /// </summary>
-internal static class StyleDebugDiagnostics
+public static class StyleDebugDiagnostics
 {
     /// <summary>The SD23-① category: a rule indexed into the universal bucket.</summary>
     internal const string UniversalBucketCategory = "style-universal-bucket";
@@ -301,7 +301,7 @@ internal static class StyleDebugDiagnostics
 #endif
 
     /// <summary>Raised once per finding (category, message). DEBUG builds only — never raised in release.</summary>
-    internal static event Action<string, string>? DiagnosticEmitted;
+    public static event Action<string, string>? DiagnosticEmitted;
 
     [Conditional("DEBUG")]
     internal static void WarnUniversalBucketRule(CompiledRule rule)

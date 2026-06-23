@@ -54,7 +54,7 @@ public class Thumb : Control
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
-        if (Background is { } background && !context.Bounds.IsEmpty)
+        if (Background is { Opacity: > 0 } background && !context.Bounds.IsEmpty)
             context.FillRectangle(new Rect(0, 0, context.Size.Columns, context.Size.Rows), background);
     }
 

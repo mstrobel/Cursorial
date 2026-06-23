@@ -63,6 +63,66 @@ internal sealed class InspectorDemo : IDemo
     // inspector has rich provenance to show. The default xmlns maps the UI/Controls/Drawing.Media types.
     private static readonly (string Label, string Xaml)[] Samples =
     [
+        ("Inputs demo", """
+                           <DockPanel xmlns="https://cursorial.dev/ui"
+                                      xmlns:x="https://cursorial.dev/xaml"
+                                      LastChildFill="True">
+                             <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}" Padding="1,0">
+                               <StackPanel Orientation="Vertical">
+                                 <TextBlock Text="{Binding Title}"
+                                            Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+                                 <TextBlock Text="{Binding Summary}"
+                                            Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                               </StackPanel>
+                             </Border>
+                           
+                             <StatusBar DockPanel.Dock="Bottom">
+                               <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+                             </StatusBar>
+                           
+                           <Grid Margin="2,1">
+                             <Grid.ColumnDefinitions>
+                               <ColumnDefinition Width="Auto" />
+                               <ColumnDefinition Width="1" />
+                               <ColumnDefinition Width="Auto" />
+                               <ColumnDefinition Width="*" />
+                             </Grid.ColumnDefinitions>
+                             <Grid.RowDefinitions>
+                               <RowDefinition Height="Auto" />
+                               <RowDefinition Height="Auto" />
+                               <RowDefinition Height="Auto" />
+                               <RowDefinition Height="Auto" />
+                               <RowDefinition Height="Auto" />
+                               <RowDefinition Height="*" />
+                             </Grid.RowDefinitions>
+                           
+                             <Label Grid.Column="0" Grid.Row="0"
+                                    Content="_Name" Target="{x:Reference NameEditor}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                             <TextBox Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left"
+                                      x:Name="NameEditor" Width="28" Text="{Binding Name, Mode=TwoWay}" />
+                           
+                             <Label Grid.Column="0" Grid.Row="1"
+                                    Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                             <PasswordBox Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left"
+                                          x:Name="PasswordEditor" Width="28" Text="{Binding Password, Mode=TwoWay}" RevealPassword="{Binding ShowPassword}" />
+                           
+                             <CheckBox Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left"
+                                       Content="_Reveal password" Margin="0,1,0,0" IsChecked="{Binding ShowPassword, Mode=TwoWay}" />
+                             <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left"
+                                       Content="Subscribe to _updates" IsChecked="{Binding Subscribed, Mode=TwoWay}" />
+                           
+                             <Label Grid.Column="0" Grid.Row="4"
+                                    Target="{x:Reference VolumeSlider}" Margin="0,1,0,0" Content="_Volume" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                             <StackPanel Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left"
+                                         Orientation="Horizontal" Margin="0,1,0,0">
+                               <Slider x:Name="VolumeSlider" Width="28" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
+                               <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
+                                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+                             </StackPanel>
+                           </Grid>
+                           
+                           </DockPanel>
+                           """),
         ("Settings panel", """
                            <DockPanel xmlns="https://cursorial.dev/ui"
                                       xmlns:x="https://cursorial.dev/xaml"

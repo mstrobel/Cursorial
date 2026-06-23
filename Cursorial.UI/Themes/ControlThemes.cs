@@ -38,8 +38,8 @@ internal static class ControlThemes
         dict[typeof(ContentControl)] = ContentControlTheme();
         dict[typeof(RepeatButton)] = RepeatButtonTheme();
         dict[typeof(ToggleButton)] = ToggleButtonTheme();
-        dict[typeof(CheckBox)] = ToggleGlyphTheme("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.ToggleGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
-        dict[typeof(RadioButton)] = ToggleGlyphTheme("Theme.RadioButton", ThemeKeys.RadioGlyphs, ThemeKeys.RadioGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
+        dict[typeof(CheckBox)] = ToggleGlyphTheme<CheckBox>("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.ToggleGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
+        dict[typeof(RadioButton)] = ToggleGlyphTheme<RadioButton>("Theme.RadioButton", ThemeKeys.RadioGlyphs, ThemeKeys.RadioGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
         dict[typeof(ScrollBar)] = ScrollBarTheme();
         dict[typeof(ScrollViewer)] = ScrollViewerTheme();
         dict[typeof(ItemsControl)] = ItemsControlTheme();
@@ -83,6 +83,7 @@ internal static class ControlThemes
     private static ControlTemplate ButtonContentTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
@@ -120,6 +121,7 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         return presenter;
     });
 
@@ -138,9 +140,12 @@ internal static class ControlThemes
     // (Keyed by the exact type, so ContentControl-derived controls keep their own themes.)
     private static ControlTemplate ContentControlTemplate() => new(ctx =>
     {
+        var border = new Border();
         var presenter = new ContentPresenter();
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        return presenter;
+        border.Child = presenter;
+        return border;
     });
 
     private static Style ContentControlTheme()
@@ -828,7 +833,7 @@ internal static class ControlThemes
         var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
         headerPresenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
 
-        var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
+        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
         headerRow.Children.Add(glyph);
         headerRow.Children.Add(new TextBlock { Text = " " });
         headerRow.Children.Add(headerPresenter);
@@ -842,6 +847,16 @@ internal static class ControlThemes
         var root = new StackPanel { Orientation = Orientation.Vertical };
         root.Children.Add(header);
         root.Children.Add(content);
+        
+        header.Styles.Add(
+            new Style(Selectors.OfType<Border>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().PseudoClass(":pointerover"))
+                }
+            }
+        );
         return root;
     });
 
@@ -1001,8 +1016,11 @@ internal static class ControlThemes
 
     // glyph cell + 1 space + ContentPresenter (spec line 660), wrapped in a fill Border. The glyph element
     // reads the owning toggle's IsChecked + the glyph-set resource (ASCII default, overridable).
-    private static ControlTemplate ToggleGlyphTemplate(string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
-        => new(ctx =>
+    private static ControlTemplate ToggleGlyphTemplate<T>(string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
+        where T : UIElement
+    {
+        var t = new ControlTemplate(
+            ctx =>
                {
                    var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
 
@@ -1038,21 +1056,37 @@ internal static class ControlThemes
                    face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                    return face;
                });
+        
+        // Hover brightens the ink to the accent (the design guide's box-brightens-on-hover cue) — these fill-less
+        // controls can't use a background highlight (it would span the full stretched width), so the foreground IS
+        // the affordance. (The mark keeps its own checked color, set by the ToggleGlyph leaf.)
+        t.Styles.Add(
+            new Style(Selectors.OfType<T>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_Glyph"))
+                        .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.AccentBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":disabled").Template().Name("PART_Glyph"))
+                        .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.DisabledForegroundBrush)
+                }
+            }
+        );
+
+        return t;
+    }
 
     // themeKey is the diagnostic Style.Key (e.g. "Theme.CheckBox"); glyphKey is the ThemeKeys glyph-set
     // resource the ToggleGlyph leaf reads (already a fully-qualified "Theme.*" constant — never re-prefix it).
     // No fill at all: transparent at rest AND on hover (a stretched check/radio would fill full-width); the
     // glyph + content paint in the inherited Foreground, disabled = muted ink, focus = the in-box caret
     // (driven by ToggleButton), never reverse-video.
-    private static Style ToggleGlyphTheme(string themeKey, string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
+    private static Style ToggleGlyphTheme<T>(string themeKey, string glyphKey, string checkedMarkKey, string indeterminateMarkKey)
+        where T : UIElement
     {
         var theme = new Style { Key = themeKey }
             .SetResource(Control.ForegroundProperty, ThemeKeys.ToggleForegroundNormal)
-            .Set(Control.TemplateProperty, ToggleGlyphTemplate(glyphKey, checkedMarkKey, indeterminateMarkKey));
-        // Hover brightens the ink to the accent (the design guide's box-brightens-on-hover cue) — these fill-less
-        // controls can't use a background highlight (it would span the full stretched width), so the foreground IS
-        // the affordance. (The mark keeps its own checked color, set by the ToggleGlyph leaf.)
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
+            .Set(Control.TemplateProperty, ToggleGlyphTemplate<T>(glyphKey, checkedMarkKey, indeterminateMarkKey));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ToggleForegroundDisabled));
         return theme;
     }
@@ -1343,6 +1377,13 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     /// <summary>The <see cref="ThemeKeys"/> brush key coloring the INDETERMINATE inner mark (e.g., AmberBrush ▪); <c>null</c> leaves it in the foreground.</summary>
     public string? IndeterminateMarkKey { get; set; }
 
+    /// <inheritdoc cref="GlyphForegroundProperty"/>
+    public IBrush? GlyphForeground
+    {
+        get => GetValue(GlyphForegroundProperty);
+        set => SetValue(GlyphForegroundProperty, value);
+    }
+    
     // The caps-unicode glyph-set override (design doc §12.7 / SD14): CursorialThemeStyles' `.caps-unicode`
     // rules set this per control type to opt the marks UP from the ASCII resource base to Unicode (✓/▪/●);
     // ToggleGlyph reads it off its Owner, falling back to the glyph-set resource when unset (a caps-ascii
@@ -1351,7 +1392,17 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     public static readonly AttachedProperty<GlyphSetCarrier?> GlyphsProperty =
         UIProperty.RegisterAttached<ToggleGlyph, ToggleButton, GlyphSetCarrier?>("Glyphs");
 
-    static ToggleGlyph() => AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
+    /// <summary>
+    /// The foreground brush with which to render the glyph brackets.
+    /// </summary>
+    public static readonly StyledProperty<IBrush?> GlyphForegroundProperty =
+        UIProperty.Register<ToggleGlyph, IBrush?>(nameof(GlyphForeground));
+    
+    static ToggleGlyph()
+    {
+        AddGlobalEffects(PropertyEffects.AffectsRender, GlyphsProperty);
+        AffectsRender<ToggleGlyph>(GlyphForegroundProperty);
+    }
 
     /// <summary>Parameterless constructor for XAML; set <see cref="GlyphKey"/> + the mark keys via properties.</summary>
     public ToggleGlyph() { }
@@ -1377,7 +1428,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
         base.OnAttachedToTree(in e);
         // Re-render when the owning toggle's checked state flips (the glyph swap is render-only — the
         // ASCII triple is equal-width; a Unicode swap that changed width would also need re-measure).
-        if (Owner is { } owner)
+        if (Owner is {} owner)
             _checkedObserver = owner.AddObserver(ToggleButton.IsCheckedProperty, this);
     }
 
@@ -1428,7 +1479,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
             return;
 
         var glyph = Glyphs.ForChecked(CheckedState);
-        var foreground = Owner?.Foreground;
+        var foreground = GlyphForeground ?? Owner?.Foreground;
         // The glyph honors the inherited TextElement.TextAttributes (None for an ordinary control), so a
         // NoColor disabled check/radio dims with Faint to match its (Faint) content text — the whole control
         // reads as disabled, not just its label (review #1 follow-up).

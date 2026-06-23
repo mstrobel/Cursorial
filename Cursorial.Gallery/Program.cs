@@ -11,6 +11,8 @@ var app = UIApplication.CreateBuilder()
     .WithFrameRate(60)
     .Build();
 
+// app.Theme = Cursorial.UI.Themes.Xaml.CursorialXamlTheme.LoadTheme();
+
 try
 {
     await app.RunAsync(() =>

@@ -16,6 +16,8 @@
         <Nullable>enable</Nullable>
         <RootNamespace>Cursorial.Gallery</RootNamespace>
         <AssemblyName>Cursorial.Gallery</AssemblyName>
+        <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
+        <CursorialXamlLowering>none</CursorialXamlLowering>
     </PropertyGroup>
 
     <ItemGroup>
@@ -24,6 +26,7 @@
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Themes.Xaml\Cursorial.UI.Themes.Xaml.csproj" />
     </ItemGroup>
 
     <ItemGroup>

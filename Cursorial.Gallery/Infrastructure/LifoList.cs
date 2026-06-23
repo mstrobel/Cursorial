@@ -2,18 +2,16 @@ using System.Collections.Specialized;
 
 namespace Cursorial.Gallery.Infrastructure;
 
-public class ReversedList<T> : IList<T>, INotifyCollectionChanged
+public class LifoList<T> : IList<T>, System.Collections.IList, INotifyCollectionChanged
 {
     public IList<T> Source { get; }
 
-    public ReversedList(IList<T> source)
+    public LifoList(IList<T> source)
     {
         Source = source;
         
         if (Source is INotifyCollectionChanged notifySource)
-        {
             notifySource.CollectionChanged += OnSourceCollectionChanged;
-        }
     }
 
     private void OnSourceCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -39,8 +37,8 @@ public class ReversedList<T> : IList<T>, INotifyCollectionChanged
             case NotifyCollectionChangedAction.Replace:
                 reversedArgs = new NotifyCollectionChangedEventArgs(
                     NotifyCollectionChangedAction.Replace,
-                    e.NewItems,
-                    e.OldItems,
+                    e.NewItems!,
+                    e.OldItems!,
                     ReverseIndex(e.NewStartingIndex));
                 break;
             
@@ -93,9 +91,7 @@ public class ReversedList<T> : IList<T>, INotifyCollectionChanged
     public IEnumerator<T> GetEnumerator()
     {
         for (int i = Source.Count - 1; i >= 0; i--)
-        {
             yield return Source[i];
-        }
     }
 
     public int IndexOf(T item)
@@ -117,4 +113,37 @@ public class ReversedList<T> : IList<T>, INotifyCollectionChanged
     public void RemoveAt(int index) => Source.RemoveAt(ReverseIndex(index));
 
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    // IList (non-generic) implementation
+    object? System.Collections.IList.this[int index]
+    {
+        get => this[index];
+        set => this[index] = (T)value!;
+    }
+
+    bool System.Collections.IList.IsFixedSize => (Source as System.Collections.IList)?.IsFixedSize ?? false;
+
+    int System.Collections.IList.Add(object? value)
+    {
+        Add((T)value!);
+        return 0;
+    }
+
+    bool System.Collections.IList.Contains(object? value) => value is T item && Contains(item);
+
+    int System.Collections.IList.IndexOf(object? value) => value is T item ? IndexOf(item) : -1;
+
+    void System.Collections.IList.Insert(int index, object? value) => Insert(index, (T)value!);
+
+    void System.Collections.IList.Remove(object? value)
+    {
+        if (value is T item)
+            Remove(item);
+    }
+
+    void System.Collections.ICollection.CopyTo(Array array, int index) => CopyTo((T[])array, index);
+
+    bool System.Collections.ICollection.IsSynchronized => false;
+
+    object System.Collections.ICollection.SyncRoot => this;
 }

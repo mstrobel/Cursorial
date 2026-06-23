@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
@@ -28,6 +29,8 @@ public sealed class ShellViewModel : ViewModelBase
 
         _selectedPage = Pages[0];
     }
+
+    public LifoList<string> Diagnostics { get; } = new(new ObservableCollection<string>());
 
     public ICommand CycleThemeVariant { get; }
 

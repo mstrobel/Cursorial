@@ -274,7 +274,7 @@ public sealed class ContentPresenter : UIElement
 
     private void RebuildChild(object? content, DataTemplate? template, string? stringFormat)
     {
-        if (_child is { } old)
+        if (_child is {} old)
         {
             if (_childLogicallyOwned && ReferenceEquals(old.LogicalParent, this))
                 RemoveLogicalChild(old);

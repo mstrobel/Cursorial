@@ -535,6 +535,16 @@ internal sealed class XamlObjectGraphBuilder
             return;
         }
 
+        // Classes="accent primary" — the style-class set is a read-only ClassSet (no setter); split the
+        // space-separated names and Add each (static class assignment, Avalonia parity). A repeated name is a
+        // harmless no-op (ClassSet.Add dedups). Works the same on a template instance's element.
+        if (instance is UIElement classTarget && resolved.SystemType() == typeof(ClassSet))
+        {
+            foreach (var className in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+                classTarget.Classes.Add(className);
+            return;
+        }
+
         object? value = ConvertText(resolved, text, instance, line, column);
         Assign(resolved, instance, value, line, column);
     }

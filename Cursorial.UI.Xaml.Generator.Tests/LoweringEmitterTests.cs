@@ -687,4 +687,51 @@ namespace TestApp { public partial class PenView : Border { public PenView() => 
         Assert.Equal(runtime.BorderPen!.Value.Brush!.GetType(), view.BorderPen!.Value.Brush!.GetType()); // SolidColorBrush
         Assert.Equal(runtime.BorderPen!.Value.Weight, view.BorderPen!.Value.Weight);                     // init-only attribute too
     }
+
+    [Fact] // Classes="accent primary" lowers to Classes.Add per name (the read-only ClassSet — no setter)
+    public void Lowered_Classes_AddsStyleClasses()
+    {
+        var xaml = $"<Button {Ns} x:Class=\"TestApp.ClassesView\" Classes=\"accent primary\"/>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class ClassesView : Button { public ClassesView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("Classes.Add(\"accent\")", lowered);
+        Assert.Contains("Classes.Add(\"primary\")", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (Button) System.Activator.CreateInstance(assembly.GetType("TestApp.ClassesView")!)!;
+
+        var runtime = (Button) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        Assert.Contains("accent", view.Classes);
+        Assert.Contains("primary", view.Classes);
+        Assert.Contains("accent", runtime.Classes); // same set as the loader
+    }
+
+    [Fact] // Classes inside a DataTemplate lowers to Classes.Add in the template factory (compiles)
+    public void Lowered_Classes_InsideDataTemplate()
+    {
+        var xaml =
+            $"<ContentControl {Ns} x:Class=\"TestApp.ClassesTemplateView\" Content=\"d\">" +
+            "<ContentControl.ContentTemplate><DataTemplate>" +
+            "<Button Classes=\"accent\"/>" +
+            "</DataTemplate></ContentControl.ContentTemplate>" +
+            "</ContentControl>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class ClassesTemplateView : ContentControl { public ClassesTemplateView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.Contains("Classes.Add(\"accent\")", lowered); // emitted inside the template factory
+
+        // Compiles ⇒ the factory's Classes.Add is valid C#.
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+    }
 }

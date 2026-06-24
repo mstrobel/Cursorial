@@ -203,4 +203,33 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
                 count++;
         return count;
     }
+
+    // ── Classes="…" (static style-class assignment) ──────────────────────────────────────────────────────
+
+    [Fact] // Classes="accent primary" adds the space-separated style classes to the element's ClassSet
+    public void Classes_Attribute_AddsSpaceSeparatedClasses()
+    {
+        var root = Load<UIControls.StackPanel>("<StackPanel><Button Classes=\"accent primary\"/></StackPanel>");
+        var button = (UIControls.Button) root.Children[0];
+
+        Assert.Contains("accent", button.Classes);
+        Assert.Contains("primary", button.Classes);
+    }
+
+    [Fact] // a Classes="…"-assigned class drives a .class style selector end-to-end
+    public void Classes_DrivesClassSelectorStyle()
+    {
+        using var host = UITestHost.Create();
+        var root = Load<UIControls.StackPanel>(
+            "<StackPanel>" +
+            "<StackPanel.Styles><Style Selector=\".accent\" TargetType=\"Button\"><Setter Property=\"Width\" Value=\"42\"/></Style></StackPanel.Styles>" +
+            "<Button Classes=\"accent\"/>" +
+            "</StackPanel>");
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var button = (UIControls.Button) root.Children[0];
+        Assert.Contains("accent", button.Classes);
+        Assert.Equal(42, button.Width); // the .accent style matched the Classes-assigned class
+    }
 }

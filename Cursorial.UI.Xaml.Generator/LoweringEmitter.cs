@@ -1163,6 +1163,15 @@ internal static class LoweringEmitter
     // (Init-only CLR targets are set in the construction object initializer, NOT here — see EmitObject.)
     private static void EmitScalarAssign(Context c, string varExpr, XamlMember xm, string text)
     {
+        // Classes="accent primary" — the read-only ClassSet (no setter) takes a Classes.Add per name (static class
+        // assignment, Avalonia parity; mirrors the runtime loader's ApplyTextMember Classes path).
+        if (IsClassSetMember(xm))
+        {
+            foreach (var className in text.Split((char[]?) null, System.StringSplitOptions.RemoveEmptyEntries))
+                c.Line($"{varExpr}.Classes.Add(\"{Escape(className)}\");");
+            return;
+        }
+
         if (RegisteredOwner(xm) is { } owner)
         {
             // SetValue takes object? — no cast needed.
@@ -1184,6 +1193,10 @@ internal static class LoweringEmitter
         else
             c.Todo($"unresolved value type for {xm.Name}=\"{Escape(text)}\"");
     }
+
+    // A Classes="…" member: the read-only ClassSet style-class set (UIElement.Classes), set via Classes.Add per name.
+    private static bool IsClassSetMember(XamlMember xm)
+        => ValueTypeSymbol(xm.ValueType) is { Name: "ClassSet", ContainingNamespace: { Name: "UI", ContainingNamespace.Name: "Cursorial" } };
 
     // The object?-typed expression for a Text value (a string literal, or the converter call). Null = unresolved.
     private static string? ScalarConvertExpr(Context c, XamlMember xm, string text)

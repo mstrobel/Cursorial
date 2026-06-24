@@ -829,11 +829,18 @@ internal static class LoweringEmitter
             return;
         }
 
-        // Init-only CLR value members (e.g. SolidColorBrush.Color) can't be set post-construction (CS8852) — they
-        // go in the construction object initializer. Pre-scan for them so the `new T { … }` carries them and the
-        // member loop skips them. (The root is `this` — already constructed — so its init-only members can't use
-        // an initializer; they fall to the member loop's ClrSetBlocked → TODO.)
-        var initMembers = isRoot ? null : ScanInitOnlyMembers(c, in obj, objType);
+        // An x:DataType on this object establishes the compiled-binding source type for its whole subtree
+        // (B184/B3); otherwise the enclosing scope's type carries down. Computed BEFORE the init-only scan so an
+        // init-only property-element's child subtree (built inside the scan) sees the right binding source type.
+        dataType = XamlDataTypeScope.ForObject(c.Doc, in obj, c.Resolver) ?? dataType;
+
+        // Init-only CLR value members (e.g. SolidColorBrush.Color, Pen.Brush) can't be set post-construction
+        // (CS8852) — they go in the construction object initializer. Pre-scan for them in BOTH forms — an attribute
+        // (Text/Folded) and a property element (a single Object value: <Pen.Brush><SolidColorBrush/></Pen.Brush>) —
+        // so the `new T { … }` carries them (a property-element child is built into a local first) and the member
+        // loop skips them. (The root is `this` — already constructed — so its init-only members can't use an
+        // initializer; they fall to the member loop's ClrSetBlocked → TODO.)
+        var initMembers = isRoot ? null : ScanInitOnlyMembers(c, in obj, objType, hasScope, dataType);
 
         if (!isRoot)
         {
@@ -843,12 +850,9 @@ internal static class LoweringEmitter
                 return;
             }
             var initializer = initMembers is { Entries.Count: > 0 } ? $" {{ {string.Join(", ", initMembers.Entries)} }}" : "()";
+            c.CurrentLineInfo = obj.PackedLineInfo; // re-assert (a property-element child build in the scan moved it)
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
         }
-
-        // An x:DataType on this object establishes the compiled-binding source type for its whole subtree
-        // (B184/B3); otherwise the enclosing scope's type carries down.
-        dataType = XamlDataTypeScope.ForObject(c.Doc, in obj, c.Resolver) ?? dataType;
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
@@ -897,6 +901,7 @@ internal static class LoweringEmitter
                     else if (IsDataTemplateType(xm.ValueType)) c.TemplatedParentType = null;
                     EmitObject(c, member.ValueIndex, childVar, isRoot: false, hasScope, dataType);
                     c.TemplatedParentType = savedTpt;
+                    c.CurrentObjectType = objType; // re-assert: the child recursion clobbered it (EmitChildAssign's ClrSetBlocked check reads the PARENT type)
                     EmitChildAssign(c, varExpr, xm, childVar, member.ValueIndex, single: true);
                     break;
                 }
@@ -1103,7 +1108,7 @@ internal static class LoweringEmitter
 
     // Pre-scans an object's Text/Folded members for init-only CLR value properties (settable only in an object
     // initializer). Returns the initializer entries (`Prop = expr`) + the member indices to skip in the main loop.
-    private static InitOnlyScan ScanInitOnlyMembers(Context c, in ObjectRecord obj, INamedTypeSymbol? objType)
+    private static InitOnlyScan ScanInitOnlyMembers(Context c, in ObjectRecord obj, INamedTypeSymbol? objType, bool hasScope, INamedTypeSymbol? dataType)
     {
         var scan = new InitOnlyScan();
         if (objType is null)
@@ -1112,7 +1117,8 @@ internal static class LoweringEmitter
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
-            if (member.Kind is not (XamlValueKind.Text or XamlValueKind.Folded))
+            // An init-only CLR member arrives as an attribute (Text/Folded) or a property element (a single Object).
+            if (member.Kind is not (XamlValueKind.Text or XamlValueKind.Folded or XamlValueKind.Object))
                 continue;
 
             var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
@@ -1122,9 +1128,15 @@ internal static class LoweringEmitter
             if (XamlDataTypeScope.FindMember(objType, xm.Name) is not { } sym || !XamlDataTypeScope.IsInitOnlySettable(sym))
                 continue;
 
-            var expr = member.Kind == XamlValueKind.Text
-                           ? ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex])
-                           : FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]);
+            // A property element builds its child subtree into a local FIRST (emitted before the enclosing
+            // `new T { Member = <var> }` that references it); an attribute converts its literal/folded value inline.
+            var expr = member.Kind switch
+            {
+                XamlValueKind.Text => ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex]),
+                XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
+                XamlValueKind.Object => BuildInitOnlyObjectChild(c, member.ValueIndex, hasScope, dataType),
+                _ => null,
+            };
 
             if (expr is null) // unresolved — let the member loop TODO it (don't skip)
                 continue;
@@ -1134,6 +1146,16 @@ internal static class LoweringEmitter
         }
 
         return scan;
+    }
+
+    // Builds an init-only property element's child subtree into a fresh local (emitted into the body BEFORE the
+    // enclosing `new T { Member = <var> }`), returning that var — so an init-only CLR property set via a property
+    // element (<Pen.Brush><SolidColorBrush/></Pen.Brush>) lands in the object initializer, not a CS8852 assignment.
+    private static string BuildInitOnlyObjectChild(Context c, int childIndex, bool hasScope, INamedTypeSymbol? dataType)
+    {
+        var childVar = c.NextVar();
+        EmitObject(c, childIndex, childVar, isRoot: false, hasScope, dataType);
+        return childVar;
     }
 
     // A Text value: an object/string member takes the string literal directly; any other typed member runs
@@ -1221,9 +1243,22 @@ internal static class LoweringEmitter
         }
 
         if (RegisteredOwner(xm) is { } owner)
+        {
             c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {childVar});");
-        else
-            c.Line($"{varExpr}.{xm.Name} = {childVar};");
+            return;
+        }
+
+        // An init-only / read-only CLR property set via a property element can't be assigned post-construction
+        // (CS8852). A non-root init-only one is hoisted into the construction initializer by ScanInitOnlyMembers, so
+        // reaching here means the root (`this`, already constructed) or an otherwise-unhoistable case — TODO, never
+        // emit code that won't compile. (CurrentObjectType is re-asserted to the parent before this call.)
+        if (ClrSetBlocked(c, xm.Name))
+        {
+            c.Todo($"CLR property '{xm.Name}' is init-only/read-only — can't be set post-construction via a property element");
+            return;
+        }
+
+        c.Line($"{varExpr}.{xm.Name} = {childVar};");
     }
 
     // A keyed resource entry: read the child's x:Key directive and emit `parent.<Member>.Add("key", child)`

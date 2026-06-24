@@ -653,4 +653,38 @@ namespace TestApp { public partial class NlView : ContentControl { public NlView
         Assert.Equal(runtime.Content, view.Content);
         Assert.Contains("\n", (string) view.Content!);
     }
+
+    [Fact] // an init-only CLR property set via a PROPERTY ELEMENT is hoisted into the construction initializer (was CS8852)
+    public void Lowered_InitOnlyProperty_AsPropertyElement_CompilesAndMatchesLoader()
+    {
+        var xaml =
+            $"<Border {Ns} x:Class=\"TestApp.PenView\">" +
+            "<Border.BorderPen>" +
+            "<Pen Weight=\"Heavy\"><Pen.Brush><SolidColorBrush Color=\"Red\"/></Pen.Brush></Pen>" +
+            "</Border.BorderPen>" +
+            "</Border>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class PenView : Border { public PenView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        // The init-only Pen.Brush (a property element) is hoisted into the object initializer — `new Pen { … Brush =
+        // <child> }` — never a post-construction `<pen>.Brush = <child>` (CS8852).
+        Assert.Contains("Brush =", lowered);
+        Assert.DoesNotContain(".Brush =", lowered);
+
+        // Compiles (no CS8852) ⇒ the init-only members went into initializers; instantiate + match the loader.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (Border) System.Activator.CreateInstance(assembly.GetType("TestApp.PenView")!)!;
+
+        var runtime = (Border) new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+
+        Assert.NotNull(view.BorderPen?.Brush);
+        Assert.Equal(runtime.BorderPen!.Value.Brush!.GetType(), view.BorderPen!.Value.Brush!.GetType()); // SolidColorBrush
+        Assert.Equal(runtime.BorderPen!.Value.Weight, view.BorderPen!.Value.Weight);                     // init-only attribute too
+    }
 }

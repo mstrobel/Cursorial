@@ -39,6 +39,9 @@ public static class VtInputSequences
     /// <summary>DEL (0x7F). Often Backspace in modern terminals.</summary>
     public const byte Delete = 0x7F;
 
+    /// <summary>The high bit set on a byte in legacy 8-bit meta input mode (Alt+key arrives as key | 0x80).</summary>
+    public const byte EightBitMeta = 0x80;
+
     // ---- Sequence introducers (7-bit forms) ----
 
     /// <summary><c>ESC [</c> — Control Sequence Introducer (CSI).</summary>

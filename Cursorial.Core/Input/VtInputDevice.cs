@@ -390,6 +390,9 @@ public sealed class VtInputDevice : IAsyncInputDevice
                 // batch rather than only at startup; the comparison is a single field read.
                 _classifier.X10MouseFramingEnabled = _mode.MouseEncoding == MouseEncoding.X10;
 
+                // Likewise mirror the legacy 8-bit-meta input opt-in (off by default).
+                _classifier.EightBitMetaEnabled = _mode.EightBitMetaInput;
+
                 var buffer = result.Buffer;
 
                 foreach (var segment in buffer)

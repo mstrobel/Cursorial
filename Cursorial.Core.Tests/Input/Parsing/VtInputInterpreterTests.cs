@@ -75,6 +75,143 @@ public class VtInputInterpreterTests
         Assert.Equal("é", TextOf(k));
     }
 
+    [Fact]
+    public void Utf8LeadByte_HeldAcrossIdleFlush_StillCompletes()
+    {
+        // Regression: a multi-byte char whose lead byte is the last byte of a read chunk, with the bare-ESC
+        // idle Flush firing before the continuation arrives (routine over SSH / slow pipes), must NOT have its
+        // pending lead reinterpreted as an Alt keypress. The continuation completes the original rune intact.
+        Feed(0xC3);                    // lead byte of "é"
+        Flush();                       // the device's bare-ESC idle timeout
+        Assert.Empty(_sink.Events);    // nothing emitted — the lead is still buffered, not flushed as Alt+C
+
+        Feed(0xA9);                    // late continuation
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal("é", TextOf(k));
+        Assert.Equal(KeyModifiers.None, k.Modifiers);
+    }
+
+    // ---- Legacy 8-bit meta input (opt-in; mutually exclusive with UTF-8) ----
+
+    [Fact]
+    public void EightBitMeta_HighByte_DecodesAsAltKey_WhenEnabled()
+    {
+        _classifier.EightBitMetaEnabled = true;
+        Feed(0xE1); // 'a' (0x61) | 0x80 — Alt+a in legacy 8-bit meta mode
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("a", TextOf(k));
+    }
+
+    [Fact]
+    public void EightBitMeta_Off_HighByteIsUtf8Lead_NotAlt()
+    {
+        // Default (UTF-8 mode): 0xE1 is a 3-byte UTF-8 lead, buffered awaiting continuations — never an Alt key.
+        Feed(0xE1);
+        Assert.Empty(_sink.Events);
+    }
+
+    // ---- Lone Alt+<introducer> recovered on the idle flush (ESC [ / ESC ] / ESC P / ESC O) ----
+    // These are the keystrokes whose introducer byte collides with a sequence introducer (CSI/OSC/DCS/SS3);
+    // a lone press parks the classifier with no continuation, and the idle flush surfaces it as the Alt+key.
+
+    [Fact]
+    public void AltCloseBracket_AfterFlush_EmitsAltCloseBracketKey()
+    {
+        // The headline repro: Alt+] = ESC ]. Parks in OscString; nothing surfaces until the idle flush.
+        Feed(0x1B, (byte) ']');
+        Assert.Empty(_sink.Events);
+
+        Flush();
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal("]", TextOf(k));
+    }
+
+    [Fact]
+    public void AltBracket_AfterFlush_EmitsAltBracketKey()
+    {
+        Feed(0x1B, (byte) '[');
+        Flush();
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("[", TextOf(k));
+    }
+
+    [Fact]
+    public void AltP_AfterFlush_EmitsAltPKey()
+    {
+        Feed(0x1B, (byte) 'P');
+        Flush();
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("P", TextOf(k));
+    }
+
+    [Fact]
+    public void AltO_AfterFlush_EmitsAltOKey()
+    {
+        // Confirms the empty-intermediate 'O' final bypasses the interpreter's SS3 decode and reaches the
+        // Alt-character path — Alt+O, not an application-mode arrow.
+        Feed(0x1B, (byte) 'O');
+        Flush();
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("O", TextOf(k));
+    }
+
+    [Fact]
+    public void EightBitMetaCloseBracket_AfterFlush_EmitsAltCloseBracketKey()
+    {
+        // The 8-bit-meta interaction: 0xDD (= ']' | 0x80) decodes at ground as ESC ], parks in OscString, and
+        // recovers via the identical idle-flush path — Alt+].
+        _classifier.EightBitMetaEnabled = true;
+        Feed(0xDD);
+        Assert.Empty(_sink.Events);
+
+        Flush();
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("]", TextOf(k));
+    }
+
+    [Fact]
+    public void AltCloseBracketThenCtrlG_EmitsAltCloseBracketThenCtrlG_NoUnknownEvent()
+    {
+        // ESC ] 0x07 = Alt+] then Ctrl+G (BEL). Both real keys must surface; the old empty-OSC path emitted a
+        // spurious UnknownEvent and lost both.
+        Feed(0x1B, (byte) ']', 0x07);
+
+        Assert.Equal(2, _sink.Events.Count);
+        var alt = _sink.At<KeyEvent>(0);
+        Assert.Equal(KeyModifiers.Alt, alt.Modifiers);
+        Assert.Equal("]", TextOf(alt));
+        var ctrlG = _sink.At<KeyEvent>(1);
+        Assert.Equal(KeyModifiers.Control, ctrlG.Modifiers);
+        Assert.Equal("g", TextOf(ctrlG));
+    }
+
+    [Fact]
+    public void AltCloseBracketThenAltBracket_BackToBack_EmitsTwoAltKeys()
+    {
+        // The user's edge case end-to-end: Alt+] then Alt+[ pressed fast enough to beat the timer (ESC ] ESC [).
+        // Previously the Alt+] was dropped; now both arrive as clean Alt+key events.
+        Feed(0x1B, (byte) ']', 0x1B, (byte) '[');
+        Flush();
+
+        Assert.Equal(2, _sink.Events.Count);
+        var first = _sink.At<KeyEvent>(0);
+        Assert.Equal(KeyModifiers.Alt, first.Modifiers);
+        Assert.Equal("]", TextOf(first));
+        var second = _sink.At<KeyEvent>(1);
+        Assert.Equal(KeyModifiers.Alt, second.Modifiers);
+        Assert.Equal("[", TextOf(second));
+    }
+
     // ---- Control characters ----
 
     [Fact]

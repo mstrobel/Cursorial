@@ -5,8 +5,8 @@ namespace Cursorial.UI.Controls;
 /// <summary>
 /// A multi-line, optionally word-wrapped grapheme layout of a <see cref="TextBox"/>'s text (the multi-line
 /// generalization of <see cref="GraphemeLayout"/>, design doc §12.7). It splits the model text into <b>visual
-/// lines</b> — first on hard breaks (<c>\n</c>, <c>\r\n</c>, <c>\r</c>), then, when <paramref name="wrap"/> is
-/// on, further at the wrap width on grapheme-aware word boundaries — and maps a flat model char offset to its
+/// lines</b> — first on hard breaks (<c>\n</c>, <c>\r\n</c>, <c>\r</c>), then, when wrapping is on, further at
+/// the wrap width on grapheme-aware word boundaries — and maps a flat model char offset to its
 /// visual <c>(line, column)</c> and back. Each visual line carries its own single-line <see cref="GraphemeLayout"/>
 /// over its slice, so per-line column math reuses the tested single-line code.
 /// </summary>

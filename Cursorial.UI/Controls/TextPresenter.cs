@@ -63,7 +63,7 @@ public sealed class TextPresenter : UIElement
         // no line exceeds it), then reserve clamp(lineCount, MinLines, MaxLines) rows.
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var wrapWidth = wrap ? Math.Max(1, availableSize.Columns) : 0;
-        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, wrap);
+        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, owner.TextWrapping);
         var rows = ClampRows(layout.LineCount, owner.MinLines, owner.MaxLines);
         var width = wrap && !LayoutMath.IsUnbounded(availableSize.Columns)
             ? Math.Max(1, availableSize.Columns) // wrap fills the width
@@ -140,8 +140,8 @@ public sealed class TextPresenter : UIElement
     {
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var wrapWidth = wrap ? Math.Max(1, _viewportColumns) : 0;
-        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, wrap);
-        var (caretRow, caretColumn) = layout.Locate(owner.ToDisplayIndex(owner.CaretIndex));
+        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, owner.TextWrapping);
+        var (caretRow, caretColumn) = layout.Locate(owner.ToDisplayIndex(owner.CaretIndex), owner.CaretLineEndAffinity);
 
         // Vertical scroll: keep the caret's visual line in view.
         if (_viewportRows > 0)
@@ -177,6 +177,81 @@ public sealed class TextPresenter : UIElement
         }
 
         PublishCaret(caretColumn - _scrollColumn, caretRow - _scrollRow);
+    }
+
+    /// <summary>The arranged height in rows — the multi-line page size (owner/test observability).</summary>
+    internal int ViewportRows => _viewportRows;
+
+    /// <summary>The arranged content width in columns — the soft-wrap budget (test observability).</summary>
+    internal int ViewportColumns => _viewportColumns;
+
+    private TextLayout CurrentLayout(TextBox owner)
+    {
+        var wrap = owner.TextWrapping != WrapMode.NoWrap;
+        return TextLayout.Build(owner.DisplayText, wrap ? Math.Max(1, _viewportColumns) : 0, owner.TextWrapping);
+    }
+
+    /// <summary>
+    /// The model offset on the visual line <paramref name="delta"/> rows from the caret's line, landing at
+    /// <paramref name="desiredColumn"/> (or the caret's current column when negative). The current line is
+    /// resolved with <paramref name="endAffinity"/> (the soft-wrap affinity carried across a vertical run, so a
+    /// caret clamped to a wrapped line's end stays on that line). Returns the new offset, the column to keep
+    /// sticky across the run (Up / Down / PageUp / PageDown), and the end-affinity of the landing offset.
+    /// </summary>
+    internal (int Offset, int Column, bool EndAffinity) MoveVertical(int caretOffset, int delta, int desiredColumn, bool endAffinity)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return (caretOffset, desiredColumn, endAffinity);
+
+        var layout = CurrentLayout(owner);
+        var (line, column) = layout.Locate(owner.ToDisplayIndex(caretOffset), endAffinity);
+        var wantColumn = desiredColumn >= 0 ? desiredColumn : column;
+        var targetLine = Math.Clamp(line + delta, 0, layout.LineCount - 1);
+        var targetOffset = layout.OffsetAt(targetLine, wantColumn);
+        return (owner.ToModelIndex(targetOffset), wantColumn, layout.IsLineEndBoundary(targetLine, targetOffset));
+    }
+
+    /// <summary>The model offset at the start of the caret's visual line (per-line Home; always start-affinity).</summary>
+    internal int LineStart(int caretOffset, bool endAffinity)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return caretOffset;
+
+        var layout = CurrentLayout(owner);
+        var (line, _) = layout.Locate(owner.ToDisplayIndex(caretOffset), endAffinity);
+        return owner.ToModelIndex(layout.LineContentStart(line));
+    }
+
+    /// <summary>
+    /// The model offset at the end of the caret's visual line content (per-line End), plus the end-affinity that
+    /// keeps the caret at that visual line's end rather than aliasing to the next soft-wrapped line's start.
+    /// </summary>
+    internal (int Offset, bool EndAffinity) LineEnd(int caretOffset, bool endAffinity)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return (caretOffset, false);
+
+        var layout = CurrentLayout(owner);
+        var (line, _) = layout.Locate(owner.ToDisplayIndex(caretOffset), endAffinity);
+        var end = layout.LineContentEnd(line);
+        return (owner.ToModelIndex(end), layout.IsLineEndBoundary(line, end));
+    }
+
+    /// <summary>The model offset under a presenter-local pointer position (multi-line hit testing).</summary>
+    internal int OffsetFromPoint(int localColumn, int localRow)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return 0;
+
+        var wrap = owner.TextWrapping != WrapMode.NoWrap;
+        var layout = CurrentLayout(owner);
+        var line = Math.Clamp(localRow + _scrollRow, 0, layout.LineCount - 1);
+        var column = Math.Max(0, localColumn) + (wrap ? 0 : _scrollColumn);
+        return owner.ToModelIndex(layout.OffsetAt(line, column));
     }
 
     private void PublishCaret(int localColumn, int localRow)
@@ -238,7 +313,7 @@ public sealed class TextPresenter : UIElement
 
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var wrapWidth = wrap ? Math.Max(1, viewportColumns) : 0;
-        var layout = TextLayout.Build(text, wrapWidth, wrap);
+        var layout = TextLayout.Build(text, wrapWidth, owner.TextWrapping);
 
         var lastRow = Math.Min(layout.LineCount, _scrollRow + viewportRows);
         for (var row = _scrollRow; row < lastRow; row++)

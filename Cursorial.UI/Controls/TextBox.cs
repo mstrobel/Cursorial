@@ -21,7 +21,14 @@ namespace Cursorial.UI.Controls;
 /// caret/selection (<see cref="CaretIndex"/>, <see cref="SelectionStart"/>, <see cref="SelectionLength"/>,
 /// <see cref="SelectedText"/>) are imperative CLR state, not styleable properties. Clipboard Copy/Cut route
 /// through <see cref="UIApplication.Clipboard"/> (OSC 52); paste arrives primarily as the terminal's own
-/// paste (<c>TextInput{FromPaste}</c>). Undo/redo and multi-line are deferred (spec §15).
+/// paste (<c>TextInput{FromPaste}</c>). Undo/redo is deferred (spec §15).
+/// </para>
+/// <para>
+/// <b>Multi-line</b> is opt-in: <see cref="AcceptsReturn"/> makes <c>Enter</c> insert a newline and
+/// <see cref="TextWrapping"/> soft-wraps long lines to the field width (either sets <see cref="IsMultiLine"/>).
+/// A multi-line field reserves <see cref="MinLines"/>–<see cref="MaxLines"/> rows then scrolls; the caret
+/// navigates by visual line (Up/Down/PageUp/PageDown with a sticky desired column, per-line Home/End,
+/// Ctrl+Home/End to the document) over a <see cref="TextLayout"/>.
 /// </para>
 /// </summary>
 [TemplatePart("PART_TextPresenter", typeof(TextPresenter), IsRequired = true)]
@@ -80,6 +87,8 @@ public class TextBox : Control
     private int _caretIndex;       // the active end of the selection (where the caret blinks)
     private int _selectionAnchor;  // the fixed end of the selection (== caret when there is no selection)
     private bool _dragging;        // a left-button drag is extending the selection
+    private int _desiredColumn = -1; // sticky target column for a run of vertical moves; -1 = recompute from the caret
+    private bool _caretLineEndAffinity; // when the caret sits on a soft-wrap boundary, true == the earlier line's visual end
 
     static TextBox()
     {
@@ -170,6 +179,15 @@ public class TextBox : Control
     /// <summary>The realized <c>PART_TextPresenter</c> (test observability; null before the template applies).</summary>
     internal TextPresenter? Presenter => _presenter;
 
+    /// <summary>
+    /// The caret's soft-wrap line affinity (consumed by the presenter when rendering): when the caret offset
+    /// sits on a soft-wrap boundary (a wrapped line's content end coincident with the next line's start), this
+    /// is <see langword="true"/> if the caret belongs to the earlier line's visual end (left by Down / End) and
+    /// <see langword="false"/> if it belongs to the next line's start (the natural affinity of Right / Home /
+    /// typing). It is meaningless off a soft-wrap boundary.
+    /// </summary>
+    internal bool CaretLineEndAffinity => _caretLineEndAffinity;
+
     // ───────────────────────────── display projection seam (PasswordBox masking) ─────────────────────────────
     // The presenter renders, lays out, scrolls, and measures against these — not the model directly — and the
     // pointer-hit maps back through them. The default is identity, so an unmasked TextBox is unchanged; a
@@ -244,11 +262,36 @@ public class TextBox : Control
             case Key.RightArrow:
                 MoveCaret(ctrl ? TextNavigation.NextWord(Text, _caretIndex) : layout.NextBoundary(_caretIndex), shift);
                 break;
+            case Key.Home when !ctrl && IsMultiLine && _presenter is { } hp:
+                MoveCaret(hp.LineStart(_caretIndex, _caretLineEndAffinity), shift); // per-line; start-affinity
+                break;
             case Key.Home:
-                MoveCaret(0, shift);
+                MoveCaret(0, shift); // Ctrl, or single-line: document start
+                break;
+            case Key.End when !ctrl && IsMultiLine && _presenter is { } ep:
+                var (endOffset, endAffinity) = ep.LineEnd(_caretIndex, _caretLineEndAffinity); // per-line
+                MoveCaret(endOffset, shift, endAffinity);
                 break;
             case Key.End:
-                MoveCaret(Text.Length, shift);
+                MoveCaret(Text.Length, shift); // Ctrl, or single-line: document end
+                break;
+            case Key.UpArrow when IsMultiLine && _presenter is { }:
+                MoveVertical(-1, shift);
+                break;
+            case Key.DownArrow when IsMultiLine && _presenter is { }:
+                MoveVertical(+1, shift);
+                break;
+            case Key.PageUp when IsMultiLine && _presenter is { } pu:
+                MoveVertical(-Math.Max(1, pu.ViewportRows), shift);
+                break;
+            case Key.PageDown when IsMultiLine && _presenter is { } pd:
+                MoveVertical(Math.Max(1, pd.ViewportRows), shift);
+                break;
+            case Key.Enter when AcceptsReturn && !IsReadOnly:
+                InsertText("\n", fromPaste: false); // a real newline; single-line leaves Enter unhandled (IsDefault, §13)
+                break;
+            case Key.Tab when AcceptsTab && !ctrl && !IsReadOnly:
+                InsertText("\t", fromPaste: false); // Ctrl+Tab still navigates focus out
                 break;
             case Key.Backspace:
                 DeleteBackward(ctrl);
@@ -366,24 +409,36 @@ public class TextBox : Control
 
     // ───────────────────────────── editing core ─────────────────────────────
 
-    private void MoveCaret(int newCaret, bool extend)
+    private void MoveCaret(int newCaret, bool extend, bool lineEndAffinity = false)
     {
         if (extend)
-            SetCaretAndSelection(_selectionAnchor, newCaret); // keep the anchor, move the active end
+            SetCaretAndSelection(_selectionAnchor, newCaret, lineEndAffinity); // keep the anchor, move the active end
         else
-            SetCaretAndSelection(newCaret, newCaret);          // collapse the selection at the caret
+            SetCaretAndSelection(newCaret, newCaret, lineEndAffinity);          // collapse the selection at the caret
     }
 
-    private void SetCaretAndSelection(int anchor, int caret)
+    private void MoveVertical(int delta, bool extend)
     {
+        if (_presenter is not { } presenter)
+            return;
+
+        var (newCaret, column, affinity) = presenter.MoveVertical(_caretIndex, delta, _desiredColumn, _caretLineEndAffinity);
+        MoveCaret(newCaret, extend, affinity); // resets _desiredColumn via SetCaretAndSelection …
+        _desiredColumn = column;               // … which we restore so the target column stays sticky across the run
+    }
+
+    private void SetCaretAndSelection(int anchor, int caret, bool lineEndAffinity = false)
+    {
+        _desiredColumn = -1; // any non-vertical caret op forgets the sticky column (MoveVertical restores it)
         var layout = GraphemeLayout.Build(Text);
         anchor = layout.PinToBoundary(Math.Clamp(anchor, 0, Text.Length));
         caret = layout.PinToBoundary(Math.Clamp(caret, 0, Text.Length));
-        if (anchor == _selectionAnchor && caret == _caretIndex)
+        if (anchor == _selectionAnchor && caret == _caretIndex && lineEndAffinity == _caretLineEndAffinity)
             return;
 
         _selectionAnchor = anchor;
         _caretIndex = caret;
+        _caretLineEndAffinity = lineEndAffinity; // set before the refresh so the presenter renders the right line
         RefreshPresenter();
     }
 
@@ -500,6 +555,9 @@ public class TextBox : Control
             return _caretIndex;
 
         var local = e.GetPosition(_presenter);
+        if (IsMultiLine)
+            return _presenter.OffsetFromPoint(Math.Max(0, local.Column), Math.Max(0, local.Row));
+
         var column = Math.Max(0, local.Column) + _presenter.ScrollOffset;
         // The pointer hits the DISPLAYED text — round in display space, then map the boundary back to the model
         // (identity for a TextBox; the per-cluster mask correspondence for a PasswordBox).
@@ -554,7 +612,7 @@ public class TextBox : Control
         return replacement[..pinned];
     }
 
-    private static string FilterInput(string input, bool fromPaste)
+    private string FilterInput(string input, bool fromPaste)
     {
         var builder = new StringBuilder(input.Length);
         for (var i = 0; i < input.Length; i++)
@@ -562,19 +620,23 @@ public class TextBox : Control
             var c = input[i];
             if (c is '\r' or '\n')
             {
-                if (fromPaste)
-                {
-                    builder.Append(' '); // flatten a newline to a space on paste (collapse CRLF to one)
-                    if (c == '\r' && i + 1 < input.Length && input[i + 1] == '\n')
-                        i++;
-                }
+                if (AcceptsReturn)
+                    builder.Append('\n');      // keep newlines (normalizing \r / \r\n / \n → \n)
+                else if (fromPaste)
+                    builder.Append(' ');        // single-line: flatten a newline to a space on paste
+                // else (single-line, typed): drop the newline
+
+                if (c == '\r' && i + 1 < input.Length && input[i + 1] == '\n')
+                    i++;                         // collapse a \r\n pair either way
 
                 continue;
             }
 
             if (c == '\t')
             {
-                if (fromPaste)
+                if (AcceptsTab)
+                    builder.Append('\t');
+                else if (fromPaste)
                     builder.Append(' ');
                 continue;
             }
@@ -609,6 +671,7 @@ public class TextBox : Control
         var layout = GraphemeLayout.Build(newValue);
         box._caretIndex = layout.PinToBoundary(Math.Clamp(box._caretIndex, 0, newValue.Length));
         box._selectionAnchor = layout.PinToBoundary(Math.Clamp(box._selectionAnchor, 0, newValue.Length));
+        box._caretLineEndAffinity = false; // the edit repositions the caret at a real char — forget any wrap affinity
         box.RefreshPresenter();
 
         if (box.IsAttachedToTree)

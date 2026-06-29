@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI.Input;
 
@@ -101,6 +102,17 @@ public partial class Window
         _isResizing = false;
     }
 
+    protected override void OnQueryCursor(QueryCursorEventArgs e)
+    {
+        if (_isResizing)
+        {
+            e.Cursor = MouseCursorShape.NwseResize;
+            e.Handled = true;
+            return;
+        }
+        base.OnQueryCursor(e);
+    }
+
     private void BeginGesture(MouseButtonEventArgs e, bool resizing)
     {
         if (!CaptureMouse())
@@ -111,13 +123,23 @@ public partial class Window
         _gestureAnchor = e.ScreenPosition;
         _moveOrigin = (Left, Top);
         _resizeOrigin = ActualSize;
+
+        if (resizing)
+            UIApplication.Current?.InputDispatcher.UpdateCursor();
     }
 
     private void EndGesture()
     {
+        var wasResizing = _isResizing;
+        
         _isMoving = false;
         _isResizing = false;
+
         ReleaseMouseCapture();
+        
+        // Ensure the transient resize cursor gets reverted.
+        if (wasResizing)
+            UIApplication.Current?.InputDispatcher.UpdateCursor();
     }
 
     /// <summary>Toggles between <see cref="WindowState.Normal"/> and <see cref="WindowState.Maximized"/>; the

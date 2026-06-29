@@ -25,14 +25,16 @@ public sealed class WindowInputTests
         return (host, host.Application.WindowManager!);
     }
 
-    private static Window At(int left, int top) => new()
+    private static Window At(UITestHost host, int left, int top)
     {
-        WindowStartupLocation = WindowStartupLocation.Manual,
-        Left = left,
-        Top = top,
-        Width = 20,
-        Height = 8
-    };
+        return host.NewWindow(
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: left,
+            top: top,
+            width: 20,
+            height: 8
+        );
+    }
 
     [Fact] // a press on an inactive enabled window activates it (activation-on-press through the WM topology)
     public void ClickInactiveWindow_ActivatesIt()
@@ -40,9 +42,9 @@ public sealed class WindowInputTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var a = At(2, 2);   // columns 2..21
+        var a = At(host, 2, 2);   // columns 2..21
         a.Show(wm);
-        var b = At(30, 2);  // columns 30..49 — non-overlapping with A
+        var b = At(host, 30, 2);  // columns 30..49 — non-overlapping with A
         b.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(b.IsActive);   // newest shown is active
@@ -61,11 +63,11 @@ public sealed class WindowInputTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var a = At(2, 2);
+        var a = At(host, 2, 2);
         a.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        var dialog = At(30, 2);
+        var dialog = At(host, 30, 2);
         dialog.Owner = a;
         _ = dialog.ShowDialogAsync();
         Assert.True(host.RunUntilIdle());
@@ -86,11 +88,11 @@ public sealed class WindowInputTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var a = At(2, 2);
+        var a = At(host, 2, 2);
         a.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        var dialog = At(30, 2);
+        var dialog = At(host, 30, 2);
         dialog.Owner = a;
         var attention = 0;
         dialog.ModalAttention += (_, _) => attention++;
@@ -115,14 +117,14 @@ public sealed class WindowInputTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var a = At(2, 2);
+        var a = At(host, 2, 2);
         a.Show(wm);
         Assert.True(host.RunUntilIdle());
 
         Assert.True(a.CaptureMouse()); // A holds capture (a mid-gesture drag)
         Assert.Same(a, host.Application.InputDispatcher.MouseCaptureTarget);
 
-        var dialog = At(30, 2);
+        var dialog = At(host, 30, 2);
         dialog.Owner = a;
         _ = dialog.ShowDialogAsync();  // blocks A → releases the capture held inside it
         Assert.True(host.RunUntilIdle());

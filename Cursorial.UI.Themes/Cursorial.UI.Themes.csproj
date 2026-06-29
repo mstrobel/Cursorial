@@ -25,6 +25,8 @@
              default. (With full lowering the provider isn't used at runtime anyway; the .xaml stays embedded
              only as the dual-run drift oracle.) -->
         <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+<!--        <CompilerGeneratedFilesOutputPath>generated</CompilerGeneratedFilesOutputPath>-->
     </PropertyGroup>
 
     <!-- Generator consumer props: the CompilerVisibleItemMetadata + the CursorialXamlEmbedResources default
@@ -43,6 +45,8 @@
         <!-- Build-time validated by the generator; embedded for runtime by the consumer .targets. Manifest
              name stays <RootNamespace>.<dotted path>, e.g. Cursorial.UI.Themes.Xaml.Themes.Controls.xaml. -->
         <CursorialXaml Include="Themes\*.xaml" />
+        <CursorialXaml Include="Themes\Default\*.xaml" />
+        <CursorialXaml Include="Themes\IndigoDusk\*.xaml" />
     </ItemGroup>
 
     <!-- Generator consumer targets: maps <CursorialXaml> → AdditionalFiles (generator input) + EmbeddedResource

@@ -125,10 +125,21 @@ internal sealed class AnimationInstance<T> : AnimationInstance
 
     internal override void BeginNow(TimeSpan now)
     {
-        // BeginTime == 0 ⇒ Running already: attach the store handle and write the first sample synchronously
-        // (frame coherence — AD2). Delayed instances attach when the clock crosses _startTime in Sample.
-        if (State == AnimationState.Running)
+        if (State is AnimationState.Running)
+        {
+            // BeginTime == 0 ⇒ Running already: attach the store handle and write the first sample synchronously
+            // (frame coherence — AD2).
             Sample(now);
+        }
+        else if (State is AnimationState.Delayed)
+        {
+            // BeginTime > 0: occupy the property at the START value (ValueAt(0) — the snapshotted/explicit From)
+            // through the delay, so the value doesn't snap from the base to From when the delay ends. For a
+            // from-less animation From == the current value, so this is visually identical to "base shows" UNLESS
+            // the base already moved (a base-driven Transition: From holds, not the already-changed To). This makes
+            // BeginTime consistent with the DelayAnimation combinator, which already holds inner.ValueAt(0) (AD16).
+            Write(TimeSpan.Zero);
+        }
     }
 
     internal override void Sample(TimeSpan now)
@@ -136,7 +147,7 @@ internal sealed class AnimationInstance<T> : AnimationInstance
         if (State == AnimationState.Delayed)
         {
             if (now < _startTime)
-                return;           // still within the BeginTime window — property untouched
+                return;           // within the BeginTime window — the handle holds ValueAt(0) (the start value)
             State = AnimationState.Running;
         }
 
@@ -296,8 +307,8 @@ internal sealed class AnimationInstance<T> : AnimationInstance
         if (IsFinished)
             return; // a retired/completed child isn't re-armed by a seek
 
-        _handle?.Dispose();   // retract — the property returns to base while Delayed (untouched semantics)
-        _handle = null;
+        Write(TimeSpan.Zero); // hold the start value (ValueAt(0)) through the re-armed delay — the Delayed
+                              // invariant: a delayed instance occupies its property at From, never snapping to base
         _completionPending = false;
 
         // Anchor the re-armed start to the pause clock while Paused so a later Resume honors the delay (and the

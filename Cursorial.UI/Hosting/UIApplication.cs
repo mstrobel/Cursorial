@@ -333,9 +333,34 @@ public sealed partial class UIApplication : IAsyncDisposable
         if (Interlocked.CompareExchange(ref _exitCodeSet, 1, 0) == 0)
             Volatile.Write(ref _exitCode, exitCode);
 
+        var raiseBeginShutdown = _shutdownRequested is false;
+
         _shutdownRequested = true;
-        Dispatcher.BeginShutdown();
-        Dispatcher.Wake();
+
+        try
+        {
+            if (raiseBeginShutdown)
+                RaiseBeginShutdown();
+        }
+        finally
+        {
+            Dispatcher.BeginShutdown();
+            Dispatcher.Wake();
+        }
+    }
+
+    private void RaiseBeginShutdown()
+    {
+        if (Dispatcher.CheckAccess() is false)
+        {
+            Dispatcher.Post(RaiseBeginShutdown);
+            return;
+        }
+
+        // @formatter:off
+        try { BeginShutdown?.Invoke(this, EventArgs.Empty); }
+        catch { /* Best effort */}
+        // @formatter:on
     }
 
     /// <summary>Thread-safe redraw request (Interlocked flag + wake) — the cross-thread invalidate.</summary>
@@ -556,8 +581,14 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     private void RecordFatal(Exception exception)
     {
+        var raiseBeginShutdown = _shutdownRequested is false;
+
         _fatalException ??= exception;
         _shutdownRequested = true;
+
+        if (raiseBeginShutdown)
+            RaiseBeginShutdown();
+
         Dispatcher.BeginShutdown();
         Dispatcher.Wake();
     }

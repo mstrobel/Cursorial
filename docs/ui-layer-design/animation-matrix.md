@@ -67,6 +67,18 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
   synchronously + apply Fill + enqueue `Completed` for the next pass (never raised from `Begin`);
   perpetual ⇒ no handle, born `Stopped`, base shows. Flip `true→false` snaps finite at next `Tick`,
   retracts perpetual; `false→true` is prospective.
+- **AD16 — a Delayed instance occupies its property at the START value (deliberate divergence from WPF).**
+  Through the `BeginTime` window the handle is attached and holds `ValueAt(0)` (the snapshotted/explicit
+  `From`) — `BeginNow` writes it; `RewindToDelayed` re-establishes it on a backward seek — rather than
+  leaving the property at the base (WPF's "untouched during BeginTime"). For a **from-less** animation
+  `From` == the value snapshotted at `Begin`, so this is visually identical to "base shows" **unless the
+  base already moved** — i.e. the implicit-**Transition** pattern (base flips to the new value, then a
+  delayed transition is armed `From = old`). Holding `From` there is what stops the
+  "translucent-then-solid-then-fade" flicker (an inactive-Window opacity transition with a `Delay`), makes
+  staggered/scrubbed tracks continuous across the `BeginTime` edge (N107/seek), and matches the
+  `DelayAnimation` combinator, which already holds `inner.ValueAt(0)` through its delay (N82). Affects
+  N17/N18/N37/N107 + the per-track seek rows; this is the Avalonia transition model, not WPF's
+  `BeginAnimation`-with-`BeginTime`.
 
 ---
 
@@ -95,8 +107,8 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 | N14 | Running finite, Duration 200ms | advance to `Now == Start+200ms`, `Tick` | final write == `ValueAt(200ms)`; `State → Holding` (FillBehavior.HoldEnd default); `Completed` raised once | WPF |
 | N15 | Running finite, `Fill = Stop` | reaches Duration | the handle retracts (base resurfaces, invariant 4); `State → Completed`; `Completed` raised once | WPF |
 | N16 | Holding instance | `Stop()` | store handle disposed ⇒ retraction ⇒ base resurfaces; `State → Stopped`; **no** `Completed` | WPF (AD3) |
-| N17 | finite, `BeginTime = 50ms` | frames within [Start, Start+50ms) | `State == Delayed`; the property is **untouched** (no handle attached yet) | WPF |
-| N18 | Delayed (BeginTime 50ms) | clock crosses Start+50ms, `Tick` | attaches, self-snaps From, `State → Running`; first sample at elapsed 0 | WPF/AD4 |
+| N17 | finite, `BeginTime = 50ms` | frames within [Start, Start+50ms) | `State == Delayed`; the property **holds the start value** (`ValueAt(0)` = From; handle attached at `Begin`) | AD16 (≠WPF) |
+| N18 | Delayed (BeginTime 50ms) | clock crosses Start+50ms, `Tick` | `State → Running` (already attached at `Begin` holding From); first sample at elapsed 0 | AD16/AD4 |
 | N19 | zero-duration finite | `Begin` | reports `To` at elapsed 0 (one-frame set + completion); `State → Holding`/`Completed` per Fill | PIN |
 | N20 | Running | `Begin` a second animation on the SAME (element, property) | the old instance retires (`Stopped`, evicted, **no** `Completed`); the new runs (handoff §4) | WPF (AD3) |
 | N21 | two different properties on one element animated | both | independent instances, independent handles, independent completion | WPF |
@@ -125,7 +137,7 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 |---|---|---|---|---|
 | N35 | live Running on (E,P) at presented value V | `Begin` a new anim (BeginTime 0) with `From` unset | old retires (`Stopped`, evicted, no `Completed`); new `From` snapshots **V** (the presented animated value — no visual jump) | PIN (AD4/§9.4) |
 | N36 | live Running on (E,P) | immediate replacement sequence | new timeline built while the old handle is still attached; new handle attaches (store last-started-wins detaches old); old defensively retracted (idempotent no-op) | PIN (§9.4) |
-| N37 | live Running on (E,P) | `Begin` a **delayed** replacement (BeginTime > 0) | the old handle retracts at `Begin`; base shows during the delay window | PIN (§9.4) |
+| N37 | live Running on (E,P) | `Begin` a **delayed** replacement (BeginTime > 0) | the old handle retracts at `Begin`; the replacement holds its From (`ValueAt(0)`) through the delay window | AD16 (§9.4) |
 | N38 | delayed handoff in flight | a Transition is armed on P | the delayed handoff's retraction-promotion is **not** a base change ⇒ does not spuriously ignite the transition | PIN (§9.4) |
 | N39 | new anim with explicit `From` | handoff | the explicit `From` wins (no snapshot) | WPF |
 | N40 | retarget twice rapidly in one frame | two `Begin`s | only the last instance is live; intermediate retires with no `Completed` | PIN (AD3) |
@@ -242,7 +254,7 @@ first `SetValue` a `Begin` writes during the input/dispatcher drain (frame coher
 | N104 | a track with `TargetName == null` | `Begin` | targets the `Begin` scope element itself | PIN |
 | N105 | a track with `From` unset | `Begin` | snapshots `GetValue(property)` at track start as `From` (AD4) | WPF |
 | N106 | a track with an explicit `From` | `Begin` | the explicit `From` wins — no snapshot | WPF |
-| N107 | a track with `BeginTime > 0` | frames within `[Begin, Begin+BeginTime)` then past | Delayed (property untouched) during the stagger, then Running | WPF |
+| N107 | a track with `BeginTime > 0` | frames within `[Begin, Begin+BeginTime)` then past | Delayed (holds the track's From) during the stagger, then Running | AD16 (≠WPF) |
 | N108 | all-finite storyboard, `Completed` subscriber | the longest track reaches its end | `StoryboardHandle.Completed` raises once, after the sampling pass | WPF (AD3) |
 | N109 | storyboard with one perpetual (`Loop`) track | any large elapsed | never completes (`Completed` never raises); pins the idle gate | PIN (AD6) |
 | N110 | running storyboard | `StoryboardHandle.Stop()` | every child retracts (bases resurface); state stops; no `Completed` | WPF |

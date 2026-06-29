@@ -141,7 +141,7 @@ internal static class GeneratorHarness
         });
 
         return (Cursorial.UI.Xaml.Generator.LoweringEmitter.Emit(
-                    document, "MyView.xaml", new Cursorial.UI.Xaml.Generator.XamlSymbolResolver(compilation))
+                    document, "MyView.xaml", "MyView.xaml", new Cursorial.UI.Xaml.Generator.XamlSymbolResolver(compilation))
                 ?? throw new InvalidOperationException("no lowering emitted")).Source;
     }
 

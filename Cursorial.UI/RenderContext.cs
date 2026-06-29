@@ -140,26 +140,29 @@ public sealed class RenderContext
     public void FillRectangle(in Rect region, Color color)
         => Inner.FillRectangle(region, color);
 
-    /// <summary>
-    /// Glyph-occluding fill — the opaque-surface path (<c>Panel.Background</c> uses this; design doc
-    /// §5.5 pinned surface rule). A translucent brush still frosts, but glyphs beneath are hidden.
-    /// Borders over an opaque fill need <c>overwrite: true</c> (the Drawing recipe).
-    /// </summary>
-    public void FillOpaque(in Rect region, IBrush brush)
-        => Inner.FillOpaque(region, brush);
+    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, Color, TextAttributes, bool)"/>
+    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
+        => Inner.FillOpaque(region, color, attributes, overwrite);
 
-    /// <summary>
-    /// Fill <paramref name="region"/> opaquely with <paramref name="brush"/>, each occluder cell also
-    /// carrying <paramref name="attributes"/> (e.g. <see cref="TextAttributes.Inverse"/> for a NoColor
-    /// reverse-video face, where the brush color is Default and only the attribute conveys the state). The
-    /// opaque cells composite the attribute — unlike the transparent <see cref="FillRectangle(in Rect, IBrush)"/>.
-    /// </summary>
-    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes)
-        => Inner.FillOpaque(region, brush, attributes);
+    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
+    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
+        => Inner.FillOpaque(region, brush, attributes, overwrite);
 
-    /// <inheritdoc cref="FillOpaque(in Rect, IBrush)"/>
-    public void FillOpaque(in Rect region, Color color)
-        => Inner.FillOpaque(region, color);
+    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
+    public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
+        => Inner.FillOpaque(region, brush, brushBounds, attributes, overwrite);
+
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, Color, TextAttributes, bool)"/>
+    public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
+        => Inner.PaintRectangle(region, color, attributes, overwrite);
+
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>
+    public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
+        => Inner.PaintRectangle(region, brush, region, attributes, overwrite);
+
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
+    public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
+        => Inner.PaintRectangle(region, brush, brushBounds, attributes, overwrite);
 
     // ───────────────────────────── text and content ─────────────────────────────
 
@@ -259,7 +262,7 @@ public sealed class RenderContext
 
     /// <summary>
     /// Fill + titled border in one call. The fill is Drawing's <b>background-only</b>
-    /// <c>FillRectangle</c> — for an opaque surface use <see cref="FillOpaque(in Rect, IBrush)"/>
+    /// <c>FillRectangle</c> — for an opaque surface use <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
     /// followed by <see cref="DrawTitledBox"/> with <c>overwrite: true</c> (the <c>Panel.Background</c>
     /// path does the opaque fill for you).
     /// </summary>

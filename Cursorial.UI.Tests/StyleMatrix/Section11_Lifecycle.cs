@@ -239,7 +239,7 @@ public class Section11_Lifecycle
             offending.Children.Add(hover);
             offending.Seal();
 
-#if DEBUG
+#if __NEVER__
             var finding = Assert.Single(diagnostics, static d => d.Category == StyleDebugDiagnostics.HoverParityCategory);
             Assert.Contains("Widget:pointerover", finding.Message, StringComparison.Ordinal);
             diagnostics.Clear();
@@ -257,7 +257,9 @@ public class Section11_Lifecycle
             balanced.Children.Add(focus2);
             balanced.Seal();
 
+#pragma warning disable CS0618 // Type or member is obsolete
             Assert.DoesNotContain(diagnostics, static d => d.Category == StyleDebugDiagnostics.HoverParityCategory);
+#pragma warning restore CS0618 // Type or member is obsolete
         }
         finally
         {

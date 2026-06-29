@@ -44,6 +44,42 @@ public sealed class Section26_TreeView
         return new Tree(host, view, a, a1, a1x, a2, b);
     }
 
+    [Fact] // regression: focusing an expanded node whose subtree overflows the viewport keeps the header visible
+    public void ExpandedNodeTallerThanViewport_WhenFocused_KeepsHeaderVisible()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
+
+        var view = new TreeView
+        {
+            Width = 30, Height = 14,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        // A few leaf siblings ABOVE the node, so the node's header sits below the viewport top (rectStart >
+        // viewStart) — the real scenario. With the header at content-row 0 the bug can't manifest (no scroll
+        // is needed either way), so the regression must place it mid-viewport.
+        for (var i = 0; i < 3; i++)
+            view.Items.Add(new TreeViewItem { Header = $"sib-{i}" });
+
+        var parent = new TreeViewItem { Header = "PARENT", IsExpanded = true };
+        for (var i = 0; i < 30; i++)
+            parent.Items.Add(new TreeViewItem { Header = $"child-{i:00}" });
+        view.Items.Add(parent);
+
+        host.ShowRoot(view);
+        host.RunUntilIdle();
+
+        // Focusing the expanded parent fires BringIntoView-on-focus with the node's full bounds — header + the
+        // 30-child subtree, far taller than the 14-row viewport. The header must stay visible, NOT be scrolled
+        // off the top to reveal the subtree's bottom (the reported collapse-bring-into-view bug).
+        parent.Focus();
+        host.RunUntilIdle();
+
+        var headerVisible = Enumerable.Range(0, 14).Any(r => host.GetRowText(r).Contains("PARENT"));
+        Assert.True(headerVisible, "the expanded node's header was scrolled out of the viewport");
+    }
+
     [Fact] // C13.1: own-container TreeViewItems realize; parents report HasItems, leaves do not
     public void C13_1_RealizeAndHasItems()
     {

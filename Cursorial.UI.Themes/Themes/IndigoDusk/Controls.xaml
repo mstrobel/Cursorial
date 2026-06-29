@@ -19,6 +19,18 @@
     Keyed by typeof(Button) so it resolves as the control theme; layered over CursorialTheme.BuiltIn.
   -->
 
+  <ControlTemplate x:Key="ContentControlTemplate">
+    <Border Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}"
+            Padding="{TemplateBinding Padding}">
+      <ContentPresenter x:Name="PART_ContentPresenter"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ContentControl}" TargetType="ContentControl">
+    <Setter Property="Template"   Value="{StaticResource ContentControlTemplate}"/>
+  </Style>
+
   <ControlTemplate x:Key="ButtonTemplate">
     <Border Background="{TemplateBinding Background}"
             BorderPen="{TemplateBinding BorderPen}"
@@ -30,6 +42,7 @@
   <Style x:Key="{x:Type Button}" TargetType="Button">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundNormal}}"/>
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
     <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
@@ -38,7 +51,7 @@
       <Style Selector="^:pointerover" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
       </Style>
-      <Style Selector="^:focus" TargetType="Button">
+      <Style Selector="^:focus, ^:focus-visible" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundFocus}}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundFocus}}"/>
       </Style>
@@ -51,8 +64,8 @@
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundDisabled}}"/>
       </Style>
       <Style Selector="^:default" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -142,6 +155,12 @@
     <ControlTemplate.Styles>
       <Style Selector="CheckBox">
         <Style.Children>
+          <Style Selector="^ /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Style>
+          <Style Selector="^:focus-visible /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}" />
+          </Style>
           <Style Selector="^:pointerover /template/ #PART_Glyph">
             <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" />
           </Style>
@@ -169,6 +188,12 @@
     <ControlTemplate.Styles>
       <Style Selector="RadioButton">
         <Style.Children>
+          <Style Selector="^ /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Style>
+          <Style Selector="^:focus-visible /template/ #PART_Glyph">
+            <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}" />
+          </Style>
           <Style Selector="^:pointerover /template/ #PART_Glyph">
             <Setter Property="ToggleGlyph.GlyphForeground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" />
           </Style>
@@ -379,6 +404,13 @@
     <Grid>
       <Border x:Name="PART_Face" Padding="1,0" Background="{TemplateBinding Background}">
         <DockPanel>
+          <ContentPresenter x:Name="PART_Icon" Width="2" Height="1" Visibility="Collapsed" Margin="0,0,1,0" />
+          <TextBlock x:Name="PART_SubmenuIndicator"
+                     DockPanel.Dock="Right"
+                     RenderOffsetColumn="1"
+                     Text="▸"
+                     Foreground="{DynamicResource {x:Static ThemeKeys.MenuAcceleratorForeground}}"
+                     Visibility="{Binding Path=HasItems, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BooleanToVisibilityConverter.Instance}}"/>
           <TextBlock x:Name="PART_GestureText"
                      DockPanel.Dock="Right"
                      Margin="2,0,0,0"
@@ -391,12 +423,35 @@
       </Border>
       <Popup x:Name="PART_Popup"><!--Opacity="0.85"-->
         <Border Occludes="False"
-                Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
-                BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-          <ItemsPresenter x:Name="PART_ItemsHost"/>
+                Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
+                BorderPen="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}">
+          <ItemsPresenter x:Name="PART_ItemsHost" />
         </Border>
       </Popup>
     </Grid>
+    <ControlTemplate.Styles>
+      <Style TargetType="MenuItem">
+        <Style.Children>
+          <Style Selector="^ /template/ Separator" TargetType="Separator">
+            <Setter Property="Control.BorderPen"  Value="{DynamicResource {x:Static ThemeKeys.MenuSeparatorPen}}"/>
+          </Style>
+          <Style Selector="^:highlighted /template/ TextBlock#PART_GestureText, 
+                           ^:highlighted /template/ TextBlock#PART_SubmenuIndicator,
+                           ^:open /template/ TextBlock#PART_GestureText, 
+                           ^:open /template/ TextBlock#PART_SubmenuIndicator"
+                 TargetType="TextBlock">
+            <Setter Property="Foreground"  Value="{DynamicResource {x:Static ThemeKeys.MenuAcceleratorHoverForeground}}"/>
+          </Style>
+        </Style.Children>
+      </Style>
+      <Style TargetType="MenuItem">
+        <Style.Children>
+          <Style Selector="^:top-level /template/ #PART_SubmenuIndicator">
+            <Setter Property="UIElement.Visibility" Value="Collapsed" />
+          </Style>
+        </Style.Children>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <Style x:Key="{x:Type MenuItem}" TargetType="MenuItem">
@@ -423,15 +478,17 @@
        ControlThemes.ContextMenuTheme()/ContextMenuTemplate(). The panel fill/border are the DynamicResource
        PanelBrush/BorderPen (the code-first template sets them via SetResourceReference, not TemplateBinding). -->
   <ControlTemplate x:Key="ContextMenuTemplate">
-    <Border Occludes="True"
-            Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
-            BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+    <Border Occludes="False"
+            Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}">
       <ItemsPresenter x:Name="PART_ItemsHost"/>
     </Border>
   </ControlTemplate>
 
   <Style x:Key="{x:Type ContextMenu}" TargetType="ContextMenu">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MenuForegroundNormal}}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"/>
+    <Setter Property="BorderPen" Value="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}"/>
     <Setter Property="Template"   Value="{StaticResource ContextMenuTemplate}"/>
   </Style>
 
@@ -444,10 +501,10 @@
   -->
 
   <ControlTemplate x:Key="ToolTipTemplate">
-    <Border Occludes="True"
+    <Border Occludes="False"
             Padding="1,0"
-            Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
-            BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+            Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
+            BorderPen="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}">
       <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
     </Border>
   </ControlTemplate>
@@ -462,20 +519,30 @@
        Mirrors ControlThemes.TabControlTheme()/TabControlTemplate() + TabItemTheme()/TabItemTemplate().
        TabControl: a DockPanel with the tab strip (PART_TabStrip ItemsPresenter, docked top) over a
        bordered content host (PART_ContentHost ContentPresenter bound to SelectedContent/ContentTemplate). -->
-
   <ControlTemplate x:Key="TabControlTemplate" TargetType="TabControl">
-    <DockPanel>
-      <ItemsPresenter x:Name="PART_TabStrip" DockPanel.Dock="Top"/>
-      <Border Padding="1,0" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-        <ContentPresenter x:Name="PART_ContentHost"
-                          Content="{TemplateBinding SelectedContent}"
-                          ContentTemplate="{TemplateBinding ContentTemplate}"/>
-      </Border>
-    </DockPanel>
+    <Border x:Name="Root" Background="{TemplateBinding Background}" BorderPen="{TemplateBinding BorderPen}" Occludes="False">
+      <DockPanel>
+        <Border x:Name="PART_TabStrip"
+                DockPanel.Dock="Top"
+                Background="{x:Static Brushes.Transparent}"
+                Occludes="True"
+                HorizontalAlignment="Left"
+                Margin="1,-1,1,0">
+          <ItemsPresenter />
+        </Border>
+        <Border Padding="2,1" ClipToBounds="True">
+          <ContentPresenter x:Name="PART_ContentHost"
+                            Content="{TemplateBinding SelectedContent}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"/>
+        </Border>
+      </DockPanel>
+    </Border>
   </ControlTemplate>
 
   <Style x:Key="{x:Type TabControl}" TargetType="TabControl">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Background" Value="{x:Null}"/>
+    <Setter Property="BorderPen"  Value="{DynamicResource {x:Static ThemeKeys.TabControlBorderPen}}"/>
     <Setter Property="Template"   Value="{StaticResource TabControlTemplate}"/>
   </Style>
 
@@ -486,33 +553,69 @@
   <ControlTemplate x:Key="TabItemTemplate" TargetType="TabItem">
     <Border>
       <StackPanel>
-        <Border Padding="1,0" Background="{TemplateBinding Background}">
+        <Border x:Name="PART_HeaderSite"
+                Padding="1,0"
+                Background="{TemplateBinding Background}"
+                BorderPen="{TemplateBinding BorderPen}"
+                Occludes="True">
           <ContentPresenter x:Name="PART_ContentPresenter"
                             RecognizesAccessKey="True"
                             Content="{TemplateBinding Header}"/>
         </Border>
-        <Separator x:Name="PART_Underline" Margin="1,0,1,0"/>
+        <Separator x:Name="PART_Underline" Margin="1,0,1,0" BorderPen="{DynamicResource {x:Static ThemeKeys.TabUnderlinePen}}"/>
       </StackPanel>
     </Border>
+    <ControlTemplate.Styles>
+      <Style Selector="TabItem">
+        <Style.Children>
+          <Style Selector="^ /template/ Separator#PART_Underline">
+            <Setter Property="Border.BorderPen"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabUnderlinePen}}" />
+          </Style>
+          <Style Selector="^ /template/ #PART_HeaderSite">
+            <Setter Property="TextElement.Foreground"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabForegroundNormal}}" />
+          </Style>
+          <Style Selector="^:pointerover /template/ #PART_HeaderSite">
+            <Setter Property="Panel.Background"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundHover}}" />
+            <Setter Property="TextElement.Foreground"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabForegroundHover}}" />
+          </Style>
+          <Style Selector="^:selected /template/ #PART_HeaderSite">
+            <Setter Property="Panel.Background"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundSelected}}" />
+            <Setter Property="TextElement.Foreground"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabForegroundSelected}}" />
+          </Style>
+          <Style Selector="^:disabled /template/ #PART_HeaderSite">
+            <Setter Property="TextElement.Foreground"
+                    Value="{DynamicResource {x:Static ThemeKeys.TabForegroundDisabled}}" />
+          </Style>
+        </Style.Children>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <Style x:Key="{x:Type TabItem}" TargetType="TabItem">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource TabItemTemplate}"/>
+    <!--
     <Style.Children>
-      <!-- Ordered pointerover -> selected -> disabled (document order breaks pseudo-class ties, matching the
-           code-first TabItemTheme.Children append order). -->
+      ~1~ Ordered pointerover -> selected -> disabled (document order breaks pseudo-class ties, matching the
+           code-first TabItemTheme.Children append order). @1@
       <Style Selector="^:pointerover" TargetType="TabItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundHover}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="TabItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TabBackgroundSelected}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundActive}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundSelected}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TabForegroundDisabled}}"/>
       </Style>
     </Style.Children>
+  -->
   </Style>
 
   <!-- ProgressBar: a self-painting control (no Template). The track is the recessed WellBrush
@@ -546,7 +649,7 @@
     <Setter Property="Foreground"     Value="{DynamicResource {x:Static ThemeKeys.InputForegroundNormal}}"/>
     <Setter Property="Background"     Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundNormal}}"/>
     <Setter Property="MinWidth"       Value="12"/>
-    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionActive}}"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionInactive}}"/>
     <Setter Property="Template"       Value="{StaticResource TextBoxTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="TextBox">
@@ -554,6 +657,7 @@
       </Style>
       <Style Selector="^:focus" TargetType="TextBox">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundFocus}}"/>
+        <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static ThemeKeys.InputSelectionActive}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="TextBox">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.InputBackgroundDisabled}}"/>
@@ -728,8 +832,8 @@
         </DockPanel>
       </Border>
       <Popup x:Name="PART_Popup">
-        <Border Occludes="True"
-                Background="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"
+        <Border Occludes="False"
+                Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}"
                 MaxHeight="{TemplateBinding MaxDropDownHeight}">
           <ItemsPresenter x:Name="PART_ItemsHost"/>
@@ -805,7 +909,7 @@
        editable text box is Collapsed until IsEditable. The declarative twin of ControlThemes.DatePickerTheme(). -->
   <ControlTemplate x:Key="DatePickerTemplate" TargetType="DatePicker">
     <Grid>
-      <Border Padding="1,0"
+      <Border Padding="1,0,0,0"
               Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
@@ -817,7 +921,7 @@
         </DockPanel>
       </Border>
       <Popup x:Name="PART_Popup"><!--Opacity="0.85"-->
-        <Border Background="{DynamicResource {x:Static ThemeKeys.ElevationWindow}}"
+        <Border Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
           <Calendar x:Name="PART_Calendar" />
         </Border>

@@ -1,4 +1,5 @@
 using Cursorial.Drawing;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 
@@ -27,9 +28,18 @@ namespace Cursorial.UI;
 public sealed class TopLevelSurface
 {
     private readonly LayoutManager _layout;
+    private readonly ScenePool _scenePool;
     private Size _size;
     private bool _needsLayout = true;
     private bool _detached;
+
+    // The pooled scene the drop-shadow fringe rasters into — the surface's LOWEST layer (painted beneath its own
+    // content, over whatever is behind it). Kept across frames and re-rastered only when the shadow or content
+    // size changes (a window MOVE is composite-only — just its offset shifts). Released to the pool on detach or
+    // when the shadow turns off. Sized to the content rect grown by Shadow.GetMargins().
+    private Scene? _shadowScene;
+    private WindowShadow _shadowSignature; // the shadow the live _shadowScene was rastered for
+    private Size _shadowContentSize;       // the content size the live _shadowScene was rastered for
 
     internal TopLevelSurface(UIElement root, ScenePool scenePool, OutputCapabilities capabilities, IUserCodeGuard? guard)
     {
@@ -38,6 +48,7 @@ public sealed class TopLevelSurface
         ArgumentNullException.ThrowIfNull(capabilities);
 
         Root = root;
+        _scenePool = scenePool;
         _layout = new LayoutManager(root);
         RenderTree = new RenderTree(root, scenePool, capabilities) { UserCodeGuard = guard };
     }
@@ -73,6 +84,13 @@ public sealed class TopLevelSurface
     /// <summary>The composite opacity applied to every layer of this surface (host window / popup opacity).</summary>
     public double Opacity { get; internal set; } = 1.0;
 
+    /// <summary>
+    /// The surface's drop shadow (design doc §8.2/§8.7); <see cref="WindowShadow.None"/> casts nothing (the
+    /// default). The window manager syncs it from the host <c>Window</c>/<c>Popup</c>; it paints into a fringe
+    /// band beyond the content rect, composited <b>below</b> the surface's own layers.
+    /// </summary>
+    public WindowShadow Shadow { get; internal set; }
+
     /// <summary>True when this surface is an open popup's child — a light-dismiss participant (P7-W4).</summary>
     public bool IsPopup { get; internal set; }
 
@@ -96,15 +114,99 @@ public sealed class TopLevelSurface
             _layout.AbandonPendingLayout();
     }
 
-    /// <summary>Re-rasters dirty zones and refreshes composite parameters (the per-surface render pass).</summary>
-    internal void RunRenderPass() => RenderTree.RunRenderPass();
+    /// <summary>Re-rasters dirty zones and refreshes composite parameters (the per-surface render pass), then
+    /// reconciles the drop-shadow fringe scene (§8.2).</summary>
+    internal void RunRenderPass()
+    {
+        RenderTree.RunRenderPass();
+        UpdateShadowScene();
+    }
 
     /// <summary>Appends this surface's layers — translated to its screen offset, scaled by its opacity — to <paramref name="target"/>.</summary>
     /// <param name="target">The shared layer list the compositor concatenates across surfaces.</param>
     /// <param name="surfaceZ">This surface's z-index in the stack (stamped on every layer for the compositor's fragment-occlusion).</param>
     /// <param name="isOccluder">Whether this surface is an opaque occluder (a window/popup/badge — not the root).</param>
     internal void CollectLayers(List<SceneLayer> target, int surfaceZ = 0, bool isOccluder = false)
-        => RenderTree.CollectLayers(target, Left, Top, Opacity, surfaceZ, isOccluder);
+    {
+        // The shadow fringe is the LOWEST layer of the surface — emit it first (earlier == composited lower),
+        // at the content offset pulled back by the cast margins so the fringe lands just outside the content
+        // rect. It is never an occluder: a translucent tint must let a lower surface's graphics-protocol image
+        // show through (dimmed), not crop it. Opacity tracks the surface so a fading window fades its shadow.
+        if (_shadowScene is {} shadow)
+        {
+            var margins = Shadow.GetMargins();
+            var parameters = new CompositeParameters(
+                Left - margins.Left, Top - margins.Top,
+                (byte) Math.Round(Math.Clamp(Opacity, 0.0, 1.0) * 255.0));
+            target.Add(new SceneLayer(shadow, parameters) { SurfaceZ = surfaceZ, IsOccluder = false });
+        }
+
+        RenderTree.CollectLayers(target, Left, Top, Opacity, surfaceZ, isOccluder);
+    }
+
+    // Shadows read as a soft tint only through RGB-on-RGB alpha compositing — a non-RGB backdrop short-circuits
+    // to the source (the translucent shadow would paint SOLID). So they emit only when the EFFECTIVE color tier
+    // is truecolor — the same gate RenderTree applies to surface opacity. (A non-RGB shadow Color is its own
+    // no-op inside DrawDropShadow, so a palette accent never leaks through.)
+    private static bool ShadowsEnabled => UIApplication.Current?.ActualThemeVariant is not { Tier: not ColorDepth.Truecolor };
+
+    /// <summary>
+    /// Reconciles the pooled shadow-fringe scene with the current <see cref="Shadow"/> + content size: rents and
+    /// sizes it to the content rect grown by <see cref="WindowShadow.GetMargins"/>, re-rastering the soft drop
+    /// only when the shadow or size changed (a window MOVE leaves the raster untouched — only its composite
+    /// offset shifts). Releases the scene when there is no shadow to paint or the effective tier can't render one.
+    /// </summary>
+    private void UpdateShadowScene()
+    {
+        if (Shadow.IsNone || !ShadowsEnabled || _size.Columns <= 0 || _size.Rows <= 0)
+        {
+            ReleaseShadowScene();
+            return;
+        }
+
+        var margins = Shadow.GetMargins();
+
+        if (margins == Margins.Zero)
+        {
+            ReleaseShadowScene(); // a degenerate geometry (no fringe to grow into) casts nothing
+            return;
+        }
+
+        int columns = _size.Columns + margins.Horizontal;
+        int rows = _size.Rows + margins.Vertical;
+
+        // A size change re-rents from the exact-size-bucketed pool; the signature drives the re-raster gate.
+        if (_shadowScene is {} existing && (existing.Columns != columns || existing.Rows != rows))
+            ReleaseShadowScene();
+
+        if (_shadowScene is null)
+        {
+            _shadowScene = _scenePool.Rent(columns, rows);
+            _shadowSignature = default;
+            _shadowContentSize = default;
+        }
+
+        if (_shadowSignature == Shadow && _shadowContentSize == _size)
+            return; // unchanged — reuse the cached raster (the move-only case costs nothing here)
+
+        var element = new Rect(margins.Left, margins.Top, _size.Columns, _size.Rows);
+        var geometry = Shadow.Geometry;
+        var color = Shadow.Color;
+
+        _shadowScene.Invalidate();
+        _shadowScene.Draw(context => context.DrawDropShadow(element, geometry, color));
+
+        _shadowSignature = Shadow;
+        _shadowContentSize = _size;
+    }
+
+    private void ReleaseShadowScene()
+    {
+        _shadowScene?.Dispose(); // returns the buffer to the pool
+        _shadowScene = null;
+        _shadowSignature = default;
+        _shadowContentSize = default;
+    }
 
     /// <summary>Hit-tests a screen point against this surface, returning the element or <see langword="null"/> when outside the content rect.</summary>
     public UIElement? HitTest(int column, int row)
@@ -126,6 +228,7 @@ public sealed class TopLevelSurface
             return;
 
         _detached = true;
+        ReleaseShadowScene();
         Root.DetachRoot(); // DetachRoot calls RenderTree.Detach itself, then detaches the element
     }
 }

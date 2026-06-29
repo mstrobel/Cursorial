@@ -6,7 +6,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
-using Cursorial.UI.Themes.Xaml;
+using Cursorial.UI.Themes.Default;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -14,7 +14,7 @@ using UIControls = Cursorial.UI.Controls;
 namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
-/// #19 — the caps-* theme-styles authored in <c>Cursorial.UI.Themes.Xaml/Themes/Styles.xaml</c> and consumed
+/// #19 — the caps-* theme-styles authored in <c>Cursorial.UI.Themes/Themes/Styles.xaml</c> and consumed
 /// from <c>UIApplication.Theme</c> at <c>Theme(2)</c> (the R2/B13 channel). Proves: the loader populates the
 /// <c>&lt;ResourceDictionary.Styles&gt;</c> slot (selector LISTS + dotted/attached Setters + a
 /// <c>GlyphSetCarrier</c> Setter.Value element); the data theme reproduces BuiltIn's caps-unicode glyph +
@@ -43,10 +43,11 @@ public sealed class XamlThemeStylesTests
     [Fact] // LoadStyles populates the Styles slot with all five theme rules (the caps-nocolor inverse is a 7-branch list).
     public void LoadStyles_PopulatesAllThemeStyles()
     {
-        var dict = CursorialXamlTheme.LoadStyles();
+        var builtin = CursorialTheme.BuiltIn.Styles!;
+        var dict = CursorialDefaultTheme.LoadStyles();
 
         Assert.NotNull(dict.Styles);
-        Assert.Equal(5, dict.Styles!.Count);
+        Assert.Equal(builtin.Count, dict.Styles!.Count);
         // The caps-nocolor interactive-state rule is the 7-member selector list — assert its CONTENT, not just
         // the branch count (a wrong selector could also have 7 branches).
         var inverseRule = Assert.Single(dict.Styles!, s => s.Selector is { } sel && sel.Branches.Length == 7);
@@ -55,7 +56,8 @@ public sealed class XamlThemeStylesTests
         Assert.Contains("Button:focus", inverseText);
         Assert.Contains("ToggleButton:pressed", inverseText);
         // The rest are single-branch (two caps-unicode glyph rules + the caps-nocolor disabled rule + AccessKeyCue).
-        Assert.Equal(4, dict.Styles!.Count(s => s.Selector is { } sel && sel.Branches.Length == 1));
+        Assert.Equal(builtin.Count(s => s.Selector is { Branches.Length: 1 }),
+                     dict.Styles!.Count(s => s.Selector is { Branches.Length: 1 }));
 
         // The ported AccessKeyCue rule's Setter resolved its PREFIXED owner (input:AccessKeyManager, in
         // Cursorial.UI.Input — outside the default xmlns map) to the real ShowUnderline attached UIProperty via
@@ -128,7 +130,7 @@ public sealed class XamlThemeStylesTests
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(12, 3) });
         if (xaml)
-            host.Application.Theme = CursorialXamlTheme.LoadTheme();
+            host.Application.Theme = CursorialDefaultTheme.LoadTheme();
 
         // Both cases use a panel root so the styled control is a DESCENDANT of the caps-* stamped root — the
         // caps selectors (`.caps-unicode CheckBox` / `.caps-nocolor Button:focus`) are descendant selectors.

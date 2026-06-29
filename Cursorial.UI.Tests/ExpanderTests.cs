@@ -26,7 +26,7 @@ public class ExpanderTests
         return (host, exp);
     }
 
-    private static T Part<T>(Expander e, string name) where T : UIElement => (T)e.TemplateInstance!.NameScope.Find(name)!;
+    private static T Part<T>(Control e, string name) where T : UIElement => (T)e.TemplateInstance!.NameScope.Find(name)!;
 
     private static string Screen(UITestHost host, int rows = 10)
     {
@@ -43,7 +43,7 @@ public class ExpanderTests
         using var _ = host;
 
         Assert.Equal(Visibility.Collapsed, Part<ContentPresenter>(exp, "PART_Content").Visibility);
-        Assert.Equal("▸", Part<TextBlock>(exp, "PART_Glyph").Text);
+        Assert.Equal(Expander.CollapsedGlyph, Part<TextBlock>(Part<ToggleButton>(exp, Expander.PartHeader), "PART_Glyph").Text);
 
         var screen = Screen(host);
         Assert.Contains("Details", screen);       // header always shown
@@ -57,7 +57,7 @@ public class ExpanderTests
         using var _ = host;
 
         Assert.Equal(Visibility.Visible, Part<ContentPresenter>(exp, "PART_Content").Visibility);
-        Assert.Equal("▾", Part<TextBlock>(exp, "PART_Glyph").Text);
+        Assert.Equal(Expander.ExpandedGlyph, Part<TextBlock>(Part<ToggleButton>(exp, Expander.PartHeader), "PART_Glyph").Text);
         Assert.Contains("Body text", Screen(host));
     }
 
@@ -72,9 +72,10 @@ public class ExpanderTests
         exp.Expanded += (_, _) => expanded++;
         exp.Collapsed += (_, _) => collapsed++;
 
-        var header = Part<Border>(exp, "PART_Header");
+        var header = Part<ToggleButton>(exp, "PART_Header");
         var (col, row) = header.TranslateToWindow(0, 0);
 
+        host.SendMouseMove(col, row);
         host.SendClick(col, row);
         host.RunUntilIdle();
         Assert.True(exp.IsExpanded);

@@ -1,11 +1,15 @@
 <Project>
 
-  <!--
-    Cursorial XAML generator — consumer props (WS-X4.2). Imported early (before the consumer's items),
-    this exposes the AdditionalFiles `SourceItemType` metadata to the generator so it can filter the
-    CursorialXaml inputs out of any other AdditionalFiles. The CursorialXaml → AdditionalFiles mapping
-    itself is in the paired .targets (after item evaluation).
-  -->
+    <ItemGroup>
+      <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+    </ItemGroup>
+
+    <!--
+      Cursorial XAML generator — consumer props (WS-X4.2). Imported early (before the consumer's items),
+      this exposes the AdditionalFiles `SourceItemType` metadata to the generator so it can filter the
+      CursorialXaml inputs out of any other AdditionalFiles. The CursorialXaml → AdditionalFiles mapping
+      itself is in the paired .targets (after item evaluation).
+    -->
 
   <ItemGroup>
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SourceItemType" />

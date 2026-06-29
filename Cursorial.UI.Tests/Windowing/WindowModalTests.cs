@@ -31,12 +31,12 @@ public sealed class WindowModalTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var owner = new Window { Width = 30, Height = 10 };
+        var owner = host.NewWindow(width: 30, height: 10);
         owner.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(owner.IsActive);
 
-        var dialog = new Window { Owner = owner, Width = 20, Height = 6 };
+        var dialog = host.NewWindow(owner: owner, width: 20, height: 6);
         _ = dialog.ShowDialogAsync();
         Assert.True(host.RunUntilIdle());
 
@@ -57,11 +57,11 @@ public sealed class WindowModalTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var owner = new Window { Width = 30, Height = 10 };
+        var owner = host.NewWindow(width: 30, height: 10);
         owner.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        var dialog = new Window { Owner = owner, Width = 20, Height = 6 };
+        var dialog = host.NewWindow(owner: owner, width: 20, height: 6);
         var task = dialog.ShowDialogAsync();
         Assert.True(host.RunUntilIdle());
         Assert.False(task.IsCompleted);
@@ -87,7 +87,7 @@ public sealed class WindowModalTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        var dialog = new Window { Width = 20, Height = 6 };
+        var dialog = host.NewWindow(width: 20, height: 6);
         var task = dialog.ShowDialogAsync(cts.Token);
 
         Assert.True(task.IsCanceled);
@@ -102,7 +102,7 @@ public sealed class WindowModalTests
         using var hostScope = host;
 
         using var cts = new CancellationTokenSource();
-        var dialog = new Window { Width = 20, Height = 6 };
+        var dialog = host.NewWindow(width: 20, height: 6);
         var task = dialog.ShowDialogAsync(cts.Token);
         Assert.True(host.RunUntilIdle());
         Assert.True(dialog.IsShown);
@@ -124,7 +124,7 @@ public sealed class WindowModalTests
         using var hostScope = host;
 
         using var cts = new CancellationTokenSource();
-        var dialog = new Window { Width = 20, Height = 6 };
+        var dialog = host.NewWindow(width: 20, height: 6);
         var task = dialog.ShowDialogAsync(cts.Token);
         Assert.True(host.RunUntilIdle());
 
@@ -142,7 +142,7 @@ public sealed class WindowModalTests
         using var hostScope = host;
 
         using var cts = new CancellationTokenSource();
-        var dialog = new Window { Width = 20, Height = 6 };
+        var dialog = host.NewWindow(width: 20, height: 6);
         var task = dialog.ShowDialogAsync<int>(cts.Token);
         Assert.True(host.RunUntilIdle());
 
@@ -160,7 +160,7 @@ public sealed class WindowModalTests
         var (host, _) = ShownRoot();
         using var hostScope = host;
 
-        var dialog = new Window { Width = 20, Height = 6 };
+        var dialog = host.NewWindow(width: 20, height: 6);
         var task = dialog.ShowDialogAsync<int>();
         Assert.True(host.RunUntilIdle());
 
@@ -176,7 +176,7 @@ public sealed class WindowModalTests
         var (host, _) = ShownRoot();
         using var hostScope = host;
 
-        var dialog = new Window { Width = 20, Height = 6 };
+        var dialog = host.NewWindow(width: 20, height: 6);
         var task = dialog.ShowDialogAsync<string>();   // reference type ⇒ default is unambiguously null
         Assert.True(host.RunUntilIdle());
 

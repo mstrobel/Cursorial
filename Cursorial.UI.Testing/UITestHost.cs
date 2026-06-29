@@ -1,5 +1,6 @@
 using System.Text;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Rendering;
@@ -18,14 +19,13 @@ namespace Cursorial.UI.Testing;
 /// </summary>
 public sealed class UITestHost : IAsyncDisposable, IDisposable
 {
-    private readonly UITestHostOptions _options;
     private readonly SyntheticTerminalHost _terminal;
     private byte[] _lastFrameBytes = [];
     private bool _disposed;
 
     private UITestHost(UITestHostOptions options, SyntheticTerminalHost terminal, FakeTimeProvider time, UIApplication application)
     {
-        _options = options;
+        Options = options;
         _terminal = terminal;
         Time = time;
         Application = application;
@@ -45,7 +45,6 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
             .WithTimeProvider(time)
             .UseAlternateScreen(options.UseAlternateScreen)
             .Build();
-
         var host = new UITestHost(options, terminal, time, application);
         application.StartHeadless();
         terminal.DrainOutput(); // discard the UI-mode entry bytes — LastFrameBytes is per-frame
@@ -76,6 +75,9 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
 
     /// <summary>The canonical-teardown byte sequence, available after <see cref="DisposeAsync"/>.</summary>
     public ReadOnlyMemory<byte> TeardownBytes => _terminal.FinalOutput;
+
+    /// <summary>Encapsulates configuration options for the UI test host.</summary>
+    public UITestHostOptions Options { get; }
 
     /// <summary>
     /// Sets the root element tree — the P1 stand-in for <c>ShowWindow</c> (S4's window plumbing
@@ -135,7 +137,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
     /// </summary>
     public void AdvanceTime(TimeSpan delta)
     {
-        var step = _options.FrameInterval;
+        var step = Options.FrameInterval;
         while (delta > TimeSpan.Zero)
         {
             var advance = delta < step ? delta : step;
@@ -165,7 +167,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
                 ResizeEvent r => r with { Timestamp = now },
                 FocusEvent f => f with { Timestamp = now },
                 PasteEvent p => p with { Timestamp = now },
-                _ => inputEvent,
+                _ => inputEvent
             };
         }
 
@@ -181,7 +183,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
             Modifiers = modifiers,
             Kind = KeyEventKind.Down,
             Text = (text ?? string.Empty).AsMemory(),
-            Timestamp = Time.GetUtcNow(),
+            Timestamp = Time.GetUtcNow()
         });
 
         if (withRelease)
@@ -192,7 +194,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
                 Modifiers = modifiers,
                 Kind = KeyEventKind.Up,
                 Text = (text ?? string.Empty).AsMemory(),
-                Timestamp = Time.GetUtcNow(),
+                Timestamp = Time.GetUtcNow()
             });
         }
     }
@@ -214,7 +216,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
             Button = MouseButton.None,
             ButtonsHeld = MouseButtons.None,
             Modifiers = KeyModifiers.None,
-            Timestamp = Time.GetUtcNow(),
+            Timestamp = Time.GetUtcNow()
         });
 
     /// <summary>
@@ -224,25 +226,27 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
     public void SendClick(int column, int row, MouseButton button = MouseButton.Left, int clickCount = 1)
     {
         var position = new CellPosition(column, row);
+
         SendInput(new MouseEvent
-        {
-            Kind = MouseEventKind.ButtonDown,
-            Position = position,
-            Button = button,
-            ButtonsHeld = MouseButtons.None,
-            Modifiers = KeyModifiers.None,
-            ClickCount = clickCount,
-            Timestamp = Time.GetUtcNow(),
-        });
+                  {
+                      Kind = MouseEventKind.ButtonDown,
+                      Position = position,
+                      Button = button,
+                      ButtonsHeld = MouseButtons.None,
+                      Modifiers = KeyModifiers.None,
+                      ClickCount = clickCount,
+                      Timestamp = Time.GetUtcNow()
+                  });
+
         SendInput(new MouseEvent
-        {
-            Kind = MouseEventKind.ButtonUp,
-            Position = position,
-            Button = button,
-            ButtonsHeld = MouseButtons.None,
-            Modifiers = KeyModifiers.None,
-            Timestamp = Time.GetUtcNow(),
-        });
+                  {
+                      Kind = MouseEventKind.ButtonUp,
+                      Position = position,
+                      Button = button,
+                      ButtonsHeld = MouseButtons.None,
+                      Modifiers = KeyModifiers.None,
+                      Timestamp = Time.GetUtcNow()
+                  });
     }
 
     /// <summary>Sends a resize event (coalesced last-wins inside one frame, like production).</summary>
@@ -324,9 +328,59 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
         // Drain the output pipe each frame to bound its growth. Only COPY the bytes out (an allocation) when the
         // caller asked to capture them — otherwise discard non-allocatingly, so a benchmark's measured per-frame
         // allocation reflects the framework, not the harness's ToArray (CaptureFrameBytes is off by default).
-        if (_options.CaptureFrameBytes)
+        if (Options.CaptureFrameBytes)
             _lastFrameBytes = _terminal.DrainOutput();
         else
             _terminal.DiscardOutput();
+    }
+
+    public Window NewWindow(string? title = null, object? content = null, Window? owner = null, 
+                            int left = 0, int top = 0, int? width = null, int? height = null, IBrush? background = null,
+                            WindowStartupLocation windowStartupLocation = default, WindowStyle windowStyle = default,
+                            double? opacity = null)
+    {
+        var window = new Window
+                     {
+                         Width = width,
+                         Height = height 
+                     };
+
+        if (title is {} t)
+            window.Title = t;
+
+        if (content is {} c)
+            window.Content = c;
+
+        if (owner is {} o)
+            window.Owner = o;
+
+        if (background is {} b)
+            window.Background = b;
+
+        if (windowStartupLocation != default)
+            window.WindowStartupLocation = windowStartupLocation;
+        
+        if (windowStyle != default)
+            window.WindowStyle = windowStyle;
+        
+        if (width is {} w)
+            window.Width = w;
+
+        if (height is {} h)
+            window.Height = h;
+
+        if (left != 0)
+            window.Left = left;
+        
+        if (top != 0)
+            window.Top = top;
+        
+        if (opacity is {} p)
+            window.Opacity = p;
+
+        if (Options.DisableInactiveWindowTransitions)
+            Transition.SetTransitions(window, null);
+
+        return window;
     }
 }

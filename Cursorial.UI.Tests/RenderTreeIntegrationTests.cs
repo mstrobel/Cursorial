@@ -112,7 +112,8 @@ public class RenderTreeIntegrationTests
             Width = 6,
             Height = 2,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top
+            VerticalAlignment = VerticalAlignment.Top,
+            Occludes = true
         };
         root.Add(under);
         root.Add(panel);
@@ -123,7 +124,7 @@ public class RenderTreeIntegrationTests
 
         // FillOpaque writes space-bearing cells: the glyph beneath is hidden (doc §5.5 pinned
         // surface rule — FillRectangle would let "G" show through the panel).
-        Assert.Equal(" ", view[1, 1].Grapheme);
+        Assert.Equal(CellBuffer.DurableEmptyGrapheme, view[1, 1].Grapheme);
         Assert.Equal("G", view[8, 1].Grapheme); // outside the panel the root zone shows through
     }
 

@@ -8,15 +8,15 @@ using Cursorial.UI;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
-using Cursorial.UI.Themes.Xaml;
+using Cursorial.UI.Themes.Default;
 
 using UIControls = Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
-/// ARCH-1 (Task #10): the data-shipped <c>Cursorial.UI.Themes.Xaml</c> assembly's control themes —
-/// authored in embedded <c>.xaml</c> and loaded via <see cref="CursorialXamlTheme.LoadControls"/> — render
+/// ARCH-1 (Task #10): the data-shipped <c>Cursorial.UI.Themes</c> assembly's control themes —
+/// authored in embedded <c>.xaml</c> and loaded via <see cref="CursorialDefaultTheme.LoadControls"/> — render
 /// byte-for-byte identically to the code-first <c>CursorialTheme.BuiltIn</c> ones. The button family is
 /// checked at REST and FOCUSED (exercising the nested <c>^:focus</c> reverse-video sub-rule authored through
 /// the Selector converter + <c>&lt;Style.Children&gt;</c>); the ScrollBar/ScrollViewer at rest (their
@@ -93,7 +93,7 @@ public sealed class ArchOneXamlThemeTests
         // resource elements in the theme XAML; prove the loader instantiates them and the dict carries the
         // same triples as the code-first CursorialTheme.BuiltIn (true-ASCII defaults). The x:Key is an
         // {x:Static ThemeKeys.*Glyphs} string key.
-        var dict = CursorialXamlTheme.LoadControls();
+        var dict = CursorialDefaultTheme.LoadControls();
 
         AssertGlyphs(dict, ThemeKeys.CheckBoxGlyphs, "[ ]", "[x]", "[-]");
         AssertGlyphs(dict, ThemeKeys.RadioGlyphs, "( )", "(*)", "(-)");
@@ -134,7 +134,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // W5: every P9 control theme parses + is present (covers the popup-rooted ones that can't render inline)
     public void AllP9ControlThemes_Parse_AndArePresentInTheDictionary()
     {
-        var dict = CursorialXamlTheme.LoadControls();
+        var dict = CursorialDefaultTheme.LoadControls();
         Type[] themed =
         [
             typeof(UIControls.ItemsControl), typeof(UIControls.ListBox), typeof(UIControls.ListBoxItem),
@@ -173,7 +173,7 @@ public sealed class ArchOneXamlThemeTests
     public void XamlTabControlTheme_RendersSelectedContent_AndSwitches()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 6) });
-        host.Application.Theme = CursorialXamlTheme.LoadControls();
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var tabs = new UIControls.TabControl { Width = 20, Height = 6 };
         tabs.Items.Add(new UIControls.TabItem { Header = "A", Content = "AAA" });
@@ -194,7 +194,7 @@ public sealed class ArchOneXamlThemeTests
     public void XamlMenuTheme_OpensSubmenuPopup()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
-        host.Application.Theme = CursorialXamlTheme.LoadControls();
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var file = new UIControls.MenuItem { Header = "File" };
         file.Items.Add(new UIControls.MenuItem { Header = "New" });
@@ -213,7 +213,7 @@ public sealed class ArchOneXamlThemeTests
     public void XamlContextMenuTheme_OpensPopup()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
-        host.Application.Theme = CursorialXamlTheme.LoadControls();
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var owner = new UIControls.Border { Width = 20, Height = 6 };
         var ctx = new UIControls.ContextMenu();
@@ -232,7 +232,7 @@ public sealed class ArchOneXamlThemeTests
     public void XamlToolTipTheme_ShowsOnHover()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
-        host.Application.Theme = CursorialXamlTheme.LoadControls();
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var element = new UIControls.Border { Width = 16, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
         UIControls.ToolTipService.SetTip(element, "hint");
@@ -307,7 +307,7 @@ public sealed class ArchOneXamlThemeTests
     public void XamlDatePickerTheme_OpensCalendarPopup()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
-        host.Application.Theme = CursorialXamlTheme.LoadControls();
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var dp = new UIControls.DatePicker { DisplayDate = new DateOnly(2026, 6, 1), Width = 14 };
         host.ShowRoot(dp);
@@ -323,7 +323,7 @@ public sealed class ArchOneXamlThemeTests
     public void XamlComboBoxTheme_OpensDropDownPopup()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 10) });
-        host.Application.Theme = CursorialXamlTheme.LoadControls();
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var combo = new UIControls.ComboBox { ItemsSource = new[] { "Alpha", "Beta" }, SelectedIndex = 0, Width = 14 };
         host.ShowRoot(combo);
@@ -356,12 +356,12 @@ public sealed class ArchOneXamlThemeTests
         _              => throw new ArgumentOutOfRangeException(nameof(control)),
     };
 
-    private static (string Glyph, Color Fg, Color Bg)[] CaptureCells(
+    private static /*(string Glyph, Color Fg, Color Bg)*/string[] CaptureCells(
         bool xaml, bool focus, int cols, int rows, Func<UIControls.Control> factory)
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(cols, rows) });
         if (xaml)
-            host.Application.Theme = CursorialXamlTheme.LoadControls();
+            host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var element = factory();
         host.ShowRoot(element);
@@ -379,6 +379,7 @@ public sealed class ArchOneXamlThemeTests
             var cell = host.GetCell(c, r);
             cells.Add((cell.Grapheme ?? string.Empty, cell.Style.Foreground, cell.Style.Background));
         }
-        return cells.ToArray();
+        // return cells.ToArray();
+        return cells.Select(c => $"'{c.Item1}', #{c.Item2.Red:X2}{c.Item2.Green:X2}{c.Item2.Blue:X2}, #{c.Item3.Red:X2}{c.Item3.Green:X2}{c.Item3.Blue:X2}").ToArray();
     }
 }

@@ -37,6 +37,12 @@ public readonly record struct Cell(string? Grapheme, CellKind Kind, Style Style)
     public static Cell Blank => default;
 
     /// <summary>
+    /// A single-width durable (non-occludable) whitespace cell with default styling and a
+    /// grapheme equal to <see cref="CellBuffer.DurableEmptyGrapheme"/>.
+    /// </summary>
+    public static Cell DurableEmpty => Blank with { Grapheme = CellBuffer.DurableEmptyGrapheme };
+
+    /// <summary>
     /// The right-half placeholder of a wide-left glyph. The renderer skips this cell during
     /// emission, but the cell's <see cref="Style"/> background is still painted: when the
     /// terminal renders the wide glyph at the <see cref="CellKind.WideLeft"/> position, it

@@ -10,6 +10,8 @@ using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Text;
 
+using static Cursorial.Rendering.CellBuffer;
+
 namespace Cursorial.Tests.Drawing;
 
 // P2.5 push-stack full coverage: the clip + translate stack is honored by EVERY DrawingContext draw
@@ -286,13 +288,13 @@ public class PushStackCoverageTests
         var b = DrawHarness.Render(12, 8, ctx =>
         {
             using (ctx.PushTranslate(3, 1))
-                ctx.DrawDropShadow(new Rect(2, 2, 3, 2), ShadowGeometry.Drop(radius: 1, offset: 1, strength: 0.5), Black);
+                ctx.DrawDropShadow(new Rect(2, 2, 3, 2), ShadowGeometry.Drop(radius: 1, strength: 0.5), Black);
         }, baseBackground: White);
 
-        // Element at scene (5,3)-(7,4); offset silhouette (6,4)-(8,5). (8,4) sits in the silhouette
-        // outside the element → full-strength shadow. The untranslated band's cells stay base white.
+        // Translate (3,1) moves the element to scene (5,3)-(7,4); its soft halo rides along. (8,4) is just
+        // right of the translated element → shadow; the untranslated element's location stays base white.
         Assert.True(b[8, 4].Style.Background.Red < 255, "the shadow should darken the translated band");
-        Assert.Equal(White, b[5, 2].Style.Background);   // where the untranslated shadow would have fallen
+        Assert.Equal(White, b[2, 2].Style.Background);   // the untranslated element/shadow location is now empty
         Assert.Equal(White, b[5, 3].Style.Background);   // inside the translated element → occluded
     }
 
@@ -303,7 +305,7 @@ public class PushStackCoverageTests
         var b = DrawHarness.Render(10, 8, ctx =>
         {
             using (ctx.PushClip(element))   // the clip admits only the element's own footprint
-                ctx.DrawDropShadow(element, ShadowGeometry.Drop(radius: 1, offset: 1, strength: 0.5), Black);
+                ctx.DrawDropShadow(element, ShadowGeometry.Drop(radius: 1, strength: 0.5), Black);
         }, baseBackground: White);
 
         for (int r = 0; r < 8; r++)
@@ -530,21 +532,26 @@ public class PushStackCoverageTests
         // A Rect-max region (65535×65535) must cost O(visible): without the clamp this test iterates
         // ~4.3G cells per fill and effectively hangs; with it, the loop body runs ≤ scene-size times.
         var huge = new Rect(0, 0, ushort.MaxValue, ushort.MaxValue);
-        var b = DrawHarness.Render(8, 4, ctx =>
-        {
-            using (ctx.Push(clip: new Rect(1, 1, 3, 2), translateColumns: 1, translateRows: 1))
-            {
-                ctx.FillRectangle(huge, Red);
-                ctx.FillOpaque(new Rect(1, 0, ushort.MaxValue, ushort.MaxValue), Blue);
-            }
-        }, baseBackground: White);
 
-        Assert.Equal(Red, b[1, 1].Style.Background);     // FillRectangle painted the clip's top-left
-        Assert.Equal(Blue, b[2, 1].Style.Background);    // FillOpaque (local col ≥ 1 → scene col ≥ 2) over it
-        Assert.Equal(" ", b[2, 1].Grapheme);             // …as an occluding space cell
-        Assert.Equal(Blue, b[3, 2].Style.Background);    // the clip's bottom-right corner
-        Assert.Equal(White, b[4, 1].Style.Background);   // past the clip — untouched
-        Assert.Equal(White, b[0, 0].Style.Background);   // before the clip — untouched
+        var b = DrawHarness.Render(
+            8,
+            4,
+            ctx =>
+            {
+                using (ctx.Push(clip: new Rect(1, 1, 3, 2), translateColumns: 1, translateRows: 1))
+                {
+                    ctx.FillRectangle(huge, Red);
+                    ctx.FillOpaque(new Rect(1, 0, ushort.MaxValue, ushort.MaxValue), Blue);
+                }
+            },
+            baseBackground: White);
+
+        Assert.Equal(Red, b[1, 1].Style.Background);          // FillRectangle painted the clip's top-left
+        Assert.Equal(Blue, b[2, 1].Style.Background);         // FillOpaque (local col ≥ 1 → scene col ≥ 2) over it
+        Assert.Equal(DurableEmptyGrapheme, b[2, 1].Grapheme); // …as an occluding space cell
+        Assert.Equal(Blue, b[3, 2].Style.Background);         // the clip's bottom-right corner
+        Assert.Equal(White, b[4, 1].Style.Background);        // past the clip — untouched
+        Assert.Equal(White, b[0, 0].Style.Background);        // before the clip — untouched
     }
 
     // ---- test fakes -----------------------------------------------------------------------------

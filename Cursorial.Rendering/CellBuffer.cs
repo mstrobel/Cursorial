@@ -36,6 +36,31 @@ namespace Cursorial.Rendering;
 /// </remarks>
 public sealed class CellBuffer : ICellSurface
 {
+    /// <summary>
+    /// A grapheme that is durable whitespace, meaning it will not be overwritten by any other
+    /// whitespace grapheme when calling <see cref="Set(int, int, string?, in Style)"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// In <c>Cursorial.Drawing</c>, opaque rectangles are filled with this grapheme. This
+    /// prevents non-occluding lines and recangles from overwriting them.
+    /// </para>
+    /// <para>
+    /// As a practical
+    /// example of why this is useful, consider a horizontal line that paints across the same
+    /// row as a block of text. The line would not occlude the <em>visible</em> text, but it
+    /// <em>would</em> occlude any whitespace spans <em>within</em> the text. Painting an
+    /// occluding background behind the text, even with a transparent brush, protects the
+    /// text block's entire bounds from occlusion.
+    /// </para>
+    /// <para>
+    /// As a consequence, however, if the text block in the previous example happened to
+    /// inhabit a surface with less than full opacity, none of the content from underlying
+    /// surfaces could be visible through the blank spaces after composition.
+    /// </para>
+    /// </remarks>
+    public static readonly string DurableEmptyGrapheme = "\u00A0";
+
     private Cell[] _cells;
     private int _columns;
     private int _rows;
@@ -194,8 +219,10 @@ public sealed class CellBuffer : ICellSurface
         // stack is a no-op (the mode just returns source), but every other mode tints / darkens /
         // lightens based on the existing color at this position.
         var blended = BlendStyle(style, previous.Style);
-
-        if (string.IsNullOrWhiteSpace(grapheme) && !previous.Grapheme.IsWhiteSpace() && style.Background.IsOpaque is false)
+        
+        if (string.IsNullOrWhiteSpace(grapheme) &&
+            !(previous.Grapheme.IsWhiteSpace() && previous.Grapheme != DurableEmptyGrapheme) &&
+            style.Background.IsOpaque is false)
         {
             var foregroundUnderneath = Color.Composite(style.Background, previous.Style.Foreground, CurrentBlendingMode);
             grapheme = previous.Grapheme;
@@ -594,7 +621,7 @@ public sealed class CellBuffer : ICellSurface
                {
                    Foreground = Color.Composite(source.Foreground, backdrop.Background, mode),
                    Background = source.Background != Color.Default ? Color.Composite(source.Background, backdrop.Background, mode) : backdrop.Background,
-                   UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
+                   UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode)
                };
     }
 

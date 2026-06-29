@@ -6,7 +6,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
-using Cursorial.UI.Themes.Xaml;
+using Cursorial.UI.Themes.Default;
 using Cursorial.UI.Xaml;
 
 using Xunit;
@@ -15,7 +15,7 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
 /// WS-X5.4 — the theme-lowering dual-run drift gate (plan X174). Each <c>Themes/*.xaml</c> is build-LOWERED to a
-/// reflection-free <c>GeneratedXamlLoaders.Build…()</c> that <see cref="CursorialXamlTheme"/> calls at runtime,
+/// reflection-free <c>GeneratedXamlLoaders.Build…()</c> that <see cref="CursorialDefaultTheme"/> calls at runtime,
 /// with the <c>.xaml</c> retained embedded as the oracle. This loads each theme BOTH ways — the build-lowered
 /// builder AND the reflective <see cref="XamlLoader"/> over the embedded source — and asserts the two
 /// <see cref="ResourceDictionary"/> trees are structurally equivalent (same keys, value shapes, brush colors,
@@ -26,16 +26,16 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 public class XamlThemeLoweringTests
 {
     [Theory]
-    [InlineData("Controls", "Cursorial.UI.Themes.Xaml.Themes.Controls.xaml")]
-    [InlineData("Palette", "Cursorial.UI.Themes.Xaml.Themes.Palette.xaml")]
-    [InlineData("Styles", "Cursorial.UI.Themes.Xaml.Themes.Styles.xaml")]
+    [InlineData("Controls", "Cursorial.UI.Themes.Themes.Default.Controls.xaml")]
+    [InlineData("Palette", "Cursorial.UI.Themes.Themes.Default.Palette.xaml")]
+    [InlineData("Styles", "Cursorial.UI.Themes.Themes.Default.Styles.xaml")]
     public void LoweredBuilder_StructurallyMatches_ReflectiveLoad(string name, string resource)
     {
         var lowered = name switch
         {
-            "Controls" => CursorialXamlTheme.LoadControls(),
-            "Palette" => CursorialXamlTheme.LoadPalette(),
-            "Styles" => CursorialXamlTheme.LoadStyles(),
+            "Controls" => CursorialDefaultTheme.LoadControls(),
+            "Palette" => CursorialDefaultTheme.LoadPalette(),
+            "Styles" => CursorialDefaultTheme.LoadStyles(),
             _ => throw new ArgumentOutOfRangeException(nameof(name)),
         };
 
@@ -46,7 +46,7 @@ public class XamlThemeLoweringTests
 
     private static string ReadEmbed(string resource)
     {
-        var asm = typeof(CursorialXamlTheme).Assembly;
+        var asm = typeof(CursorialDefaultTheme).Assembly;
         using var stream = asm.GetManifestResourceStream(resource)
             ?? throw new InvalidOperationException(
                 $"Embedded '{resource}' not found. Available: {string.Join(", ", asm.GetManifestResourceNames())}");
@@ -70,19 +70,24 @@ public class XamlThemeLoweringTests
 
         // The theme-styles slot (Styles.xaml's <ResourceDictionary.Styles>), index-aligned (both build in doc order).
         Assert.Equal(expected.Styles?.Count ?? 0, actual.Styles?.Count ?? 0);
-        if (expected.Styles is { } es && actual.Styles is { } acs)
+
+        if (expected.Styles is {} es && actual.Styles is {} acs)
+        {
             for (int i = 0; i < es.Count; i++)
                 AssertStyleEquivalent(es[i], acs[i], $"{ctx}.Styles[{i}]");
+        }
 
         // Theme-variant sub-dictionaries (Palette.xaml's per-(base × tier) brush sets), keyed by variant.
         var ev2 = expected.ThemeDictionaries.ToDictionary(p => p.Key.ToString()!, p => p.Value);
         var av2 = actual.ThemeDictionaries.ToDictionary(p => p.Key.ToString()!, p => p.Value);
         Assert.Equal(ev2.Keys.OrderBy(s => s, StringComparer.Ordinal), av2.Keys.OrderBy(s => s, StringComparer.Ordinal));
+
         foreach (var (vk, sub) in ev2)
             AssertEquivalent(sub, av2[vk], $"{ctx}.ThemeDictionaries[{vk}]");
 
         // Merged dictionaries (none in the leaf theme files today, but recurse for completeness).
         Assert.Equal(expected.MergedDictionaries.Count, actual.MergedDictionaries.Count);
+
         for (int i = 0; i < expected.MergedDictionaries.Count; i++)
             AssertEquivalent(expected.MergedDictionaries[i], actual.MergedDictionaries[i], $"{ctx}.Merged[{i}]");
     }

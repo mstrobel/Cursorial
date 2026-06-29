@@ -31,7 +31,7 @@ public partial class Window : ContentControl
 
     /// <summary>The window's drop shadow (rendered at W5; default <see cref="WindowShadow.None"/>).</summary>
     public static readonly StyledProperty<WindowShadow> ShadowProperty =
-        UIProperty.Register<Window, WindowShadow>(nameof(Shadow));
+        UIProperty.Register<Window, WindowShadow>(nameof(Shadow), defaultValue: WindowShadow.Default);
 
     /// <summary>The window's screen-space left column (signed; <c>AffectsComposite</c> — moving a window is composite-only).</summary>
     public static readonly StyledProperty<int> LeftProperty =
@@ -105,6 +105,7 @@ public partial class Window : ContentControl
         // an app Window style/template overrides the chrome cleanly (design doc §8.3, punch 36).
         AffectsRender<Window>(TitleProperty);
         AffectsComposite<Window>(LeftProperty, TopProperty);
+        AddGlobalEffects(PropertyEffects.AffectsRender, ShadowProperty);
     }
 
     /// <summary>Creates a window.</summary>

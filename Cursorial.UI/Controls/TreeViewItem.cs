@@ -16,11 +16,13 @@ namespace Cursorial.UI.Controls;
 /// <c>HierarchicalDataTemplate</c> hierarchy is a v2 deferral.
 /// </summary>
 [TemplatePart(PartTwisty, typeof(TextBlock))]
+[TemplatePart(PartHeaderPresenter, typeof(ContentPresenter))]
 [TemplatePart(PartItemsHost, typeof(ItemsPresenter))]
 public class TreeViewItem : HeaderedItemsControl
 {
     private const string PartTwisty = "PART_Twisty";
     private const string PartItemsHost = "PART_ItemsHost";
+    private const string PartHeaderPresenter = "PART_HeaderPresenter";
 
     /// <summary>Whether this node's children are shown (<c>:expanded</c>; gates the <c>PART_ItemsHost</c> visibility + twisty).</summary>
     public static readonly StyledProperty<bool> IsExpandedProperty =
@@ -41,6 +43,7 @@ public class TreeViewItem : HeaderedItemsControl
     private bool _treeDriven; // guards the tree→node IsSelected write so it never echoes back into the tree
     private TextBlock? _twisty;
     private TreeView? _ownerTree; // captured at attach so a detached node can still reach its tree to clear selection
+    private ContentPresenter? _contentPresenter;
 
     static TreeViewItem()
     {
@@ -127,6 +130,7 @@ public class TreeViewItem : HeaderedItemsControl
     {
         base.OnApplyTemplate(); // sets ItemsHost (the PART_ItemsHost ItemsPresenter)
         _twisty = GetTemplatePart<TextBlock>(PartTwisty);
+        _contentPresenter = GetTemplatePart<ContentPresenter>(PartHeaderPresenter);
         UpdateExpansionVisuals();
     }
 
@@ -134,6 +138,7 @@ public class TreeViewItem : HeaderedItemsControl
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
         _twisty = null;
+        _contentPresenter = null;
         base.OnTemplateDetaching(old);
     }
 
@@ -141,11 +146,13 @@ public class TreeViewItem : HeaderedItemsControl
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
+
         if (e.Handled || e.Button != MouseButton.Left)
             return;
 
         // A press on the twisty toggles expansion only (the expander is not the row); any other press selects.
-        if (HasItems && IsWithin(e.OriginalSource, _twisty))
+        if (HasItems && (IsWithin(e.OriginalSource, _twisty) ||
+                         e.ClickCount % 2 == 0 && _contentPresenter is {} presenter && IsWithin(e.OriginalSource, presenter)))
         {
             SetValue(IsExpandedProperty, !IsExpanded);
         }
@@ -228,7 +235,7 @@ public class TreeViewItem : HeaderedItemsControl
 
     private static void OnIsSelectedChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is not TreeViewItem { _treeDriven: false } item || item.OwnerTree is not { } tree)
+        if (sender is not TreeViewItem { _treeDriven: false, OwnerTree: { } tree } item)
             return;
 
         if (newValue)
@@ -256,7 +263,7 @@ public class TreeViewItem : HeaderedItemsControl
     private void UpdateExpansionVisuals()
     {
         if (_twisty is not null)
-            _twisty.Text = HasItems ? (IsExpanded ? "▾" : "▸") : ""; // design-guide carets (U+25BE / U+25B8)
+            _twisty.Text = HasItems ? IsExpanded ? "▾" : "▸" : ""; // design-guide carets (U+25BE / U+25B8)
 
         if (ItemsHost is { } host)
             host.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;

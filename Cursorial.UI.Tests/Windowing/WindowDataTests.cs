@@ -1,3 +1,4 @@
+using Cursorial.Drawing;
 using Cursorial.Rendering;
 using Cursorial.UI;
 
@@ -17,15 +18,16 @@ public sealed class WindowDataTests
 
         var d = WindowShadow.Default;
         Assert.False(d.IsNone);
-        Assert.Equal(1, d.Geometry.Radius);
-        Assert.Equal(1, d.Geometry.OffsetColumn);
+        Assert.Equal(2, d.Geometry.Radius);
+        Assert.Equal(ShadowEdges.Bottom | ShadowEdges.Right, d.Geometry.Edges);
     }
 
-    [Fact] // GetMargins grows the cast (lower-right) edges by offset+radius, the opposite edges by 0
+    [Fact] // GetMargins grows a casting L/R edge by the full radius and a casting T/B edge by ~half (cell aspect)
     public void WindowShadow_GetMargins_GrowsCastEdges()
     {
-        var margins = WindowShadow.Default.GetMargins(); // Drop(radius:1, offset:1)
-        Assert.Equal(new Margins(left: 0, top: 0, right: 2, bottom: 2), margins);
+        // Default = Drop(radius: 5, edges: Bottom | Right) → rv = (5+1)/2 = 3.
+        var margins = WindowShadow.Default.GetMargins();
+        Assert.Equal(new Margins(left: 0, top: 0, right: 2, bottom: 1), margins);
     }
 
     [Fact] // WindowChrome.HitTestRole attached property round-trips (default None)

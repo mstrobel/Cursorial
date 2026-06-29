@@ -5,7 +5,7 @@ namespace Cursorial.UI.Input;
 /// composed text synthesized from an unhandled printable key-down, or a whole bracketed paste in
 /// one event (<see cref="FromPaste"/>). There is no separate paste event in the UI vocabulary.
 /// </summary>
-public sealed class TextInputEventArgs : RoutedEventArgs
+public sealed class TextInputEventArgs : InputEventArgs
 {
     private ReadOnlyMemory<char> _text;
     private bool _fromPaste;

@@ -13,6 +13,7 @@ namespace Cursorial.UI;
 /// <c>UIProperty.RegisterAttached&lt;TOwner, …&gt;</c> takes the owner as a generic type argument, which a
 /// static class cannot be. All members are static; it is never instantiated.
 /// </remarks>
+// ReSharper disable once ConvertToStaticClass - Static classes cannot be used as generic type arguments.
 public sealed class WindowChrome
 {
     private WindowChrome() { }

@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Data;
@@ -20,30 +19,30 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private protected readonly AnchoredBinding _binding;
     private protected readonly UIObject _target;
     private protected readonly UIProperty _targetProperty;
-    private protected UIElement? _anchorElement;          // mutable: a non-UIElement target re-anchors on its owner element late (BD13)
+    private protected UIElement? _anchorElement; // mutable: a non-UIElement target re-anchors on its owner element late (BD13)
     private protected readonly ValueFrame? _hostFrame;
     private protected readonly Action<object?>? _watchCallback;
     private protected readonly BindingMode _effectiveMode;
     private protected readonly UpdateSourceTrigger _trigger;
-    private protected readonly BindingPriority _installPriority;  // LocalValue, or Template in a template scope (§20/PD24)
+    private protected readonly BindingPriority _installPriority; // LocalValue, or Template in a template scope (§20/PD24)
 
     private protected AnchorKind _anchorKind;
-    private protected object? _root;                       // the resolved source root object
-    private protected BindingEntryBase? _entry;            // null for watch-only / OneWayToSource-passive / DirectProperty
-    private IDisposable? _targetObserverToken;             // the write-back target observer / OWS anchor write retarget
-    private IDisposable? _anchorObserverToken;             // the DataContext observer (default-source rebind)
+    private protected object? _root;            // the resolved source root object
+    private protected BindingEntryBase? _entry; // null for watch-only / OneWayToSource-passive / DirectProperty
+    private IDisposable? _targetObserverToken;  // the write-back target observer / OWS anchor write retarget
+    private IDisposable? _anchorObserverToken;  // the DataContext observer (default-source rebind)
     private Action<UIElement>? _editCommitHandler;
-    private bool _sourceDirty;                             // a pending LostFocus/Explicit write
+    private bool _sourceDirty; // a pending LostFocus/Explicit write
     private protected bool _isPushingToTarget;
     private protected bool _isWritingToSource;
     private bool _lostFocusSubscribed;
     private bool _editCommitSubscribed;
-    private bool _inheritanceParentSubscribed;             // a non-UIElement target's late-anchor watch (BD13)
+    private bool _inheritanceParentSubscribed; // a non-UIElement target's late-anchor watch (BD13)
     private protected bool _watchModeDegraded;
     private protected object? _lastPushedValue = NoPushSentinel;
     private protected object? _lastProducedValue;
     private protected BindingFailureKind _lastFailure;
-    private int _dirtyBitmask;                             // cross-thread coalescing (Interlocked.Or)
+    private int _dirtyBitmask; // cross-thread coalescing (Interlocked.Or)
     private bool _drainQueued;
     private bool _readOnlyLeafWarned;
     private protected bool _sourceDirtyDuringWrite;
@@ -59,9 +58,11 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         _hostFrame = context.HostFrame;
         _watchCallback = context.WatchCallback;
         _installPriority = context.InstallPriority; // §20/PD24: captured at install (used when the entry materializes)
+
         _trigger = binding.UpdateSourceTrigger == UpdateSourceTrigger.Default
-            ? UpdateSourceTrigger.PropertyChanged
-            : binding.UpdateSourceTrigger;
+                       ? UpdateSourceTrigger.PropertyChanged
+                       : binding.UpdateSourceTrigger;
+
         _effectiveMode = ResolveEffectiveMode(binding, _targetProperty, context.IsWatchOnly);
     }
 
@@ -74,12 +75,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     public override BindingMode EffectiveMode => _watchModeDegraded ? BindingMode.OneWay : _effectiveMode;
 
     internal override BindingLane Lane => _watchCallback is not null
-        ? BindingLane.WatchOnly
-        : _targetProperty.IsDirect
-            ? BindingLane.DirectProperty
-            : _hostFrame is not null
-                ? BindingLane.FrameHosted
-                : BindingLane.LocalValue;
+                                              ? BindingLane.WatchOnly
+                                              : _targetProperty.IsDirect
+                                                  ? BindingLane.DirectProperty
+                                                  : _hostFrame is not null
+                                                      ? BindingLane.FrameHosted
+                                                      : BindingLane.LocalValue;
 
     public object? CurrentValue => LastProducedForDiagnostics;
 
@@ -133,8 +134,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         _anchorKind = DetermineAnchorKind();
         BindingRegistry.GetOrCreate(_target).Register(this);
+
         BindingLeakTracker.Track(this, _target, _binding is Binding b ? b.Path : DescribePath(),
-            BindingRegistry.DescribeTarget(_target, _targetProperty));
+                                 BindingRegistry.DescribeTarget(_target, _targetProperty));
 
         // A non-UIElement target (an InputBinding/KeyBinding whose Command="{Binding}") has no DataContext
         // of its own; it anchors on the nearest UIElement up its inheritance chain — the owner element set
@@ -156,8 +158,11 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private UIElement? NearestInheritanceElement()
     {
         for (var node = _target.GetInheritanceParent(); node is not null; node = node.GetInheritanceParent())
+        {
             if (node is UIElement element)
                 return element;
+        }
+
         return null;
     }
 
@@ -170,6 +175,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return;
 
         var resolved = NearestInheritanceElement();
+
         if (ReferenceEquals(resolved, _anchorElement))
             return;
 
@@ -186,8 +192,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (watchOnly)
             return BindingMode.OneWay;
+
         if (binding.Mode != BindingMode.Default)
             return binding.Mode;
+
         var effects = property.IsDirect ? PropertyEffects.None : property.GetEffects(_target.GetType());
         return (effects & PropertyEffects.BindsTwoWayByDefault) != 0 ? BindingMode.TwoWay : BindingMode.OneWay;
     }
@@ -196,16 +204,18 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (_binding.Source is not null)
             return AnchorKind.Source;
+
         if (_binding.ElementName is not null)
             return AnchorKind.ElementName;
-        if (_binding.RelativeSource is { } rs)
+
+        if (_binding.RelativeSource is {} rs)
         {
             return rs.Mode switch
-            {
-                RelativeSourceMode.Self => AnchorKind.Self,
-                RelativeSourceMode.TemplatedParent => AnchorKind.TemplatedParent,
-                _ => AnchorKind.FindAncestor
-            };
+                   {
+                       RelativeSourceMode.Self            => AnchorKind.Self,
+                       RelativeSourceMode.TemplatedParent => AnchorKind.TemplatedParent,
+                       _                                  => AnchorKind.FindAncestor
+                   };
         }
 
         // Default source. The DataContext-as-target special case anchors on the LOGICAL PARENT's
@@ -223,15 +233,19 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             case AnchorKind.DataContext when _anchorElement is not null:
                 _anchorObserverToken = _anchorElement.AddObserver(
                     DataContextSupport.DataContextProperty, new AnchorObserver(this));
+
                 break;
+
             case AnchorKind.ParentDataContext:
                 // Re-anchored on attach/detach; the observer is (re)installed in ResolveRootAndWire.
                 SubscribeTreeEvents();
                 break;
+
             case AnchorKind.ElementName:
             case AnchorKind.FindAncestor:
                 SubscribeTreeEvents();
                 break;
+
             case AnchorKind.TemplatedParent:
                 // A TemplateBinding / RelativeSource.TemplatedParent binding installed BEFORE the part
                 // is stamped (the build delegate runs before StampTemplatedParent) parks SourceMissing;
@@ -239,6 +253,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 // so AttachedToLogicalTree never fires for them).
                 if (_anchorElement is not null)
                     _anchorElement.TemplatedParentChanged += OnAnchorTemplatedParentChanged;
+
                 break;
         }
     }
@@ -247,6 +262,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (_anchorElement is null)
             return;
+
         _anchorElement.AttachedToLogicalTree += OnAnchorTreeChanged;
         _anchorElement.DetachedFromLogicalTree += OnAnchorTreeChanged;
     }
@@ -255,6 +271,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (_anchorElement is null)
             return;
+
         _anchorElement.AttachedToLogicalTree -= OnAnchorTreeChanged;
         _anchorElement.DetachedFromLogicalTree -= OnAnchorTreeChanged;
         _anchorElement.TemplatedParentChanged -= OnAnchorTemplatedParentChanged;
@@ -270,6 +287,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (IsDisposed)
             return;
+
         ResolveRootAndWire();
     }
 
@@ -286,6 +304,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         }
 
         var resolved = ResolveRoot(out var newRoot, out var failure);
+
         if (!resolved)
         {
             DisposeLaneSpecific();
@@ -297,12 +316,13 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             // failures, and any unresolved watch-only binding, trace a warning.
             if (failure != BindingFailureKind.SourceMissing || _watchCallback is not null)
                 MaybeTrace(failure, BindingTraceLevel.Warning, FailureMessage(failure));
+
             ProduceUnsetOrFallback();
             return;
         }
 
         // Re-install the parent-DataContext observer on the (possibly new) logical parent.
-        if (_anchorKind == AnchorKind.ParentDataContext && _anchorElement?.LogicalParent is { } parent)
+        if (_anchorKind == AnchorKind.ParentDataContext && _anchorElement?.LogicalParent is {} parent)
         {
             _anchorObserverToken = parent.AddObserver(
                 DataContextSupport.DataContextProperty, new AnchorObserver(this));
@@ -324,6 +344,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private bool ResolveRoot(out object? root, out BindingFailureKind failure)
     {
         failure = BindingFailureKind.None;
+
         switch (_anchorKind)
         {
             case AnchorKind.Source:
@@ -342,8 +363,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 return root is not null;
 
             case AnchorKind.ParentDataContext:
-                var logicalParent = _anchorElement?.LogicalParent;
-                if (logicalParent is null)
+                if (_anchorElement?.LogicalParent is not {} logicalParent)
                 {
                     root = null;
                     failure = BindingFailureKind.SourceMissing;
@@ -359,8 +379,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
             case AnchorKind.TemplatedParent:
                 root = _anchorElement?.TemplatedParent;
-                if (root is null)
-                    failure = BindingFailureKind.SourceMissing;
+                if (root is null) failure = BindingFailureKind.SourceMissing;
                 return root is not null;
 
             case AnchorKind.ElementName:
@@ -369,7 +388,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 // step later (AdoptChild raises AttachedToLogicalTree before AddVisualChild sets the
                 // visual root). A forward reference during build (no logical parent yet) parks
                 // SourceMissing without a trace; a name unresolved after attach traces NameNotFound (B123).
-                if (_anchorElement is null || _anchorElement.LogicalParent is null)
+                if (_anchorElement?.LogicalParent is null)
                 {
                     root = null;
                     failure = BindingFailureKind.SourceMissing;
@@ -377,8 +396,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 }
 
                 root = NameScope.FindEnclosing(_anchorElement)?.Find(_binding.ElementName!);
+
                 if (root is null)
                     failure = BindingFailureKind.NameNotFound;
+
                 return root is not null;
 
             case AnchorKind.FindAncestor:
@@ -396,6 +417,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         failure = BindingFailureKind.None;
         var rs = _binding.RelativeSource!;
+
         if (_anchorElement is null)
         {
             failure = BindingFailureKind.SourceMissing;
@@ -410,6 +432,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         }
 
         var matches = 0;
+
         for (var node = _anchorElement.LogicalParent; node is not null; node = node.LogicalParent)
         {
             if (rs.AncestorType!.IsInstanceOfType(node) && ++matches == rs.AncestorLevel)
@@ -432,7 +455,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (IsDisposed)
             return;
 
-        if (BindingDispatcher.Current is { } dispatcher && !dispatcher.CheckAccess())
+        if (BindingDispatcher.Current is {} dispatcher && !dispatcher.CheckAccess())
         {
             QueueCrossThread(index);
             return;
@@ -451,7 +474,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private void QueueCrossThread(int index)
     {
         Interlocked.Or(ref _dirtyBitmask, 1 << Math.Min(index, 30));
-        if (BindingDispatcher.Current is not { } dispatcher)
+
+        if (BindingDispatcher.Current is not {} dispatcher)
             return;
 
         // Post one coalesced drain; the bitmask OR collapses N changes (BD20).
@@ -459,6 +483,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         {
             if (_drainQueued)
                 return;
+
             _drainQueued = true;
         }
 
@@ -474,6 +499,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return;
 
         var mask = Interlocked.Exchange(ref _dirtyBitmask, 0);
+
         if (mask == 0)
             return;
 
@@ -507,10 +533,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         }
 
         EnsureEntry();
+
         if (_entry is null)
             return;
 
         _isPushingToTarget = true;
+
         try
         {
             if (isUnset)
@@ -541,7 +569,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         var culture = _binding.EffectiveCulture;
         var targetType = _targetProperty.PropertyType;
 
-        if (Converter is { } converter)
+        if (Converter is {} converter)
         {
             try
             {
@@ -550,7 +578,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             {
                 MaybeTrace(BindingFailureKind.ConversionFailed, BindingTraceLevel.Warning,
-                    $"converter '{converter.GetType().Name}' threw: {ex.Message}.");
+                           $"converter '{converter.GetType().Name}' threw: {ex.Message}.");
+
                 return FallbackOrUnset(out isUnset);
             }
 
@@ -561,7 +590,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (value is null && _binding.HasTargetNullValue)
             value = _binding.TargetNullValue;
 
-        if (_binding.StringFormat is { } format)
+        if (_binding.StringFormat is {} format)
         {
             if (targetType == typeof(string) || targetType == typeof(object))
             {
@@ -570,7 +599,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             else
             {
                 MaybeTrace(BindingFailureKind.None, BindingTraceLevel.Warning,
-                    $"StringFormat '{format}' ignored: target type '{targetType.Name}' is not string or object.");
+                           $"StringFormat '{format}' ignored: target type '{targetType.Name}' is not string or object.");
             }
         }
 
@@ -582,10 +611,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         isUnset = false;
         var targetType = _targetProperty.PropertyType;
         var converted = ValueConversion.Convert(value, targetType, _binding.EffectiveCulture);
+
         if (ReferenceEquals(converted, ValueConversion.Failed))
         {
             MaybeTrace(BindingFailureKind.TypeMismatch, BindingTraceLevel.Warning,
-                $"value '{value}' could not be converted to target type '{targetType.Name}'.");
+                       $"value '{value}' could not be converted to target type '{targetType.Name}'.");
+
             return FallbackOrUnset(out isUnset);
         }
 
@@ -597,6 +628,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (_binding.HasFallbackValue)
         {
             var converted = ValueConversion.Convert(_binding.FallbackValue, _targetProperty.PropertyType, _binding.EffectiveCulture);
+
             if (!ReferenceEquals(converted, ValueConversion.Failed))
             {
                 isUnset = false;
@@ -604,7 +636,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             }
 
             MaybeTrace(BindingFailureKind.TypeMismatch, BindingTraceLevel.Warning,
-                $"the fallback value '{_binding.FallbackValue}' could not be converted to target type '{_targetProperty.PropertyType.Name}'.");
+                       $"the fallback value '{_binding.FallbackValue}' could not be converted to target type '{_targetProperty.PropertyType.Name}'.");
         }
 
         isUnset = true;
@@ -617,8 +649,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return;
 
         _entry = _hostFrame is null
-            ? _target.BindUntyped(_targetProperty, _installPriority, this) // LocalValue, or Template in a template scope (§20)
-            : _target.BindInFrameUntyped(_targetProperty, _hostFrame, this);
+                     ? _target.BindUntyped(_targetProperty, _installPriority, this) // LocalValue, or Template in a template scope (§20)
+                     : _target.BindInFrameUntyped(_targetProperty, _hostFrame, this);
 
         WireTargetObserver();
     }
@@ -626,6 +658,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private void PushToDirectProperty(object? result, bool isUnset)
     {
         WireTargetObserver();
+
         if (isUnset)
         {
             _target.SetValue(_targetProperty, UIProperty.UnsetValue);
@@ -634,6 +667,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         else
         {
             _isPushingToTarget = true;
+
             try
             {
                 _target.SetValue(_targetProperty, result);
@@ -652,6 +686,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (_targetObserverToken is not null)
             return;
+
         if (_effectiveMode is not (BindingMode.TwoWay or BindingMode.OneWayToSource))
             return;
 
@@ -670,7 +705,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         _lostFocusSubscribed = true;
 
         // The terminal-focus-out edit-commit pulse is a second, distinct flush source (B133).
-        if (!_editCommitSubscribed && UIApplication.Current?.InputDispatcher is { } dispatcher)
+        if (!_editCommitSubscribed && UIApplication.Current?.InputDispatcher is {} dispatcher)
         {
             _editCommitHandler = OnEditCommitRequested;
             dispatcher.EditCommitRequested += _editCommitHandler;
@@ -682,6 +717,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (IsDisposed || !_sourceDirty)
             return;
+
         FlushSource();
     }
 
@@ -689,8 +725,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (IsDisposed || !_sourceDirty)
             return;
+
         if (!ReferenceEquals(focused, _anchorElement))
             return;
+
         FlushSource();
     }
 
@@ -710,6 +748,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (_effectiveMode != BindingMode.OneWayToSource)
         {
             var current = _target.GetValue(_targetProperty);
+
             if (HasPushedValue && _targetProperty.AreValuesEqualUntyped(_target.GetType(), current, LastPushedForEcho))
                 return;
         }
@@ -719,6 +758,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             case UpdateSourceTrigger.PropertyChanged:
                 WriteToSource(force: false);
                 break;
+
             case UpdateSourceTrigger.LostFocus:
             case UpdateSourceTrigger.Explicit:
                 _sourceDirty = true;
@@ -730,8 +770,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (ReferenceEquals(a, b))
             return true;
+
         if (a is null || b is null)
             return false;
+
         return a.Equals(b);
     }
 
@@ -744,8 +786,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     public override void UpdateSource()
     {
         _target.VerifyAccess();
+
         if (IsDisposed)
             return;
+
         _sourceDirty = false;
         WriteToSource(force: true);
     }
@@ -753,15 +797,19 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     public override void UpdateTarget()
     {
         _target.VerifyAccess();
+
         if (IsDisposed)
             return;
+
         WireValueGraph(0);
     }
 
+    // ReSharper disable once UnusedParameter.Local
     private void WriteToSource(bool force)
     {
         if (IsDisposed)
             return;
+
         if (_effectiveMode is not (BindingMode.TwoWay or BindingMode.OneWayToSource))
             return;
 
@@ -782,11 +830,13 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         }
 
         var targetValue = _target.GetValue(_targetProperty);
+
         if (!TryConvertBack(targetValue, leafType, out var sourceValue))
             return;
 
         _isWritingToSource = true;
         _sourceDirtyDuringWrite = false;
+
         try
         {
             applySet(sourceValue);
@@ -794,7 +844,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             MaybeTrace(BindingFailureKind.SourceUpdateFailed, BindingTraceLevel.Warning,
-                $"the source write failed: {ex.Message}.");
+                       $"the source write failed: {ex.Message}.");
+
             return;
         }
         finally
@@ -816,9 +867,10 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         var culture = _binding.EffectiveCulture;
 
         // Converter present.
-        if (Converter is { } converter)
+        if (Converter is {} converter)
         {
             object? result;
+
             try
             {
                 result = converter.ConvertBack(targetValue, leafType, ConverterParameter, culture);
@@ -826,14 +878,16 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             {
                 MaybeTrace(BindingFailureKind.ConvertBackFailed, BindingTraceLevel.Warning,
-                    $"converter '{converter.GetType().Name}'.ConvertBack threw: {ex.Message}.");
+                           $"converter '{converter.GetType().Name}'.ConvertBack threw: {ex.Message}.");
+
                 return false;
             }
 
             if (ReferenceEquals(result, UIProperty.UnsetValue))
             {
                 MaybeTrace(BindingFailureKind.ConvertBackFailed, BindingTraceLevel.Warning,
-                    "ConvertBack returned UnsetValue; no write.");
+                           "ConvertBack returned UnsetValue; no write.");
+
                 return false;
             }
 
@@ -849,12 +903,13 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         }
 
         // StringFormat reverse parse: only when exactly "{0}".
-        if (_binding.StringFormat is { } format)
+        if (_binding.StringFormat is {} format)
         {
             if (format != "{0}")
             {
                 MaybeTrace(BindingFailureKind.ConvertBackFailed, BindingTraceLevel.Warning,
-                    $"the composite StringFormat '{format}' cannot be reverse-parsed; no write.");
+                           $"the composite StringFormat '{format}' cannot be reverse-parsed; no write.");
+
                 return false;
             }
             // exactly "{0}" → fall through to the type-conversion ladder.
@@ -862,10 +917,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
         // No converter, type gap → the conversion ladder.
         var converted = ValueConversion.Convert(targetValue, leafType, culture);
+
         if (ReferenceEquals(converted, ValueConversion.Failed))
         {
             MaybeTrace(BindingFailureKind.SourceUpdateFailed, BindingTraceLevel.Warning,
-                $"the target value '{targetValue}' could not be converted to source type '{leafType.Name}'; no write.");
+                       $"the target value '{targetValue}' could not be converted to source type '{leafType.Name}'; no write.");
+
             return false;
         }
 
@@ -877,10 +934,12 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (_readOnlyLeafWarned)
             return;
+
         _readOnlyLeafWarned = true;
         _watchModeDegraded = true; // EffectiveMode reports OneWay; re-evaluated per rewire.
+
         MaybeTrace(BindingFailureKind.None, BindingTraceLevel.Warning,
-            "the source leaf is read-only; the binding degraded to OneWay (BD10).");
+                   "the source leaf is read-only; the binding degraded to OneWay (BD10).");
     }
 
     // ───────────────────────────── eviction & disposal ─────────────────────────────
@@ -906,7 +965,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             _lostFocusSubscribed = false;
         }
 
-        if (_editCommitSubscribed && _editCommitHandler is not null && UIApplication.Current?.InputDispatcher is { } dispatcher)
+        if (_editCommitSubscribed && _editCommitHandler is not null && UIApplication.Current?.InputDispatcher is {} dispatcher)
         {
             dispatcher.EditCommitRequested -= _editCommitHandler;
             _editCommitSubscribed = false;
@@ -921,6 +980,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
         if (_entry is not null && !fromEviction)
             _entry.Dispose();
+
         _entry = null;
 
         BindingRegistry.Get(_target)?.Unregister(this);
@@ -932,28 +992,35 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private protected void MaybeTrace(BindingFailureKind kind, BindingTraceLevel level, string message)
     {
         _lastFailure = kind != BindingFailureKind.None ? kind : _lastFailure;
+
         if (!BindingDiagnostics.ShouldConstruct(level, _binding.Trace))
             return;
 
         var description = BindingRegistry.DescribeTarget(_target, _targetProperty);
+
         BindingDiagnostics.Record(new BindingTraceEvent(
-            level, kind, DescribePath(), description, message, Environment.TickCount64));
+                                      level, kind, DescribePath(), description, message, Environment.TickCount64));
     }
 
     private string FailureMessage(BindingFailureKind kind) => kind switch
-    {
-        BindingFailureKind.SourceMissing => "the binding source (anchor) is unresolved; parked until attach.",
-        BindingFailureKind.NameNotFound => $"the element name '{_binding.ElementName}' was not found in scope.",
-        BindingFailureKind.AncestorNotFound => $"no ancestor of type '{_binding.RelativeSource?.AncestorType?.Name}' was found.",
-        _ => "the binding source could not be resolved."
-    };
+                                                              {
+                                                                  BindingFailureKind.SourceMissing =>
+                                                                      "the binding source (anchor) is unresolved; parked until attach.",
+                                                                  BindingFailureKind.NameNotFound =>
+                                                                      $"the element name '{_binding.ElementName}' was not found in scope.",
+                                                                  BindingFailureKind.AncestorNotFound =>
+                                                                      $"no ancestor of type '{_binding.RelativeSource?.AncestorType?.Name}' was found.",
+                                                                  _ => "the binding source could not be resolved."
+                                                              };
 
     internal override BindingExpressionExplanation Explain()
     {
         var chain = _anchorKind == AnchorKind.Source
-            ? $"Source({_binding.Source?.GetType().Name})"
-            : _anchorKind.ToString();
+                        ? $"Source({_binding.Source?.GetType().Name})"
+                        : _anchorKind.ToString();
+
         var path = DescribePath();
+
         if (!string.IsNullOrEmpty(path))
             chain = $"{chain} → {path}";
 

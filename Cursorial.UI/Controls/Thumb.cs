@@ -3,6 +3,8 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Input;
 
+using CellStyle = Cursorial.Output.Style;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -55,7 +57,15 @@ public class Thumb : Control
     protected override void Render(RenderContext context)
     {
         if (Background is { Opacity: > 0 } background && !context.Bounds.IsEmpty)
-            context.FillRectangle(new Rect(0, 0, context.Size.Columns, context.Size.Rows), background);
+        {
+            var bounds = context.Bounds;
+
+            for (int c = 0, columns = context.Size.Columns; c < columns; c++)
+            {
+                for (int r = 0, rows = context.Size.Rows; r < rows; r++)
+                    context.Set(c, r, "█", CellStyle.Transparent.WithForeground(background.ColorAt(c, r, bounds)));
+            }
+        }
     }
 
     /// <inheritdoc/>

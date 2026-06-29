@@ -146,6 +146,7 @@ public abstract partial class UIElement : UIObject
             children.Insert(index, child);
 
         InvalidateZOrder();
+
         child._visualParent = this;
         child.SetInheritanceParent(child.UIParent ?? this); // UIParent ?? VisualParent — matches StylingParent + bridges popups
         child.OnVisualParentChanged(null, this);

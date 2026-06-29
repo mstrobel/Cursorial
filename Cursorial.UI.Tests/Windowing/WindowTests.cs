@@ -31,16 +31,15 @@ public sealed class WindowTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var window = new Window
-        {
-            Title = "Hi",
-            Content = "Body",
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Width = 20,
-            Height = 8,
-            Left = 3,
-            Top = 2
-        };
+        var window = host.NewWindow(
+            title: "Hi",
+            content: "Body",
+            windowStartupLocation: WindowStartupLocation.Manual,
+            width: 20,
+            height: 8,
+            left: 3,
+            top: 2
+        );
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -63,15 +62,14 @@ public sealed class WindowTests
         using var _ = host;
 
         var box = new UIControls.TextBox { Text = "hi", Width = 14 };
-        var window = new Window
-        {
-            Content = box,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Width = 24,
-            Height = 6,
-            Left = 12,
-            Top = 5,
-        };
+        var window = host.NewWindow(
+            content: box,
+            windowStartupLocation: WindowStartupLocation.Manual,
+            width: 24,
+            height: 6,
+            left: 12,
+            top: 5
+        );
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -95,13 +93,12 @@ public sealed class WindowTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var a = new Window
-        {
-            Title = "A",
-            Content = "body",
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 5, Top = 3, Width = 20, Height = 8,
-        };
+        var a = host.NewWindow(
+            title: "A",
+            content: "body",
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 5, top: 3, width: 20, height: 8
+        );
         a.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(a.IsActive);
@@ -113,12 +110,11 @@ public sealed class WindowTests
         Assert.NotEqual(activeTitleBg, bodyBg);
 
         // A second window steals activation → A's band re-colours (accent → the recessed inactive surface).
-        var b = new Window
-        {
-            Title = "B",
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 30, Top = 3, Width = 20, Height = 8,
-        };
+        var b = host.NewWindow(
+            title: "B",
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 30, top: 3, width: 20, height: 8
+        );
         b.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.False(a.IsActive);
@@ -134,7 +130,7 @@ public sealed class WindowTests
         using var _ = host;
 
         var closed = 0;
-        var window = new Window { Width = 10, Height = 4 };
+        var window = host.NewWindow(width: 10, height: 4);
         window.Closed += (_, _) => closed++;
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
@@ -155,7 +151,7 @@ public sealed class WindowTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var window = new Window { Width = 10, Height = 4 };
+        var window = host.NewWindow(width: 10, height: 4);
         window.Closing += (_, e) => e.Cancel = true; // veto the cancelable Programmatic close
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
@@ -173,10 +169,10 @@ public sealed class WindowTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var window = new Window { Width = 10, Height = 4 };
+        var window = host.NewWindow(width: 10, height: 4);
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        Assert.Throws<InvalidOperationException>(() => window.Owner = new Window());
+        Assert.Throws<InvalidOperationException>(() => window.Owner = host.NewWindow());
     }
 }

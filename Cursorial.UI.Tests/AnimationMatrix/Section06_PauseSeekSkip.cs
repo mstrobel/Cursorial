@@ -80,7 +80,7 @@ public sealed class Section06_PauseSeekSkip
 
         handle.Resume();
         Assert.Equal(AnimationState.Delayed, handle.State); // restored to Delayed (not Running, not jumped past BeginTime)
-        Assert.Equal(0.0, a.V);                             // still untouched within the shifted delay window
+        Assert.Equal(2.0, a.V);                             // holds the start value (From) within the shifted delay window
 
         host.AdvanceTime(Ms(99)); // cross the shifted BeginTime
         Assert.Equal(AnimationState.Running, handle.State);
@@ -277,8 +277,9 @@ public sealed class Section06_PauseSeekSkip
         var (host, _, a) = Shown();
         using var _ = host;
 
-        // W's From (70) differs from its base default (0) so the final rewind discriminates rewind-to-Delayed
-        // (handle disposed ⇒ base 0 resurfaces) from a mere clamp-to-From (which would leave 70).
+        // W's From (70) differs from its base default (0) so the final rewind shows that a track rewound to
+        // Delayed HOLDS its start value (From 70) — scrubbing across the BeginTime edge is continuous (AD16),
+        // not a discontinuity that drops to base 0 just before the stagger and jumps to 70 at it.
         var sb = new Storyboard();
         sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.VProperty, From = 0.0, To = 100.0, Duration = Ms(100) });                        // BeginTime 0
         sb.Children.Add(new DoubleTrack { TargetProperty = Animatable.WProperty, From = 70.0, To = 100.0, Duration = Ms(100), BeginTime = Ms(50) });   // staggered
@@ -294,7 +295,7 @@ public sealed class Section06_PauseSeekSkip
 
         handle.Seek(Ms(25));
         Assert.Equal(25.0, a.V);
-        Assert.Equal(0.0, a.W);  // 25 < W's BeginTime ⇒ W rewinds to Delayed, base 0 resurfaces (NOT clamped to From 70)
+        Assert.Equal(70.0, a.W); // 25 < W's BeginTime ⇒ W rewinds to Delayed and holds its From (70), not the base 0
     }
 
     [Fact] // Regression: a backward Seek of a staggered track on a PAUSED storyboard keeps the track paused (not active)

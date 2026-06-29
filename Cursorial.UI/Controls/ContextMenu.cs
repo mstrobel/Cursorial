@@ -68,7 +68,7 @@ public sealed class ContextMenu : ItemsControl
 
         _popup.PlacementTarget = target;
 
-        if (position is { } p)
+        if (position is {} p)
         {
             _popup.Placement = PlacementMode.Bottom; // keyboard / explicit: drop below the element
             _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, p.Column);
@@ -83,8 +83,8 @@ public sealed class ContextMenu : ItemsControl
 
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
         SetValue(IsOpenPropertyKey, true);
-        WatchTarget(target);            // close the menu if its owner leaves the tree (no stranded popup surface)
-        FocusFirstItem();               // keyboard nav can begin immediately on the realized items
+        WatchTarget(target); // close the menu if its owner leaves the tree (no stranded popup surface)
+        FocusFirstItem();    // keyboard nav can begin immediately on the realized items
     }
 
     /// <summary>Closes the menu (a no-op when already closed).</summary>
@@ -115,8 +115,9 @@ public sealed class ContextMenu : ItemsControl
 
     private void UnwatchTarget()
     {
-        if (_watchedTarget is { } target)
+        if (_watchedTarget is {} target)
             target.DetachedFromLogicalTree -= OnTargetDetached;
+
         _watchedTarget = null;
     }
 
@@ -141,10 +142,12 @@ public sealed class ContextMenu : ItemsControl
     private void FocusFirstItem()
     {
         for (var i = 0; i < ItemContainerGenerator.ContainerCount; i++)
+        {
             if (ItemContainerGenerator.ContainerFromIndex(i) is { Focusable: true } first)
             {
                 first.Focus(FocusNavigationMethod.Directional);
                 return;
             }
+        }
     }
 }

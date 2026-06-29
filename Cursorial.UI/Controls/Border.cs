@@ -38,9 +38,9 @@ public class Border : Decorator
     public static readonly StyledProperty<TitlePosition> TitlePositionProperty =
         UIProperty.Register<Border, TitlePosition>(nameof(TitlePosition));
 
-    /// <summary>Whether the background occludes (floating surface) rather than tints (<c>AffectsRender</c>).</summary>
+    /// <inheritdoc cref="Panel.OccludesProperty"/>
     public static readonly StyledProperty<bool> OccludesProperty =
-        UIProperty.Register<Border, bool>(nameof(Occludes));
+        Panel.OccludesProperty.AddOwner<Border>();
 
     /// <summary>Whether a visible border is present.</summary>
     public static readonly DirectProperty<Border, bool> HasBorderProperty =
@@ -48,7 +48,7 @@ public class Border : Decorator
 
     static Border()
     {
-        AffectsRender<Border>(TitleForegroundProperty, BorderPenProperty, TitleProperty, TitlePositionProperty, OccludesProperty);
+        AffectsRender<Border>(TitleForegroundProperty, BorderPenProperty, TitleProperty, TitlePositionProperty);
         AffectsMeasure<Border>(PaddingProperty, BorderPenProperty);
     }
 
@@ -106,7 +106,8 @@ public class Border : Decorator
         var inner = LayoutMath.Sub(availableSize, inset);
 
         var content = Size.Empty;
-        if (Child is { } child)
+
+        if (Child is {} child)
         {
             child.Measure(inner);
             content = child.DesiredSize;
@@ -119,7 +120,8 @@ public class Border : Decorator
     protected override Size ArrangeOverride(Size finalSize)
     {
         var inset = Inset;
-        if (Child is { } child)
+
+        if (Child is {} child)
         {
             var x = inset.Left;
             var y = inset.Top;
@@ -148,19 +150,17 @@ public class Border : Decorator
         // would drop it — so an attribute-bearing (or occluding) face uses FillOpaque; otherwise the
         // default transparent tint (None ⇒ the ordinary fill path, unchanged).
         var inverse = attrs.HasFlag(TextAttributes.Inverse);
+        var background = Background;
+
+        if (forceOpaque) background ??= Brushes.Default;
 
         // The surface: FillOpaque for a floating surface, the glyph-transparent FillRectangle tint otherwise.
-        if (Background is { Opacity: > 0 } background)
+        if (background is not null)
         {
-
-            if (occludes || inverse || forceOpaque)
-                context.FillOpaque(bounds, background, inverse ? TextAttributes.Inverse : TextAttributes.None);
-            else if (background is { Opacity: > 0 })
-                context.FillRectangle(bounds, background);
-        }
-        else if (forceOpaque)
-        {
-            context.FillOpaque(bounds, Background ?? Brushes.Default, inverse ? TextAttributes.Inverse : TextAttributes.None);
+            if (occludes || forceOpaque)
+                context.FillOpaque(bounds, background, inverse ? TextAttributes.Inverse : TextAttributes.None, overwrite: false);
+            else
+                context.PaintRectangle(bounds, background, inverse ? TextAttributes.Inverse : TextAttributes.None, overwrite: true);
         }
 
         // The box: a titled frame is DrawTitledBox; a plain frame is DrawBox. An occluding surface
@@ -180,14 +180,14 @@ public class Border : Decorator
         if (BorderPen is {} pen)
         {
             if (optionalTitle is {} panelTitle)
-                context.DrawTitledBox(bounds, panelTitle, pen, overwrite: true);
+                context.DrawTitledBox(bounds, panelTitle, pen, overwrite: occludes);
             else
-                context.DrawBox(bounds, pen, overwrite: true);
+                context.DrawBox(bounds, pen, overwrite: occludes);
         }
         else if (optionalTitle is {} panelTitle)
         {
             // A title without an explicit pen still draws the framing edge (the GroupBox top row).
-            context.DrawTitledBox(bounds, panelTitle, Pens.Light, overwrite: true);
+            context.DrawTitledBox(bounds, panelTitle, Pens.Light, overwrite: occludes);
         }
     }
 
@@ -195,17 +195,24 @@ public class Border : Decorator
 
     private static bool EvaluateHasBorder(Pen? borderPen) => borderPen is not null;
 
+    // ───────────────────────────── BorderPen nullity escalation (doc §12.4) ─────────────────────────────
+
     private static void OnBorderPenChanged(UIObject sender, Pen? oldValue, Pen? newValue)
     {
-        if (sender is Border border && oldValue.HasValue != newValue.HasValue)
+        // The hot path (a :focus pen-weight restyle, both non-null) is render-only (AffectsRender).
+        // A nullity flip changes the ±1-cell border geometry, so it imperatively re-measures (C169).
+        if (sender is UIElement element && oldValue.HasValue != newValue.HasValue)
         {
-            border.InvalidateMeasure(); // ±1 cell/edge geometry flip (C169)
+            element.InvalidateMeasure(); // ±1 cell/edge geometry flip (C169)
 
-            var hadBorder = EvaluateHasBorder(oldValue);
-            var hasBorder = EvaluateHasBorder(newValue);
+            if (element is Border border)
+            {
+                var hadBorder = EvaluateHasBorder(oldValue);
+                var hasBorder = EvaluateHasBorder(newValue);
 
-            if (hadBorder != hasBorder)
-                border.DispatchPropertyChanged(HasBorderProperty, null, hadBorder, hasBorder, BindingPriority.LocalValue);
+                if (hadBorder != hasBorder)
+                    border.DispatchPropertyChanged(HasBorderProperty, null, hadBorder, hasBorder, BindingPriority.LocalValue);
+            }
         }
     }
 

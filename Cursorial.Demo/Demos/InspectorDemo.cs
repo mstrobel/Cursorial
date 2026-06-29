@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -7,7 +6,8 @@ using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
-using Cursorial.Rendering.Text; // Margins
+using Cursorial.Rendering.Text;
+using Cursorial.Text; // Margins
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -43,7 +43,7 @@ internal sealed class InspectorDemo : IDemo
                           "q / Esc exits.");
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
-        // app.Theme = Cursorial.UI.Themes.Xaml.CursorialXamlTheme.LoadTheme();
+        // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
         var controller = new Controller(app);
 
         app.Started += (_, _) => controller.OpenDialog();
@@ -63,6 +63,41 @@ internal sealed class InspectorDemo : IDemo
     // inspector has rich provenance to show. The default xmlns maps the UI/Controls/Drawing.Media types.
     private static readonly (string Label, string Xaml)[] Samples =
     [
+        ("Tabs Demo", """
+                      <TabControl xmlns="https://cursorial.dev/ui"
+                                  xmlns:x="https://cursorial.dev/xaml"
+                                  Margin="2,1">
+                        <TabItem Header="F_irst Tab">
+                          <TabItem.Content>
+                            <Grid>
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                              </Grid.ColumnDefinitions>
+                              <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                              </Grid.RowDefinitions>
+                      
+                              <Label Grid.Column="0" Grid.Row="0" Content="Te_xt Input" Target="{x:Reference TextInput}" />
+                              <TextBox x:Name="TextInput" Grid.Column="1" Grid.Row="0" HorizontalAlignment="Left" Width="28" />
+                              <CheckBox Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left" Content="_Reveal password" Margin="0,1,0,0" />
+                              <CheckBox Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left" Content="Subscribe to _updates" />
+                            </Grid>
+                          </TabItem.Content>
+                        </TabItem>
+                        <TabItem Header="_Second Tab">
+                          <Border/>
+                        </TabItem>
+                        <TabItem Header="T_hird Tab">
+                          <Border/>
+                        </TabItem>
+                      </TabControl>
+                      """),
         ("Inputs demo", """
                            <DockPanel xmlns="https://cursorial.dev/ui"
                                       xmlns:x="https://cursorial.dev/xaml"
@@ -75,11 +110,12 @@ internal sealed class InspectorDemo : IDemo
                                             Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
                                </StackPanel>
                              </Border>
-                           
+                             
                              <StatusBar DockPanel.Dock="Bottom">
-                               <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+                               <StatusBarItem Classes="alternate" Content="status" />
+                               <StatusBarItem Content="This is a status message" />
                              </StatusBar>
-                           
+                             
                            <Grid Margin="2,1">
                              <Grid.ColumnDefinitions>
                                <ColumnDefinition Width="Auto" />
@@ -146,12 +182,28 @@ internal sealed class InspectorDemo : IDemo
                                    Background="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"
                                    TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
                                    Margin="2,1" Spacing="1">
-                           <Menu>
+                           <Menu Margin="2,1" DockPanel.Dock="Top">
                              <MenuItem Header="_File">
-                               <MenuItem Header="_New"/>
-                               <MenuItem Header="_Open"/>
+                               <MenuItem Header="_New"  InputGestureText="Ctrl+N" Icon="📄" />
+                               <MenuItem Header="_Open" InputGestureText="Ctrl+O" Icon="📂" />
+                               <MenuItem Header="_Save" InputGestureText="Ctrl+S" Icon="💾" />
                                <Separator/>
-                               <MenuItem Header="_Exit"/>
+                               <MenuItem Header="E_xit" InputGestureText="Alt+Q" Icon="❌" />
+                             </MenuItem>
+                             <MenuItem Header="_Edit">
+                               <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" />
+                               <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" />
+                               <MenuItem Header="_Paste" InputGestureText="Ctrl+V" />
+                               <Separator/>
+                               <MenuItem Header="F_ind">
+                                 <MenuItem Header="Find _Next"     InputGestureText="F3" />
+                                 <MenuItem Header="Find _Previous" InputGestureText="Shift+F3" />
+                               </MenuItem>
+                             </MenuItem>
+                             <MenuItem Header="_View">
+                               <MenuItem Header="F_ull Screen"      InputGestureText="Alt+Enter" />
+                               <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" />
+                               <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" />
                              </MenuItem>
                            </Menu>
                            <TextBlock Text="Sign in"/>
@@ -250,7 +302,7 @@ internal sealed class InspectorDemo : IDemo
         private string _loaded = "(nothing)";
         private bool _isInspecting;
 
-        public void ToggleInspection()
+        private void ToggleInspection()
         {
             _isInspecting = !_isInspecting;
             _canvas.Cursor = _isInspecting ? MouseCursorShape.Crosshair : MouseCursorShape.Default;
@@ -309,7 +361,7 @@ internal sealed class InspectorDemo : IDemo
 
             // The canvas (fills the rest): the loaded tree. Hover / focus over it drives the inspector — the
             // handlers are scoped to the canvas, so hovering the inspector panel never inspects itself.
-            _canvas = new Border { Child = Placeholder("Press 'o' to open a XAML source.") };
+            _canvas = new Border { Child = Placeholder("Press '⌥+o' to open a XAML source.") };
 
             HookHandlers(root);
 
@@ -357,15 +409,24 @@ internal sealed class InspectorDemo : IDemo
                     break;
 
                 case 't' :
-                    app.RequestedColorTier = app.RequestedColorTier switch
-                                             {
-                                                 null                 => ColorDepth.Ansi256,
-                                                 ColorDepth.Truecolor => ColorDepth.Ansi256,
-                                                 ColorDepth.Ansi256   => ColorDepth.Ansi16,
-                                                 ColorDepth.Ansi16    => ColorDepth.NoColor,
-                                                 _                    => ColorDepth.Truecolor,
-                                             };
-
+                    var tier = app.ActualThemeVariant.Tier switch
+                               {
+                                   ColorDepth.Truecolor => ColorDepth.Ansi256,
+                                   ColorDepth.Ansi256   => ColorDepth.Ansi16,
+                                   ColorDepth.Ansi16    => ColorDepth.NoColor,
+                                   _                    => ColorDepth.Truecolor,
+                               };
+                    app.OnCapabilitiesChanged(app.Capabilities with
+                                              {
+                                                  Output = app.Capabilities.Output with
+                                                           {
+                                                               Color = app.Capabilities.Output.Color with
+                                                                       {
+                                                                           Depth = tier
+                                                                       }
+                                                           }
+                                              });
+                    UpdateStatus();
                     ReinspectLast();
                     e.Handled = true;
                     break;
@@ -382,55 +443,66 @@ internal sealed class InspectorDemo : IDemo
 
         internal async void OpenDialog()
         {
-            var list = new ListBox { ItemsSource = Samples.Select(s => s.Label).ToArray(), Height = 4 };
-            list.SelectedIndex = 0;
-            var path = new TextBox { Placeholder = "…or a path to a .xaml file" };
+            try
+            {
+                var list = new ListBox
+                           {
+                               ItemsSource = Samples.Select(s => s.Label).ToArray(), Height = 4,
+                               SelectedIndex = 0
+                           };
 
-            var open = new Button { Content = "_Open", IsDefault = true };
-            var cancel = new Button { Content = "_Cancel", IsCancel = true, Margin = new Margins(1, 0, 0, 0) };
+                var path = new TextBox { Placeholder = "…or a path to a .xaml file" };
 
-            var buttons = new StackPanel
-                          {
-                              Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
-                              Margin = new Margins(0, 1, 0, 0)
-                          };
+                var open = new Button { Content = "_Open", IsDefault = true };
+                var cancel = new Button { Content = "_Cancel", IsCancel = true, Margin = new Margins(1, 0, 0, 0) };
 
-            buttons.Children.Add(open);
-            buttons.Children.Add(cancel);
+                var buttons = new StackPanel
+                              {
+                                  Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
+                                  Margin = new Margins(0, 1, 0, 0)
+                              };
 
-            var body = new StackPanel();
-            body.Children.Add(new Label { Content = "_Sample:" });
-            body.Children.Add(list);
-            body.Children.Add(new TextBlock("\nOr load a file:"));
-            body.Children.Add(path);
-            body.Children.Add(buttons);
+                buttons.Children.Add(open);
+                buttons.Children.Add(cancel);
 
-            var dialog = new Window
-                         {
-                             Title = "Open XAML",
-                             Content = body,
-                             WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                             Width = 50,
-                             SizeToContent = SizeToContent.Height,
-                             CanResize = false
-                         };
+                var body = new StackPanel();
+                body.Children.Add(new Label { Content = "_Sample:" });
+                body.Children.Add(list);
+                body.Children.Add(new TextBlock("\nOr load a file:"));
+                body.Children.Add(path);
+                body.Children.Add(buttons);
 
-            dialog.SetResourceReference(Control.BackgroundProperty, ThemeKeys.PanelBrush);
+                var dialog = new Window
+                             {
+                                 Title = "Open XAML",
+                                 Content = body,
+                                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                                 Width = 50,
+                                 SizeToContent = SizeToContent.Height,
+                                 CanResize = false
+                             };
 
-            open.Click += (_, _) =>
-                          {
-                              var typed = path.Text.Trim();
+                dialog.SetResourceReference(Control.BackgroundProperty, ThemeKeys.PanelBrush);
 
-                              dialog.Close(typed.Length > 0 ? new OpenChoice(IsFile: true, typed)
-                                               : new OpenChoice(IsFile: false, list.SelectedItem as string ?? Samples[0].Label));
-                          };
+                open.Click += (_, _) =>
+                              {
+                                  var typed = path.Text.Trim();
 
-            cancel.Click += (_, _) => dialog.Close(null);
+                                  dialog.Close(typed.Length > 0 ? new OpenChoice(IsFile: true, typed)
+                                                   : new OpenChoice(IsFile: false, list.SelectedItem as string ?? Samples[0].Label));
+                              };
 
-            // HookHandlers(dialog);
+                cancel.Click += (_, _) => dialog.Close(null);
 
-            if (await dialog.ShowDialogAsync() is OpenChoice choice)
-                LoadAndShow(choice);
+                HookHandlers(dialog);
+
+                if (await dialog.ShowDialogAsync() is OpenChoice choice)
+                    LoadAndShow(choice);
+            }
+            catch (Exception e)
+            {
+                UIApplication.Current?.Dispatcher.Post(() => throw e);
+            }
         }
 
         private void HookHandlers(UIElement element)
@@ -631,16 +703,14 @@ internal sealed class InspectorDemo : IDemo
 
             var root = Node(name, NoValue, ThemeKeys.GreenBrush);
 
-            var pseudoClasses = Enum.GetValues<InteractionState>()
-                                    .Where(o => current.InteractionStateInternal.HasFlag(o))
-                                    .Select(o => InteractionPseudoClasses.TryGetPseudoClass(o, out var c) ? c : null)
-                                    .Where(c => c is not null)
-                                    .Concat(current.PseudoClasses.CustomClasses)
-                                    .Concat(current.Classes)
-                                    .Aggregate(new StringBuilder(),
-                                               (sb, c) => sb.Append(c).Append(", "),
-                                               sb => sb.ToString())
-                                    .Trim();
+            var pseudoClasses = string.Join(
+                ", ",
+                Enum.GetValues<InteractionState>()
+                    .Where(o => current.InteractionStateInternal.HasFlag(o))
+                    .Select(o => InteractionPseudoClasses.TryGetPseudoClass(o, out var c) ? c : null)
+                    .Where(c => c is not null)
+                    .Concat(current.PseudoClasses.CustomClasses)
+                    .Concat(current.Classes.Select(c => $".{c}")));
 
             root.Items.Add(Node("Classes", pseudoClasses));
 
@@ -714,27 +784,26 @@ internal sealed class InspectorDemo : IDemo
 
                     var frameRoot = Node($"Frames[{i}]", NoValue);
 
-                    foreach (var p in frame.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                    {
-                        var value = p.GetValue(frame);
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.Layer), frame.Layer));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.SelectorDescription), frame.SelectorDescription));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.IsActive), frame.IsActive));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.HasValue), frame.HasValue));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.LastProducedValue), frame.LastProducedValue));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.ResourceKey), frame.ResourceKey));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.Status), frame.Status));
 
-                        if (value is StyleSortKey k)
-                        {
-                            var keyRoot = Node(nameof(StyleFrameExplanation.SortKey), NoValue);
+                    var k = frame.SortKey;
+                    var keyRoot = Node(nameof(StyleFrameExplanation.SortKey), NoValue);
 
-                            foreach (var fp in value.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                            {
-                                if (fp.Name == nameof(k.Packed))
-                                    keyRoot.Items.Add(Node(fp.Name, k.Packed.ToString("X16")));
-                                else
-                                    keyRoot.Items.Add(Node(fp.Name, fp.GetValue(k)));
-                            }
-                        }
-                        else
-                        {
-                            frameRoot.Items.Add(Node(p.Name, value));
-                        }
-                    }
+                    keyRoot.Items.Add(Node(nameof(k.Layer), k.Layer));
+                    keyRoot.Items.Add(Node(nameof(k.Names), k.Names));
+                    keyRoot.Items.Add(Node(nameof(k.ClassLike), k.ClassLike));
+                    keyRoot.Items.Add(Node(nameof(k.Types), k.Types));
+                    keyRoot.Items.Add(Node(nameof(k.ScopeDepth), k.ScopeDepth));
+                    keyRoot.Items.Add(Node(nameof(k.Order), k.Order));
+                    keyRoot.Items.Add(Node(nameof(k.Packed), k.Packed.ToString("X16")));
+
+                    frameRoot.Items.Add(keyRoot);
 
                     item.Items.Add(frameRoot);
                 }
@@ -766,32 +835,48 @@ internal sealed class InspectorDemo : IDemo
                        };
 
             if (hasName && !isSimple && value != NoValue)
-                item.Items.Add(Node(null, FormatValue(value)));
+                item.Items.Add(Node(null, value));
 
             return item;
         }
 
+        private static string QuoteValue(string? value)
+        {
+            return $"\"{value}\"" +
+                   (value?.EnumerateRunes().Any(r => GraphemeWidth.CodepointWidth(r) > 1) is true 
+                        ? $" (w={GraphemeWidth.StringWidth(value)})"
+                        : "");
+        }
+
         private static string FormatValue(object? value)
         {
-            // ReSharper disable once ArrangeRedundantParentheses
             var f = value switch
                     {
-                        null     => "(null)",
-                        string s => s,
-                        Array a  => $"[{string.Join(", ", a.Cast<object>().Select(FormatValue))}]" + (a.Length > 0 ? " " : ""),
-                        Color c  => c.Kind == ColorKind.Rgb ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}" : c.ToString(),
+                        null                       => "(null)",
+                        string s                   => QuoteValue(s),
+                        Array a                    => $"[{string.Join(", ", a.Cast<object>().Select(FormatValue))}]" + (a.Length > 0 ? " " : ""),
+                        System.Collections.IList l => $"[{string.Join(", ", l.Cast<object>().Select(FormatValue))}]",
+                        UIProperty p               => $"{p.OwnerType.Name}.{p.Name}",
+                        TimeSpan ts => ts.Hours > 0
+                                           ? $"{ts.Hours:0.##}h"
+                                           : ts.Minutes > 0
+                                               ? $"{ts.Minutes:0.##}m"
+                                               : $"{ts.Seconds:0.##}s",
+                        Transition t => $"Transition {FormatValue(t.Property)} " + $"({FormatValue(t.Duration)}s" +
+                                        $"{(t.Delay > TimeSpan.Zero ? $" after {FormatValue(t.Delay)}s" : "")})",
+                        Color c => c.Kind == ColorKind.Rgb ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}" : c.ToString(),
                         Pen p => $"Pen {{ Brush={FormatValue(p.Brush)}, Weight={p.Weight}, Corners={FormatValue(p.Corners)}, " +
                                  $"Dash={FormatValue(p.Dash)}, EndCap={FormatValue(p.EndCap)}, Junction={FormatValue(p.Junction)}, " +
                                  $"GlyphSet={FormatValue(p.GlyphSet)}, Attributes={FormatValue(p.Attributes)} }}",
-                        SolidColorBrush sc => FormatValue(sc.Color),
+                        SolidColorBrush sc => $"{FormatValue(sc.Color)} Opacity={sc.Opacity:0.##}",
                         LinearGradientBrush lg => $"linear:({lg.StartPoint.X},{lg.StartPoint.Y}) -> ({lg.EndPoint.X},{lg.EndPoint.Y}, " +
-                                                  $"{string.Join(", ", lg.Stops.Select(s => s.Color.ToString()))})",
+                                                  $"{string.Join(", ", lg.Stops.Select(s => FormatValue(s.Color)))})",
                         RadialGradientBrush rg => $"radial:({rg.Center.X},{rg.Center.Y}) -> ({rg.RadiusX},{rg.RadiusY}, " +
-                                                  $"{string.Join(", ", rg.Stops.Select(s => s.Color.ToString()))})",
+                                                  $"{string.Join(", ", rg.Stops.Select(s => FormatValue(s.Color)))})",
                         ConicGradientBrush cb => $"conic:({cb.Center.X},{cb.Center.Y}) -> ({cb.AngleDegrees}º, Center={cb.Center}, " +
-                                                 $"{string.Join(", ", cb.Stops.Select(s => s.Color.ToString()))})",
+                                                 $"{string.Join(", ", cb.Stops.Select(s => FormatValue(s.Color)))})",
                         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-                        GlyphSetCarrier gc       => gc.ToString().Replace("[", "\\["),
+                        GlyphSetCarrier gc       => gc.ToString(),
                         _                        => HasToStringOverride(value) ? (value.ToString() ?? "(null)") : $"{{{value.GetType().Name}}}"
                     };
 
@@ -809,8 +894,16 @@ internal sealed class InspectorDemo : IDemo
                 var be = bd.Expressions[i];
                 var bindingItem = Node($"Bindings[{i}]", NoValue);
 
-                foreach (var p in be.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                    bindingItem.Items.Add(Node(p.Name, p.GetValue(be)));
+                if (be is BindingExpressionExplanation explanation)
+                {
+                    bindingItem.Items.Add(Node(nameof(explanation.Lane), explanation.Lane));
+                    bindingItem.Items.Add(Node(nameof(explanation.Path), explanation.Path));
+                    bindingItem.Items.Add(Node(nameof(explanation.Status), explanation.Status));
+                    bindingItem.Items.Add(Node(nameof(explanation.EffectiveMode), explanation.EffectiveMode));
+                    bindingItem.Items.Add(Node(nameof(explanation.ResolvedSourceChain), explanation.ResolvedSourceChain));
+                    bindingItem.Items.Add(Node(nameof(explanation.LastProducedValue), explanation.LastProducedValue));
+                    bindingItem.Items.Add(Node(nameof(explanation.LastFailure), explanation.LastFailure));
+                }
 
                 rootBindingItem.Items.Add(bindingItem);
             }
@@ -820,18 +913,19 @@ internal sealed class InspectorDemo : IDemo
 
         private static bool HasToStringOverride(object? obj)
         {
-            if (obj is null)
-                return false;
-
-            var type = obj.GetType();
-
-            var toStringMethod = type.GetMethod(nameof(ToString),
-                                                BindingFlags.Public | BindingFlags.Instance, null
-                                                , Type.EmptyTypes,
-                                                null);
-
-            return toStringMethod is not null &&
-                   toStringMethod.DeclaringType != typeof(object);
+            // if (obj is null)
+            //     return false;
+            //
+            // var type = obj.GetType();
+            //
+            // var toStringMethod = type.GetMethod(nameof(ToString),
+            //                                     BindingFlags.Public | BindingFlags.Instance, null
+            //                                     , Type.EmptyTypes,
+            //                                     null);
+            //
+            // return toStringMethod is not null &&
+            //        toStringMethod.DeclaringType != typeof(object);
+            return obj is not null && obj.ToString() != obj.GetType().FullName;
         }
 
         private static string Sanitize(object? value)

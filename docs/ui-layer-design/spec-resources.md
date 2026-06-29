@@ -326,7 +326,7 @@ public static class ThemeKeys
     public const string FocusPen           = "Theme.FocusPen";
     public const string BorderPen          = "Theme.BorderPen";
     public const string ObscuredOverlayBrush = "Theme.ObscuredOverlayBrush";  // modal-dim scrim (window manager)
-    public const string AccessKeyUnderlineBrush = "Theme.AccessKeyUnderlineBrush";
+    public const string AccessKeyIndicatorBrush = "Theme.AccessKeyIndicatorBrush";
     // … grows with the control set; additions are non-breaking.
 }
 

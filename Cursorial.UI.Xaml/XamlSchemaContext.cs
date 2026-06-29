@@ -101,6 +101,17 @@ public sealed class XamlSchemaContext
     }
 
     /// <summary>
+    /// Adds an assembly the <c>using:</c>/<c>clr-namespace:</c> forms (and unqualified default-namespace
+    /// type names declared there) can resolve against. The loader registers code-behind / app assemblies
+    /// here so a document can name app controls.
+    /// </summary>
+    public void RegisterAssembly(Type typeInAssembly)
+    {
+        ArgumentNullException.ThrowIfNull(typeInAssembly);
+        RegisterAssembly(typeInAssembly.Assembly);
+    }
+
+    /// <summary>
     /// Adds a CLR namespace to the default xmlns map (so unqualified type names declared there resolve
     /// against the default <c>https://cursorial.dev/ui</c> xmlns). The app/host extends the default map
     /// with its own control namespaces; tests register their fixture namespace.

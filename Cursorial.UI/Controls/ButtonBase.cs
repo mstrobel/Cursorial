@@ -158,7 +158,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     /// modifier-free <see cref="Key.Space"/>) activates while Ctrl+Space (and any other modified
     /// chord) does not (ND10 / N158 — the activation gesture is <c>(Character, " ", None)</c>).
     /// </summary>
-    private static bool IsActivationSpace(KeyEventArgs e)
+    internal static bool IsActivationSpace(KeyEventArgs e)
         => e.Modifiers == KeyModifiers.None &&
            (e.Key == Key.Space ||
             e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' ');

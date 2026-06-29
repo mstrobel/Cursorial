@@ -227,7 +227,7 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
     // (the OFF-path stays byte-identical for every existing list). _scrollOwner is retained so RebuildPanel can
     // re-establish the back-channel on a panel swap.
 
-    private ILogicalScrollHost? PanelHost => _panel as ILogicalScrollHost;
+    internal ILogicalScrollHost? PanelHost => _panel as ILogicalScrollHost;
 
     bool IScrollContentHost.IsScrollClient => PanelHost?.IsScrollClient ?? false;
 

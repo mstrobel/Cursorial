@@ -45,7 +45,7 @@ public sealed class Section04_BuiltInAndBuilders
                  {
                      ThemeKeys.SurfaceBrush, ThemeKeys.TextBrush, ThemeKeys.AccentBrush,
                      ThemeKeys.FocusPen, ThemeKeys.BorderPen, ThemeKeys.ObscuredOverlayBrush,
-                     ThemeKeys.AccessKeyUnderlineBrush
+                     ThemeKeys.AccessKeyIndicatorBrush
                  })
         {
             Assert.True(CursorialTheme.BuiltIn.TryGetResource(key, variant, out var v), $"missing {key}");

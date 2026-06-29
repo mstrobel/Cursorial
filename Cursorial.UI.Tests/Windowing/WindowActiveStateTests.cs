@@ -38,13 +38,13 @@ public sealed class WindowActiveStateTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var a = new Window { Width = 20, Height = 8 };
+        var a = host.NewWindow(width: 20, height: 8);
         a.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(a.IsActive);
         Assert.True(HasActiveWindowState(a)); // the sole producer of :active-window fired
 
-        var b = new Window { Width = 20, Height = 8 };
+        var b = host.NewWindow(width: 20, height: 8);
         b.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(b.IsActive);
@@ -74,12 +74,12 @@ public sealed class WindowActiveStateTests
         host.Application.Styles.Add(baseStyle);
         host.Application.Styles.Add(activeStyle); // :active-window beats the unguarded base (one extra :pseudo)
 
-        var a = new Window { Width = 20, Height = 8 };
+        var a = host.NewWindow(width: 20, height: 8);
         a.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.Same(active, a.Background); // the active rule won
 
-        var b = new Window { Width = 20, Height = 8 };
+        var b = host.NewWindow(width: 20, height: 8);
         b.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.Same(active, b.Background);  // the newly-active window picks up the active rule

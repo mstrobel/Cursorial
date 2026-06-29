@@ -1,9 +1,11 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
+using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
 
@@ -32,6 +34,7 @@ internal sealed class WindowingDemo : IDemo
                           "'c' close-all; shrink the terminal while a window overhangs for the fit badge; q / Esc exits.");
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
         var controller = new Controller(app);
 
         try
@@ -44,98 +47,81 @@ internal sealed class WindowingDemo : IDemo
         }
     }
 
-    private static readonly Color DesktopBg = Color.FromRgb(24, 26, 36);
-    private static readonly Color HeaderBg = Color.FromRgb(86, 120, 220);
-    private static readonly Color HeaderText = Color.FromRgb(240, 244, 255);
-    private static readonly Color StatusBg = Color.FromRgb(30, 33, 44);
-    private static readonly Color StatusText = Color.FromRgb(160, 170, 205);
-    private static readonly Color WindowBg = Color.FromRgb(40, 44, 60);
-    private static readonly Color WindowText = Color.FromRgb(210, 216, 238);
-    private static readonly Color MenuBg = Color.FromRgb(48, 52, 70);
-
     private sealed class Controller(UIApplication app)
     {
-        private TextBlock _status = null!;
+        private StatusBarItem _status = null!;
         private Border _header = null!;
-        private Popup _menu = null!;
+        private ContextMenu _menu = null!;
         private int _windowCount;
         private string _lastResult = "—";
 
         public UIElement BuildDesktop()
         {
-            var root = new DockPanel { Background = new SolidColorBrush(DesktopBg) };
+            var root = new DockPanel();
+
+            root.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.ElevationDesktop);
+
             AttachHotkeys(root);
 
             _header = new Border
                       {
-                          Background = new SolidColorBrush(HeaderBg),
-                          Child = new TextBlock(" Cursorial.UI — S4 windowing  ·  n new · d dialog · m menu · f fit-all · c close-all · q quit")
+                          Child = new TextBlock("Cursorial.UI — S4 windowing  ·  n new · d dialog · m menu · f fit-all · c close-all · q quit")
                                   {
-                                      Foreground = new SolidColorBrush(HeaderText)
+                                      Margin = new(1, 0),
+                                      TextTrimming = TextTrimming.CharacterEllipsis
                                   }
                       };
+
+            _header.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+            _header.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationRaised);
 
             DockPanel.SetDock(_header, Dock.Top);
             root.Children.Add(_header);
 
-            var statusBar = new Border { Background = new SolidColorBrush(StatusBg) };
-            _status = new TextBlock { Foreground = new SolidColorBrush(StatusText) };
-            statusBar.Child = _status;
+            _status = new StatusBarItem();
+
+            var statusBar = new StatusBar { Items = { _status } };
+
             DockPanel.SetDock(statusBar, Dock.Bottom);
             root.Children.Add(statusBar);
 
             var hint = new TextBlock(
-                           "\n   Press 'n' to open a window, then drag its title bar to move it, drag the ◢ corner to" +
-                           "\n   resize, or double-click the title bar to maximize. 'd' opens a modal dialog; 'm' a" +
-                           "\n   light-dismiss menu. Shrink the terminal while a window overhangs → the fit badge" +
-                           "\n   appears top-right (your window size is preserved — click it or press 'f' to refit).")
-                       {
-                           Foreground = new SolidColorBrush(WindowText)
-                       };
+                "\n   Press 'n' to open a window, then drag its title bar to move it, drag the ◢ corner to" +
+                "\n   resize, or double-click the title bar to maximize. 'd' opens a modal dialog; 'm' a" +
+                "\n   light-dismiss menu. Shrink the terminal while a window overhangs → the fit badge" +
+                "\n   appears top-right (your window size is preserved — click it or press 'f' to refit).");
+
+            hint.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
 
             root.Children.Add(hint); // DockPanel last child fills the desktop
 
             // The popup menu lives in the desktop's logical tree (so Escape routes back here and it inherits
             // context); it is placed under the header. Built once, opened/closed on 'm'.
             _menu = BuildMenu();
-            root.Children.Add(_menu);
 
             app.WindowManager!.ActiveWindowChanged += (_, _) => UpdateStatus();
             UpdateStatus();
             return root;
         }
 
-        private Popup BuildMenu()
+        private ContextMenu BuildMenu()
         {
-            var items = new StackPanel { Background = new SolidColorBrush(MenuBg) };
-            items.Children.Add(MenuItem("New window", OpenWindow));
-            items.Children.Add(MenuItem("Modal dialog", OpenDialog));
-            items.Children.Add(MenuItem("Fit all windows", () => app.WindowManager!.FitAllWindowsToViewport()));
-            items.Children.Add(MenuItem("Close all windows", CloseAll));
-
-            return new Popup
+            return new ContextMenu
                    {
-                       Placement = PlacementMode.Bottom,
-                       Child = new Border
-                               {
-                                   Background = new SolidColorBrush(MenuBg, 0.9),
-                                   BorderPen = Pens.Light,
-                                   // Occludes = true,
-                                   Child = items
-                               }
+                       Items =
+                       {
+                           MenuItem("New window", OpenWindow),
+                           MenuItem("Modal dialog", OpenDialog),
+                           MenuItem("Fit all windows", () => app.WindowManager!.FitAllWindowsToViewport()),
+                           MenuItem("Close all windows", CloseAll)
+                       }
                    };
 
-            Button MenuItem(string label, Action action)
+            MenuItem MenuItem(string label, Action action)
             {
-                var button = new Button { Content = label };
-
-                button.Click += (_, _) =>
-                                {
-                                    _menu.Close();
-                                    action();
-                                };
-
-                return button;
+                var item = new MenuItem { Header = label };
+                item.Click += (_, _) => action();
+                return item;
             }
         }
 
@@ -175,8 +161,7 @@ internal sealed class WindowingDemo : IDemo
                     break;
 
                 case 'm':
-                    _menu.PlacementTarget = _header;
-                    _menu.IsOpen = !_menu.IsOpen;
+                    _menu.Open(_header, new CellPosition(0, 0));
                     e.Handled = true;
                     break;
 
@@ -207,7 +192,6 @@ internal sealed class WindowingDemo : IDemo
                          {
                              Title = $"Window #{n}",
                              Content = body,
-                             Background = new SolidColorBrush(WindowBg, 0.95),
                              WindowStartupLocation = WindowStartupLocation.Manual,
                              Left = 6 + n * 3 % 24, // cascade
                              Top = 3 + n * 2 % 12,
@@ -240,7 +224,7 @@ internal sealed class WindowingDemo : IDemo
                          {
                              Title = "Confirm",
                              Content = prompt,
-                             Background = new SolidColorBrush(WindowBg, 0.95),
+                             // Background = new SolidColorBrush(WindowBg, 0.95),
                              WindowStartupLocation = WindowStartupLocation.CenterScreen,
                              Width = 36,
                              Height = 7,
@@ -268,9 +252,9 @@ internal sealed class WindowingDemo : IDemo
         {
             var wm = app.WindowManager!;
 
-            _status.Text = $" windows: {wm.Windows.Count}  ·  active: {wm.ActiveWindow?.Title ?? "(desktop)"}  ·  " +
-                           $"last dialog: {_lastResult}  ·  badge: {(wm.IsFitBadgeVisible ? "shown" : "hidden")}  " +
-                           "—  n new · d dialog · m menu · f fit · c close-all · q quit";
+            _status.Content = $" windows: {wm.Windows.Count}  ·  active: {wm.ActiveWindow?.Title ?? "(desktop)"}  ·  " +
+                              $"last dialog: {_lastResult}  ·  badge: {(wm.IsFitBadgeVisible ? "shown" : "hidden")}  " +
+                              "—  n new · d dialog · m menu · f fit · c close-all · q quit";
         }
     }
 }

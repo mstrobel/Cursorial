@@ -30,6 +30,10 @@ public sealed class AccessTextPresenter : UIElement
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<AccessTextPresenter>();
 
+    /// <summary>The foreground of the access key indicator (underline).</summary>
+    public static readonly StyledProperty<IBrush?> IndicatorBrushProperty =
+        UIProperty.Register<AccessTextPresenter, IBrush?>(nameof(IndicatorBrush));
+
     static AccessTextPresenter()
     {
         // Like TextBlock, this is a direct text painter: a label change that measures to the same size
@@ -59,6 +63,9 @@ public sealed class AccessTextPresenter : UIElement
     /// <inheritdoc cref="ForegroundProperty"/>
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
 
+    /// <inheritdoc cref="IndicatorBrushProperty"/>
+    public IBrush? IndicatorBrush { get => GetValue(IndicatorBrushProperty); set => SetValue(IndicatorBrushProperty, value); }
+
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -80,7 +87,7 @@ public sealed class AccessTextPresenter : UIElement
         var baseTextStyle = new CellStyle().WithAttributes(inherited);
 
         var foreground = Foreground;
-        if (foreground is { } brush)
+        if (foreground is {} brush)
             context.DrawText(0, 0, label.Text, brush, baseStyle: baseTextStyle);
         else
             context.DrawText(0, 0, label.Text, Color.Default, baseStyle: baseTextStyle);
@@ -98,7 +105,12 @@ public sealed class AccessTextPresenter : UIElement
             return;
 
         var style = new CellStyle().WithAttributes(KeyAttributes | inherited);
-        if (foreground is { } fg)
+        var indicatorBrush = IndicatorBrush ?? Foreground;
+        
+        if (indicatorBrush is not null)
+            style = style.WithUnderlineStyle(UnderlineStyle.Single).WithUnderlineColor(indicatorBrush.ColorAt(column, 0, Bounds.ToRect()));
+
+        if (foreground is {} fg)
             context.DrawText(column, 0, cluster, fg, baseStyle: style);
         else
             context.DrawText(column, 0, cluster, Color.Default, baseStyle: style);

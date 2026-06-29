@@ -270,7 +270,7 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         int ops = 0;
         bool mutating = index == 5;   // exactly one panel rides the tick
 
-        ctx.DrawDropShadow(rect, ShadowGeometry.Drop(radius: 0, offset: 1, strength: 0.6,
+        ctx.DrawDropShadow(rect, ShadowGeometry.Drop(radius: 1, strength: 0.6,
                                                      ShadowEdges.Bottom | ShadowEdges.Right), Shadow); ops++;
         ctx.DrawPanel(rect, _panelPen, _panelFill, new PanelTitle($"svc-{index:D2}").WithColor(Accent)); ops++;
 

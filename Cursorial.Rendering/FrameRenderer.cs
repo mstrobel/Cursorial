@@ -813,7 +813,7 @@ public sealed class FrameRenderer
         // Empty grapheme on a Single cell renders as a space; that paints the cell's background
         // and advances the cursor. WideLeft with empty grapheme is degenerate — emit two spaces
         // so the terminal still advances by 2.
-        string grapheme = string.IsNullOrEmpty(cell.Grapheme)
+        string grapheme = string.IsNullOrEmpty(cell.Grapheme) || cell.Grapheme == CellBuffer.DurableEmptyGrapheme
                               ? cell.Kind == CellKind.WideLeft ? "  " : " "
                               : cell.Grapheme;
 

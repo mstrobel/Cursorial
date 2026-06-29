@@ -94,8 +94,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // ordinary class-change re-match path within the same tick (B4 P3 slice, SD14).
         _capabilities = capabilities;
 
-        foreach (var root in StylableSurfaceRoots()) // app root + every shown window/popup/chrome surface (P7)
-            StampCapabilityClasses(root);
+        RestampCapabilityClasses();
     }
 
     // ───────────────────────────── interaction-state intake (SD22 / ND11) ─────────────────────────────
@@ -107,6 +106,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return; // no styling state — O(1), allocation-free (S175)
 
         var delta = oldState ^ newState;
+
         if ((delta & (state.SubjectInterest | state.AncestorInterest)) == 0)
             return; // the one-AND early-out (S174)
 
@@ -119,7 +119,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (element.StyleStateInternal is not {} state)
             return;
 
-        if (!state.HasCustomSubjectInterest && !state.HasCustomAncestorInterest)
+        if (state is { HasCustomSubjectInterest: false, HasCustomAncestorInterest: false })
             return;
 
         RequestReconcile(element, state);
@@ -157,6 +157,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             StampCapabilityClasses(element);
 
         BeginStructuralPass();
+
         try
         {
             ReMatchElement(element);
@@ -187,6 +188,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return;
 
         BeginStructuralPass();
+
         try
         {
             ReMatchElement(element);
@@ -207,6 +209,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return;
 
         BeginStructuralPass();
+
         try
         {
             ReMatchElement(element);
@@ -230,6 +233,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return;
 
         BeginStructuralPass();
+
         try
         {
             ReMatchElement(element);
@@ -253,6 +257,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return;
 
         BeginStructuralPass();
+
         try
         {
             ReMatchElement(element);
@@ -270,6 +275,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return;
 
         BeginStructuralPass();
+
         try
         {
             ReMatchSubtree(scopeOwner, includeSelf: true);
@@ -284,10 +290,10 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     internal void OnAppStylesInvalidated()
     {
         var roots = StylableSurfaceRoots();
-        if (roots.Count == 0)
-            return;
+        if (roots.Count == 0) return;
 
         BeginStructuralPass();
+
         try
         {
             foreach (var root in roots) // app styles affect every surface (P7 multi-surface)
@@ -310,10 +316,10 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     internal void OnThemeStylesInvalidated()
     {
         var roots = StylableSurfaceRoots();
-        if (roots.Count == 0)
-            return;
+        if (roots.Count == 0) return;
 
         BeginStructuralPass();
+
         try
         {
             foreach (var root in roots) // theme styles affect every surface (P7 multi-surface)
@@ -339,6 +345,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             if (_structuralDepth == 1 && _deferredRematch is { Count: > 0 })
             {
                 var generation = 0;
+
                 while (_deferredRematch is { Count: > 0 })
                 {
                     if (++generation > 16)
@@ -416,9 +423,8 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 _pending = _drainScratch; // re-entrant flips accumulate into the fresh list
                 _drainScratch = batch;
 
-                for (var i = 0; i < batch.Count; i++)
+                foreach (var element in batch)
                 {
-                    var element = batch[i];
                     if (element.StyleStateInternal is not {} state)
                         continue; // detached/retracted since it queued
 
@@ -444,6 +450,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             "Styling activation did not reach fixpoint within 16 generations (design doc §3.3 — a style loop). Pending: ");
 
         var first = true;
+
         foreach (var element in _pending)
         {
             if (element.StyleStateInternal is not {} state)
@@ -466,14 +473,17 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     private void ReconcileElement(UIElement element, ElementStyleState state)
     {
         _applying++;
+
         try
         {
             var frames = state.Frames; // snapshot — a nested re-match may replace the array
+
             foreach (var frame in frames)
                 ReconcileFrame(frame);
 
             if (state.Dependents is {} dependents)
             {
+                // ReSharper disable once ForCanBeConvertedToForeach
                 // Index loop tolerant of unregistration during reconciliation.
                 for (var i = 0; i < dependents.Count; i++)
                     ReconcileFrame(dependents[i].Owner);
@@ -491,10 +501,10 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return; // removed by a nested re-match since the snapshot
 
         var satisfied = ComputeSatisfied(frame);
-        if (satisfied == frame.IsActive)
-            return;
+        if (satisfied == frame.IsActive) return;
 
         _applying++;
+
         try
         {
             TrackDrainEdge(frame);
@@ -565,12 +575,12 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
         // Rule-document order, on EVERY edge (SD16). No exception guard at P3 — S5 adds the
         // no-throw contract with the (igniter, scope) registry at P8 (B5).
-        for (var i = 0; i < actions.Count; i++)
+        foreach (var action in actions)
         {
             if (entering)
-                actions[i].OnActivated(owner);
+                action.OnActivated(owner);
             else
-                actions[i].OnRetracted(owner);
+                action.OnRetracted(owner);
         }
     }
 
@@ -580,9 +590,9 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (!_draining || _loopWarned)
             return;
 
-        for (var i = 0; i < _drainEdges.Count; i++)
+        foreach (var edge in _drainEdges)
         {
-            if (ReferenceEquals(_drainEdges[i], frame))
+            if (ReferenceEquals(edge, frame))
             {
                 // A→B→A within one drain: name the re-toggled rule and its most recent partner.
                 var partner = _drainEdges[^1];
@@ -610,7 +620,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     // which requires an already-attached root — is constructed only afterward, so RenderTreeHost is still
     // null when styles must first arm.
     private static bool IsStylable(UIElement element)
-        => element.IsAttachedToTree && element.GetLayoutManager() is not null;
+        => element.IsAttachedToTree && element.GetLayoutManager() is not null; 
 
     /// <summary>
     /// Every currently-stylable surface root — the chrome-less application root plus every shown Window, open
@@ -622,14 +632,18 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     private List<UIElement> StylableSurfaceRoots()
     {
         var roots = new List<UIElement>();
-        if (_app.WindowManager is { } wm)
+
+        if (_app.WindowManager is {} wm)
         {
             var surfaces = wm.Surfaces;
-            for (var i = 0; i < surfaces.Count; i++)
-                if (IsStylable(surfaces[i].Root))
-                    roots.Add(surfaces[i].Root);
+
+            foreach (var surface in surfaces)
+            {
+                if (IsStylable(surface.Root))
+                    roots.Add(surface.Root);
+            }
         }
-        else if (_app.RootElement is { } root && IsStylable(root))
+        else if (_app.RootElement is {} root && IsStylable(root))
         {
             roots.Add(root); // pre-compose fallback (no window manager yet)
         }
@@ -646,12 +660,15 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (!_rematchInFlight.Add(element))
         {
             _deferredRematch ??= [];
+
             if (!_deferredRematch.Contains(element))
                 _deferredRematch.Add(element);
+
             return;
         }
 
         var matches = RentCandidateList();
+
         try
         {
             GatherMatches(element, matches);
@@ -678,9 +695,8 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (element.VisualChildrenList is not {} children)
             return;
 
-        for (var i = 0; i < children.Count; i++)
+        foreach (var child in children)
         {
-            var child = children[i];
             if (!IsStylable(child))
                 continue; // mid-attach-walk children arm in their own attach step
 
@@ -693,6 +709,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     {
         var candidates = RentCandidateList();
         var chain = RentChainList();
+
         try
         {
             // The styling-parent chain, subject-first (SD7); chain depth feeds scopeDepth (SD6).
@@ -737,8 +754,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             // Template(1): the owning control template's Styles, scoped to the templated parent (CD30,
             // doc §12.2 step 3). Gathered only for template parts (TemplatedParent != null with a
             // template-styles slot); the rules carry the /template/ hop so they survive the barrier below.
-            if (element.TemplatedParent is {} templatedParent &&
-                templatedParent.TemplateStylesForArming is { Count: > 0 } templateStyles)
+            if (element.TemplatedParent is { TemplateStylesForArming: { Count: > 0 } templateStyles } templatedParent)
             {
                 templateStyles.GetOrBuildIndex(StyleLayer.Template, 0)
                               .GatherCandidates(element, candidates, templatedParent);
@@ -776,7 +792,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // element-addressed exactly like the Explicit channel but at the weakest style layer so app
         // styles always beat the theme. Children rules ('^:pressed', '^:checked') arm anchored to the
         // element; the selector-less root rule arms always-active.
-        if (element is IControlThemeHost themeHost && ResolveControlTheme(themeHost) is { } controlTheme)
+        if (element is IControlThemeHost themeHost && ResolveControlTheme(themeHost) is {} controlTheme)
             GatherElementAddressedStyle(element, controlTheme, StyleLayer.ControlTheme, matches);
 
         // Explicit(5) — element-addressed, exempt from the barrier (SD8/S88); skips the index.
@@ -798,6 +814,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     private void GatherElementAddressedStyle(UIElement element, Style style, StyleLayer layer, List<ScopeCandidate> matches)
     {
         var rules = style.CompiledRules;
+
         for (var r = 0; r < rules.Length; r++)
         {
             var rule = rules[r];
@@ -833,6 +850,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     private static Style? ResolveControlTheme(IControlThemeHost host)
     {
         Style? theme = host.ThemeOverride;
+
         if (theme is null && host.Element.TryFindResource(host.ControlThemeKey, out var value))
             theme = value as Style;
 
@@ -872,6 +890,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         var addedAny = false;
 
         _applying++;
+
         try
         {
             foreach (var match in matches)
@@ -883,6 +902,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                     for (var i = 0; i < existing.Length; i++)
                     {
                         var candidate = existing[i];
+
                         if (!consumed[i] &&
                             ReferenceEquals(candidate.Rule, match.Rule) &&
                             candidate.SortKey == match.Key &&
@@ -961,6 +981,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             {
                 state.Frames = [];
                 state.RebuildSubjectInterest();
+
                 if (state.IsEmpty)
                     element.StyleStateInternal = null;
             }
@@ -979,6 +1000,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     private void RetractAllFrames(UIElement element, ElementStyleState state)
     {
         _applying++;
+
         try
         {
             foreach (var frame in state.Frames)
@@ -999,7 +1021,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
         UnbindAncestorRequirements(frame);
         UnbindWhenRequirements(frame); // dispose the When watches (watcher lifetime = armed lifetime — B16)
-        element.RemoveFrame(frame); // cookie retraction — the store promotes (invariant 4)
+        element.RemoveFrame(frame);    // cookie retraction — the store promotes (invariant 4)
 
         if (wasActive)
             RunEdgeActions(frame, frame.Rule.DeclaringStyle.ExitOrNull, entering: false); // SD16: detach/disarm retraction is an exit edge
@@ -1054,6 +1076,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 StyleDebugDiagnostics.WarnChainTruncation(rule);
 
             var bindings = new UIElement[branch.Compounds.Length];
+
             if (!MatchBranch(element, branch, anchor: null, bindings))
             {
                 // A raced structure change left the branch structurally unmatched here. Fail CLOSED:
@@ -1065,6 +1088,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 for (var i = 0; i < stateCompounds.Length; i++)
                 {
                     var compound = stateCompounds[i];
+
                     requirements[i] = new AncestorStateRequirement(
                         frame, compound.Bits, compound.CustomPseudoClasses, []);
                 }
@@ -1076,6 +1100,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             for (var i = 0; i < stateCompounds.Length; i++)
             {
                 var compound = stateCompounds[i];
+
                 requirements[i] = new AncestorStateRequirement(
                     frame, compound.Bits, compound.CustomPseudoClasses, [bindings[compound.CompoundIndex]]);
             }
@@ -1108,6 +1133,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                     continue;
 
                 state.RemoveDependent(requirement);
+
                 if (state.IsEmpty)
                     candidate.StyleStateInternal = null;
             }
@@ -1153,6 +1179,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             return;
 
         frame.WhenRequirements = null;
+
         foreach (var requirement in requirements)
             requirement.Dispose();
     }
@@ -1185,6 +1212,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         UIElement element, SelectorBranch branch, out List<UIElement> chain, out ulong[] valid)
     {
         chain = [];
+
         for (var node = element; node is not null; node = node.StylingParent)
             chain.Add(node);
 
@@ -1201,9 +1229,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
         // matches[i] bit p: compound i structurally matches chain[p].
         var matches = new ulong[k];
+
         for (var i = 0; i < k; i++)
         {
             var bits = 0UL;
+
             for (var p = 0; p < n; p++)
             {
                 if (MatchCompound(chain[p], compounds[i], anchor: null))
@@ -1216,6 +1246,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // up[i]: compounds 0..i placeable with i at p (earlier compounds strictly above).
         var up = new ulong[k];
         up[0] = matches[0];
+
         for (var i = 1; i < k; i++)
         {
             var prev = up[i - 1];
@@ -1226,6 +1257,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // down[i]: compounds i..k−1 placeable with i at p (later compounds strictly below, subject at 0).
         var down = new ulong[k];
         down[k - 1] = matches[k - 1] & 1UL;
+
         for (var i = k - 2; i >= 0; i--)
         {
             var next = down[i + 1];
@@ -1234,6 +1266,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         }
 
         valid = new ulong[k];
+
         for (var i = 0; i < k; i++)
             valid[i] = up[i] & down[i];
 
@@ -1353,10 +1386,12 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
         // Scopes on the chain (their subtrees include this element's subtree) …
         var depth = 0;
+
         for (var node = element; node is not null; node = node.StylingParent)
             depth++;
 
         var position = depth - 1;
+
         for (var node = element; node is not null; node = node.StylingParent, position--)
         {
             if (node.StylesOrNull is { Count: > 0 } scoped &&
@@ -1375,15 +1410,14 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (element.VisualChildrenList is not {} children)
             return false;
 
-        for (var i = 0; i < children.Count; i++)
+        foreach (var child in children)
         {
-            var child = children[i];
-
             if (child.StylesOrNull is { Count: > 0 } scoped)
             {
                 // Depth does not affect the interest sets — probe with the cached index when one
                 // exists, else build at the child's actual depth.
                 var depth = 0;
+
                 for (var node = child; node is not null; node = node.StylingParent)
                     depth++;
 
@@ -1400,8 +1434,8 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private static bool IndexContains(StyleScopeIndex index, string name, bool isClass)
         => isClass
-            ? index.AncestorInterestingClasses is {} classes && classes.Contains(name)
-            : index.AncestorInterestingNames is {} names && names.Contains(name);
+               ? index.AncestorInterestingClasses is {} classes && classes.Contains(name)
+               : index.AncestorInterestingNames is {} names && names.Contains(name);
 
     // ───────────────────────────── capability classes (SD14) ─────────────────────────────
 
@@ -1448,9 +1482,9 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         replacement.Add(_app.ActualThemeVariant.Tier switch
                         {
                             ColorDepth.Truecolor => "caps-truecolor",
-                            ColorDepth.Ansi256 => "caps-ansi256",
-                            ColorDepth.Ansi16 => "caps-ansi16",
-                            _ => "caps-nocolor"
+                            ColorDepth.Ansi256   => "caps-ansi256",
+                            ColorDepth.Ansi16    => "caps-ansi16",
+                            _                    => "caps-nocolor"
                         });
 
         // Non-color classes stay sourced from the negotiated snapshot (CD14).
@@ -1464,8 +1498,10 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // Kitty graphics (z-orderable placements the framework can clip/occlude — Sixel paints inline into the cell
         // grid, iTerm2 is excluded for now pending an occlusion model).
         var graphics = capabilities.Output.Graphics;
+
         if (graphics.Sixel || graphics.KittyGraphics || graphics.ITerm2InlineImages)
             replacement.Add("caps-images");
+
         if (graphics.KittyGraphics)
             replacement.Add("caps-image-occlusion");
 

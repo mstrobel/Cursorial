@@ -153,7 +153,7 @@ public sealed class TextPresenter : UIElement
         var lastChar = layout.CharIndexAtOrAfterColumn(_scrollOffset + viewport);
 
         var noColor = context.Capabilities.Color.Depth == ColorDepth.NoColor;
-        var selectionBrush = owner.SelectionBrush ?? ResolveBrush(ThemeKeys.SelectionBrush);
+        var selectionBrush = owner.SelectionBrush ?? ResolveBrush(owner.IsFocused ? ThemeKeys.SelectionBrush : ThemeKeys.SelectionInactiveBrush);
 
         // Up to three runs — pre-selection, selection, post-selection — one DrawText call each.
         var selFrom = Math.Clamp(selectionStart, firstChar, lastChar);

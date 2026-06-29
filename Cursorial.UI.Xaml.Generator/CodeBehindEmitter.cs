@@ -79,7 +79,7 @@ internal static class CodeBehindEmitter
     /// Emits the code-behind partial for an <c>x:Class</c> document, or <see langword="null"/> when there is
     /// no <c>x:Class</c> (a class-less document has no code-behind to extend).
     /// </summary>
-    public static string? Emit(XamlDocument document, string xamlText, string xamlPath)
+    public static string? Emit(XamlDocument document, string xamlText, string xamlPath, string relativePath)
     {
         var (rootClass, named) = Collect(document);
 

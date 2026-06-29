@@ -138,7 +138,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             catch (TargetInvocationException ex) when (ex.InnerException is { } inner)
             {
                 throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
-                    $"DynamicResource '{key}' could not be installed: {inner.Message}", line, column);
+                    $"DynamicResource '{key}' could not be installed: {inner.Message}", line, column, inner);
             }
             return;
         }

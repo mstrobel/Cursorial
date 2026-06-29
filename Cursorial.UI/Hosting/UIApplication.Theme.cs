@@ -153,7 +153,11 @@ public sealed partial class UIApplication : IResourceHost
     {
         Dispatcher.VerifyAccess();
         _negotiatedVariant = ThemeVariant.FromCapabilities(capabilities);
-        UpdateActualThemeVariant(reStampClasses: true);
+        UpdateActualThemeVariant(reStampClasses: false); // StyleEngineInternal.OnCapabilitiesChanged will restamp.
+        StyleEngineInternal.OnCapabilitiesChanged(capabilities);
+        StyleHooks?.OnCapabilitiesChanged(capabilities);
+        InputDispatchTarget?.OnCapabilitiesChanged(capabilities);
+        _accessKeys.OnCapabilitiesChanged(capabilities);
     }
 
     // The negotiated-only variant (the per-axis derivation source before the requested overrides).

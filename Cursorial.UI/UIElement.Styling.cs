@@ -35,6 +35,7 @@ public abstract partial class UIElement
         get
         {
             VerifyAccess();
+
             if (_styles is null)
             {
                 _styles = new Styles();

@@ -43,6 +43,32 @@ public sealed class Section16_Transitions
         Assert.Equal(10.0, element.V);         // settled at the new base
     }
 
+    [Fact] // AD16: a transition with a Delay HOLDS the old value through the delay, then fades old→new — it must NOT
+           // show the already-changed new base during the delay (the Window-inactive-opacity "translucent, then solid,
+           // then fades to translucent" flicker)
+    public void StyleFlip_WithDelay_HoldsOldValueThroughDelay()
+    {
+        var (host, _, element) = Show();
+        using var _ = host;
+        Transition.SetTransitions(element, new TransitionCollection
+        {
+            new DoubleTransition(Animatable.VProperty) { Duration = Ms(100), Delay = Ms(66) }
+        });
+
+        host.Application.Styles.Add(new Style(".hi").Set(Animatable.VProperty, 10.0));
+        element.Classes.Add("hi"); // V's base 0→10 ⇒ transition ignites with BeginTime = Delay (66ms)
+
+        Assert.Equal(0.0, element.V);          // ignites holding the OLD value (0), NOT the already-changed base (10)
+        host.AdvanceTime(Ms(33));              // inside the delay window
+        Assert.Equal(0.0, element.V);          // still the old value — no snap to the new base, no flicker
+        host.AdvanceTime(Ms(33));              // crosses the delay (66ms): the fade starts FROM the old value
+        Assert.Equal(0.0, element.V);          // first sample at elapsed 0 ⇒ still the old value
+        host.AdvanceTime(Ms(50));
+        Assert.InRange(element.V, 0.1, 9.9);   // mid-fade
+        host.AdvanceTime(Ms(100));
+        Assert.Equal(10.0, element.V);         // settled at the new base
+    }
+
     [Fact] // N142: transitions armed before the first arrange are parked — the initial style application does NOT fade
     public void InitialApplication_Parked_NoTransition()
     {
@@ -193,6 +219,26 @@ public sealed class Section16_Transitions
         Assert.False(host.Scheduler().HasActiveAnimations); // PARKED — the re-application did not transition
         host.RunUntilIdle();
         Assert.Equal(0.0, element.V);
+    }
+
+    [Fact] // Removing the transition itself mid-flight (element stays attached) stops the live fade — it must not
+    //       continue to completion after the transition is retracted (e.g. a Window reactivated mid-fade).
+    public void RemoveTransitionMidFlight_StopsTheLiveAnimation()
+    {
+        var (host, _, element) = Show();
+        using var _ = host;
+        ArmDouble(element);
+        host.Application.Styles.Add(new Style(".hi").Set(Animatable.VProperty, 10.0));
+        element.Classes.Add("hi");
+        host.AdvanceTime(Ms(33)); // mid-fade
+        Assert.True(host.Scheduler().HasActiveAnimations);
+        Assert.InRange(element.V, 0.1, 9.9);
+
+        Transition.SetTransitions(element, null); // the transition is removed while the element stays attached
+        host.RunUntilIdle();
+
+        Assert.False(host.Scheduler().HasActiveAnimations); // the in-flight fade was STOPPED, not left to complete
+        Assert.Equal(10.0, element.V);                      // Fill.Stop retract ⇒ the base (the .hi value) resurfaces
     }
 
     [Fact] // Bug-B regression: arming while Collapsed must not go live on the Collapsed arrange — the

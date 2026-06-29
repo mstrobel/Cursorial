@@ -21,7 +21,7 @@ public static class MessageBox
         => button switch
            {
                MessageBoxButton.Close => "C_lose",
-               _                      => button.ToString()
+               _                      => $"_{button}"
            };
 
     public static async Task<MessageBoxButton?> ShowAsync(string message,
@@ -60,7 +60,8 @@ public static class MessageBox
                          CanResize = false,
                          Padding = new(2, 1),
                          SizeToContent = SizeToContent.WidthAndHeight,
-                         WindowStartupLocation = WindowStartupLocation.CenterScreen
+                         WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                         Shadow = WindowShadow.Default
                      };
 
         foreach (var button in actualButtons)

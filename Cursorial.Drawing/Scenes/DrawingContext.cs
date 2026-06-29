@@ -65,7 +65,7 @@ public sealed class DrawingContext
     /// </summary>
     /// <remarks>
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
-    /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes)"/>,
+    /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes)"/>,
     /// <see cref="DrawContent"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
@@ -183,17 +183,20 @@ public sealed class DrawingContext
     private void EmitMapped(int localCol, int localRow, string? grapheme, in Style style)
     {
         if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
-        if (!string.IsNullOrEmpty(grapheme) && GraphemeWidth.ClusterWidth(grapheme.AsSpan()) == 2
-            && sc + 1 >= CurrentState.Clip.ColumnEnd)
+
+        if (!string.IsNullOrEmpty(grapheme) && GraphemeWidth.ClusterWidth(grapheme.AsSpan()) == 2 &&
+            sc + 1 >= CurrentState.Clip.ColumnEnd)
         {
             _surface.Set(sc, sr, null, in style);
             return;
         }
+
         _surface.Set(sc, sr, grapheme, in style);
     }
 
     /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
-    public void FillRectangle(in Rect region, Color color) => FillRectangle(region, new SolidColorBrush(color));
+    public void FillRectangle(in Rect region, Color color) 
+        => FillRectangleCore(region, brush: null, color: color, brushBounds: region, durable: false, overwrite: true);
 
     /// <summary>
     /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
@@ -206,7 +209,11 @@ public sealed class DrawingContext
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </remarks>
-    public void FillRectangle(in Rect region, IBrush brush) => FillRectangle(region, brush, region);
+    public void FillRectangle(in Rect region, IBrush brush) 
+    {
+        ArgumentNullException.ThrowIfNull(brush);
+        FillRectangleCore(region, brush, color: default, brushBounds: region, durable: false, overwrite: true);
+    }
 
     /// <summary>
     /// As <see cref="FillRectangle(in Rect, IBrush)"/>, but the brush is sampled against
@@ -217,51 +224,45 @@ public sealed class DrawingContext
     public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(brush);
-
-        if (_stateStack.Count != 0)
-        {
-            // Transformed path: sample the brush in local coordinates, write at the translated scene cell.
-            // The iteration range is pre-clamped to the active clip mapped back into local space — an
-            // oversized region must cost O(visible), not O(requested) (Rect permits 65535×65535) — so every
-            // remaining cell lands inside the clip, which is within the scene: a safe raw write.
-            var s = CurrentState;
-            int lColStart = Math.Max(region.Column, s.Clip.Column - s.Dx);
-            int lRowStart = Math.Max(region.Row, s.Clip.Row - s.Dy);
-            int lColEnd = Math.Min(region.ColumnEnd, s.Clip.ColumnEnd - s.Dx);
-            int lRowEnd = Math.Min(region.RowEnd, s.Clip.RowEnd - s.Dy);
-
-            for (int row = lRowStart; row < lRowEnd; row++)
-            for (int col = lColStart; col < lColEnd; col++)
-            {
-                var c = brush.ColorAt(col, row, brushBounds);
-                _surface[col + s.Dx, row + s.Dy] = new Cell(null, CellKind.Single, Style.Default.WithBackground(c));
-            }
-            return;
-        }
-
-        int colStart = Math.Max(0, region.Column);
-        int rowStart = Math.Max(0, region.Row);
-        int colEnd = Math.Min(region.ColumnEnd, _surface.Columns);
-        int rowEnd = Math.Min(region.RowEnd, _surface.Rows);
-        if (colStart >= colEnd || rowStart >= rowEnd) return;
-
-        for (int row = rowStart; row < rowEnd; row++)
-        for (int col = colStart; col < colEnd; col++)
-        {
-            var color = brush.ColorAt(col, row, brushBounds);
-            _surface[col, row] = new Cell(null, CellKind.Single, Style.Default.WithBackground(color));
-        }
+        FillRectangleCore(region, brush, color: default, brushBounds: brushBounds, durable: false, overwrite: true);
     }
 
-    /// <summary>Fill <paramref name="region"/> with an <b>opaque, occluding</b> solid <paramref name="color"/>.</summary>
-    public void FillOpaque(in Rect region, Color color) => FillOpaque(region, new SolidColorBrush(color));
+    /// <summary>
+    /// Fill <paramref name="region"/> with <paramref name="color"/> as <b>space-bearing</b> cells, so the fill
+    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
+    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush)"/> or
+    /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
+    /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
+    /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
+    /// for a frosted-panel effect), but the glyph beneath is still replaced.
+    /// </summary>
+    /// <remarks>
+    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
+    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
+    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
+    /// background so the border sits on the panel rather than punching a transparent hole.
+    /// </remarks>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="color">The fill color.</param>
+    /// <param name="attributes">
+    /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
+    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
+    /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
+    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
+    /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
+    /// </param>
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
+        => FillRectangleCore(region, brush: null, color: color, brushBounds: region, durable: true, attributes, overwrite);
 
     /// <summary>
     /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
-    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer — unlike
-    /// <see cref="FillRectangle(in Rect, IBrush)"/>, which is background-only and lets lower glyphs show through.
-    /// Use it for opaque panels, modals, and menus drawn over content. A translucent brush sample is preserved
-    /// (the alpha rides to the compositor for a frosted-panel effect), but the glyph beneath is still replaced.
+    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
+    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush)"/> or
+    /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
+    /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
+    /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
+    /// for a frosted-panel effect), but the glyph beneath is still replaced.
     /// </summary>
     /// <remarks>
     /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
@@ -278,13 +279,111 @@ public sealed class DrawingContext
     /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
-    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default)
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
+        FillRectangleCore(region, brush, color: default, brushBounds: region, durable: true, attributes, overwrite);
+    }
 
+    /// <summary>
+    /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
+    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
+    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush)"/> or
+    /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
+    /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
+    /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
+    /// for a frosted-panel effect), but the glyph beneath is still replaced.
+    /// </summary>
+    /// <remarks>
+    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
+    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
+    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
+    /// background so the border sits on the panel rather than punching a transparent hole.
+    /// </remarks>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
+    /// <param name="brushBounds">The sampling region for the <paramref name="brush"/>; may be larger or smaller than <paramref name="region"/>.</param>
+    /// <param name="attributes">
+    /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
+    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
+    /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
+    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
+    /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
+    /// </param>
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
+    {
+        ArgumentNullException.ThrowIfNull(brush);
+        FillRectangleCore(region, brush, color: default, brushBounds: brushBounds, durable: true, attributes, overwrite);
+    }
+
+    /// <summary>
+    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="color"/>. Each cell is painted background-only
+    /// (no glyph). The fill tints the target background <em>within the scene</em>, and the <paramref name="overwrite"/>
+    /// argument governs whether the existing glyph is left showing through when painting with less than full opacity.
+    /// </summary>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="color">The fill color.</param>
+    /// <param name="attributes">Text attributes applied to every cell (default none).</param>
+    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
+    /// <remarks>
+    /// Unlike <see cref="FillRectangle(in Rect, Color)"/>, which intends for blending to be applied by the compositor
+    /// across scenes, this method performs blending <em>intra-scene</em>. 
+    /// </remarks>
+    public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
+        => FillRectangleCore(region, brush: null, color: color, brushBounds: region, durable: false, attributes, overwrite);
+
+    /// <summary>
+    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient), sampled per cell
+    /// with <paramref name="region"/> as the brush bounds. Each cell is painted background-only (no glyph). The fill
+    /// tints the target background <em>within the scene</em>, and the <paramref name="overwrite"/> argument governs whether
+    /// the existing glyph is left showing through when painting with less than full opacity.
+    /// </summary>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
+    /// <param name="attributes">Text attributes applied to every cell (default none).</param>
+    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
+    /// <remarks>
+    /// Unlike <see cref="FillRectangle(in Rect, IBrush)"/>, which intends for blending to be applied by the compositor
+    /// across scenes, this method performs blending <em>intra-scene</em>. 
+    /// </remarks>
+    public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
+    {
+        ArgumentNullException.ThrowIfNull(brush);
+        FillRectangleCore(region, brush, default, region, durable: false, attributes, overwrite);
+    }
+
+    /// <summary>
+    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient), sampled per cell
+    /// with <paramref name="region"/> as the brush bounds. Each cell is painted background-only (no glyph). The fill
+    /// tints the target background <em>within the scene</em>, and the <paramref name="overwrite"/> argument governs whether
+    /// the existing glyph is left showing through when painting with less than full opacity.
+    /// </summary>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
+    /// <param name="brushBounds">The sampling rectangle to be used for the brush, when distinct from <paramref name="region"/>.</param>
+    /// <param name="attributes">Text attributes applied to every cell (default none).</param>
+    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
+    /// <remarks>
+    /// Unlike <see cref="FillRectangle(in Rect, IBrush, in Rect)"/>, which intends for blending to be applied
+    /// by the compositor across scenes, this method performs blending <em>intra-scene</em>. 
+    /// </remarks>
+    public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
+    {
+        ArgumentNullException.ThrowIfNull(brush);
+        FillRectangleCore(region, brush, default, brushBounds, durable: false, attributes, overwrite);
+    }
+
+    private void FillRectangleCore(in Rect region, IBrush? brush, Color color, in Rect brushBounds, bool durable,
+                                   TextAttributes attributes = default, bool overwrite = false)
+    {
         if (_stateStack.Count != 0)
         {
-            // Pre-clamped to the active clip in local space — see FillRectangle's transformed path.
+            // Transformed path: sample the brush in local coordinates, write at the translated scene cell.
+            // The iteration range is pre-clamped to the active clip mapped back into local space — an
+            // oversized region must cost O(visible), not O(requested) (Rect permits 65535×65535) — so every
+            // remaining cell lands inside the clip, which is within the scene: a safe raw write.
             var s = CurrentState;
             int lColStart = Math.Max(region.Column, s.Clip.Column - s.Dx);
             int lRowStart = Math.Max(region.Row, s.Clip.Row - s.Dy);
@@ -293,8 +392,15 @@ public sealed class DrawingContext
 
             for (int row = lRowStart; row < lRowEnd; row++)
             for (int col = lColStart; col < lColEnd; col++)
-                RawWriteWithCleanup(col + s.Dx, row + s.Dy, OccluderCell(brush.ColorAt(col, row, region), attributes));
+            {
+                var c = brush?.ColorAt(col, row, brushBounds) ?? color;
+                var cell = durable ? DurableCell(c, attributes) : WeakCell(c, attributes);
 
+                if (overwrite)
+                    RawWriteWithCleanup(col + s.Dx, row + s.Dy, cell);
+                else
+                    _surface.Set(col + s.Dx, row + s.Dy, cell.Grapheme, cell.Style);
+            }
             return;
         }
 
@@ -302,14 +408,26 @@ public sealed class DrawingContext
         int rowStart = Math.Max(0, region.Row);
         int colEnd = Math.Min(region.ColumnEnd, _surface.Columns);
         int rowEnd = Math.Min(region.RowEnd, _surface.Rows);
+        if (colStart >= colEnd || rowStart >= rowEnd) return;
 
         for (int row = rowStart; row < rowEnd; row++)
         for (int col = colStart; col < colEnd; col++)
-            RawWriteWithCleanup(col, row, OccluderCell(brush.ColorAt(col, row, region), attributes));
+        {
+            var c = brush?.ColorAt(col, row, brushBounds) ?? color;
+            var cell = durable ? DurableCell(c, attributes) : WeakCell(c, attributes);
+
+            if (overwrite)
+                RawWriteWithCleanup(col, row, cell);
+            else
+                _surface.Set(col, row, cell.Grapheme, cell.Style);
+        }
     }
 
-    private static Cell OccluderCell(Color color, TextAttributes attributes = default)
-        => new(" ", CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
+    private static Cell DurableCell(Color color, TextAttributes attributes = default)
+        => new(CellBuffer.DurableEmptyGrapheme, CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
+
+    private static Cell WeakCell(Color color, TextAttributes attributes = default)
+        => new(null, CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
 
     // Raw-write a cell (preserving its color alpha for the compositor), first blanking any wide-glyph partner
     // the write would orphan — overwriting a WideContinuation blanks its left half (col−1); overwriting a
@@ -333,40 +451,34 @@ public sealed class DrawingContext
     /// at composite time. Draw it before the element. <see cref="ShadowGeometry.Edges"/> selects which sides cast.
     /// </summary>
     /// <remarks>
-    /// The shadow is the element's silhouette displaced by the offset and softened by a
-    /// <see cref="ShadowGeometry.Radius"/>-cell fringe (the element occludes its own footprint, and only the
-    /// casting edges show). The <b>offset</b> trims the near, lit corners (an offset-1 / radius-0 shadow is a
-    /// crisp one-cell sliver, no overhang); the soft fringe spills only into a <b>casting</b> corner — where two
-    /// set edges meet — never past an unlit one. The translucent background rides to the compositor (so the
-    /// shadow darkens the layer beneath), while the foreground is blended at draw time so a <em>same-scene</em>
-    /// glyph the shadow falls on dims too. (A glyph on a <em>lower layer</em> is not dimmed — the compositor's
-    /// background-only path leaves a lower foreground untouched.)
+    /// The shadow is the element's silhouette grown by a <see cref="ShadowGeometry.Radius"/>-cell soft fringe on
+    /// the casting edges (the element occludes its own footprint, and only the casting edges show). The fringe is
+    /// aspect-corrected (about half as deep vertically as it is wide) and rounds toward a non-casting corner; see
+    /// <see cref="ShadowDistance"/>. The translucent background rides to the compositor (so the shadow darkens the
+    /// layer beneath), while the foreground is blended at draw time so a <em>same-scene</em> glyph the shadow
+    /// falls on dims too. (A glyph on a <em>lower layer</em> is not dimmed — the compositor's background-only path
+    /// leaves a lower foreground untouched.)
     /// </remarks>
     public void DrawDropShadow(in Rect element, in ShadowGeometry geometry, Color shadowColor)
     {
         if (element.Columns <= 0 || element.Rows <= 0) return;
         if (!TryShadow(geometry, shadowColor, out int radius, out double strength)) return;
 
-        // The whole composite (element silhouette + offset + fringe) translates as a unit by the ambient
-        // push translate, and the painted band is bounded by the ambient clip (the scene bounds when
-        // nothing is pushed).
+        // The whole composite (element silhouette + fringe) translates as a unit by the ambient push translate,
+        // and the painted band is bounded by the ambient clip (the scene bounds when nothing is pushed).
         var state = CurrentState;
         int eCol = element.Column + state.Dx, eRow = element.Row + state.Dy;
         int eColEnd = eCol + element.Columns, eRowEnd = eRow + element.Rows;
 
-        int dx = geometry.OffsetColumn, dy = geometry.OffsetRow;
-        int sCol = eCol + dx, sRow = eRow + dy;
-        int sColEnd = sCol + element.Columns, sRowEnd = sRow + element.Rows;
-
-        int c0 = Math.Max(state.Clip.Column, sCol - radius), r0 = Math.Max(state.Clip.Row, sRow - radius);
-        int c1 = Math.Min(state.Clip.ColumnEnd, sColEnd + radius), r1 = Math.Min(state.Clip.RowEnd, sRowEnd + radius);
+        int c0 = Math.Max(state.Clip.Column, eCol - radius), r0 = Math.Max(state.Clip.Row, eRow - radius);
+        int c1 = Math.Min(state.Clip.ColumnEnd, eColEnd + radius), r1 = Math.Min(state.Clip.RowEnd, eRowEnd + radius);
 
         for (int r = r0; r < r1; r++)
         for (int c = c0; c < c1; c++)
         {
             if (c >= eCol && c < eColEnd && r >= eRow && r < eRowEnd) continue;    // the element occludes itself
-            if (!OnCastingSide(sCol, sRow, sColEnd, sRowEnd, geometry.Edges, c, r)) continue;
-            int d = ChebyshevOutside(sCol, sRow, sColEnd, sRowEnd, c, r);
+            if (!OnCastingSide(eCol, eRow, eColEnd, eRowEnd, geometry.Edges, c, r)) continue;
+            int d = ShadowDistance(eCol, eRow, eColEnd, eRowEnd, c, r, radius, geometry.Edges);
             if (d > radius) continue;
 
             byte alpha = ShadowAlpha(shadowColor.Alpha, strength, d, radius);
@@ -382,7 +494,7 @@ public sealed class DrawingContext
         }
     }
 
-    /// <summary>Drop shadow with the default soft black shadow (radius 1, offset 1, strength 0.5, all edges).</summary>
+    /// <summary>Drop shadow with the default soft black shadow (radius 1, strength 0.5, all edges).</summary>
     public void DrawDropShadow(in Rect element) => DrawDropShadow(element, ShadowGeometry.Drop(), Color.FromRgb(0, 0, 0));
 
     /// <summary>
@@ -441,32 +553,81 @@ public sealed class DrawingContext
         return (byte) Math.Clamp(Math.Round(sourceAlpha * strength * falloff), 0, 255);
     }
 
-    // Whether a cell casts, classified against the offset silhouette [sCol,sColEnd)×[sRow,sRowEnd):
+    // Whether a cell casts, classified against the element [col,colEnd)×[row,rowEnd):
     //  • an edge cell (outside in one axis, within the other) casts when that single edge is set;
     //  • a corner cell (outside in both axes) casts only when BOTH its edges are set — so the soft fringe
-    //    spills only into a casting corner, never past an unlit one;
-    //  • a cell inside the silhouette but outside the element (the offset sliver) casts at full strength.
-    private static bool OnCastingSide(int sCol, int sRow, int sColEnd, int sRowEnd, ShadowEdges edges, int c, int r)
+    //    spills only into a casting corner, never past an unlit one.
+    private static bool OnCastingSide(int col, int row, int colEnd, int rowEnd, ShadowEdges edges, int c, int r)
     {
-        bool left = c < sCol, right = c >= sColEnd;
-        bool above = r < sRow, below = r >= sRowEnd;
+        bool left = c < col, right = c >= colEnd;
+        bool above = r < row, below = r >= rowEnd;
         bool hOut = left || right, vOut = above || below;
 
         bool hSet = (left && edges.HasFlag(ShadowEdges.Left)) || (right && edges.HasFlag(ShadowEdges.Right));
         bool vSet = (above && edges.HasFlag(ShadowEdges.Top)) || (below && edges.HasFlag(ShadowEdges.Bottom));
 
         if (hOut && vOut) return hSet && vSet;   // corner
-        if (hOut) return hSet;                    // left / right band
-        if (vOut) return vSet;                    // top / bottom band
-        return true;                              // inside the silhouette (the offset sliver) → full shadow
+        if (hOut) return hSet;                   // left / right band
+        if (vOut) return vSet;                   // top / bottom band
+        return true;                             // within the element (occluded before this call) — defensive
     }
 
-    // Chebyshev distance from (c,r) to the rectangle [col,colEnd)×[row,rowEnd); 0 when inside.
-    private static int ChebyshevOutside(int col, int row, int colEnd, int rowEnd, int c, int r) =>
-        Math.Max(0, Math.Max(Math.Max(col - c, c - (colEnd - 1)), Math.Max(row - r, r - (rowEnd - 1))));
+    // The soft drop-shadow falloff distance for a casting cell (c, r), measured from the silhouette
+    // [col,colEnd)×[row,rowEnd). DrawDropShadow culls d > radius; ShadowAlpha fades d = 0 (peak) → radius (faint).
+    //
+    // Two shaping rules give the look in the diagrams below:
+    //
+    //  1. ASPECT. Terminal cells are ~2× taller than wide, so the shadow reaches `radius` cells HORIZONTALLY but
+    //     only rv = (radius + 1) / 2 rows VERTICALLY — a vertical step costs ~2 horizontal units — so it reads as
+    //     visually round, not a tall smear. (Hence the bottom band is about half as deep as the side band is wide.)
+    //
+    //  2. CORNER ROUNDING. A band rounds toward a corner whose perpendicular edge does NOT cast (a soft tip), and
+    //     runs full into a corner where BOTH edges cast. So with bottom+right set, the right band tapers up to a
+    //     1-cell tip at the top (no top edge) and the bottom band insets on the left (no left edge) but stays full
+    //     into the bottom-right corner. With bottom only, both ends of the bottom band inset symmetrically:
+    //
+    //       +------------------+x        +------------------+        radius = 4 (→ rv = 2):
+    //       |                  |xx       |                  |          • right band tapers 1,2,3,4 down to the
+    //       |                  |xxx      |                  |            casting bottom-right corner;
+    //       +------------------+xxxx     +------------------+          • bottom band is 2 rows deep (≈ rv) and
+    //        xxxxxxxxxxxxxxxxxxxxxxx      xxxxxxxxxxxxxxxxxx             insets 1 cell per row toward a non-
+    //         xxxxxxxxxxxxxxxxxxxx         xxxxxxxxxxxxxxxx              casting corner.
+    //          (bottom | right)             (bottom only)
+    //
+    // (The diagrams are approximate — the off-by-one at the tips is not load-bearing. Tune `radius`/`rv` and the
+    // per-band `reach` to adjust the look; OnCastingSide gates WHICH cells cast, this gates HOW FAR / HOW SOFT.)
+    private static int ShadowDistance(int col, int row, int colEnd, int rowEnd, int c, int r, int radius, ShadowEdges edges)
+    {
+        const int culled = int.MaxValue;
 
-    // Distance from an interior cell to the nearest casting edge of the (scene-translated) element
-    // [eCol,eColEnd)×[eRow,eRowEnd); −1 when no set edge applies.
+        int rv = (radius + 1) / 2; // vertical reach in rows (≈ half the horizontal reach — cells are ~2× tall)
+
+        bool hasLeft = edges.HasFlag(ShadowEdges.Left), hasRight = edges.HasFlag(ShadowEdges.Right);
+        bool hasTop = edges.HasFlag(ShadowEdges.Top), hasBottom = edges.HasFlag(ShadowEdges.Bottom);
+
+        int hx = c < col ? col - c : c >= colEnd ? c - (colEnd - 1) : 0;  // cells past the L/R edge (1 = adjacent); 0 = within
+        int vx = r < row ? row - r : r >= rowEnd ? r - (rowEnd - 1) : 0;  // cells past the T/B edge (1 = adjacent); 0 = within
+
+        if (vx == 0) // a left/right edge band — full reach into a casting top/bottom corner, tapering to a tip otherwise
+        {
+            int topRoom = hasTop ? radius : r - row + 1;     // rows from the top edge (a casting top → no rounding)
+            int botRoom = hasBottom ? radius : rowEnd - r;   // rows from the bottom edge
+            int reach = Math.Min(radius, Math.Min(topRoom, botRoom));
+            return hx <= reach ? (hx - 1) + (radius - reach) : culled;
+        }
+
+        if (hx == 0) // a top/bottom edge band — half-scale vertical depth, insetting toward a non-casting side
+        {
+            int leftRoom = hasLeft ? rv : c - col;           // cells from the left edge (a casting left → no inset)
+            int rightRoom = hasRight ? rv : colEnd - 1 - c;  // cells from the right edge
+            int reach = Math.Min(rv, Math.Min(leftRoom, rightRoom));
+            return vx <= reach ? 2 * (vx - 1) + 2 * (rv - reach) : culled;
+        }
+
+        // A corner cell (outside on both axes; OnCastingSide already required both edges set): a rounded quarter in
+        // the anisotropic metric — horizontal cost hx, vertical cost ~2× — clipped to the vertical reach.
+        return vx <= rv ? (hx - 1) + 2 * (vx - 1) : culled;
+    }
     private static int InnerEdgeDistance(int eCol, int eRow, int eColEnd, int eRowEnd, ShadowEdges edges, int c, int r)
     {
         int best = int.MaxValue;
@@ -1004,7 +1165,7 @@ public sealed class DrawingContext
     /// an optional <paramref name="title"/> on the top edge — the one-call "group box". Equivalent to a
     /// <see cref="FillRectangle(in Rect, IBrush)"/> (background-only; lower glyphs show through on composite)
     /// followed by <see cref="DrawTitledBox(in Rect, in PanelTitle, in Pen, bool)"/>. For an <em>opaque</em>
-    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush, TextAttributes)"/> +
+    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/> +
     /// <c>DrawTitledBox</c> (overwrite: true) instead.
     /// </summary>
     public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)
@@ -1159,7 +1320,9 @@ public sealed class DrawingContext
         var current = _surface[column, row];
 
         // A glyph (or a wide glyph's continuation) already here survives unless this layer overwrites.
-        if (!overwrite && (current.Kind == CellKind.WideContinuation || !string.IsNullOrWhiteSpace(current.Grapheme)))
+        var isNullOrWhiteSpace = current.Grapheme.IsWhiteSpace() && current.Grapheme != CellBuffer.DurableEmptyGrapheme;
+
+        if (!overwrite && (current.Kind == CellKind.WideContinuation || !isNullOrWhiteSpace))
             return;
 
         // Normally the stroke keeps a transparent background so a fill / the composite target shows under the

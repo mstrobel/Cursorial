@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aurora Fall — Terminal Theme</title>
+<style>
+:root {
+  --font: "Cascadia Code NF", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ---- DARK (default) ----
+     The image read as a fall: cold blue-violet sky collapsing into a hot coral
+     horizon. Two accents in tension — warm coral primary, cold cobalt secondary,
+     hot pink as the seam between them. */
+
+  --bg:         #080920;  /* deep blue-violet night sky */
+  --bg-alt:     #020417;  /* the well — near-pure darkest sky from the corners */
+  --bg-raised:  #11103a;  /* raised blue-violet */
+  --bg-sel:     #1c1570;  /* cobalt-violet glow selection */
+  --bg-hl:      #141251;  /* current-line */
+
+  --fg:         #ece4ee;  /* warm starlight */
+  --fg-dim:     #a98bb4;  /* mauve */
+  --fg-muted:   #645080;  /* dim violet */
+
+  /* PRIMARY — warm rose-coral horizon (softened from orange toward pink/red) */
+  --accent-d:   #c73121;
+  --accent:     #f57761;
+  --accent-2:   #ffac97;
+  --accent-h:   #ffd1c3;
+
+  /* SECONDARY — cold electric cobalt (the gem on the left edge) */
+  --cool-d:     #381ec7;
+  --cool:       #5f44f2;
+  --cool-2:     #8873ff;
+  --cool-h:     #baadff;
+
+  /* hot pink — the seam */
+  --danger-d:   #d11f5e;
+  --danger:     #f54e89;
+  --danger-2:   #ff80ac;
+  --danger-h:   #ffb2cd;
+
+  --info:       #8873ff;  /* cobalt-2 */
+  --warn:       #ffce73;  /* nebula gold */
+  --success:    #63c792;  /* bluish-green, still green-dominant */
+  --special:    #c75e9a;  /* magenta streak */
+  --cyan:       #8873ff;  /* cool stand-in — image has no cyan */
+  --teal:       #5f44f2;
+
+  --border:        #412670;
+  --border-soft:   #291c42;
+  --border-focus:  #f57761;
+
+  --shadow-cell:   #050310;
+
+  /* ---- ANSI 16 ---- */
+  --ansi-0:  #020417;  --ansi-8:  #645080;
+  --ansi-1:  #f54e89;  --ansi-9:  #ff80ac;
+  --ansi-2:  #63c792;  --ansi-10: #82e0ae;
+  --ansi-3:  #ffce73;  --ansi-11: #ffe0a0;
+  --ansi-4:  #5f44f2;  --ansi-12: #8873ff;
+  --ansi-5:  #c75e9a;  --ansi-13: #e288b8;
+  --ansi-6:  #f57761;  --ansi-14: #ffac97;   /* coral occupies "cyan" slot — the image's true 6th hue */
+  --ansi-7:  #ece4ee;  --ansi-15: #fbf2fa;
+}
+
+[data-theme="light"] {
+  --bg:         #f3ecf2;  /* warm rose-violet paper */
+  --bg-alt:     #e6dae8;
+  --bg-raised:  #fbf4fa;
+  --bg-sel:     #ddccec;
+  --bg-hl:      #ebdcee;
+
+  --fg:         #261735;
+  --fg-dim:     #5e4670;
+  --fg-muted:   #927a9c;
+
+  --accent-d:   #af291a;
+  --accent:     #c9432e;
+  --accent-2:   #af291a;
+  --accent-h:   #8a2010;
+
+  --cool-d:     #3a23c4;
+  --cool:       #4a30d6;
+  --cool-2:     #3a23c4;
+  --cool-h:     #2a1896;
+
+  --danger-d:   #b3215a;
+  --danger:     #cf2f6e;
+  --danger-2:   #b3215a;
+  --danger-h:   #8a1846;
+
+  --info:       #4a30d6;
+  --warn:       #9a6a16;
+  --success:    #1e7d52;
+  --special:    #a23f74;
+  --cyan:       #4a30d6;
+  --teal:       #3a23c4;
+
+  --border:        #d0bcd4;
+  --border-soft:   #e0cee2;
+  --border-focus:  #d44a1e;
+
+  --shadow-cell:   #d6c2d6;
+
+  --ansi-0:  #261735;  --ansi-8:  #846a8e;
+  --ansi-1:  #cf2f6e;  --ansi-9:  #b3215a;
+  --ansi-2:  #1e7d52;  --ansi-10: #16643f;
+  --ansi-3:  #9a6a16;  --ansi-11: #7a5410;
+  --ansi-4:  #4a30d6;  --ansi-12: #3a23c4;
+  --ansi-5:  #a23f74;  --ansi-13: #7e2e58;
+  --ansi-6:  #c9432e;  --ansi-14: #af291a;
+  --ansi-7:  #5e4670;  --ansi-15: #261735;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 2rem; }
+h1 { font-size: 1.3rem; font-weight: 700; margin: 0; letter-spacing: 0.02em; }
+h1 .g1 { color: var(--accent); } h1 .g2 { color: var(--cool); } h1 .g3 { color: var(--danger); }
+.subtitle { color: var(--fg-dim); font-size: 0.85rem; margin-top: 0.25rem; }
+.toggle { background: var(--bg-raised); color: var(--accent); border: 1px solid var(--border); font-family: var(--font); font-size: 0.85rem; padding: 0.4rem 0.9rem; cursor: pointer; }
+.toggle:hover { color: var(--accent-2); border-color: var(--border-focus); }
+
+h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--fg-dim); font-weight: 600; margin: 2.5rem 0 1rem; }
+h2::before { content: "── "; color: var(--fg-muted); }
+
+.ramp-name { font-size: 0.72rem; color: var(--fg-dim); margin: 0 0 0.3rem; letter-spacing: 0.05em; }
+.ramp { display: flex; border: 1px solid var(--border); margin-bottom: 1rem; }
+.ramp .step { flex: 1; height: 56px; position: relative; border-right: 1px solid var(--border-soft); }
+.ramp .step:last-child { border-right: none; }
+.ramp .step .lbl { position: absolute; bottom: 4px; left: 6px; font-size: 0.65rem; color: var(--fg); mix-blend-mode: difference; }
+
+.gradshow { border: 1px solid var(--border); background: var(--bg-alt); padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.gline { display: flex; align-items: center; gap: 1rem; }
+.glabel { width: 110px; flex-shrink: 0; color: var(--fg-dim); font-size: 0.78rem; }
+.gbar { font-size: 0.95rem; letter-spacing: -0.05ch; white-space: pre; overflow: hidden; }
+
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0; border: 1px solid var(--border); }
+.swatch { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.swatch .chip { height: 40px; }
+.swatch .meta { padding: 0.45rem 0.6rem; background: var(--bg-raised); }
+.swatch .name { font-size: 0.76rem; color: var(--fg); }
+.swatch .hex { font-size: 0.7rem; color: var(--fg-dim); }
+
+.ansi { display: grid; grid-template-columns: repeat(8, 1fr); border: 1px solid var(--border); }
+.ansi .cell { height: 64px; position: relative; border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); display: flex; flex-direction: column; justify-content: space-between; padding: 4px 5px; }
+.ansi .cell .idx { font-size: 0.7rem; font-weight: 700; } .ansi .cell .nm { font-size: 0.6rem; opacity: 0.85; } .ansi .cell .hx { font-size: 0.58rem; opacity: 0.7; }
+
+.gallery { border: 1px solid var(--border); background: var(--bg-alt); }
+.row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.row:last-child { border-bottom: none; }
+.row .label { width: 130px; flex-shrink: 0; color: var(--fg-dim); font-size: 0.8rem; }
+.controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+
+button.btn { font-family: var(--font); font-size: 0.85rem; padding: 0.35rem 0.9rem; border: 1px solid var(--border); background: var(--bg-raised); color: var(--fg); cursor: pointer; }
+button.btn:hover { background: var(--bg-sel); }
+button.btn.primary { background: var(--accent); color: var(--bg-alt); border-color: var(--accent); }
+button.btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+button.btn.cool { background: var(--cool); color: var(--fg); border-color: var(--cool); }
+button.btn.cool:hover { background: var(--cool-2); border-color: var(--cool-2); }
+button.btn.danger { background: var(--bg-raised); color: var(--danger); border-color: var(--border); }
+button.btn.danger:hover { background: var(--danger); color: var(--bg-alt); border-color: var(--danger); }
+button.btn:disabled { color: var(--fg-muted); background: var(--bg-alt); cursor: not-allowed; }
+
+.split { display: inline-flex; border: 1px solid var(--border); }
+.split .main { background: var(--bg-raised); color: var(--fg); padding: 0.35rem 0.9rem; cursor: pointer; font-family: var(--font); font-size: 0.85rem; border: none; }
+.split .arrow { background: var(--bg-sel); color: var(--accent); padding: 0.35rem 0.6rem; cursor: pointer; font-family: var(--font); font-size: 0.85rem; border: none; }
+.split .main:hover { background: var(--bg-sel); } .split .arrow:hover { color: var(--accent-2); }
+
+a.link { color: var(--cool-2); text-decoration: none; cursor: pointer; }
+a.link:hover { color: var(--cool-h); }
+a.link.visited { color: var(--special); }
+
+.tick { cursor: pointer; color: var(--fg); user-select: none; display: inline-flex; align-items: center; gap: 0.4ch; }
+.tick:hover .mark { color: var(--accent); } .tick.on .mark { color: var(--accent); } .tick .mark { color: var(--fg-muted); }
+.swtch { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 0.5ch; color: var(--fg); }
+.swtch .track { color: var(--fg-muted); letter-spacing: -0.1ch; } .swtch.on .track { color: var(--cool-2); } .swtch:hover .track { color: var(--cool-h); }
+
+.status { padding: 0.15rem 0.7rem; border: 1px solid currentColor; font-size: 0.78rem; }
+.status.ok { color: var(--success); } .status.warn { color: var(--warn); } .status.err { color: var(--danger); } .status.info { color: var(--info); }
+.badge { padding: 0.15rem 0.7rem; font-size: 0.78rem; color: var(--bg-alt); }
+.badge.ok { background: var(--success); } .badge.warn { background: var(--warn); } .badge.err { background: var(--danger); } .badge.info { background: var(--cool); color: var(--fg); }
+
+.field { background: var(--bg); border: 1px solid var(--border); color: var(--fg); font-family: var(--font); font-size: 0.85rem; padding: 0.35rem 0.6rem; min-width: 180px; }
+.field::placeholder { color: var(--fg-muted); } .field:focus { outline: none; border-color: var(--border-focus); } .field.err { border-color: var(--danger); }
+.sel { display: inline-flex; border: 1px solid var(--border); background: var(--bg); }
+.sel .val { padding: 0.35rem 0.6rem; color: var(--fg); font-size: 0.85rem; } .sel .chev { padding: 0.35rem 0.55rem; color: var(--accent); background: var(--bg-raised); border-left: 1px solid var(--border); }
+
+.progress { font-size: 0.95rem; } .progress .fill { color: var(--accent); } .progress .empty { color: var(--fg-muted); } .progress .pct { color: var(--fg-dim); font-size: 0.8rem; margin-left: 0.6ch; }
+.spinner { color: var(--cool-2); }
+.slider { display: inline-flex; align-items: center; gap: 0.5ch; cursor: pointer; user-select: none; }
+.slider .track { letter-spacing: -0.05ch; } .slider .done { color: var(--accent); } .slider .rest { color: var(--fg-muted); } .slider .knob { color: var(--accent-h); } .slider .num { color: var(--fg-dim); font-size: 0.8rem; }
+
+.tabs { display: flex; border-bottom: 1px solid var(--border); }
+.tab { padding: 0.4rem 1rem; cursor: pointer; color: var(--fg-dim); border-right: 1px solid var(--border-soft); }
+.tab:hover { color: var(--fg); } .tab.active { color: var(--accent); background: var(--bg-hl); border-bottom: 2px solid var(--accent); }
+
+.tree { font-size: 0.85rem; line-height: 1.6; }
+.tree .glyph { color: var(--fg-muted); } .tree .dir { color: var(--cool-2); } .tree .file { color: var(--fg); } .tree .mod { color: var(--warn); } .tree .add { color: var(--success); }
+
+.tbl { font-size: 0.84rem; line-height: 1.55; white-space: pre; overflow-x: auto; }
+.tbl .head { color: var(--accent); } .tbl .rule { color: var(--border); } .tbl .brow { color: var(--border); } .tbl .cell-t { color: var(--fg); } .tbl .sel-row { background: var(--bg-hl); } .tbl .num { color: var(--cool-2); } .tbl .neg { color: var(--danger); }
+
+.callout { border-left: 3px solid var(--cool); background: var(--bg-raised); padding: 0.6rem 1rem; font-size: 0.84rem; }
+.callout.warn { border-left-color: var(--warn); } .callout.err { border-left-color: var(--danger); }
+.callout .ico { color: var(--cool-2); margin-right: 0.5ch; } .callout.warn .ico { color: var(--warn); } .callout.err .ico { color: var(--danger); }
+
+.code { border: 1px solid var(--border); background: var(--bg-alt); padding: 1rem 1.2rem; font-size: 0.85rem; white-space: pre; overflow-x: auto; }
+.c-kw { color: var(--special); } .c-fn { color: var(--accent); } .c-str { color: var(--success); } .c-num { color: var(--warn); }
+.c-cm { color: var(--fg-muted); } .c-ty { color: var(--cool-2); } .c-op { color: var(--danger); } .c-pn { color: var(--fg-dim); } .c-cur { background: var(--accent); color: var(--bg-alt); }
+
+footer { margin-top: 3rem; color: var(--fg-muted); font-size: 0.78rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="g1">▚</span> <span data-grad="--cool,--danger,--accent,--warn">Aurora Fall</span> <span class="g2">◆</span><span class="g3">●</span></h1>
+      <div class="subtitle">cold cobalt sky · hot pink seam · warm coral horizon — a dual-accent read</div>
+    </div>
+    <button class="toggle" id="toggle">◐ dark / light</button>
+  </header>
+
+  <h2>The two accents in tension</h2>
+  <div class="ramp-name">warm coral — primary (the horizon)</div>
+  <div class="ramp" id="ramp-coral"></div>
+  <div class="ramp-name">cold cobalt — secondary (the sky's edge)</div>
+  <div class="ramp" id="ramp-cool"></div>
+  <div class="ramp-name">hot pink — the seam between them</div>
+  <div class="ramp" id="ramp-pink"></div>
+
+  <h2>Cell-sampled gradients</h2>
+  <p class="ramp-name">each glyph cell = one solid sampled color · whole-cell discipline intact · this is the nebula's own technique</p>
+  <div class="gradshow">
+    <div class="gline"><span class="glabel">pink → gold</span><span class="gbar" data-grad="--danger,--warn">████████████████████████████████████████████████</span></div>
+    <div class="gline"><span class="glabel">cobalt → coral</span><span class="gbar" data-grad="--cool,--accent">████████████████████████████████████████████████</span></div>
+    <div class="gline"><span class="glabel">full sweep</span><span class="gbar" data-grad="--cool,--danger,--accent,--warn">████████████████████████████████████████████████</span></div>
+    <div class="gline"><span class="glabel">heading</span><span class="gbar" data-grad="--danger,--warn" style="letter-spacing:0">▓▒░ AURORA FALL ░▒▓</span></div>
+  </div>
+
+  <h2>Palette</h2>
+  <div class="swatches" id="swatches"></div>
+
+  <h2>ANSI 16-color</h2>
+  <div class="ansi" id="ansi"></div>
+
+  <h2>Terminal output</h2>
+  <div class="code"><span class="c-kw">➜</span> <span class="c-ty">~/aurora-fall</span> <span class="c-pn">git:(</span><span class="c-op">main</span><span class="c-pn">)</span> cargo run
+<span class="c-cm">   Compiling</span> aurora-fall v0.1.0
+<span class="c-fn">    Warm</span> primary resolved <span class="c-pn">→</span> <span class="c-num">#f57761</span>
+<span class="c-ty">    Cool</span> secondary resolved <span class="c-pn">→</span> <span class="c-num">#5f44f2</span>
+<span class="c-str">    Finished</span> in <span class="c-num">0.92s</span> <span class="c-cur"> </span></div>
+
+  <h2>Controls</h2>
+  <div class="gallery">
+    <div class="row"><div class="label">Buttons</div><div class="controls">
+      <button class="btn">Cancel</button>
+      <button class="btn primary">Apply</button>
+      <button class="btn cool">Sync</button>
+      <button class="btn danger">Delete</button>
+      <button class="btn" disabled>Disabled</button>
+    </div></div>
+    <div class="row"><div class="label">Split</div><div class="controls">
+      <span class="split"><button class="main">Commit</button><button class="arrow">▾</button></span>
+    </div></div>
+    <div class="row"><div class="label">Links (cool)</div><div class="controls">
+      <a class="link" tabindex="0">Open file</a><a class="link" tabindex="0">View diff</a><a class="link visited" tabindex="0">Changelog</a>
+    </div></div>
+    <div class="row"><div class="label">Checkboxes</div><div class="controls">
+      <span class="tick on" data-tick="check"><span class="mark">[✓]</span> Word wrap</span>
+      <span class="tick" data-tick="check"><span class="mark">[ ]</span> Minimap</span>
+    </div></div>
+    <div class="row"><div class="label">Radio</div><div class="controls" id="radios">
+      <span class="tick on" data-tick="radio"><span class="mark">(•)</span> LF</span>
+      <span class="tick" data-tick="radio"><span class="mark">( )</span> CRLF</span>
+    </div></div>
+    <div class="row"><div class="label">Switch (cool)</div><div class="controls">
+      <span class="swtch on" data-swtch><span class="track">[●──]</span> Auto-save</span>
+      <span class="swtch" data-swtch><span class="track">[──●]</span> Vim mode</span>
+    </div></div>
+    <div class="row"><div class="label">Slider</div><div class="controls">
+      <span class="slider" id="slider"><span class="track"><span class="done" data-grad="--accent,--warn">━━━━━━</span><span class="knob">●</span><span class="rest">────</span></span><span class="num">60</span></span>
+    </div></div>
+    <div class="row"><div class="label">Status</div><div class="controls">
+      <span class="status ok">✓ passing</span><span class="status info">ℹ synced</span><span class="status warn">▲ 3 warnings</span><span class="status err">✗ 2 errors</span>
+    </div></div>
+    <div class="row"><div class="label">Badges</div><div class="controls">
+      <span class="badge ok">PASS</span><span class="badge info">SYNC</span><span class="badge warn">WARN</span><span class="badge err">FAIL</span>
+    </div></div>
+    <div class="row"><div class="label">Input</div><div class="controls">
+      <input class="field" placeholder="search…"><input class="field err" value="bad//path">
+    </div></div>
+    <div class="row"><div class="label">Progress</div><div class="controls">
+      <span class="progress"><span class="fill" data-grad="--accent,--warn">████████████</span><span class="empty">░░░░░░░░</span><span class="pct">62%</span></span>
+      <span class="spinner" id="spinner">⠋</span>
+    </div></div>
+  </div>
+
+  <h2>Tabs</h2>
+  <div class="tabs" id="tabs"><span class="tab active" data-grad="--danger,--warn">main.rs</span><span class="tab">theme.toml</span><span class="tab">README.md</span></div>
+
+  <h2>File tree</h2>
+  <div class="tree"><span class="glyph">▾ </span><span class="dir">src</span>
+<span class="glyph">  ├─ </span><span class="file">main.rs</span>
+<span class="glyph">  ├─ </span><span class="mod">theme.rs    M</span>
+<span class="glyph">  └─ </span><span class="add">aurora.rs   +</span></div>
+
+  <h2>Data table</h2>
+  <div class="tbl"><span class="head" data-grad="--accent,--warn">┌──────────────┬─────────┬──────────┐</span>
+<span class="head">│ Accent       │ Hits    │  ΔPerf   │</span>
+<span class="rule">├──────────────┼─────────┼──────────┤</span>
+<span class="brow">│ <span class="cell-t">coral</span>        │ <span class="num">  1,204</span> │ <span class="num">  +3.1%</span>  │</span>
+<span class="brow sel-row">│ <span class="cell-t">cobalt</span>       │ <span class="num">    862</span> │ <span class="num">  +1.7%</span>  │</span>
+<span class="brow">│ <span class="cell-t">pink</span>         │ <span class="num">    318</span> │ <span class="neg">  -0.4%</span>  │</span>
+<span class="rule">└──────────────┴─────────┴──────────┘</span></div>
+
+  <h2>Callouts</h2>
+  <div style="display:flex;flex-direction:column;gap:0.6rem">
+    <div class="callout"><span class="ico">ℹ</span>Two-accent system: warm for action, <span style="color:var(--cool-2)">cool for navigation</span>.</div>
+    <div class="callout warn"><span class="ico">▲</span>Coral and pink sit close in hue — reserve pink for signal only.</div>
+    <div class="callout err"><span class="ico">✗</span>Contrast on <span style="color:var(--danger-2)">--fg-muted</span> dips below AA at small sizes.</div>
+  </div>
+
+  <footer>Aurora Fall — my own read of the nebula: vertical cold→warm tension kept as a dual-accent system rather than flattened · whole-cell discipline throughout</footer>
+</div>
+
+<script>
+/* ---- cell-sampled gradient ----
+   Faithful to a TUI that samples a gradient per character cell: each cell still
+   renders ONE solid color (whole-cell discipline intact). We just compute the
+   stop for each cell's position along the run. */
+function lerp(a,b,t){ return Math.round(a+(b-a)*t); }
+function mix(c1,c2,t){
+  const a=[1,3,5].map(i=>parseInt(c1.substr(i,2),16)), b=[1,3,5].map(i=>parseInt(c2.substr(i,2),16));
+  return '#'+a.map((v,k)=>lerp(v,b[k],t).toString(16).padStart(2,'0')).join('');
+}
+function resolveVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+// paint each character of an element along a 2+ stop gradient (stops = hex or --var)
+function gradientText(el, stops){
+  const cols = stops.map(s => s.startsWith('--') ? resolveVar(s) : s);
+  const txt = el.dataset.gradText || (el.dataset.gradText = el.textContent);
+  const chars = [...txt];
+  // count only non-space cells for distribution, but keep spaces in place
+  const cells = chars.length > 1 ? chars.length - 1 : 1;
+  el.innerHTML = chars.map((ch,i) => {
+    const t = i/cells;                       // 0..1 across the run
+    const seg = t*(cols.length-1);
+    const lo = Math.min(cols.length-2, Math.floor(seg));
+    const col = mix(cols[lo], cols[lo+1], seg-lo);
+    return ch === ' ' ? ' ' : `<span style="color:${col}">${ch}</span>`;
+  }).join('');
+}
+function applyGradients(){
+  document.querySelectorAll('[data-grad]').forEach(el => {
+    const stops = el.dataset.grad.split(',').map(s=>s.trim());
+    gradientText(el, stops);
+  });
+}
+const ramps = {
+  "ramp-coral": ["--accent-d","--accent","--accent-2","--accent-h"],
+  "ramp-cool":  ["--cool-d","--cool","--cool-2","--cool-h"],
+  "ramp-pink":  ["--danger-d","--danger","--danger-2","--danger-h"]
+};
+const tokens = [
+  ["--bg","background"],["--bg-alt","well"],["--bg-raised","raised"],["--bg-sel","selection"],["--bg-hl","line hl"],
+  ["--fg","text"],["--fg-dim","dim"],["--fg-muted","muted"],
+  ["--accent","coral"],["--accent-2","coral hi"],["--cool","cobalt"],["--cool-2","cobalt hi"],
+  ["--danger","pink"],["--danger-2","pink hi"],["--warn","gold"],
+  ["--success","green"],["--special","magenta"],["--info","info"],
+  ["--border","border"],["--border-focus","focus"]
+];
+const ansiNames = ["black","red","green","yellow","blue","magenta","coral","white","br blk","br red","br grn","br yel","br blu","br mag","br cor","br wht"];
+function paint() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const [id, vars] of Object.entries(ramps)) {
+    document.getElementById(id).innerHTML = vars.map(v => {
+      const hex = cs.getPropertyValue(v).trim();
+      return `<div class="step" style="background:${hex}"><span class="lbl">${hex}</span></div>`;
+    }).join("");
+  }
+  document.getElementById("swatches").innerHTML = tokens.map(([v,n]) => {
+    const hex = cs.getPropertyValue(v).trim();
+    return `<div class="swatch"><div class="chip" style="background:${hex}"></div><div class="meta"><div class="name">${n}</div><div class="hex">${hex} <span style="color:var(--fg-muted)">${v}</span></div></div></div>`;
+  }).join("");
+  document.getElementById("ansi").innerHTML = ansiNames.map((nm,i) => {
+    const hex = cs.getPropertyValue("--ansi-"+i).trim();
+    const r=parseInt(hex.substr(1,2),16),g=parseInt(hex.substr(3,2),16),b=parseInt(hex.substr(5,2),16);
+    const txt = (0.299*r+0.587*g+0.114*b) > 140 ? "#020417" : "#fbf2fa";
+    return `<div class="cell" style="background:${hex};color:${txt}"><span class="idx">${i}</span><span class="nm">${nm}</span><span class="hx">${hex}</span></div>`;
+  }).join("");
+  applyGradients();
+}
+document.getElementById("toggle").addEventListener("click", () => {
+  const r = document.documentElement;
+  r.setAttribute("data-theme", r.getAttribute("data-theme") === "light" ? "dark" : "light");
+  paint();
+});
+document.querySelectorAll('[data-tick="check"]').forEach(el => el.addEventListener("click", () => {
+  const on = el.classList.toggle("on"); el.querySelector(".mark").textContent = on ? "[✓]" : "[ ]";
+}));
+document.getElementById("radios").addEventListener("click", e => {
+  const t = e.target.closest('[data-tick="radio"]'); if (!t) return;
+  document.querySelectorAll('#radios [data-tick="radio"]').forEach(r => { r.classList.remove("on"); r.querySelector(".mark").textContent = "( )"; });
+  t.classList.add("on"); t.querySelector(".mark").textContent = "(•)";
+});
+document.querySelectorAll('[data-swtch]').forEach(el => el.addEventListener("click", () => {
+  const on = el.classList.toggle("on"); el.querySelector(".track").textContent = on ? "[●──]" : "[──●]";
+}));
+document.getElementById("tabs").addEventListener("click", e => {
+  if (!e.target.classList.contains("tab")) return;
+  document.querySelectorAll('#tabs .tab').forEach(t => {
+    t.classList.remove("active");
+    t.removeAttribute("data-grad");
+    if (t.dataset.gradText) { t.textContent = t.dataset.gradText; }  // restore flat
+  });
+  e.target.classList.add("active");
+  e.target.setAttribute("data-grad", "--danger,--warn");            // pink → gold
+  gradientText(e.target, ["--danger","--warn"]);
+});
+const frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]; let fi=0;
+setInterval(() => { document.getElementById("spinner").textContent = frames[fi=(fi+1)%frames.length]; }, 90);
+const slider = document.getElementById("slider");
+slider.addEventListener("click", () => {
+  let v = parseInt(slider.querySelector(".num").textContent) + 20; if (v > 100) v = 0;
+  const d = Math.round(v/10), r = 10-d;
+  slider.querySelector(".track").innerHTML = `<span class="done">${"━".repeat(d)}</span><span class="knob">●</span><span class="rest">${"─".repeat(Math.max(0,r))}</span>`;
+  slider.querySelector(".num").textContent = v;
+  const done = slider.querySelector(".done");
+  if (done && d > 1) { done.removeAttribute("data-gradText"); gradientText(done, ["--accent","--warn"]); }
+});
+paint();
+</script>
+</body>
+</html>

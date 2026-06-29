@@ -88,6 +88,7 @@ internal sealed class TransitionManager
     private void Disarm()
     {
         DisposeSubscriptions();
+        UIApplication.Current?.CancelTransitionGoLiveRequest(this); // flipped live at the post-layout boundary (§9.5)
         _armed = null;
         _live = false;
         _everArranged = false;

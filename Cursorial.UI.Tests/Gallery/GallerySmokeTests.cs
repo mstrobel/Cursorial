@@ -47,6 +47,10 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         {
             root = GalleryApp.BuildRoot();
             host.ShowRoot(root);
+
+            if (root.DataContext is ShellViewModel shell)
+                shell.SelectedPage = shell.Pages.OfType<ScrollViewerPageViewModel>().Single();
+
             host.RunUntilIdle();
         });
         Assert.Null(ex);
@@ -70,7 +74,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         host.RunUntilIdle();
 
         var shell = (ShellViewModel)root.DataContext!;
-        Assert.IsType<ScrollViewerPageViewModel>(shell.SelectedPage); // starts on the first page
+        Assert.IsType(shell.Pages[0].GetType(), shell.SelectedPage); // starts on the first page
 
         // Navigate to the Inputs page by moving the selection (the nav ListBox's SelectedItem is two-way bound to this).
         shell.SelectedPage = shell.Pages.OfType<InputsPageViewModel>().Single();

@@ -19,7 +19,7 @@ public class Label : ContentControl, IAccessKeyTarget
     {
         // The ParsesAccessKeyLiterals flag is set on Label.Content (resolved against the runtime type,
         // doc §12.5 producer ②) — a string Content like "_Name" folds to an AccessText mnemonic.
-        ContentProperty.OverrideMetadata<Label>(new PropertyMetadata<object?>() { ParsesAccessKeyLiterals = true });
+        ContentProperty.OverrideMetadata<Label>(new PropertyMetadata<object?> { ParsesAccessKeyLiterals = true });
 
         // Never focusable / never a tab stop (doc §12.7).
         FocusableProperty.OverrideDefaultValue<Label>(false);

@@ -38,13 +38,12 @@ public sealed class WindowChromeTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var window = new Window
-        {
-            Title = "Hi",
-            Content = "Body",
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 5, Top = 3, Width = 20, Height = 8,
-        };
+        var window = host.NewWindow(
+            title: "Hi",
+            content: "Body",
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 5, top: 3, width: 20, height: 8
+        );
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -66,13 +65,12 @@ public sealed class WindowChromeTests
         host.Application.Theme = new ResourceDictionary();
         Assert.True(host.RunUntilIdle());
 
-        var window = new Window
-        {
-            Title = "Hi",
-            Content = "Body",
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 5, Top = 3, Width = 20, Height = 8,
-        };
+        var window = host.NewWindow(
+            title: "Hi",
+            content: "Body",
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 5, top: 3, width: 20, height: 8
+        );
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -93,12 +91,12 @@ public sealed class WindowChromeTests
         host.Application.Styles.Add(new Style(Selectors.OfType<Window>())
             .Set(Control.TemplateProperty, customTemplate));
 
-        var window = new Window
-        {
-            Title = "Hi",
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 5, Top = 3, Width = 20, Height = 8,
-        };
+        var window = host.NewWindow(
+
+            title: "Hi",
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 5, top: 3, width: 20, height: 8
+        );
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -114,12 +112,11 @@ public sealed class WindowChromeTests
         var (host, wm) = ShownRoot();
         using var _ = host;
 
-        var window = new Window
-                     {
-                         WindowStartupLocation = WindowStartupLocation.Manual,
-                         Left = 2, Top = 2, Width = 20, Height = 8,
-                         Content = "Body",
-                     };
+        var window = host.NewWindow(
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 2, top: 2, width: 20, height: 8,
+            content: "Body"
+        );
         window.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(window.IsActive);
@@ -130,7 +127,8 @@ public sealed class WindowChromeTests
 
         // Sanity: while active, the active look installed an AccentBrush DynamicResource on the title bar (its
         // resource provenance, even though the custom template's bar doesn't resolve the brush to a cell).
-        Assert.Equal(ThemeKeys.AccentBrush, ResourceDiagnostics.GetResourceKey(oldTitleBar!, Border.BackgroundProperty));
+        Assert.Equal(ThemeKeys.WindowTitleBarActiveBackground,
+                     ResourceDiagnostics.GetResourceKey(oldTitleBar!, Border.BackgroundProperty));
 
         // Re-template the live window (chrome-less): OnTemplateDetaching must unhook the active-look handlers,
         // then the discarded title bar tears down — evicting its resource producer (provenance → null).
@@ -146,12 +144,11 @@ public sealed class WindowChromeTests
         // Force the original window to DEACTIVATE: a second window steals activation. The discriminator —
         // a LEAKED Deactivated handler fires ApplyActiveLook(false), re-installing a SurfaceBrush DynamicResource
         // on the dead title bar (provenance becomes non-null); the unhook leaves it untouched (still null).
-        var second = new Window
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 28, Top = 2, Width = 10, Height = 5,
-            Content = "two",
-        };
+        var second = host.NewWindow(
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 28, top: 2, width: 10, height: 5,
+            content: "two"
+        );
         second.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.False(window.IsActive); // deactivated by the second window's activation

@@ -29,9 +29,14 @@ public abstract class Panel : UIElement
     public static readonly StyledProperty<bool> IsItemsHostProperty =
         UIProperty.Register<Panel, bool>(nameof(IsItemsHost), changed: OnIsItemsHostChanged);
 
+    /// <summary>Whether the background occludes (floating surface) rather than tints (<c>AffectsRender</c>).</summary>
+    public static readonly StyledProperty<bool> OccludesProperty =
+        UIProperty.Register<Panel, bool>(nameof(Occludes));
+
     static Panel()
     {
-        AffectsRender<Panel>(BackgroundProperty);
+        AddGlobalEffects(PropertyEffects.AffectsRender, OccludesProperty);
+        AddGlobalEffects(PropertyEffects.AffectsRender, BackgroundProperty);
     }
 
     private static void OnIsItemsHostChanged(UIObject sender, bool oldValue, bool newValue)
@@ -55,18 +60,23 @@ public abstract class Panel : UIElement
     /// <inheritdoc cref="IsItemsHostProperty"/>
     public bool IsItemsHost { get => GetValue(IsItemsHostProperty); set => SetValue(IsItemsHostProperty, value); }
 
+    /// <inheritdoc cref="Border.OccludesProperty"/>
+    public bool Occludes { get => GetValue(OccludesProperty); set => SetValue(OccludesProperty, value); }
+
     /// <summary>
     /// Paints <see cref="Background"/> over the panel's full bounds via <c>FillOpaque</c> (the doc
     /// §5.5 pinned surface rule) before children paint on top. No-op when the brush is null.
     /// </summary>
     protected override void Render(RenderContext context)
     {
-        if (context.Bounds.IsEmpty || Background is not {} background)
+        var bounds = context.Bounds;
+
+        if (bounds.IsEmpty || Background is not {} background)
             return;
 
-        if (background.IsOpaque)
-            context.FillOpaque(context.Bounds, background);
+        if (Occludes)
+            context.FillOpaque(bounds, background, overwrite: true);
         else
-            context.FillRectangle(context.Bounds, background);
+            context.FillRectangle(bounds, background);
     }
 }

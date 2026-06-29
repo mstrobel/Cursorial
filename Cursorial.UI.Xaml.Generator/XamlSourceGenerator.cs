@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -47,9 +48,28 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
                                           return options.GetOptions(file).TryGetValue(SourceItemTypeKey, out var itemType)
                                                  && string.Equals(itemType, CursorialXamlItemType, System.StringComparison.OrdinalIgnoreCase);
                                       })
-                               .Select(static (pair, ct) => new XamlInput(
-                                           pair.Left.Path,
-                                           pair.Left.GetText(ct)?.ToString() ?? string.Empty));
+                               .Select(static (pair, ct) =>
+                                       {
+                                           string relativePath = pair.Left.Path;
+
+                                           if (pair.Right.GlobalOptions.TryGetValue("build_property.MSBuildProjectDirectory", out var dir) &&
+                                               dir.Length < pair.Left.Path.Length &&
+                                               string.Compare(dir, 0, pair.Left.Path, 0, dir.Length, System.StringComparison.OrdinalIgnoreCase) == 0)
+                                           {
+                                               relativePath = relativePath.Remove(0, dir.Length);
+
+                                               if (relativePath.StartsWith($"{Path.DirectorySeparatorChar}", System.StringComparison.Ordinal) ||
+                                                   relativePath.StartsWith($"{Path.AltDirectorySeparatorChar}", System.StringComparison.Ordinal))
+                                               {
+                                                   relativePath = relativePath.Substring(1);
+                                               }
+                                           }
+
+                                           return new XamlInput(
+                                               pair.Left.Path,
+                                               relativePath,
+                                               pair.Left.GetText(ct)?.ToString() ?? string.Empty);
+                                       });
 
         // WS-X5.5 — the full-lowering opt-in. `<CursorialXamlLowering>full</CursorialXamlLowering>` (a
         // compiler-visible MSBuild property, declared in the package .props) switches each x:Class document from
@@ -168,13 +188,13 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
                     Diagnostic.Create(BindingPathAssist, LocationFor(input, line, column), message)));
         }
 
-        var hint = SanitizeHint(System.IO.Path.GetFileNameWithoutExtension(input.Path)) + ".g.cs";
+        var hint = SanitizeHint(input.RelativePath) + ".g.cs";
 
         // WS-X5.5 — full-lowering opt-in: an x:Class document with valid syntax lowers to straight-line,
         // reflection-free C# (no runtime loader). Any member the lowering can't yet emit is surfaced as a
         // CURG3001 build warning at its .xaml position, so an opted-in build never silently drops a member.
         if (loweringFull && !hasSyntaxError &&
-            LoweringEmitter.Emit(document, input.Path, new XamlSymbolResolver(compilation)) is { } lowered)
+            LoweringEmitter.Emit(document, input.Path, input.RelativePath, new XamlSymbolResolver(compilation)) is { } lowered)
         {
             foreach (var note in lowered.Unlowered)
                 spc.ReportDiagnostic(Diagnostic.Create(LoweringGap, LocationFor(input, note.Line, note.Column), note.Message));
@@ -189,7 +209,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
 
         // WS-X4.6 — a document with an x:Class and valid syntax gets the typed-field + InitializeComponent
         // partial. (A syntax error leaves the node graph unreliable, so fall back to the marker.)
-        if (!hasSyntaxError && CodeBehindEmitter.Emit(document, input.Text, input.Path) is {} codeBehind)
+        if (!hasSyntaxError && CodeBehindEmitter.Emit(document, input.Text, input.Path, input.RelativePath) is {} codeBehind)
         {
             spc.AddSource(hint, SourceText.From(codeBehind, Encoding.UTF8));
             return;
@@ -315,5 +335,5 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         return sb.Length == 0 ? "Xaml" : sb.ToString();
     }
 
-    private readonly record struct XamlInput(string Path, string Text);
+    private readonly record struct XamlInput(string Path, string RelativePath, string Text);
 }

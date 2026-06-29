@@ -47,7 +47,7 @@ internal sealed class SingleRootWindowTopology(UIApplication application) : IWin
         // The shown root is the surface only while it is attached with a live render tree —
         // mid-swap or never-shown states report "no surface" (N71: dropped, no throw).
         var root = application.RootElement;
-        surfaceRoot = root is { IsAttachedToTree: true } && root.RenderTreeHost is not null ? root : null;
+        surfaceRoot = root is { IsAttachedToTree: true, RenderTreeHost: not null } ? root : null;
         surfaceColumn = mouse.Position.Column;
         surfaceRow = mouse.Position.Row;
         return true;

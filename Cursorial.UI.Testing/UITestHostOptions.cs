@@ -20,4 +20,11 @@ public sealed record UITestHostOptions
 
     /// <summary>Enter the alternate screen at startup (default true — mirrors production).</summary>
     public bool UseAlternateScreen { get; init; } = true;
+
+    /// <summary>
+    /// Indicates whether transitions for inactive windows are disabled during UI tests.
+    /// This prevents animations from blocking <see cref="UITestHost.RunUntilIdle"/>
+    /// from exiting successfully (default true)."/>
+    /// </summary>
+    public bool DisableInactiveWindowTransitions { get; init; } = true;
 }

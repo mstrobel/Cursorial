@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -27,6 +28,7 @@ internal static class CursorialThemeStyles
     {
         var style = new Style(":access-keys AccessTextPresenter") { Key = "Theme.AccessKeyCue" };
         style.Setters.Add(new Setter(AccessKeyManager.ShowUnderlineProperty, true));
+        // style.SetResource(AccessTextPresenter.IndicatorBrushProperty, ThemeKeys.AccessKeyIndicatorBrush);
         return style;
     }
 
@@ -105,10 +107,123 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorSelectionInverse()
     {
-        var style = new Style(
-            ".caps-nocolor ListBoxItem:selected, .caps-nocolor ComboBoxItem:selected, .caps-nocolor TabItem:selected")
+        var style = new Style(".caps-nocolor ListBoxItem:selected, " +
+                              ".caps-nocolor ComboBoxItem:selected, " +
+                              // DO NOT set inverse-video on the TabItem itself; that would invert its CONTENT as well.
+                              ".caps-nocolor TabItem:selected /template/ #PART_HeaderSite")
         { Key = "Theme.CapsNoColor.SelectionInverse" };
         style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Inverse));
         return style;
+    }
+
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements.
+    /// </summary>
+    internal static Style AccentStyle()
+    {
+        return new Style(".accent")
+               {
+                   Key = ThemeClasses.Accent,
+                   Children =
+                   {
+                       new Style("^:pointerover, ^:focus").SetResource(Panel.BackgroundProperty, ThemeKeys.Accent2Brush),
+                       new Style("^:pressed").SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)/*,
+                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                   }
+               }
+              .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+              .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush);
+    }
+
+    /// <summary>
+    /// The interaction style for primary navigation buttons and other elements.
+    /// </summary>
+    internal static Style CoolStyle()
+    {
+        return new Style(".cool")
+               {
+                   Key = ThemeClasses.Cool,
+                   Children =
+                   {
+                       new Style("^:pointerover, ^:focus").SetResource(Panel.BackgroundProperty, ThemeKeys.Cool2Brush),
+                       new Style("^:pressed").SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)/*,
+                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                   }
+               }
+              .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+              .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolBrush);
+    }
+
+    /// <summary>
+    /// The interaction style for potentially destructive action buttons and other elements.
+    /// </summary>
+    internal static Style DangerStyle()
+    {
+        return new Style(".danger")
+               {
+                   Key = ThemeClasses.Danger,
+                   Children =
+                   {
+                       new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ElevationRaised)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.Danger2Brush),
+                       new Style("^:is(ButtonBase):pressed")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ElevationRaised)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)/*,
+                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                   }
+               }
+              .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush)
+              .SetResource(Panel.BackgroundProperty, ThemeKeys.ElevationRaised);
+    }
+
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements.
+    /// </summary>
+    internal static Style SuccessStyle()
+    {
+        return new Style(".success")
+               {
+                   Key = ThemeClasses.Success,
+                   Children =
+                   {
+                       new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.Success2Brush),
+                       new Style("^:is(ButtonBase):pressed")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)/*,
+                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                   }
+               }
+              .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+              .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessBrush);
+    }
+
+    /// <summary>
+    /// Distinct style for separators that apear in menus.
+    /// </summary>
+    /// <returns></returns>
+    internal static Style MenuSeparatorStyle()
+    {
+        return new Style("MenuItem Separator, Menu Separator") { Key = "Theme.MenuSeparator" }
+           .SetResource(Control.BorderPenProperty, ThemeKeys.MenuBorderPen);
+    }
+
+    /// <summary>
+    /// Forces borders to occlude when <c>.caps-nocolor</c> is active.
+    /// </summary>
+    internal static Style CapsNoColorBorderStyle()
+    {
+        return new Style(".caps-nocolor Border, .caps-nocolor :is(UIElement) /template/ Border") { Key = "Theme.CapsNoColor.BorderStyle"}
+           .Set(Border.OccludesProperty, true)
+           .SetResource(Panel.BackgroundProperty, Colors.Default);
+    }
+
+    /// <summary>
+    /// Forces borders to occlude when <c>.caps-nocolor</c> is active.
+    /// </summary>
+    internal static Style CapsNoColorBorderPenStyle()
+    {
+        return new Style(":is(Window).caps-nocolor, :is(Popup).caps-nocolor, ContextMenu.caps-nocolor") { Key = "Theme.CapsNoColor.BorderPenStyle"}
+           .Set(Control.BorderPenProperty, Pens.Ascii);
     }
 }

@@ -4,6 +4,7 @@ using Cursorial.Output;
 using Cursorial.Terminal;
 using Cursorial.UI.Controls;
 
+// ReSharper disable EventNeverSubscribedTo.Global
 // ReSharper disable RedundantTypeArgumentsOfMethod
 
 namespace Cursorial.UI.Input;
@@ -90,6 +91,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
         _interactions = interactions;
         _topology = topology;
     }
+
+    public event EventHandler<InputEventArgs>? PreProcessInput;
+    public event EventHandler<InputEventArgs>? PostProcessInput;
 
     /// <summary>
     /// Swaps the window-topology seam (matrix ND5): the P2 <see cref="SingleRootWindowTopology"/> is replaced
@@ -271,7 +275,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
     {
         _dispatcher.VerifyAccess();
 
-        if (_captureTarget is {} holder && !(holder.IsAttachedToTree && holder.IsEffectivelyVisible))
+        if (_captureTarget is not null and not { IsAttachedToTree: true, IsEffectivelyVisible: true })
         {
             ForceReleaseCapture();
             UpdateEffectiveCursorShape(); // §7.6 — back to the hover chain's resolution (or the default)
@@ -413,7 +417,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // Step 2 — target. Both null ⇒ dropped (DispatchedUnhandled, empty route; never "topmost").
         var target = _focus.FocusedElement ?? _focus.ActiveRoot;
 
-        if (target is null)
+        if (target is null && PreProcessInput is null)
             return InputDispatchResult.DispatchedUnhandled;
 
         RoutedEvent tunnelEvent = isDown ? UIElement.PreviewKeyDownEvent : UIElement.PreviewKeyUpEvent;
@@ -422,15 +426,28 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // Steps 3–4 — tunnel + bubble over one route with one pooled args.
         var args = EventArgsPool<KeyEventArgs>.Rent();
 
-        args.Initialize(tunnelEvent, target);
+        args.Initialize(tunnelEvent, target ?? UIApplication.Current?.RootElement!);
         args.InitializeKey(key);
 
         bool handled;
 
         try
         {
-            EventRouting.RaisePair(target, tunnelEvent, bubbleEvent, args);
+            PreProcessInput?.Invoke(target, args);
+            
             handled = args.Handled;
+
+            if (handled is false && target is not null)
+            {
+                EventRouting.RaisePair(target, tunnelEvent, bubbleEvent, args);
+                handled = args.Handled;
+            }
+
+            if (handled is false && PostProcessInput is {} postProcess)
+            {
+                postProcess(target, args);
+                handled = args.Handled;
+            }
         }
         finally
         {
@@ -494,9 +511,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
                 UpdateHoverChain(hit, mouse);
 
-                return RouteTargetUnderCapture(hit) is {} target
-                           ? ToResult(RaiseMousePair<MouseEventArgs>(UIElement.PreviewMouseMoveEvent, UIElement.MouseMoveEvent, target, mouse))
-                           : InputDispatchResult.DispatchedUnhandled;
+                var target = RouteTargetUnderCapture(hit);
+
+                return ToResult(RaiseMousePair<MouseEventArgs>(UIElement.PreviewMouseMoveEvent, UIElement.MouseMoveEvent, target, mouse));
             }
 
             case MouseEventKind.ButtonDown:
@@ -516,13 +533,11 @@ public sealed class InputDispatcher : IInputDispatchTarget
                                  ? capture
                                  : RouteTargetUnderCapture(hit);
 
-                var result = target is {} routed
-                                 ? ToResult(RaiseMousePair<MouseButtonEventArgs>(
-                                                isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
-                                                isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
-                                                routed,
-                                                mouse))
-                                 : InputDispatchResult.DispatchedUnhandled;
+                var result = ToResult(RaiseMousePair<MouseButtonEventArgs>(
+                                          isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
+                                          isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
+                                          target,
+                                          mouse));
 
                 // Router default (doc §12.7): an uncaptured right-button release over an element carrying
                 // ContextMenu.Menu opens it at the pointer — unless the routed event already handled it.
@@ -650,18 +665,33 @@ public sealed class InputDispatcher : IInputDispatchTarget
     }
 
     /// <summary>Raises a <c>Preview*</c>/main mouse pair at <paramref name="target"/> with one pooled args.</summary>
-    private static bool RaiseMousePair<TArgs>(RoutedEvent<TArgs> tunnelEvent, RoutedEvent<TArgs> bubbleEvent, UIElement target, MouseEvent device)
+    private bool RaiseMousePair<TArgs>(RoutedEvent<TArgs> tunnelEvent, RoutedEvent<TArgs> bubbleEvent, UIElement? target, MouseEvent device)
         where TArgs : MouseEventArgs, new()
     {
         var args = EventArgsPool<TArgs>.Rent();
 
-        args.Initialize(tunnelEvent, target);
+        args.Initialize(tunnelEvent, target ?? UIApplication.Current?.RootElement!);
         args.InitializeMouse(device);
 
         try
         {
-            EventRouting.RaisePair(target, tunnelEvent, bubbleEvent, args);
-            return args.Handled;
+            PreProcessInput?.Invoke(target, args);
+            
+            var handled = args.Handled;
+
+            if (handled is false && target is not null)
+            {
+                EventRouting.RaisePair(target, tunnelEvent, bubbleEvent, args);
+                handled = args.Handled;
+            }
+
+            if (handled is false && PostProcessInput is {} postProcess)
+            {
+                postProcess(target, args);
+                handled = args.Handled;
+            }
+
+            return handled;
         }
         finally
         {
@@ -924,18 +954,33 @@ public sealed class InputDispatcher : IInputDispatchTarget
     {
         var target = _focus.FocusedElement ?? _focus.ActiveRoot;
 
-        if (target is null)
+        if (target is null && PreProcessInput is null)
             return false; // dropped (N22 parity for paste)
 
         var args = EventArgsPool<TextInputEventArgs>.Rent();
 
-        args.Initialize(UIElement.PreviewTextInputEvent, target);
+        args.Initialize(UIElement.PreviewTextInputEvent, target ?? UIApplication.Current?.RootElement!);
         args.InitializeText(text, fromPaste);
 
         try
         {
-            EventRouting.RaisePair(target, UIElement.PreviewTextInputEvent, UIElement.TextInputEvent, args);
-            return args.Handled;
+            PreProcessInput?.Invoke(target, args);
+            
+            var handled = args.Handled;
+
+            if (handled is false && target is not null)
+            {
+                EventRouting.RaisePair(target, UIElement.PreviewTextInputEvent, UIElement.TextInputEvent, args);
+                handled = args.Handled;
+            }
+
+            if (handled is false && PostProcessInput is {} postProcess)
+            {
+                postProcess(target, args);
+                handled = args.Handled;
+            }
+
+            return handled;
         }
         finally
         {
@@ -1000,8 +1045,8 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // ReSharper disable once UnusedVariable
         using (var batch = _interactions.BeginUpdate())
         {
-            for (var i = 0; i < _pressedScratch.Count; i++)
-                _pressedScratch[i].SetInteractionStateInternal(InteractionState.Pressed, false);
+            foreach (var pressed in _pressedScratch)
+                pressed.SetInteractionStateInternal(InteractionState.Pressed, false);
         }
 
         _pressedScratch.Clear();

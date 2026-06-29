@@ -81,7 +81,7 @@ public class Popup : UIElement
 
     /// <summary>The popup's drop shadow (default <see cref="WindowShadow.Default"/>).</summary>
     public static readonly StyledProperty<WindowShadow> ShadowProperty =
-        UIProperty.Register<Popup, WindowShadow>(nameof(Shadow), defaultValue: WindowShadow.Default);
+        Window.ShadowProperty.AddOwner<Popup>();
 
     private bool _open;
     private WindowManager? _manager;
@@ -99,6 +99,7 @@ public class Popup : UIElement
         IsHitTestVisibleProperty.OverrideMetadata<Popup>(new(DefaultValue: false, Coerce: (_, _) => false));
 
         AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, IsOpenProperty);
+        ShadowProperty.OverrideDefaultValue<Popup>(WindowShadow.None);
     }
 
     /// <summary>Creates a popup.</summary>

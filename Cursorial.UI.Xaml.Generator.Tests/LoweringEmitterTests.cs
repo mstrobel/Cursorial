@@ -399,7 +399,7 @@ namespace TestApp
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var document = XamlFrontend.Parse($"<StackPanel {Ns}><Button/></StackPanel>",
             new XamlParseOptions { MetadataProvider = new RoslynXamlMetadata(compilation), FoldConstants = false });
-        Assert.Null(LoweringEmitter.Emit(document, "x.xaml", new XamlSymbolResolver(compilation)));
+        Assert.Null(LoweringEmitter.Emit(document, "x.xaml", "x.xaml", new XamlSymbolResolver(compilation)));
     }
 
     [Fact] // {RelativeSource FindAncestor} lowers to an anchor matching the runtime loader (cross-pipeline parity)

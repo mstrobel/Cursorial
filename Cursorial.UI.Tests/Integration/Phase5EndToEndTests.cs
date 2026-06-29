@@ -11,6 +11,7 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Testing;
+using Cursorial.UI.Themes;
 
 using Style = Cursorial.UI.Style;
 
@@ -521,12 +522,15 @@ public sealed class Phase5EndToEndTests
 
         // A :checked rule colors the checkbox foreground accent (an AffectsRender styled property).
         var checkedAccent = Color.FromRgb(120, 220, 140);
-        var rule = new Style(Selectors.OfType<CheckBox>().PseudoClass("checked"));
-        rule.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(checkedAccent)));
+        var rule = new Style(Selectors.OfType<CheckBox>().PseudoClass("checked").Template().OfType<ToggleGlyph>());
+        rule.Setters.Add(new Setter(ToggleGlyph.GlyphForegroundProperty, new SolidColorBrush(checkedAccent)));
         host.Application.Styles.Add(rule);
 
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
+
+        // Flip :checked: the checkbox restyles + re-rasters; siblings + root frozen.
+        check.Focus();
 
         var tree = host.Application.WindowManager!.Tree!;
         var checkScene = tree.GetScene(check)!;
@@ -538,8 +542,6 @@ public sealed class Phase5EndToEndTests
 
         Assert.StartsWith("[ ]", host.GetRowText(0)); // unchecked ASCII glyph
 
-        // Flip :checked: the checkbox restyles + re-rasters; siblings + root frozen.
-        check.Focus();
         host.SendKey(Key.Space);
         host.RunFrame();
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Cursorial.Text;
@@ -29,6 +30,19 @@ namespace Cursorial.Text;
 /// </remarks>
 public static class GraphemeWidth
 {
+    /// <summary>
+    /// Width of a single Rune codepoint without considering its surrounding cluster context.
+    /// Returns 0 for combining marks, control characters, format controls, and variation
+    /// selectors; 2 for East Asian wide / fullwidth glyphs and default-emoji ranges; 1 for
+    /// everything else printable.
+    /// </summary>
+    /// <param name="rune">A rune representing a scalar value (0–0x10FFFF, excluding surrogates).</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CodepointWidth(Rune rune)
+    {
+        return CodepointWidth(rune.Value);
+    }
+
     /// <summary>
     /// Width of a single Unicode codepoint without considering its surrounding cluster context.
     /// Returns 0 for combining marks, control characters, format controls, and variation
@@ -247,9 +261,9 @@ public static class GraphemeWidth
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="CodepointWidth"/> resolves ambiguous codepoints to 1 — the correct default for
-    /// the common (non-East-Asian) case. But a terminal configured to treat ambiguous width as
-    /// <em>wide</em> (a CJK locale, or an explicit "ambiguous = double-width" setting in VTE /
+    /// <see cref="CodepointWidth(int)"/> resolves ambiguous codepoints to 1 — the correct default
+    /// for the common (non-East-Asian) case. But a terminal configured to treat ambiguous width
+    /// as <em>wide</em> (a CJK locale, or an explicit "ambiguous = double-width" setting in VTE /
     /// GNOME Terminal, etc.) renders them across 2 cells. When the renderer emits a run of such
     /// glyphs assuming width 1, the per-glyph disagreement accumulates and the row overflows the
     /// right margin. This predicate lets the renderer detect width-uncertain glyphs and defend
@@ -274,27 +288,27 @@ public static class GraphemeWidth
         return codepoint switch
                {
                    0x00A1 or 0x00A4 or 0x00A7 or 0x00A8 or 0x00AA or 0x00AD or 0x00AE => true, // Latin-1 symbols (scattered EAW=A)
-                   >= 0x00B0 and <= 0x00B4   => true, // ° ± ² ³ ´
-                   >= 0x00B6 and <= 0x00BF   => true, // ¶ · … ¿  (and the fraction / ordinal run)
+                   >= 0x00B0 and <= 0x00B4 => true, // ° ± ² ³ ´
+                   >= 0x00B6 and <= 0x00BF => true, // ¶ · … ¿  (and the fraction / ordinal run)
                    0x00C6 or 0x00D0 or 0x00D7 or 0x00D8 => true, // Æ Ð × Ø
-                   >= 0x00E0 and <= 0x00FF   => true, // accented Latin small letters (predominantly EAW=A)
-                   >= 0x0391 and <= 0x03C9   => true, // Greek letters (α … Ω)
-                   >= 0x0401 and <= 0x0451   => true, // Cyrillic (Ё … ё) — predominantly EAW=A
-                   >= 0x2010 and <= 0x203B   => true, // General Punctuation (dashes, quotes, bullets, †‡•…‰)
-                   0x203E                    => true, // Overline
-                   >= 0x2070 and <= 0x209F   => true, // Superscripts and Subscripts (⁰¹²…ₙ — used by [font=super/subscript])
-                   >= 0x2153 and <= 0x215E   => true, // Vulgar fractions
-                   >= 0x2160 and <= 0x216B   => true, // Roman numerals (uppercase)
-                   >= 0x2170 and <= 0x2179   => true, // Roman numerals (lowercase)
-                   >= 0x2190 and <= 0x21FF   => true, // Arrows
-                   >= 0x2200 and <= 0x22FF   => true, // Mathematical Operators
-                   >= 0x2460 and <= 0x24FF   => true, // Enclosed Alphanumerics (①②…)
-                   >= 0x2500 and <= 0x257F   => true, // Box Drawing (─ ═ ┼ …) — the horizontal-rule glyphs
-                   >= 0x2580 and <= 0x259F   => true, // Block Elements (▀ ▄ █ ░▒▓ …)
-                   >= 0x25A0 and <= 0x25FF   => true, // Geometric Shapes (■ ● ▲ ▼ …)
-                   >= 0x2600 and <= 0x26FF   => true, // Miscellaneous Symbols (predominantly EAW=A)
-                   >= 0x2700 and <= 0x27BF   => true, // Dingbats (predominantly EAW=A)
-                   _                         => false
+                   >= 0x00E0 and <= 0x00FF => true, // accented Latin small letters (predominantly EAW=A)
+                   >= 0x0391 and <= 0x03C9 => true, // Greek letters (α … Ω)
+                   >= 0x0401 and <= 0x0451 => true, // Cyrillic (Ё … ё) — predominantly EAW=A
+                   >= 0x2010 and <= 0x203B => true, // General Punctuation (dashes, quotes, bullets, †‡•…‰)
+                   0x203E => true, // Overline
+                   >= 0x2070 and <= 0x209F => true, // Superscripts and Subscripts (⁰¹²…ₙ — used by [font=super/subscript])
+                   >= 0x2153 and <= 0x215E => true, // Vulgar fractions
+                   >= 0x2160 and <= 0x216B => true, // Roman numerals (uppercase)
+                   >= 0x2170 and <= 0x2179 => true, // Roman numerals (lowercase)
+                   >= 0x2190 and <= 0x21FF => true, // Arrows
+                   >= 0x2200 and <= 0x22FF => true, // Mathematical Operators
+                   >= 0x2460 and <= 0x24FF => true, // Enclosed Alphanumerics (①②…)
+                   >= 0x2500 and <= 0x257F => true, // Box Drawing (─ ═ ┼ …) — the horizontal-rule glyphs
+                   >= 0x2580 and <= 0x259F => true, // Block Elements (▀ ▄ █ ░▒▓ …)
+                   >= 0x25A0 and <= 0x25FF => true, // Geometric Shapes (■ ● ▲ ▼ …)
+                   >= 0x2600 and <= 0x26FF => true, // Miscellaneous Symbols (predominantly EAW=A)
+                   >= 0x2700 and <= 0x27BF => true, // Dingbats (predominantly EAW=A)
+                   _ => false
                };
     }
 }

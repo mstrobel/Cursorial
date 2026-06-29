@@ -276,13 +276,13 @@ public static class XamlConverters
             }
             catch (Exception ex) when (ex is not XamlParseException)
             {
-                throw Fail($"'{text}' is not a valid value (BCL {inner.GetType().Name}): {ex.Message}", ctx);
+                throw Fail($"'{text}' is not a valid value (BCL {inner.GetType().Name}): {ex.Message}", ctx, ex);
             }
         }
     }
 
-    internal static XamlParseException Fail(string message, in XamlValueContext ctx)
-        => new(XamlDiagnostic.Error(XamlDiagnosticCodes.ConversionFailed, message, ctx.Source, ctx.Line, ctx.Column));
+    internal static XamlParseException Fail(string message, in XamlValueContext ctx, Exception? inner = null)
+        => new(XamlDiagnostic.Error(XamlDiagnosticCodes.ConversionFailed, message, ctx.Source, ctx.Line, ctx.Column), inner);
 
     // ── Integer cells (matrix XD12) ──────────────────────────────────────────────────────────────
 
@@ -628,7 +628,7 @@ public static class XamlConverters
             }
             catch (Exception ex) when (ex is FormatException or ArgumentException)
             {
-                throw Fail($"'{text}' is not a valid key gesture: {ex.Message}", ctx);
+                throw Fail($"'{text}' is not a valid key gesture: {ex.Message}", ctx, ex);
             }
         }
     }
@@ -651,7 +651,7 @@ public static class XamlConverters
             }
             catch (Exception ex) when (ex is FormatException or ArgumentException)
             {
-                throw Fail($"'{text}' is not a valid selector: {ex.Message}", ctx);
+                throw Fail($"'{text}' is not a valid selector: {ex.Message}", ctx, ex);
             }
         }
     }
@@ -713,7 +713,7 @@ public static class XamlConverters
             }
             catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
             {
-                throw Fail($"'{text}' is not convertible to {_targetType.Name}: {ex.Message}", ctx);
+                throw Fail($"'{text}' is not convertible to {_targetType.Name}: {ex.Message}", ctx, ex);
             }
         }
     }

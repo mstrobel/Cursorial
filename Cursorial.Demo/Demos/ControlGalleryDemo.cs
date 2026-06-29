@@ -7,8 +7,6 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
-using Style = Cursorial.UI.Style;
-
 // ReSharper disable CheckNamespace
 
 // P9 control GALLERY — the visual acceptance artifact for the full P9 control set + theme hardening across
@@ -37,6 +35,7 @@ internal sealed class ControlGalleryDemo : IDemo
                           "color tier, 'd' flips dark/light; q / Esc / Ctrl+C exits.");
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
         var controller = new Controller(app);
         try
         {
@@ -121,13 +120,17 @@ internal sealed class ControlGalleryDemo : IDemo
 
         private TabControl BuildTabs()
         {
-            var tabs = new TabControl { BorderPen = null };
-            tabs.Items.Add(new TabItem { Header = "_Form", Content = BuildForm() });
-            tabs.Items.Add(new TabItem { Header = "_List", Content = BuildList() });
-            tabs.Items.Add(new TabItem { Header = "T_ree", Content = BuildTreeView() });
-            tabs.Items.Add(new TabItem { Header = "_Date", Content = BuildCalendar() });
-            tabs.Items.Add(new TabItem { Header = "_Media", Content = BuildMedia() });
-            return tabs;
+            return new TabControl
+                   {
+                       Items =
+                       {
+                           new TabItem { Header = "_Form", Content = BuildForm() },
+                           new TabItem { Header = "_List", Content = BuildList() },
+                           new TabItem { Header = "T_ree", Content = BuildTreeView() },
+                           new TabItem { Header = "_Date", Content = BuildCalendar() },
+                           new TabItem { Header = "_Media", Content = BuildMedia() }
+                       }
+                   };
         }
 
         private Border BuildMedia()

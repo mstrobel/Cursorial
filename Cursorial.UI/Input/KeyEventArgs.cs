@@ -3,13 +3,19 @@ using Cursorial.Input.Events;
 
 namespace Cursorial.UI.Input;
 
+public abstract class InputEventArgs : RoutedEventArgs
+{
+    protected InputEventArgs() {}
+    protected InputEventArgs(RoutedEvent routedEvent, UIElement source) : base(routedEvent, source) {}
+}
+
 /// <summary>
 /// Args for the <c>PreviewKeyDown</c>/<c>KeyDown</c>/<c>PreviewKeyUp</c>/<c>KeyUp</c> events,
 /// wrapping the immutable device record (design doc §7.2). Match shortcuts against
 /// <see cref="Modifiers"/> (lock-free), never <see cref="ExtendedModifiers"/>; the identity of a
 /// printable key is <c>(Key, Text)</c>, not <see cref="Key"/> alone.
 /// </summary>
-public sealed class KeyEventArgs : RoutedEventArgs
+public sealed class KeyEventArgs : InputEventArgs
 {
     private KeyEvent? _device;
 

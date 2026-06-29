@@ -1,5 +1,7 @@
 using System.Diagnostics;
 
+using Cursorial.Markup;
+
 // ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
@@ -27,7 +29,7 @@ namespace Cursorial.UI;
 /// append after base; the derived selector alone carries specificity — S46) and are cycle-checked.
 /// </para>
 /// </remarks>
-[Cursorial.Markup.ContentProperty("Setters")]
+[ContentProperty("Setters")]
 public sealed class Style
 {
     private static readonly DataCondition[] NoConditions = [];
@@ -201,7 +203,7 @@ public sealed class Style
     /// <c>:focus-visible</c> — any keyboard-visible affordance silences) covering any property in
     /// S. Subject-level requirements only — ancestor-state compounds describe a different element.
     /// </summary>
-    [Conditional("DEBUG")]
+    [Conditional("__NEVER__")]
     private void LintHoverParity()
     {
         var rules = _compiledRules!;

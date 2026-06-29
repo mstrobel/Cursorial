@@ -18,7 +18,7 @@ namespace Cursorial.UI.Controls;
 /// </remarks>
 public sealed class ToolTipService
 {
-    private ToolTipService() { } // non-instantiable; the attached-property owner type (mirrors KeyboardNavigation)
+    private ToolTipService() {} // non-instantiable; the attached-property owner type (mirrors KeyboardNavigation)
 
     /// <summary>The tooltip content (any object; a string is common). Attaching a non-null value arms the controller.</summary>
     public static readonly AttachedProperty<object?> TipProperty =
@@ -54,7 +54,7 @@ public sealed class ToolTipService
     {
         // Arming a tip ensures the controller for the running application exists + is subscribed (the hover
         // stream it observes is app-wide, so one controller serves every tip-bearing element).
-        if (newValue is not null && UIApplication.Current is { } app)
+        if (newValue is not null && UIApplication.Current is {} app)
             ToolTipController.Ensure(app);
     }
 }
@@ -72,19 +72,19 @@ internal sealed class ToolTipController
     private readonly ToolTip _toolTip = new();
     private readonly Popup _popup;
 
-    private UIElement? _target;        // the tip element we are pending-or-showing for
-    private bool _shown;               // whether the popup is currently open
-    private bool _recentlyClosed;      // a tooltip closed < QuickShowWindow ago ⇒ the next shows immediately
+    private UIElement? _target;   // the tip element we are pending-or-showing for
+    private bool _shown;          // whether the popup is currently open
+    private bool _recentlyClosed; // a tooltip closed < QuickShowWindow ago ⇒ the next shows immediately
     private UITimer? _openTimer;
     private UITimer? _quickShowTimer;
 
     private ToolTipController(UIApplication app)
     {
-        _popup = new Popup { Child = _toolTip, StaysOpen = true, IsHitTestTransparent = true };
+        _popup = new Popup { Child = _toolTip, StaysOpen = true, IsHitTestTransparent = true, Shadow = WindowShadow.Default };
 
         var dispatcher = app.InputDispatcher;
         dispatcher.HoverChanged += OnHoverChanged;
-        dispatcher.DismissTransients += Reset;                 // any button/non-modifier-key press dismisses
+        dispatcher.DismissTransients += Reset; // any button/non-modifier-key press dismisses
         dispatcher.TerminalFocusChanged += OnTerminalFocusChanged;
     }
 
@@ -103,7 +103,7 @@ internal sealed class ToolTipController
 
         // Entered a (different) tip-bearing element ⇒ arm. Intra-element moves don't change the chain, so the
         // open timer is never reset by them (doc §12.7).
-        if (InnermostTipOwner(added) is { } owner && !ReferenceEquals(owner, _target))
+        if (InnermostTipOwner(added) is {} owner && !ReferenceEquals(owner, _target))
             Arm(owner);
     }
 
@@ -124,10 +124,11 @@ internal sealed class ToolTipController
     private void Show(UIElement owner)
     {
         _openTimer = null;
+
         if (!ReferenceEquals(_target, owner) || !owner.IsAttachedToTree)
             return; // re-targeted or detached while the timer was pending
 
-        if (ToolTipService.GetTip(owner) is not { } tip)
+        if (ToolTipService.GetTip(owner) is not {} tip)
             return; // the tip was cleared while the timer was pending — nothing to show
 
         _toolTip.Content = tip;
@@ -159,24 +160,38 @@ internal sealed class ToolTipController
     {
         _recentlyClosed = true;
         _quickShowTimer?.Stop();
-        _quickShowTimer = UITimer.Start(QuickShowWindow, () => { _recentlyClosed = false; _quickShowTimer = null; });
+
+        _quickShowTimer = UITimer.Start(
+            QuickShowWindow,
+            () =>
+            {
+                _recentlyClosed = false;
+                _quickShowTimer = null;
+            });
     }
 
     // The innermost (deepest) tip-bearing element in a root-first chain snapshot, or null.
     private static UIElement? InnermostTipOwner(HoverChainSnapshot chain)
     {
         UIElement? owner = null;
+
         for (var i = 0; i < chain.Count; i++)
+        {
             if (ToolTipService.GetTip(chain[i]) is not null)
                 owner = chain[i];
+        }
+
         return owner;
     }
 
     private static bool Contains(HoverChainSnapshot chain, UIElement element)
     {
         for (var i = 0; i < chain.Count; i++)
+        {
             if (ReferenceEquals(chain[i], element))
                 return true;
+        }
+
         return false;
     }
 }

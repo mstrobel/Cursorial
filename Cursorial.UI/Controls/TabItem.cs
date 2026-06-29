@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.Markup;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
@@ -14,10 +15,13 @@ namespace Cursorial.UI.Controls;
 /// <remarks>Access-key folding of the <see cref="HeaderedContentControl.Header"/> (Alt+mnemonic selects the tab) is
 /// a recorded deferral — selection by click and keyboard is the v1 behavior.</remarks>
 [TemplatePart(PartUnderline, typeof(Separator))]
+[TemplatePart(PartHeaderSite, typeof(UIElement))]
+[ContentProperty(nameof(Content))]
 public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyTarget
 {
     /// <summary>The active-tab accent underline rule (the gallery "active tab marked by accent bar"); shown only when selected.</summary>
     private const string PartUnderline = "PART_Underline";
+    private const string PartHeaderSite = "PART_HeaderSite";
 
     /// <summary>Whether this tab is selected. Two-way bindable; <c>:selected</c> mirrors it. Setting it from outside
     /// the owner folds into the owner's single-selection model.</summary>
@@ -54,7 +58,7 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
         // same reason). The pen rides SetResourceReference so it tracks variant flips; visibility is gated on
         // selection (the bar row stays laid out — Hidden, not Collapsed — so the tab strip aligns).
         _underline = GetTemplatePart<Separator>(PartUnderline);
-        _underline?.SetResourceReference(Control.BorderPenProperty, ThemeKeys.TabUnderlinePen);
+        _underline?.SetResourceReference(BorderPenProperty, ThemeKeys.TabUnderlinePen);
         UpdateUnderline();
     }
 

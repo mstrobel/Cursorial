@@ -181,12 +181,16 @@ public class ListBox : SelectingItemsControl
         _pendingFocusIndex = -1;
 
         if (UIApplication.Current?.Dispatcher is { } dispatcher)
+        {
             dispatcher.Post(() =>
-            {
-                if (ItemContainerGenerator.ContainerFromIndex(index) is { IsAttachedToTree: true } c)
-                    c.Focus(FocusNavigationMethod.Directional);
-            });
+                            {
+                                if (ItemContainerGenerator.ContainerFromIndex(index) is { IsAttachedToTree: true } c)
+                                    c.Focus(FocusNavigationMethod.Directional);
+                            });
+        }
         else if (container.IsAttachedToTree)
+        {
             container.Focus(FocusNavigationMethod.Directional); // no dispatcher (BYO host) — best-effort synchronous
+        }
     }
 }

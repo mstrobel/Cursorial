@@ -15,11 +15,15 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartContent, typeof(UIElement))]
 public class Expander : HeaderedContentControl
 {
-    private const string PartHeader = "PART_Header";
-    private const string PartGlyph = "PART_Glyph";
-    private const string PartContent = "PART_Content";
+    internal const string PartHeader = "PART_Header";
+    internal const string PartGlyph = "PART_Glyph";
+    internal const string PartContent = "PART_Content";
+
+    internal const string ExpandedGlyph = "⏷";
+    internal const string CollapsedGlyph = "⏵";
 
     private TextBlock? _glyph;
+    private ToggleButton? _header;
     private UIElement? _content;
 
     /// <summary>Whether the content is shown (<c>:expanded</c>; gates the <c>PART_Content</c> visibility + twisty).</summary>
@@ -54,15 +58,27 @@ public class Expander : HeaderedContentControl
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
-        GetTemplatePart<ToggleButton>(PartHeader);
+
+        _header = GetTemplatePart<ToggleButton>(PartHeader);
         _glyph = GetTemplatePart<TextBlock>(PartGlyph);
         _content = GetTemplatePart<UIElement>(PartContent);
+
+        _header?.Focusable = false;
+        _header?.IsTabStop = false;
+
         UpdateExpansionVisuals();
+        UpdateHeaderFocusVisuals();
+    }
+
+    private void UpdateHeaderFocusVisuals()
+    {
+        _header?.SetInteractionStateInternal(InteractionState.Focused, IsFocused);
     }
 
     /// <inheritdoc/>
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
+        _header = null;
         _glyph = null;
         _content = null;
         base.OnTemplateDetaching(old);
@@ -72,11 +88,12 @@ public class Expander : HeaderedContentControl
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
         if (e.Handled || !IsFocused || e.Modifiers != KeyModifiers.None)
             return;
 
         // Enter or the spacebar (the modifier-free character form, ND10) toggles.
-        if (e.Key == Key.Enter || (e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' '))
+        if (e.Key == Key.Enter || ButtonBase.IsActivationSpace(e))
         {
             Toggle();
             e.Handled = true;
@@ -100,5 +117,17 @@ public class Expander : HeaderedContentControl
             _glyph.Text = IsExpanded ? "⏷" : "⏵"; // design-guide carets (U+23F7 / U+23F5)
         if (_content is not null)
             _content.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    protected override void OnGotFocus(FocusChangedEventArgs e)
+    {
+        base.OnGotFocus(e);
+        UpdateHeaderFocusVisuals();
+    }
+
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        UpdateHeaderFocusVisuals();
     }
 }

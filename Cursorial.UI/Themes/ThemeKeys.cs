@@ -28,6 +28,10 @@ public static class ThemeKeys
 
     /// <summary>Page/window background; also the reverse-video <i>text</i> color on a focused pick control.</summary>
     public const string WindowBackground = "Theme.WindowBackground";
+    public const string WindowTitleBarBackground = "Theme.WindowTitleBarBackground";
+    public const string WindowTitleBarActiveBackground = "Theme.WindowTitleBarActiveBackground";
+    public const string WindowTitleBarActiveForeground = "Theme.WindowTitleBarActiveForeground";
+    public const string WindowTitleBarForeground = "Theme.WindowTitleBarForeground";
 
     /// <summary>Resting control fill (button, field, header).</summary>
     public const string SurfaceBrush = "Theme.SurfaceBrush";
@@ -37,7 +41,7 @@ public static class ThemeKeys
 
     /// <summary>Intensified fill for a focused <i>text</i> field.</summary>
     public const string WellBrush = "Theme.WellBrush";
-
+    
     /// <summary>Selection fill (selected item/text) in a focused container.</summary>
     public const string SelectionBrush = "Theme.SelectionBrush";
 
@@ -68,11 +72,32 @@ public static class ThemeKeys
     /// <summary>Disabled text/glyph ink.</summary>
     public const string DisabledForegroundBrush = "Theme.DisabledForegroundBrush";
 
-    /// <summary>Focus accent / links / pressed-or-default fill / today.</summary>
+    /// <summary>Primary action color.</summary>
     public const string AccentBrush = "Theme.AccentBrush";
 
-    /// <summary>Secondary accent (hover-link, folder glyph).</summary>
+    /// <summary>Secondary action color.</summary>
     public const string Accent2Brush = "Theme.Accent2Brush";
+
+    /// <summary>Darkened action color.</summary>
+    public const string AccentDarkBrush = "Theme.AccentDarkBrush";
+
+    /// <summary>Primary navigation color.</summary>
+    public const string CoolBrush = "Theme.CoolBrush";
+
+    /// <summary>Secondary navigation color.</summary>
+    public const string Cool2Brush = "Theme.Cool2Brush";
+
+    /// <summary>Navigation darkened color.</summary>
+    public const string CoolDarkBrush = "Theme.CoolDarkBrush";
+
+    /// <summary>First-degree warnings.</summary>
+    public const string DangerBrush = "Theme.DangerBrush";
+
+    /// <summary>Second-degree warnings.</summary>
+    public const string Danger2Brush = "Theme.Danger2Brush";
+
+    /// <summary>Darkened danger brush..</summary>
+    public const string DangerDarkBrush = "Theme.DangerDarkBrush";
 
     /// <summary>Text drawn on an accent/colored fill (pressed-button text, badge text).</summary>
     public const string OnAccentBrush = "Theme.OnAccentBrush";
@@ -82,6 +107,24 @@ public static class ThemeKeys
 
     /// <summary>Warning / paused / indeterminate mark.</summary>
     public const string AmberBrush = "Theme.AmberBrush";
+
+    /// <summary>Warning / paused / indeterminate mark.</summary>
+    public const string WarningBrush = "Theme.WarningBrush";
+
+    /// <summary>Informational color.</summary>
+    public const string InfoBrush = "Theme.InfoBrush";
+
+    /// <summary>Success / on.</summary>
+    public const string SuccessBrush = "Theme.SuccessBrush";
+    
+    /// <summary>Secondary success color.</summary>
+    public const string Success2Brush = "Theme.Success2Brush";
+
+    /// <summary>Darkened success color.</summary>
+    public const string SuccessDarkBrush = "Theme.SuccessDarkBrush";
+
+    /// <summary>Color for special purposes.</summary>
+    public const string SpecialBrush = "Theme.SpecialBrush";
 
     /// <summary>Error / danger.</summary>
     public const string RedBrush = "Theme.RedBrush";
@@ -101,8 +144,14 @@ public static class ThemeKeys
     /// <summary>Background at the Desktop elevation level.</summary>
     public const string ElevationDesktop = "Theme.ElevationDesktop";
 
+    /// <summary>Background at the Popup elevation level.</summary>
+    public const string ElevationPopup = "Theme.ElevationPopup";
+
     /// <summary>Background at the Window elevation level.</summary>
     public const string ElevationWindow = "Theme.ElevationWindow";
+
+    /// <summary>Background at the Modal Dialog elevation level.</summary>
+    public const string ElevationDialog = "Theme.ElevationDialog";
 
     /// <summary>Background at the Raised elevation level.</summary>
     public const string ElevationRaised = "Theme.ElevationRaised";
@@ -126,6 +175,9 @@ public static class ThemeKeys
     /// the line-drawn surfaces (<c>Border</c>/GroupBox/Expander/Window chrome) that genuinely want a frame.
     /// </summary>
     public const string BorderPen = "Theme.BorderPen";
+    public const string ToolTipBorderPen = "Theme.ToolTipBorderPen";
+    public const string MenuBorderPen = "Theme.MenuBorderPen";
+    public const string TabControlBorderPen = "Theme.TabControlBorderPen";
 
     /// <summary>
     /// Heavy pen used for the Separator control outside of menu contexts.
@@ -149,7 +201,7 @@ public static class ThemeKeys
     public const string ObscuredOverlayBrush = "Theme.ObscuredOverlayBrush";
 
     /// <summary>The access-key underline brush (the <c>:access-keys</c> cue, design doc §11.8).</summary>
-    public const string AccessKeyUnderlineBrush = "Theme.AccessKeyUnderlineBrush";
+    public const string AccessKeyIndicatorBrush = "Theme.AccessKeyIndicatorBrush";
 
     /// <summary>
     /// The <see cref="Controls.CheckBox"/> glyph triple — a <see cref="GlyphSetCarrier"/> of
@@ -228,6 +280,8 @@ public static class ThemeKeys
     public const string InputBackgroundFocus = "Theme.InputBackgroundFocus";
     /// <summary>Input selection fill, control focused (--sel).</summary>
     public const string InputSelectionActive = "Theme.InputSelectionActive";
+    /// <summary>Input selection fill, control unfocused (--sel).</summary>
+    public const string InputSelectionInactive = "Theme.InputSelectionInactive";
     /// <summary>Disabled input ink (--muted).</summary>
     public const string InputForegroundDisabled = "Theme.InputForegroundDisabled";
     /// <summary>Disabled input fill (--disabled-bg).</summary>
@@ -270,6 +324,8 @@ public static class ThemeKeys
     public const string MenuBackgroundHighlighted = "Theme.MenuBackgroundHighlighted";
     /// <summary>The ^X accelerator/gesture hint text (--muted).</summary>
     public const string MenuAcceleratorForeground = "Theme.MenuAcceleratorForeground";
+    /// <summary>The ^X accelerator/gesture hint text when hovered (--text-dim).</summary>
+    public const string MenuAcceleratorHoverForeground = "Theme.MenuAcceleratorHoverForeground";
     /// <summary>Disabled menu-item ink (--muted).</summary>
     public const string MenuForegroundDisabled = "Theme.MenuForegroundDisabled";
 
@@ -277,7 +333,9 @@ public static class ThemeKeys
     /// <summary>Inactive tab-header ink (--text-dim; the gallery dims unselected tabs).</summary>
     public const string TabForegroundNormal = "Theme.TabForegroundNormal";
     /// <summary>Active tab-header ink (--text).</summary>
-    public const string TabForegroundActive = "Theme.TabForegroundActive";
+    public const string TabForegroundSelected = "Theme.TabForegroundSelected";
+    /// <summary>Hovered tab foreground.</summary>
+    public const string TabForegroundHover = "Theme.TabForegroundHover";
     /// <summary>Hovered tab fill (--hover).</summary>
     public const string TabBackgroundHover = "Theme.TabBackgroundHover";
     /// <summary>Selected/active tab fill (--surface).</summary>
@@ -314,6 +372,23 @@ public static class ThemeKeys
     public const string CalendarDayBackgroundFocus = "Theme.CalendarDayBackgroundFocus";
     /// <summary>Disabled day ink (--muted).</summary>
     public const string CalendarDayForegroundDisabled = "Theme.CalendarDayForegroundDisabled";
+
+    public const string Ansi0 = "Theme.Ansi0";
+    public const string Ansi1 = "Theme.Ansi1";
+    public const string Ansi2 = "Theme.Ansi2";
+    public const string Ansi3 = "Theme.Ansi3";
+    public const string Ansi4 = "Theme.Ansi4";
+    public const string Ansi5 = "Theme.Ansi5";
+    public const string Ansi6 = "Theme.Ansi6";
+    public const string Ansi7 = "Theme.Ansi7";
+    public const string Ansi8 = "Theme.Ansi8";
+    public const string Ansi9 = "Theme.Ansi9";
+    public const string Ansi10 = "Theme.Ansi10";
+    public const string Ansi11 = "Theme.Ansi11";
+    public const string Ansi12 = "Theme.Ansi12";
+    public const string Ansi13 = "Theme.Ansi13";
+    public const string Ansi14 = "Theme.Ansi14";
+    public const string Ansi15 = "Theme.Ansi15";
 }
 
 /// <summary>

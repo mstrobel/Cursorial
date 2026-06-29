@@ -338,7 +338,7 @@ Host-level rows (`app = host.Application`); `RunFrame()` after mutations unless 
 |---|---|---|---|---|
 | C93 | `CursorialTheme.BuiltIn` | inspect | sealed (`IsSealed`), process-shared (same instance across reads), the final lookup hop; code-first (no XAML dependency) | PIN (doc §11.8) |
 | C94 | `CursorialTheme.CreateDefault()` | inspect + mutate | returns an **unsealed** structural copy (fresh shells, shared value/control-theme instances); mutating it does not affect `BuiltIn`; assignable to `app.Theme` | PIN (doc §11.8) |
-| C95 | `ThemeKeys.*` constants | resolve `Theme.SurfaceBrush`/`TextBrush`/`AccentBrush`/`FocusPen`/`BorderPen`/`ObscuredOverlayBrush`/`AccessKeyUnderlineBrush` from a leaf | each resolves through `BuiltIn` (string keys, typo-proof from C#, verbatim from XAML) | PIN (doc §11.8) |
+| C95 | `ThemeKeys.*` constants | resolve `Theme.SurfaceBrush`/`TextBrush`/`AccentBrush`/`FocusPen`/`BorderPen`/`ObscuredOverlayBrush`/`AccessKeyIndicatorBrush` from a leaf | each resolves through `BuiltIn` (string keys, typo-proof from C#, verbatim from XAML) | PIN (doc §11.8) |
 | C96 | the palette tier layout | inspect `BuiltIn.ThemeDictionaries` | **no color-bearing value in `(B,·)`**: RGB brushes at `(Dark,Ansi256)`/`(Light,Ansi256)` (served at Truecolor via descent), hand-picked `Colors.*` + ASCII-glyph pens at `(B,Ansi16)`, attribute-only values at `(·,NoColor)`; lint-clean (no `(B,·)`+`(·,T)` collisions) | PIN (doc §11.8, CD8) |
 | C97 | `Theme.AccentBrush` resolved at Truecolor, Ansi256, Ansi16, NoColor (a `[Theory]`) | resolve per tier | Truecolor/Ansi256 → the RGB brush (`(B,Ansi256)` via descent); Ansi16 → the hand-picked palette brush; NoColor → the attribute-only/safe value (never a stranded RGB) | PIN (doc §11.8, CD8) |
 

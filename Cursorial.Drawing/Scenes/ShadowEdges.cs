@@ -22,5 +22,5 @@ public enum ShadowEdges : byte
     Bottom = 8,
 
     /// <summary>All four edges.</summary>
-    All = Left | Top | Right | Bottom,
+    All = Left | Top | Right | Bottom
 }

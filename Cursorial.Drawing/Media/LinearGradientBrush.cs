@@ -1,3 +1,4 @@
+using Cursorial.Markup;
 using Cursorial.Output;
 
 namespace Cursorial.Drawing.Media;
@@ -8,6 +9,7 @@ namespace Cursorial.Drawing.Media;
 /// and <c>(1, 1)</c> the bottom-right; values outside <c>[0, 1]</c> are allowed). The default is a
 /// horizontal left→right sweep (<see cref="RelativePoint.TopLeft"/> → <see cref="RelativePoint.TopRight"/>).
 /// </summary>
+[ContentProperty(nameof(Stops))]
 public sealed class LinearGradientBrush : GradientBrush
 {
     /// <summary>

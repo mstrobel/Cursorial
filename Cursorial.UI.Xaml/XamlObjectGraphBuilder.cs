@@ -255,7 +255,7 @@ internal sealed class XamlObjectGraphBuilder
                     ref readonly var childRecord = ref _doc.Objects[childIndex];
                     throw Fatal(XamlDiagnosticCodes.ConversionFailed,
                         $"x:Array element {k} is a '{item?.GetType().Name ?? "null"}', not assignable to the array type '{clr.Name}'.",
-                        LineInfo.Line(childRecord.PackedLineInfo), LineInfo.Column(childRecord.PackedLineInfo));
+                        LineInfo.Line(childRecord.PackedLineInfo), LineInfo.Column(childRecord.PackedLineInfo), ex);
                 }
 
                 k++;
@@ -394,7 +394,7 @@ internal sealed class XamlObjectGraphBuilder
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
-            throw Fatal(XamlDiagnosticCodes.ConversionFailed, $"'{text}' is not a valid selector: {ex.Message}", line, column);
+            throw Fatal(XamlDiagnosticCodes.ConversionFailed, $"'{text}' is not a valid selector: {ex.Message}", line, column, ex);
         }
     }
 
@@ -896,7 +896,12 @@ internal sealed class XamlObjectGraphBuilder
         }
         catch (XamlParseException ex)
         {
-            throw Fatal(ex.Code, ex.Diagnostics[0].Message, line, column);
+            Exception? inner = ex.InnerException;
+
+            while (inner is XamlParseException)
+                inner = inner.InnerException;
+
+            throw Fatal(ex.Code, ex.Diagnostics[0].Message, line, column, inner);
         }
 
         var name = node.Name;
@@ -1091,7 +1096,7 @@ internal sealed class XamlObjectGraphBuilder
         catch (InvalidOperationException ex)
         {
             // No loader installed (the P5 state, matrix X133) — surface as a conversion failure with position.
-            throw Fatal(XamlDiagnosticCodes.ConversionFailed, ex.Message, line, column);
+            throw Fatal(XamlDiagnosticCodes.ConversionFailed, ex.Message, line, column, ex);
         }
     }
 
@@ -1142,7 +1147,7 @@ internal sealed class XamlObjectGraphBuilder
             catch (FormatException ex)
             {
                 throw Fatal(XamlDiagnosticCodes.ConversionFailed,
-                    $"'{keyText}' is not a valid theme-variant key: {ex.Message}", line, column);
+                    $"'{keyText}' is not a valid theme-variant key: {ex.Message}", line, column, ex);
             }
 
             var sub = (ResourceDictionary)InstantiateObject(childIndex);
@@ -1390,8 +1395,8 @@ internal sealed class XamlObjectGraphBuilder
 
     // ── Diagnostics ──────────────────────────────────────────────────────────────────────────────
 
-    internal XamlParseException Fatal(string code, string message, int line, int column)
-        => new(XamlDiagnostic.Error(code, message, _source, Math.Max(line, 1), Math.Max(column, 1)));
+    internal XamlParseException Fatal(string code, string message, int line, int column, Exception? inner = null)
+        => new(XamlDiagnostic.Error(code, message, _source, Math.Max(line, 1), Math.Max(column, 1)), inner);
 
     // ── X2/X3 handler-facing helpers ───────────────────────────────────────────────────────────
 

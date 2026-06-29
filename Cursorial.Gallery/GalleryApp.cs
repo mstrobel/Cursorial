@@ -1,7 +1,6 @@
 using Cursorial.Gallery.ViewModels;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.Gallery;
@@ -18,7 +17,7 @@ public static class GalleryApp
 
     private static int _registered;
 
-    /// <summary>Loads + binds the shell. The caller owns app-level wiring (e.g. the quit keys).</summary>
+    /// <summary>Loads + binds the shell. The caller owns app-level wiring (e.g., the quit keys).</summary>
     public static UIElement BuildRoot()
     {
         EnsureRegistered();
@@ -28,35 +27,7 @@ public static class GalleryApp
 
         root.DataContext = vm;
 
-        StyleDebugDiagnostics.DiagnosticEmitted += (c, m) => vm.Diagnostics.Add($"[Style] {c}: {m}");
-
-        ControlDiagnostics.DiagnosticRaised += d => vm.Diagnostics.Add(
-                                                   $"[Control  ] {d.Kind}: {d.Message} " +
-                                                   $"({d.Element?.GetType().Name}" +
-                                                   (d.Element is { Name: { Length: > 0 } n } ? $"#{n})" : ")"));
-
-        BindingDiagnostics.TraceEmitted += d => vm.Diagnostics.Add(
-                                               $"[Binding  ] {d.Level} - {d.Kind}: {d.Message} " +
-                                               $"(Target={d.TargetDescription}; Path={d.Path})");
-
-        LayoutDiagnostics.DiagnosticRaised += d => vm.Diagnostics.Add(
-                                                  $"[Layout   ] {d.Kind}: {d.Message} ({FormatElement(d.Element)})");
-
-        AnimationDiagnostics.TrackError += e => vm.Diagnostics.Add(
-                                               $"[Animation] {FormatElement(e.Scope)}: {e.Message} " +
-                                               $"({e.Track.TargetProperty?.Name})");
-
-        UIDiagnostics.RejectedValue += (t, p, v) => vm.Diagnostics.Add(
-                                           $"[Rejected ] {FormatElement(t)}.{p.Name} = {v}");
-
         return root;
-    }
-
-    private static string FormatElement(UIObject? element)
-    {
-        if (element is null) return "<null>";
-        var name = (element as UIElement)?.Name;
-        return $"{element.GetType().Name}" + (name is { Length: > 0 } ? $"#{name})" : "");
     }
 
     /// <summary>Registers the gallery assembly with the XAML schema context once, so <c>using:Cursorial.Gallery.ViewModels</c>
@@ -64,7 +35,7 @@ public static class GalleryApp
     public static void EnsureRegistered()
     {
         if (Interlocked.Exchange(ref _registered, 1) == 0)
-            XamlSchemaContext.Default.RegisterAssembly(typeof(ShellViewModel).Assembly);
+            XamlSchemaContext.Default.RegisterAssembly(typeof(ShellViewModel));
     }
 
     private static string LoadEmbedded(string name)

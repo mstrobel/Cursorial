@@ -31,10 +31,13 @@ public class ScrollViewer : ContentControl
 
     /// <summary>Wires the focus-follows-scroll behavior (a focused descendant is brought into view).</summary>
     public ScrollViewer()
+    {
         // handledEventsToo: a control may mark GotFocus handled, but the focused element should still
         // scroll into view. The handler is on `this`, so it persists across template swaps (no leak —
         // same lifetime as the ScrollViewer).
-        => AddHandler(GotFocusEvent, OnDescendantGotFocus, handledEventsToo: true);
+        AddHandler(GotFocusEvent, OnDescendantGotFocus, handledEventsToo: true);
+    }
+
     private IDisposable? _offsetRowObserver;
     private IDisposable? _offsetColumnObserver;
     private int _horizontalOffset;
@@ -133,7 +136,7 @@ public class ScrollViewer : ContentControl
             // this ScrollViewer (ContentControl, chain ③), so the SCP hosts it visual-only (its Content
             // setter detects the existing logical parent). Non-element content rides a ContentPresenter
             // that runs the §12.3 realization chain (the presenter freshly owns its built child).
-            _contentHost = Content as UIElement is null ? new ContentPresenter { Content = Content } : null;
+            _contentHost = Content is not UIElement ? new ContentPresenter { Content = Content } : null;
             presenter.Content = Content as UIElement ?? _contentHost;
             UpdatePresenterScrollAxes();
 
@@ -371,21 +374,46 @@ public class ScrollViewer : ContentControl
     /// </summary>
     public void EnsureVisible(Rect rect)
     {
-        var vTop = _verticalOffset;
-        var vBottom = vTop + Math.Max(0, _viewport.Rows);
+        var newV = ComputeMinimalScrollOffset(_verticalOffset, _viewport.Rows, rect.Row, rect.RowEnd);
+        if (newV != _verticalOffset)
+            SetVerticalOffset(newV);
 
-        if (rect.Row < vTop)
-            SetVerticalOffset(rect.Row);
-        else if (rect.RowEnd > vBottom)
-            SetVerticalOffset(rect.RowEnd - Math.Max(0, _viewport.Rows));
+        var newH = ComputeMinimalScrollOffset(_horizontalOffset, _viewport.Columns, rect.Column, rect.ColumnEnd);
+        if (newH != _horizontalOffset)
+            SetHorizontalOffset(newH);
+    }
 
-        var hLeft = _horizontalOffset;
-        var hRight = hLeft + Math.Max(0, _viewport.Columns);
+    /// <summary>
+    /// The least scroll that brings <c>[rectStart, rectEnd)</c> into a <paramref name="viewportExtent"/>-sized
+    /// viewport currently at <paramref name="currentOffset"/> (WPF's <c>ComputeScrollOffsetWithMinimalScroll</c>,
+    /// one axis). The load-bearing rule is the <em>larger-than-viewport</em> case: when the target exceeds the
+    /// viewport, align its <b>leading</b> edge so the start stays visible — aligning the trailing edge instead
+    /// would push the start out. That is exactly the expanded-<see cref="TreeViewItem"/> case: the focused
+    /// node's bounds span its header <em>and</em> its whole subtree, so scrolling to the subtree's bottom would
+    /// shove the header off the top; the leading-edge alignment keeps the header in view.
+    /// </summary>
+    private static int ComputeMinimalScrollOffset(int currentOffset, int viewportExtent, int rectStart, int rectEnd)
+    {
+        var extent = Math.Max(0, viewportExtent);
+        var viewStart = currentOffset;
+        var viewEnd = currentOffset + extent;
 
-        if (rect.Column < hLeft)
-            SetHorizontalOffset(rect.Column);
-        else if (rect.ColumnEnd > hRight)
-            SetHorizontalOffset(rect.ColumnEnd - Math.Max(0, _viewport.Columns));
+        var before = rectStart < viewStart && rectEnd < viewEnd; // starts before the viewport, doesn't cover its end
+        var after = rectEnd > viewEnd && rectStart > viewStart;   // ends after the viewport, starts inside it
+        var larger = rectEnd - rectStart > extent;
+
+        // Align the leading edge: the rect fits and starts before the viewport, OR it is larger and trails past
+        // it (WPF cases 1 & 4 — case 4 is the expanded-node fix).
+        if (before && !larger || after && larger)
+            return rectStart;
+
+        // Align the trailing edge: the rect fits and trails past the viewport, OR it is larger and starts before
+        // it (WPF cases 2 & 3).
+        if (before || after)
+            return rectEnd - extent;
+
+        // Already visible enough (fully inside, or an oversized rect already covering the viewport) — no scroll.
+        return currentOffset;
     }
 
     /// <summary>

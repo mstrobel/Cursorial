@@ -20,6 +20,11 @@ public sealed partial class UIApplication
     public event EventHandler? Started;
 
     /// <summary>
+    /// Raised at the beginning of the application shutdown process.
+    /// </summary>
+    public event EventHandler? BeginShutdown;
+
+    /// <summary>
     /// PREFERRED entry point: async startup on the caller (host open, negotiation), then one
     /// dedicated foreground UI thread ("Cursorial UI") runs the loop synchronously;
     /// <paramref name="rootFactory"/> is invoked <b>on the UI thread</b> before the first frame —
@@ -109,7 +114,7 @@ public sealed partial class UIApplication
                     // best-effort by contract
                 }
 
-                if (_fatalException is { } fatal)
+                if (_fatalException is {} fatal)
                     completion.TrySetException(fatal);
                 else
                     completion.TrySetResult(Volatile.Read(ref _exitCode));
@@ -130,12 +135,12 @@ public sealed partial class UIApplication
     {
         // 1. Host: BYO host → BYO session (wrapped) → owned happy-path session (registers the
         //    signal net; see TerminalSessionHost remarks for the EmergencyRestoreBytes gap).
-        if (_options.Host is { } host)
+        if (_options.Host is {} host)
         {
             _host = host;
             _ownsHost = _options.DisposeHost;
         }
-        else if (_options.Session is { } session)
+        else if (_options.Session is {} session)
         {
             _host = new TerminalSessionHost(session, _options.DisposeSession, ownsSignalHandling: false);
             _ownsHost = true; // the host wrapper is ours; the session disposes per the flag
@@ -174,6 +179,7 @@ public sealed partial class UIApplication
     private void InitializeFromHost((int Columns, int Rows) size)
     {
         var host = _host!;
+
         _capabilities = host.Capabilities;
 
         _buffer = new CellBuffer(size.Columns, size.Rows, _capabilities) { CursorVisible = false };
@@ -182,11 +188,14 @@ public sealed partial class UIApplication
         // UI-mode entry: alt screen when supported and requested, else clear-screen fallback;
         // cursor hiding is left to the buffer (CursorVisible = false ⇒ DECRST 25 on frame 0).
         var writer = host.Output.Writer;
+
         _enteredAltScreen = _options.UseAlternateScreen && _capabilities.Output.Window.AlternateScreenBuffer;
+
         if (_enteredAltScreen)
             ScreenWriter.WriteEnterAlternateScreen(writer);
         else
             ScreenWriter.WriteClearScreen(writer);
+
         SgrEncoder.WriteReset(writer);
         WriteThemeCursorColor(writer); // OSC 12 = the theme accent, so the real terminal caret stays visible across variants (teardown emits OSC 112)
         writer.FlushAsync().AsTask().GetAwaiter().GetResult();
@@ -204,16 +213,18 @@ public sealed partial class UIApplication
         // Input assembly (design doc §10.4): synthesizer innermost (opt-in), click transform
         // outermost; the pull surface, never EventInputDevice (it swallows handler exceptions).
         var device = host.Input;
-        if (_options.KeyReleaseSynthesis is { } krs)
+
+        if (_options.KeyReleaseSynthesis is {} krs)
             device = new KeyReleaseSynthesizer(device, krs.UpTimeout, krs.RepeatTimeout, _options.TimeProvider);
+
         device = device.WithClickSynthesis(_options.ClickOptions);
         _device = device;
 
         // Provenance split: effective = post-decoration (S3's surface); the Alt gate = undecorated.
         _effectiveInputCapabilities = device.Capabilities;
         _supportsAltKeyTracking = ComputeAltKeyTracking(_capabilities.Input);
-
         _appStartTimestamp = _options.TimeProvider.GetTimestamp();
+
         StartPump();
     }
 
@@ -254,27 +265,26 @@ public sealed partial class UIApplication
         var token = _pumpCts.Token;
         var device = _device!;
 
-        _pumpTask = Task.Run(
-            async () =>
-            {
-                try
-                {
-                    await foreach (var inputEvent in device.ReadAllAsync(token).ConfigureAwait(false))
-                    {
-                        _inputQueue.Enqueue(inputEvent);
-                        Dispatcher.Wake();
-                    }
+        _pumpTask = Task.Run(async () =>
+                             {
+                                 try
+                                 {
+                                     await foreach (var inputEvent in device.ReadAllAsync(token).ConfigureAwait(false))
+                                     {
+                                         _inputQueue.Enqueue(inputEvent);
+                                         Dispatcher.Wake();
+                                     }
 
-                    _streamEnded = true;
-                    Dispatcher.Wake();
-                }
-                catch (OperationCanceledException) {}
-                catch (Exception ex)
-                {
-                    Interlocked.Exchange(ref _pumpFault, ex);
-                    Dispatcher.Wake();
-                }
-            });
+                                     _streamEnded = true;
+                                     Dispatcher.Wake();
+                                 }
+                                 catch (OperationCanceledException) {}
+                                 catch (Exception ex)
+                                 {
+                                     Interlocked.Exchange(ref _pumpFault, ex);
+                                     Dispatcher.Wake();
+                                 }
+                             });
     }
 
     // ───────────────────────────── the loop (design doc §10.5) ─────────────────────────────
@@ -282,7 +292,7 @@ public sealed partial class UIApplication
     private void RunLoop()
     {
         var time = _options.TimeProvider;
-        
+
         Started?.Invoke(this, EventArgs.Empty);
 
         while (!_shutdownRequested)
@@ -376,6 +386,7 @@ public sealed partial class UIApplication
                     try
                     {
                         var dispatched = InputDispatchTarget?.Dispatch(inputEvent) ?? InputDispatchResult.NotUIInput;
+
                         if (dispatched != InputDispatchResult.DispatchedHandled)
                             ApplyDefaultGestures(inputEvent);
                     }
@@ -466,85 +477,11 @@ public sealed partial class UIApplication
 
         try
         {
-
-        if (_windowManager is { HasPendingLayout: true } layout)
-        {
-            try
+            if (_windowManager is { HasPendingLayout: true } layout)
             {
-                layout.RunLayoutPass();
-            }
-            catch (Exception ex)
-            {
-                if (!RaiseUnhandled(ex))
-                    return default;
-            }
-
-            layoutRan = true;
-
-            // Post-layout activation focus (doc §7.7): a root shown before its first layout could not
-            // place focus at OnWindowActivated time (the first tab stop sits behind templates / content
-            // presenters not yet realized — the demo's whole panel is inside a ScrollViewer's SCP). Now
-            // that the pass has built the visual subtree, complete any parked activation so the first
-            // focusable auto-focuses BEFORE Phase 6 renders (its :focus-visible visual lands this frame).
-            // A no-op once focus has landed or the user moved it (the retry never overrides real focus).
-            try
-            {
-                _focusManager.CompletePendingActivationFocus();
-            }
-            catch (Exception ex)
-            {
-                if (!RaiseUnhandled(ex))
-                    return default;
-            }
-        }
-        // Post-layout window work: SizeToContent resolution + popup anchor reposition (W1/W4) — a
-        // composite-offset-only change, no re-raster. Cheap no-op at W0.
-        _windowManager?.OnLayoutCompleted();
-
-        // S5 transitions (§9.5): flip the go-live latch on every element whose first arrange completed this
-        // pass — AFTER layout settled their initial base values, so the first post-go-live change transitions.
-        // Runs UNCONDITIONALLY each frame (not gated on HasPendingLayout); empty-set early-out keeps it free.
-        CompletePendingTransitionGoLive();
-
-        // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
-        if (!_renegotiating)
-        {
-            // Consume the request flag unconditionally (no short-circuit): leaving it set when
-            // visuals are already dirty would buy one wasted empty-diff render next frame.
-            var renderRequested = Interlocked.Exchange(ref _renderRequested, 0) != 0;
-
-            var renderNeeded = (_windowManager?.HasDirtyVisuals ?? false) || layoutRan || resized || renderRequested;
-
-            if (renderNeeded && _windowManager is {} renderSystem)
-            {
-                bool changed;
-
                 try
                 {
-                    changed = renderSystem.RenderFrame(_buffer!, in time);
-                }
-                catch (Exception ex)
-                {
-                    if (!RaiseUnhandled(ex))
-                        return default;
-
-                    changed = true; // conservative emit — the compositing invariant keeps the buffer safe
-                }
-
-                if (_guard.IsFatal)
-                    return default; // a draw delegate recorded fatal — unwind to teardown
-
-                if (_guard.ConsumeHandledFlag())
-                    changed = true; // handled draw exception ⇒ conservative emit (design doc §10.8)
-
-                // Hover re-evaluation once per rendered frame, after layout AND composite
-                // parameters are final (doc §10.5 / matrix ND21): hover stays correct under
-                // layout moves, composite slides, and scrolls without pointer motion, and
-                // detach-deferred hover work executes here. Flips it queues (restyles at P3)
-                // are caught by the Phase-7 guard and render frame N+1 (doc §7.10).
-                try
-                {
-                    InputDispatchTarget?.UpdateHover();
+                    layout.RunLayoutPass();
                 }
                 catch (Exception ex)
                 {
@@ -552,46 +489,119 @@ public sealed partial class UIApplication
                         return default;
                 }
 
-                if (changed || resized)
+                layoutRan = true;
+
+                // Post-layout activation focus (doc §7.7): a root shown before its first layout could not
+                // place focus at OnWindowActivated time (the first tab stop sits behind templates / content
+                // presenters not yet realized — the demo's whole panel is inside a ScrollViewer's SCP). Now
+                // that the pass has built the visual subtree, complete any parked activation so the first
+                // focusable auto-focuses BEFORE Phase 6 renders (its :focus-visible visual lands this frame).
+                // A no-op once focus has landed or the user moved it (the retry never overrides real focus).
+                try
                 {
-                    _scratch.ResetWrittenCount(); // pooled ArrayBufferWriter<byte>, reset per frame
-                    _renderer!.Render(_buffer!, _scratch);
-                    rendered = true;
+                    _focusManager.CompletePendingActivationFocus();
+                }
+                catch (Exception ex)
+                {
+                    if (!RaiseUnhandled(ex))
+                        return default;
                 }
             }
 
-            if (!_controlSequences.IsEmpty)
-            {
-                // The out-of-band OSC channel — AFTER the delta; forces a flush even when empty.
-                if (!rendered)
-                    _scratch.ResetWrittenCount();
+            // Post-layout window work: SizeToContent resolution + popup anchor reposition (W1/W4) — a
+            // composite-offset-only change, no re-raster. Cheap no-op at W0.
+            _windowManager?.OnLayoutCompleted();
 
-                while (_controlSequences.TryDequeue(out var payload))
+            // S5 transitions (§9.5): flip the go-live latch on every element whose first arrange completed this
+            // pass — AFTER layout settled their initial base values, so the first post-go-live change transitions.
+            // Runs UNCONDITIONALLY each frame (not gated on HasPendingLayout); empty-set early-out keeps it free.
+            CompletePendingTransitionGoLive();
+
+            // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
+            if (!_renegotiating)
+            {
+                // Consume the request flag unconditionally (no short-circuit): leaving it set when
+                // visuals are already dirty would buy one wasted empty-diff render next frame.
+                var renderRequested = Interlocked.Exchange(ref _renderRequested, 0) != 0;
+
+                var renderNeeded = (_windowManager?.HasDirtyVisuals ?? false) || layoutRan || resized || renderRequested;
+
+                if (renderNeeded && _windowManager is {} renderSystem)
                 {
+                    bool changed;
+
                     try
                     {
-                        payload(_scratch);
+                        changed = renderSystem.RenderFrame(_buffer!, in time);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!RaiseUnhandled(ex))
+                            return default;
+
+                        changed = true; // conservative emit — the compositing invariant keeps the buffer safe
+                    }
+
+                    if (_guard.IsFatal)
+                        return default; // a draw delegate recorded fatal — unwind to teardown
+
+                    if (_guard.ConsumeHandledFlag())
+                        changed = true; // handled draw exception ⇒ conservative emit (design doc §10.8)
+
+                    // Hover re-evaluation once per rendered frame, after layout AND composite
+                    // parameters are final (doc §10.5 / matrix ND21): hover stays correct under
+                    // layout moves, composite slides, and scrolls without pointer motion, and
+                    // detach-deferred hover work executes here. Flips it queues (restyles at P3)
+                    // are caught by the Phase-7 guard and render frame N+1 (doc §7.10).
+                    try
+                    {
+                        InputDispatchTarget?.UpdateHover();
                     }
                     catch (Exception ex)
                     {
                         if (!RaiseUnhandled(ex))
                             return default;
                     }
+
+                    if (changed || resized)
+                    {
+                        _scratch.ResetWrittenCount(); // pooled ArrayBufferWriter<byte>, reset per frame
+                        _renderer!.Render(_buffer!, _scratch);
+                        rendered = true;
+                    }
                 }
 
-                rendered = true;
-            }
+                if (!_controlSequences.IsEmpty)
+                {
+                    // The out-of-band OSC channel — AFTER the delta; forces a flush even when empty.
+                    if (!rendered)
+                        _scratch.ResetWrittenCount();
 
-            if (rendered && _scratch.WrittenCount > 0)
-            {
-                // ONE write + ONE blocking flush per frame (the pipe's drain side is
-                // thread-pool-side, so this cannot deadlock against the UI thread).
-                var writer = _host!.Output.Writer;
-                writer.Write(_scratch.WrittenSpan);
-                writer.FlushAsync().AsTask().GetAwaiter().GetResult();
-            }
-        }
+                    while (_controlSequences.TryDequeue(out var payload))
+                    {
+                        try
+                        {
+                            payload(_scratch);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!RaiseUnhandled(ex))
+                                return default;
+                        }
+                    }
 
+                    rendered = true;
+                }
+
+                if (rendered && _scratch.WrittenCount > 0)
+                {
+                    // ONE write + ONE blocking flush per frame (the pipe's drain side is
+                    // thread-pool-side, so this cannot deadlock against the UI thread).
+                    var writer = _host!.Output.Writer;
+                    writer.Write(_scratch.WrittenSpan);
+                    writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+                }
+            }
         }
         finally
         {
@@ -688,9 +698,10 @@ public sealed partial class UIApplication
             // access-key leg re-evaluates the gate AND unconditionally clears Alt/sticky-cue state
             // (renegotiation parks the pump; an Alt Up can vanish — doc §7.8).
             OnCapabilitiesChanged(fresh);
-            StyleHooks?.OnCapabilitiesChanged(fresh);
-            InputDispatchTarget?.OnCapabilitiesChanged(fresh);
-            _accessKeys.OnCapabilitiesChanged(fresh);
+            // Now handled directly by OnCapabilitiesChanged:
+            // StyleHooks?.OnCapabilitiesChanged(fresh);
+            // InputDispatchTarget?.OnCapabilitiesChanged(fresh);
+            // _accessKeys.OnCapabilitiesChanged(fresh);
 
             CapabilitiesChanged?.Invoke(this,
                                         new CapabilitiesChangedEventArgs
@@ -728,6 +739,7 @@ public sealed partial class UIApplication
         //    Then complete every queued InvokeAsync as canceled (actions NOT run).
         if (SynchronizationContext.Current == _syncContext)
             SynchronizationContext.SetSynchronizationContext(null);
+
         Dispatcher.BeginShutdown();
         Dispatcher.DrainJobsCanceled();
 
@@ -736,43 +748,35 @@ public sealed partial class UIApplication
         {
             _windowManager?.CloseAllAsync().GetAwaiter().GetResult();
         }
-        catch
-        {
-        }
+        catch {}
 
         // 2. Animation shutdown — handles released, values revert to base (P8 seam).
         try
         {
             AnimationDriver?.Shutdown();
         }
-        catch
-        {
-        }
+        catch {}
 
         // 3. Cancel the pump; blocking wait.
         try
         {
             _pumpCts?.Cancel();
         }
-        catch
-        {
-        }
+        catch {}
 
-        if (_pumpTask is { } pump)
+        if (_pumpTask is {} pump)
         {
             try
             {
                 pump.GetAwaiter().GetResult();
             }
-            catch
-            {
-            }
+            catch {}
         }
 
         // 4–8. The byte sequence: renderer Close (fragment erases + re-enable autowrap — MUST run
         // before leaving the session or the shell inherits a no-wrap terminal), show cursor, SGR
         // reset, leave alt screen (or clear on the fallback), one write + one blocking flush.
-        if (_host is { } host && _renderer is not null)
+        if (_host is {} host && _renderer is not null)
         {
             try
             {
@@ -780,11 +784,14 @@ public sealed partial class UIApplication
                 _renderer.Close(_scratch);
                 CursorWriter.WriteShow(_scratch);
                 SgrEncoder.WriteReset(_scratch);
+
                 if (_cursorColorEmitted)
                     PaletteWriter.WriteResetCursor(_scratch); // restore the default cursor color only if we set OSC 12 (review #9)
 
                 if (_capabilities.Output.Protocol.MouseCursorShape)
-                    MouseCursorWriter.WriteSet(_scratch, MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)
+                    MouseCursorWriter.WriteSet(
+                        _scratch,
+                        MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)
 
                 if (_enteredAltScreen)
                     ScreenWriter.WriteLeaveAlternateScreen(_scratch);
@@ -794,30 +801,28 @@ public sealed partial class UIApplication
                 host.Output.Writer.Write(_scratch.WrittenSpan);
                 host.Output.Writer.FlushAsync().AsTask().GetAwaiter().GetResult();
             }
-            catch
-            {
-            }
+            catch {}
         }
 
         // 9. (P5 seam: palette?.Dispose() — OSC resets while the sink is still open.)
         // 10. Host disposal (skipped for BYO unless disposeWithApp) — opt-in disables, cooked mode.
-        if (_ownsHost && _host is { } ownedHost)
+        if (_ownsHost && _host is {} ownedHost)
         {
             try
             {
                 ownedHost.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
-            catch
-            {
-            }
+            catch {}
         }
 
         // 11. Only now is Console.WriteLine safe. Clear the thread-local Current + scheduler on this thread.
         //     Also drop the theme-styles re-match hook so a theme dictionary the caller still references
         //     does not keep this app's StyleEngine (and the app) reachable after teardown (R2/B13 leak).
         _theme?.ThemeStylesReMatchHook = null;
+
         if (ReferenceEquals(_current, this))
             _current = null;
+
         AnimationScheduler.Uninstall(_animationScheduler);
     }
 
@@ -829,7 +834,8 @@ public sealed partial class UIApplication
     public async ValueTask DisposeAsync()
     {
         Shutdown(0);
-        if (_runTask is { } run)
+
+        if (_runTask is {} run)
         {
             try
             {
@@ -847,6 +853,7 @@ public sealed partial class UIApplication
 
         if (ReferenceEquals(_current, this))
             _current = null;
+
         AnimationScheduler.Uninstall(_animationScheduler);
     }
 
@@ -860,9 +867,11 @@ public sealed partial class UIApplication
     internal void StartHeadless()
     {
         Dispatcher.VerifyAccess();
+
         if (Interlocked.Exchange(ref _runCalled, 1) != 0)
             throw new InvalidOperationException("The application has already been started.");
-        if (_options.Host is not { } host)
+
+        if (_options.Host is not {} host)
             throw new InvalidOperationException("Headless start requires a builder-supplied terminal host (WithTerminalHost).");
 
         _host = host;
@@ -890,6 +899,7 @@ public sealed partial class UIApplication
         Dispatcher.VerifyAccess();
         var previous = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(_syncContext);
+
         try
         {
             var elapsed = _options.TimeProvider.GetElapsedTime(_appStartTimestamp);
@@ -899,7 +909,7 @@ public sealed partial class UIApplication
             _frame++;
             _lastElapsed = elapsed;
 
-            if (_fatalException is { } fatal)
+            if (_fatalException is {} fatal)
                 ExceptionDispatchInfo.Throw(fatal);
 
             return result.Rendered;
@@ -915,6 +925,8 @@ public sealed partial class UIApplication
 
     internal void RequestTransitionGoLive(TransitionManager manager) => _pendingTransitionGoLive.Add(manager);
 
+    internal bool CancelTransitionGoLiveRequest(TransitionManager manager) => _pendingTransitionGoLive.Remove(manager);
+
     /// <summary>Flips the go-live latch on every newly-arranged transition manager (post-layout boundary; empty-set early-out).</summary>
     private void CompletePendingTransitionGoLive()
     {
@@ -923,6 +935,7 @@ public sealed partial class UIApplication
 
         foreach (var manager in _pendingTransitionGoLive)
             manager.GoLive();
+
         _pendingTransitionGoLive.Clear();
     }
 }

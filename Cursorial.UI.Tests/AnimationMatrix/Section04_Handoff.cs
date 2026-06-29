@@ -32,7 +32,8 @@ public sealed class Section04_Handoff
         Assert.Equal(0, firstCompleted);                     // the retired one never completes (AD3)
     }
 
-    [Fact] // N37: a delayed replacement retracts the old handle at Begin — the base shows during the delay
+    [Fact] // N37 (AD16): a delayed replacement retracts the old handle at Begin AND immediately occupies the
+           // property at its own start value (ValueAt(0) = From) through the delay — not the base
     public void Handoff_Delayed_RetractsOldImmediately()
     {
         var (host, _, a) = Shown();
@@ -46,7 +47,7 @@ public sealed class Section04_Handoff
             new AnimationStartOptions(BeginTime: Ms(48)));
         Assert.Equal(AnimationState.Stopped, first.State);
         Assert.Equal(AnimationState.Delayed, second.State);
-        Assert.Equal(0.0, a.V); // old retracted at Begin, new not yet attached — base resurfaces
+        Assert.Equal(100.0, a.V); // old retracted at Begin; the replacement holds its From through the delay (≠ base 0.0)
 
         host.AdvanceTime(Ms(48)); // lands a frame exactly on the replacement's BeginTime edge ⇒ elapsed == 0
         Assert.Equal(AnimationState.Running, second.State);

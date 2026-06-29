@@ -28,10 +28,10 @@ public sealed class Section43_StyleGuideReconcile
     private static readonly Color Text = Color.FromHex("#c0caf5");      // --text
     private static readonly Color TextDim = Color.FromHex("#a9b1d6");   // --text-dim
     private static readonly Color Surface = Color.FromHex("#24283b");   // --surface
-    private static readonly Color Panel = Color.FromHex("#222639");     // --panel
+    private static readonly Color Panel = Color.FromHex("#171A26");     // --panel
     private static readonly Color Accent = Color.FromHex("#7aa2f7");    // --accent
     private static readonly Color Faint = Color.FromHex("#414868");     // --faint
-    private static readonly Color Green = Color.FromHex("#9ece6a");     // --green
+    private static readonly Color Green = Color.FromHex("#63c792");     // --green
 
     private static UITestHost DarkHost(int w = 40, int h = 12)
     {
@@ -102,7 +102,7 @@ public sealed class Section43_StyleGuideReconcile
         host.RunUntilIdle();
 
         Assert.Equal(TextDim, BrushColor(probe, ThemeKeys.TabForegroundNormal));   // inactive ink = --text-dim
-        Assert.Equal(Text, BrushColor(probe, ThemeKeys.TabForegroundActive));      // active ink = --text
+        Assert.Equal(Text, BrushColor(probe, ThemeKeys.TabForegroundSelected));      // active ink = --text
         Assert.Equal(Surface, BrushColor(probe, ThemeKeys.TabBackgroundSelected)); // active fill = --surface
 
         var pen = (Pen)probe.FindResource(ThemeKeys.TabUnderlinePen)!;             // underline rule = Heavy --accent pen

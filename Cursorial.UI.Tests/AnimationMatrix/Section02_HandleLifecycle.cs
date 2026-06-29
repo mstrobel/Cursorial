@@ -105,8 +105,9 @@ public sealed class Section02_HandleLifecycle
         Assert.False(host.Scheduler().HasActiveAnimations);
     }
 
-    [Fact] // N17: within the BeginTime window the instance is Delayed and the property is untouched
-    public void Delayed_PropertyUntouched()
+    [Fact] // N17 (AD16): within the BeginTime window the instance is Delayed and HOLDS its start value (ValueAt(0) =
+           // From = 2.0), occupying the property — not the base 0.0 (so a base-driven Transition never snaps back)
+    public void Delayed_HoldsStartValue()
     {
         var (host, _, a) = Shown();
         using var _ = host;
@@ -116,7 +117,7 @@ public sealed class Section02_HandleLifecycle
 
         host.AdvanceTime(Ms(40)); // two frames (33ms, 40ms at the 33ms cadence), both inside [Start, Start+48ms)
         Assert.Equal(AnimationState.Delayed, handle.State);
-        Assert.Equal(0.0, a.V);   // never written — the base default shows
+        Assert.Equal(2.0, a.V);   // the start value (From) is held through the delay (≠ the base default 0.0)
     }
 
     [Fact] // N18: crossing Start+BeginTime attaches and starts Running; the value leaves From

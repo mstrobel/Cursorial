@@ -9,7 +9,7 @@ namespace Cursorial.UI.Input;
 /// <see cref="GetPosition"/> translates into any element's local frame (may be negative under
 /// capture or composite slides — signed math, never a throw).
 /// </summary>
-public class MouseEventArgs : RoutedEventArgs
+public class MouseEventArgs : InputEventArgs
 {
     private MouseEvent? _device;
 

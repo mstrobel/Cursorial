@@ -23,6 +23,10 @@ public class Control : UIElement, IControlThemeHost
     public static readonly StyledProperty<ControlTemplate?> TemplateProperty =
         UIProperty.Register<Control, ControlTemplate?>(nameof(Template), changed: OnTemplateChanged);
 
+    /// <inheritdoc cref="Controls.ContextMenu.MenuProperty"/>
+    public static readonly StyledProperty<ContextMenu?> ContextMenuProperty =
+        ContextMenu.MenuProperty.AddOwner<Control>();
+    
     /// <summary>The control's surface brush (<c>AffectsRender</c>; <b>not</b> inherited — doc §12.1).</summary>
     public static readonly StyledProperty<IBrush?> BackgroundProperty =
         Panel.BackgroundProperty.AddOwner<Control>();
@@ -37,7 +41,7 @@ public class Control : UIElement, IControlThemeHost
 
     /// <summary>The control's inner padding (<c>AffectsMeasure</c>).</summary>
     public static readonly StyledProperty<Margins> PaddingProperty =
-        UIProperty.Register<Control, Margins>(nameof(Padding));
+        Border.PaddingProperty.AddOwner<Control>();
 
     /// <summary>The per-instance control-theme override (the explicit <c>Control.Theme</c>, doc §11.3/CD13).</summary>
     public static readonly StyledProperty<Style?> ThemeProperty =
@@ -51,22 +55,53 @@ public class Control : UIElement, IControlThemeHost
     }
 
     /// <inheritdoc cref="TemplateProperty"/>
-    public ControlTemplate? Template { get => GetValue(TemplateProperty); set => SetValue(TemplateProperty, value); }
+    public ControlTemplate? Template
+    {
+        get => GetValue(TemplateProperty);
+        set => SetValue(TemplateProperty, value);
+    }
 
     /// <inheritdoc cref="BackgroundProperty"/>
-    public IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
+    public IBrush? Background
+    {
+        get => GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
 
     /// <inheritdoc cref="ForegroundProperty"/>
-    public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
+    public IBrush? Foreground
+    {
+        get => GetValue(ForegroundProperty);
+        set => SetValue(ForegroundProperty, value);
+    }
 
     /// <inheritdoc cref="BorderPenProperty"/>
-    public Pen? BorderPen { get => GetValue(BorderPenProperty); set => SetValue(BorderPenProperty, value); }
+    public Pen? BorderPen
+    {
+        get => GetValue(BorderPenProperty);
+        set => SetValue(BorderPenProperty, value);
+    }
 
     /// <inheritdoc cref="PaddingProperty"/>
-    public Margins Padding { get => GetValue(PaddingProperty); set => SetValue(PaddingProperty, value); }
+    public Margins Padding
+    {
+        get => GetValue(PaddingProperty);
+        set => SetValue(PaddingProperty, value);
+    }
 
     /// <inheritdoc cref="ThemeProperty"/>
-    public Style? Theme { get => GetValue(ThemeProperty); set => SetValue(ThemeProperty, value); }
+    public Style? Theme
+    {
+        get => GetValue(ThemeProperty);
+        set => SetValue(ThemeProperty, value);
+    }
+
+    /// <inheritdoc cref="ThemeProperty"/>
+    public ContextMenu? ContextMenu
+    {
+        get => GetValue(ContextMenuProperty);
+        set => SetValue(ContextMenuProperty, value);
+    }
 
     /// <summary>
     /// The S7 control-theme lookup key (design doc §12.1 / CD13): the runtime type, exact-key — no
@@ -162,6 +197,7 @@ public class Control : UIElement, IControlThemeHost
         }
 
         _applyingTemplate = true;
+
         try
         {
             ExpandTemplate();
@@ -185,8 +221,22 @@ public class Control : UIElement, IControlThemeHost
 
     private void ExpandTemplate()
     {
+        // Reuse on same-template re-resolution (the transient detach/reattach case). A control-theme Style
+        // setter retracts Template → null on a transient detach (e.g. switching away from a TabControl tab) and
+        // re-arms it to the SAME ControlTemplate instance on reattach, which marks the template invalid and would
+        // otherwise tear the instance down and rebuild it. Rebuilding discards the live, correctly-tracking
+        // template bindings and wires fresh ones during the reattach MEASURE — before the templated parent's own
+        // values have re-settled — so a `{TemplateBinding}` latches a stale value (e.g. the dark foreground that
+        // survived a theme flip while the tab was detached). When the resolved Template is the very instance the
+        // current expansion was built from, nothing changed: keep the retained instance. Its subtree re-attaches
+        // with the control, so its bindings re-resolve through the normal attach walk (the same path that
+        // correctly refreshes the control's own inherited values), and we also avoid rebuilding every control's
+        // template on every tab switch.
+        if (_templateInstance is { } reusable && ReferenceEquals(reusable.Template, Template))
+            return;
+
         // ① Detach the old instance (unhook-before-rewire, doc §12.2 step 1).
-        if (_templateInstance is { } old)
+        if (_templateInstance is {} old)
         {
             OnTemplateDetaching(old);
             old.Detach();
@@ -199,8 +249,7 @@ public class Control : UIElement, IControlThemeHost
         }
 
         // ② Resolve the template (null ⇒ no child + one-time diagnostic, C135).
-        var template = Template;
-        if (template is null)
+        if (Template is not {} template)
         {
             ControlDiagnostics.NoTemplate(this);
             return;
@@ -222,18 +271,14 @@ public class Control : UIElement, IControlThemeHost
     }
 
     /// <summary>Called after a template expands and attaches (doc §12.2 step 6). Wire part handlers here.</summary>
-    protected virtual void OnApplyTemplate()
-    {
-    }
+    protected virtual void OnApplyTemplate() {}
 
     /// <summary>
     /// Called before the old template detaches (doc §12.2 step 1, "unhook before rewire"): unhook any
     /// part event handlers / timers / command subscriptions wired in <see cref="OnApplyTemplate"/>.
     /// Runs <b>before</b> <c>old.Detach()</c> and the old root's removal.
     /// </summary>
-    protected virtual void OnTemplateDetaching(TemplateInstance old)
-    {
-    }
+    protected virtual void OnTemplateDetaching(TemplateInstance old) {}
 
     /// <summary>
     /// Resolves a template part by name in the template name scope only (design doc §12.1 / CD17).
@@ -250,8 +295,7 @@ public class Control : UIElement, IControlThemeHost
     {
         foreach (var part in TemplatePartCache.For(GetType()))
         {
-            var found = instance.NameScope.Find(part.Name);
-            if (found is null)
+            if (instance.NameScope.Find(part.Name) is not {} found)
             {
                 if (part.IsRequired)
                 {
@@ -276,15 +320,5 @@ public class Control : UIElement, IControlThemeHost
     {
         if (sender is Control control)
             control._templateValid = false; // AffectsMeasure routes InvalidateMeasure → ApplyTemplate re-expands
-    }
-
-    // ───────────────────────────── BorderPen nullity escalation (doc §12.4) ─────────────────────────────
-
-    private static void OnBorderPenChanged(UIObject sender, Pen? oldValue, Pen? newValue)
-    {
-        // The hot path (a :focus pen-weight restyle, both non-null) is render-only (AffectsRender).
-        // A nullity flip changes the ±1-cell border geometry, so it imperatively re-measures (C169).
-        if (sender is Control control && oldValue.HasValue != newValue.HasValue)
-            control.InvalidateMeasure();
     }
 }

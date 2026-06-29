@@ -113,7 +113,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Xaml", "Cursor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Xaml.Tests", "Cursorial.UI.Xaml.Tests\Cursorial.UI.Xaml.Tests.csproj", "{C2331BEB-6D39-4FDF-B31A-1D2A0B27F6F6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Themes.Xaml", "Cursorial.UI.Themes.Xaml\Cursorial.UI.Themes.Xaml.csproj", "{B6E72ACC-8EE6-4E58-9F89-C51A40765357}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Themes", "Cursorial.UI.Themes\Cursorial.UI.Themes.csproj", "{B6E72ACC-8EE6-4E58-9F89-C51A40765357}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cursorial.UI.Xaml.Generator", "Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj", "{4F8B0D22-EB7D-43F4-AC99-281DEDF868B0}"
 EndProject

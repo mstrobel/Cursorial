@@ -15,8 +15,8 @@ namespace Cursorial.UI.Xaml;
 public sealed class XamlParseException : FormatException
 {
     /// <summary>Creates an exception from a single fatal diagnostic.</summary>
-    public XamlParseException(XamlDiagnostic diagnostic)
-        : this(new[] { diagnostic })
+    public XamlParseException(XamlDiagnostic diagnostic, Exception? inner = null)
+        : this([diagnostic], inner)
     {
     }
 
@@ -24,8 +24,8 @@ public sealed class XamlParseException : FormatException
     /// Creates an exception from a collected diagnostic list. The first element is treated as the
     /// fatal one (its code/line/column surface on the exception directly).
     /// </summary>
-    public XamlParseException(IReadOnlyList<XamlDiagnostic> diagnostics)
-        : base(BuildMessage(diagnostics))
+    public XamlParseException(IReadOnlyList<XamlDiagnostic> diagnostics, Exception? inner = null)
+        : base(BuildMessage(diagnostics), inner)
     {
         Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         if (diagnostics.Count == 0)

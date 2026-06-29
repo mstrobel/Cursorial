@@ -856,7 +856,7 @@ internal sealed class XamlParser
             {
                 // A {Binding}/{TemplateBinding} target must be a registered UIProperty (bindable). A
                 // CLR-only member is CUR2210 at parse (matrix X120; doc §4.4).
-                if (member.Property is null && !member.IsEvent)
+                if (member.Property is null && member is { IsEvent: false, ValueType.Name: not ("Binding" or "BindingBase") })
                 {
                     _builder.Error(XamlDiagnosticCodes.BindingTargetNotBindable,
                                    $"Binding target '{member.Name}' is not a bindable property " +

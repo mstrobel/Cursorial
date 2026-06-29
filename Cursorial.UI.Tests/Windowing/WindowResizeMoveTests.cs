@@ -28,24 +28,26 @@ public sealed class WindowResizeMoveTests
         return (host, host.Application.WindowManager!);
     }
 
-    private static Window At(int left, int top, int width = 20, int height = 8) => new()
+    private static Window At(UITestHost host, int left, int top, int width = 20, int height = 8)
     {
-        WindowStartupLocation = WindowStartupLocation.Manual,
-        Left = left,
-        Top = top,
-        Width = width,
-        Height = height
-    };
+        return host.NewWindow(
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: left,
+            top: top,
+            width: width,
+            height: height
+        );
+    }
 
     private static MouseEvent Mouse(MouseEventKind kind, int col, int row, MouseButton button, MouseButtons held) => new()
-    {
-        Kind = kind,
-        Position = new CellPosition(col, row),
-        Button = button,
-        ButtonsHeld = held,
-        Modifiers = KeyModifiers.None,
-        Timestamp = default // SendInput stamps the fake clock
-    };
+                                                                                                                     {
+                                                                                                                         Kind = kind,
+                                                                                                                         Position = new CellPosition(col, row),
+                                                                                                                         Button = button,
+                                                                                                                         ButtonsHeld = held,
+                                                                                                                         Modifiers = KeyModifiers.None,
+                                                                                                                         Timestamp = default // SendInput stamps the fake clock
+                                                                                                                     };
 
     private static void Drag(UITestHost host, (int Col, int Row) from, (int Col, int Row) to)
     {
@@ -60,7 +62,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(10, 5);
+        var w = At(host, 10, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -78,7 +80,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(10, 5);
+        var w = At(host, 10, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -96,7 +98,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(10, 5);
+        var w = At(host, 10, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -121,7 +123,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(50, 18); // 20×8 at (50,18) overhangs the 60×20 viewport on both edges
+        var w = At(host, 50, 18); // 20×8 at (50,18) overhangs the 60×20 viewport on both edges
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(w.IsClippedByViewport);
@@ -141,7 +143,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(30, 5);
+        var w = At(host, 30, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -160,7 +162,7 @@ public sealed class WindowResizeMoveTests
         using var hostScope = host;
         var wm = host.Application.WindowManager!;
 
-        var second = At(2, 2);
+        var second = At(host, 2, 2);
         var hook = new MeasureHook { OnMeasure = () => second.Show(wm) };
         host.ShowRoot(hook);
 
@@ -177,9 +179,9 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var a = At(2, 2);
+        var a = At(host, 2, 2);
         a.Show(wm);
-        var dialog = At(30, 2);
+        var dialog = At(host, 30, 2);
         var task = dialog.ShowDialogAsync();
         Assert.True(host.RunUntilIdle());
         Assert.Equal(2, wm.Windows.Count);
@@ -197,7 +199,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot(captureBytes: true);
         using var hostScope = host;
 
-        var w = At(2, 2);
+        var w = At(host, 2, 2);
         w.Title = "Greetings";
         w.Show(wm);
         host.RunFrame(); // OnLayoutCompleted mirrors the active title; Phase 6 drains the control sequence
@@ -226,7 +228,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(30, 5);
+        var w = At(host, 30, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.False(wm.IsFitBadgeVisible); // nothing clipped yet
@@ -244,7 +246,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(2, 2);
+        var w = At(host, 2, 2);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -261,7 +263,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(30, 5);
+        var w = At(host, 30, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
         host.SendResize(40, 20);
@@ -282,7 +284,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(30, 5);
+        var w = At(host, 30, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
         host.SendResize(40, 20);
@@ -302,7 +304,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(10, 5);
+        var w = At(host, 10, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -325,7 +327,7 @@ public sealed class WindowResizeMoveTests
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
-        var w = At(10, 5);
+        var w = At(host, 10, 5);
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 
@@ -346,12 +348,11 @@ public sealed class WindowResizeMoveTests
         Assert.True(host.RunUntilIdle());
         var wm = host.Application.WindowManager!;
 
-        var w = new Window
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 2, Top = 2, Width = 20, Height = 8,
-            Background = new SolidColorBrush(windowFill)
-        };
+        var w = host.NewWindow(
+            windowStartupLocation: WindowStartupLocation.Manual,
+            left: 2, top: 2, width: 20, height: 8,
+            background: new SolidColorBrush(windowFill)
+        );
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
 

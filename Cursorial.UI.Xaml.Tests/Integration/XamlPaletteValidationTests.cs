@@ -8,7 +8,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
-using Cursorial.UI.Themes.Xaml;
+using Cursorial.UI.Themes.Default;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -16,11 +16,11 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 
 /// <summary>
 /// ARCH-1: the data-shipped XAML palette spine (<c>Themes/Palette.xaml</c>, loaded via
-/// <see cref="CursorialXamlTheme.LoadPalette"/>) reproduces <see cref="CursorialTheme"/> <c>BuiltIn</c>'s
+/// <see cref="CursorialDefaultTheme.LoadPalette"/>) reproduces <see cref="CursorialTheme"/> <c>BuiltIn</c>'s
 /// (ThemeBase × ColorDepth) <c>ThemeDictionaries</c> byte-for-byte. Every role-token brush + chrome pen is
 /// resolved through <c>TryGetResource(key, variant)</c> at all 8 (base × tier) combinations — exercising the
 /// CD8 descent (Truecolor → Ansi256, NoColor → the wildcard-base dict) — and compared to BuiltIn. A render
-/// pass then proves the merged <see cref="CursorialXamlTheme.LoadTheme"/> drives a control identically.
+/// pass then proves the merged <see cref="CursorialDefaultTheme.LoadTheme"/> drives a control identically.
 /// </summary>
 public sealed class XamlPaletteValidationTests
 {
@@ -34,7 +34,7 @@ public sealed class XamlPaletteValidationTests
         ThemeKeys.OnAccentBrush, ThemeKeys.GreenBrush, ThemeKeys.AmberBrush, ThemeKeys.RedBrush,
         ThemeKeys.PurpleBrush, ThemeKeys.StatusBarBackground, ThemeKeys.StatusBarAltBackground,
         ThemeKeys.StatusBarAltForeground, ThemeKeys.BorderPen, ThemeKeys.FocusPen,
-        ThemeKeys.ObscuredOverlayBrush, ThemeKeys.AccessKeyUnderlineBrush,
+        ThemeKeys.ObscuredOverlayBrush, ThemeKeys.AccessKeyIndicatorBrush,
     };
 
     [Theory]
@@ -48,7 +48,7 @@ public sealed class XamlPaletteValidationTests
     [InlineData(ThemeBase.Light, ColorDepth.NoColor)]
     public void XamlPalette_ResolvesIdenticallyToBuiltIn(ThemeBase @base, ColorDepth tier)
     {
-        var xaml = CursorialXamlTheme.LoadPalette();
+        var xaml = CursorialDefaultTheme.LoadPalette();
         var builtIn = CursorialTheme.BuiltIn;
         var variant = new ThemeVariant(@base, tier);
 
@@ -111,7 +111,7 @@ public sealed class XamlPaletteValidationTests
     private static void AssertOverlayKeyDrivesControl(string perControlKey, UIControls.Control control, string target, bool fill)
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 4) });
-        host.Application.Theme = CursorialXamlTheme.LoadTheme();
+        host.Application.Theme = CursorialDefaultTheme.LoadTheme();
         host.Application.RequestedThemeBase = ThemeBase.Dark;
         host.ShowRoot(control);
         Assert.True(host.RunUntilIdle());
@@ -139,7 +139,7 @@ public sealed class XamlPaletteValidationTests
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });
         if (xaml)
-            host.Application.Theme = CursorialXamlTheme.LoadTheme();
+            host.Application.Theme = CursorialDefaultTheme.LoadTheme();
         host.Application.RequestedThemeBase = @base;
         host.Application.RequestedColorTier = tier;
         // Prove the override actually forced the variant — otherwise both sides could render the host default

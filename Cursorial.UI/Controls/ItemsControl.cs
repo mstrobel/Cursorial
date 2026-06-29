@@ -328,8 +328,10 @@ public class ItemsControl : Control
     internal ScrollViewer? FindItemsScrollViewer()
     {
         for (UIElement? node = ItemsHost; node is not null; node = node.VisualParent)
+        {
             if (node is ScrollViewer scroll)
                 return scroll;
+        }
 
         return null;
     }
@@ -357,6 +359,26 @@ public class ItemsControl : Control
         base.OnTearDown();
         _textSearch?.Reset(); // stop the idle-reset timer
         ItemContainerGenerator.ReleaseSource(); // unhook a live ItemsSource so it no longer pins this control
+    }
+
+    /// <summary>
+    /// Retrieves the items panel that serves as the container for the items of a specified ItemsControl instance.
+    /// </summary>
+    /// <param name="owner">The ItemsControl instance whose associated items panel is to be obtained.</param>
+    /// <returns>The items panel associated with the given ItemsControl, or null if no items panel is found.</returns>
+    public static Panel? ItemsPanelFromItemsControl(ItemsControl? owner)
+    {
+        var children = owner?.ItemsHost?.VisualChildrenList;
+        if (children is null) return null;
+
+        foreach (var child in children)
+        {
+            if (child is Panel { IsItemsHost: true } panel)
+                return panel;
+
+        }
+
+        return null;
     }
 }
 

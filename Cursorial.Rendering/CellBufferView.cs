@@ -289,9 +289,7 @@ public readonly struct CellBufferView : ICellSurface
         // backing buffer applies the same logic at its own right edge; this is the view's
         // version anchored on the view's right edge.
         if (width == 2 && column + 1 >= LocalColumnEnd)
-        {
             return _buffer.Set(column + OffsetColumn, row + OffsetRow, null, style);
-        }
 
         return _buffer.Set(column + OffsetColumn, row + OffsetRow, grapheme, style);
     }

@@ -27,16 +27,27 @@
         <!-- The native binary's name. -->
         <AssemblyName>cursorial-demo</AssemblyName>
         <PublishAot>true</PublishAot>
-        <!-- The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
-             metadata provider available rather than fail-fast. The warnings it produces are expected. -->
+<!--
+        &lt;!&ndash; The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
+             metadata provider available rather than fail-fast. The warnings it produces are expected. &ndash;&gt;
         <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
-        <!-- Reflection over the framework types (XAML activation via GetConstructor, brush/color tables,
+        &lt;!&ndash; Reflection over the framework types (XAML activation via GetConstructor, brush/color tables,
              binding accessors) needs those types + members PRESERVED. Full trimming removes e.g.
              StackPanel's parameterless ctor (nothing references it statically) → CUR3001 at runtime. Partial
              trim mode keeps non-opted-in assemblies (the Cursorial framework + this demo) whole; only the BCL
              is trimmed. Larger binary, but the reflection-based demo runs. (The trim-clean route is the X4
-             generated provider / X5 lowering, not this reflection build.) -->
+             generated provider / X5 lowering, not this reflection build.) &ndash;&gt;
         <TrimMode>partial</TrimMode>
+-->
+        <TrimMode>full</TrimMode>
+        <CursorialXamlLowering>full</CursorialXamlLowering>
+        <!-- No runtime provider is needed (lowering never loads); don't emit the install module-init. -->
+        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
+        <!-- Lowering never runtime-loads the .xaml, so don't embed it. -->
+        <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources>
+        <!-- CursorialXamlStrictAot defaults to true under PublishAot (generator .props) → the .targets emit the
+             ReflectionMetadataProvider.IsSupported=false RuntimeHostConfigurationOption automatically. -->
+        <InvariantGlobalization>true</InvariantGlobalization>
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
@@ -52,7 +63,7 @@
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Themes.Xaml\Cursorial.UI.Themes.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />

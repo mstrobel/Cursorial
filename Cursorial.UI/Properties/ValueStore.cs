@@ -66,8 +66,10 @@ internal sealed class ValueStore
     internal void CollectSetProperties(List<UIProperty> into)
     {
         for (var i = 0; i < _entryCount; i++)
+        {
             if (_entries[i].EffectivePriority != BindingPriority.Unset)
                 into.Add(_entries[i].PropertyUntyped);
+        }
     }
 
     /// <summary>

@@ -40,7 +40,7 @@ change**. The work is *content + state rules*, not new infrastructure.
 
 **Naming: terse token-mirroring** — one `Theme.<Role>Brush` constant per role, matching the shipped
 `ThemeKeys.cs` convention (`SurfaceBrush`, not `PageBackgroundBrush`). Only five legacy keys constrain us
-(`SurfaceBrush`/`TextBrush`/`AccentBrush`/`ObscuredOverlayBrush`/`AccessKeyUnderlineBrush` + the 3 glyph
+(`SurfaceBrush`/`TextBrush`/`AccentBrush`/`ObscuredOverlayBrush`/`AccessKeyIndicatorBrush` + the 3 glyph
 carriers); every other spine key is new and adopts this scheme.
 
 | `ThemeKeys` constant | token | dark RGB | light RGB | ansi16 D/L | NoColor |

@@ -107,7 +107,8 @@ public abstract class UIObject : IInheritanceNode
         VerifyAccess();
 
         var metadata = property.GetMetadata(GetType());
-        if (_store is { } store)
+
+        if (_store is {} store)
             return store.GetValueAtMaxPriority(property, metadata, maxPriority);
 
         if (maxPriority != BindingPriority.Default &&
@@ -158,7 +159,8 @@ public abstract class UIObject : IInheritanceNode
     {
         ArgumentNullException.ThrowIfNull(property);
         VerifyAccess();
-        return _store is { } store &&
+
+        return _store is {} store &&
                (store.TryGetEntry(property.Id) is { HasLocal: true } or { HasTemplate: true }
                 || store.HasActiveStyleContribution(property.Id));
     }
@@ -180,24 +182,26 @@ public abstract class UIObject : IInheritanceNode
             return new ValueSource(BindingPriority.LocalValue, IsCurrentValue: false) { Kind = ValueSourceKind.Local };
 
         var entry = _store?.TryGetEntry(property.Id);
+
         if (entry is { EffectivePriority: not BindingPriority.Unset })
         {
             var basePriority = entry.BasePriority != BindingPriority.Unset
-                ? entry.BasePriority
-                : property.Inherits && FindInheritedEntry(property.Id, out _) is not null
-                    ? BindingPriority.Inherited
-                    : BindingPriority.Default;
+                                   ? entry.BasePriority
+                                   : property.Inherits && FindInheritedEntry(property.Id, out _) is not null
+                                       ? BindingPriority.Inherited
+                                       : BindingPriority.Default;
+
             return new ValueSource(entry.EffectivePriority, entry.IsCurrentValue)
-            {
-                BasePriority = basePriority,
-                IsCoerced = entry.IsCoerced,
-                Kind = _store!.ComputeValueSourceKind(entry) // PD25 within-lane provenance
-            };
+                   {
+                       BasePriority = basePriority,
+                       IsCoerced = entry.IsCoerced,
+                       Kind = _store!.ComputeValueSourceKind(entry) // PD25 within-lane provenance
+                   };
         }
 
         return property.Inherits && FindInheritedEntry(property.Id, out _) is not null
-            ? new ValueSource(BindingPriority.Inherited, IsCurrentValue: false) { Kind = ValueSourceKind.Inherited }
-            : new ValueSource(BindingPriority.Default, IsCurrentValue: false) { Kind = ValueSourceKind.Default };
+                   ? new ValueSource(BindingPriority.Inherited, IsCurrentValue: false) { Kind = ValueSourceKind.Inherited }
+                   : new ValueSource(BindingPriority.Default, IsCurrentValue: false) { Kind = ValueSourceKind.Default };
     }
 
     /// <summary>
@@ -214,6 +218,7 @@ public abstract class UIObject : IInheritanceNode
         VerifyAccess();
 
         var results = new List<PropertyValueDiagnostic>();
+
         if (property.IsDirect)
         {
             results.Add(new PropertyValueDiagnostic(BindingPriority.LocalValue, property.GetValueUntyped(this), HasValue: true));
@@ -221,8 +226,10 @@ public abstract class UIObject : IInheritanceNode
         }
 
         var entry = _store?.TryGetEntry(property.Id);
+
         if (entry is { HasAnimatedValue: true })
             results.Add(new PropertyValueDiagnostic(BindingPriority.Animation, entry.GetEffectiveBoxedValue(), HasValue: true));
+
         if (entry is { HasLocal: true })
             results.Add(new PropertyValueDiagnostic(BindingPriority.LocalValue, entry.GetRawLocalBoxedValue(), HasValue: true));
 
@@ -231,9 +238,9 @@ public abstract class UIObject : IInheritanceNode
         if (entry is { HasTemplate: true })
             results.Add(new PropertyValueDiagnostic(BindingPriority.Template, entry.GetRawTemplateBoxedValue(), HasValue: true));
 
-        if (property.Inherits && FindInheritedEntry(property.Id, out var source) is { } inherited)
+        if (property.Inherits && FindInheritedEntry(property.Id, out var source) is {} inherited)
             results.Add(new PropertyValueDiagnostic(
-                BindingPriority.Inherited, inherited.GetEffectiveBoxedValue(), HasValue: true, InheritedFrom: source));
+                            BindingPriority.Inherited, inherited.GetEffectiveBoxedValue(), HasValue: true, InheritedFrom: source));
 
         return results;
     }
@@ -247,7 +254,8 @@ public abstract class UIObject : IInheritanceNode
     public IReadOnlyList<UIProperty> GetSetProperties()
     {
         VerifyAccess();
-        if (_store is not { } store)
+
+        if (_store is not {} store)
             return [];
 
         var result = new List<UIProperty>();
@@ -260,10 +268,12 @@ public abstract class UIObject : IInheritanceNode
 
     internal object? GetValueBoxed<T>(StyledProperty<T> property)
     {
-        if (_store is { } store)
+        if (_store is {} store)
             return store.GetValueBoxed(property);
-        if (property.Inherits && FindInheritedEntry(property.Id, out _) is { } inherited)
+
+        if (property.Inherits && FindInheritedEntry(property.Id, out _) is {} inherited)
             return inherited.GetEffectiveBoxedValue();
+
         return property.GetMetadata(GetType()).BoxedDefault;
     }
 
@@ -352,7 +362,9 @@ public abstract class UIObject : IInheritanceNode
         RenderPassGuard.ThrowIfActive(); // the render pass is read-only (design doc §5.5; DEBUG only)
 
         if (property.IsDirect)
-            throw new ArgumentException($"Direct property '{property}' cannot be cleared; push the registered unset value through its setter instead.", nameof(property));
+            throw new ArgumentException($"Direct property '{property}' cannot be cleared; push the registered unset value through its setter instead.",
+                                        nameof(property));
+
         if (property.IsReadOnly)
             throw new InvalidOperationException($"Property '{property}' is read-only; clearing requires the key surface (PD14).");
 
@@ -392,7 +404,7 @@ public abstract class UIObject : IInheritanceNode
         if (property.IsDirect)
             throw new ArgumentException($"Direct property '{property}' has no coercion (ledger A24).", nameof(property));
 
-        if (_store is { } store && store.TryGetEntry(property.Id) is { } entry)
+        if (_store is {} store && store.TryGetEntry(property.Id) is {} entry)
         {
             // Re-coerce both lanes that carry a raw value (each no-ops if its lane is absent, §20/PD6
             // parity): the local lane (the winning base when present) notifies; the Template lane
@@ -409,13 +421,15 @@ public abstract class UIObject : IInheritanceNode
         DebugValidateAttachedHost(property);
 
         var metadata = property.GetMetadata(GetType());
-        if (metadata.Validate is { } validate && !validate(value))
+
+        if (metadata.Validate is {} validate && !validate(value))
         {
             throw new ArgumentException(
                 $"Value '{value}' was rejected by the validator registered for '{property}'.", nameof(value));
         }
 
         var store = _store ??= new ValueStore(this);
+
         if (isCurrentValue)
             store.SetCurrentValue(property, metadata, value);
         else if (honorTemplateScope && TemplateInstantiationScope.IsActive)
@@ -445,14 +459,15 @@ public abstract class UIObject : IInheritanceNode
         VerifyAccess();
 
         var store = _store ??= new ValueStore(this);
+
         return priority switch
-        {
-            BindingPriority.LocalValue => store.BindLocal(property, listener),
-            BindingPriority.Template => store.BindTemplate(property, listener),
-            _ => throw new ArgumentException(
-                $"Free-standing Bind accepts BindingPriority.LocalValue or Template only (ledger A6 — " +
-                $"Style-slot contributions must be frame-hosted via BindInFrame); got {priority}.", nameof(priority)),
-        };
+               {
+                   BindingPriority.LocalValue => store.BindLocal(property, listener),
+                   BindingPriority.Template   => store.BindTemplate(property, listener),
+                   _ => throw new ArgumentException(
+                            $"Free-standing Bind accepts BindingPriority.LocalValue or Template only (ledger A6 — " +
+                            $"Style-slot contributions must be frame-hosted via BindInFrame); got {priority}.", nameof(priority)),
+               };
     }
 
     /// <summary>The untyped <see cref="Bind{T}"/> (ledger A16 bridge — no reflection, all checks apply).</summary>
@@ -575,6 +590,7 @@ public abstract class UIObject : IInheritanceNode
         var oldParent = _inheritanceParent;
         oldParent?._inheritanceChildren?.Remove(this);
         _inheritanceParent = parent;
+
         if (parent is not null)
             (parent._inheritanceChildren ??= []).Add(this);
 
@@ -604,9 +620,7 @@ public abstract class UIObject : IInheritanceNode
     /// callback and the ordinary <see cref="OnPropertyChanged"/> virtual are origin-site channels
     /// and do not fire here (matrix PD22). Args are valid only for the duration of the call.
     /// </summary>
-    protected internal virtual void OnInheritedPropertyChanged(in UIPropertyChangedEventArgs args)
-    {
-    }
+    protected internal virtual void OnInheritedPropertyChanged(in UIPropertyChangedEventArgs args) {}
 
     /// <summary>
     /// Walks the inheritance parents to the nearest node with a contributing store entry for
@@ -641,11 +655,13 @@ public abstract class UIObject : IInheritanceNode
     internal void OnInheritanceParentChanged<T>(StyledProperty<T> property, UIObject? oldParent)
     {
         var entry = _store?.TryGetEntry(property.Id);
+
         if (entry is { BasePriority: not BindingPriority.Unset })
             return; // an own sub-Animation contribution shadows — nothing changes here or below
 
         var oldSource = FindInheritedEntryFrom(oldParent, property.Id, out _) as EffectiveValue<T>;
         var newSource = FindInheritedEntry(property.Id, out _) as EffectiveValue<T>;
+
         if (oldSource is null && newSource is null)
             return; // neither chain contributes — both sides are the default (the common reparent case)
 
@@ -670,6 +686,7 @@ public abstract class UIObject : IInheritanceNode
     internal void OnInheritedValueChanged<T>(StyledProperty<T> property, T oldValue, T newValue, BindingPriority priority)
     {
         var entry = _store?.TryGetEntry(property.Id);
+
         if (entry is not null)
         {
             if (entry.BasePriority != BindingPriority.Unset)
@@ -699,7 +716,7 @@ public abstract class UIObject : IInheritanceNode
     /// </summary>
     private void NotifyInheritanceChildren<T>(StyledProperty<T> property, T oldValue, T newValue, BindingPriority priority)
     {
-        if (_inheritanceChildren is not { } children)
+        if (_inheritanceChildren is not {} children)
             return;
 
         for (var i = 0; i < children.Count; i++)
@@ -715,25 +732,30 @@ public abstract class UIObject : IInheritanceNode
     private void DispatchInheritedChanged<T>(StyledProperty<T> property, T oldValue, T newValue, BindingPriority priority)
     {
         EnterNotification();
+
         try
         {
-            if (_store?.GetObservers(property.Id) is { } observers)
+            if (_store?.GetObservers(property.Id) is {} observers)
             {
                 var typed = observers.Typed; // snapshot — COW arrays keep it stable
+
                 foreach (var observer in typed)
-                    ((IValueObserver<T>)observer).OnPropertyChanged(this, property, oldValue, newValue, priority);
+                    ((IValueObserver<T>) observer).OnPropertyChanged(this, property, oldValue, newValue, priority);
 
                 var untyped = observers.Untyped;
+
                 if (untyped.Length > 0)
                 {
                     var oldBoxed = ValueBoxes.Box(oldValue);
                     var newBoxed = ValueBoxes.Box(newValue);
+
                     foreach (var observer in untyped)
                         observer.OnPropertyChanged(this, property, oldBoxed, newBoxed, priority);
                 }
             }
 
             var carrier = ValueChangeCarrier<T>.Rent(oldValue, newValue);
+
             try
             {
                 OnInheritedPropertyChanged(new UIPropertyChangedEventArgs(property, priority, carrier));
@@ -781,7 +803,7 @@ public abstract class UIObject : IInheritanceNode
 
     /// <summary>An animation handle's per-frame push (ledger A18); allocation-free steady-state.</summary>
     internal bool SetAnimatedValue<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, T value)
-        => _store is { } store && store.SetAnimatedValue(property, metadata, value);
+        => _store is {} store && store.SetAnimatedValue(property, metadata, value);
 
     /// <summary>An animation handle's disposal: the base resurfaces with one notification.</summary>
     internal void EndAnimation<T>(StyledProperty<T> property, AnimatedValueHandle<T> handle)
@@ -893,27 +915,32 @@ public abstract class UIObject : IInheritanceNode
         UIProperty property, PropertyChangedCallback<T>? changedCallback, T oldValue, T newValue, BindingPriority priority)
     {
         EnterNotification();
+
         try
         {
             changedCallback?.Invoke(this, oldValue, newValue);
 
-            if (_store?.GetObservers(property.Id) is { } observers)
+            if (_store?.GetObservers(property.Id) is {} observers)
             {
                 var typed = observers.Typed; // snapshot — COW arrays keep it stable (M28/M29)
+
                 foreach (var observer in typed)
-                    ((IValueObserver<T>)observer).OnPropertyChanged(this, property, oldValue, newValue, priority);
+                    ((IValueObserver<T>) observer).OnPropertyChanged(this, property, oldValue, newValue, priority);
 
                 var untyped = observers.Untyped;
+
                 if (untyped.Length > 0)
                 {
                     var oldBoxed = ValueBoxes.Box(oldValue);
                     var newBoxed = ValueBoxes.Box(newValue);
+
                     foreach (var observer in untyped)
                         observer.OnPropertyChanged(this, property, oldBoxed, newBoxed, priority);
                 }
             }
 
             var carrier = ValueChangeCarrier<T>.Rent(oldValue, newValue);
+
             try
             {
                 OnPropertyChanged(new UIPropertyChangedEventArgs(property, priority, carrier));
@@ -929,7 +956,7 @@ public abstract class UIObject : IInheritanceNode
             if (property.Inherits && _inheritanceChildren is not null && property is StyledProperty<T> styled)
             {
                 NotifyInheritanceChildren(styled, oldValue, newValue,
-                    priority == BindingPriority.Default ? BindingPriority.Default : BindingPriority.Inherited);
+                                          priority == BindingPriority.Default ? BindingPriority.Default : BindingPriority.Inherited);
             }
         }
         finally
@@ -950,11 +977,13 @@ public abstract class UIObject : IInheritanceNode
             return;
 
         EnterNotification();
+
         try
         {
             var snapshot = observers.Base; // COW arrays keep the snapshot stable
+
             foreach (var observer in snapshot)
-                ((IValueObserver<T>)observer).OnBaseValueChanged(this, property, oldBaseValue, newBaseValue, isAnimated);
+                ((IValueObserver<T>) observer).OnBaseValueChanged(this, property, oldBaseValue, newBaseValue, isAnimated);
         }
         finally
         {
@@ -966,9 +995,7 @@ public abstract class UIObject : IInheritanceNode
     /// The virtual change hook — last of the synchronous notification channels. The args carry
     /// copied values valid only for the duration of the call; copy them out to retain.
     /// </summary>
-    protected virtual void OnPropertyChanged(in UIPropertyChangedEventArgs args)
-    {
-    }
+    protected virtual void OnPropertyChanged(in UIPropertyChangedEventArgs args) {}
 
     [Conditional("DEBUG")]
     private void EnterNotification()
@@ -976,6 +1003,7 @@ public abstract class UIObject : IInheritanceNode
         if (++_notificationDepth >= 64)
         {
             _notificationDepth--;
+
             throw new InvalidOperationException(
                 "Property-change notification depth reached 64 — a divergent reentrant write cycle " +
                 "(DEBUG fail-fast diagnostics; release builds are unbounded by design).");
@@ -1008,6 +1036,7 @@ public abstract class UIObject : IInheritanceNode
             case BindingPriority.Inherited:
             case BindingPriority.Default:
                 return;
+
             default:
                 throw new ArgumentException(
                     $"maxPriority must be a resolvable lane (Animation, LocalValue, Style, Template, Inherited, or Default — PD16); got {maxPriority}.",
@@ -1029,8 +1058,9 @@ public abstract class UIObject : IInheritanceNode
         }
 
         var type = property.PropertyType;
+
         if (!type.IsInstanceOfType(value) &&
-            (Nullable.GetUnderlyingType(type) is not { } underlying || !underlying.IsInstanceOfType(value)))
+            (Nullable.GetUnderlyingType(type) is not {} underlying || !underlying.IsInstanceOfType(value)))
         {
             throw new ArgumentException(
                 $"Value of type {value.GetType().Name} is not assignable to '{property}' of type {type.Name} (no silent conversion).",
@@ -1126,6 +1156,7 @@ public abstract class UIObject : IInheritanceNode
             // declaring type's own static ctor — but the ordering removes the trap for any future attached property.
             if (property.IsAttached)
                 property.GlobalEffects |= effects;
+
             property.AddPerTypeEffects(typeof(TOwner), effects);
         }
     }

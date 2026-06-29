@@ -1,0 +1,129 @@
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+
+  <!--
+    The theme-styles channel (design doc §11.8 #3 / C100), authored declaratively as <ResourceDictionary.Styles>
+    — the data twin of CursorialThemeStyles. Consumed only from UIApplication.Theme at Theme(2) (R2/B13, landed):
+    selector rules (no x:Key), armed below App so an app style always wins. These layer over BuiltIn's identical
+    framework rules (gathered first); authoring them here proves the whole theme-styles channel is data-shippable.
+  -->
+  <ResourceDictionary.Styles>
+
+    <!-- AccessKeyCue (requirement 6, design doc §7.8/§11.8): the :access-keys pseudo-class binds the ANCESTOR
+         scope/window root the AccessKeyManager stamps with InteractionState.AccessKeyCue; every AccessTextPresenter
+         underneath flips ShowUnderline (AffectsRender) while the cue is up, underlining the mnemonic. The setter
+         owner AccessKeyManager lives in Cursorial.UI.Input — a prefixed Setter owner, resolved via the captured
+         `input:` namespace (attached-Setter Phase 2). BuiltIn supplies the identical framework rule; authoring it
+         here proves even the Input-namespace owner is fully data-shippable. -->
+    <Style Selector=":access-keys AccessTextPresenter">
+      <Setter Property="input:AccessKeyManager.ShowUnderline" Value="true"/>
+      <Setter Property="AccessTextPresenter.IndicatorBrush" Value="{DynamicResource {x:Static ThemeKeys.AccessKeyIndicatorBrush}}"/>
+    </Style>
+
+    <!-- caps-unicode glyph opt-up (design doc §12.7 / SD14): under .caps-unicode set the ToggleGlyph.Glyphs
+         attached override to colored Unicode marks; a caps-ascii terminal never matches and keeps the ASCII base.
+         The glyph triple is the '|'-separated "unchecked|checked|indeterminate" GlyphSetCarrier form. -->
+    <Style Selector=".caps-unicode CheckBox">
+      <Setter Property="ToggleGlyph.Glyphs" Value="[ ]|[✓]|[▪]"/>
+    </Style>
+
+    <Style Selector=".caps-unicode RadioButton">
+      <Setter Property="ToggleGlyph.Glyphs" Value="( )|(●)|(-)"/>
+    </Style>
+
+    <!-- caps-nocolor interactive-state layer (design doc §11.8a): colors collapse to Default under NoColor, so the
+         button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill + content
+         text); the selector list spans the exact button-family types (CheckBox/RadioButton excluded — in-box caret). -->
+    <Style Selector=".caps-nocolor Button:focus, .caps-nocolor Button:pressed, .caps-nocolor Button:default, .caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pressed, .caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pressed">
+      <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+    </Style>
+
+    <!-- caps-nocolor disabled layer: a disabled button-family control (incl. CheckBox/RadioButton via :is(ButtonBase))
+         dims to Faint when its palette would otherwise resolve to Default. -->
+    <Style Selector=".caps-nocolor :is(ButtonBase):disabled">
+      <Setter Property="TextElement.TextAttributes" Value="Faint"/>
+    </Style>
+
+    <Style Selector=":is(ButtonBase)">
+      <Setter Property="ContentControl.HorizontalContentAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="ThemeClasses.Accent" Selector=".accent">
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
+      <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+      <Style.Children>
+        <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.Accent2Brush}}"/>
+        </Style>
+        <Style Selector="^:is(Button):pressed">
+          <Setter Property="Panel.Background" Value="#512A46"/>
+        </Style>
+        <Style Selector="^:is(Button):focus-visible">
+          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+        </Style>
+      </Style.Children>
+    </Style>
+
+    <Style x:Key="ThemeClasses.Cool" Selector=".cool">
+      <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.CoolBrush}}"/>
+      <Style.Children>
+        <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.Cool2Brush}}"/>
+        </Style>
+        <Style Selector="^:is(Button):pressed">
+          <Setter Property="Panel.Background" Value="#381ec7"/>
+        </Style>
+        <Style Selector="^:is(Button):focus-visible">
+          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+        </Style>
+      </Style.Children>
+    </Style>
+
+    <Style x:Key="ThemeClasses.Danger" Selector=".danger">
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.DangerBrush}}"/>
+      <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
+      <Style.Children>
+        <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.Danger2Brush}}"/>
+        </Style>
+        <Style Selector="^:is(Button):pressed">
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
+          <Setter Property="Panel.Background" Value="#d11f5e"/>
+        </Style>
+        <Style Selector="^:is(Button):focus-visible">
+          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+        </Style>
+      </Style.Children>
+    </Style>
+
+    <Style x:Key="ThemeClasses.Success" Selector=".success">
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.SuccessBrush}}"/>
+      <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
+      <Style.Children>
+        <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.Success2Brush}}"/>
+        </Style>
+        <Style Selector="^:is(Button):pressed">
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
+          <Setter Property="Panel.Background" Value="#d11f5e"/>
+        </Style>
+        <!--
+        <Style Selector="^:is(Button):focus-visible">
+          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+        </Style>
+      -->
+      </Style.Children>
+    </Style>
+
+    <Style Selector="MenuItem Separator, Menu Separator">
+      <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}"/>
+    </Style>
+
+    <Style Selector=".caps-nocolor Border, .caps-nocolor :is(UIElement) /template/ Border">
+      <Setter Property="Border.Occludes" Value="True"/>
+      <Setter Property="Panel.Background" Value="default"/>
+    </Style>
+
+  </ResourceDictionary.Styles>
+</ResourceDictionary>

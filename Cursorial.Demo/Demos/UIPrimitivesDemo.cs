@@ -71,7 +71,7 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
         {
             var panel = new Rect(2, top, 20, 6);
 
-            ctx.DrawDropShadow(panel, ShadowGeometry.Drop(radius: 0, offset: 1, strength: 0.75, edges),
+            ctx.DrawDropShadow(panel, ShadowGeometry.Drop(radius: 1, strength: 0.75, edges),
                                Color.FromRgb(0, 0, 0));
             ctx.DrawPanel(panel, Color.FromRgb(120, 200, 160), new SolidColorBrush(Color.FromRgb(30, 34, 46)),
                           new PanelTitle("Panel").WithColor(Color.FromRgb(200, 210, 255)));
@@ -84,7 +84,7 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
         if (w >= 48 && top + 7 <= h)
         {
             var modal = new Rect(26, top + 1, 18, 5);
-            ctx.DrawDropShadow(modal, ShadowGeometry.Drop(radius: 0, offset: 1, strength: 0.75, edges), Color.FromRgb(0, 0, 0));
+            ctx.DrawDropShadow(modal, ShadowGeometry.Drop(radius: 1, strength: 0.75, edges), Color.FromRgb(0, 0, 0));
             ctx.FillOpaque(modal, Color.FromRgba(45, 40, 70, 63));
             ctx.DrawBox(modal, new Pen(Color.FromRgb(185, 120, 200)) { Weight = StrokeWeight.Light, Corners = CornerStyle.Rounded }, overwrite: true);
             ctx.DrawText(28, top + 2, "opaque modal", Color.FromRgb(235, 225, 245));

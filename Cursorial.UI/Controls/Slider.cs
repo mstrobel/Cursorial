@@ -104,16 +104,16 @@ public class Slider : RangeBase
             {
                 // Minimum at the bottom, Maximum at the top.
                 var y = (int)Math.Round((1 - fraction) * travel);
-                thumb.Arrange(new Rect(0, y, finalSize.Columns, ThumbExtent));
+                thumb.Arrange(new Rect(0, y, ThumbExtent, ThumbExtent));
             }
             else
             {
                 var x = (int)Math.Round(fraction * travel);
-                thumb.Arrange(new Rect(x, 0, ThumbExtent, finalSize.Rows));
+                thumb.Arrange(new Rect(x, 0, ThumbExtent, ThumbExtent));
             }
         }
 
-        return finalSize;
+        return Vertical ? new Size(ThumbExtent, finalSize.Rows) : new Size(finalSize.Columns, ThumbExtent);
     }
 
     /// <inheritdoc/>

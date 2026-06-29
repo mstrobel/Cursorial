@@ -34,11 +34,16 @@ public static class PseudoClassMapping
     /// <param name="pseudoClass">The <c>':'</c>-prefixed class name.</param>
     /// <exception cref="ArgumentException">The name is not <c>':'</c>-prefixed.</exception>
     /// <exception cref="InvalidOperationException">The name is interaction-backed, or the (owner, property) pair is already mapped.</exception>
-    public static void Register<TOwner>(StyledProperty<bool> property, string pseudoClass)
+    public static void Register<TOwner>(UIProperty property, string pseudoClass)
         where TOwner : UIElement
     {
         ArgumentNullException.ThrowIfNull(property);
+
+        if (property.PropertyType != typeof(bool))
+            throw new ArgumentException($"PseudoClass-mapped properties must have a property type of {nameof(Boolean)}.", nameof(property));
+
         var interned = ValidateName(pseudoClass);
+
         Add(new ClassifyMapping<bool>(typeof(TOwner), property, value => value ? interned : null));
     }
 
@@ -146,7 +151,7 @@ public static class PseudoClassMapping
         internal abstract void Apply(UIElement element, in UIPropertyChangedEventArgs args);
     }
 
-    private sealed class ClassifyMapping<TValue>(Type ownerType, StyledProperty<TValue> property, Func<TValue, string?> classify)
+    private sealed class ClassifyMapping<TValue>(Type ownerType, UIProperty property, Func<TValue, string?> classify)
         : Mapping(ownerType, property)
     {
         internal override void Apply(UIElement element, in UIPropertyChangedEventArgs args)

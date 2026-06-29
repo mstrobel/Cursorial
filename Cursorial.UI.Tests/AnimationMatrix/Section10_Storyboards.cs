@@ -134,7 +134,7 @@ public sealed class Section10_Storyboards
         sb.Begin(scope);
 
         host.AdvanceTime(Ms(33)); // inside the stagger window
-        Assert.Equal(0.0, scope.V); // untouched
+        Assert.Equal(2.0, scope.V); // holds the track's start value (From) through the stagger (AD16), not the base 0.0
 
         host.AdvanceTime(Ms(33)); // crosses BeginTime (66ms) exactly
         Assert.Equal(2.0, scope.V); // From, elapsed 0

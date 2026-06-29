@@ -1,5 +1,6 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 using Cursorial.Terminal;
 
 namespace Cursorial.UI.Input;
@@ -138,12 +139,13 @@ public sealed class AccessKeyManager
 
         _dispatcher.VerifyAccess();
 
+        var color = capabilities.Output.Color;
         var keyboard = capabilities.Input.Keyboard;
 
-        var mode = keyboard is { DistinguishesKeyUpDown: true, ReportsRepeats: true } ||
-                   capabilities.Input.Protocol.Win32InputMode
-            ? AccessKeyMode.AltHeld
-            : AccessKeyMode.AlwaysVisible;
+        var mode = color is { Depth: not ColorDepth.NoColor } && (keyboard is { DistinguishesKeyUpDown: true, ReportsRepeats: true } ||
+                                                                  capabilities.Input.Protocol.Win32InputMode)
+                       ? AccessKeyMode.AltHeld
+                       : AccessKeyMode.AlwaysVisible;
 
         _leftAltDown = false;
         _rightAltDown = false;

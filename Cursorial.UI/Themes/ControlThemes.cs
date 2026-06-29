@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Cursorial.Animation;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -105,13 +106,14 @@ internal static class ControlThemes
     {
         var theme = AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.Button" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center)
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
         // :default (the Enter-default cue) — a resting accent reverse-video fill so the primary action
         // stands out; :focus/:pressed override it when the user interacts. Reuses the Pressed per-control
         // keys (spec: "Pressed + IsDefault"). The ▸ OK ◂ gutter brackets are a deferred content nicety (spec §3).
-        theme.Children.Add(new Style("^:default")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        // theme.Children.Add(new Style("^:default")
+        //     .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+        //     .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         return theme;
     }
 
@@ -148,6 +150,9 @@ internal static class ControlThemes
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
         border.Child = presenter;
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         return border;
     });
 
@@ -291,8 +296,8 @@ internal static class ControlThemes
 
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
-        var list = new Border { Occludes = true, Child = host };
-        list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
+        var list = new Border { /*Occludes = true, */Child = host };
+        list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
         list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         list.SetBinding(UIElement.MaxHeightProperty, new TemplateBinding(ComboBox.MaxDropDownHeightProperty)); // MaxDropDownHeight cap
         var popup = new Popup { Child = list };
@@ -321,7 +326,7 @@ internal static class ControlThemes
             Template = BareGlyphButtonTemplate(),
             Padding = Margins.Zero,
             Focusable = false,
-            IsTabStop = false,
+            IsTabStop = false
         };
 
     // A drop-down item — the ListBoxItem selection bar verbatim (selected = SelectionBrush, hover = HoverBrush,
@@ -383,7 +388,7 @@ internal static class ControlThemes
         DockPanel.SetDock(twisty, Dock.Left);
 
         var header = new ContentPresenter(); // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally
-        ctx.RegisterName("PART_ContentPresenter", header);
+        ctx.RegisterName("PART_HeaderPresenter", header);
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
         header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
 
@@ -575,14 +580,14 @@ internal static class ControlThemes
         row.Children.Add(drop);    // docked right (the drop indicator + toggle)
         row.Children.Add(content); // fills the remaining width (the face)
 
-        var field = new Border { Padding = new Margins(1, 0), Child = row };
+        var field = new Border { Padding = new Margins(1, 0, 0, 0), Child = row };
         field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
         var calendar = new Calendar { BorderPen = Pens.Light.WithBrush(Brushes.Red) };
         ctx.RegisterName("PART_Calendar", calendar);
-        var surface = new Border { Occludes = true, Child = calendar };
-        surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
+        var surface = new Border { /*Occludes = true, */Child = calendar };
+        surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
         surface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
         var popup = new Popup { Child = surface };
         ctx.RegisterName("PART_Popup", popup);
@@ -634,9 +639,9 @@ internal static class ControlThemes
     {
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
-        var border = new Border { Occludes = true, Child = host };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
-        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        var border = new Border { /*Occludes = true, */Child = host };
+        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.MenuBorderPen);
         return border;
     });
 
@@ -653,7 +658,7 @@ internal static class ControlThemes
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Occludes = true, Padding = new Margins(1, 0), Child = presenter };
         border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
-        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.ToolTipBorderPen);
         return border;
     });
 
@@ -667,67 +672,118 @@ internal static class ControlThemes
 
     // A TabControl: a DockPanel with the tab strip (PART_TabStrip ItemsPresenter, docked top — the row of headers)
     // over a bordered content host (PART_ContentHost ContentPresenter showing the selected tab's SelectedContent).
-    private static ControlTemplate TabControlTemplate() => new(ctx =>
-    {
-        var strip = new ItemsPresenter();
-        ctx.RegisterName("PART_TabStrip", strip);
-        DockPanel.SetDock(strip, Dock.Top);
+    private static ControlTemplate TabControlTemplate() =>
+        new(ctx =>
+            {
+                var strip = new Border
+                            {
+                                Child = new ItemsPresenter(),
+                                Background = Brushes.Transparent,
+                                Occludes = true,
+                                HorizontalAlignment = HorizontalAlignment.Center,
+                                Margin = new Margins(1, 0, 1, 0),
+                                // IsRenderBoundary = true,
+                                // ZIndex = 1 // don't get overwritten by border
+                            };
 
-        var content = new ContentPresenter();
-        ctx.RegisterName("PART_ContentHost", content);
-        content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
-        content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
-        var body = new Border { Padding = new Margins(1, 0), Child = content };
-        body.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                ctx.RegisterName("PART_TabStrip", strip);
+                DockPanel.SetDock(strip, Dock.Top);
 
-        var root = new DockPanel();
-        root.Children.Add(strip); // docked top (the header row)
-        root.Children.Add(body);  // fills the rest (the selected tab's body)
-        return root;
-    });
+                var content = new ContentPresenter();
+                ctx.RegisterName("PART_ContentHost", content);
+                content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
+                content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+                content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+                var body = new Border { Padding = new Margins(2, 1), Child = content };
+                // body.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+
+                var panel = new DockPanel { /*ZIndex = 1*/ };
+                panel.Children.Add(strip); // docked top (the header row)
+                panel.Children.Add(body);  // fills the rest (the selected tab's body)
+                
+                var border = new Border { /*Child = panel*//*,  Occludes = true*//*, ZIndex = 0*/ };
+                border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+                var root = new Grid { Children = { border, panel } };
+                return root;
+            });
 
     private static Style TabControlTheme()
         => new Style { Key = "Theme.TabControl" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.TabControlBorderPen)
             .Set(Control.TemplateProperty, TabControlTemplate());
 
     // A tab header (gallery §TabControl): inactive tabs are --text-dim ink; the active tab is a --surface fill +
     // --text ink marked by an --accent underline bar below the header; :pointerover = --hover. The bar is a 1-row
     // Separator under the header (the "active tab marked by accent bar (━ cells)" cue).
-    private static ControlTemplate TabItemTemplate() => new(ctx =>
+    private static ControlTemplate TabItemTemplate()
     {
-        var header = new ContentPresenter { RecognizesAccessKey = true };
-        ctx.RegisterName("PART_ContentPresenter", header);
-        header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
-        // The fill rides the HEADER row only — not the underline row (which sits on the page like the gallery bar).
-        var headerHost = new Border { Padding = new Margins(1, 0), Child = header };
-        headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        headerHost.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        var t = new ControlTemplate(
+        ctx =>
+           {
+               var header = new ContentPresenter { RecognizesAccessKey = true };
+               ctx.RegisterName("PART_ContentPresenter", header);
+               header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+               // The fill rides the HEADER row only — not the underline row (which sits on the page like the gallery bar).
+               var headerHost = new Border { Padding = new Margins(1, 0), Child = header, Background = Brushes.Transparent, Occludes = true };
+               headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+               headerHost.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+               ctx.RegisterName("PART_HeaderSite", headerHost);
 
-        // The active-tab accent underline (gallery "active tab marked by accent bar (━ cells)"): a 1-row
-        // Separator below the header, with the SAME (1,0) side padding as the header so the ━ aligns under the
-        // label. TabItem.OnApplyTemplate paints its Heavy --accent pen at LocalValue (a /template/ theme rule
-        // can't override the Separator's OWN control-theme pen) and toggles its visibility on selection (the
-        // bar row stays laid out so the strip aligns). Named for GetTemplatePart.
-        var underline = new Separator { Margin = new Margins(1, 0, 1, 0) }; // matching side padding (no fill row)
-        ctx.RegisterName("PART_Underline", underline);
+               // The active-tab accent underline (gallery "active tab marked by accent bar (━ cells)"): a 1-row
+               // Separator below the header, with the SAME (1,0) side padding as the header so the ━ aligns under the
+               // label. TabItem.OnApplyTemplate paints its Heavy --accent pen at LocalValue (a /template/ theme rule
+               // can't override the Separator's OWN control-theme pen) and toggles its visibility on selection (the
+               // bar row stays laid out so the strip aligns). Named for GetTemplatePart.
+               var underline = new Separator { Margin = new Margins(1, 0, 1, 0) }; // matching side padding (no fill row)
+               underline.SetResourceReference(Control.BorderPenProperty, ThemeKeys.TabUnderlinePen);
+               ctx.RegisterName("PART_Underline", underline);
 
-        var stack = new StackPanel(); // vertical: the filled header row, then the page-bg underline row
-        stack.Children.Add(headerHost);
-        stack.Children.Add(underline);
-        return new Border { Child = stack }; // root container (no fill — the fill rides headerHost)
-    });
+               var stack = new StackPanel(); // vertical: the filled header row, then the page-bg underline row
+               stack.Children.Add(headerHost);
+               stack.Children.Add(underline);
+               return new Border { Child = stack }; // root container (no fill — the fill rides headerHost)
+           });
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<TabItem>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().Template().OfType<Separator>().Name("PART_Underline"))
+                        .SetResource(Border.BorderPenProperty, ThemeKeys.TabUnderlinePen),       // underline pen
+
+                    new Style(Selectors.Nesting().Template().Name("PART_HeaderSite"))
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundNormal),
+
+                    new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundHover)
+                        .SetResource(Panel.BackgroundProperty, ThemeKeys.TabBackgroundHover),
+                    
+                    new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
+                        .SetResource(Panel.BackgroundProperty, ThemeKeys.TabBackgroundSelected) // --surface fill
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundSelected),  // --text ink
+
+                    new Style(Selectors.Nesting().PseudoClass(":disabled").Template().Name("PART_HeaderSite"))
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundDisabled)
+                }
+            }
+        );
+
+        return t;
+    }
 
     private static Style TabItemTheme()
     {
         var theme = new Style { Key = "Theme.TabItem" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundNormal) // inactive ink = --text-dim
             .Set(Control.TemplateProperty, TabItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundHover));
-        theme.Children.Add(new Style("^:selected")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundSelected)  // --surface fill
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundActive));  // --text ink
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundDisabled));
+        // theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundHover));
+        // theme.Children.Add(new Style("^:selected")
+        //     .SetResource(Control.BackgroundProperty, ThemeKeys.TabBackgroundSelected)  // --surface fill
+        //     .SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundSelected));  // --text ink
+        // theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.TabForegroundDisabled));
         return theme;
     }
 
@@ -753,9 +809,11 @@ internal static class ControlThemes
     {
         var theme = new Style { Key = "Theme.Slider" }
             .Set(Control.TemplateProperty, SliderTemplate())
+            .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush)
             .SetResource(Slider.FilledPenProperty, ThemeKeys.SliderFilledPen)
             .SetResource(Control.BorderPenProperty, ThemeKeys.SliderTrackPen);
         theme.Children.Add(new Style("^:disabled").SetResource(Slider.FilledPenProperty, ThemeKeys.SliderTrackPen));
+        theme.Children.Add(new Style("^:focus").SetResource(Control.ForegroundProperty, ThemeKeys.Accent2Brush));
         return theme;
     }
 
@@ -769,10 +827,11 @@ internal static class ControlThemes
         {
             var thumb = new Thumb();
             ctx.RegisterName("PART_Thumb", thumb);
+            thumb.SetBinding(Control.BackgroundProperty, new TemplateBinding(Control.ForegroundProperty));
             return thumb;
         });
-        template.Styles.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
-            .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush));
+        // template.Styles.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
+        //     .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessBrush));
         return template;
     }
 
@@ -802,20 +861,33 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Child = host };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.StatusBarBackground);
         return border;
     });
 
     // A status-bar cell: a padded ContentPresenter.
     private static Style StatusBarItemTheme()
-        => new Style { Key = "Theme.StatusBarItem" }
+        => new Style
+           {
+               Key = "Theme.StatusBarItem",
+               Children =
+               {
+                   new Style(Selectors.Nesting().Class("alternate"))
+                      .SetResource(Control.ForegroundProperty, ThemeKeys.StatusBarAltForeground)
+                      .SetResource(Control.BackgroundProperty, ThemeKeys.StatusBarAltBackground)
+               }
+           }.SetResource(Control.ForegroundProperty, ThemeKeys.MutedBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.StatusBarBackground)
             .Set(Control.TemplateProperty, StatusBarItemTemplate());
 
     private static ControlTemplate StatusBarItemTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter();
+        var root = new Border { Child = presenter, Padding = new Margins(1, 0) };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        return new Border { Padding = new Margins(1, 0), Child = presenter };
+        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        root.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        return root;
     });
 
     // ───────────────────────────── Expander ─────────────────────────────
@@ -957,37 +1029,86 @@ internal static class ControlThemes
     // A menu item: a fill-bounded header row [header … gesture], plus the submenu Popup (PART_Popup) whose Child is
     // an occluding PanelBrush surface hosting the sub-items (PART_ItemsHost). The Popup contributes no layout to the
     // row (a Grid cell stacks it behind the face at 0×0). :highlighted = SelectionBrush fill; :disabled = muted.
-    private static ControlTemplate MenuItemTemplate() => new(ctx =>
+    private static ControlTemplate MenuItemTemplate()
     {
-        var header = new ContentPresenter { RecognizesAccessKey = true };
-        ctx.RegisterName("PART_ContentPresenter", header);
-        header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+        var t = new ControlTemplate(
+            ctx =>
+                 {
+                     var header = new ContentPresenter { RecognizesAccessKey = true };
+                     ctx.RegisterName("PART_ContentPresenter", header);
 
-        var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
-        gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(MenuItem.InputGestureTextProperty));
-        gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
-        DockPanel.SetDock(gesture, Dock.Right);
+                     header.SetBinding(ContentPresenter.ContentProperty,
+                                       new TemplateBinding(HeaderedItemsControl.HeaderProperty));
 
-        var row = new DockPanel();
-        row.Children.Add(gesture); // docked right (faint gesture hint)
-        row.Children.Add(header);  // fills the remaining width
+                     var submenuIndicator = new TextBlock { RenderOffsetColumn = 1, Text = "▸" };
+                     ctx.RegisterName("PART_SubmenuIndicator", submenuIndicator);
 
-        var face = new Border { Padding = new Margins(1, 0), Child = row };
-        face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     submenuIndicator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
 
-        var itemsHost = new ItemsPresenter();
-        ctx.RegisterName("PART_ItemsHost", itemsHost);
-        var submenu = new Border { Occludes = true, Child = itemsHost };
-        submenu.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
-        submenu.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
-        var popup = new Popup { Child = submenu };
-        ctx.RegisterName("PART_Popup", popup);
+                     submenuIndicator.SetBinding(UIElement.VisibilityProperty,
+                                                 new Binding(nameof(MenuItem.HasItems))
+                                                 {
+                                                     RelativeSource = RelativeSource.TemplatedParent,
+                                                     Converter = BooleanToVisibilityConverter.Instance
+                                                 });
 
-        var root = new Grid(); // the Popup adds no layout (0×0); the face fills the cell
-        root.Children.Add(face);
-        root.Children.Add(popup);
-        return root;
-    });
+                     DockPanel.SetDock(submenuIndicator, Dock.Right);
+
+                     var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
+                     ctx.RegisterName("PART_GestureText", gesture);
+
+                     gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(MenuItem.InputGestureTextProperty));
+                     gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
+
+                     DockPanel.SetDock(gesture, Dock.Right);
+
+                     var row = new DockPanel();
+                     row.Children.Add(submenuIndicator); // docked far-right
+                     row.Children.Add(gesture);          // docked right (faint gesture hint)
+                     row.Children.Add(header);           // fills the remaining width
+
+                     var face = new Border { Padding = new Margins(1, 0), Child = row };
+                     face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+                     var itemsHost = new ItemsPresenter();
+                     ctx.RegisterName("PART_ItemsHost", itemsHost);
+
+                     var submenu = new Border
+                                   {
+                                       /*Occludes = true, */Child = itemsHost
+                                   };
+
+                     submenu.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+                     submenu.SetResourceReference(Border.BorderPenProperty, ThemeKeys.MenuBorderPen);
+                     var popup = new Popup { Child = submenu };
+                     ctx.RegisterName("PART_Popup", popup);
+
+                     var root = new Grid(); // the Popup adds no layout (0×0); the face fills the cell
+                     root.Children.Add(face);
+                     root.Children.Add(popup);
+                     return root;
+                 });
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().Template().OfType<Separator>().Name("PART_Separator"))
+               .SetResource(Control.BorderPenProperty, ThemeKeys.MenuSeparatorPen)
+        );
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":highlighted").Template().OfType<TextBlock>().Name("PART_GestureText")
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":highlighted").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":open").Template().OfType<TextBlock>().Name("PART_GestureText"))
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":open").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator")))
+               .SetResource(Control.ForegroundProperty, ThemeKeys.MenuAcceleratorHoverForeground)
+        );
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":top-level").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
+               .Set(UIElement.VisibilityProperty, Visibility.Collapsed)
+        );
+        
+        return t;
+    }
 
     private static Style MenuItemTheme()
     {
@@ -1049,16 +1170,29 @@ internal static class ControlThemes
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
     private static Style AddButtonStates(Style theme)
     {
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
-        theme.Children.Add(new Style("^:focus")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
-        theme.Children.Add(new Style("^:pressed")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
-        theme.Children.Add(new Style("^:disabled")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+        theme.Children.Add(
+            new Style("^:default")
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
+
+        theme.Children.Add(
+            new Style("^:pointerover")
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+
+        theme.Children.Add(
+            new Style("^:focus")
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+
+        theme.Children.Add(
+            new Style("^:pressed")
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+
+        theme.Children.Add(
+            new Style("^:disabled")
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
 
@@ -1259,6 +1393,7 @@ internal static class ControlThemes
         
 
         var root = new Border();
+        ctx.RegisterName("PART_Root", root);
         root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         root.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty)); // opt-in frame only
 
@@ -1282,7 +1417,8 @@ internal static class ControlThemes
         // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
         // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
         // intentionally leaves Close off).
-        var closeButton = new Button { Content = "✕", Focusable = false, IsTabStop = false };
+        var closeButton = new Button { Focusable = false, IsTabStop = false };
+        closeButton.SetBinding(ContentControl.ContentProperty, new Binding(nameof(Window.WindowState)) { Converter = new WindowStateToGlyphConverter() });
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
         closeButton.Click += (_, _) =>
                              {
@@ -1298,24 +1434,24 @@ internal static class ControlThemes
         Button? maximizeButton = null;
         if (window.CanResize)
         {
-            maximizeButton = new Button { Content = "▢", Focusable = false, IsTabStop = false };
+            maximizeButton = new Button { Content = "⛶", Focusable = false, IsTabStop = false };
             // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
             DockPanel.SetDock(maximizeButton, Dock.Right);
             titleBarContent.Children.Add(maximizeButton); // docked right → left of the close glyph
             ctx.RegisterName("PART_MaximizeButton", maximizeButton);
             
             maximizeButton.Click += (_, _) =>
-                                 {
-                                     if (window.CanClose)
-                                     {
-                                         window.ApplyMaximizeState(window.WindowState is WindowState.Maximized 
-                                                                       ? WindowState.Normal 
-                                                                       : WindowState.Maximized);
-                                     }
-                                 };
+                                    {
+                                        window.WindowState = window.WindowState is WindowState.Maximized
+                                                                 ? WindowState.Normal
+                                                                 : WindowState.Maximized;
+
+                                        maximizeButton.Content = window.WindowState is WindowState.Maximized ? "⧈" : "⛶";
+                                    };
         }
 
         var titleText = new TextBlock { Text = window.Title ?? string.Empty };
+        titleText.SetBinding(TextBlock.TextProperty, new Binding(nameof(Window.Title)) { Source = window });
         titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
         ctx.RegisterName("PART_Title", titleText);
 
@@ -1329,11 +1465,11 @@ internal static class ControlThemes
                 Children =
                 {
                     new Style(Selectors.Nesting())
-                        .SetResource(Border.BackgroundProperty, ThemeKeys.ElevationRaised)
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush),
+                        .SetResource(Border.BackgroundProperty, ThemeKeys.WindowTitleBarBackground)
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.WindowTitleBarForeground),
                     new Style(Selectors.Nesting().PseudoClass(":active-window"))
-                        .SetResource(Border.BackgroundProperty, ThemeKeys.AccentBrush)
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                        .SetResource(Border.BackgroundProperty, ThemeKeys.WindowTitleBarActiveBackground)
+                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.WindowTitleBarActiveForeground),
                     new Style(Selectors.Nesting().PseudoClass(":active-window").Descendant().OfType<Button>())
                         .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                     
@@ -1394,7 +1530,8 @@ internal static class ControlThemes
                        {
                            Text = "◢",
                            HorizontalAlignment = HorizontalAlignment.Right,
-                           VerticalAlignment = VerticalAlignment.Bottom
+                           VerticalAlignment = VerticalAlignment.Bottom,
+                           Cursor = MouseCursorShape.NwseResize
                        };
             grip.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
             WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
@@ -1407,17 +1544,73 @@ internal static class ControlThemes
         {
             layout.Children.Add(presenter); // fills the remainder
         }
-
         root.Child = layout;
-        return root;
+
+        var overlayHost = new Border
+                          {
+                              Name = "PART_ObscuredOverlay",
+                              Visibility = Visibility.Collapsed/*,
+                              IsRenderBoundary = true*/
+                          };
+
+        overlayHost.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
+        ctx.RegisterName("PART_ObscuredOverlay", overlayHost);
+
+        var chrome = new Grid { Children = { root, overlayHost } };
+        
+        chrome.Styles.Add(
+            new Style(Selectors.Is<Window>().Class("obscured"))
+            {
+                Children = { new Style(Selectors.Nesting().Template().Name("PART_ObscuredOverlay")).Set(UIElement.VisibilityProperty, Visibility.Visible) }
+            });
+        return chrome;
     });
 
     private static Style WindowTheme()
-        => new Style { Key = "Theme.Window" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush) // borderless body surface; a consumer LocalValue Background wins
+        => new Style
+           {
+               Key = "Theme.Window",
+               Children =
+               {
+                   new Style(Selectors.Nesting().OfType<Window>().Class("modal"))
+                      .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationDialog),
+                   new Style(Selectors.Nesting().OfType<Window>())
+                       {
+                           When = { new DataCondition(new Binding(nameof(Window.IsActive)) { RelativeSource = RelativeSource.Self}, false) },
+                           Setters =
+                           {
+                               new Setter(Transition.TransitionsProperty,
+                                          new TransitionCollection
+                                          {
+                                              new DoubleTransition(UIElement.OpacityProperty)
+                                              {
+                                                  Delay = TimeSpan.FromMilliseconds(500),
+                                                  Easing = Easings.QuadOut,
+                                                  Duration = TimeSpan.FromMilliseconds(2000)
+                                              }
+                                          }),
+                               new Setter(UIElement.OpacityProperty, 0.70)
+                           }
+                       }
+               }
+           }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationWindow) // borderless body surface; a consumer LocalValue Background wins
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.PaddingProperty, new(2, 1))
             .Set(Control.TemplateProperty, WindowChromeTemplate());
+    
+    private sealed class WindowStateToGlyphConverter : IValueConverter
+    {
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            return value is WindowState state ? state switch { WindowState.Maximized => "⧈", _ => "⛶" } : null;
+        }
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
 }
 
 /// <summary>
@@ -1427,7 +1620,7 @@ internal static class ControlThemes
 /// / <see cref="ThemeKeys.RadioGlyphs"/>; ASCII <c>[ ] [x] [-]</c> / <c>( ) (*)</c> by default,
 /// overridable at any chain scope) and draws the matching glyph. The glyph is foreground text in the
 /// toggle's <see cref="Control.Foreground"/> (inherited). Public + XAML-authorable so the control themes
-/// can be authored declaratively (Cursorial.UI.Themes.Xaml): set <see cref="GlyphKey"/> /
+/// can be authored declaratively (Cursorial.UI.Themes): set <see cref="GlyphKey"/> /
 /// <see cref="CheckedMarkKey"/> / <see cref="IndeterminateMarkKey"/> in the template.
 /// </summary>
 public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>

@@ -4,10 +4,12 @@ using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
 namespace Cursorial.UI;
@@ -45,7 +47,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private readonly List<Window> _modalStack = [];         // active modals, bottom→top; the topmost is the gate
     private readonly HashSet<Window> _blocked = [];         // windows currently disabled by a modal (the `obscured` set)
     private SceneCompositor _compositor = new();
-    private bool _needsComposite; // a stack change reset the compositor → force one render so vacated cells repaint
+    private bool _needsComposite;                           // a stack change reset the compositor → force one render so vacated cells repaint
     private OutputCapabilities _capabilities;
     private Size _viewport;
     private TopLevelSurface? _rootSurface;
@@ -54,11 +56,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private Window? _modalAttentionGate;
     private TerminalCaretState _lastCaret;
     private bool _caretEverApplied;
-    private (int Column, int Row) _lastPointer; // last screen pointer position (for PlacementMode.Pointer)
+    private (int Column, int Row) _lastPointer;           // last screen pointer position (for PlacementMode.Pointer)
     private readonly List<Action> _deferredTopology = []; // §8.8 — mutations requested mid-frame, drained next frame
-    private bool _topologyLocked; // true while S6 iterates surfaces (layout / OnLayoutCompleted / render)
-    private string? _lastEmittedTitle; // the last title mirrored to the terminal (OSC 2 change detector)
-    private TopLevelSurface? _fitBadgeSurface; // the WM-owned fit-to-viewport badge (top-right; §8.7)
+    private bool _topologyLocked;                         // true while S6 iterates surfaces (layout / OnLayoutCompleted / render)
+    private string? _lastEmittedTitle;                    // the last title mirrored to the terminal (OSC 2 change detector)
+    private TopLevelSurface? _fitBadgeSurface;            // the WM-owned fit-to-viewport badge (top-right; §8.7)
     private bool _fitBadgeVisible;
 
     /// <summary>
@@ -122,8 +124,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         get
         {
             foreach (var surface in _surfaces)
+            {
                 if (surface.HasPendingLayout)
                     return true;
+            }
+
             return false;
         }
     }
@@ -134,10 +139,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // Snapshot count: a surface's layout must not see the list mutate mid-pass — topology mutations
         // requested while we iterate (e.g. a Close() from a MeasureOverride) are deferred (§8.8).
         _topologyLocked = true;
+
         try
         {
-            for (var i = 0; i < _surfaces.Count; i++)
-                _surfaces[i].RunLayoutPass();
+            foreach (var surface in _surfaces)
+                surface.RunLayoutPass();
         }
         finally
         {
@@ -157,7 +163,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             return;
 
         var pending = _deferredTopology.ToArray();
+
         _deferredTopology.Clear();
+
         foreach (var mutation in pending)
             mutation();
     }
@@ -166,18 +174,19 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     public void OnLayoutCompleted()
     {
         _topologyLocked = true;
+
         try
         {
             // Keep each window's surface anchored to its Left/Top so a programmatic move re-composites
             // (AffectsComposite on Window.Left/Top), and re-fit SizeToContent windows whose content grew/shrank.
-            for (var i = 0; i < _windows.Count; i++)
+            foreach (var window in _windows)
             {
-                var window = _windows[i];
-                if (window.HostSurface is { } surface)
+                if (window.HostSurface is {} surface)
                 {
                     SyncSurfaceSize(window, surface);
                     surface.Left = window.Left;
                     surface.Top = window.Top;
+                    surface.Shadow = window.Shadow;                                // picks up a runtime Shadow change (AffectsRender forces the frame)
                     window.SetClippedByViewport(IsWindowClipped(window, surface)); // drives the fit affordance
                 }
             }
@@ -195,10 +204,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private void UpdateTerminalTitle()
     {
         var title = _activeWindow?.Title;
+
         if (title == _lastEmittedTitle)
             return;
 
         _lastEmittedTitle = title;
+
         if (title is not null)
             SetTerminalTitle?.Invoke(title);
     }
@@ -210,12 +221,15 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     {
         get
         {
-            if (_needsComposite) // a surface-stack change is pending a full recomposite (e.g. a closed popup)
+            if (_needsComposite) // a surface-stack change is pending a full recomposite (e.g., a closed popup)
                 return true;
 
             foreach (var surface in _surfaces)
+            {
                 if (surface.HasDirtyVisuals)
                     return true;
+            }
+
             return false;
         }
     }
@@ -240,6 +254,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     {
         ArgumentNullException.ThrowIfNull(target);
         _topologyLocked = true; // a topology mutation from a Render override defers (§8.8)
+
         try
         {
             return RenderFrameCore(target);
@@ -255,9 +270,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         var changed = false;
 
         // ① raster each surface's dirty zones (z order doesn't matter for rastering — it's per-surface).
-        for (var i = 0; i < _surfaces.Count; i++)
+        foreach (var surface in _surfaces)
         {
-            _surfaces[i].RunRenderPass();
+            surface.RunRenderPass();
+
             if (_guard is { IsFatal: true })
                 return true; // unwind promptly; conservative changed — teardown is imminent
         }
@@ -265,8 +281,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // ② concatenate every surface's layers, bottom→top, each at its screen offset, into ONE composite.
         // Stamp each surface's z-index + occluder flag so the compositor can crop/suppress a lower surface's
         // graphics-protocol image where a higher OPAQUE surface (a window/popup/badge — anything but the root)
-        // overlaps it (the terminal draws such images above the cell grid, so they'd otherwise show through).
+        // overlaps it. (The terminal draws such images above the cell grid, so they'd otherwise show through.)
         _layers.Clear();
+
         for (var i = 0; i < _surfaces.Count; i++)
             _surfaces[i].CollectLayers(_layers, surfaceZ: i, isOccluder: !ReferenceEquals(_surfaces[i], _rootSurface));
 
@@ -287,6 +304,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // surface's WINDOW-LOCAL cell; here we fold that surface's screen offset so a caret published inside
         // a window/popup lands at the right ABSOLUTE cell (a centered dialog's caret is at Left+col, not col).
         var caret = _caretService.GetCaretState(_resolveSurfaceOffset ??= ResolveSurfaceOffset);
+
         if (!_caretEverApplied || caret != _lastCaret)
         {
             _caretEverApplied = true;
@@ -295,6 +313,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         }
 
         target.CursorVisible = caret.Visible;
+
         if (caret.Visible)
         {
             target.CursorColumn = caret.Column;
@@ -315,9 +334,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private (int Column, int Row) ResolveSurfaceOffset(UIElement owner)
     {
         var root = owner.VisualRoot;
-        for (var i = 0; i < _surfaces.Count; i++)
-            if (ReferenceEquals(_surfaces[i].Root, root))
-                return (_surfaces[i].Left, _surfaces[i].Top);
+
+        foreach (var surface in _surfaces)
+        {
+            if (ReferenceEquals(surface.Root, root))
+                return (surface.Left, surface.Top);
+        }
 
         return (0, 0);
     }
@@ -329,29 +351,34 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // state is sized to the old target) + the root surface re-fits the screen + full re-raster; the
         // same frame's Phase 5 re-lays-out under the new constraint. Windows re-clamp/re-size at W5.
         _viewport = newSize;
+
         ResetCompositor();
 
         // A resize invalidates popup placement: light-dismiss popups close, StaysOpen popups re-place below.
         for (var i = _popups.Count - 1; i >= 0; i--)
+        {
             if (!_popups[i].StaysOpen)
                 _popups[i].CloseCore(PopupCloseReason.ScreenResized);
+        }
 
-        if (_rootSurface is not null)
-            _rootSurface.Size = newSize;
+        _rootSurface?.Size = newSize;
 
         ReclampWindowsForViewport();
 
-        for (var i = 0; i < _popups.Count; i++) // re-place the surviving (StaysOpen) popups
-            if (_popups[i].PopupSurface is { } surface)
-                PlacePopup(_popups[i], surface);
+        foreach (var popup in _popups)
+        {
+            if (popup.PopupSurface is {} surface)
+                PlacePopup(popup, surface);
+        }
 
         // The fit badge appears (or re-evaluates) on a terminal resize: shown only while a non-maximized
         // window now overhangs the viewport (§8.7 — the user moves+shrinks on demand, no auto-shrink).
         _fitBadgeVisible = AnyWindowClipped();
+
         SyncFitBadge();
 
-        for (var i = 0; i < _surfaces.Count; i++)
-            _surfaces[i].InvalidateAll();
+        foreach (var surface in _surfaces)
+            surface.InvalidateAll();
     }
 
     /// <summary>
@@ -364,10 +391,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// </summary>
     private void ReclampWindowsForViewport()
     {
-        for (var i = 0; i < _windows.Count; i++)
+        foreach (var window in _windows)
         {
-            var window = _windows[i];
-            if (window.HostSurface is not { } surface)
+            if (window.HostSurface is not {} surface)
                 continue;
 
             if (window.WindowState == WindowState.Maximized)
@@ -377,10 +403,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             }
 
             var (left, top) = ClampPosition(window.Left, window.Top, surface.Size);
+
             if (left != window.Left)
                 window.SetCurrentValue(Window.LeftProperty, left);
+
             if (top != window.Top)
                 window.SetCurrentValue(Window.TopProperty, top);
+
             surface.Left = left;
             surface.Top = top;
         }
@@ -402,10 +431,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             return false; // fills the viewport exactly
 
         var size = surface.Size;
-        return surface.Left < 0
-               || surface.Top < 0
-               || surface.Left + size.Columns > _viewport.Columns
-               || surface.Top + size.Rows > _viewport.Rows;
+
+        return surface.Left < 0 ||
+               surface.Top < 0 ||
+               surface.Left + size.Columns > _viewport.Columns ||
+               surface.Top + size.Rows > _viewport.Rows;
     }
 
     /// <summary>Clamps a resize-drag size into <c>[<see cref="MinVisible"/>, viewport]</c> width and <c>[2, viewport]</c> height.</summary>
@@ -488,8 +518,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         if (_blocked.Contains(window))
         {
-            if (TopmostModal is { } gate && !ReferenceEquals(gate, window))
+            if (TopmostModal is {} gate && !ReferenceEquals(gate, window))
                 ActivateWindow(gate); // programmatic redirect, no attention pulse (§8.6)
+
             return false;
         }
 
@@ -537,14 +568,19 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = _windows.Count - 1; i >= 0; i--)
         {
             var owned = _windows[i];
+
             if (ReferenceEquals(owned.Owner, window))
                 owned.Close(WindowCloseReason.OwnerClosed); // recurses into the owned window's own owned/popups
         }
 
-        if (window.HostSurface is { } surface)
+        if (window.HostSurface is {} surface)
+        {
             for (var i = _popups.Count - 1; i >= 0; i--)
-                if (_popups[i].EffectiveTarget is { } target && ReferenceEquals(SurfaceForElement(target), surface))
+            {
+                if (_popups[i].EffectiveTarget is {} target && ReferenceEquals(SurfaceForElement(target), surface))
                     _popups[i].CloseCore(PopupCloseReason.HostClosed);
+            }
+        }
     }
 
     /// <summary>
@@ -558,6 +594,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _popups[i].CloseCore(PopupCloseReason.HostClosed);
 
         var windows = _windows.ToArray(); // snapshot — Close mutates _windows (and cascades to owned)
+
         for (var i = windows.Length - 1; i >= 0; i--)
             windows[i].Close(WindowCloseReason.ManagerShutdown);
 
@@ -595,16 +632,22 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private void ComputeBlockedSet()
     {
         var enabled = new HashSet<Window>();
-        if (TopmostModal is { } gate)
+
+        if (TopmostModal is {} gate)
         {
             enabled.Add(gate);
+
             foreach (var window in _windows) // the gate's transitively owned subtree stays enabled
+            {
                 for (var owner = window.Owner; owner is not null; owner = owner.Owner)
+                {
                     if (ReferenceEquals(owner, gate))
                     {
                         enabled.Add(window);
                         break;
                     }
+                }
+            }
         }
         else
         {
@@ -624,8 +667,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (blocked)
         {
             _blocked.Add(window);
-            window.Classes.Add("obscured");   // Fork B composite-dim recipe (Window.obscured { Opacity: 0.7 })
-            WindowBlocked?.Invoke(window);     // S3 releases capture held inside (wired at W3)
+            window.Classes.Add("obscured"); // Fork B composite-dim recipe (Window.obscured { Opacity: 0.7 })
+            WindowBlocked?.Invoke(window);        // S3 releases capture held inside (wired at W3)
         }
         else
         {
@@ -636,13 +679,18 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     private Window? ResolveHandoff(Window closed)
     {
-        if (closed.Owner is { } owner && _windows.Contains(owner) && !_blocked.Contains(owner))
+        if (closed.Owner is {} owner && _windows.Contains(owner) && !_blocked.Contains(owner))
             return owner;
-        if (TopmostModal is { } gate)
+
+        if (TopmostModal is {} gate)
             return gate;
+
         for (var i = _windows.Count - 1; i >= 0; i--)
+        {
             if (!_blocked.Contains(_windows[i]))
                 return _windows[i];
+        }
+
         return null;
     }
 
@@ -671,7 +719,6 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             window.SetCurrentValue(Window.TopProperty, 0);
             surface.Left = 0;
             surface.Top = 0;
-            surface.Opacity = window.Opacity;
             return;
         }
 
@@ -690,19 +737,24 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         window.ActualSize = size;
 
         var (left, top) = window.WindowStartupLocation switch
-        {
-            WindowStartupLocation.CenterScreen =>
-                ((_viewport.Columns - size.Columns) / 2, (_viewport.Rows - size.Rows) / 2),
-            WindowStartupLocation.CenterOwner when window.Owner?.HostSurface is { } owner =>
-                (owner.Left + (owner.Size.Columns - size.Columns) / 2, owner.Top + (owner.Size.Rows - size.Rows) / 2),
-            _ => (window.Left, window.Top)
-        };
+                          {
+                              WindowStartupLocation.CenterScreen =>
+                                  ((_viewport.Columns - size.Columns) / 2, (_viewport.Rows - size.Rows) / 2),
+                              WindowStartupLocation.CenterOwner when window.Owner?.HostSurface is {} owner =>
+                                  (owner.Left + (owner.Size.Columns - size.Columns) / 2, owner.Top + (owner.Size.Rows - size.Rows) / 2),
+                              _ => (window.Left, window.Top)
+                          };
 
         window.SetCurrentValue(Window.LeftProperty, left); // user-gesture-style write: bindings survive (§8.2)
         window.SetCurrentValue(Window.TopProperty, top);
         surface.Left = left;
         surface.Top = top;
-        surface.Opacity = window.Opacity;
+        // surface.Opacity is intentionally NOT set from window.Opacity: the Window IS the surface's render-tree
+        // root, so its Opacity is already applied (live, via AffectsComposite) by the root opacity boundary.
+        // Folding it into surface.Opacity too would DOUBLE it — and worse, this runs before FinishShow activates
+        // the window, so a `When IsActive==false` opacity setter would freeze the surface at the inactive value
+        // and never re-sync. surface.Opacity stays 1.0 for windows (popups, whose Child ≠ the Popup element, do
+        // carry popup.Opacity here). Per the design note: window opacity is a render-tree boundary, not surface-level.
     }
 
     /// <summary>
@@ -726,17 +778,20 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         {
             var stc = window.SizeToContent;
             var desired = window.DesiredSize; // content-driven, from the pass just completed
-            var width = window.Width
-                        ?? (stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? desired.Columns : size.Columns);
-            var height = window.Height
-                         ?? (stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? desired.Rows : size.Rows);
+
+            int width = window.Width ??
+                        (stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? desired.Columns : size.Columns);
+
+            int height = window.Height ??
+                         (stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? desired.Rows : size.Rows);
+
             target = new Size(Math.Clamp(width, 0, _viewport.Columns), Math.Clamp(height, 0, _viewport.Rows));
         }
 
         if (target == size)
             return; // steady state — idle holds
 
-        surface.Size = target;     // flips HasPendingLayout → re-layout next frame at the new constraint
+        surface.Size = target; // flips HasPendingLayout → re-layout next frame at the new constraint
         window.ActualSize = target;
     }
 
@@ -757,15 +812,23 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private void RebuildSurfaceStack()
     {
         _surfaces.Clear();
+
         if (_rootSurface is not null)
             _surfaces.Add(_rootSurface);
-        for (var i = 0; i < _windows.Count; i++)
-            if (_windows[i].HostSurface is { } surface)
+
+        foreach (var window in _windows)
+        {
+            if (window.HostSurface is {} surface)
                 _surfaces.Add(surface);
-        for (var i = 0; i < _popups.Count; i++) // the popup band sits above every window (§8.4)
-            if (_popups[i].PopupSurface is { } surface)
+        }
+
+        foreach (var popup in _popups)
+        {
+            if (popup.PopupSurface is {} surface)
                 _surfaces.Add(surface);
-        if (_fitBadgeSurface is { } badge) // the fit badge sits above everything (§8.7)
+        }
+
+        if (_fitBadgeSurface is {} badge) // the fit badge sits above everything (§8.7)
             _surfaces.Add(badge);
     }
 
@@ -779,14 +842,16 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (DeferIfLocked(() => OpenPopup(popup)))
             return;
 
-        if (popup.Child is not { } child)
+        if (popup.Child is not {} child)
             return;
 
         var surface = new TopLevelSurface(child, _scenePool, _capabilities, _guard)
                       {
                           IsPopup = true,
-                          IsHitTestTransparent = popup.IsHitTestTransparent // a ToolTip's surface never steals hover/clicks
+                          IsHitTestTransparent = popup.IsHitTestTransparent, // a ToolTip's surface never steals hover/clicks
+                          Shadow = popup.Shadow                              // the popup's drop shadow (default WindowShadow.Default)
                       };
+
         popup.PopupSurface = surface;
         _popups.Add(popup);
 
@@ -824,21 +889,25 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.RunLayoutPass();
 
         var desired = surface.Root.DesiredSize;
+
         var size = new Size(
             Math.Clamp(desired.Columns, 0, _viewport.Columns),
             Math.Clamp(desired.Rows, 0, _viewport.Rows));
+
         surface.Size = size;
 
         var anchor = AnchorRect(popup);
-        var (left, top) = popup.Placement switch
-        {
-            PlacementMode.Top     => (anchor.Column, anchor.Row - size.Rows),
-            PlacementMode.Right   => (anchor.ColumnEnd, anchor.Row),
-            PlacementMode.Left    => (anchor.Column - size.Columns, anchor.Row),
-            PlacementMode.Center  => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
-            PlacementMode.Pointer => (_lastPointer.Column, _lastPointer.Row),
-            _                     => (anchor.Column, anchor.RowEnd) // Bottom (default)
-        };
+
+        var (left, top) =
+            popup.Placement switch
+            {
+                PlacementMode.Top     => (anchor.Column, anchor.Row - size.Rows),
+                PlacementMode.Right   => (anchor.ColumnEnd, anchor.Row),
+                PlacementMode.Left    => (anchor.Column - size.Columns, anchor.Row),
+                PlacementMode.Center  => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
+                PlacementMode.Pointer => (_lastPointer.Column, _lastPointer.Row),
+                _                     => (anchor.Column, anchor.RowEnd) // Bottom (default)
+            };
 
         left += popup.HorizontalOffset;
         top += popup.VerticalOffset;
@@ -853,7 +922,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// a zero rect at the origin when the popup has no resolvable on-surface target.</summary>
     private LayoutRect AnchorRect(Popup popup)
     {
-        if (popup.EffectiveTarget is { } target && SurfaceForElement(target) is { } host)
+        if (popup.EffectiveTarget is {} target && SurfaceForElement(target) is {} host)
         {
             var (wx, wy) = target.TranslateToWindow(0, 0);
             return new LayoutRect(host.Left + wx, host.Top + wy, target.Bounds.Size);
@@ -866,12 +935,14 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// detached / not hosted here.</summary>
     internal TopLevelSurface? SurfaceForElement(UIElement element)
     {
-        if (element.GetRenderTree() is not { } tree)
+        if (element.GetRenderTree() is not {} tree)
             return null;
 
-        for (var i = 0; i < _surfaces.Count; i++)
-            if (ReferenceEquals(_surfaces[i].RenderTree, tree))
-                return _surfaces[i];
+        foreach (var surface in _surfaces)
+        {
+            if (ReferenceEquals(surface.RenderTree, tree))
+                return surface;
+        }
 
         return null;
     }
@@ -884,6 +955,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = _popups.Count - 1; i >= 0; i--)
         {
             var popup = _popups[i];
+
             if (popup.StaysOpen || ReferenceEquals(popup.PopupSurface, hit) || PressOnAnchor(popup, pressColumn, pressRow))
                 continue;
 
@@ -910,9 +982,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <summary>Whether any Normal (non-maximized) window currently overhangs the viewport.</summary>
     private bool AnyWindowClipped()
     {
-        for (var i = 0; i < _windows.Count; i++)
-            if (_windows[i].HostSurface is { } surface && IsWindowClipped(_windows[i], surface))
+        foreach (var window in _windows)
+        {
+            if (window.HostSurface is {} surface && IsWindowClipped(window, surface))
                 return true;
+        }
 
         return false;
     }
@@ -921,9 +995,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// the badge (nothing remains to fit). Public so the demo / code-behind can trigger the same sweep.</summary>
     public void FitAllWindowsToViewport()
     {
-        for (var i = 0; i < _windows.Count; i++)
-            if (_windows[i].HostSurface is { } surface && IsWindowClipped(_windows[i], surface))
-                _windows[i].FitToViewport();
+        foreach (var window in _windows)
+        {
+            if (window.HostSurface is {} surface && IsWindowClipped(window, surface))
+                window.FitToViewport();
+        }
 
         _fitBadgeVisible = false;
         SyncFitBadge();
@@ -944,7 +1020,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _fitBadgeSurface ??= new TopLevelSurface(BuildFitBadge(), _scenePool, _capabilities, _guard);
             PlaceFitBadge(_fitBadgeSurface);
         }
-        else if (_fitBadgeSurface is { } badge)
+        else if (_fitBadgeSurface is {} badge)
         {
             badge.Detach();
             _fitBadgeSurface = null;
@@ -966,31 +1042,40 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.RunLayoutPass();
 
         var desired = surface.Root.DesiredSize;
+
         var size = new Size(
             Math.Clamp(desired.Columns, 0, _viewport.Columns),
             Math.Clamp(desired.Rows, 0, _viewport.Rows));
+
         surface.Size = size;
-        surface.Left = Math.Max(0, _viewport.Columns - size.Columns);
-        surface.Top = 0;
+        surface.Left = Math.Max(0, _viewport.Columns - size.Columns - 1);
+        surface.Top = 1;
     }
 
     /// <summary>Builds the interim badge: an occluding bar with a "Fit windows" button + a dismiss ✕ (C4 themes it).</summary>
     private UIElement BuildFitBadge()
     {
         var fit = new Button { Content = "Fit windows", Focusable = false, IsTabStop = false };
+
+        fit.Classes.Add("accent");
         fit.Click += (_, _) => FitAllWindowsToViewport();
 
         var dismiss = new Button { Content = "✕", Focusable = false, IsTabStop = false };
+
         dismiss.Click += (_, _) => DismissFitBadge();
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(fit);
-        row.Children.Add(dismiss);
+        var row = new StackPanel
+                  {
+                      Orientation = Orientation.Horizontal,
+                      Children = { fit, dismiss }
+                  };
 
-        return new Border { Occludes = true, Background = FitBadgeBrush, BorderPen = Pens.Light, Child = row };
+        var root = new Border { Occludes = true, Child = row, Padding = new(2, 1) };
+
+        root.SetResourceReference(Border.BackgroundProperty, ThemeKeys.InfoBrush);
+
+        return root;
     }
-
-    private static readonly IBrush FitBadgeBrush = SolidColorBrush.FromRgb(0x45, 0x47, 0x5A);
 
     // ── Renegotiation leg (UIApplication calls; mirrors the single-root render system) ───────────────
 
@@ -1002,10 +1087,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     {
         _capabilities = capabilities;
 
-        for (var i = 0; i < _surfaces.Count; i++)
+        foreach (var surface in _surfaces)
         {
-            _surfaces[i].RenderTree.Capabilities = capabilities;
-            _surfaces[i].InvalidateAll();
+            surface.RenderTree.Capabilities = capabilities;
+            surface.InvalidateAll();
         }
 
         ResetCompositor();
@@ -1019,6 +1104,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         for (var i = _surfaces.Count - 1; i >= 0; i--) // top→bottom in z-order
         {
             var surface = _surfaces[i];
+
             if (!surface.IsHitTestTransparent && surface.Contains(column, row))
                 return surface;
         }
@@ -1035,11 +1121,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         _lastPointer = (mouse.Position.Column, mouse.Position.Row); // feeds PlacementMode.Pointer
 
         var surface = SurfaceFromPoint(mouse.Position.Column, mouse.Position.Row);
+
         if (surface is null)
         {
             // A press over no surface still light-dismisses open popups (a click in dead space, §8.4).
             if (hitTestOnly is false && mouse.Kind == MouseEventKind.ButtonDown && _popups.Count > 0)
                 LightDismissPopups(hit: null!, mouse.Position.Column, mouse.Position.Row);
+
             return true; // routes nowhere (ND5: dropped, no throw)
         }
 
@@ -1047,7 +1135,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         {
             var window = surface.HostWindow;
             var isPress = mouse.Kind == MouseEventKind.ButtonDown;
-            
+
             // Light dismiss before activation/routing: a press closes every open light-dismiss popup except the one
             // pressed (§8.4). Pressing inside a popup keeps it (and routes into it); pressing a window/root dismisses.
             if (isPress && _popups.Count > 0)
@@ -1085,7 +1173,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// </summary>
     private void PulseModalAttention(Window gate)
     {
-        if (_modalAttentionGate is { } previous && !ReferenceEquals(previous, gate))
+        if (_modalAttentionGate is {} previous && !ReferenceEquals(previous, gate))
             previous.SetModalAttention(false);
 
         _modalAttentionGate = gate;
@@ -1093,10 +1181,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         gate.RaiseEvent(new RoutedEventArgs(Window.ModalAttentionEvent, gate));
 
         _modalAttentionTimer?.Stop();
-        _modalAttentionTimer = UITimer.Start(TimeSpan.FromMilliseconds(600), () =>
-        {
-            _modalAttentionGate?.SetModalAttention(false);
-            _modalAttentionGate = null;
-        });
+
+        _modalAttentionTimer = UITimer.Start(TimeSpan.FromMilliseconds(600),
+                                             () =>
+                                             {
+                                                 _modalAttentionGate?.SetModalAttention(false);
+                                                 _modalAttentionGate = null;
+                                             });
     }
 }

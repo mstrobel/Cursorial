@@ -229,6 +229,36 @@ public sealed class Section13_Scrolling
         Assert.Equal(2, sv.VerticalOffset);
     }
 
+    [Fact] // C226b — a target taller than the viewport aligns its LEADING edge (not its bottom)
+    public void C226b_EnsureVisible_ItemTallerThanViewport_KeepsHeaderVisible()
+    {
+        // The expanded-TreeViewItem case: a focused node's bounds span its header + the whole subtree, so the
+        // rect (rows [5, 30), 25 tall) is far taller than the 10-row viewport. EnsureVisible must align the
+        // leading edge (row 5 — the header) to the viewport top, NOT scroll to the subtree's bottom (which
+        // would be offset 30-10=20, pushing the header off the top — the reported bug).
+        var sv = TallScroller(viewportRows: 10, contentRows: 100);
+        using var host = Show(sv);
+
+        sv.EnsureVisible(new Rect(0, 5, 1, 25));
+        host.RunFrame();
+        Assert.Equal(5, sv.VerticalOffset);
+    }
+
+    [Fact] // C226c — an oversized rect already straddling the viewport doesn't scroll
+    public void C226c_EnsureVisible_OversizedRectAlreadyCoveringViewport_DoesNotScroll()
+    {
+        var sv = TallScroller(viewportRows: 10, contentRows: 100);
+        using var host = Show(sv);
+        sv.VerticalOffset = 10; // viewport now [10, 20)
+        host.RunFrame();
+
+        // Rect rows [5, 30) covers the whole viewport (top above it, bottom below it) — already as visible as
+        // it can be, so the minimal scroll is zero.
+        sv.EnsureVisible(new Rect(0, 5, 1, 25));
+        host.RunFrame();
+        Assert.Equal(10, sv.VerticalOffset);
+    }
+
     [Fact] // C227
     public void C227_ExtentCappedAtMaxScrollExtent()
     {

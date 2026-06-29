@@ -1,39 +1,75 @@
 using Cursorial.Gallery;
-using Cursorial.Input;
+using Cursorial.Gallery.ViewModels;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 // The standalone control gallery (#107) — XAML-first MVVM. A real UIApplication over the live terminal (alt
 // screen), NOT a demo command. The shell + every page is loaded from embedded XAML (GalleryApp.BuildRoot) and
 // bound to view-models; implicit DataTemplates resolve each page. q / Esc / Ctrl+C exit.
 
-var app = UIApplication.CreateBuilder()
-    .WithFrameRate(60)
-    .Build();
+UIApplication app = UIApplication.CreateBuilder()
+                                 .WithFrameRate(60)
+                                 .UseAlternateScreen()
+                                 .Build();
 
-// app.Theme = Cursorial.UI.Themes.Xaml.CursorialXamlTheme.LoadTheme();
+// app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
+
+static string FormatElement(UIObject? element)
+{
+    if (element is null) return "<null>";
+    var name = (element as UIElement)?.Name;
+    return $"{element.GetType().Name}" + (name is { Length: > 0 } ? $"#{name})" : "");
+}
 
 try
 {
-    await app.RunAsync(() =>
+    var root = GalleryApp.BuildRoot();
+    var vm = root.DataContext as ShellViewModel;
+    
+    void OnStyleDebugDiagnosticsDiagnosticEmitted(string c, string m) => vm?.Diagnostics.Add($"[Style] {c}: {m}");
+    void OnControlDiagnosticsDiagnosticRaised(ControlDiagnosticEvent d) => vm?.Diagnostics.Add($"[Control  ] {d.Kind}: {d.Message} " + $"({d.Element?.GetType().Name}" + (d.Element is { Name: { Length: > 0 } n } ? $"#{n})" : ")"));
+    void OnBindingDiagnosticsTraceEmitted(BindingTraceEvent d) => vm?.Diagnostics.Add($"[Binding  ] {d.Level} - {d.Kind}: {d.Message} " + $"(Target={d.TargetDescription}; Path={d.Path})");
+    void OnLayoutDiagnosticsDiagnosticRaised(LayoutDiagnosticEvent d) => vm?.Diagnostics.Add($"[Layout   ] {d.Kind}: {d.Message} ({FormatElement(d.Element)})");
+    void OnAnimationDiagnosticsTrackError(StoryboardTrackError e) => vm?.Diagnostics.Add($"[Animation] {FormatElement(e.Scope)}: {e.Message} " + $"({e.Track.TargetProperty?.Name})");
+    void OnUIDiagnosticsRejectedValue(UIObject t, UIProperty p, object? v) => vm?.Diagnostics.Add($"[Rejected ] {FormatElement(t)}.{p.Name} = {v}");
+
+    StyleDebugDiagnostics.DiagnosticEmitted += OnStyleDebugDiagnosticsDiagnosticEmitted;
+    ControlDiagnostics.DiagnosticRaised += OnControlDiagnosticsDiagnosticRaised;
+    BindingDiagnostics.TraceEmitted += OnBindingDiagnosticsTraceEmitted;
+    LayoutDiagnostics.DiagnosticRaised += OnLayoutDiagnosticsDiagnosticRaised;
+    AnimationDiagnostics.TrackError += OnAnimationDiagnosticsTrackError;
+    UIDiagnostics.RejectedValue += OnUIDiagnosticsRejectedValue;
+
+    app.BeginShutdown += (_, _) =>
+                         {
+                             StyleDebugDiagnostics.DiagnosticEmitted -= OnStyleDebugDiagnosticsDiagnosticEmitted;
+                             ControlDiagnostics.DiagnosticRaised -= OnControlDiagnosticsDiagnosticRaised;
+                             BindingDiagnostics.TraceEmitted -= OnBindingDiagnosticsTraceEmitted;
+                             LayoutDiagnostics.DiagnosticRaised -= OnLayoutDiagnosticsDiagnosticRaised;
+                             AnimationDiagnostics.TrackError -= OnAnimationDiagnosticsTrackError;
+                             UIDiagnostics.RejectedValue -= OnUIDiagnosticsRejectedValue;
+                         };
+
+    app.Started += (_, _) =>
+                   {
+                       vm?.RefreshTheme();
+                       UITimer.Start(TimeSpan.FromSeconds(0.1), () => app.FocusManager.MoveFocus(FocusNavigationDirection.Next));
+                   };
+
+    await app.RunAsync(() => root);
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error: {ex.Message}");
+    Console.WriteLine($"{ex.StackTrace}");
+        
+    for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException)
     {
-        var root = GalleryApp.BuildRoot();
-
-        // Global exit: q / Esc leave; Ctrl+C falls through to the S6 default gesture (unhandled).
-        root.AddHandler(UIElement.KeyDownEvent, (object? _, KeyEventArgs e) =>
-        {
-            if (e.Modifiers != KeyModifiers.None)
-                return; // leave Ctrl/Alt chords for bindings + the Ctrl+C exit gesture
-
-            if (e is { Key: Key.Escape, IsRepeat: true })
-            {
-                app.Shutdown(0);
-                e.Handled = true;
-            }
-        });
-
-        return root;
-    });
+        Console.WriteLine($"Inner: {inner.Message}");
+        Console.WriteLine($"{inner.StackTrace}");
+    }
 }
 finally
 {

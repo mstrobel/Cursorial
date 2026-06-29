@@ -1,6 +1,10 @@
+using System.Collections.Specialized;
 using System.Windows.Input;
 
 using Cursorial.Input;
+using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Imaging;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -15,9 +19,13 @@ namespace Cursorial.UI.Controls;
 /// <see cref="UIElement.PseudoClasses"/>); <c>:checked</c> mirrors <see cref="IsChecked"/> via <see cref="PseudoClassMapping"/>.
 /// </summary>
 [TemplatePart(PartPopup, typeof(Popup))] // optional: a leaf item's template may omit the submenu surface
+[TemplatePart(PartIcon, typeof(ContentPresenter))]  // optional: a leaf item's template may omit the submenu surface
+[TemplatePart(PartGestureText, typeof(TextBlock))]  // optional: a leaf item's template may omit the submenu surface
 public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 {
     private const string PartPopup = "PART_Popup";
+    private const string PartIcon = "PART_Icon";
+    private const string PartGestureText = "PART_GestureText";
 
     /// <inheritdoc cref="IsWithinMenuProperty"/>
     internal static readonly UIPropertyKey<bool> IsWithinMenuPropertyKey =
@@ -26,6 +34,10 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     /// <summary>Indicates whether the element is within a <see cref="Menu"/> popup.</summary>
     public static readonly AttachedProperty<bool> IsWithinMenuProperty = (AttachedProperty<bool>) IsWithinMenuPropertyKey.Property;
     
+    /// <summary>The icon or glyph to display in the left gutter.</summary>
+    public static readonly StyledProperty<object?> IconProperty =
+        UIProperty.Register<MenuItem, object?>(nameof(Icon), changed: OnIconChanged);
+
     /// <summary>The command invoked when a leaf item is clicked/activated.</summary>
     public static readonly StyledProperty<ICommand?> CommandProperty =
         UIProperty.Register<MenuItem, ICommand?>(nameof(Command), changed: OnCommandChanged);
@@ -54,6 +66,14 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public static readonly DirectProperty<MenuItem, bool> IsHighlightedProperty =
         UIProperty.RegisterDirect<MenuItem, bool>(nameof(IsHighlighted), static m => m._isHighlighted, static (m, v) => m.SetHighlighted(v));
 
+    /// <summary>Whether this item has sub-items (a submenu header) rather than being an invoke-on-click leaf.</summary>
+    public static readonly DirectProperty<MenuItem, bool> HasItemsProperty =
+        UIProperty.RegisterDirect<MenuItem, bool>(nameof(HasItems), getter: o => o.HasItems);
+
+    /// <summary>Indicates whether the menu item is a top-level item within a <see cref="Menu"/> control.</summary>
+    public static readonly DirectProperty<MenuItem, bool> IsTopLevelProperty =
+        UIProperty.RegisterDirect<MenuItem, bool>(nameof(IsTopLevel), getter: o => o.IsTopLevel);
+
     /// <summary>The bubbling event raised when a leaf item is invoked.</summary>
     public static readonly RoutedEvent<ClickEventArgs> ClickEvent =
         RoutedEvent<ClickEventArgs>.Register(nameof(Click), RoutingStrategy.Bubble, typeof(MenuItem));
@@ -63,14 +83,22 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
     // private bool _isPointerOver;
+    private bool _hasItemsCached;
+    private bool _isTopLevelCached;
     private char _registeredAccessKey;
     private Popup? _popup;
+    private ContentPresenter? _icon;
     private UITimer? _hoverTimer;
 
     static MenuItem()
     {
+        AffectsRender<MenuItem>(IconProperty);
+        AffectsParentMeasure<MenuItem>(IconProperty);
+
         PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
         PseudoClassMapping.Register<UIElement>(IsWithinMenuProperty, ":within-menu");
+        PseudoClassMapping.Register<UIElement>(IsTopLevelProperty, ":top-level");
+
         // MenuItem.Header folds access-key literals ("_File" → mnemonic 'F') — the per-type flag (doc §12.5 ②).
         HeaderProperty.OverrideMetadata<MenuItem>(new PropertyMetadata<object?>(Changed: OnHeaderChanged) { ParsesAccessKeyLiterals = true });
     }
@@ -83,6 +111,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <inheritdoc/>
     protected internal override bool HandlesScrolling => true;
+
+    /// <inheritdoc cref="IconProperty"/>
+    public object? Icon { get => GetValue(IconProperty); set => SetValue(IconProperty, value); }
 
     /// <inheritdoc cref="CommandProperty"/>
     public ICommand? Command { get => GetValue(CommandProperty); set => SetValue(CommandProperty, value); }
@@ -105,10 +136,10 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     /// <inheritdoc cref="IsHighlightedProperty"/>
     public bool IsHighlighted { get => _isHighlighted; set => SetHighlighted(value); }
 
-    /// <summary>Whether this item has sub-items (a submenu header) rather than being an invoke-on-click leaf.</summary>
+    /// <inheritdoc cref="HasItemsProperty"/>
     public bool HasItems => ItemContainerGenerator.ContainerCount > 0;
 
-    /// <summary>Indicates whether the menu item is a top-level item within a <see cref="Menu"/> control.</summary>
+    /// <inheritdoc cref="IsTopLevelProperty"/>
     public bool IsTopLevel => OwnerItemsControl is Menu;
 
     /// <summary>CLR sugar over <see cref="ClickEvent"/>.</summary>
@@ -131,8 +162,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
         base.OnAttachedToTree(in e);
+        SubscribeContainersChanged();
         SubscribeCanExecute(); // CD25: a live CanExecuteChanged must re-gate IsEnabledCore (matches ButtonBase)
         RegisterAccessKey();   // register the Header mnemonic with the AccessKeyManager (doc §12.5)
+        UpdateHasItems();
+        UpdateIsTopLevel();
     }
 
     /// <inheritdoc/>
@@ -140,8 +174,10 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     {
         StopHoverTimer();       // owners stop timers on detach (§12.2)
         SetSubmenuOpen(false);  // close the submenu so its Popup surface doesn't leak on detach
+        UnsubscribeContainersChanged();
         UnsubscribeCanExecute();
         UnregisterAccessKey();
+        UpdateHasItems();
         base.OnDetachedFromTree(in e);
     }
 
@@ -156,7 +192,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             _popup.ClearValue(IsWithinMenuPropertyKey);
         }
 
+        if (_icon is not null)
+            _icon.ClearValue(ContentPresenter.ContentProperty);
+
         _popup = GetTemplatePart<Popup>(PartPopup);
+        _icon = GetTemplatePart<ContentPresenter>(PartIcon);
 
         if (_popup is not null)
         {
@@ -166,6 +206,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             _popup.Closed += OnPopupClosed;
             _popup.SetCurrentValue(Popup.IsOpenProperty, _isSubmenuOpen); // sync the part to current state
         }
+
+        if (_icon is not null)
+            UpdateIconSite();
     }
 
     /// <inheritdoc/>
@@ -468,6 +511,66 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             command.CanExecuteChanged -= OnCanExecuteChanged;
     }
 
+    private void SubscribeContainersChanged()
+    {
+        ItemContainerGenerator.ContainersChanged += OnContainersChanged;
+    }
+
+    private void UnsubscribeContainersChanged()
+    {
+        ItemContainerGenerator.ContainersChanged -= OnContainersChanged;
+    }
+
+    private void OnContainersChanged(object? sender, ContainersChangedEventArgs e)
+    {
+        UpdateHasItems();
+    }
+
+    private void UpdateHasItems()
+    {
+        var hadItems = _hasItemsCached;
+        var hasItems = HasItems;
+        
+        if (hadItems != hasItems)
+        {
+            _hasItemsCached = hasItems;
+            DispatchPropertyChanged(HasItemsProperty, null, hadItems, hasItems, BindingPriority.LocalValue);
+        }
+    }
+
+    private void UpdateIsTopLevel()
+    {
+        var wasTopLevel = _isTopLevelCached;
+        var isTopLevel = IsTopLevel;
+
+        if (wasTopLevel != isTopLevel)
+        {
+            _isTopLevelCached = isTopLevel;
+            DispatchPropertyChanged(IsTopLevelProperty, null, wasTopLevel, IsTopLevel, BindingPriority.LocalValue);
+        }
+    }
+
+    private void UpdateIconSite()
+    {
+        if (_icon is null)
+            return;
+
+        if (Icon is ImageData image)
+        {
+            _icon.Content = new ImagePresenter { Source = image };
+            _icon.Visibility = Visibility.Visible;
+        }
+        else if (Icon is {} icon)
+        {
+            _icon.Content = icon.ToString();
+            _icon.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _icon.Visibility = Visibility.Collapsed;
+        }
+    }
+
     private void OnCanExecuteChanged(object? sender, EventArgs e) => InvalidateIsEnabledCore();
 
     // ── access keys (doc §12.5; mnemonic source is Header, not Content) ────────────────────────────────
@@ -533,6 +636,14 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             @new.CanExecuteChanged += item.OnCanExecuteChanged;
 
         item.InvalidateIsEnabledCore();
+    }
+
+    private static void OnIconChanged(UIObject sender, object? oldValue, object? newValue)
+    {
+        if (sender is not MenuItem item)
+            return;
+
+        item.UpdateIconSite();
     }
 
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)

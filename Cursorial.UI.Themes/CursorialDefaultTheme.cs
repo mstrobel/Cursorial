@@ -1,4 +1,4 @@
-namespace Cursorial.UI.Themes.Xaml;
+namespace Cursorial.UI.Themes.Default;
 
 /// <summary>
 /// The data-shipped XAML theme (ARCH-1; design doc §4.11): the BuiltIn control themes authored declaratively
@@ -12,21 +12,21 @@ namespace Cursorial.UI.Themes.Xaml;
 /// code-first (its chrome's active/inactive look is code-driven, not declarable). The embedded <c>.xaml</c> is
 /// retained as the dual-run drift oracle (<c>XamlThemeLoweringTests</c>), not loaded at runtime.
 /// </summary>
-public static class CursorialXamlTheme
+public static class CursorialDefaultTheme
 {
     /// <summary>The XAML control themes (templates + glyphs) — the build-lowered <c>Themes/Controls.xaml</c>.</summary>
     public static ResourceDictionary LoadControls()
-        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildControls();
+        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildThemesDefaultControls();
 
     /// <summary>The XAML palette spine — the (ThemeBase × ColorDepth) <c>ThemeDictionaries</c> of role-token brushes
     /// + chrome pens (the data twin of <see cref="CursorialTheme"/>'s tier palette).</summary>
     public static ResourceDictionary LoadPalette()
-        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildPalette();
+        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildThemesDefaultPalette();
 
     /// <summary>The theme-styles channel (design doc §11.8 #3) — the caps-* selector styles authored in
     /// <c>&lt;ResourceDictionary.Styles&gt;</c>, consumed from <c>UIApplication.Theme</c> at <c>Theme(2)</c>.</summary>
     public static ResourceDictionary LoadStyles()
-        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildStyles();
+        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildThemesDefaultStyles();
 
     /// <summary>
     /// The complete data-shipped theme: the <see cref="LoadStyles"/> theme-styles channel as the ROOT (so its

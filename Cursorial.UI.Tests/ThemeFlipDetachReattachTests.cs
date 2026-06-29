@@ -67,6 +67,50 @@ public sealed class ThemeFlipDetachReattachTests
         Assert.Equal(LightText, ForegroundOf(host, "Text Input"));
     }
 
+    [Fact] // Companion: the same scenario, but the control is realized via a DataTemplate (ContentPresenter
+           // re-realizes fresh on switch-back) — the path the Control.ExpandTemplate reuse guard does NOT cover.
+    public void BaseFlip_WhileDataTemplatedTabContentDetached_ReattachRefreshesForeground()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions
+        {
+            Capabilities = TestCapabilities.KittyTruecolor,
+            InitialSize = new Size(40, 12),
+        });
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+
+        // The tab content is a DATA item (a VM); an implicit DataTemplate (keyed by type) realizes it as a Label
+        // whose foreground is theme-inherited. Switching tabs changes SelectedContent, so the shared content host
+        // re-realizes the DataTemplate FRESH on switch-back — the path the Control.ExpandTemplate reuse guard does
+        // NOT cover. "Payload" avoids the 'T'/header collision (no header starts with 'P').
+        host.Application.Resources[new DataTemplateKey(typeof(PayloadVm))] =
+            new DataTemplate { Content = new FuncTemplateContent(_ => new Label { Content = "Payload" }) };
+
+        var tabs = new TabControl
+        {
+            Width = 40, Height = 12,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        tabs.Items.Add(new TabItem { Header = "First", Content = new PayloadVm { Name = "Payload" } });
+        tabs.Items.Add(new TabItem { Header = "Second", Content = new PayloadVm { Name = "Other" } });
+        host.ShowRoot(tabs);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(DarkText, ForegroundOf(host, "Payload")); // baseline: realized dark
+
+        tabs.SelectedIndex = 1;
+        host.RunUntilIdle();
+        host.Application.RequestedThemeBase = ThemeBase.Light;
+        host.RunUntilIdle();
+        tabs.SelectedIndex = 0;
+        host.RunUntilIdle();
+
+        Assert.Equal(ThemeBase.Light, host.Application.ActualThemeVariant.Base);
+        Assert.Equal(LightText, ForegroundOf(host, "Payload"));
+    }
+
+    private sealed class PayloadVm { public string Name { get; init; } = ""; }
+
     private static Color ForegroundOf(UITestHost host, string text)
     {
         var first = text[0];

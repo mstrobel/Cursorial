@@ -2,6 +2,7 @@ using System.Text;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Input;
 
 // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
@@ -46,6 +47,31 @@ public class TextBox : Control
     public static readonly StyledProperty<IBrush?> SelectionBrushProperty =
         UIProperty.Register<TextBox, IBrush?>(nameof(SelectionBrush), changed: OnSelectionBrushChanged);
 
+    /// <summary>How long lines are laid out: <see cref="WrapMode.NoWrap"/> (horizontal scroll) or
+    /// <see cref="WrapMode.WordWrap"/>/<see cref="WrapMode.CharacterWrap"/> (soft wrap to the field width). With
+    /// <see cref="AcceptsReturn"/> this is the multi-line gate; hard <c>\n</c> breaks are always honored when
+    /// <see cref="AcceptsReturn"/> is set. AffectsMeasure.</summary>
+    public static readonly StyledProperty<WrapMode> TextWrappingProperty =
+        UIProperty.Register<TextBox, WrapMode>(nameof(TextWrapping), defaultValue: WrapMode.NoWrap);
+
+    /// <summary>When <see langword="true"/>, <c>Enter</c> inserts a newline (multi-line editing). When
+    /// <see langword="false"/> (the default), <c>Enter</c> commits and bubbles for IsDefault / form submit (§13).</summary>
+    public static readonly StyledProperty<bool> AcceptsReturnProperty =
+        UIProperty.Register<TextBox, bool>(nameof(AcceptsReturn));
+
+    /// <summary>When <see langword="true"/>, <c>Tab</c> inserts a tab character; otherwise (the default) <c>Tab</c>
+    /// moves focus (§7.7 directional navigation).</summary>
+    public static readonly StyledProperty<bool> AcceptsTabProperty =
+        UIProperty.Register<TextBox, bool>(nameof(AcceptsTab));
+
+    /// <summary>The minimum height the field reserves, in text lines (default 1). AffectsMeasure.</summary>
+    public static readonly StyledProperty<int> MinLinesProperty =
+        UIProperty.Register<TextBox, int>(nameof(MinLines), defaultValue: 1);
+
+    /// <summary>The maximum height before the field scrolls vertically, in text lines (default unbounded). AffectsMeasure.</summary>
+    public static readonly StyledProperty<int> MaxLinesProperty =
+        UIProperty.Register<TextBox, int>(nameof(MaxLines), defaultValue: int.MaxValue);
+
     /// <summary>The bubbling event raised whenever <see cref="Text"/> changes.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> TextChangedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(TextChanged), RoutingStrategy.Bubble, typeof(TextBox));
@@ -62,7 +88,7 @@ public class TextBox : Control
         // :empty is driven directly (PseudoClassMapping only applies on a value CHANGE, never the initial
         // default — and the default Text "" must read as :empty for a never-edited field).
         PseudoClassMapping.Register<TextBox>(IsReadOnlyProperty, ":readonly");
-        AffectsMeasure<TextBox>(TextProperty);
+        AffectsMeasure<TextBox>(TextProperty, TextWrappingProperty, MinLinesProperty, MaxLinesProperty);
     }
 
     /// <summary>Creates a text field (the mouse pointer is an i-beam over its content).</summary>
@@ -86,6 +112,25 @@ public class TextBox : Control
 
     /// <inheritdoc cref="SelectionBrushProperty"/>
     public IBrush? SelectionBrush { get => GetValue(SelectionBrushProperty); set => SetValue(SelectionBrushProperty, value); }
+
+    /// <inheritdoc cref="TextWrappingProperty"/>
+    public WrapMode TextWrapping { get => GetValue(TextWrappingProperty); set => SetValue(TextWrappingProperty, value); }
+
+    /// <inheritdoc cref="AcceptsReturnProperty"/>
+    public bool AcceptsReturn { get => GetValue(AcceptsReturnProperty); set => SetValue(AcceptsReturnProperty, value); }
+
+    /// <inheritdoc cref="AcceptsTabProperty"/>
+    public bool AcceptsTab { get => GetValue(AcceptsTabProperty); set => SetValue(AcceptsTabProperty, value); }
+
+    /// <inheritdoc cref="MinLinesProperty"/>
+    public int MinLines { get => GetValue(MinLinesProperty); set => SetValue(MinLinesProperty, value); }
+
+    /// <inheritdoc cref="MaxLinesProperty"/>
+    public int MaxLines { get => GetValue(MaxLinesProperty); set => SetValue(MaxLinesProperty, value); }
+
+    /// <summary>Whether the field lays out as multi-line: hard newlines accepted, soft wrap, or both.
+    /// Single-line (the default) keeps the existing horizontal-scroll behavior.</summary>
+    internal bool IsMultiLine => AcceptsReturn || TextWrapping != WrapMode.NoWrap;
 
     /// <summary>CLR sugar over <see cref="TextChangedEvent"/>.</summary>
     public event EventHandler<RoutedEventArgs>? TextChanged { add => AddHandler(TextChangedEvent, value!); remove => RemoveHandler(TextChangedEvent, value!); }

@@ -123,4 +123,43 @@ public sealed class WindowActivationFocusTests
         Assert.Null(wm.ActiveWindow);
         Assert.Same(appRoot, host.Application.FocusManager.ActiveRoot); // app root reactivated on deactivation
     }
+
+    [Fact] // user-found: focus a ListBox item (a NESTED focus scope), open a window/dialog then close it — focus must
+           // restore to the ITEM, not the app root's stale DIRECT-scope memory. The items host records the item's
+           // memory, which the root scope does not mirror (the two scope memories are independent); OnWindowDeactivated
+           // captures the live focused element so re-activation is exact.
+    public void DeactivateReactivate_RestoresNestedScopeFocus_NotStaleRootMemory()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        using var scope = host;
+
+        var list = new UIControls.ListBox { ItemsSource = new[] { "a", "b", "c" }, Width = 20, Height = 6 };
+        var other = new UIControls.Button { Content = "Other", Width = 8, Height = 1 };
+        var appRoot = new UIControls.StackPanel();
+        appRoot.Children.Add(list);
+        appRoot.Children.Add(other);
+        host.ShowRoot(appRoot);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        var wm = host.Application.WindowManager!;
+
+        other.Focus();          // seed the app-root scope memory with the WRONG element
+        host.RunUntilIdle();
+
+        var item1 = (UIControls.ListBoxItem) list.ItemContainerGenerator.ContainerFromIndex(1)!;
+        item1.Focus();          // focus a list item — recorded on the items-host nested scope, not the root
+        host.RunUntilIdle();
+        Assert.Same(item1, focus.FocusedElement);
+
+        var dialog = WindowWith(new UIControls.Button { Content = "OK", Width = 6, Height = 1 });
+        dialog.Show(wm);        // deactivates the app root — captures item1 as its exact restore target
+        host.RunUntilIdle();
+        Assert.Same(dialog, wm.ActiveWindow);
+
+        dialog.Close();         // reactivates the app root
+        host.RunUntilIdle();
+
+        Assert.Same(item1, focus.FocusedElement); // restored to the list item, NOT `other` (the root's stale memory)
+    }
 }

@@ -130,13 +130,13 @@ internal static class CursorialBarsTheme
                 return border;
             }));
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
-        // Keyboard-only focus look (:focus-visible — never on pointer focus). The Inverse text attribute is the
-        // no-color cue: when the focus brushes collapse to Default under .caps-nocolor, the chevron still reverse-
-        // videos so keyboard focus stays visible.
+        // Keyboard-only focus look (:focus-visible — never on pointer focus): the focus brush-pair fill only.
+        // The no-color cue is NOT hand-rolled here (inverse video belongs only to .caps-nocolor) — the chevron is a
+        // plain Button, so the shared `.caps-nocolor Button:focus` reverse-video layer (CapsNoColorInteractiveInverse)
+        // already covers it. Setting Inverse here too would double-invert over the focus fill under color.
         theme.Children.Add(new Style("^:focus-visible")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .Set(TextElement.TextAttributesProperty, TextAttributes.Inverse));
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         theme.Children.Add(new Style("^:pressed")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));

@@ -88,6 +88,27 @@ public abstract partial class UIElement : UIObject
     /// <summary>The element's visual children in physical order — the base paint order.</summary>
     protected IReadOnlyList<UIElement> VisualChildren => _visualChildren ?? (IReadOnlyList<UIElement>)NoChildren;
 
+    /// <summary>
+    /// The number of visual children — the public, allocation-free, read-only visual-tree accessor
+    /// (the WPF <c>VisualChildrenCount</c> analog; pairs with <see cref="GetVisualChild"/>). Cross-assembly
+    /// consumers iterate the visual tree through this pair rather than the mutable internal list.
+    /// </summary>
+    public int VisualChildrenCount => _visualChildren?.Count ?? 0;
+
+    /// <summary>
+    /// Gets the visual child at <paramref name="index"/> in physical (paint) order — the WPF
+    /// <c>GetVisualChild</c> analog (pairs with <see cref="VisualChildrenCount"/>).
+    /// </summary>
+    /// <param name="index">A zero-based index in <c>[0, <see cref="VisualChildrenCount"/>)</c>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the valid range.</exception>
+    public UIElement GetVisualChild(int index)
+    {
+        var children = _visualChildren;
+        if (children is null || (uint)index >= (uint)children.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        return children[index];
+    }
+
     /// <summary>The visual-children list for internal allocation-free iteration (may be null).</summary>
     internal List<UIElement>? VisualChildrenList => _visualChildren;
 

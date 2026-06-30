@@ -188,9 +188,10 @@ public sealed class Phase2EndToEndTests
         host.RunFrame();
         Assert.Same(right, focus.FocusedElement); // backward wrap: L → R (root memory records R)
 
-        // The restore leg: physical focus moves into the scope, then the window deactivates and
-        // re-activates. Restore consults the ROOT scope's memory — R, not the inner-scope S2 —
-        // and the inner scope's memory survives the round trip.
+        // The restore leg: physical focus moves into the inner scope, then the window deactivates and re-activates.
+        // The window REMEMBERS THE EXACT FOCUSED ELEMENT (captured at deactivation — WPF-shaped, N116 "restore to the
+        // focused element"): re-activation restores S2 ITSELF, not a root-scope tab stop, even though S2 lives in a
+        // NESTED scope whose memory the root scope does not mirror. The inner scope's own memory also survives.
         host.SendKey(Key.Tab); // R → wraps to L
         host.RunFrame();
         host.SendKey(Key.Tab); // L → Once entry → S2
@@ -203,7 +204,7 @@ public sealed class Phase2EndToEndTests
 
         focus.OnWindowActivated(root);
         Assert.Same(root, focus.ActiveRoot);
-        Assert.Same(left, focus.FocusedElement);                   // root memory = L (last root-scope stop)
+        Assert.Same(s2, focus.FocusedElement);                     // restored to the EXACT focused element (deactivation-captured)
         Assert.Same(s2, FocusManager.GetFocusedElement(scope));    // inner memory intact for the next entry
     }
 

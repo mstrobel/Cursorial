@@ -26,6 +26,11 @@ public sealed class FocusManager
     private readonly FocusNavigator _navigator = new();
     private readonly List<UIElement> _oldChainScratch = [];
     private readonly List<UIElement> _newChainScratch = [];
+
+    // Reused, caller-owned (never pooled, never stamped — RoutedEventArgs §) args for the app-level
+    // FocusedElementChanged raise, so the focus-commit path stays zero-alloc (ND25). Handlers must not retain it past
+    // the raise, and should re-read live state rather than the args (a re-entrant focus change reuses this instance).
+    private readonly FocusChangedEventArgs _focusedElementChangedArgs = new();
     private int _transitionDepth;
 
     // The root awaiting a deferred first-focus: set by OnWindowActivated when activation could not
@@ -42,6 +47,9 @@ public sealed class FocusManager
     
     /// <summary>Internal shortcut to the current application's <see cref="FocusManager"/>.</summary>
     internal static FocusManager? Current => UIApplication.Current?.FocusManager;
+
+    /// <summary>Raised when the currently focused element changes.</summary>
+    public event EventHandler<FocusChangedEventArgs>? FocusedElementChanged;
 
     internal FocusManager(UIDispatcher dispatcher, InteractionStateService interactions)
     {
@@ -191,8 +199,15 @@ public sealed class FocusManager
             return;
         if (FindReturningScope(target) is not {} scope)
             return;
-        if (oldFocus is not null && ReferenceEquals(FindReturningScope(oldFocus), scope))
-            return; // intra-scope move — keep the entry record (and the captured return scope)
+        // Intra-scope move — keep the entry record (and the captured return scope). "Within the scope" is two cases:
+        // (a) oldFocus's own non-retaining scope IS this scope (the logical-walk reaches the toolbar — covers a row OR
+        // overflow-popup item); (b) oldFocus sits behind a NESTED retaining barrier inside this scope (the overflow
+        // chevron is its own focus scope, so FindReturningScope stops at it and never reaches the toolbar) — the visual
+        // containment test catches it. Without (b), arrowing chevron→button would re-capture the chevron as the return
+        // target, and Escape would land on the chevron instead of the outer (pre-entry) scope.
+        if (oldFocus is not null
+            && (ReferenceEquals(FindReturningScope(oldFocus), scope) || scope.IsAncestorOf(oldFocus)))
+            return;
 
         scope.SetValue(RetainedReturnAutoProperty,
             method is FocusNavigationMethod.Pointer or FocusNavigationMethod.AccessKey);
@@ -470,6 +485,16 @@ public sealed class FocusManager
         ArgumentNullException.ThrowIfNull(windowRoot);
         _dispatcher.VerifyAccess();
 
+        // Remember EXACTLY where focus was, so re-activation (a closing modal dialog handing back, an alt-tab) returns
+        // to the live focused element even when it sits in a NESTED focus scope — a ListBox items host records the
+        // focused item on ITS OWN memory, which the window-root scope does not mirror (nearest-scope recording — the
+        // outer and inner scope memories are independent). Without this, the root's memory is the last element focused
+        // DIRECTLY in the root scope (e.g. an expander focused before diving into the list), and re-activation would
+        // restore THAT, not the deep item. The memory is a leaf, so OnWindowActivated's restore (and any scope-entry
+        // resolution) returns it directly — no drill, no loop. Only when focus is genuinely inside this root.
+        if (FocusedElement is {} focused && !ReferenceEquals(focused, windowRoot) && windowRoot.IsAncestorOf(focused))
+            SetFocusedElement(windowRoot, focused);
+
         if (ReferenceEquals(ActiveRoot, windowRoot))
             ActiveRoot = null;
 
@@ -646,6 +671,7 @@ public sealed class FocusManager
         try
         {
             var oldFocus = FocusedElement;
+
             FocusedElement = target; // state before events (doc §7.7)
 
             // ReSharper disable once UnusedVariable
@@ -673,11 +699,26 @@ public sealed class FocusManager
             // while IsFocused == false (N210).
             if (target is not null && ReferenceEquals(FocusedElement, target))
                 RaiseFocusChanged(UIElement.GotFocusEvent, target, oldFocus, target, method);
+
+            // App-level focus-changed signal — raised after the routed Lost/GotFocus, reflecting the committed
+            // transition. Skipped when a handler's nested transition already superseded this one (the nested raise
+            // covered the final state) — the ND31 guard applied to this signal too.
+            if (ReferenceEquals(FocusedElement, target))
+                RaiseFocusedElementChanged(oldFocus, target, method);
         }
         finally
         {
             _transitionDepth--;
         }
+    }
+
+    private void RaiseFocusedElementChanged(UIElement? oldFocus, UIElement? newFocus, FocusNavigationMethod method)
+    {
+        if (FocusedElementChanged is not {} handler)
+            return;
+
+        _focusedElementChangedArgs.InitializeFocus(oldFocus, newFocus, method);
+        handler(this, _focusedElementChangedArgs);
     }
 
     private void CommitFocusState(UIElement? oldFocus, UIElement? newFocus, bool focusVisible)
@@ -735,7 +776,7 @@ public sealed class FocusManager
             chain.Add(node);
     }
 
-    private static void RaiseFocusChanged(
+    private void RaiseFocusChanged(
         RoutedEvent<FocusChangedEventArgs> routedEvent,
         UIElement target,
         UIElement? oldFocus,
@@ -749,6 +790,9 @@ public sealed class FocusManager
         try
         {
             EventRouting.Raise(target, args);
+            
+            if (FocusedElementChanged is {} handler)
+                handler(this, args);
         }
         finally
         {

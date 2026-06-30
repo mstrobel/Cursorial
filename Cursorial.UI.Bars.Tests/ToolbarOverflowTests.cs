@@ -4,6 +4,7 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
@@ -281,5 +282,128 @@ public sealed class ToolbarOverflowTests
             host.SendResize(w, 6);
             Assert.True(host.RunUntilIdle(), $"width {w} must converge");
         }
+    }
+
+    // ───────────────────────── P2b: chevron / overflow-popup keyboard navigation (#124) ─────────────────────────
+
+    [Fact] // Down on the focused chevron opens the overflow popup AND moves focus into the band (the chevron is a
+           // drop-opener — Down enters rather than parking on the chevron).
+    public void ChevronDown_OpensAndEntersOverflow()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.RunUntilIdle();
+        Assert.Same(chevron, host.Application.FocusManager.FocusedElement);
+
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.True(toolbar.IsOverflowOpen);                                  // opened
+        Assert.True(toolbar.OverflowHostForTests!.IsKeyboardFocusWithin);     // focus moved INTO the band
+        Assert.NotSame(chevron, host.Application.FocusManager.FocusedElement);
+    }
+
+    [Fact] // Enter on the chevron (its Click) opens-and-enters identically — a drop-opener activation enters the band.
+    public void ChevronActivate_OpensAndEntersOverflow()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Enter); // ButtonBase activates on key-down → Click → OnChevronClick → open + enter
+        host.RunUntilIdle();
+
+        Assert.True(toolbar.IsOverflowOpen);
+        Assert.True(toolbar.OverflowHostForTests!.IsKeyboardFocusWithin);
+    }
+
+    [Fact] // Up from the FIRST overflowed item steps back to the chevron (the popup stays open — the closer only fires
+           // once focus leaves the chevron too).
+    public void UpFromFirstOverflowItem_StepsBackToChevron()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.SendKey(Key.DownArrow);     // open + enter onto the first overflow item
+        host.RunUntilIdle();
+        Assert.True(toolbar.OverflowHostForTests!.IsKeyboardFocusWithin);
+
+        host.SendKey(Key.UpArrow);       // from the first item, Up returns to the chevron
+        host.RunUntilIdle();
+
+        Assert.Same(chevron, host.Application.FocusManager.FocusedElement);
+        Assert.True(toolbar.IsOverflowOpen); // still open (focus is on the chevron, not gone from both)
+    }
+
+    [Fact] // the overflow popup closes once keyboard focus leaves BOTH the chevron and the band (focus to a row button).
+    public void FocusLeavesChevronAndBand_ClosesPopup()
+    {
+        using var host = NewHost(width: 14);
+        var cut = Btn("Cut");
+        var toolbar = NewToolbar(cut, Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.SendKey(Key.DownArrow);     // open + enter
+        host.RunUntilIdle();
+        Assert.True(toolbar.IsOverflowOpen);
+
+        cut.Focus();                     // a row button — focus leaves both the chevron and the band
+        host.RunUntilIdle();
+        Assert.False(toolbar.IsOverflowOpen); // the closer shuts the popup
+    }
+
+    [Fact] // P2b (#124, user-found): arrow to the chevron then BACK to a bar button, then Escape — focus must return to
+           // the ORIGIN, not the chevron. Re-entering the toolbar scope from the chevron (a NESTED retaining barrier
+           // scope) must not re-capture the chevron as the return target (the MarkReturnableEntry containment fix).
+    public void ArrowToChevronThenBackToButton_Escape_ReturnsToOrigin()
+    {
+        using var host = NewHost(width: 14, height: 8);
+        var cut = Btn("Cut");
+        var toolbar = NewToolbar(cut, Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        var editor = new Button { Content = "Editor" };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(toolbar); // row 0 (the overflow popup drops below)
+        root.Children.Add(editor);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+
+        var focus = host.Application.FocusManager;
+        var chevron = toolbar.OverflowToggleForTests!;
+
+        editor.Focus();                                   // the origin (root scope memory = editor)
+        cut.Focus(FocusNavigationMethod.Tab);             // Tab INTO the bar — captures editor's scope as the return
+        host.RunUntilIdle();
+        Assert.Same(cut, focus.FocusedElement);
+
+        chevron.Focus(FocusNavigationMethod.Directional); // arrow to the chevron (a nested barrier scope)
+        host.RunUntilIdle();
+        Assert.Same(chevron, focus.FocusedElement);
+
+        cut.Focus(FocusNavigationMethod.Directional);     // arrow BACK to a button — must NOT re-capture the chevron
+        host.RunUntilIdle();
+        Assert.Same(cut, focus.FocusedElement);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.Same(editor, focus.FocusedElement);        // returned to the origin, NOT the chevron
     }
 }

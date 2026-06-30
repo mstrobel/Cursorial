@@ -51,6 +51,13 @@ public class Toolbar : ItemsControl
     private Popup? _popup;
     private Panel? _overflowHost;
 
+    // The popup surface may not be built the instant IsOverflowOpen flips (a topology-locked open defers); when an
+    // open-and-enter can't focus the first item yet, this parks the focus-into for Popup.Opened to complete.
+    private bool _pendingEnterOverflow;
+
+    internal Button? OverflowToggleForTests => _chevron;
+    internal Panel? OverflowHostForTests => _overflowHost;
+
     static Toolbar()
     {
         Control.ThemeProperty.OverrideDefaultValue<Toolbar>(CursorialBarsTheme.ToolbarStyle());
@@ -135,7 +142,10 @@ public class Toolbar : ItemsControl
         if (_chevron is not null)
             _chevron.Click -= OnChevronClick;
         if (_popup is not null)
+        {
             _popup.Closed -= OnPopupClosed;
+            _popup.Opened -= OnPopupOpened;
+        }
 
         _chevron = GetTemplatePart<Button>(PartOverflowToggle);
         _popup = GetTemplatePart<Popup>(PartOverflowPopup);
@@ -169,12 +179,65 @@ public class Toolbar : ItemsControl
             _popup.KeepOpenOnAnchorPress = true; // a chevron press closes via its Click, not dismiss-then-reopen
             _popup.Closed -= OnPopupClosed;
             _popup.Closed += OnPopupClosed;
+            _popup.Opened -= OnPopupOpened;
+            _popup.Opened += OnPopupOpened;
             _popup.SetCurrentValue(Popup.IsOpenProperty, IsOverflowOpen);
         }
     }
 
     private void OnChevronClick(object? sender, ClickEventArgs e)
-        => SetCurrentValue(IsOverflowOpenProperty, !IsOverflowOpen);
+    {
+        if (IsOverflowOpen)
+            SetCurrentValue(IsOverflowOpenProperty, false); // a second activation toggles it shut
+        else
+            OpenAndEnterOverflow();
+    }
+
+    // Open the popup (if closed) and move keyboard focus into it — the chevron is a drop-opener, so activating it
+    // (Space/Enter via Click, or Down via OnKeyDown) enters the band rather than parking focus on the chevron. The
+    // focus move also keeps a pointer-click from tripping the toolbar's auto-return (focus changed ⇒ no yank).
+    private void OpenAndEnterOverflow()
+    {
+        if (!IsOverflowOpen)
+            SetCurrentValue(IsOverflowOpenProperty, true);
+
+        if (!FocusFirstOverflowItem())
+            _pendingEnterOverflow = true; // surface not built yet (deferred/locked open) — complete on Popup.Opened
+    }
+
+    private bool FocusFirstOverflowItem()
+        => FirstOverflowFocusable() is { } first && first.Focus(FocusNavigationMethod.Directional);
+
+    private UIElement? FirstOverflowFocusable()
+    {
+        if (_overflowHost is not { } host)
+            return null;
+
+        for (var i = 0; i < host.VisualChildrenCount; i++)
+            if (host.GetVisualChild(i) is { Focusable: true, IsEffectivelyVisible: true, IsEffectivelyEnabled: true } item)
+                return item;
+
+        return null;
+    }
+
+    private void OnPopupOpened(object? sender, EventArgs e)
+    {
+        if (!_pendingEnterOverflow)
+            return;
+
+        _pendingEnterOverflow = false;
+        FocusFirstOverflowItem();
+    }
+
+    // The overflow popup stays open while keyboard focus is on the chevron OR inside the band; it closes once focus
+    // has left BOTH. Subscribed to FocusManager.FocusedElementChanged only while open (OnIsOverflowOpenChanged).
+    private void OnFocusChanged(object? sender, FocusChangedEventArgs e)
+    {
+        if (IsOverflowOpen
+            && _chevron?.IsKeyboardFocusWithin != true
+            && _overflowHost?.IsKeyboardFocusWithin != true)
+            SetCurrentValue(IsOverflowOpenProperty, false);
+    }
 
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
     {
@@ -183,7 +246,21 @@ public class Toolbar : ItemsControl
     }
 
     private static void OnIsOverflowOpenChanged(UIObject sender, bool oldValue, bool newValue)
-        => ((Toolbar) sender)._popup?.SetCurrentValue(Popup.IsOpenProperty, newValue);
+    {
+        var toolbar = (Toolbar) sender;
+        toolbar._popup?.SetCurrentValue(Popup.IsOpenProperty, newValue);
+
+        // The focus-leaves-both closer watches focus only while the popup is open (subscribe on open, drop on close).
+        if (UIApplication.Current?.FocusManager is { } focus)
+        {
+            focus.FocusedElementChanged -= toolbar.OnFocusChanged;
+            if (newValue)
+                focus.FocusedElementChanged += toolbar.OnFocusChanged;
+        }
+
+        if (!newValue)
+            toolbar._pendingEnterOverflow = false;
+    }
 
     private static void OnOverflowModeChanged(UIObject sender, ToolbarOverflowMode oldValue, ToolbarOverflowMode newValue)
     {
@@ -204,17 +281,36 @@ public class Toolbar : ItemsControl
     {
         base.OnKeyDown(e);
 
-        // Escape from keyboard navigation within the bar returns focus to where it came from (the RetainsFocus
-        // return). Only when UNHANDLED — an open dropdown/popup consumes its own Escape first on its surface, so a
-        // reaching Escape means focus is in the bar (row or chevron). Resolve the return through the TOOLBAR, not the
-        // focused element: the focused element may be the overflow chevron, which is itself a retaining focus scope
-        // (a FindReturningScope barrier so opening the popup doesn't yank focus) — starting the walk there would stop
-        // at the chevron and never return. The toolbar IS the non-retaining scope, so this reaches the outer scope's
-        // logical focus from any bar element, the chevron included.
-        if (e.Handled || e.Key != Key.Escape)
+        if (e.Handled || UIApplication.Current?.FocusManager is not {} focus)
             return;
 
-        if (UIApplication.Current?.FocusManager is {} focus && focus.RestoreRetainedFocus(this))
+        // Down on the focused chevron opens the overflow popup AND enters it. (Space/Enter enter via the chevron's
+        // Click → OnChevronClick; Down is not a button activation, so the toolbar drives it.) An overflow item's
+        // KeyDown reaches us because the overflowed controls stay LOGICAL children of the toolbar — the popup's
+        // surface route crosses back through the logical parent.
+        if (e.Key == Key.DownArrow && _chevron is not null && ReferenceEquals(focus.FocusedElement, _chevron))
+        {
+            OpenAndEnterOverflow();
+            e.Handled = true;
+            return;
+        }
+
+        // Up from the FIRST overflowed item steps back to the chevron (the popup stays open — the focus-leaves-both
+        // closer only fires once focus leaves the chevron too). Intra-band Up/Down is the band's own Cycle nav.
+        if (e.Key == Key.UpArrow && _chevron is not null && _overflowHost is { IsKeyboardFocusWithin: true }
+            && ReferenceEquals(focus.FocusedElement, FirstOverflowFocusable()))
+        {
+            _chevron.Focus(FocusNavigationMethod.Directional);
+            e.Handled = true;
+            return;
+        }
+
+        // Escape returns focus to where it came from (the RetainsFocus return). Resolve the return through the
+        // TOOLBAR, not the focused element: the focused element may be the chevron, itself a retaining focus scope
+        // (a FindReturningScope barrier so opening the popup doesn't yank focus) — walking from it would stop there
+        // and never return. The toolbar IS the non-retaining scope, so this reaches the outer scope's logical focus
+        // from any bar element, the chevron included. Only when UNHANDLED (an open dropdown consumes Escape first).
+        if (e.Key == Key.Escape && focus.RestoreRetainedFocus(this))
             e.Handled = true;
     }
 
@@ -228,6 +324,7 @@ public class Toolbar : ItemsControl
         {
             _popup.SetCurrentValue(Popup.IsOpenProperty, false);
             _popup.Closed -= OnPopupClosed;
+            _popup.Opened -= OnPopupOpened;
         }
         if (_chevron is not null)
             _chevron.Click -= OnChevronClick;

@@ -231,6 +231,8 @@ public static class CursorialTheme
         Alias(ThemeKeys.TabForegroundSelected, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TabForegroundHover, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TabBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.TabForegroundFocused, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.TabBackgroundFocused, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.TabBackgroundSelected, ThemeKeys.SurfaceBrush);
         Alias(ThemeKeys.TabForegroundDisabled, ThemeKeys.MutedBrush);
         Alias(ThemeKeys.TabControlBorderPen, ThemeKeys.BorderPen);

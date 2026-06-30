@@ -781,6 +781,10 @@ internal static class ControlThemes
                         .SetResource(Panel.BackgroundProperty, ThemeKeys.TabBackgroundSelected) // --surface fill
                         .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundSelected),  // --text ink
 
+                    new Style(Selectors.Nesting().PseudoClass(":focus").Template().Name("PART_HeaderSite"))
+                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundFocused)
+                       .SetResource(Panel.BackgroundProperty, ThemeKeys.TabBackgroundFocused),
+
                     new Style(Selectors.Nesting().PseudoClass(":disabled").Template().Name("PART_HeaderSite"))
                         .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundDisabled)
                 }

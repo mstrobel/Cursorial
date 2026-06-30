@@ -338,6 +338,10 @@ public static class ThemeKeys
     public const string TabForegroundHover = "Theme.TabForegroundHover";
     /// <summary>Hovered tab fill (--hover).</summary>
     public const string TabBackgroundHover = "Theme.TabBackgroundHover";
+    /// <summary>Focused tab foreground.</summary>
+    public const string TabForegroundFocused = "Theme.TabForegroundFocused";
+    /// <summary>Focuseded tab fill (--focused).</summary>
+    public const string TabBackgroundFocused = "Theme.TabBackgroundFocused";
     /// <summary>Selected/active tab fill (--surface).</summary>
     public const string TabBackgroundSelected = "Theme.TabBackgroundSelected";
     /// <summary>The active tab's accent underline rule — a Heavy <c>--accent</c> pen (the gallery "active tab marked by accent bar (━ cells)").</summary>

@@ -73,6 +73,7 @@ internal static class ControlThemes
         dict[typeof(TextBox)] = TextBoxTheme();
         dict[typeof(PasswordBox)] = TextBoxTheme(); // a masked TextBox — same PART_TextPresenter chrome (the presenter masks)
         dict[typeof(Image)] = ImageTheme();
+        dict[typeof(Icon)] = IconTheme();
         dict[typeof(Chart)] = ChartTheme();
         dict[typeof(Window)] = WindowTheme();
     }
@@ -536,6 +537,20 @@ internal static class ControlThemes
 
     private static Style ImageTheme()
         => new Style { Key = "Theme.Image" }.Set(Control.TemplateProperty, ImageTemplate());
+
+    // A tiered Icon: a ContentPresenter renders the control's resolved tier (a glyph/text string, or a hosted
+    // ImagePresenter). The Icon itself picks the tier (Glyph/Image/Text) from the terminal's capabilities; the
+    // presenter just shows the result and inherits the icon's Foreground for the glyph/text tiers.
+    private static ControlTemplate IconTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter();
+        presenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(Icon.ResolvedContentProperty));
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        return presenter;
+    });
+
+    private static Style IconTheme()
+        => new Style { Key = "Theme.Icon" }.Set(Control.TemplateProperty, IconTemplate());
 
     // A Chart: its template hosts a PART_ChartPresenter with Source/placeholder one-way TemplateBound from the control.
     // The presenter draws the cell-rendered chart (or the placeholder when none is set).

@@ -1579,9 +1579,13 @@ internal sealed class XamlObjectGraphBuilder
         if (colon >= 0)
             name = name.Substring(colon + 1);
 
-        var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, name);
+        // Resolve in markup-extension position: prefer the WPF "Extension"-suffixed type so a `{Foo}` whose suffixed
+        // twin `FooExtension` exists binds the extension even when a same-named non-extension type (e.g. an `Icon`
+        // CONTROL alongside `IconExtension`) is also addressable. Fall back to the bare name for extensions authored
+        // without the suffix; a bare name resolving to a non-MarkupExtension surfaces a clear diagnostic in ActivateCustomExtension.
+        var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, name + "Extension");
         if (!resolution.IsResolved)
-            resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, name + "Extension");
+            resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, name);
         if (resolution.IsResolved)
             return resolution.Type!;
 

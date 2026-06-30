@@ -258,8 +258,13 @@ public sealed partial class UIApplication : IAsyncDisposable
                 return;
             _nerdFontAvailable = value;
             StyleEngineInternal.RestampCapabilityClasses();
+            NerdFontAvailableChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>Raised on the UI thread when <see cref="NerdFontAvailable"/> flips (so capability-tiered visuals
+    /// such as <see cref="Controls.Icon"/> can re-resolve their rendered tier live).</summary>
+    public event EventHandler? NerdFontAvailableChanged;
 
     /// <summary>The last frame's timestamp (UI-thread read).</summary>
     public FrameTime CurrentFrameTime => _currentFrameTime;

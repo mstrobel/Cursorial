@@ -257,4 +257,21 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         Assert.IsNotType<ResourceReference>(button.Background);
         Assert.IsType<TestBrush>(button.Background);
     }
+
+    [Fact] // {Icon …} resolves to IconExtension (not the Icon CONTROL) and yields a populated Icon as content
+    public void IconExtension_AsContent_YieldsIcon()
+    {
+        var button = Load<UIControls.Button>("<Button Content=\"{Icon Glyph=G, Text=T}\"/>");
+        var icon = Assert.IsType<UIControls.Icon>(button.Content);
+        Assert.Equal("G", icon.Glyph);
+        Assert.Equal("T", icon.Text);
+    }
+
+    [Fact] // the <Icon …/> element form also resolves (the same control, addressed as an element)
+    public void Icon_AsElement_Resolves()
+    {
+        var icon = Load<UIControls.Icon>("<Icon Glyph=\"G\" Text=\"T\"/>");
+        Assert.Equal("G", icon.Glyph);
+        Assert.Equal("T", icon.Text);
+    }
 }

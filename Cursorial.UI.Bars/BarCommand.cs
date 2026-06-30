@@ -55,7 +55,13 @@ public class BarCommand : ICommand
     /// <inheritdoc/>
     public void Execute(object? parameter)
     {
-        if (CanExecute(parameter))
-            _execute(parameter);
+        if (!CanExecute(parameter))
+            return;
+
+        _execute(parameter);
+
+        // Re-query after running (WPF CommandManager-like), so a checkable parameter's new state — toggled inside
+        // Execute — re-syncs every bound control's checked/enabled visual without the author raising it by hand.
+        RaiseCanExecuteChanged();
     }
 }

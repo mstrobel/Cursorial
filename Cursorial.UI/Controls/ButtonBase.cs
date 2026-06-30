@@ -263,7 +263,21 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
             command.CanExecuteChanged -= OnCanExecuteChanged;
     }
 
-    private void OnCanExecuteChanged(object? sender, EventArgs e) => InvalidateIsEnabledCore();
+    private void OnCanExecuteChanged(object? sender, EventArgs e)
+    {
+        InvalidateIsEnabledCore();
+        OnCommandStateChanged();
+    }
+
+    /// <summary>
+    /// Called whenever the command's effective state may have changed — its <c>CanExecuteChanged</c> fired, or the
+    /// <see cref="Command"/>/<see cref="CommandParameter"/> itself changed. A no-op here; a derived control overrides
+    /// it to reflect command-owned state that rides the same re-query (e.g. a toggle pulling its checked state from
+    /// an <c>ICheckableCommandParameter</c>), so a single <c>CanExecuteChanged</c> updates both enabled and checked.
+    /// </summary>
+    protected virtual void OnCommandStateChanged()
+    {
+    }
 
     private static void OnCommandChanged(UIObject sender, ICommand? oldValue, ICommand? newValue)
     {
@@ -277,12 +291,16 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
             @new.CanExecuteChanged += button.OnCanExecuteChanged;
 
         button.InvalidateIsEnabledCore();
+        button.OnCommandStateChanged();
     }
 
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)
     {
         if (sender is ButtonBase button)
+        {
             button.InvalidateIsEnabledCore();
+            button.OnCommandStateChanged();
+        }
     }
 
     // ───────────────────────────── helpers ─────────────────────────────

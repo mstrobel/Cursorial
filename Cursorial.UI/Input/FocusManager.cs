@@ -313,10 +313,19 @@ public sealed class FocusManager
     /// wraps within <paramref name="from"/>'s tab container. Null when nothing is reachable. Never
     /// moves focus.
     /// </summary>
-    public UIElement? FindNext(UIElement from)
+    /// <param name="from">The element to start the search from.</param>
+    /// <param name="direction">
+    /// If non-null, the direction to search in for directional navigation. If null, the search assumes
+    /// tab navigation.
+    /// </param>
+    public UIElement? FindNext(UIElement from, FocusNavigationDirection? direction = null)
     {
         ArgumentNullException.ThrowIfNull(from);
         _dispatcher.VerifyAccess();
+
+        if (direction is {} d)
+            return _navigator.NextDirectional(from, d);
+
         return _navigator.NextTabStop(from, forward: true);
     }
 

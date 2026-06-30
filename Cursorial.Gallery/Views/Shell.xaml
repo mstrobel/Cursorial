@@ -234,7 +234,7 @@
           <!-- The Toolbar (Surface A): one BarCommand set, define-once. Docked top so it stretches to the page width
                and overflows as the window narrows. "Settings" is pinned to the overflow popup (OverflowMode=Always). -->
           <bars:Toolbar DockPanel.Dock="Top" Margin="2,1">
-            <bars:BarLabel Content="Edit:" />
+            <bars:BarLabel Content="_Edit:" />
             <bars:BarButton Command="{Binding Cut}" />
             <bars:BarButton Command="{Binding Copy}" />
             <bars:BarButton Command="{Binding Paste}" />

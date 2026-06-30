@@ -1,13 +1,15 @@
 using Cursorial.Tests.UI.InputMatrix;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Input;
 
 /// <summary>
-/// <see cref="FocusManager.FindNext"/> (design-doc punch 23 — the Label-targeting query): a pure
-/// tab-order lookup anchored at any element, focusable or not. No matrix rows exist for it; these
-/// are the API's unit tests.
+/// <see cref="FocusManager.FindNext"/> (design-doc punch 23 — the Label-targeting query): a pure lookup anchored at
+/// any element, focusable or not. With no <c>direction</c> it is a tab-order walk (matrix N221/N226); with a
+/// <see cref="FocusNavigationDirection"/> it routes through the geometric directional scorer (<c>NextDirectional</c>)
+/// — the <c>BarLabel</c> mnemonic-forwarding path (N228). These are the API's unit tests.
 /// </summary>
 public class FocusManagerFindNextTests
 {
@@ -87,5 +89,42 @@ public class FocusManagerFindNextTests
         host.ShowRoot(root);
 
         Assert.Null(host.Application.FocusManager.FindNext(label));
+    }
+
+    [Fact] // the directional overload routes through NextDirectional (geometry), distinct from the tab-order default
+    public void FindNext_DirectionalRight_ReturnsRightwardNeighbor_AndNullMatchesTabForm()
+    {
+        using var host = UITestHost.Create();
+        var b1 = new Button { Content = "B1", Width = 6, Height = 1 };
+        var b2 = new Button { Content = "B2", Width = 6, Height = 1 };
+        var b3 = new Button { Content = "B3", Width = 6, Height = 1 };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        KeyboardNavigation.SetDirectionalNavigation(row, DirectionalNavigationMode.Cycle);
+        row.Children.Add(b1);
+        row.Children.Add(b2);
+        row.Children.Add(b3);
+        host.ShowRoot(row);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        Assert.Same(b2, focus.FindNext(b1, FocusNavigationDirection.Right)); // geometry: the rightward neighbor
+        Assert.Same(focus.FindNext(b1), focus.FindNext(b1, direction: null)); // null direction == the tab-order form
+    }
+
+    [Fact] // the fork: with NO DirectionalNavigation container the directional form returns null where tab finds a stop
+    public void FindNext_DirectionalRight_NoContainer_ReturnsNull_WhileTabFindsStop()
+    {
+        using var host = UITestHost.Create();
+        var b1 = new Button { Content = "B1", Width = 6, Height = 1 };
+        var b2 = new Button { Content = "B2", Width = 6, Height = 1 };
+        var row = new StackPanel { Orientation = Orientation.Horizontal }; // DirectionalNavigation defaults to None
+        row.Children.Add(b1);
+        row.Children.Add(b2);
+        host.ShowRoot(row);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        Assert.Null(focus.FindNext(b1, FocusNavigationDirection.Right)); // no directional container ⇒ null (opt-in, N135)
+        Assert.Same(b2, focus.FindNext(b1));                            // tab order still finds the next stop
     }
 }

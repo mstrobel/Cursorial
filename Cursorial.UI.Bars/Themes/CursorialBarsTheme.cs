@@ -104,7 +104,7 @@ internal static class CursorialBarsTheme
             {
                 var border = new Border();
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-                var label = new ContentPresenter(); // auto-aliases the caption Content
+                var label = new ContentPresenter { RecognizesAccessKey = true }; // auto-aliases the caption Content
                 label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
                 border.Child = label;
                 return border;

@@ -734,4 +734,34 @@ public class Section08_FocusCore
         host.RunUntilIdle();
         Assert.Same(cancel, focus.FocusedElement); // and the realized subtree is genuinely Tab-navigable
     }
+
+    [Fact] // a RetainsFocus return always restores with the focus-visible ring — even when the bar was invoked by
+           // POINTER. The return is a Restore (not the invoke modality); previously Pointer leaked through and dropped
+           // the ring on a pointer-invoked return while keyboard/access-key kept it.
+    public void RetainedReturn_RestoresWithFocusVisible_EvenAfterPointerEntry()
+    {
+        using var host = UITestHost.Create();
+        var log = new List<string>();
+        var root = new Probe("Root", log);
+        var outer = new Btn("Outer", log);
+        var bar = new Probe("Bar", log);   // a returning (non-retaining) focus scope, like a Toolbar
+        var inner = new Btn("Inner", log);
+        root.AddChild(outer);
+        root.AddChild(bar);
+        bar.AddChild(inner);
+        FocusManager.SetRetainsFocus(bar, false);
+        FocusManager.SetIsFocusScope(bar, true);
+        host.ShowRoot(root);
+        var focus = host.Application.FocusManager;
+
+        outer.Focus(FocusNavigationMethod.Tab);     // the return target — keyboard-focused (focus-visible)
+        Assert.True(HasState(outer, InteractionState.FocusVisible));
+
+        inner.Focus(FocusNavigationMethod.Pointer); // enter the bar by POINTER — arms the auto-return, no ring
+        Assert.False(HasState(inner, InteractionState.FocusVisible));
+
+        Assert.True(focus.TryAutoReturnFocus(inner));                // the invoke return
+        Assert.Same(outer, focus.FocusedElement);
+        Assert.True(HasState(outer, InteractionState.FocusVisible)); // ring restored despite the pointer entry
+    }
 }

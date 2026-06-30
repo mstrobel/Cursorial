@@ -4,6 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
@@ -381,5 +382,80 @@ public sealed class Section18_ListBoxKeyboard
         host.RunUntilIdle();
         Assert.Equal(Math.Max(0, Math.Min(49, 2 * page) - page), lb.SelectedIndex); // a page back up
         Assert.True(IsWithinViewport(scroll, Item(lb, lb.SelectedIndex)));
+    }
+
+    // ───────────────────────────── items host as a focus scope (P1 / ND33) ─────────────────────────────
+
+    // A focusable sibling above the list, so Tab can cross INTO the list from outside it.
+    private static (UITestHost Host, Button Outer, ListBox List) ShowWithOuter(SelectionMode mode = SelectionMode.Single)
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var outer = new Button { Content = "Outer" };
+        var lb = new ListBox { SelectionMode = mode, ItemsSource = new[] { "a", "b", "c", "d" } };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(outer);
+        root.Children.Add(lb);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        return (host, outer, lb);
+    }
+
+    [Fact] // C5.17: the items host remembers the focused item — Tab back in lands there, not item 0
+    public void C5_17_TabIntoList_LandsOnRememberedItem()
+    {
+        var (host, outer, lb) = ShowWithOuter();
+        using var _ = host;
+        Item(lb, 2).Focus();   // focus item 2 → recorded on the items-host focus scope
+        host.RunUntilIdle();
+        outer.Focus();         // leave the list
+        host.RunUntilIdle();
+        Assert.True(outer.IsFocused);
+
+        host.SendKey(Key.Tab); // Tab into the list
+        host.RunUntilIdle();
+        Assert.True(Item(lb, 2).IsFocused);
+    }
+
+    [Fact] // C5.18: a never-focused list with no selection enters at item 0; Tab-in does not select
+    public void C5_18_TabIntoFreshList_LandsOnFirst_NoSelect()
+    {
+        var (host, outer, lb) = ShowWithOuter();
+        using var _ = host;
+        outer.Focus();
+        host.RunUntilIdle();
+        Assert.Equal(-1, lb.SelectedIndex);
+
+        host.SendKey(Key.Tab);
+        host.RunUntilIdle();
+        Assert.True(Item(lb, 0).IsFocused);
+        Assert.Equal(-1, lb.SelectedIndex); // a plain focus move — selection-follows-focus is arrow-only
+    }
+
+    [Fact] // C5.19: a purely programmatic selection primes the items-host memory → Tab-in lands on it
+    public void C5_19_ProgrammaticSelection_PrimesTabInLanding()
+    {
+        var (host, outer, lb) = ShowWithOuter();
+        using var _ = host;
+        outer.Focus();        // the list never holds focus
+        host.RunUntilIdle();
+        lb.SelectedIndex = 2; // programmatic — primes the items-host scope memory
+        host.RunUntilIdle();
+        Assert.True(outer.IsFocused); // priming does not move focus
+
+        host.SendKey(Key.Tab);
+        host.RunUntilIdle();
+        Assert.True(Item(lb, 2).IsFocused);
+    }
+
+    [Fact] // C5.20: the items host is a focus scope (the structural guarantee behind C5.17–C5.19)
+    public void C5_20_ItemsHostIsAFocusScope()
+    {
+        var (host, lb) = Show();
+        using var _ = host;
+
+        var scope = FocusManager.GetFocusScope(Item(lb, 0));
+        Assert.NotNull(scope);
+        Assert.True(FocusManager.GetIsFocusScope(scope!));
+        Assert.IsType<VirtualizingStackPanel>(scope);
     }
 }

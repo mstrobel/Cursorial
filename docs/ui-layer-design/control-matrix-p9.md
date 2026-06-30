@@ -297,6 +297,10 @@ viewport row count) and Ctrl+A select-all — noted for a later pass.
 | C5.14 | Single | keyboard-nav focus vs mouse-click | the keyboard current row renders `:focus-visible` reverse-video, distinct from a mouse-selected row | PIN |
 | C5.15 | Single, ObservableCollection | focus item 1, remove item 0, then Down | lands on the contiguous item (no stale-cursor skip) | PIN (CD-P9-16) |
 | C5.16 | Single, ObservableCollection | focus item 1, insert at 0, then Down | Down still advances by one (no stall) | PIN (CD-P9-16) |
+| C5.17 | item 2 focused, then focus moved OUT of the list | Tab back into the list | lands on item 2 — the items host is a focus scope, so it remembers the focused item (not item 0) | DEV (ND33, CD-P9-27) |
+| C5.18 | fresh list (never focused, no selection) | Tab into the list | lands on item 0 (no memory → first eligible); `SelectedIndex` stays −1 (Tab-in does not run selection-follows-focus) | DEV (ND33, CD-P9-27) |
+| C5.19 | `SelectedIndex` set to 2 programmatically (list never focused) | Tab into the list | lands on item 2 — the programmatic selection primes the items-host scope memory (`PrimeFocusMemoryFromSelection`) | DEV (CD-P9-27) |
+| C5.20 | any | inspect | the ListBox items host is a focus scope: `FocusManager.GetIsFocusScope(host)` and `GetFocusScope(item) == host` | DEV (ND33, CD-P9-27) |
 
 - **CD-P9-16 — the keyboard cursor is the live focused item, not a cached index (P9.3b, audit).** `ListBox.OnKeyDown`
   resolves the "current" item by walking up from the routed event's `OriginalSource` to the owning container — so it
@@ -304,6 +308,17 @@ viewport row count) and Ctrl+A select-all — noted for a later pass.
   it replaced went stale because nothing reindexed it). When focus is outside the items it falls back to the selected
   index, and to −1 (no anchor) when there is none: the first arrow then enters at item 0 (not index 1), and Enter/Space
   no-op rather than phantom-activating index 0. Rows C5.15/C5.16.
+- **CD-P9-27 — the ListBox items host is a focus scope (nav subsystem P1, ND33).** The items host
+  (`VirtualizingStackPanel`, already `TabNavigation=Once`) is marked `FocusManager.IsFocusScope=true`, so focus memory
+  records on the host — the element the `Once` entry ladder reads — and Tab-into the list lands on the
+  selected/last-focused item rather than item 0 (no accidental selection change, since Tab-in is a plain focus move,
+  not selection-follows-focus). A purely programmatic selection (no focus) primes that memory via
+  `SelectingItemsControl.PrimeFocusMemoryFromSelection` (skipped while the list holds keyboard focus, and when the
+  selected container is unrealized). **Interaction (fixed at P1):** because the items host now captures the focused
+  item's memory (not the surface root), a returning-focus bar (`FocusManager.RetainsFocus`) must resolve the scope
+  that ACTUALLY held focus before entry, not the scope enclosing the bar — `MarkReturnableEntry` captures the
+  pre-entry focus scope (`RetainedReturnScopeProperty`) and the return reads ITS logical focus. Rows C5.17–C5.20;
+  bars regression `ToolbarFocusTests.NestedFocusScope_PointerInvoke_ReturnsToTheItemItCameFrom`.
 - **CD-P9-17 — `ItemsPresenter` resolves its owner across hosting boundaries (P9.3c ScrollViewer / P9.4 menu).** A
   content host that adopts the presenter as its `Content` — the ListBox's `ScrollContentPresenter`, or a MenuItem's
   submenu `Popup` — **clears the presenter's `TemplatedParent`**, so relying on `TemplatedParent` alone left it

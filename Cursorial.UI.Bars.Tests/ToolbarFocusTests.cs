@@ -186,4 +186,48 @@ public sealed class ToolbarFocusTests
         h.Host.RunUntilIdle();
         Assert.Same(h.Other, h.Focus.FocusedElement); // stays — the root retains; no return fires
     }
+
+    [Fact] // regression (P1): focus in a NESTED focus scope (a ListBox items host) is the return target, not the
+           // enclosing scope's logical focus — the items host records the focused item, so the return must resolve
+           // the scope that actually held focus, not the surface root's (stale) memory.
+    public void NestedFocusScope_PointerInvoke_ReturnsToTheItemItCameFrom()
+    {
+        var host = UITestHost.Create(new UITestHostOptions
+        {
+            InitialSize = new Size(40, 12),
+            Capabilities = TestCapabilities.KittyTruecolor,
+        });
+        using var _ = host;
+
+        var cut = new BarButton { Content = "Cut" };
+        var toolbar = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        toolbar.Items.Add(cut);
+
+        var list = new ListBox { ItemsSource = new[] { "a", "b", "c" } };
+        var other = new Button { Content = "Other" }; // a root-level control — the (wrong) stale-memory candidate
+
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(toolbar); // row 0
+        root.Children.Add(list);
+        root.Children.Add(other);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        other.Focus();           // seed the surface-root scope memory with the WRONG element
+        host.RunUntilIdle();
+
+        var item1 = (ListBoxItem) list.ItemContainerGenerator.ContainerFromIndex(1)!;
+        item1.Focus();           // focus a list item — memory records on the items-host panel scope, not the root
+        host.RunUntilIdle();
+        Assert.Same(item1, focus.FocusedElement);
+
+        // Click "Cut" at the row's left edge (hover then release-click).
+        host.SendMouseMove(2, 0);
+        host.RunFrame();
+        host.SendClick(2, 0);
+        host.RunUntilIdle();
+
+        Assert.Same(item1, focus.FocusedElement); // returned to the list item, NOT `other` (the root's stale memory)
+    }
 }

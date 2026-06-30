@@ -192,6 +192,24 @@ public abstract class SelectingItemsControl : ItemsControl
     {
         SetAndRaise(SelectedIndexProperty, ref _selectedIndex, _selection.SelectedIndex);
         SetAndRaise(SelectedItemProperty, ref _selectedItem, ItemFromIndex(_selection.SelectedIndex));
+        PrimeFocusMemoryFromSelection();
+    }
+
+    // Seed the items-host focus scope's memory from the (lead) selection so a later Tab-in lands on the selected
+    // item rather than the first (the ND33 entry ladder reads scope memory). Skipped while the list holds keyboard
+    // focus — that memory is live navigation we must not clobber — and when the selected container is not realized
+    // (virtualized off-screen; nothing to point at yet). Re-runs as containers realize (PushSelectedProperties is
+    // called from the generator's Realized path), so a selection set before layout still primes once it materializes.
+    private void PrimeFocusMemoryFromSelection()
+    {
+        if (IsKeyboardFocusWithin || _selection.SelectedIndex < 0)
+            return;
+
+        if (ItemContainerGenerator.ContainerFromIndex(_selection.SelectedIndex) is UIElement container
+            && FocusManager.GetFocusScope(container) is { } scope)
+        {
+            FocusManager.SetFocusedElement(scope, container);
+        }
     }
 
     private void SetContainerSelected(int index, bool selected)

@@ -214,6 +214,10 @@ internal static class ControlThemes
 
                 virtualizingStackPanel.SetValue(KeyboardNavigation.TabNavigationProperty, KeyboardNavigationMode.Once);
 
+                // The items host is a focus scope (ND33): focus memory records HERE — the element the Once entry
+                // ladder reads — so Tab-in lands on the selected/last item, not item 0 (no accidental reselect).
+                virtualizingStackPanel.SetValue(FocusManager.IsFocusScopeProperty, true);
+
                 return virtualizingStackPanel;
             });
     }

@@ -212,7 +212,7 @@ public class Toolbar : ItemsControl
             return;
 
         if (UIApplication.Current?.FocusManager is { FocusedElement: {} focused } focus
-            && focus.RestoreRetainedFocus(focused, FocusNavigationMethod.Restore))
+            && focus.RestoreRetainedFocus(focused))
             e.Handled = true;
     }
 

@@ -278,6 +278,7 @@
   <ItemsPanelTemplate x:Key="VirtualizingItemsPanelTemplate">
     <VirtualizingStackPanel IsItemsHost="True"
                             KeyboardNavigation.TabNavigation="Once"
+                            FocusManager.IsFocusScope="True"
                             IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
                             VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
                             ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
@@ -298,6 +299,7 @@
       <ItemsPanelTemplate>
         <VirtualizingStackPanel IsItemsHost="True"
                                 KeyboardNavigation.TabNavigation="Once"
+                                FocusManager.IsFocusScope="True"
                                 IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
                                 VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
                                 ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
@@ -325,6 +327,7 @@
       <ItemsPanelTemplate>
         <VirtualizingStackPanel IsItemsHost="True"
                                 KeyboardNavigation.TabNavigation="Once"
+                                FocusManager.IsFocusScope="True"
                                 IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
                                 VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
                                 ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>

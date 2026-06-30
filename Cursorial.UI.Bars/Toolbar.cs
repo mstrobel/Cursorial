@@ -1,4 +1,6 @@
+using Cursorial.Input;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Bars;
 
@@ -52,6 +54,17 @@ public class Toolbar : ItemsControl
     static Toolbar()
     {
         Control.ThemeProperty.OverrideDefaultValue<Toolbar>(CursorialBarsTheme.ToolbarStyle());
+
+        // The toolbar is a single Tab stop with arrow navigation WITHIN (the discoverable entry — Tab lands on the
+        // bar, arrows move between its controls and wrap; no obscure focus-the-toolbar shortcut). It does NOT retain
+        // focus (RetainsFocus = false): tabbing in remembers where focus came from, a pointer/access-key invoke
+        // returns there immediately, and Escape returns there from keyboard navigation (see OnKeyDown).
+        KeyboardNavigation.TabNavigationProperty.OverrideDefaultValue<Toolbar>(KeyboardNavigationMode.Once);
+        KeyboardNavigation.DirectionalNavigationProperty.OverrideDefaultValue<Toolbar>(DirectionalNavigationMode.Cycle);
+        FocusManager.RetainsFocusProperty.OverrideDefaultValue<Toolbar>(false);
+        // Its own focus scope, so entering the bar leaves the OUTER scope's logical focus (the editor) untouched —
+        // that preserved element is what a return restores to (see FocusManager.RetainsFocus).
+        FocusManager.IsFocusScopeProperty.OverrideDefaultValue<Toolbar>(true);
     }
 
     /// <inheritdoc cref="IsOverflowOpenProperty"/>
@@ -184,6 +197,23 @@ public class Toolbar : ItemsControl
                 toolbar._panel?.InvalidateFold();
                 return;
             }
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        // Escape from keyboard navigation within the bar returns focus to where it came from (the RetainsFocus
+        // return). Only when UNHANDLED — an open dropdown/popup consumes its own Escape first on its surface, so a
+        // reaching Escape means focus is in the row band. The focused element is a descendant (the event routed up
+        // to us), so RestoreRetainedFocus resolves this toolbar as its retaining scope.
+        if (e.Handled || e.Key != Key.Escape)
+            return;
+
+        if (UIApplication.Current?.FocusManager is { FocusedElement: {} focused } focus
+            && focus.RestoreRetainedFocus(focused, FocusNavigationMethod.Restore))
+            e.Handled = true;
     }
 
     /// <inheritdoc/>

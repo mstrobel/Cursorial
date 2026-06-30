@@ -2,6 +2,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Bars;
@@ -160,6 +161,10 @@ internal static class CursorialBarsTheme
                     VerticalAlignment = VerticalAlignment.Stretch,
                     Visibility = Visibility.Hidden,
                 };
+                // The chevron is a drop-OPENER, not a command: a retaining focus scope so the toolbar's return
+                // doesn't yank focus to the editor when it opens the popup (FindReturningScope barrier). Full
+                // keyboard entry into the overflow popup is the bars keyboard-navigation follow-up.
+                FocusManager.SetIsFocusScope(chevron, true);
                 ctx.RegisterName("PART_OverflowToggle", chevron);
 
                 // The overflow band: a vertical items-host StackPanel inside the popup. IsItemsHost makes its Children

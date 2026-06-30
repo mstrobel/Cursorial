@@ -86,6 +86,7 @@ Each goes beyond — but never against — the canonical doc text; deliberate an
 - **ND30 — subtree detach repairs focus once, outside the doomed subtree** (added at the P2 review). When focus lies inside a detaching subtree, the repair-candidate walk skips every element of that subtree — ancestors that are themselves detaching are never repair targets even though the bottom-up walk leaves them momentarily attached-looking. Exactly one transition; no `GotFocus` is ever raised at a detaching element. PIN (the bottom-up walk made event-exact).
 - **ND31 — a nested focus transition wins the GotFocus tail** (added at the P2 review). When a `LostFocus` handler refocuses (the nested transition completes inside the handler), the outer transition skips its now-stale `GotFocus`: an element never observes `GotFocus` while `IsFocused == false`. N107's last-wins made event-exact. PIN.
 - **ND32 — Alt auto-repeat never re-arms the tap** (added at the P2 review). A repeat (`IsRepeat`) Alt Down refreshes the side-bit/cue bookkeeping but does not touch the chordless flag: a chord followed by held-Alt repeats then Up stays chorded (no sticky cue, no `EnterMenuMode`); a genuine chordless tap with intervening repeats still taps. PIN (Kitty/Win32 repeat held modifiers; the chord-then-repeat sequence must not be misread as a tap).
+- **ND33 — generalized scope entry** (added at the bars/nav rework, 2026-06-30; gate hardened after the foundation audit). Entry into **any** focus scope (`IsFocusScope`), not just `Once` containers, resolves to the scope's remembered focus (`GetFocusedElement(scope)`, validated + within) else its direction-appropriate eligible descendant — via a cross-scope redirect at the navigator's entry sites (`NextTabStop`/`FirstOrLastTabStop`/`NextDirectional`). The redirect fires **only on a genuine entry** — descending INTO a scope the current position is **not already inside**. Three gates: (1) same scope ⇒ no redirect (intra-scope traversal); (2) the target's scope is an **ancestor of** the current scope ⇒ no redirect — an outward / pass-through move toward an enclosing scope's own member is still *within* that scope, so it returns the raw element (the **trap-prevention gate**; without this an inner scope hard-traps Tab/arrow nav — audit finding, rows N218/N219); (3) `currentScope` for a non-stop marker (`from` of a Label/`FindNext` query) is the marker's **captured enclosing scope**, not null, so a Label inside a scope forwards to the next document-order stop, not the scope memory (N221). Entry is **direction-aware**: with no valid memory a forward crossing lands on the first eligible descendant, a backward crossing (Shift+Tab/Left/Up) on the **last** — continuing reverse document order (N220); the `Once` ladder is always first either direction (ND16). A host marked **both** `Once` and `IsFocusScope` resolves through the single `Once` ladder — the `IsFocusScope` mark exists only so `MoveFocusCore` records memory there; no double redirect. **DEV** — a deliberate divergence from WPF's `Once`-only entry-restore (the user's nav-logic rework). The concrete pillars (ListBox `Once`+scope; Toolbar `Once`; Menu return via `RestoreRetainedFocus`) are covered by the `Once` ladder + `IsFocusScope` marking; the generalization is purely **additive** (no existing pinned row changes — N118–N135 build no nested non-`Once` scope) and future-proofs non-`Once` scopes. Rows N214–N221.
 
 ---
 
@@ -284,7 +285,7 @@ the holder's visual-then-logical subtree and redirects to the holder only outsid
 
 ---
 
-## 9. Tab & directional navigation (I3) — N118–N135
+## 9. Tab & directional navigation (I3) — N118–N135, N214–N221
 
 Tree for Tab rows: `Root` (Cycle, default) → focusables `F1, F2, F3` in document order unless stated. Tab = unhandled `key(Tab)`; Shift+Tab = `key(Tab, mods: Shift)`.
 
@@ -308,6 +309,14 @@ Tree for Tab rows: `Root` (Cycle, default) → focusables `F1, F2, F3` in docume
 | N133 | focus at the right edge, `Contained` | RightArrow | no candidate → focus unmoved, `U` (arrow not stolen) | PIN |
 | N134 | as N133 but `DirectionalNavigation = Cycle` | RightArrow | wraps to the **farthest** candidate on the opposite side (leftmost) | PIN (ND17) |
 | N135 | default container (`DirectionalNavigation = None`) | arrows | directional tail never engages; arrows stay `U` (free for controls) | PIN (opt-in policy) |
+| N214 | nested non-`Once` focus scope `S` (`IsFocusScope = true`, `TabNavigation` default) holding G1,G2 between F1 and F3, **no** memory | Tab from F1 | enters S at first eligible G1 (memory-absent fallback — identical result to pre-generalization document order) | DEV (ND33) |
+| N215 | as N214 with scope memory on `S` pointing at G2 | Tab from F1 | enters at **G2** — the generalized memory clause: entry into ANY focus scope restores memory, not only `Once` | DEV (ND33) |
+| N216 | `S` (`IsFocusScope`, non-`Once`) holding G1,G2,G3, scope memory → G3; focus G1 (inside S) | Tab from G1 | → G2 (next in document order), **not** G3 — an intra-scope move is not redirected to memory (trap-prevention gate) | DEV (ND33) |
+| N217 | `S` marked **both** `Once` and `IsFocusScope`, memory → G2 | Tab from F1 | enters at G2 via the single `Once` ladder (≡ N128) — no double redirect; the `IsFocusScope` mark only lands memory on `S` | DEV (ND33) |
+| N218 | nested scopes `A(IsFocusScope) → [B(IsFocusScope) → b1,b2], a2` + `tail` (all non-`Once`), focus b1 | Tab ×3 | b1 → b2 (intra-B) → **a2** (outward into A's own member — NOT trapped back to b1) → **tail** (outward past A). The outward-move trap-prevention gate (audit) | DEV (ND33) |
+| N219 | as N218 directional (`Contained` root), focus b2 (g2) | RightArrow | → the right-facing member `a2` — an outward directional move into the enclosing scope's member is not snapped back inside B | DEV (ND33) |
+| N220 | non-`Once` scope `S → G1,G2` between F1 and F3, **no** memory, focus F3 | Shift+Tab | enters S at **G2** (the LAST member — backward crossing continues reverse document order), then Shift+Tab → G1 → F1 | DEV (ND33) |
+| N221 | non-stop marker `Lbl` (a Label) inside `S(IsFocusScope) → Lbl, G1, G2`, `S` memory → G2 | `FindNext(Lbl)` | → G1 (the next document-order stop in S) — a marker's enclosing scope makes the move intra-scope, NOT a redirect to S's memory (G2) | DEV (ND33) |
 
 ---
 

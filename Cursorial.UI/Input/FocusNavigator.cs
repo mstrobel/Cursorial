@@ -9,18 +9,22 @@ namespace Cursorial.UI.Input;
 /// </summary>
 internal sealed class FocusNavigator
 {
-    private readonly struct Stop(UIElement element, int tabIndex, int order, bool isOnceContainer)
+    private readonly struct Stop(UIElement element, int tabIndex, int order, bool isOnceContainer, UIElement? entryScope)
     {
         public readonly UIElement Element = element;
         public readonly int TabIndex = tabIndex;
         public readonly int Order = order;
         public readonly bool IsOnceContainer = isOnceContainer;
+
+        // The nearest enclosing focus scope at/below the tab container that contains this stop, or null when the
+        // stop sits directly in the container's own scope (the baseline). Drives the ND33 cross-scope entry redirect.
+        public readonly UIElement? EntryScope = entryScope;
     }
 
     private static readonly Comparison<Stop> TabOrderComparison =
         static (a, b) => a.TabIndex != b.TabIndex ? a.TabIndex.CompareTo(b.TabIndex) : a.Order.CompareTo(b.Order);
 
-    private const int MaxOnceEntryDepth = 4;
+    private const int MaxScopeEntryDepth = 4;
 
     private readonly List<Stop> _stops = [];
 
@@ -28,6 +32,10 @@ internal sealed class FocusNavigator
     // (the element instance itself never needs retaining — −1 order is the "no marker" sentinel).
     private int _markerOrder;
     private int _markerTabIndex;
+
+    // The focus scope enclosing the marker (the non-stop `from` of a Label-targeting query) — its EntryScope
+    // analog, so the ND33 redirect treats a move FROM the marker as intra-scope when it stays in the same scope.
+    private UIElement? _markerScope;
 
     // ───────────────────────────── tab order ─────────────────────────────
 
@@ -75,13 +83,18 @@ internal sealed class FocusNavigator
                 targetIndex = forward ? 0 : _stops.Count - 1;
             }
 
+            // The scope the current position belongs to — the redirect fires only on a genuine entry into a
+            // DIFFERENT scope (ND33). For an eligible stop that's its own collected EntryScope; for a non-stop
+            // marker (`from` of a Label query) its captured enclosing scope, so an intra-scope move isn't redirected.
+            var currentEntryScope = currentIndex >= 0 ? _stops[currentIndex].EntryScope : _markerScope;
+
             // Resolve the target, skipping Once containers that cannot produce an entry target.
             for (var attempts = 0; attempts < _stops.Count; attempts++, targetIndex = Wrap(targetIndex + step))
             {
                 if (targetIndex == currentIndex)
                     return null; // wrapped back to the current stop — no move (N130)
 
-                if (ResolveEntry(_stops[targetIndex], depth: 0) is {} resolved)
+                if (ResolveEntryAcrossScopes(_stops[targetIndex], currentEntryScope, forward) is {} resolved)
                     return resolved;
             }
 
@@ -107,9 +120,10 @@ internal sealed class FocusNavigator
 
             var step = forward ? 1 : -1;
 
+            // Entry from outside any scope (no current stop) — always redirect into a target scope's memory (ND33).
             for (var i = forward ? 0 : _stops.Count - 1; i >= 0 && i < _stops.Count; i += step)
             {
-                if (ResolveEntry(_stops[i], depth: 0) is {} resolved)
+                if (ResolveEntryAcrossScopes(_stops[i], currentScope: null, forward) is {} resolved)
                     return resolved;
             }
 
@@ -145,6 +159,13 @@ internal sealed class FocusNavigator
         return -1;
     }
 
+    /// <summary>The focus scope of <paramref name="element"/>'s stop (ND33), or null when it is not a collected stop.</summary>
+    private UIElement? EntryScopeOf(UIElement element)
+    {
+        var index = IndexOf(element);
+        return index >= 0 ? _stops[index].EntryScope : null;
+    }
+
     private int Wrap(int index)
     {
         var count = _stops.Count;
@@ -178,44 +199,82 @@ internal sealed class FocusNavigator
     }
 
     /// <summary>
-    /// The element actually focused when navigation lands on <paramref name="stop"/>: the element
-    /// itself for ordinary stops; for a <c>Once</c> container the ND16 entry chain — scope memory
-    /// (validated, within the container) → first tab-ordered eligible descendant → the container
-    /// itself when focusable → null (the stop is skipped).
+    /// The element focused when INTERNAL (within-scope) resolution lands on <paramref name="stop"/>: the element
+    /// itself for ordinary stops; for a <c>Once</c> container the entry chain. Used by <see cref="ResolveScopeEntry"/>'s
+    /// descendant scan — the ND33 cross-scope redirect is applied separately, only at the top-level entry sites
+    /// (<see cref="ResolveEntryAcrossScopes"/>).
     /// </summary>
     private static UIElement? ResolveEntry(in Stop stop, int depth)
     {
         if (!stop.IsOnceContainer)
             return stop.Element;
 
-        return ResolveOnceEntry(stop.Element, depth);
+        return ResolveScopeEntry(stop.Element, depth, forward: true);
     }
 
-    private static UIElement? ResolveOnceEntry(UIElement container, int depth)
+    /// <summary>
+    /// Resolves the focus target for ENTERING a scope/container (ND16 for <c>Once</c>, ND33 generalized to any
+    /// <c>IsFocusScope</c>): scope memory (validated, within) → the direction-appropriate eligible descendant
+    /// (<paramref name="forward"/> ⇒ first, backward ⇒ last, so a reverse crossing continues in document order) →
+    /// the container itself when focusable → null (the stop is skipped). The <c>Once</c> ladder always passes
+    /// <paramref name="forward"/> = true (ND16's "entry either direction" = first).
+    /// </summary>
+    private static UIElement? ResolveScopeEntry(UIElement scope, int depth, bool forward)
     {
-        if (depth >= MaxOnceEntryDepth)
+        if (depth >= MaxScopeEntryDepth)
             return null;
 
-        if (FocusManager.GetFocusedElement(container) is {} memory
+        if (FocusManager.GetFocusedElement(scope) is {} memory
             && FocusManager.IsValidFocusTarget(memory)
-            && IsWithin(memory, container))
+            && IsWithin(memory, scope))
         {
             return memory;
         }
 
-        // Rare path — entering a Once container allocates a local stop list (Tab is not a hot path).
+        // Rare path — entering a scope allocates a local stop list (Tab is not a hot path). `inner` is the flat
+        // document-order descendant set; a forward crossing takes the first eligible, a backward crossing the last.
         var inner = new List<Stop>();
         var order = 0;
-        CollectInto(container, inner, marker: null, navigator: null, ref order);
+        CollectInto(scope, inner, marker: null, navigator: null, currentScope: null, ref order);
         inner.Sort(TabOrderComparison);
 
-        for (var i = 0; i < inner.Count; i++)
+        if (forward)
         {
-            if (ResolveEntry(inner[i], depth + 1) is {} resolved)
-                return resolved;
+            for (var i = 0; i < inner.Count; i++)
+                if (ResolveEntry(inner[i], depth + 1) is {} resolved)
+                    return resolved;
+        }
+        else
+        {
+            for (var i = inner.Count - 1; i >= 0; i--)
+                if (ResolveEntry(inner[i], depth + 1) is {} resolved)
+                    return resolved;
         }
 
-        return FocusManager.IsValidFocusTarget(container) ? container : null;
+        return FocusManager.IsValidFocusTarget(scope) ? scope : null;
+    }
+
+    /// <summary>
+    /// Top-level entry resolution with the ND33 cross-scope redirect. A <c>Once</c> target resolves through the one
+    /// <c>Once</c> ladder (no double redirect — a <c>Once</c>+<c>IsFocusScope</c> host is handled here, not twice).
+    /// Otherwise the redirect fires only on a GENUINE entry — descending INTO a scope the current position is not
+    /// already inside. An intra-scope move (same scope) OR an outward / pass-through move toward an ENCLOSING scope's
+    /// own member (the target's scope already contains <paramref name="currentScope"/>) returns the raw element — the
+    /// trap-prevention gate, so navigation can pass THROUGH and OUT OF a scope's members without snapping to memory.
+    /// </summary>
+    private static UIElement? ResolveEntryAcrossScopes(in Stop target, UIElement? currentScope, bool forward)
+    {
+        if (target.IsOnceContainer)
+            return ResolveScopeEntry(target.Element, 0, forward: true);
+
+        if (target.EntryScope is {} scope
+            && !ReferenceEquals(scope, currentScope)
+            && !(currentScope is {} cur && IsWithin(cur, scope)))
+        {
+            return ResolveScopeEntry(scope, 0, forward);
+        }
+
+        return target.Element;
     }
 
     private static bool IsWithin(UIElement element, UIElement container)
@@ -234,8 +293,9 @@ internal sealed class FocusNavigator
     private void CollectStops(UIElement container, UIElement? marker)
     {
         _markerOrder = -1;
+        _markerScope = null;
         var order = 0;
-        CollectInto(container, _stops, marker, this, ref order);
+        CollectInto(container, _stops, marker, this, currentScope: null, ref order);
     }
 
     /// <summary>
@@ -245,7 +305,7 @@ internal sealed class FocusNavigator
     /// container itself may still be a stop); <see cref="KeyboardNavigationMode.Once"/> containers
     /// become one stop and never descend.
     /// </summary>
-    private static void CollectInto(UIElement parent, List<Stop> stops, UIElement? marker, FocusNavigator? navigator, ref int order)
+    private static void CollectInto(UIElement parent, List<Stop> stops, UIElement? marker, FocusNavigator? navigator, UIElement? currentScope, ref int order)
     {
         if (parent.VisualChildrenList is not {} children)
             return;
@@ -259,10 +319,15 @@ internal sealed class FocusNavigator
             {
                 navigator._markerOrder = order;
                 navigator._markerTabIndex = child.GetValue(UIElement.TabIndexProperty);
+                navigator._markerScope = FocusManager.GetIsFocusScope(child) ? child : currentScope;
             }
 
             if (child.Visibility != Visibility.Visible)
                 continue; // visibility inherits down — prune the subtree
+
+            // A child that is itself a focus scope becomes the scope for its own stop and its subtree (ND33);
+            // otherwise the enclosing scope flows down unchanged. The tab container is the baseline (null).
+            var childScope = FocusManager.GetIsFocusScope(child) ? child : currentScope;
 
             var mode = KeyboardNavigation.GetTabNavigation(child);
 
@@ -271,16 +336,16 @@ internal sealed class FocusNavigator
                 // One stop for the whole container (ND16); requires the container enabled and a
                 // tab stop, not focusable — the entry resolution finds the focus target inside.
                 if (child.IsAttachedToTree && child.IsEffectivelyEnabled && child.GetValue(UIElement.IsTabStopProperty))
-                    stops.Add(new Stop(child, child.GetValue(UIElement.TabIndexProperty), order, isOnceContainer: true));
+                    stops.Add(new Stop(child, child.GetValue(UIElement.TabIndexProperty), order, isOnceContainer: true, entryScope: childScope));
 
                 continue;
             }
 
             if (IsTabEligible(child))
-                stops.Add(new Stop(child, child.GetValue(UIElement.TabIndexProperty), order, isOnceContainer: false));
+                stops.Add(new Stop(child, child.GetValue(UIElement.TabIndexProperty), order, isOnceContainer: false, entryScope: childScope));
 
             if (mode != KeyboardNavigationMode.None)
-                CollectInto(child, stops, marker, navigator, ref order);
+                CollectInto(child, stops, marker, navigator, childScope, ref order);
         }
     }
 
@@ -391,7 +456,9 @@ internal sealed class FocusNavigator
                 }
             }
 
-            return bestIndex >= 0 ? ResolveEntry(_stops[bestIndex], depth: 0) : null;
+            // Right/Down enter a no-memory scope at its first member; Left/Up at its last (reverse document order).
+            var dirForward = direction is FocusNavigationDirection.Right or FocusNavigationDirection.Down;
+            return bestIndex >= 0 ? ResolveEntryAcrossScopes(_stops[bestIndex], EntryScopeOf(current), dirForward) : null;
         }
         finally
         {

@@ -496,13 +496,19 @@ internal sealed class XamlParser
             }
 
             // Attached property: Owner.Member (a dotted attribute local name, or a prefixed-owner form).
-            // An unprefixed dotted attribute uses the element's default namespace (XML attributes do not
-            // inherit the default xmlns, so the reader reports an empty NamespaceURI — matrix X75).
+            // An UNPREFIXED dotted attribute resolves its owner in the document's DEFAULT xmlns (XAML's
+            // attached-property rule): an unprefixed XML attribute carries no namespace, so the reader reports an
+            // empty NamespaceURI (matrix X75), but XAML binds the unprefixed owner to the in-scope default xmlns —
+            // NOT to the owning ELEMENT's namespace. So `DockPanel.Dock` on a `prefix:Element` still resolves
+            // DockPanel in the default UI namespace, not the element's prefix. (Falls back to the element namespace
+            // only when no default xmlns is declared.)
             int dot = attrLocal.IndexOf('.');
 
             if (dot > 0)
             {
-                string ownerNs = attrPrefix.Length == 0 && attrNs.Length == 0 ? elementNamespace : attrNs;
+                string ownerNs = attrPrefix.Length == 0 && attrNs.Length == 0
+                    ? (_reader.LookupNamespace(string.Empty) is { Length: > 0 } defaultNs ? defaultNs : elementNamespace)
+                    : attrNs;
 
                 HandleAttachedAttribute(attrLocal,
                                         dot,

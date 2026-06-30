@@ -8,7 +8,7 @@ namespace Cursorial.UI.Input;
 /// <summary>
 /// The access-key engine (design doc §7.8, requirement 6): the flat case-folded registry, the
 /// capability gate (<see cref="AccessKeyMode"/>), the Alt-held cue state machine with chord-flash
-/// self-correction, activation-time scope resolution, single-match invocation and multi-match
+/// self-correction, activation-time scope resolution, single-match invocation, and multi-match
 /// focus-only cycling, and the menu-mode entry hooks (Alt tap / F10). P2 ships the manager core;
 /// the visual cue (the underscore mnemonic) is wired through the built-in theme rule
 /// <c>:access-keys AccessTextPresenter { ShowUnderline: true }</c> — the cue bit drives it via pure
@@ -43,6 +43,18 @@ public sealed class AccessKeyManager
     public static readonly AttachedProperty<bool> ShowUnderlineProperty =
         UIProperty.RegisterAttached<AccessKeyManager, UIElement, bool>("ShowUnderline");
 
+    /// <summary>On a proxy <i>target</i>: the proxy element that forwards its access key here (the back-link of
+    /// <see cref="AccessKeyProxyForProperty"/>). A target carries at most one proxy — a would-be proxy registers
+    /// only when this is unset (first-wins). Set as a pair with <see cref="AccessKeyProxyForProperty"/>.</summary>
+    public static readonly AttachedProperty<UIElement?> AccessKeyProxyProperty =
+        UIProperty.RegisterAttached<AccessKeyManager, UIElement, UIElement?>("AccessKeyProxy");
+
+    /// <summary>On a <i>proxy</i> (a <see cref="Cursorial.UI.Controls.Label"/>, an Expander's header, a bar caption):
+    /// the element its access key forwards to. Activating the proxy's mnemonic redirects to this target — focused
+    /// (a scope/container is entered at its remembered → first focusable descendant) and invoked.</summary>
+    public static readonly AttachedProperty<UIElement?> AccessKeyProxyForProperty =
+        UIProperty.RegisterAttached<AccessKeyManager, UIElement, UIElement?>("AccessKeyProxyFor");
+
     static AccessKeyManager()
     {
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ShowUnderlineProperty);
@@ -60,6 +72,34 @@ public sealed class AccessKeyManager
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(ShowUnderlineProperty, value);
+    }
+
+    /// <summary>Reads <see cref="AccessKeyProxyProperty"/> — the proxy registered against this target, if any.</summary>
+    public static UIElement? GetAccessKeyProxy(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(AccessKeyProxyProperty);
+    }
+
+    /// <summary>Sets <see cref="AccessKeyProxyProperty"/> — the proxy registered against this target.</summary>
+    public static void SetAccessKeyProxy(UIElement element, UIElement? value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(AccessKeyProxyProperty, value);
+    }
+
+    /// <summary>Reads <see cref="AccessKeyProxyForProperty"/> — the target this proxy forwards its access key to.</summary>
+    public static UIElement? GetAccessKeyProxyFor(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(AccessKeyProxyForProperty);
+    }
+
+    /// <summary>Sets <see cref="AccessKeyProxyForProperty"/> — the target this proxy forwards its access key to.</summary>
+    public static void SetAccessKeyProxyFor(UIElement element, UIElement? value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(AccessKeyProxyForProperty, value);
     }
 
     private readonly UIDispatcher _dispatcher;
@@ -156,6 +196,7 @@ public sealed class AccessKeyManager
         DeactivateCue();
 
         _mode = mode;
+
         if (mode == AccessKeyMode.AlwaysVisible)
             ActivateCue(); // requirement 6's fallback: permanently visible (N169)
     }
@@ -174,6 +215,7 @@ public sealed class AccessKeyManager
         _dispatcher.VerifyAccess();
 
         var folded = char.ToLowerInvariant(key);
+
         if (!_registry.TryGetValue(folded, out var targets))
             _registry[folded] = targets = [];
 
@@ -204,6 +246,7 @@ public sealed class AccessKeyManager
         _dispatcher.VerifyAccess();
 
         _scopeStack.Add(scopeRoot);
+
         if (_cueActive)
             StampCueRoot(scopeRoot);
     }
@@ -215,6 +258,7 @@ public sealed class AccessKeyManager
         _dispatcher.VerifyAccess();
 
         var index = _scopeStack.LastIndexOf(scopeRoot);
+
         if (index >= 0)
             _scopeStack.RemoveAt(index);
 
@@ -315,6 +359,7 @@ public sealed class AccessKeyManager
         if (_stickyCue && key.Key == Key.Escape)
         {
             _stickyCue = false;
+
             if (!_leftAltDown && !_rightAltDown)
                 ClearCueForAltHeld();
 
@@ -330,6 +375,7 @@ public sealed class AccessKeyManager
         _leftAltDown = false;
         _rightAltDown = false;
         _altWasChordless = false;
+
         if (!_stickyCue)
             ClearCueForAltHeld();
     }
@@ -341,6 +387,7 @@ public sealed class AccessKeyManager
             return;
 
         _stickyCue = false;
+
         if (!_leftAltDown && !_rightAltDown)
             ClearCueForAltHeld();
     }
@@ -436,6 +483,7 @@ public sealed class AccessKeyManager
         }
 
         var folded = char.ToLowerInvariant(key.Text.Span[0]);
+
         CollectEligibleMatches(folded);
 
         if (_matchScratch.Count == 0)
@@ -447,17 +495,21 @@ public sealed class AccessKeyManager
         if (_matchScratch.Count == 1)
         {
             var target = _matchScratch[0];
+
             _matchScratch.Clear();
 
             // Activation clears sticky; the cue drops unless physical Alt is still held.
             _stickyCue = false;
+
             if (!anyAltDown)
                 ClearCueForAltHeld();
+
+            ResolveEffectiveTarget(ref target);
 
             // Move focus to a focusable target BEFORE invoking — parity with the multi-match cycle
             // (below) and the plain-element fallback, with WPF/Avalonia, and with the fixture contract
             // that "the manager owns the focus move". Focusing first lets the invoked action redirect
-            // focus (last-wins). Non-focusable targets (e.g. a Label, which forwards focus to its own
+            // focus (last-wins). Non-focusable targets (e.g., a Label, which forwards focus to its own
             // Target inside OnAccessKey) are left untouched here. ND18-companion (single-match focuses).
             if (target.Focusable)
                 _focus.SetFocus(target, FocusNavigationMethod.AccessKey);
@@ -469,13 +521,33 @@ public sealed class AccessKeyManager
         // Multi-match: focus the first match after the currently focused element in tab order
         // (wrap-around); the cue stays up; nothing invokes (ND18).
         SortMatchesByTabOrder();
-        var focusedIndex = _focus.FocusedElement is { } focused ? _matchScratch.IndexOf(focused) : -1;
+
+        var focusedIndex = _focus.FocusedElement is {} focused ? _matchScratch.IndexOf(focused) : -1;
         var next = _matchScratch[(focusedIndex + 1) % _matchScratch.Count];
+
         _matchScratch.Clear();
+
+        ResolveEffectiveTarget(ref next);
 
         _focus.SetFocus(next, FocusNavigationMethod.AccessKey);
         InvokeAccessKey(next, folded, isMultiMatch: true);
         return true;
+    }
+
+    // When the activated element is a PROXY for another (a Label for its Target, an Expander header for its
+    // ToggleButton, a bar caption for its bar), redirect activation to the declared target and resolve WHERE focus
+    // should land — reusing the focus engine's entry ladder (ND33) rather than re-deriving it: a focusable target
+    // takes focus directly; a scope/container is entered at its remembered → first focusable descendant; an empty
+    // non-focusable target forwards to the next focusable. A non-proxy activation is left untouched (a plain
+    // IAccessKeyTarget — e.g. a Label with no Target, or one whose target was already claimed — forwards itself in
+    // OnAccessKey). The resolved target is then focused AND invoked, so an input target merely gains focus while a
+    // ToggleButton target also toggles.
+    private void ResolveEffectiveTarget(ref UIElement target)
+    {
+        if (GetAccessKeyProxyFor(target) is not {} declared)
+            return;
+
+        target = _focus.ResolveFocusEntry(declared) ?? _focus.FindNext(declared) ?? declared;
     }
 
     // ───────────────────────────── internals ─────────────────────────────
@@ -505,11 +577,13 @@ public sealed class AccessKeyManager
     private void CollectEligibleMatches(char folded)
     {
         _matchScratch.Clear();
+
         if (!_registry.TryGetValue(folded, out var targets) || targets.Count == 0)
             return;
 
         // Activation-time scope resolution: the live stack top, else the active window root.
         var scope = _scopeStack.Count > 0 ? _scopeStack[^1] : _focus.ActiveRoot;
+
         if (scope is null)
             return;
 
@@ -524,8 +598,8 @@ public sealed class AccessKeyManager
     private static bool IsEligible(UIElement target)
         => target.IsAttachedToTree
            && (target is IAccessKeyTarget accessKeyTarget
-               ? accessKeyTarget.IsAccessKeyEligible
-               : target is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true });
+                   ? accessKeyTarget.IsAccessKeyEligible
+                   : target is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true });
 
     /// <summary>
     /// The target's scope: walking its ancestor chain (route walk — <c>VisualParent ??
@@ -538,6 +612,7 @@ public sealed class AccessKeyManager
         // popups/menus. If activation ever shows hot in profiles (deep menu trees at P9), convert
         // _scopeStack lookups to a HashSet alongside the list.
         var activeRoot = _focus.ActiveRoot;
+
         for (var node = target; node is not null; node = node.VisualParent ?? node.LogicalParent)
         {
             if (_scopeStack.Contains(node) || ReferenceEquals(node, activeRoot))
@@ -551,11 +626,13 @@ public sealed class AccessKeyManager
     private void SortMatchesByTabOrder()
     {
         var scope = _scopeStack.Count > 0 ? _scopeStack[^1] : _focus.ActiveRoot;
+
         if (scope is null || _matchScratch.Count < 2)
             return;
 
         _orderScratch.Clear();
         AppendMatchesInDocumentOrder(scope, _matchScratch, _orderScratch);
+
         if (_orderScratch.Count != _matchScratch.Count)
             return; // defensive — keep registration order when the DFS missed targets
 
@@ -565,6 +642,7 @@ public sealed class AccessKeyManager
             var element = _orderScratch[i];
             var tabIndex = element.GetValue(UIElement.TabIndexProperty);
             var j = i - 1;
+
             while (j >= 0 && _orderScratch[j].GetValue(UIElement.TabIndexProperty) > tabIndex)
             {
                 _orderScratch[j + 1] = _orderScratch[j];
@@ -584,7 +662,7 @@ public sealed class AccessKeyManager
         if (matches.Contains(parent))
             into.Add(parent);
 
-        if (parent.VisualChildrenList is not { } children)
+        if (parent.VisualChildrenList is not {} children)
             return;
 
         for (var i = 0; i < children.Count; i++)
@@ -603,7 +681,8 @@ public sealed class AccessKeyManager
         _cueActive = true;
 
         using var batch = _interactions.BeginUpdate();
-        if (_focus.ActiveRoot is { } windowRoot)
+
+        if (_focus.ActiveRoot is {} windowRoot)
             StampCueRoot(windowRoot);
 
         if (_mode == AccessKeyMode.AlwaysVisible)
@@ -621,10 +700,12 @@ public sealed class AccessKeyManager
     private void DeactivateCue()
     {
         _cueActive = false;
+
         if (_cueRoots.Count == 0)
             return;
 
         using var batch = _interactions.BeginUpdate();
+
         for (var i = 0; i < _cueRoots.Count; i++)
             _cueRoots[i].SetInteractionStateInternal(InteractionState.AccessKeyCue, false);
 

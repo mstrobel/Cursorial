@@ -2,6 +2,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Terminal;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
@@ -11,7 +12,8 @@ namespace Cursorial.Tests.UI.InputMatrix;
 
 /// <summary>
 /// Input matrix §12 — <see cref="AccessKeyManager"/> core: the capability gate, Alt brackets,
-/// chord-flash, registry, scopes, cycling, and the menu-mode entries (N166–N189). AltHeld-mode
+/// chord-flash, registry, scopes, cycling, the menu-mode entries, and the access-key proxy
+/// (N166–N189, N222–N226). AltHeld-mode
 /// rows use the default KittyCaps; legacy rows <see cref="TestCapabilities.Ansi16Legacy"/>.
 /// </summary>
 public class Section12_AccessKeys
@@ -681,5 +683,92 @@ public class Section12_AccessKeys
         Assert.Equal(1, menuEntries);
         Assert.True(ak.StickyCueInternal);
         Assert.True(ak.IsCueActive);
+    }
+
+    // ───────────────────────────── access-key proxy (ND34) ─────────────────────────────
+
+    [Fact] // N222 — a Label.Target pairs the Label as the target's access-key proxy (bidirectional)
+    public void N222_LabelTarget_RegistersBidirectionalProxy()
+    {
+        var (host, log, root, _, _) = CreateHost();
+        using var _host = host;
+        var input = new Btn("Input", log);
+        root.AddChild(input);
+        var label = new Label { Content = "_Name", Target = input };
+        root.AddChild(label);
+
+        Assert.Same(label, AccessKeyManager.GetAccessKeyProxy(input));
+        Assert.Same(input, AccessKeyManager.GetAccessKeyProxyFor(label));
+    }
+
+    [Fact] // N223 — first-wins: a second Label targeting the same element does not claim it
+    public void N223_SecondLabelSameTarget_DoesNotClaim()
+    {
+        var (host, log, root, _, _) = CreateHost();
+        using var _host = host;
+        var input = new Btn("Input", log);
+        root.AddChild(input);
+        root.AddChild(new Label { Content = "_Name", Target = input });
+        var label2 = new Label { Content = "_Alias", Target = input };
+        root.AddChild(label2);
+
+        Assert.IsType<Label>(AccessKeyManager.GetAccessKeyProxy(input));
+        Assert.Equal("_Name", ((Label) AccessKeyManager.GetAccessKeyProxy(input)!).Content); // the first
+        Assert.Null(AccessKeyManager.GetAccessKeyProxyFor(label2)); // the second forwards via OnAccessKey instead
+    }
+
+    [Fact] // N224 — detaching a proxy releases the target, so another proxy can claim it (no dangling link)
+    public void N224_LabelDetach_ReleasesTarget_AllowsReclaim()
+    {
+        var (host, log, root, _, _) = CreateHost();
+        using var _host = host;
+        var input = new Btn("Input", log);
+        root.AddChild(input);
+        var label1 = new Label { Content = "_Name", Target = input };
+        root.AddChild(label1);
+        Assert.Same(label1, AccessKeyManager.GetAccessKeyProxy(input));
+
+        root.RemoveChild(label1);
+        Assert.Null(AccessKeyManager.GetAccessKeyProxy(input)); // released on detach
+
+        var label2 = new Label { Content = "_Alias", Target = input };
+        root.AddChild(label2);
+        Assert.Same(label2, AccessKeyManager.GetAccessKeyProxy(input)); // reclaimed
+    }
+
+    [Fact] // N225 — activating a proxy's mnemonic redirects focus to its target, not the proxy
+    public void N225_ProxyActivation_RedirectsFocusToTarget()
+    {
+        var (host, log, root, ak, dispatcher) = CreateHost();
+        using var _host = host;
+        var input = new Btn("Input", log);
+        root.AddChild(input);
+        var label = new Label { Content = "_Name", Target = input };
+        root.AddChild(label);
+        ak.Register('n', label); // the Label's mnemonic
+
+        dispatcher.ProcessEvent(KeyEvt(Key.Character, KeyModifiers.Alt, "n"));
+
+        Assert.Same(input, host.Application.FocusManager.FocusedElement); // redirected to the target
+    }
+
+    [Fact] // N226 — the proxy redirect resolves a non-focusable target through the shared ND33 entry ladder
+    public void N226_ResolveFocusEntry_EntersScopeAtMemoryOrFirst()
+    {
+        var (host, log, root, _, _) = CreateHost();
+        using var _host = host;
+        var scope = new Probe("Scope", log);
+        var g1 = new Btn("G1", log);
+        var g2 = new Btn("G2", log);
+        scope.AddChild(g1);
+        scope.AddChild(g2);
+        root.AddChild(scope);
+        FocusManager.SetIsFocusScope(scope, true);
+        var focus = host.Application.FocusManager;
+
+        Assert.Same(g1, focus.ResolveFocusEntry(scope)); // non-focusable scope, no memory → first focusable
+        FocusManager.SetFocusedElement(scope, g2);
+        Assert.Same(g2, focus.ResolveFocusEntry(scope)); // → remembered focus
+        Assert.Same(g1, focus.ResolveFocusEntry(g1));    // a focusable element → itself
     }
 }

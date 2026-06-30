@@ -277,6 +277,13 @@ internal sealed class FocusNavigator
         return target.Element;
     }
 
+    /// <summary>
+    /// The focus target inside <paramref name="scope"/> when entering it (the ND33 ladder: remembered focus →
+    /// first tab-ordered eligible descendant → the element itself when focusable → null). The seam behind
+    /// <see cref="FocusManager.ResolveFocusEntry"/> — used to resolve an access-key proxy's non-focusable target.
+    /// </summary>
+    internal static UIElement? ResolveEntryInto(UIElement scope) => ResolveScopeEntry(scope, 0, forward: true);
+
     private static bool IsWithin(UIElement element, UIElement container)
     {
         for (var node = element.VisualParent ?? element.LogicalParent; node is not null; node = node.VisualParent ?? node.LogicalParent)

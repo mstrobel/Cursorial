@@ -282,6 +282,20 @@ public sealed class FocusManager
     }
 
     /// <summary>
+    /// The element focus lands on when navigation is DIRECTED AT <paramref name="element"/> (e.g. an access-key
+    /// proxy's declared target): <paramref name="element"/> itself when it is a valid focus target; otherwise,
+    /// treating it as a scope/container, its remembered focus → first tab-ordered eligible descendant (the ND33
+    /// entry ladder); <see langword="null"/> when it holds no focus target (the caller then forwards via
+    /// <see cref="FindNext"/>). Pure query — never moves focus.
+    /// </summary>
+    public UIElement? ResolveFocusEntry(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        _dispatcher.VerifyAccess();
+        return IsValidFocusTarget(element) ? element : FocusNavigator.ResolveEntryInto(element);
+    }
+
+    /// <summary>
     /// Explicitly returns focus to the logical focus of the OUTER focus scope enclosing the nearest
     /// <b>non-retaining</b> scope (<see cref="RetainsFocusProperty"/> = <see langword="false"/>) of
     /// <paramref name="elementInScope"/> — i.e. where focus was before it entered the bar. The bar surface calls this

@@ -13,7 +13,13 @@ public class Label : ContentControl, IAccessKeyTarget
 {
     /// <summary>The element focused on access-key activation; <see langword="null"/> ⇒ <c>FocusManager.FindNext(this)</c> (doc §12.7).</summary>
     public static readonly StyledProperty<UIElement?> TargetProperty =
-        UIProperty.Register<Label, UIElement?>(nameof(Target));
+        UIProperty.Register<Label, UIElement?>(nameof(Target), changed: OnTargetChanged);
+
+    private static void OnTargetChanged(UIObject sender, UIElement? oldValue, UIElement? newValue)
+    {
+        if (sender is Label l)
+            l.UpdateAccessKeyProxyRegistration();
+    }
 
     static Label()
     {
@@ -43,5 +49,46 @@ public class Label : ContentControl, IAccessKeyTarget
 
         var target = Target ?? UIApplication.Current?.FocusManager.FindNext(this);
         target?.Focus(FocusNavigationMethod.AccessKey);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToTree(in e);
+        UpdateAccessKeyProxyRegistration(); // (re-)claim the target now that we're live
+    }
+
+    /// <inheritdoc/>
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        ClearAccessKeyProxyRegistration(); // release the target — never leave it pointing at a detached Label
+        base.OnDetachedFromTree(in e);
+    }
+
+    // Pairs Target with this Label as its access-key proxy (so the manager forwards the mnemonic to Target),
+    // first-wins: a target already claimed by another proxy is left alone (this Label then forwards in OnAccessKey).
+    // Re-run on Target change and on (re-)attach; the prior registration is released first.
+    private void UpdateAccessKeyProxyRegistration()
+    {
+        ClearAccessKeyProxyRegistration();
+
+        if (IsAttachedToTree
+            && Target is {} target
+            && target.GetValueSource(AccessKeyManager.AccessKeyProxyProperty).Kind is ValueSourceKind.Default)
+        {
+            AccessKeyManager.SetAccessKeyProxy(target, this);
+            AccessKeyManager.SetAccessKeyProxyFor(this, target);
+        }
+    }
+
+    private void ClearAccessKeyProxyRegistration()
+    {
+        if (AccessKeyManager.GetAccessKeyProxyFor(this) is not {} target)
+            return;
+
+        if (AccessKeyManager.GetAccessKeyProxy(target) is {} proxy && ReferenceEquals(proxy, this))
+            target.ClearValue(AccessKeyManager.AccessKeyProxyProperty);
+
+        ClearValue(AccessKeyManager.AccessKeyProxyForProperty);
     }
 }

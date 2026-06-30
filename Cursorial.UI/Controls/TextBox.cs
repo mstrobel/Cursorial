@@ -21,7 +21,18 @@ namespace Cursorial.UI.Controls;
 /// caret/selection (<see cref="CaretIndex"/>, <see cref="SelectionStart"/>, <see cref="SelectionLength"/>,
 /// <see cref="SelectedText"/>) are imperative CLR state, not styleable properties. Clipboard Copy/Cut route
 /// through <see cref="UIApplication.Clipboard"/> (OSC 52); paste arrives primarily as the terminal's own
-/// paste (<c>TextInput{FromPaste}</c>). Undo/redo is deferred (spec §15).
+/// paste (<c>TextInput{FromPaste}</c>).
+/// </para>
+/// <para>
+/// <b>Undo/redo</b> (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, or <see cref="Undo"/>/<see cref="Redo"/>) is an edit-based
+/// history: typed runs and same-direction delete runs coalesce into one unit; a caret move, paste, cut,
+/// selection-replace, newline, tab, or focus loss seals it. <see cref="IsUndoEnabled"/> /
+/// <see cref="UndoLimit"/> gate it (<see cref="PasswordBox"/> forces it off — no plaintext history). A
+/// programmatic <see cref="Text"/> set or a binding source push resets the history (WPF parity). Edits never
+/// corrupt the text under undo: a stale entry is safely discarded. <em>Caveat:</em> a two-way binding to a
+/// source that normalizes per change stays undoable (the actual landed text is recorded), but one that
+/// normalizes on a deferred <c>LostFocus</c>/<c>Explicit</c> trigger resets undo when the normalized value
+/// echoes back on focus loss.
 /// </para>
 /// <para>
 /// <b>Multi-line</b> is opt-in: <see cref="AcceptsReturn"/> makes <c>Enter</c> insert a newline and
@@ -79,6 +90,16 @@ public class TextBox : Control
     public static readonly StyledProperty<int> MaxLinesProperty =
         UIProperty.Register<TextBox, int>(nameof(MaxLines), defaultValue: int.MaxValue);
 
+    /// <summary>Whether edits are recorded for undo/redo (default <see langword="true"/>; <see cref="PasswordBox"/>
+    /// forces it off). Setting it <see langword="false"/> discards the existing history.</summary>
+    public static readonly StyledProperty<bool> IsUndoEnabledProperty =
+        UIProperty.Register<TextBox, bool>(nameof(IsUndoEnabled), defaultValue: true, changed: OnIsUndoEnabledChanged);
+
+    /// <summary>The maximum number of undo units retained (default <c>-1</c> = unlimited, WPF parity; <c>0</c>
+    /// disables recording; <c>&gt;0</c> caps the history, dropping the oldest units first).</summary>
+    public static readonly StyledProperty<int> UndoLimitProperty =
+        UIProperty.Register<TextBox, int>(nameof(UndoLimit), defaultValue: -1, changed: OnUndoLimitChanged);
+
     /// <summary>The bubbling event raised whenever <see cref="Text"/> changes.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> TextChangedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(TextChanged), RoutingStrategy.Bubble, typeof(TextBox));
@@ -89,6 +110,36 @@ public class TextBox : Control
     private bool _dragging;        // a left-button drag is extending the selection
     private int _desiredColumn = -1; // sticky target column for a run of vertical moves; -1 = recompute from the caret
     private bool _caretLineEndAffinity; // when the caret sits on a soft-wrap boundary, true == the earlier line's visual end
+
+    // Undo/redo: edit-based history (each entry is a splice + the caret state to restore). _undo top is the last
+    // element; a new edit clears _redo. _canCoalesce gates merging the next same-kind edit into the open unit;
+    // _isApplyingEdit marks self-mutations (typing/delete/undo/redo) so OnTextChanged neither re-pins the caret nor
+    // treats the change as an external set that resets the history.
+    private readonly List<UndoEntry> _undo = [];
+    private readonly List<UndoEntry> _redo = [];
+    private bool _canCoalesce;
+    private bool _isApplyingEdit;
+
+    // How an edit folds into the undo history. Insert (typed run) and the two delete directions each coalesce with
+    // their own kind; Other (paste / cut / replace-selection / newline / tab / Clear) is always its own atomic unit.
+    // The two delete directions are distinct so a Backspace and a Delete at the same caret never merge into a unit
+    // whose undo would reinsert text in the wrong order.
+    private enum UndoKind { Insert, DeleteBackward, DeleteForward, Other }
+
+    // One coalescible edit: replacing text[Start, Start+Removed.Length) with Inserted. *Before is the selection to
+    // restore on undo; *After is the collapsed caret to restore on redo. Mutable so a coalescing run grows it in
+    // place (only Removed/Inserted/Start/*After change — *Before stays from the first edit of the unit).
+    private sealed class UndoEntry
+    {
+        public int Start;
+        public string Removed = "";
+        public string Inserted = "";
+        public int CaretBefore;
+        public int AnchorBefore;
+        public int CaretAfter;
+        public int AnchorAfter;
+        public UndoKind Kind;
+    }
 
     static TextBox()
     {
@@ -137,6 +188,23 @@ public class TextBox : Control
     /// <inheritdoc cref="MaxLinesProperty"/>
     public int MaxLines { get => GetValue(MaxLinesProperty); set => SetValue(MaxLinesProperty, value); }
 
+    /// <inheritdoc cref="IsUndoEnabledProperty"/>
+    public bool IsUndoEnabled { get => GetValue(IsUndoEnabledProperty); set => SetValue(IsUndoEnabledProperty, value); }
+
+    /// <inheritdoc cref="UndoLimitProperty"/>
+    public int UndoLimit { get => GetValue(UndoLimitProperty); set => SetValue(UndoLimitProperty, value); }
+
+    /// <summary>Whether edits are captured into the undo history. <see cref="PasswordBox"/> hard-overrides this to
+    /// <see langword="false"/> (mirroring its Copy/Cut suppression) so no plaintext is ever retained, regardless of
+    /// <see cref="IsUndoEnabled"/>.</summary>
+    private protected virtual bool RecordsUndo => IsUndoEnabled;
+
+    /// <summary>Whether there is an edit to undo (false while read-only, undo-disabled, or the history is empty).</summary>
+    public bool CanUndo => RecordsUndo && !IsReadOnly && _undo.Count > 0;
+
+    /// <summary>Whether there is an undone edit to redo.</summary>
+    public bool CanRedo => RecordsUndo && !IsReadOnly && _redo.Count > 0;
+
     /// <summary>Whether the field lays out as multi-line: hard newlines accepted, soft wrap, or both.
     /// Single-line (the default) keeps the existing horizontal-scroll behavior.</summary>
     internal bool IsMultiLine => AcceptsReturn || TextWrapping != WrapMode.NoWrap;
@@ -169,7 +237,7 @@ public class TextBox : Control
     public string SelectedText
     {
         get { var (start, end) = SelectionBounds; return Text[start..end]; }
-        set => ReplaceSelection(value ?? "");
+        set => ReplaceCore(value ?? "", UndoKind.Other);
     }
 
     /// <summary>The selection as a normalized half-open <c>[start, end)</c> char range (consumed by the presenter).</summary>
@@ -205,8 +273,42 @@ public class TextBox : Control
     /// <summary>Selects the whole text (caret at the end).</summary>
     public void SelectAll() => SetCaretAndSelection(anchor: 0, caret: Text.Length);
 
-    /// <summary>Clears the text.</summary>
-    public void Clear() => Text = "";
+    /// <summary>Clears the text (an undoable edit, WPF parity). No-op while read-only.</summary>
+    public void Clear()
+    {
+        if (!IsReadOnly && Text.Length > 0)
+            ApplyTextEdit(0, Text.Length, "", UndoKind.Other);
+    }
+
+    /// <summary>Reverts the most recent edit (or coalesced run of edits), restoring the prior selection. No-op when
+    /// <see cref="CanUndo"/> is false.</summary>
+    public void Undo()
+    {
+        if (!CanUndo)
+            return;
+
+        // Move the entry off the undo stack BEFORE applying it: ApplyReverse mutates Text, which can synchronously
+        // re-enter Undo() (e.g. from a TextChanged handler); a popped-first stack keeps that re-entry consistent
+        // and never double-pops. On a defensive mismatch ApplyReverse clears both stacks, so the move is moot.
+        var entry = _undo[^1];
+        _undo.RemoveAt(_undo.Count - 1);
+        _redo.Add(entry);
+        _canCoalesce = false; // a fresh edit after an undo starts its own unit
+        ApplyReverse(entry, redo: false);
+    }
+
+    /// <summary>Re-applies the most recently undone edit. No-op when <see cref="CanRedo"/> is false.</summary>
+    public void Redo()
+    {
+        if (!CanRedo)
+            return;
+
+        var entry = _redo[^1];
+        _redo.RemoveAt(_redo.Count - 1);
+        _undo.Add(entry);
+        _canCoalesce = false;
+        ApplyReverse(entry, redo: true);
+    }
 
     // ───────────────────────────── template wiring ─────────────────────────────
 
@@ -238,7 +340,8 @@ public class TextBox : Control
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
-        RefreshPresenter(); // hide the caret
+        _canCoalesce = false; // a focus boundary seals the current typing/delete undo unit (WPF parity)
+        RefreshPresenter();   // hide the caret
     }
 
     // ───────────────────────────── keyboard ─────────────────────────────
@@ -288,10 +391,10 @@ public class TextBox : Control
                 MoveVertical(Math.Max(1, pd.ViewportRows), shift);
                 break;
             case Key.Enter when AcceptsReturn && !IsReadOnly:
-                InsertText("\n", fromPaste: false); // a real newline; single-line leaves Enter unhandled (IsDefault, §13)
+                ReplaceCore("\n", UndoKind.Other); // a real newline (its own undo unit); single-line leaves Enter unhandled (§13)
                 break;
             case Key.Tab when AcceptsTab && !ctrl && !IsReadOnly:
-                InsertText("\t", fromPaste: false); // Ctrl+Tab still navigates focus out
+                ReplaceCore("\t", UndoKind.Other); // its own undo unit; Ctrl+Tab still navigates focus out
                 break;
             case Key.Backspace:
                 DeleteBackward(ctrl);
@@ -323,6 +426,23 @@ public class TextBox : Control
                 break;
             case Key.Character when ctrl && IsLetter(e, 'v'):
                 Paste();
+                break;
+            // Undo/redo arrive as Ctrl(+Shift)+letter character events (there is no Key.Z/Y enum — ND10). The
+            // Ctrl+Shift+Z redo arm precedes the Ctrl+Z undo arm so a shifted Z is matched as redo, not undo.
+            case Key.Character when ctrl && shift && IsLetter(e, 'z'):
+                if (!CanRedo)
+                    return; // nothing to redo — bubble (an app may bind Ctrl+Shift+Z)
+                Redo();
+                break;
+            case Key.Character when ctrl && IsLetter(e, 'z'):
+                if (!CanUndo)
+                    return; // nothing to undo — bubble
+                Undo();
+                break;
+            case Key.Character when ctrl && IsLetter(e, 'y'):
+                if (!CanRedo)
+                    return;
+                Redo();
                 break;
             default:
                 return; // not ours — leave unhandled (Enter / Escape bubble for IsDefault / IsCancel, spec §13)
@@ -430,6 +550,8 @@ public class TextBox : Control
     private void SetCaretAndSelection(int anchor, int caret, bool lineEndAffinity = false)
     {
         _desiredColumn = -1; // any non-vertical caret op forgets the sticky column (MoveVertical restores it)
+        if (!_isApplyingEdit)
+            _canCoalesce = false; // an explicit caret move (nav, click, SelectAll, CaretIndex=) seals the undo unit
         var layout = GraphemeLayout.Build(Text);
         anchor = layout.PinToBoundary(Math.Clamp(anchor, 0, Text.Length));
         caret = layout.PinToBoundary(Math.Clamp(caret, 0, Text.Length));
@@ -456,61 +578,215 @@ public class TextBox : Control
             return;
 
         var filtered = FilterInput(input, fromPaste);
-        if (filtered.Length > 0)
-            ReplaceSelection(filtered);
+        if (filtered.Length == 0)
+            return;
+
+        // Typed printable text coalesces into one undo unit; a paste, or typing that replaces a selection, is atomic.
+        var kind = fromPaste || SelectionLength > 0 ? UndoKind.Other : UndoKind.Insert;
+        ReplaceCore(filtered, kind);
     }
 
-    private void ReplaceSelection(string replacement)
+    // Replaces the current selection (or inserts at the collapsed caret) with replacement, recording it as kind.
+    private void ReplaceCore(string replacement, UndoKind kind)
     {
         if (IsReadOnly)
             return;
 
         var (start, end) = SelectionBounds;
-        var current = Text;
-        replacement = TrimToMaxLength(replacement, removed: end - start, currentLength: current.Length);
-
-        if (replacement.Length == 0 && end == start)
-            return; // nothing to insert and nothing selected to remove
-
-        var newCaret = start + replacement.Length;
-        Text = string.Concat(current.AsSpan(0, start), replacement, current.AsSpan(end)); // fires OnTextChanged
-        CaretIndex = newCaret;                                                             // position the caret in the new text
+        replacement = TrimToMaxLength(replacement, removed: end - start, currentLength: Text.Length);
+        ApplyTextEdit(start, end - start, replacement, kind);
     }
 
     private void DeleteBackward(bool word)
     {
         if (IsReadOnly)
             return;
-        if (SelectionLength > 0) { ReplaceSelection(""); return; }
+        if (SelectionLength > 0) { ReplaceCore("", UndoKind.Other); return; } // deleting a selection is one atomic unit
         if (_caretIndex <= 0)
             return;
 
         var layout = GraphemeLayout.Build(Text);
         var from = word ? layout.PinToBoundary(TextNavigation.PrevWord(Text, _caretIndex)) : layout.PrevBoundary(_caretIndex);
-        DeleteRange(from, _caretIndex);
+        ApplyTextEdit(from, _caretIndex - from, "", UndoKind.DeleteBackward);
     }
 
     private void DeleteForward(bool word)
     {
         if (IsReadOnly)
             return;
-        if (SelectionLength > 0) { ReplaceSelection(""); return; }
+        if (SelectionLength > 0) { ReplaceCore("", UndoKind.Other); return; }
         if (_caretIndex >= Text.Length)
             return;
 
         var layout = GraphemeLayout.Build(Text);
         var to = word ? layout.PinToBoundary(TextNavigation.NextWord(Text, _caretIndex)) : layout.NextBoundary(_caretIndex);
-        DeleteRange(_caretIndex, to);
+        ApplyTextEdit(_caretIndex, to - _caretIndex, "", UndoKind.DeleteForward);
     }
 
-    private void DeleteRange(int from, int to)
+    // ───────────────────────────── text-mutation funnel + undo history ─────────────────────────────
+
+    // The single splice primitive: replace Text[start, start+removedLen) with inserted, then record the edit for
+    // undo and raise TextChanged. _isApplyingEdit (saved/restored for re-entrancy) spans the whole splice —
+    // including the synchronous two-way binding write-back and any normalized echo it produces (BindingExpressionCore
+    // re-reads the source in-band after the write) — so OnTextChanged neither re-pins the caret, clears the history,
+    // nor raises the event mid-funnel. The edit is recorded AFTER the splice settles, so when a binding transforms
+    // the text (e.g. a normalizing source), the recorded entry matches what actually lands in Text.
+    private void ApplyTextEdit(int start, int removedLen, string inserted, UndoKind kind)
     {
-        if (to <= from)
+        var current = Text;
+        start = Math.Clamp(start, 0, current.Length);
+        removedLen = Math.Clamp(removedLen, 0, current.Length - start);
+        if (removedLen == 0 && inserted.Length == 0)
+            return; // no-op (Backspace at 0, Delete at end, trimmed-to-nothing insert)
+
+        var removed = current.Substring(start, removedLen);
+        var caretBefore = _caretIndex;
+        var anchorBefore = _selectionAnchor;
+        var caretAfter = start + inserted.Length;
+        var spliced = string.Concat(current.AsSpan(0, start), inserted, current.AsSpan(start + removedLen));
+
+        var wasApplying = _isApplyingEdit;
+        _isApplyingEdit = true;
+        try
+        {
+            Text = spliced;
+            SetCaretAndSelection(caretAfter, caretAfter); // collapse the caret; _isApplyingEdit keeps the unit open
+        }
+        finally
+        {
+            _isApplyingEdit = wasApplying;
+        }
+
+        var resulting = Text;
+        if (string.Equals(resulting, current, StringComparison.Ordinal))
+            return; // a binding (or value-equal splice) left the text unchanged — nothing to record or raise
+
+        if (RecordsUndo && UndoLimit != 0)
+        {
+            if (string.Equals(resulting, spliced, StringComparison.Ordinal))
+                RecordEdit(start, removed, inserted, kind, caretBefore, anchorBefore, caretAfter); // exact splice — coalescable
+            else
+                // An in-band listener (e.g. a normalizing two-way binding) transformed the text; record the actual
+                // before→after as one atomic unit so undo restores the real prior text.
+                RecordFullReplace(current, resulting, caretBefore, anchorBefore);
+        }
+
+        RaiseTextChanged();
+    }
+
+    // Records one edit into the undo history (coalescing into the open unit when eligible). The *Before selection
+    // is captured by the funnel before the mutation; the *After caret is the collapsed post-edit caret.
+    private void RecordEdit(int start, string removed, string inserted, UndoKind kind, int caretBefore, int anchorBefore, int caretAfter)
+    {
+        _redo.Clear(); // a new edit invalidates the redo branch
+
+        if (_canCoalesce && _undo.Count > 0 && TryCoalesce(_undo[^1], start, removed, inserted, kind, caretAfter))
             return;
 
+        _undo.Add(new UndoEntry
+        {
+            Start = start, Removed = removed, Inserted = inserted, Kind = kind,
+            CaretBefore = caretBefore, AnchorBefore = anchorBefore,
+            CaretAfter = caretAfter, AnchorAfter = caretAfter,
+        });
+        _canCoalesce = kind is UndoKind.Insert or UndoKind.DeleteBackward or UndoKind.DeleteForward; // Other never coalesces forward
+        TrimUndoLimit();
+    }
+
+    // Records a whole-text before→after transform as one atomic, non-coalescing unit (used when a binding rewrites
+    // the text out from under a precise splice). Undo restores `before`, redo restores `after`.
+    private void RecordFullReplace(string before, string after, int caretBefore, int anchorBefore)
+    {
+        _redo.Clear();
+        _undo.Add(new UndoEntry
+        {
+            Start = 0, Removed = before, Inserted = after, Kind = UndoKind.Other,
+            CaretBefore = caretBefore, AnchorBefore = anchorBefore,
+            CaretAfter = _caretIndex, AnchorAfter = _caretIndex,
+        });
+        _canCoalesce = false;
+        TrimUndoLimit();
+    }
+
+    // Tries to fold a new edit into the open unit. Only a same-kind, contiguous edit merges; the *Before fields are
+    // never touched (they stay from the unit's first edit, so undo restores the run's original caret).
+    private static bool TryCoalesce(UndoEntry top, int start, string removed, string inserted, UndoKind kind, int caretAfter)
+    {
+        switch (kind)
+        {
+            case UndoKind.Insert when top.Kind == UndoKind.Insert
+                                      && removed.Length == 0 && start == top.Start + top.Inserted.Length:
+                top.Inserted += inserted; // contiguous typing
+                break;
+            case UndoKind.DeleteBackward when top.Kind == UndoKind.DeleteBackward
+                                              && inserted.Length == 0 && start + removed.Length == top.Start:
+                top.Removed = removed + top.Removed; // backspace extends the run leftward
+                top.Start = start;
+                break;
+            case UndoKind.DeleteForward when top.Kind == UndoKind.DeleteForward
+                                             && inserted.Length == 0 && start == top.Start:
+                top.Removed += removed; // forward-delete extends the run rightward (caret fixed)
+                break;
+            default:
+                return false; // kind switch, direction switch, or non-contiguous ⇒ start a new unit
+        }
+
+        top.CaretAfter = top.AnchorAfter = caretAfter;
+        return true;
+    }
+
+    // Reverses (undo) or re-applies (redo) one entry. Defensive: the recorded region must still hold the expected
+    // text; if a stale offset would otherwise corrupt the document, abandon the entry and clear the history.
+    private bool ApplyReverse(UndoEntry entry, bool redo)
+    {
         var current = Text;
-        Text = string.Concat(current.AsSpan(0, from), current.AsSpan(to));
-        CaretIndex = from;
+        var (expected, replacement, caret, anchor) = redo
+            ? (entry.Removed, entry.Inserted, entry.CaretAfter, entry.AnchorAfter)
+            : (entry.Inserted, entry.Removed, entry.CaretBefore, entry.AnchorBefore);
+
+        if (entry.Start < 0 || entry.Start + expected.Length > current.Length
+            || !current.AsSpan(entry.Start, expected.Length).SequenceEqual(expected))
+        {
+            ClearUndoHistory(); // the document no longer matches the recorded shape (e.g. an external normalization)
+            return false;
+        }
+
+        var newText = string.Concat(current.AsSpan(0, entry.Start), replacement, current.AsSpan(entry.Start + expected.Length));
+        var wasApplying = _isApplyingEdit;
+        _isApplyingEdit = true;
+        try
+        {
+            Text = newText;
+            SetCaretAndSelection(anchor, caret); // restore the recorded selection (undo) / collapsed caret (redo)
+        }
+        finally
+        {
+            _isApplyingEdit = wasApplying;
+        }
+
+        if (!string.Equals(Text, current, StringComparison.Ordinal))
+            RaiseTextChanged(); // after the funnel settles — handlers see the restored caret/selection, not a mid-edit state
+        return true;
+    }
+
+    private void TrimUndoLimit()
+    {
+        var limit = UndoLimit;
+        if (limit < 0)
+            return; // unlimited
+
+        while (_undo.Count > limit)
+            _undo.RemoveAt(0); // drop the oldest unit
+
+        if (_undo.Count == 0)
+            _canCoalesce = false; // nothing left to coalesce into
+    }
+
+    private void ClearUndoHistory()
+    {
+        _undo.Clear();
+        _redo.Clear();
+        _canCoalesce = false;
     }
 
     // ───────────────────────────── clipboard ─────────────────────────────
@@ -536,7 +812,7 @@ public class TextBox : Control
             return false;
 
         UIApplication.Current?.Clipboard.SetText(SelectedText);
-        ReplaceSelection("");
+        ReplaceCore("", UndoKind.Other);
         return true;
     }
 
@@ -667,15 +943,44 @@ public class TextBox : Control
 
         box.PseudoClasses.Set(":empty", string.IsNullOrEmpty(newValue));
 
-        // Keep the caret/anchor valid for the new text and pinned to cluster boundaries.
+        // A self-edit (typing / delete / undo / redo) — and any synchronous binding echo it triggers — owns the
+        // caret, the undo bookkeeping, AND the TextChanged raise explicitly via the funnel (which runs them after
+        // the splice settles, so handlers never see a mid-edit caret/stack). Skip everything here for self-edits.
+        if (box._isApplyingEdit)
+            return;
+
+        // An EXTERNAL change (an app `Text =` assignment or a binding source push) re-pins the caret into the new
+        // text and discards the now-stale undo history (WPF resets undo on a programmatic / source-driven set).
         var layout = GraphemeLayout.Build(newValue);
         box._caretIndex = layout.PinToBoundary(Math.Clamp(box._caretIndex, 0, newValue.Length));
         box._selectionAnchor = layout.PinToBoundary(Math.Clamp(box._selectionAnchor, 0, newValue.Length));
-        box._caretLineEndAffinity = false; // the edit repositions the caret at a real char — forget any wrap affinity
+        box._caretLineEndAffinity = false;
+        if (box.RecordsUndo)
+            box.ClearUndoHistory();
         box.RefreshPresenter();
+        box.RaiseTextChanged();
+    }
 
-        if (box.IsAttachedToTree)
-            box.RaiseEvent(box.RentEvent(TextChangedEvent));
+    private void RaiseTextChanged()
+    {
+        if (IsAttachedToTree)
+            RaiseEvent(RentEvent(TextChangedEvent));
+    }
+
+    private static void OnIsUndoEnabledChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is TextBox box && !newValue)
+            box.ClearUndoHistory(); // disabling undo discards the history
+    }
+
+    private static void OnUndoLimitChanged(UIObject sender, int oldValue, int newValue)
+    {
+        if (sender is not TextBox box)
+            return;
+        if (newValue == 0)
+            box.ClearUndoHistory(); // 0 = recording disabled
+        else
+            box.TrimUndoLimit();    // a tighter cap drops the oldest units now
     }
 
     private static void OnPlaceholderChanged(UIObject sender, string? oldValue, string? newValue)

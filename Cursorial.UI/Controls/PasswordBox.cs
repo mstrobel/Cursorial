@@ -29,7 +29,11 @@ public class PasswordBox : TextBox
         UIProperty.Register<PasswordBox, bool>(nameof(RevealPassword), defaultValue: false,
             changed: static (sender, _, _) => Reproject(sender));
 
-    static PasswordBox() => AffectsMeasure<PasswordBox>(PasswordCharProperty, RevealPasswordProperty);
+    static PasswordBox()
+    {
+        AffectsMeasure<PasswordBox>(PasswordCharProperty, RevealPasswordProperty);
+        IsUndoEnabledProperty.OverrideDefaultValue<PasswordBox>(false); // the property reads false…
+    }
 
     /// <inheritdoc cref="PasswordCharProperty"/>
     public char PasswordChar { get => GetValue(PasswordCharProperty); set => SetValue(PasswordCharProperty, value); }
@@ -61,6 +65,11 @@ public class PasswordBox : TextBox
 
     /// <summary>Suppressed — a password is never cut to the clipboard (no copy, no delete; WPF parity).</summary>
     private protected override bool Cut() => false;
+
+    /// <summary>Hard-suppressed — plaintext is never retained in an undo buffer, regardless of
+    /// <see cref="TextBox.IsUndoEnabled"/> (a runtime / XAML / binding set cannot re-enable it). Mirrors the
+    /// Copy/Cut suppression above; WPF's <c>PasswordBox</c> likewise has no undo.</summary>
+    private protected override bool RecordsUndo => false;
 
     // A change to the mask glyph or the reveal flag re-projects the display: re-measure (AffectsMeasure) handles
     // layout; nudge the presenter so the caret/scroll/visual refresh the same frame even when the width is unchanged.

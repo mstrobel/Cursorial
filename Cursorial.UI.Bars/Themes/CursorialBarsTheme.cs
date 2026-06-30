@@ -1,3 +1,4 @@
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -129,9 +130,13 @@ internal static class CursorialBarsTheme
                 return border;
             }));
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
-        theme.Children.Add(new Style("^:focus")
+        // Keyboard-only focus look (:focus-visible — never on pointer focus). The Inverse text attribute is the
+        // no-color cue: when the focus brushes collapse to Default under .caps-nocolor, the chevron still reverse-
+        // videos so keyboard focus stays visible.
+        theme.Children.Add(new Style("^:focus-visible")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
+                          .Set(TextElement.TextAttributesProperty, TextAttributes.Inverse));
         theme.Children.Add(new Style("^:pressed")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
@@ -170,6 +175,9 @@ internal static class CursorialBarsTheme
                 // The overflow band: a vertical items-host StackPanel inside the popup. IsItemsHost makes its Children
                 // adopt visual-only, so the overflowed live controls stay logical children of the Toolbar.
                 var overflowHost = new StackPanel { Orientation = Orientation.Vertical, IsItemsHost = true };
+                // Up/Down navigate between overflowed items inside the popup (directional scoring on the vertical
+                // stack); the chevron↔popup boundary hops are explicit in Toolbar.OnKeyDown (cross-surface).
+                KeyboardNavigation.SetDirectionalNavigation(overflowHost, DirectionalNavigationMode.Cycle);
                 ctx.RegisterName("PART_OverflowHost", overflowHost);
                 var popupBorder = new Border { Child = overflowHost };
                 popupBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);

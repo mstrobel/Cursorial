@@ -206,13 +206,15 @@ public class Toolbar : ItemsControl
 
         // Escape from keyboard navigation within the bar returns focus to where it came from (the RetainsFocus
         // return). Only when UNHANDLED — an open dropdown/popup consumes its own Escape first on its surface, so a
-        // reaching Escape means focus is in the row band. The focused element is a descendant (the event routed up
-        // to us), so RestoreRetainedFocus resolves this toolbar as its retaining scope.
+        // reaching Escape means focus is in the bar (row or chevron). Resolve the return through the TOOLBAR, not the
+        // focused element: the focused element may be the overflow chevron, which is itself a retaining focus scope
+        // (a FindReturningScope barrier so opening the popup doesn't yank focus) — starting the walk there would stop
+        // at the chevron and never return. The toolbar IS the non-retaining scope, so this reaches the outer scope's
+        // logical focus from any bar element, the chevron included.
         if (e.Handled || e.Key != Key.Escape)
             return;
 
-        if (UIApplication.Current?.FocusManager is { FocusedElement: {} focused } focus
-            && focus.RestoreRetainedFocus(focused))
+        if (UIApplication.Current?.FocusManager is {} focus && focus.RestoreRetainedFocus(this))
             e.Handled = true;
     }
 

@@ -275,4 +275,28 @@ public sealed class ToolbarFocusTests
 
         Assert.Same(editor, focus.FocusedElement); // returns to content, NOT aCut (the intermediate bar)
     }
+
+    [Fact] // P2 (#124): Escape from a retaining-scope-barrier child (the overflow chevron's shape) STILL returns focus
+           // — the toolbar resolves the return through ITSELF, not the focused barrier child whose own scope blocks it.
+    public void Escape_FromRetainingScopeBarrierChild_StillReturns()
+    {
+        var h = Build();
+        using var _ = h.Host;
+
+        // The chevron uses exactly this opt-out (a retaining focus scope = a FindReturningScope barrier). Escape from
+        // it would, walking from the child, stop at the barrier and never return — the toolbar must resolve the return.
+        var opener = new BarButton { Content = "More" };
+        FocusManager.SetIsFocusScope(opener, true);
+        h.Toolbar.Items.Add(opener);
+        h.Host.RunUntilIdle();
+
+        h.Editor.Focus();
+        opener.Focus(FocusNavigationMethod.Pointer); // enter the bar onto the barrier child
+        h.Host.RunUntilIdle();
+        Assert.Same(opener, h.Focus.FocusedElement);
+
+        h.Host.SendKey(Key.Escape);
+        h.Host.RunUntilIdle();
+        Assert.Same(h.Editor, h.Focus.FocusedElement); // returned to the editor (the #7 fix) — was stuck on the chevron
+    }
 }

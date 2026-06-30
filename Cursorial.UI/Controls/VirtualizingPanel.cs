@@ -32,7 +32,7 @@ public enum ScrollUnit
 /// (once its panel derives from this type). The realization mechanics live in <c>VirtualizingStackPanel</c>
 /// (V2); this base only carries the policy surface.
 /// </summary>
-public abstract class VirtualizingPanel : Panel
+public abstract class VirtualizingPanel : Panel, IItemsHostPanel
 {
     /// <summary>Whether the panel virtualizes its children (default <see langword="false"/> — opt-in; set on the
     /// <see cref="ItemsControl"/>). The default-on flip (WPF parity for <c>ListBox</c>) is a deferred post-soak change.</summary>
@@ -92,6 +92,15 @@ public abstract class VirtualizingPanel : Panel
     /// <summary>Called by the <see cref="ItemsPresenter"/> before this panel is released (detach / <c>ItemsPanel</c>
     /// swap) so a virtualizing subclass can unhook its generator subscription. The base does nothing.</summary>
     internal virtual void OnItemsHostDisconnected() { }
+
+    // IItemsHostPanel — explicit so the public surface stays clean and VirtualizingStackPanel's internal overrides are
+    // untouched. A virtualizing panel owns adoption ONLY while the generator is virtualizing, which the presenter
+    // checks separately via ItemContainerGenerator.IsVirtualizing — so ManagesContainerAdoption is false here (a
+    // NON-virtualizing virtualizing panel must keep the eager presenter path). The lifecycle hooks forward to the
+    // existing internal virtuals.
+    bool IItemsHostPanel.ManagesContainerAdoption => false;
+    void IItemsHostPanel.OnItemsHostConnected(ItemsControl owner) => OnItemsHostConnected(owner);
+    void IItemsHostPanel.OnItemsHostDisconnected() => OnItemsHostDisconnected();
 
     /// <summary>Sets <see cref="ScrollUnitProperty"/> on <paramref name="control"/>.</summary>
     public static void SetScrollUnit(ItemsControl control, ScrollUnit value)

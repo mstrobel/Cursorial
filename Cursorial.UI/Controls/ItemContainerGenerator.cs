@@ -93,7 +93,7 @@ public sealed class ItemContainerGenerator
     /// <summary>The number of <i>items</i> — the host iterates <c>[0, ContainerCount)</c> via
     /// <see cref="ContainerFromIndex"/>. Equals the item count in BOTH modes (virtualizing keeps selection/keyboard
     /// nav item-indexed; <see cref="ContainerFromIndex"/> is null for an unrealized index).</summary>
-    internal int ContainerCount => _virtualizing ? _itemCount : _containers.Count;
+    public int ContainerCount => _virtualizing ? _itemCount : _containers.Count;
 
     /// <summary>Swaps the items source (control's ItemsSource/Items change): unrealizes the old, realizes the new
     /// (eager) or resets the sparse store realizing nothing (virtualizing), fires Reset.</summary>

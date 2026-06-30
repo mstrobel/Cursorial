@@ -16,6 +16,13 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
     private Panel? _panel;
     private ScrollContentPresenter? _scrollOwner;
 
+    // The panel owns container adoption (the presenter must NOT run its index-aligned Children.Insert/Remove/Move)
+    // when EITHER the generator is virtualizing (a VirtualizingStackPanel drives its Children off the materialization
+    // channel) OR the items panel is an IItemsHostPanel that claims unconditional ownership (the bars Toolbar's
+    // overflow panel, which splits containers across a row band + a popup band — index-aligned sync would fight it).
+    private bool PanelOwnsAdoption
+        => _generator?.IsVirtualizing == true || _panel is IItemsHostPanel { ManagesContainerAdoption: true };
+
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
@@ -59,7 +66,7 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         // Free the containers (logical parentage stays the ItemsControl's) so a re-attach / re-template re-adopts.
         if (_panel is not null)
         {
-            (_panel as VirtualizingPanel)?.OnItemsHostDisconnected();
+            (_panel as IItemsHostPanel)?.OnItemsHostDisconnected();
             _panel.Children.Clear();
             RemoveVisualChild(_panel);
             _panel = null;
@@ -76,7 +83,7 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
 
         if (_panel is not null)
         {
-            (_panel as VirtualizingPanel)?.OnItemsHostDisconnected();
+            (_panel as IItemsHostPanel)?.OnItemsHostDisconnected();
             if (_panel is ILogicalScrollHost oldHost)
                 oldHost.ScrollOwner = null; // symmetric with the SCP's Content-setter disown — no stale back-channel
             _panel.Children.Clear();
@@ -108,9 +115,10 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         if (PanelHost is { } host)
             host.ScrollOwner = _scrollOwner;
 
-        // A virtualizing panel wires its generator + opt-in here (V2 — it owns realization, not this presenter).
-        if (_panel is VirtualizingPanel vp)
-            vp.OnItemsHostConnected(owner);
+        // An items-host panel wires its generator + opt-in here (a VirtualizingPanel owns realization off the
+        // materialization channel; the bars overflow panel owns its row/popup distribution) — not this presenter.
+        if (_panel is IItemsHostPanel itemsHost)
+            itemsHost.OnItemsHostConnected(owner);
     }
 
     private void OnContainersChanged(object? sender, ContainersChangedEventArgs e)
@@ -118,12 +126,12 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         if (_generator is null || _panel is null)
             return;
 
-        // In virtualizing mode the panel (a VirtualizingStackPanel, V2) owns its Children via the materialization
-        // channel (ContainersRealizedChanged) — the structural channel is for the selection model only. The eager,
-        // index-aligned adoption below assumes a dense store (ContainerFromIndex non-null, item index == child
-        // index), which the sparse store violates (it would Remove(null) / Insert past the end). So the eager
-        // ItemsPresenter no-ops structural events here; a virtualizing list needs a VirtualizingStackPanel ItemsPanel.
-        if (_generator.IsVirtualizing)
+        // When the panel owns adoption the presenter no-ops the structural channel (PanelOwnsAdoption): a
+        // VirtualizingStackPanel drives its Children off the materialization channel (ContainersRealizedChanged) —
+        // the sparse store would make the index-aligned adoption below Remove(null) / Insert past the end — and the
+        // bars overflow panel splits containers across two bands, which index-aligned sync would fight. Both maintain
+        // their own ordered container list from the generator and reconcile their bands themselves.
+        if (PanelOwnsAdoption)
             return;
 
         switch (e.Action)
@@ -182,8 +190,8 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         if (_generator is null || _panel is null)
             return;
 
-        if (_generator.IsVirtualizing)
-            return; // sparse store: the VirtualizingStackPanel (V2) owns adoption — see OnContainersChanged
+        if (PanelOwnsAdoption)
+            return; // the panel owns adoption (virtualizing sparse store, or the bars overflow split) — see OnContainersChanged
 
         for (var i = 0; i < _generator.ContainerCount; i++)
         {

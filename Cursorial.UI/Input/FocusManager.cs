@@ -118,6 +118,79 @@ public sealed class FocusManager
         }
     }
 
+    // ───────────────────────────── focus retention (the toolbar focus-scope behavior, doc §7.7) ─────────────────────────────
+
+    /// <summary>
+    /// Whether focus that enters this scope <b>stays</b> until explicitly moved (the default, <see langword="true"/>
+    /// — ordinary focus behavior). Set <see langword="false"/> to make the scope <b>return</b> focus to wherever it
+    /// came from — the WPF focus-scope-for-toolbars behavior, terminal-adapted: a <b>pointer</b> or <b>access-key</b>
+    /// invocation within a non-retaining scope returns focus to the pre-entry element (click Bold, keep typing),
+    /// while tabbing IN holds focus there for arrow navigation until <c>Escape</c> returns it. The bars <c>Toolbar</c>
+    /// sets this <see langword="false"/>. Orthogonal to <see cref="IsFocusScopeProperty"/> (activation memory).
+    /// </summary>
+    public static readonly AttachedProperty<bool> RetainsFocusProperty =
+        UIProperty.RegisterAttached<FocusManager, UIElement, bool>("RetainsFocus", defaultValue: true);
+
+    // Whether an INVOKE within the (non-retaining) scope auto-returns focus: true when the scope was ENTERED by
+    // Pointer or AccessKey (a one-shot interaction — click Bold, keep typing), false when entered by Tab or
+    // Directional navigation (the user is deliberately in the bar; only Escape returns). Set at entry; Escape's
+    // explicit restore ignores this gate. The return TARGET is not captured here — it is the logical focus of the
+    // ENCLOSING focus scope (see ReturnRetainedFocus), which the per-scope FocusedElement memory already tracks.
+    internal static readonly AttachedProperty<bool> RetainedReturnAutoProperty =
+        UIProperty.RegisterAttached<FocusManager, UIElement, bool>("RetainedReturnAuto");
+
+    /// <summary>Reads <see cref="RetainsFocusProperty"/> from <paramref name="element"/>.</summary>
+    public static bool GetRetainsFocus(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(RetainsFocusProperty);
+    }
+
+    /// <summary>Sets <see cref="RetainsFocusProperty"/> on <paramref name="element"/>.</summary>
+    public static void SetRetainsFocus(UIElement element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(RetainsFocusProperty, value);
+    }
+
+    /// <summary>
+    /// The nearest self-or-ancestor <b>non-retaining</b> scope of <paramref name="element"/>
+    /// (<see cref="RetainsFocusProperty"/> = <see langword="false"/>), or <see langword="null"/> when every
+    /// ancestor retains focus. Walks the LOGICAL parent first (then visual): a generated bar item is a logical
+    /// child of its owning items control, so this reaches the owning toolbar in one hop whether the item is on the
+    /// row or in the overflow popup band.
+    /// </summary>
+    internal static UIElement? FindReturningScope(UIElement element)
+    {
+        for (UIElement? node = element; node is not null; node = node.UIParent ?? node.VisualParent)
+        {
+            if (!node.GetValue(RetainsFocusProperty))
+                return node;                            // a non-retaining scope — returns focus
+            if (node.GetValue(IsFocusScopeProperty))
+                return null;                            // a RETAINING focus scope is a barrier: focus inside it stays
+                                                        // (a drop-opener like the overflow chevron opts out this way)
+        }
+        return null;
+    }
+
+    // When focus ENTERS a non-retaining scope from outside it, record whether the entry method auto-returns on
+    // invoke (Pointer/AccessKey ⇒ yes; Tab/Directional ⇒ no, only Escape returns). Restore + Programmatic entries are
+    // SKIPPED — a popup-close Restore or a programmatic move must not arm an auto-return (the opener keeps focus).
+    // Moving WITHIN the scope preserves the entry record (so arrowing across the bar still returns to the original
+    // element). The return TARGET is not recorded — it is resolved at return time as the OUTER scope's logical focus.
+    private static void MarkReturnableEntry(UIElement target, UIElement? oldFocus, FocusNavigationMethod method)
+    {
+        if (method is FocusNavigationMethod.Restore or FocusNavigationMethod.Programmatic)
+            return;
+        if (FindReturningScope(target) is not {} scope)
+            return;
+        if (oldFocus is not null && ReferenceEquals(FindReturningScope(oldFocus), scope))
+            return; // intra-scope move — keep the entry record
+
+        scope.SetValue(RetainedReturnAutoProperty,
+            method is FocusNavigationMethod.Pointer or FocusNavigationMethod.AccessKey);
+    }
+
     // ───────────────────────────── physical focus ─────────────────────────────
 
     /// <summary>The physically focused element — one per application; null when focus is empty.</summary>
@@ -206,6 +279,59 @@ public sealed class FocusManager
         ArgumentNullException.ThrowIfNull(from);
         _dispatcher.VerifyAccess();
         return _navigator.NextTabStop(from, forward: true);
+    }
+
+    /// <summary>
+    /// Explicitly returns focus to the logical focus of the OUTER focus scope enclosing the nearest
+    /// <b>non-retaining</b> scope (<see cref="RetainsFocusProperty"/> = <see langword="false"/>) of
+    /// <paramref name="elementInScope"/> — i.e. where focus was before it entered the bar. The bar surface calls this
+    /// on an unhandled <c>Escape</c>; a drop-down opener can call it when its popup closes. Unlike the implicit
+    /// invoke return it ignores the entry modality — even a Tab/Directional entry returns. A no-op
+    /// (<see langword="false"/>) when there is no non-retaining scope, the outer scope has no remembered focus, or
+    /// that element is no longer a valid focus target.
+    /// </summary>
+    /// <param name="elementInScope">An element within the non-retaining scope (typically the just-invoked control).</param>
+    /// <param name="method">The focus method for the restore (e.g. <see cref="FocusNavigationMethod.Restore"/> for Escape).</param>
+    public bool RestoreRetainedFocus(UIElement elementInScope, FocusNavigationMethod method = FocusNavigationMethod.Restore)
+    {
+        ArgumentNullException.ThrowIfNull(elementInScope);
+        _dispatcher.VerifyAccess();
+        return ReturnRetainedFocus(elementInScope, method, requireAuto: false);
+    }
+
+    // The implicit INVOKE return (ButtonBase calls this after a click): returns focus only when the scope was
+    // ENTERED by a one-shot interaction (Pointer/AccessKey ⇒ RetainedReturnAuto). A Tab/Directional entry keeps
+    // focus AND its return target (only the explicit Escape path returns from there).
+    internal bool TryAutoReturnFocus(UIElement elementInScope, FocusNavigationMethod method)
+    {
+        _dispatcher.VerifyAccess();
+        return ReturnRetainedFocus(elementInScope, method, requireAuto: true);
+    }
+
+    private bool ReturnRetainedFocus(UIElement elementInScope, FocusNavigationMethod method, bool requireAuto)
+    {
+        if (FindReturningScope(elementInScope) is not {} scope)
+            return false;
+
+        if (requireAuto && !scope.GetValue(RetainedReturnAutoProperty))
+            return false; // Tab/Directional entry — keep focus (only the explicit Escape path returns)
+
+        scope.SetValue(RetainedReturnAutoProperty, false); // consume the one-shot auto-arm
+
+        // The return target is the logical focus of the OUTER focus scope (the one enclosing this non-retaining
+        // scope). It was preserved untouched while focus lived in the bar — a bar item's nearest focus scope is the
+        // BAR itself (the bar is a focus scope), so entering the bar never overwrote the outer scope's FocusedElement
+        // memory. This naturally returns to the original element even after arrowing across several bar controls, and
+        // a detached target is dropped by the standard scope-memory detach-clear.
+        var parent = scope.UIParent ?? scope.VisualParent;
+        if (parent is null)
+            return false;
+
+        var target = GetFocusedElement(GetFocusScope(parent));
+        if (target is null || !IsValidFocusTarget(target) || ReferenceEquals(target, FocusedElement))
+            return false; // nothing valid to return to, or focus is already there (don't report a no-op as a return)
+
+        return SetFocus(target, method);
     }
 
     // ───────────────────────────── activation / restore (doc §7.7) ─────────────────────────────
@@ -485,7 +611,10 @@ public sealed class FocusManager
             }
 
             if (target is not null)
+            {
                 GetFocusScope(target).SetValue(FocusedElementProperty, target); // nearest scope only (N113)
+                MarkReturnableEntry(target, oldFocus, method); // arm the auto-return for a non-retaining scope entry
+            }
 
             AccessKeysInternal?.OnFocusChanged(method); // Pointer clears the sticky cue (doc §7.7; N179)
 

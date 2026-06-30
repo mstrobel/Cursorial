@@ -96,6 +96,21 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override bool IsEnabledCore
         => Command is not { } command || command.CanExecute(CommandParameter);
 
+    // Invoke the click, then return focus to where it came from when this button sits in a NON-retaining focus scope
+    // (FocusManager.RetainsFocus = false, e.g. a Toolbar: click Bold, keep typing). The return is gated by HOW the
+    // scope was ENTERED, not by the invoke modality: TryAutoReturnFocus returns only for a Pointer/AccessKey entry —
+    // so a mouse click returns, an access-key-then-arrow-then-Enter returns (the access-key entry latched it), but a
+    // plain Tab-in + Enter stays (the user is navigating; Escape returns). Skipped when the click itself moved focus
+    // elsewhere (a drop-down button that focused its popup). A cheap no-op outside a non-retaining scope.
+    private void InvokeClickRetaining(FocusNavigationMethod modality)
+    {
+        var focus = UIApplication.Current?.FocusManager;
+        var before = focus?.FocusedElement;
+        OnClick();
+        if (focus is not null && ReferenceEquals(focus.FocusedElement, before))
+            focus.TryAutoReturnFocus(this, modality);
+    }
+
     // ───────────────────────────── mouse (capture + :pressed, doc §12.7) ─────────────────────────────
 
     /// <inheritdoc/>
@@ -111,7 +126,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         SetPressed(true);
 
         if (ClickMode == ClickMode.Press)
-            OnClick();
+            InvokeClickRetaining(FocusNavigationMethod.Pointer);
     }
 
     /// <inheritdoc/>
@@ -136,7 +151,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         SetPressed(false);
 
         if (over && ClickMode == ClickMode.Release)
-            OnClick(); // up over self ⇒ click (C187); off self ⇒ no click (C188)
+            InvokeClickRetaining(FocusNavigationMethod.Pointer); // up over self ⇒ click (C187); off self ⇒ no click (C188)
     }
 
     /// <inheritdoc/>
@@ -183,14 +198,14 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
             e.Handled = true;
             _spaceLatched = true;
             SetPressed(true);
-            OnClick();
+            InvokeClickRetaining(FocusNavigationMethod.Restore); // returns iff the scope was entered Pointer/AccessKey
             return;
         }
 
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            OnClick(); // immediate click, no pressed latch (C193)
+            InvokeClickRetaining(FocusNavigationMethod.Restore); // immediate click, no pressed latch (C193)
         }
     }
 
@@ -230,7 +245,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         if (e.IsMultiMatch)
             return; // the manager already focused us; multi-match never invokes (ND18)
 
-        OnClick();
+        InvokeClickRetaining(FocusNavigationMethod.AccessKey);
     }
 
     // ───────────────────────────── attach lifecycle (access key + command coupling) ─────────────────────────────

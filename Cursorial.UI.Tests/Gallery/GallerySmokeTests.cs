@@ -6,6 +6,7 @@ using Cursorial.Gallery.ViewModels;
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
@@ -97,6 +98,33 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.DoesNotContain("Cycle V-bar", screen);   // the ScrollViewer page's chrome is gone
         Assert.NotNull(FindDescendant<PasswordBox>(root)); // the new control is in the showcase
         Assert.NotNull(FindDescendant<Slider>(root));
+    }
+
+    [Fact] // the Bars page resolves the Cursorial.UI.Bars Toolbar via the runtime XAML loader + renders bar controls,
+           // auto-fills the BarButton labels from their BarCommands, and the Always item forces the overflow chevron
+    public void BarsPage_RendersToolbar_WithOverflowChevron()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        shell.SelectedPage = shell.Pages.OfType<BarsViewModel>().Single();
+        host.RunUntilIdle();
+
+        var screen = Screen(host, 24);
+        output.WriteLine(screen);
+        Assert.NotNull(FindDescendant<Toolbar>(root)); // the Cursorial.UI.Bars Toolbar materialized via the XAML loader
+        Assert.Contains("Cut", screen);                // a BarButton label, auto-filled from the BarCommand's Text
+        Assert.Contains("Copy", screen);
+        Assert.Contains("Edit:", screen);              // the BarLabel caption
+        Assert.Contains("»", screen);                  // the overflow chevron (forced by the Always-mode "Settings" item)
+
+        // Narrowing the terminal folds more of the bar — it must not throw and the chevron stays.
+        host.SendResize(44, 24);
+        host.RunUntilIdle();
+        Assert.Contains("»", Screen(host, 24));
     }
 
     [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)

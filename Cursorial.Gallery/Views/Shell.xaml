@@ -2,6 +2,7 @@
            xmlns:x="https://cursorial.dev/xaml"
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
            xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
+           xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
            Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}">
     <DockPanel.InputBindings>
@@ -216,6 +217,41 @@
             </Grid>
           </Border>
 
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:BarsViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!-- The Toolbar (Surface A): one BarCommand set, define-once. Docked top so it stretches to the page width
+               and overflows as the window narrows. "Settings" is pinned to the overflow popup (OverflowMode=Always). -->
+          <bars:Toolbar DockPanel.Dock="Top" Margin="2,1">
+            <bars:BarLabel Content="Edit:" />
+            <bars:BarButton Command="{Binding Cut}" />
+            <bars:BarButton Command="{Binding Copy}" />
+            <bars:BarButton Command="{Binding Paste}" />
+            <bars:BarSeparator />
+            <bars:BarButton Command="{Binding Undo}" />
+            <bars:BarButton Command="{Binding Redo}" />
+            <bars:BarSeparator />
+            <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+            <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+            <bars:BarSeparator />
+            <bars:BarButton Command="{Binding Find}" />
+            <bars:BarButton Command="{Binding Settings}" bars:Toolbar.OverflowMode="Always" />
+          </bars:Toolbar>
+
+          <Border VerticalAlignment="Center" HorizontalAlignment="Center" Padding="2,1">
+            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Border>
         </DockPanel>
       </DataTemplate>
 

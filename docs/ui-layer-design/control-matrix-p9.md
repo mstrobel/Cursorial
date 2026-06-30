@@ -319,6 +319,14 @@ viewport row count) and Ctrl+A select-all — noted for a later pass.
   that ACTUALLY held focus before entry, not the scope enclosing the bar — `MarkReturnableEntry` captures the
   pre-entry focus scope (`RetainedReturnScopeProperty`) and the return reads ITS logical focus. Rows C5.17–C5.20;
   bars regression `ToolbarFocusTests.NestedFocusScope_PointerInvoke_ReturnsToTheItemItCameFrom`.
+  **Audit fix-forwards (after the P1 commit):** (1) **bar→bar** — moving from one non-retaining bar into another by
+  pointer without returning would strand focus in the intermediate bar (`GetFocusScope(oldFocus)` resolves to it);
+  `MarkReturnableEntry` now **chains** the captured scope through a prior bar's own `RetainedReturnScope` to the true
+  origin (`ToolbarFocusTests.TwoToolbars_PointerInvokeInSecond_ReturnsToContent_NotFirstBar`). (2) **prime scope
+  guard** — `PrimeFocusMemoryFromSelection` only writes when the resolved scope IS the items host
+  (`ItemsControl.ItemsPanelFromItemsControl(this)`); for a control whose host is NOT a focus scope (ComboBox/
+  TabControl) `GetFocusScope` climbs to an enclosing window/surface root, and priming there would corrupt that root's
+  activation memory and steal focus on re-activation — the guard fences it off (row C9.16).
 - **CD-P9-17 — `ItemsPresenter` resolves its owner across hosting boundaries (P9.3c ScrollViewer / P9.4 menu).** A
   content host that adopts the presenter as its `Content` — the ListBox's `ScrollContentPresenter`, or a MenuItem's
   submenu `Popup` — **clears the presenter's `TemplatedParent`**, so relying on `TemplatedParent` alone left it
@@ -551,6 +559,7 @@ containers. The themed template hosts the tab strip (`PART_TabStrip`, the header
 | C9.13 | tabs with **UIElement** content | switch A→B→A | the content switches cleanly (single visual parent — no double-hosting) | PIN (CD-P9-22) |
 | C9.14 | **empty** TabControl | Ctrl+PageDown / arrow | safe no-op (the `count==0` guard; no `DivideByZero` on the cycle `% count`) | PIN (CD-P9-22) |
 | C9.15 | selected tab | click it again | stays selected (idempotent) | WPF |
+| C9.16 | `Lead` button + TabControl under a root; focus Lead, then set `SelectedIndex` programmatically | inspect | the enclosing (root) scope's focus memory stays `Lead` — a programmatic select on the unfocused, non-scope tab strip must NOT corrupt it (it would steal focus on re-activation); the selection-prime fences itself off. Same guard protects ComboBox | DEV (CD-P9-27, audit) |
 
 **CD-P9-22 (P9.5) — TabControl on the selection base.** `TabControl` reuses `SelectingItemsControl` (single mode)
 unchanged — `SelectedIndex`/`SelectedItem`/`SelectionModel`/the `ISelectableContainer` mirror all come from P9.3.

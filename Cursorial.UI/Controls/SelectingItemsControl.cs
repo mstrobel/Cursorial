@@ -205,8 +205,13 @@ public abstract class SelectingItemsControl : ItemsControl
         if (IsKeyboardFocusWithin || _selection.SelectedIndex < 0)
             return;
 
+        // Only seed memory when the items host IS the container's focus scope (ListBox/ItemsControl/TreeView, whose
+        // host is marked IsFocusScope — P1). For a control whose items host is NOT a focus scope (ComboBox/TabControl)
+        // GetFocusScope climbs PAST it to an enclosing window/surface root; priming there would corrupt that root's
+        // activation memory and steal focus on re-activation. The scope-identity check fences that off (no-op for them).
         if (ItemContainerGenerator.ContainerFromIndex(_selection.SelectedIndex) is UIElement container
-            && FocusManager.GetFocusScope(container) is { } scope)
+            && FocusManager.GetFocusScope(container) is { } scope
+            && ReferenceEquals(scope, ItemsControl.ItemsPanelFromItemsControl(this)))
         {
             FocusManager.SetFocusedElement(scope, container);
         }

@@ -2,6 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
@@ -273,5 +274,36 @@ public sealed class Section22_TabControl
         Click(host, b); // click B again
         Assert.Equal(1, tabs.SelectedIndex);
         Assert.True(b.IsSelected);
+    }
+
+    [Fact] // C9.16 (audit / CD-P9-27): a programmatic selection on an UNFOCUSED TabControl must NOT corrupt the
+           // enclosing scope's focus memory — the tab strip is not a focus scope (unlike a ListBox items host), so the
+           // selection-prime must fence itself off rather than write the strip's enclosing window/surface-root scope
+           // (which would steal focus on re-activation). Same guard protects ComboBox.
+    public void C9_16_ProgrammaticSelect_DoesNotCorruptEnclosingScopeMemory()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 16) });
+        using var _ = host;
+        var lead = new Button { Content = "Lead" };
+        var tabs = new TabControl();
+        tabs.Items.Add(new TabItem { Header = "A", Content = "a" });
+        tabs.Items.Add(new TabItem { Header = "B", Content = "b" });
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(lead);
+        root.Children.Add(tabs);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        Assert.True(lead.Focus());                                    // root-scope memory = lead
+        host.RunUntilIdle();
+        var rootScope = FocusManager.GetFocusScope(lead);
+        Assert.Same(lead, FocusManager.GetFocusedElement(rootScope));
+
+        tabs.SelectedIndex = 1;                                       // programmatic; the tab strip is unfocused
+        host.RunUntilIdle();
+
+        Assert.Same(lead, FocusManager.GetFocusedElement(rootScope)); // NOT the TabItem — the prime fenced itself off
+        Assert.Same(lead, focus.FocusedElement);                      // actual focus untouched
     }
 }

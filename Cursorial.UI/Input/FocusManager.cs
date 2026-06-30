@@ -197,10 +197,22 @@ public sealed class FocusManager
         scope.SetValue(RetainedReturnAutoProperty,
             method is FocusNavigationMethod.Pointer or FocusNavigationMethod.AccessKey);
 
-        // Capture the scope that held focus before entry — the return resolves ITS logical focus. With nested scopes
-        // (a ListBox items host records the focused item on the panel, not the surface root), the pre-entry scope is
-        // not the one enclosing this bar, so the enclosing scope's memory would be stale.
-        scope.SetValue(RetainedReturnScopeProperty, oldFocus is null ? null : GetFocusScope(oldFocus));
+        // Capture the scope that held focus before entry — the return resolves ITS logical focus. With a nested focus
+        // scope (a ListBox items host records the focused item on the panel, not the surface root) the pre-entry scope
+        // is not the one enclosing this bar. And when the prior focus was itself inside ANOTHER non-retaining bar
+        // (a bar→bar move without returning), chain through that bar's already-captured origin so the return reaches
+        // the true content, not the intermediate bar (which would otherwise strand focus there).
+        UIElement? capturedScope;
+        if (oldFocus is null)
+            capturedScope = null;
+        else if (FindReturningScope(oldFocus) is {} priorBar
+                 && !ReferenceEquals(priorBar, scope)
+                 && priorBar.GetValue(RetainedReturnScopeProperty) is {} inherited)
+            capturedScope = inherited; // chain through the prior bar to its captured origin
+        else
+            capturedScope = GetFocusScope(oldFocus);
+
+        scope.SetValue(RetainedReturnScopeProperty, capturedScope);
     }
 
     // ───────────────────────────── physical focus ─────────────────────────────

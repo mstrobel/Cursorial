@@ -230,4 +230,49 @@ public sealed class ToolbarFocusTests
 
         Assert.Same(item1, focus.FocusedElement); // returned to the list item, NOT `other` (the root's stale memory)
     }
+
+    [Fact] // bar→bar (audit): Tab into one toolbar, then invoke a button in ANOTHER toolbar by pointer — focus returns
+           // to the original CONTENT, not the intermediate bar (MarkReturnableEntry chains the return scope through it).
+    public void TwoToolbars_PointerInvokeInSecond_ReturnsToContent_NotFirstBar()
+    {
+        var host = UITestHost.Create(new UITestHostOptions
+        {
+            InitialSize = new Size(48, 8),
+            Capabilities = TestCapabilities.KittyTruecolor,
+        });
+        using var _ = host;
+
+        var aCut = new BarButton { Content = "ACut" };
+        var barA = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        barA.Items.Add(aCut);
+
+        var bCut = new BarButton { Content = "BCut" };
+        var barB = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        barB.Items.Add(bCut);
+
+        var editor = new Button { Content = "Editor" };
+
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(barA);   // row 0
+        root.Children.Add(barB);   // row 1
+        root.Children.Add(editor); // row 2
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        editor.Focus();                          // the true origin (outer-scope memory = editor)
+        host.RunUntilIdle();
+
+        aCut.Focus(FocusNavigationMethod.Tab);   // Tab INTO barA — no auto-return; barA captures editor's scope (root)
+        host.RunUntilIdle();
+        Assert.Same(aCut, focus.FocusedElement);
+
+        // Pointer-click BCut in barB (row 1) — without ever returning out of barA first.
+        host.SendMouseMove(2, 1);
+        host.RunFrame();
+        host.SendClick(2, 1);
+        host.RunUntilIdle();
+
+        Assert.Same(editor, focus.FocusedElement); // returns to content, NOT aCut (the intermediate bar)
+    }
 }

@@ -114,6 +114,23 @@
               <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
             </StackPanel>
+
+            <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
+                 parameter (x:Reference), so Undo/Redo stay in the view-model; the field's own Ctrl+Z / Ctrl+Y work too. -->
+            <DockPanel Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="4" Margin="0,1,0,0" LastChildFill="True">
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,1">
+                <Label Content="_Journal" Target="{x:Reference JournalEditor}"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+                <Button Margin="2,0,0,0" MinWidth="8" Content="Undo"
+                        Command="{Binding UndoCommand}" CommandParameter="{x:Reference JournalEditor}" />
+                <Button Margin="1,0,0,0" MinWidth="8" Content="Redo"
+                        Command="{Binding RedoCommand}" CommandParameter="{x:Reference JournalEditor}" />
+                <TextBlock Margin="2,0,0,0" VerticalAlignment="Center" Text="multi-line · Ctrl+Z / Ctrl+Y"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+              </StackPanel>
+              <TextBox x:Name="JournalEditor" AcceptsReturn="True" TextWrapping="WordWrap" MinLines="3"
+                       Text="{Binding Journal, Mode=TwoWay}" />
+            </DockPanel>
           </Grid>
 
         </DockPanel>

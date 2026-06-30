@@ -37,6 +37,16 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         return null;
     }
 
+    private static IEnumerable<T> AllDescendants<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            yield return match;
+        if (root.VisualChildrenList is { } children)
+            foreach (var child in children)
+                foreach (var found in AllDescendants<T>(child))
+                    yield return found;
+    }
+
     [Fact] // the shell loads from embedded XAML, binds to the ShellViewModel, and the first page (ScrollViewer) resolves
     public void Shell_LoadsFromXaml_RendersFirstPage()
     {
@@ -110,6 +120,49 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         Assert.Equal("Ada", inputs.Name);              // control -> VM (two-way)
         Assert.Contains("Name=\"Ada\"", inputs.Status); // and the live status reflects it
+    }
+
+    [Fact] // the Journal field is the undo/redo canary: the VM Undo/Redo commands (the button path, editor passed via
+           // x:Reference) AND the field's own Ctrl+Z all drive the multi-line TextBox's history
+    public void InputsPage_Journal_UndoRedo()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        var inputs = shell.Pages.OfType<InputsPageViewModel>().Single();
+        shell.SelectedPage = inputs;
+        host.RunUntilIdle();
+
+        // The Journal is the one multi-line field (AcceptsReturn) — the Name/Permissions TextBoxes and the
+        // PasswordBox (a TextBox subclass) are single-line.
+        var journal = AllDescendants<TextBox>(root).Single(t => t.AcceptsReturn);
+        var initial = inputs.Journal;
+        Assert.Contains("\n", initial); // the seeded text is genuinely multi-line
+
+        journal.Focus();
+        journal.CaretIndex = journal.Text.Length; // seals coalescing; append after the seed text
+        host.RunUntilIdle();
+        host.SendText(" Extra.");
+        host.RunUntilIdle();
+        Assert.EndsWith(" Extra.", inputs.Journal); // typed text round-tripped to the VM (two-way)
+
+        // Undo via the VM command — the editor arrives as the command parameter (the x:Reference button wiring).
+        Assert.True(inputs.UndoCommand.CanExecute(journal));
+        inputs.UndoCommand.Execute(journal);
+        host.RunUntilIdle();
+        Assert.Equal(initial, inputs.Journal); // the typed run was reverted in one undo
+
+        inputs.RedoCommand.Execute(journal);
+        host.RunUntilIdle();
+        Assert.EndsWith(" Extra.", inputs.Journal); // and redone
+
+        // The field's own keyboard chord drives the same history.
+        host.SendKey(Key.Character, KeyModifiers.Control, "z");
+        host.RunUntilIdle();
+        Assert.Equal(initial, inputs.Journal);
     }
 
     [Fact] // The chessboard primitive (#107, a future page): content-assisted LEADING-EDGE snapping via IScrollContentHost.

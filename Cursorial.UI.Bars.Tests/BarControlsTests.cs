@@ -125,4 +125,14 @@ public sealed class BarControlsTests
         Assert.Contains("Copy", row);
         Assert.Contains("│", row); // the separator cell divides the clusters
     }
+
+    [Fact] // a BarLabel renders its caption text and is non-interactive (not focusable)
+    public void BarLabel_RendersCaption()
+    {
+        var (host, label) = Show(() => TopLeft(new BarLabel { Content = "Font:" }));
+        using var _h = host;
+
+        Assert.Contains("Font:", host.GetRowText(0));
+        Assert.False(label.Focusable);
+    }
 }

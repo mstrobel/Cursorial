@@ -340,7 +340,7 @@ public static class ThemeKeys
     public const string TabBackgroundHover = "Theme.TabBackgroundHover";
     /// <summary>Focused tab foreground.</summary>
     public const string TabForegroundFocused = "Theme.TabForegroundFocused";
-    /// <summary>Focuseded tab fill (--focused).</summary>
+    /// <summary>Focused tab fill (--focused).</summary>
     public const string TabBackgroundFocused = "Theme.TabBackgroundFocused";
     /// <summary>Selected/active tab fill (--surface).</summary>
     public const string TabBackgroundSelected = "Theme.TabBackgroundSelected";

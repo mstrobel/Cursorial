@@ -435,4 +435,125 @@ public sealed class ToolbarOverflowTests
         host.RunUntilIdle();
         Assert.Same(editor, focus.FocusedElement);        // returned to the origin, NOT the chevron
     }
+
+    // ───────────────────── #137: drop-opener side placement in the overflow menu ─────────────────────
+
+    private static StackPanel SubItems(out Button firstSub)
+    {
+        firstSub = new Button { Content = "Left", Width = 8, Height = 1 };
+        var panel = new StackPanel { Orientation = Orientation.Vertical };
+        panel.Children.Add(firstSub);
+        panel.Children.Add(new Button { Content = "Center", Width = 8, Height = 1 });
+        return panel;
+    }
+
+    [Fact] // #137: a drop-opener folded into the (right-anchored) overflow menu opens to the SIDE (Left, ◂) like a
+           // submenu — not downward over the menu rows; back on the row it opens downward (Bottom, ▾). The caret follows.
+    public void OverflowedDropOpener_FliesOutToSide_WithMatchingCaret()
+    {
+        using var host = NewHost(width: 16);
+        var align = new BarPopupButton { Content = "Align", DropDownContent = SubItems(out _) };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), align);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(InOverflow(align));
+        Assert.Equal(PlacementMode.Left, align.DropDownPlacement); // fly out to the left (keeps it on-screen)
+        Assert.Equal("◂", align.CaretGlyph);                       // the caret follows the placement
+
+        host.SendResize(60, 6); // widen → returns to the row → downward again
+        host.RunUntilIdle();
+        Assert.True(OnRow(align));
+        Assert.Equal(PlacementMode.Bottom, align.DropDownPlacement);
+        Assert.Equal("▾", align.CaretGlyph);
+    }
+
+    [Fact] // #137: in the overflow menu, Up/Down navigate the menu ROWS (they no longer open the opener's dropdown), and
+           // the open arrow (Left, matching the Left placement) opens AND enters the submenu in one press.
+    public void OverflowedDropOpener_UpDownNavigatesMenu_LeftOpensSubmenu()
+    {
+        using var host = NewHost(width: 16, height: 10);
+        var align = new BarPopupButton { Content = "Align", DropDownContent = SubItems(out var firstSub) };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), align);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(align));
+
+        toolbar.IsOverflowOpen = true; // open the overflow so the folded opener is attached on the popup surface
+        host.RunUntilIdle();
+
+        align.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        Assert.True(align.IsFocused);
+
+        host.SendKey(Key.DownArrow); // Down navigates the menu — it must NOT open the opener's dropdown
+        host.RunUntilIdle();
+        Assert.False(align.IsDropDownOpen);
+
+        align.Focus(FocusNavigationMethod.Directional); // back onto the opener row
+        host.RunUntilIdle();
+        host.SendKey(Key.LeftArrow); // the open arrow for a Left placement → opens AND enters the submenu
+        host.RunUntilIdle();
+        Assert.True(align.IsDropDownOpen);
+        Assert.True(firstSub.IsFocused); // one-press open+enter (the MenuItem submenu model)
+    }
+
+    [Fact] // a BarComboBox folded into the overflow menu opens its list to the SIDE (Left) — same as the drop-opener
+           // buttons — instead of downward over the menu rows (which mucks with the up/down nav). Row = Bottom.
+    public void OverflowedComboBox_ListFliesOutToSide()
+    {
+        using var host = NewHost(width: 16);
+        var combo = new BarComboBox { ItemsSource = new[] { "alpha", "beta", "gamma" }, Width = 6 };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), combo);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(InOverflow(combo));
+        Assert.Equal(PlacementMode.Left, combo.DropDownPlacement); // list flies out to the side in the overflow menu
+
+        host.SendResize(60, 6); // widen → returns to the row → downward again
+        host.RunUntilIdle();
+        Assert.True(OnRow(combo));
+        Assert.Equal(PlacementMode.Bottom, combo.DropDownPlacement);
+    }
+
+    [Fact] // a side-placed (overflow) BarComboBox does NOT open on Down/Up — those bubble to the parent menu so you can
+           // navigate PAST the combo to the lower menu items; it opens on the Left arrow (its flyout side) instead.
+    public void OverflowedComboBox_DownUpNavigateMenu_LeftOpens()
+    {
+        using var host = NewHost(width: 16, height: 12);
+        var combo = new BarComboBox { ItemsSource = new[] { "alpha", "beta", "gamma" }, Width = 6 };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), combo, Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(combo));
+
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+
+        combo.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        Assert.True(combo.IsFocused);
+
+        host.SendKey(Key.DownArrow); // must NOT open the combo — bubbles to the menu's row navigation
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen);
+
+        combo.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        host.SendKey(Key.UpArrow); // Up likewise does not open it
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen);
+
+        combo.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        host.SendKey(Key.LeftArrow); // the arrow toward its Left-placed flyout opens it
+        host.RunUntilIdle();
+        Assert.True(combo.IsDropDownOpen);
+
+        host.SendKey(Key.RightArrow); // the opposite arrow backs out: closes the list and returns focus to the combo
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen);
+        Assert.True(combo.IsFocused);
+    }
 }

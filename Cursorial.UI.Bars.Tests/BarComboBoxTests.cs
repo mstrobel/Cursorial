@@ -40,6 +40,23 @@ public sealed class BarComboBoxTests
         Assert.Contains("▾", row);   // the drop caret
     }
 
+    [Fact] // the chevron docks right (▾) for the default Bottom placement and migrates to the LEFT (◂) for a Left
+           // placement (a combo folded into a vertical overflow menu) — matching the drop-opener buttons.
+    public void BarComboBox_LeftPlacement_MovesCaretLeft()
+    {
+        using var host = NewHost();
+        Show(host, out var combo);
+
+        var bottomRow = host.GetRowText(0);
+        Assert.True(bottomRow.IndexOf('▾') > bottomRow.IndexOf("Two", StringComparison.Ordinal), $"Bottom: ▾ right of value — [{bottomRow}]");
+
+        combo.DropDownPlacement = PlacementMode.Left;
+        host.RunUntilIdle();
+        var leftRow = host.GetRowText(0);
+        Assert.Contains("◂", leftRow);
+        Assert.True(leftRow.IndexOf('◂') < leftRow.IndexOf("Two", StringComparison.Ordinal), $"Left: ◂ left of value — [{leftRow}]");
+    }
+
     [Fact] // clicking the face opens the drop-down (inherited ComboBox behavior over the bar parts)
     public void BarComboBox_ClickOpensDropDown()
     {

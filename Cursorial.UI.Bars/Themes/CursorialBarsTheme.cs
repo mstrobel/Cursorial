@@ -270,14 +270,42 @@ internal static class CursorialBarsTheme
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
 
-                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                var row = new DockPanel { LastChildFill = true };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
                 label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-                var caret = new TextBlock { Text = " ▾" };
+                var caret = new TextBlock { Margin = new Margins(1, 0, 0, 0) }; // leading gap (was the space in " ▾")
+                caret.SetBinding(TextBlock.TextProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
                 caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-                row.Children.Add(BuildIcon());
-                row.Children.Add(label);
+
+                var icon = BuildIcon();
+                
+                DockPanel.SetDock(icon, Dock.Left);
+
+                BindingOperations.SetBinding(
+                    caret,
+                    DockPanel.DockProperty,
+                    new Binding(nameof(BarPopupButton.DropDownPlacement))
+                    {
+                        RelativeSource = RelativeSource.TemplatedParent,
+                        Converter = ValueConverter.Create((value, _, _, _) =>
+                                                          {
+                                                              return value switch
+                                                                     {
+                                                                         PlacementMode.Left => Dock.Left,
+                                                                         _                  => Dock.Right
+                                                                     };
+                                                          })
+                    }
+                );
+
+                // Order matters with LastChildFill: the LAST child FILLS the remaining space and its Dock is IGNORED.
+                // The caret must therefore NOT be last (that's why its placement-driven Dock never applied on the popup
+                // button, unlike the split button which adds its ▾ zone first). Add the caret first (Dock honored →
+                // right for Bottom, left for a Left placement), then the icon (Dock.Left), and the LABEL last so IT is
+                // the fill child that takes the middle — mirroring the split button's dropZone-first / primary-last order.
                 row.Children.Add(caret);
+                row.Children.Add(icon);
+                row.Children.Add(label);
                 border.Child = row;
 
                 var grid = new Grid();
@@ -317,16 +345,34 @@ internal static class CursorialBarsTheme
 
                 var dropZone = new Button
                 {
-                    Content = "▾",
                     Focusable = false, // a mouse target only — Down on the split button opens the dropdown by keyboard
                     Theme = DropZoneStyle(),
                     VerticalAlignment = VerticalAlignment.Stretch,
                 };
+                dropZone.SetBinding(ContentControl.ContentProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
                 ctx.RegisterName("PART_DropDown", dropZone);
 
-                var band = new StackPanel { Orientation = Orientation.Horizontal };
-                band.Children.Add(primary);
+                var band = new DockPanel { LastChildFill = true};
+
+                BindingOperations.SetBinding(
+                    dropZone,
+                    DockPanel.DockProperty,
+                    new Binding(nameof(BarSplitButton.DropDownPlacement))
+                    {
+                        RelativeSource = RelativeSource.TemplatedParent,
+                        Converter = ValueConverter.Create((value, _, _, _) =>
+                                                          {
+                                                              return value switch
+                                                                     {
+                                                                         PlacementMode.Left => Dock.Left,
+                                                                         _                  => Dock.Right
+                                                                     };
+                                                          })
+                    }
+                );
+
                 band.Children.Add(dropZone);
+                band.Children.Add(primary);
 
                 var grid = new Grid();
                 grid.Children.Add(band);
@@ -393,12 +439,27 @@ internal static class CursorialBarsTheme
                 faceContent.Children.Add(selected);
                 faceContent.Children.Add(editable);
 
-                var caret = new Button { Content = "▾", Focusable = false, IsTabStop = false, Theme = ComboCaretStyle() };
+                var caret = new Button { Focusable = false, IsTabStop = false, Theme = ComboCaretStyle() };
                 ctx.RegisterName("PART_DropDown", caret); // the ComboBox wires its Click to toggle the list
-                DockPanel.SetDock(caret, Dock.Right);
+                // The caret docks right (▾) for the default Bottom placement and LEFT (◂) when the combo is folded into a
+                // vertical overflow menu (DropDownPlacement == Left), pointing toward its side flyout — matching the
+                // drop-opener buttons. (The caret is added FIRST so it is not the LastChildFill child and its Dock is
+                // honored; faceContent is the fill.)
+                BindingOperations.SetBinding(caret, DockPanel.DockProperty,
+                    new Binding(nameof(ComboBox.DropDownPlacement))
+                    {
+                        RelativeSource = RelativeSource.TemplatedParent,
+                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? Dock.Left : Dock.Right),
+                    });
+                BindingOperations.SetBinding(caret, ContentControl.ContentProperty,
+                    new Binding(nameof(ComboBox.DropDownPlacement))
+                    {
+                        RelativeSource = RelativeSource.TemplatedParent,
+                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? "◂" : "▾"),
+                    });
 
                 var row = new DockPanel();
-                row.Children.Add(caret);        // docked right (the ▾ toggle)
+                row.Children.Add(caret);        // docked right (Bottom) / left (Left placement) — the ▾ / ◂ toggle
                 row.Children.Add(faceContent);  // fills the remaining width
 
                 var face = new Border { Child = row }; // FLAT: no BorderPen

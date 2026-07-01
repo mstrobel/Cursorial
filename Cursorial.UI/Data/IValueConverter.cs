@@ -10,9 +10,26 @@ namespace Cursorial.UI.Data;
 /// </summary>
 public interface IValueConverter
 {
-    /// <summary>Source → target. <paramref name="targetType"/> is the target property's CLR type.</summary>
+    /// <summary>
+    /// Converts the value provided into a target type using the specified parameter and culture.
+    /// </summary>
+    /// <param name="value">The value to be converted.</param>
+    /// <param name="targetType">The type to which the value is being converted.</param>
+    /// <param name="parameter">An optional parameter to be used during the conversion.</param>
+    /// <param name="culture">The culture to be used during the conversion.</param>
+    /// <returns>The converted value, or null if conversion is not possible.</returns>
     object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture);
 
-    /// <summary>Target → source. <paramref name="targetType"/> is the source leaf's CLR type.</summary>
+    /// <summary>
+    /// Converts a value back from a target type to the source type.
+    /// </summary>
+    /// <param name="value">The value that is being converted back to its source type.</param>
+    /// <param name="targetType">The type to which the data is being converted back.</param>
+    /// <param name="parameter">An optional parameter to use during the conversion process.</param>
+    /// <param name="culture">The culture to use during the conversion process.</param>
+    /// <return>
+    /// Returns the converted value, or a specific representation of an <see cref="UIProperty.UnsetValue">
+    /// unset value</see> if no conversion logic is provided or conversion failed.
+    /// </return>
     object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture);
 }

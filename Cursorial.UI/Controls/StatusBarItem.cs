@@ -1,3 +1,5 @@
+using Cursorial.Rendering;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -7,4 +9,8 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class StatusBarItem : ContentControl
 {
+    static StatusBarItem()
+    {
+        PaddingProperty.OverrideMetadata<StatusBarItem>(new PropertyMetadata<Margins>(DefaultValue: new Margins(1, 0)));
+    }
 }

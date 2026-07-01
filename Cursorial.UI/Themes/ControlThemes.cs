@@ -850,7 +850,7 @@ internal static class ControlThemes
             .SetResource(Slider.FilledPenProperty, ThemeKeys.SliderFilledPen)
             .SetResource(Control.BorderPenProperty, ThemeKeys.SliderTrackPen);
         theme.Children.Add(new Style("^:disabled").SetResource(Slider.FilledPenProperty, ThemeKeys.SliderTrackPen));
-        theme.Children.Add(new Style("^:focus").SetResource(Control.ForegroundProperty, ThemeKeys.Accent2Brush));
+        theme.Children.Add(new Style("^:focus").SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush));
         return theme;
     }
 
@@ -920,8 +920,9 @@ internal static class ControlThemes
     private static ControlTemplate StatusBarItemTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter();
-        var root = new Border { Child = presenter, Padding = new Margins(1, 0) };
+        var root = new Border { Child = presenter };
         ctx.RegisterName("PART_ContentPresenter", presenter);
+        root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         root.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         return root;

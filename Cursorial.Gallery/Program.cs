@@ -14,6 +14,7 @@ UIApplication app = UIApplication.CreateBuilder()
                                  .UseAlternateScreen()
                                  .Build();
 
+// app.NerdFontAvailable = true;
 // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
 
 static string FormatElement(UIObject? element)

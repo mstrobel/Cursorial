@@ -1,8 +1,10 @@
+using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
@@ -338,6 +340,86 @@ public sealed class BarDropDownButtonTests
         Assert.False(button.IsDropDownOpen);
     }
 
+    [Fact] // BarSplitButton: focus leaving BOTH the ▾ dropdown and the button closes the dropdown (the user-reported
+           // gap — a keyboard move away to a sibling generates no outside press, so light dismiss alone wouldn't catch
+           // it; the OnLostFocus close on the shared base does). Focus moving INTO the dropdown keeps it open (covered
+           // by the *_DownEnters_* tests: IsKeyboardFocusWithin stays true).
+    public void SplitButton_ClosesWhenFocusLeaves()
+    {
+        using var host = NewHost();
+        var split = new BarSplitButton { Content = "Paste", Command = new BarCommand(() => { }), DropDownContent = DropContent(out _) };
+        var sibling = new Button { Content = "Sib", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(split);
+        root.Children.Add(sibling);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        ClickAt(host, split.DropZoneForTests!); // open via the ▾ zone (focus on the drop zone, within the split button)
+        Assert.True(split.IsDropDownOpen);
+
+        sibling.Focus(); // focus moves out of the opener AND its dropdown
+        host.RunUntilIdle();
+        Assert.False(split.IsDropDownOpen); // …so the dropdown closed
+    }
+
+    [Fact] // BarPopupButton: same shared-base behavior — focus leaving both the opener and the open dropdown closes it
+    public void PopupButton_ClosesWhenFocusLeaves()
+    {
+        using var host = NewHost();
+        var button = new BarPopupButton { Content = "Align", DropDownContent = DropContent(out _) };
+        var sibling = new Button { Content = "Sib", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(button);
+        root.Children.Add(sibling);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        button.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // open (focus on the face)
+        host.RunUntilIdle();
+        Assert.True(button.IsDropDownOpen);
+
+        sibling.Focus(); // focus leaves the opener and the dropdown
+        host.RunUntilIdle();
+        Assert.False(button.IsDropDownOpen);
+    }
+
+    private sealed class CmdVm
+    {
+        public int Ran;
+        public ICommand Cmd { get; }
+        public CmdVm() => Cmd = new BarCommand(() => Ran++);
+    }
+
+    [Fact] // the original report: a bound-Command item inside the dropdown RUNS when clicked. The click closes the
+           // dropdown, which detaches the content and clears the bound Command — so the close is DEFERRED to the next
+           // dispatcher turn (OnDropDownItemClick), letting ButtonBase.OnClick read + execute the command first.
+    public void DropDownItem_BoundCommand_RunsOnClick()
+    {
+        using var host = NewHost();
+        var vm = new CmdVm();
+        var item = new BarButton { Content = "Do" };
+        item.SetBinding(ButtonBase.CommandProperty, new Binding("Cmd"));
+        var content = new StackPanel { Orientation = Orientation.Vertical };
+        content.Children.Add(item);
+        var button = new BarPopupButton { Content = "Align", DropDownContent = content };
+        var root = new StackPanel { Orientation = Orientation.Vertical, DataContext = vm };
+        root.Children.Add(button);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        button.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        Assert.NotNull(item.Command); // the Command binding resolved via the inherited DataContext
+
+        ClickAt(host, item); // click the item → OnClick runs the command; the close is deferred a turn
+        host.RunUntilIdle();  // …which RunUntilIdle then drains
+        Assert.Equal(1, vm.Ran);             // the command ran (not cleared before OnClick read it)
+        Assert.False(button.IsDropDownOpen); // …and the deferred close shut the dropdown
+    }
+
     [Fact] // detaching the button while its dropdown is open closes it (no leaked popup surface)
     public void Detach_ClosesDropDown()
     {
@@ -359,5 +441,87 @@ public sealed class BarDropDownButtonTests
         });
         Assert.Null(ex);
         Assert.False(button.IsDropDownOpen);
+    }
+
+    [Fact] // audit regression: a side-placement open with no content still fires Popup.Opened (the theme Border keeps
+           // Popup.Child non-null) and consumes the parked enter — so a LATER open does NOT auto-enter, and a Bottom
+           // (ComboBox-model) open never auto-enters regardless (the OnPopupOpened placement guard).
+    public void SideOpen_ThenReopen_DoesNotHijackFocus()
+    {
+        using var host = NewHost();
+        var opener = new BarPopupButton { Content = "Align", DropDownPlacement = PlacementMode.Left }; // no content yet
+        host.ShowRoot(opener);
+        host.RunUntilIdle();
+
+        opener.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.LeftArrow); // side open (arms the enter); content is null → nothing to focus, enter consumed
+        host.RunUntilIdle();
+        Assert.True(opener.IsDropDownOpen);
+
+        // Give it content, close, and reopen programmatically — a reopen is NOT a keyboard open, so it must not enter.
+        opener.DropDownContent = DropContent(out var first);
+        opener.IsDropDownOpen = false;
+        host.RunUntilIdle();
+        opener.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        Assert.False(first.IsFocused); // the parked enter did not survive to hijack this open
+    }
+
+    [Fact] // the popup-button caret renders its ▾ glyph from the CaretGlyph TemplateBinding at rest (before any placement
+           // change) — the binding seeds the initial value, not just placement-change updates
+    public void PopupButton_InitialCaretRenders()
+    {
+        using var host = NewHost();
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        Assert.Equal("▾", button.CaretGlyph);
+        Assert.Contains("▾", host.GetRowText(0));
+    }
+
+    [Fact] // the popup-button chevron sits to the RIGHT of the label for the default Bottom placement and moves to the
+           // LEFT when the dropdown opens sideways (Left placement) — the DockPanel LastChildFill ordering fix (the
+           // caret must not be the fill child or its placement-driven Dock is ignored).
+    public void PopupButton_LeftPlacement_MovesCaretLeft()
+    {
+        using var host = NewHost();
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        var bottomRow = host.GetRowText(0);
+        Assert.True(bottomRow.IndexOf('▾') > bottomRow.IndexOf('A'), $"Bottom: caret should be RIGHT of the label — [{bottomRow}]");
+
+        button.DropDownPlacement = PlacementMode.Left;
+        host.RunUntilIdle();
+        var leftRow = host.GetRowText(0);
+        var caretAt = leftRow.IndexOf('◂');
+        Assert.True(caretAt >= 0 && caretAt < leftRow.IndexOf('A'), $"Left: caret should be LEFT of the label — [{leftRow}]");
+    }
+
+    [Fact] // the split-button ▾ zone renders its glyph from the CaretGlyph TemplateBinding on the drop zone's Content
+    public void SplitButton_InitialCaretRenders()
+    {
+        using var host = NewHost();
+        var split = new BarSplitButton
+        {
+            Content = "Paste", Command = new BarCommand(() => { }), DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(split);
+        host.RunUntilIdle();
+
+        Assert.Equal("▾", split.CaretGlyph);
+        Assert.Contains("▾", host.GetRowText(0));
     }
 }

@@ -275,18 +275,18 @@
             <bars:BarSplitButton Content="Color" Command="{Binding Color}">
               <bars:BarSplitButton.DropDownContent>
                 <StackPanel Orientation="Vertical">
-                  <Button Content="Red" Command="{Binding Pick}" CommandParameter="Color → Red" />
-                  <Button Content="Green" Command="{Binding Pick}" CommandParameter="Color → Green" />
-                  <Button Content="Blue" Command="{Binding Pick}" CommandParameter="Color → Blue" />
+                  <bars:BarButton Content="Red" Command="{Binding Pick}" CommandParameter="Color → Red" />
+                  <bars:BarButton Content="Green" Command="{Binding Pick}" CommandParameter="Color → Green" />
+                  <bars:BarButton Content="Blue" Command="{Binding Pick}" CommandParameter="Color → Blue" />
                 </StackPanel>
               </bars:BarSplitButton.DropDownContent>
             </bars:BarSplitButton>
             <bars:BarPopupButton Content="Align">
               <bars:BarPopupButton.DropDownContent>
                 <StackPanel Orientation="Vertical">
-                  <Button Content="Left" Command="{Binding Pick}" CommandParameter="Align → Left" />
-                  <Button Content="Center" Command="{Binding Pick}" CommandParameter="Align → Center" />
-                  <Button Content="Right" Command="{Binding Pick}" CommandParameter="Align → Right" />
+                  <bars:BarButton Content="Left" Command="{Binding Pick}" CommandParameter="Align → Left" />
+                  <bars:BarButton Content="Center" Command="{Binding Pick}" CommandParameter="Align → Center" />
+                  <bars:BarButton Content="Right" Command="{Binding Pick}" CommandParameter="Align → Right" />
                 </StackPanel>
               </bars:BarPopupButton.DropDownContent>
             </bars:BarPopupButton>
@@ -509,6 +509,7 @@
     </ListBox>
     
     <StatusBar DockPanel.Dock="Bottom">
+      <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
       <StatusBarItem Classes="alternate" Content="{Binding ThemeDescription}" />
       <StatusBarItem Classes="alternate" Content="{Binding Focus}" />
       <StatusBarItem Content="{Binding Path=SelectedPage.Status, TargetNullValue=''}" />

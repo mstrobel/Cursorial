@@ -367,15 +367,34 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
     // the other band first) and reordering the rest. Mirrors ItemsPresenter.SyncAll's index reconcile.
     private void PlaceInBand(Panel band, List<UIElement> list)
     {
+        var isOverflowBand = ReferenceEquals(band, _overflowHost);
         // A separator reads as an upright │ on the horizontal row but as a horizontal ─ rule in the vertical popup
         // band — flip its orientation to match the band it's rendering in (guide §3; DrawLine spans the arranged axis).
-        var separatorOrientation = ReferenceEquals(band, _overflowHost) ? Orientation.Horizontal : Orientation.Vertical;
+        var separatorOrientation = isOverflowBand ? Orientation.Horizontal : Orientation.Vertical;
+        // A drop-opener / combo in the (right-anchored) overflow menu flies its dropdown out to the SIDE (Left) like a
+        // submenu — opening downward would overlap the menu rows below and hijack the menu's up/down navigation; on the
+        // main row it opens downward (Bottom) as usual. Gate the write on an actual change: this runs inside
+        // ArrangeOverride, and the placement can drive an AffectsMeasure re-glyph, so a same-value write on every
+        // latch-miss fold would fire a redundant re-invalidation.
+        var placement = isOverflowBand ? PlacementMode.Left : PlacementMode.Bottom;
 
         for (var i = 0; i < list.Count; i++)
         {
             var c = list[i];
             if (c is BarSeparator separator)
+            {
                 separator.Orientation = separatorOrientation;
+            }
+            else if (c is BarDropDownButton opener)
+            {
+                if (opener.DropDownPlacement != placement)
+                    opener.DropDownPlacement = placement; // caret glyph + open/back arrow keys follow the placement
+            }
+            else if (c is ComboBox combo)
+            {
+                if (combo.DropDownPlacement != placement)
+                    combo.DropDownPlacement = placement; // the list flies out to the side in the overflow menu
+            }
 
             var current = band.Children.IndexOf(c);
             if (current < 0)

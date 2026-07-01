@@ -432,6 +432,43 @@ public sealed class RibbonTests
         Assert.True(b.IsFocused);
     }
 
+    [Fact] // the ribbon content is a SINGLE Tab stop (aligning with the Toolbar / tab strip): Tab enters the content
+           // once (on the first control) and the next Tab exits past the WHOLE content — you don't tab through every
+           // control to leave. Arrow keys do the within-content navigation.
+    public void Ribbon_ContentIsSingleTabStop()
+    {
+        using var host = NewHost();
+        var a = new BarButton { Content = "A" };
+        var b = new BarButton { Content = "B" };
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", Group("G", a, b)));
+        var outside = new Button { Content = "Out", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(ribbon);
+        root.Children.Add(outside);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var home = ribbon.ItemContainerGenerator.ContainerFromIndex(0) as RibbonTab;
+        home!.Focus(); // on the tab strip
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Tab); // strip → content: enters the content on its first control
+        host.RunUntilIdle();
+        Assert.True(a.IsFocused);
+
+        host.SendKey(Key.Tab); // content → out in ONE step (past the whole content — not to b)
+        host.RunUntilIdle();
+        Assert.True(outside.IsFocused);
+        Assert.False(b.IsFocused);
+
+        a.Focus(); // within the content, arrows still cross controls
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.True(b.IsFocused);
+    }
+
     // ───────────────────────── P3a: contextual tabs (the purple, conditional band tab) ─────────────────────────
 
     private static Color Resolve(UIElement el, string key)

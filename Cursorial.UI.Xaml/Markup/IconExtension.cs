@@ -14,6 +14,9 @@ public sealed class IconExtension : MarkupExtension
 {
     /// <summary>The Nerd Font glyph tier — see <see cref="Icon.Glyph"/>.</summary>
     public string? Glyph { get; set; }
+    
+    /// <summary>The Nerd Font glyph width — see <see cref="Icon.GlyphWidth"/>.</summary>
+    public int GlyphWidth { get; set; } = 1;
 
     /// <summary>The image tier as a URI — see <see cref="Icon.ImageUri"/>.</summary>
     public Uri? ImageUri { get; set; }
@@ -23,5 +26,5 @@ public sealed class IconExtension : MarkupExtension
 
     /// <inheritdoc/>
     public override object ProvideValue(IServiceProvider serviceProvider)
-        => new Icon { Glyph = Glyph, ImageUri = ImageUri, Text = Text };
+        => new Icon { Glyph = Glyph, GlyphWidth = GlyphWidth, ImageUri = ImageUri, Text = Text };
 }

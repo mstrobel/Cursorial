@@ -14,8 +14,8 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public abstract class ButtonBase : ContentControl, IAccessKeyTarget
 {
-    private bool _captured;       // we hold mouse capture (press in flight)
-    private bool _spaceLatched;   // Space is held (keyboard press in flight)
+    private bool _captured;     // we hold mouse capture (press in flight)
+    private bool _spaceLatched; // Space is held (keyboard press in flight)
 
     /// <summary>When the button raises its click (default <see cref="ClickMode.Release"/> — doc §12.7).</summary>
     public static readonly StyledProperty<ClickMode> ClickModeProperty =
@@ -47,9 +47,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     }
 
     /// <summary>Creates a button base.</summary>
-    protected ButtonBase()
-    {
-    }
+    protected ButtonBase() {}
 
     /// <inheritdoc cref="ClickModeProperty"/>
     public ClickMode ClickMode { get => GetValue(ClickModeProperty); set => SetValue(ClickModeProperty, value); }
@@ -79,9 +77,10 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected virtual void OnClick()
     {
         var args = RentEvent(ClickEvent);
+
         RaiseEvent(args);
 
-        if (Command is { } command)
+        if (Command is {} command)
         {
             var parameter = CommandParameter;
             if (command.CanExecute(parameter))
@@ -94,7 +93,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     /// Effective-enabled folds this through S1's plumbing into <see cref="InteractionState.Disabled"/>.
     /// </summary>
     protected override bool IsEnabledCore
-        => Command is not { } command || command.CanExecute(CommandParameter);
+        => Command is not {} command || command.CanExecute(CommandParameter);
 
     // Invoke the click, then return focus to where it came from when this button sits in a NON-retaining focus scope
     // (FocusManager.RetainsFocus = false, e.g. a Toolbar: click Bold, keep typing). The return is gated entirely by
@@ -108,7 +107,9 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     {
         var focus = UIApplication.Current?.FocusManager;
         var before = focus?.FocusedElement;
+
         OnClick();
+
         if (focus is not null && ReferenceEquals(focus.FocusedElement, before))
             focus.TryAutoReturnFocus(this);
     }
@@ -119,6 +120,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
+
         if (e.Handled || e.Button != MouseButton.Left)
             return;
 
@@ -135,6 +137,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+
         if (_captured)
             SetPressed(IsPointerOver); // pressed tracks pointer-over while captured (C186)
     }
@@ -143,6 +146,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
+
         if (e.Button != MouseButton.Left || !_captured)
             return;
 
@@ -184,6 +188,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
         if (e.Handled)
             return;
 
@@ -215,6 +220,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
+
         if (_spaceLatched && IsActivationSpace(e))
         {
             _spaceLatched = false;
@@ -226,6 +232,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
+
         if (_spaceLatched)
         {
             _spaceLatched = false; // the Space latch clears on focus loss, no click (C194)
@@ -270,13 +277,13 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
 
     private void SubscribeCanExecute()
     {
-        if (Command is { } command)
+        if (Command is {} command)
             command.CanExecuteChanged += OnCanExecuteChanged;
     }
 
     private void UnsubscribeCanExecute()
     {
-        if (Command is { } command)
+        if (Command is {} command)
             command.CanExecuteChanged -= OnCanExecuteChanged;
     }
 
@@ -292,9 +299,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     /// it to reflect command-owned state that rides the same re-query (e.g. a toggle pulling its checked state from
     /// an <c>ICheckableCommandParameter</c>), so a single <c>CanExecuteChanged</c> updates both enabled and checked.
     /// </summary>
-    protected virtual void OnCommandStateChanged()
-    {
-    }
+    protected virtual void OnCommandStateChanged() {}
 
     private static void OnCommandChanged(UIObject sender, ICommand? oldValue, ICommand? newValue)
     {
@@ -302,9 +307,10 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
             return;
 
         // Unsubscribe the old command (on detach AND on Command change, CD25), subscribe the new.
-        if (oldValue is { } old && button.IsAttachedToTree)
+        if (oldValue is {} old && button.IsAttachedToTree)
             old.CanExecuteChanged -= button.OnCanExecuteChanged;
-        if (newValue is { } @new && button.IsAttachedToTree)
+
+        if (newValue is {} @new && button.IsAttachedToTree)
             @new.CanExecuteChanged += button.OnCanExecuteChanged;
 
         button.InvalidateIsEnabledCore();
@@ -334,6 +340,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     private protected override void OnInteractionStateChangedCore(InteractionState oldState, InteractionState newState)
     {
         base.OnInteractionStateChangedCore(oldState, newState);
+
         if (((oldState ^ newState) & InteractionState.Pressed) != 0)
             SetValue(IsPressedPropertyKey, (newState & InteractionState.Pressed) != 0);
     }

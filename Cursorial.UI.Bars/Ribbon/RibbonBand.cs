@@ -11,11 +11,19 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public sealed class RibbonBand : Panel
 {
-    /// <summary>Creates a ribbon band. The band is the single directional-navigation container for the whole selected
-    /// tab's content, so arrow keys flow across <see cref="RibbonGroup"/> boundaries to the geometrically-nearest
-    /// control (the groups declare no directional mode of their own); <see cref="DirectionalNavigationMode.Contained"/>
-    /// stops nav at the band's outer edges (no wrap).</summary>
-    public RibbonBand() => KeyboardNavigation.SetDirectionalNavigation(this, DirectionalNavigationMode.Contained);
+    /// <summary>Creates a ribbon band. The selected tab's whole content is ONE Tab stop (aligning with the
+    /// <c>Toolbar</c> and the tab strip): Tab lands on the content once — entering the first/remembered control — and
+    /// the next Tab exits past the WHOLE content, so Tab moves strip ↔ content ↔ out in single steps instead of through
+    /// every control. Within the content, arrow (directional) navigation is the sole continuum: the band is the single
+    /// <see cref="DirectionalNavigationMode.Contained"/> directional container, so arrows flow across
+    /// <see cref="RibbonGroup"/> boundaries to the geometrically-nearest control (the groups are transparent to both —
+    /// no directional mode, and Continue tab so directional collection descends into them). <c>IsTabStop</c> defaults
+    /// true, so the Once container is collected as a stop; the band isn't focusable, so entry resolves to a control.</summary>
+    public RibbonBand()
+    {
+        KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Once);
+        KeyboardNavigation.SetDirectionalNavigation(this, DirectionalNavigationMode.Contained);
+    }
 
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)

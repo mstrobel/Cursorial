@@ -53,6 +53,14 @@ public class ComboBox : SelectingItemsControl
     public static readonly StyledProperty<bool> StaysOpenOnEditProperty =
         UIProperty.Register<ComboBox, bool>(nameof(StaysOpenOnEdit), defaultValue: false);
 
+    /// <summary>Where the drop-down list opens relative to the face (default <see cref="PlacementMode.Bottom"/>). A
+    /// command-bar Toolbar flips this to <see cref="PlacementMode.Left"/> when the combo is folded into its
+    /// (right-anchored) overflow menu, so the list flies out to the SIDE rather than opening downward over the menu
+    /// rows below (which would overlap them and hijack the menu's up/down navigation).</summary>
+    public static readonly StyledProperty<PlacementMode> DropDownPlacementProperty =
+        UIProperty.Register<ComboBox, PlacementMode>(
+            nameof(DropDownPlacement), PlacementMode.Bottom, changed: OnDropDownPlacementChanged);
+
     /// <summary>
     /// The value shown in the face (read-only; the template's <c>PART_ContentSite</c> binds its <c>Content</c> to
     /// this). It is the <see cref="SelectingItemsControl.SelectedItem"/> <b>unwrapped to its content</b> when the
@@ -107,6 +115,9 @@ public class ComboBox : SelectingItemsControl
     /// <inheritdoc cref="StaysOpenOnEditProperty"/>
     public bool StaysOpenOnEdit { get => GetValue(StaysOpenOnEditProperty); set => SetValue(StaysOpenOnEditProperty, value); }
 
+    /// <inheritdoc cref="DropDownPlacementProperty"/>
+    public PlacementMode DropDownPlacement { get => GetValue(DropDownPlacementProperty); set => SetValue(DropDownPlacementProperty, value); }
+
     /// <inheritdoc cref="SelectionBoxItemProperty"/>
     public object? SelectionBoxItem => _selectionBoxItem;
 
@@ -144,7 +155,7 @@ public class ComboBox : SelectingItemsControl
         if (_popup is not null)
         {
             _popup.PlacementTarget = this;
-            _popup.Placement = PlacementMode.Bottom;
+            _popup.Placement = DropDownPlacement; // Bottom by default; a Toolbar flips it to Left inside its overflow menu
             _popup.KeepOpenOnAnchorPress = true; // a face click closes via OnMouseDown's toggle, not dismiss-then-reopen
             _popup.Closed += OnPopupClosed;
             _popup.SetCurrentValue(Popup.IsOpenProperty, _isDropDownOpen);
@@ -366,6 +377,12 @@ public class ComboBox : SelectingItemsControl
     private static void OnIsEditableChanged(UIObject sender, bool oldValue, bool newValue)
         => (sender as ComboBox)?.UpdateEditableState();
 
+    private static void OnDropDownPlacementChanged(UIObject sender, PlacementMode oldValue, PlacementMode newValue)
+    {
+        if (sender is ComboBox { _popup: { } popup })
+            popup.Placement = newValue;
+    }
+
     private void UpdateEditableState()
     {
         var editable = IsEditable;
@@ -406,24 +423,31 @@ public class ComboBox : SelectingItemsControl
 
         if (!_isDropDownOpen)
         {
-            switch (e.Key)
+            if (e.Key == Key.Enter && editable)
             {
-                case Key.DownArrow or Key.UpArrow or Key.F4:
-                    SetDropDownOpen(true);
-                    break;
-                case Key.Enter when editable:
-                    CommitText(); // commit the free text without opening
-                    break;
-                case Key.Enter:
-                    SetDropDownOpen(true);
-                    break;
-                default:
-                    if (editable || !IsSpace(e)) // Space opens only in non-editable mode (it types in editable)
-                        return;
-                    SetDropDownOpen(true);
-                    break;
+                CommitText(); // commit the free text without opening
+                e.Handled = true;
+                return;
             }
 
+            // A SIDE placement (Left/Right — a combo folded into a vertical overflow menu, per the Toolbar) opens only
+            // on the arrow toward its flyout; Down/Up are left UNHANDLED so they bubble to the parent menu's row
+            // navigation (otherwise the combo swallows Down and you can't move past it to the lower menu items). The
+            // default Bottom placement opens on Down/Up/F4 as usual (WPF parity).
+            var placement = DropDownPlacement;
+            var opens = e.Key switch
+            {
+                Key.F4 or Key.Enter => true,
+                Key.DownArrow or Key.UpArrow => placement is not (PlacementMode.Left or PlacementMode.Right),
+                Key.LeftArrow => placement is PlacementMode.Left,
+                Key.RightArrow => placement is PlacementMode.Right,
+                _ => !editable && IsSpace(e), // Space opens only in non-editable mode (it types in editable)
+            };
+
+            if (!opens)
+                return; // not a combo-open gesture (e.g. Down/Up under a side placement) → let it bubble to the menu
+
+            SetDropDownOpen(true);
             e.Handled = true;
             return;
         }
@@ -438,13 +462,21 @@ public class ComboBox : SelectingItemsControl
             case Key.UpArrow when count > 0:
                 MoveSelection(SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - 1));
                 break;
-            // Non-editable: Left/Right also move next/prev so a horizontally-laid-out drop-down (a BarGallery's
-            // WrapPanel of swatches) is traversable by arrow in its flow direction, not only by Up/Down. (Editable
-            // keeps Left/Right for the text caret.)
-            case Key.RightArrow when count > 0 && !editable:
+            // Side-placement back-out (a combo folded into a vertical overflow menu): the arrow OPPOSITE the flyout
+            // (Right for a Left placement, Left for a Right placement) closes the list and returns focus to the face,
+            // menu-like — mirroring the drop-opener buttons' back arrow.
+            case Key.RightArrow when !editable && DropDownPlacement is PlacementMode.Left:
+            case Key.LeftArrow when !editable && DropDownPlacement is PlacementMode.Right:
+                SetDropDownOpen(false);
+                Focus(FocusNavigationMethod.Directional); // return focus to the combo face
+                break;
+            // Non-editable Bottom/Top placement: Left/Right also move next/prev so a horizontally-laid-out drop-down (a
+            // BarGallery's WrapPanel of swatches) is traversable by arrow in its flow direction, not only by Up/Down.
+            // (Editable keeps Left/Right for the text caret; a side placement uses them to back out, above.)
+            case Key.RightArrow when count > 0 && !editable && DropDownPlacement is not (PlacementMode.Left or PlacementMode.Right):
                 MoveSelection(SelectedIndex < 0 ? 0 : Math.Min(count - 1, SelectedIndex + 1));
                 break;
-            case Key.LeftArrow when count > 0 && !editable:
+            case Key.LeftArrow when count > 0 && !editable && DropDownPlacement is not (PlacementMode.Left or PlacementMode.Right):
                 MoveSelection(SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - 1));
                 break;
             case Key.Home when count > 0 && !editable:

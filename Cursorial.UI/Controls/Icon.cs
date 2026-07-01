@@ -1,5 +1,7 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Markup;
 using Cursorial.Rendering.Imaging;
+using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
 
@@ -27,6 +29,19 @@ public class Icon : Control
     public static readonly StyledProperty<string?> GlyphProperty =
         UIProperty.Register<Icon, string?>(nameof(Glyph), changed: OnTierInputChanged);
 
+    /// <summary>The total display width of the Nerd Font codepoint(s) — useful for variable-width glyphs.</summary>
+    public static readonly StyledProperty<int> GlyphWidthProperty =
+        UIProperty.Register<Icon, int>(nameof(GlyphWidth),
+                                       defaultValue: 1,
+                                       coerce: (_, baseValue) => Math.Max(1, baseValue));
+
+    /// <inheritdoc cref="IconTierProperty"/>
+    protected static readonly UIPropertyKey<IconTier> IconTierPropertyKey =
+        UIProperty.RegisterReadOnly<Icon, IconTier>(nameof(IconTier));
+
+    /// <summary>The image as explicit bytes — the middle tier when a graphics protocol can carry it.</summary>
+    protected static readonly StyledProperty<IconTier> IconTierProperty = IconTierPropertyKey.Property;
+
     /// <summary>The image as explicit bytes — the middle tier when a graphics protocol can carry it.</summary>
     public static readonly StyledProperty<ImageData?> ImageProperty =
         UIProperty.Register<Icon, ImageData?>(nameof(Image), changed: OnTierInputChanged);
@@ -49,6 +64,9 @@ public class Icon : Control
     /// <inheritdoc cref="GlyphProperty"/>
     public string? Glyph { get => GetValue(GlyphProperty); set => SetValue(GlyphProperty, value); }
 
+    /// <inheritdoc cref="GlyphWidthProperty"/>
+    public int GlyphWidth { get => GetValue(GlyphWidthProperty); set => SetValue(GlyphWidthProperty, value); }
+
     /// <inheritdoc cref="ImageProperty"/>
     public ImageData? Image { get => GetValue(ImageProperty); set => SetValue(ImageProperty, value); }
 
@@ -62,7 +80,7 @@ public class Icon : Control
     internal object? ResolvedContent { get => GetValue(ResolvedContentProperty); private set => SetValue(ResolvedContentProperty, value); }
 
     /// <summary>The tier currently rendered (test observability).</summary>
-    internal IconTier Tier { get; private set; }
+    public IconTier Tier { get => GetValue(IconTierProperty); protected set => SetValue(IconTierPropertyKey, value); }
 
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
@@ -105,7 +123,10 @@ public class Icon : Control
         if (nerdFont && !string.IsNullOrEmpty(Glyph))
         {
             Tier = IconTier.Glyph;
-            ResolvedContent = Glyph;
+            var text = new TextBlock();
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
+            text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
+            ResolvedContent = text;
         }
         else if ((Image is not null || ImageUri is not null) && GraphicsSupported)
         {

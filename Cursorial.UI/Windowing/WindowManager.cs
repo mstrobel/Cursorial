@@ -949,18 +949,22 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     /// <summary>Light-dismiss (§8.4): an uncaptured press closes every open non-<c>StaysOpen</c> popup except the
     /// one pressed (<paramref name="hit"/> null = a press in dead space — all dismiss). Full chain semantics is
-    /// W4-b. Iterates back-to-front since <see cref="ClosePopup"/> mutates the list.</summary>
+    /// W4-b. A popup's <c>Closed</c> handler may close OTHER popups (a menu's whole-chain collapse dismisses every
+    /// submenu at once), so <see cref="_popups"/> can shrink by more than one per close — snapshot the dismiss set
+    /// first, then close each (<see cref="Popup.CloseCore"/> is idempotent, so an already-cascaded-closed popup is a
+    /// no-op).</summary>
     private void LightDismissPopups(TopLevelSurface? hit, int pressColumn, int pressRow)
     {
-        for (var i = _popups.Count - 1; i >= 0; i--)
-        {
-            var popup = _popups[i];
+        if (_popups.Count == 0)
+            return;
 
-            if (popup.StaysOpen || ReferenceEquals(popup.PopupSurface, hit) || PressOnAnchor(popup, pressColumn, pressRow))
-                continue;
+        var toDismiss = new List<Popup>(_popups.Count);
+        foreach (var popup in _popups)
+            if (!(popup.StaysOpen || ReferenceEquals(popup.PopupSurface, hit) || PressOnAnchor(popup, pressColumn, pressRow)))
+                toDismiss.Add(popup);
 
+        foreach (var popup in toDismiss)
             popup.CloseCore(PopupCloseReason.LightDismiss);
-        }
     }
 
     // A KeepOpenOnAnchorPress popup is not dismissed by a press on its anchor (PlacementTarget) — the anchor owns

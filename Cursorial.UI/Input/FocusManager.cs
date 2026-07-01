@@ -799,9 +799,6 @@ public sealed class FocusManager
         try
         {
             EventRouting.Raise(target, args);
-            
-            if (FocusedElementChanged is {} handler)
-                handler(this, args);
         }
         finally
         {

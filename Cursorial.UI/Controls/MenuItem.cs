@@ -250,7 +250,12 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
                 StartHoverTimer(); // otherwise open after the hover delay
         }
 
-        Focus();
+        // Take keyboard focus on hover only when the menu is ALREADY keyboard-driven (the top-level menu holds
+        // keyboard focus). A pure-mouse hover still highlights (above) and arms hover-open / sibling-switch, but must
+        // not STEAL focus when the user isn't navigating by keyboard. Programmatic method — mouse entry never captures
+        // a return scope, so a mouse-only menu interaction leaves keyboard focus on the pre-menu origin throughout.
+        if (TopLevelMenu is { IsKeyboardFocusWithin: true })
+            Focus();
     }
 
     /// <inheritdoc/>
@@ -323,7 +328,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
                     Invoke();
                 break;
             default:
-                return; // not a menu-nav key — leave unhandled (Esc is the Popup's; closes the open submenu)
+                return; // not a menu-nav key — leave unhandled. A focused submenu item's Escape is the submenu
+                        // Popup's (→ OnPopupClosed, which whole-chain-collapses + returns focus on EscapeKey); a
+                        // top-level header's Escape with no submenu open is Menu.OnKeyDown's.
         }
 
         e.Handled = true;
@@ -471,19 +478,61 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             PseudoClasses.Set(":highlighted", value);
     }
 
-    private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetSubmenuOpen(false); // light-dismiss / Esc
+    // A genuine user dismiss — Escape on a focused submenu item, or a click-away — collapses the WHOLE menu chain and
+    // returns focus (decision ③). A Programmatic close (the one CloseMenuChain itself issues via SetSubmenuOpen(false),
+    // plus sibling-switch / left-arrow ascent / detach) takes the idempotent one-level path — the re-entrancy fence.
+    private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
+    {
+        if (e.Reason is PopupCloseReason.EscapeKey or PopupCloseReason.LightDismiss)
+            CloseMenuChain();
+        else
+            SetSubmenuOpen(false);
+    }
 
-    // Walk up the menu ownership chain closing every open submenu so a leaf invoke dismisses the whole menu.
-    // The walk terminates at an owning ContextMenu (which is not a MenuItem), closing it so a leaf invoke
-    // inside a context menu dismisses the whole popup.
+    // Collapses the WHOLE menu (a leaf invoke, Escape, or a click-away dismisses everything — decision ③): return
+    // focus to the pre-menu origin, THEN close every open submenu up the ownership chain. The Menu is a non-retaining
+    // focus scope, so RestoreRetainedFocus resolves the entry-captured origin; doing it FIRST — before any Popup
+    // closes — means each closing submenu observes no keyboard focus within and SUPPRESSES its own per-level
+    // trigger-restore (Popup W4). On the paths that enter here with focus still on a live menu element (a leaf invoke,
+    // a light-dismiss, a top-level-header Escape) that is a single focus move. The deep-submenu Escape path enters via
+    // the innermost Popup's OWN teardown (CloseCore → ClosePopup detaches the focused item → detach-repair moves focus
+    // to the parent header, Programmatic) BEFORE firing Closed → OnPopupClosed → here, so it shows one extra transition
+    // — but both hops are Restore/Programmatic (skipped by MarkReturnableEntry) and the final destination is the
+    // origin. A ContextMenu RETAINS focus (RestoreRetainedFocus no-ops for it) and its Popup's W4 restore returns focus
+    // to the right-clicked trigger — so it is simply closed (its surface tears down the rest of the chain).
     private void CloseMenuChain()
     {
+        // Resolve the top-level owner (a Menu bar, or a ContextMenu) up the ownership chain.
+        ItemsControl? owner = null;
+        for (UIElement? node = this; node is not null; node = (node as MenuItem)?.OwnerItemsControl)
+            if (node is Menu || node is ContextMenu)
+            {
+                owner = (ItemsControl) node;
+                break;
+            }
+
+        if (owner is Menu && UIApplication.Current?.FocusManager is { } focus)
+            focus.RestoreRetainedFocus(owner); // focus leaves to the origin first — one move, no W4 cascade
+
         for (UIElement? node = this; node is not null; node = (node as MenuItem)?.OwnerItemsControl)
         {
             if (node is MenuItem { _isSubmenuOpen: true } item)
                 item.SetSubmenuOpen(false);
             else if (node is ContextMenu context)
                 context.Close();
+        }
+    }
+
+    // The owning top-level menu surface (a Menu bar or a ContextMenu), walked up the LOGICAL chain so it crosses the
+    // submenu Popup boundaries (an item nested in a submenu popup still reaches its root menu). Used by the hover-gate.
+    private ItemsControl? TopLevelMenu
+    {
+        get
+        {
+            for (UIElement? node = LogicalParent; node is not null; node = node.LogicalParent)
+                if (node is Menu || node is ContextMenu)
+                    return (ItemsControl) node;
+            return null;
         }
     }
 

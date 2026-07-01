@@ -6,6 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 // ReSharper disable UnusedTupleComponentInReturnValue
@@ -345,5 +346,99 @@ public sealed class Section20_ContextMenu
         host.SendKey(Key.Menu);
         host.RunUntilIdle();
         Assert.Equal(0, Popups(host));
+    }
+
+    [Fact] // C7.17 (P3): Escape from a focused ContextMenu item returns focus to the trigger via the Popup W4 restore
+           // — a ContextMenu RETAINS focus (IsFocusScope but RetainsFocus stays true), so RestoreRetainedFocus no-ops
+    public void C7_17_Escape_ReturnsFocusToTrigger()
+    {
+        var menu = new ContextMenu();
+        var cut = new MenuItem { Header = "Cut" };
+        menu.Items.Add(cut);
+        var host = Host();
+        using var _ = host;
+        var trigger = new Button { Content = "target", Width = 8, Height = 1 };
+        ContextMenu.SetMenu(trigger, menu);
+        host.ShowRoot(trigger);
+        host.RunUntilIdle();
+        trigger.Focus();
+        host.RunUntilIdle();
+        Assert.True(trigger.IsFocused);
+
+        menu.Open(trigger); // auto-focuses the first item; the Popup W4 captured the trigger as its restore target
+        host.RunUntilIdle();
+        Assert.True(cut.IsFocused);
+
+        host.SendKey(Key.Escape); // Popup Esc → CloseCore(EscapeKey) → W4 restore to the trigger
+        host.RunUntilIdle();
+        Assert.False(menu.IsOpen);
+        Assert.Same(trigger, host.Application.FocusManager.FocusedElement);
+    }
+
+    [Fact] // C7.18 (P3): ContextMenu.IsFocusScope isolates item-focus memory — opening/closing a context menu never
+           // clobbers the window-root scope's focus memory (item focus records on the ContextMenu, not the root)
+    public void C7_18_Open_DoesNotClobberWindowRootMemory()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem { Header = "Cut" });
+        var host = Host();
+        using var _ = host;
+        var trigger = new Button { Content = "target", Width = 8, Height = 1 };
+        var other = new Button { Content = "other", Width = 8, Height = 1 };
+        ContextMenu.SetMenu(trigger, menu);
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(trigger);
+        root.Children.Add(other);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        trigger.Focus();
+        host.RunUntilIdle();
+        Assert.Same(trigger, FocusManager.GetFocusedElement(root)); // window-root memory = trigger
+
+        menu.Open(trigger); // item focus records on the ContextMenu scope, not the window root
+        host.RunUntilIdle();
+        Assert.Same(trigger, FocusManager.GetFocusedElement(root)); // STILL trigger — isolated by ContextMenu.IsFocusScope
+
+        menu.Close();
+        host.RunUntilIdle();
+        Assert.Same(trigger, FocusManager.GetFocusedElement(root)); // unchanged
+    }
+
+    [Fact] // C7.19 (P3): Escape from a NESTED submenu inside a ContextMenu collapses BOTH levels and returns focus to
+           // the trigger — CloseMenuChain's intermediate SetSubmenuOpen(false) tears down the nested popup, then
+           // context.Close() closes the root and the Popup W4 restore returns focus to the trigger
+    public void C7_19_NestedSubmenu_Escape_CollapsesAll_ReturnsToTrigger()
+    {
+        var child = new MenuItem { Header = "a.txt" };
+        var more = new MenuItem { Header = "Recent" };
+        more.Items.Add(child);
+        var menu = new ContextMenu();
+        menu.Items.Add(more);
+
+        var host = Host();
+        using var _ = host;
+        var trigger = new Button { Content = "target", Width = 8, Height = 1 };
+        ContextMenu.SetMenu(trigger, menu);
+        host.ShowRoot(trigger);
+        host.RunUntilIdle();
+        trigger.Focus();
+        host.RunUntilIdle();
+
+        menu.Open(trigger); // auto-focuses the first item (Recent)
+        host.RunUntilIdle();
+        Assert.True(more.IsFocused);
+
+        host.SendKey(Key.RightArrow); // open the nested submenu, focus the grandchild
+        host.RunUntilIdle();
+        Assert.True(more.IsSubmenuOpen);
+        Assert.True(child.IsFocused);
+        Assert.Equal(2, Popups(host));
+
+        host.SendKey(Key.Escape); // collapse BOTH levels + return to the trigger
+        host.RunUntilIdle();
+        Assert.False(more.IsSubmenuOpen);
+        Assert.False(menu.IsOpen);
+        Assert.Equal(0, Popups(host));
+        Assert.Same(trigger, host.Application.FocusManager.FocusedElement);
     }
 }

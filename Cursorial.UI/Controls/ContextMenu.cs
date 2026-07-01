@@ -34,6 +34,15 @@ public sealed class ContextMenu : ItemsControl
     private Popup? _popup;
     private UIElement? _watchedTarget; // the owner whose tree-detach must close this menu (no stranded surface)
 
+    static ContextMenu()
+    {
+        // A focus scope (so item-focus memory is isolated here, never clobbering the window-root scope on close) but
+        // it RETAINS focus (the default) — so FindReturningScope returns null for an element inside it and
+        // RestoreRetainedFocus no-ops, leaving the Popup's W4 on-close restore to return focus to the right-clicked
+        // trigger. (A Menu bar, by contrast, is non-retaining — it returns focus to the pre-menu origin.)
+        FocusManager.IsFocusScopeProperty.OverrideDefaultValue<ContextMenu>(true);
+    }
+
     /// <summary>Creates a context menu (the host is not a focus stop; its items are).</summary>
     public ContextMenu() => Focusable = false;
 

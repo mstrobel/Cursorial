@@ -397,6 +397,13 @@ mouse-driven structural core + theme.
 | C6.40 | two menus (last-wins `MainMenu`) | detach the non-owner, then the owner | the non-owner detach leaves `MainMenu` intact; only the owner's detach clears it | PIN (CD-P9-19) |
 | C6.41 | checkable leaf `Header="_Wrap"` | Alt+W through the dispatcher | the access-key activation toggles `IsChecked` (Invoke's `SetCurrentValue`) + `:checked` | WPF |
 | C6.42 | settled leaf | reassign `Header` | `IsMeasureValid` flips false — the `HeaderProperty` `OverrideMetadata` preserved the inherited `AffectsMeasure` | PIN (CD-P9-19) |
+| C6.43 | Menu bar | inspect | a NON-retaining focus scope (`IsFocusScope` true, `RetainsFocus` false, via `OverrideDefaultValue`, mirroring `Toolbar`): entered via Alt/F10, it RETURNS focus to the pre-menu origin on close; item focus records on the Menu, never clobbering the window-root scope | DEV (P3 ③; nav rework 2026-06-30) |
+| C6.44 | Alt/F10 into the bar, a top-level header focused, NO submenu open | Escape (the cue-down 2nd Esc) | `Menu.OnKeyDown` → `RestoreRetainedFocus` returns focus to the pre-menu origin. The cue-up 1st Esc is consumed by the `AccessKeyManager` (clears the cue, keeps focus — unchanged, N177) | DEV (P3 ③) |
+| C6.45 | a DEEP (2-level) open submenu, the deepest item focused | Escape | the WHOLE chain collapses (every `IsSubmenuOpen`→false, not one level) and focus returns to the pre-menu origin — `Popup.OnKeyDown` → `OnPopupClosed(EscapeKey)` → `CloseMenuChain` | DEV (P3 ③) |
+| C6.46 | a leaf inside an open submenu | invoke (Enter) | the command runs, the whole menu dismisses, and focus returns to the pre-menu origin (`CloseMenuChain` restore-first — focus makes exactly one move, no per-level W4 cascade) | DEV (P3 ③) |
+| C6.47 | a deeply-nested open submenu | click far outside (light-dismiss) | the WHOLE chain collapses + focus returns to the origin, like Escape — `OnPopupClosed(LightDismiss)` → `CloseMenuChain`. `WindowManager.LightDismissPopups` snapshots the dismiss set so a cascade close never indexes past the shrinking `_popups` list | DEV (P3 ③) |
+| C6.48 | a nested submenu item | Left | ascends exactly ONE level (`CloseAndFocusParent`): close this submenu, focus the parent header, the outer level stays open. Esc is the whole-chain exit; Left is the one-level back-out | DEV (P3 ③) |
+| C6.49 | a MenuItem, the menu NOT keyboard-active (focus elsewhere) | hover it | `RefreshHighlight` still highlights and the hover-open timer / sibling-switch still arm, but keyboard focus is NOT stolen — the hover-gate calls `Focus()` only when the top-level menu `IsKeyboardFocusWithin`, so a mouse-only interaction leaves keyboard focus on the pre-menu origin | DEV (P3 ③) |
 
 **Landed in P9.4b:** 250 ms hover-open + immediate sibling-switch when the menu is active (rows C6.16–C6.21;
 **CD-P9-18c (P9.4c) — keyboard navigation + highlight-follows-focus.** `MenuItem` is focusable; highlight =
@@ -465,6 +472,9 @@ router default + the `Popup` light-dismiss.
 | C7.14 | element carrying a menu, a `PreviewMouseUp` handler sets `Handled` | right-click | the menu does **not** open — the router default respects the handled mark | PIN (CD-P9-20) |
 | C7.15 | right-click-opened (Pointer placement) menu | click far outside | light-dismiss closes it (the right-click path, not just programmatic Bottom open) | WPF |
 | C7.16 | focused element with **no** `ContextMenu.Menu` | `Key.Menu` | nothing opens (the key-path parent-chain walk finds no menu) | PIN (CD-P9-20) |
+| C7.17 | a focused trigger, an open ContextMenu with a focused item | Escape | the menu closes and focus returns to the trigger via the Popup W4 restore — `RestoreRetainedFocus` NO-OPs for a ContextMenu (`IsFocusScope` but `RetainsFocus` stays true, so `FindReturningScope` finds no non-retaining scope) | DEV (P3 ③) |
+| C7.18 | a focused trigger in a window, a ContextMenu opened + an item focused | inspect + close | opening/closing never clobbers the window-root scope's focus memory — `ContextMenu.IsFocusScope` isolates item-focus memory to the ContextMenu | DEV (P3 ③) |
+| C7.19 | a focused trigger, an open ContextMenu with a NESTED submenu open (grandchild focused) | Escape | BOTH levels collapse (`CloseMenuChain`'s intermediate `SetSubmenuOpen(false)` tears down the nested popup, then `context.Close()` the root) and focus returns to the trigger via the Popup W4 restore | DEV (P3 ③) |
 
 **CD-P9-20 (P9.4d) — ContextMenu hosting + the router default.** A `ContextMenu` owns an internal `Popup` whose
 `Child` is the menu itself, so its items realize in the popup surface and inherit DataContext/resources through the

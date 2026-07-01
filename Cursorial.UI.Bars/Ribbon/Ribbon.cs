@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
@@ -30,6 +31,15 @@ public class Ribbon : TabControl
     static Ribbon()
     {
         Control.ThemeProperty.OverrideDefaultValue<Ribbon>(CursorialBarsTheme.RibbonStyle());
+
+        // The WHOLE ribbon (tab strip + the selected tab's content) is ONE returning focus scope, exactly like a
+        // Toolbar: entering it (Tab onto the strip, or into a group control) captures the pre-entry element, and Escape
+        // from anywhere in the ribbon returns focus there (see OnKeyDown). A pointer/access-key invoke of a ribbon
+        // command auto-returns to the document (the bar "click Bold, keep typing" model). This is the sole returning
+        // scope for the surface — a RibbonGroup is deliberately NOT its own scope, so Escape returns to before the
+        // ribbon was entered (not merely to the strip).
+        FocusManager.IsFocusScopeProperty.OverrideDefaultValue<Ribbon>(true);
+        FocusManager.RetainsFocusProperty.OverrideDefaultValue<Ribbon>(false);
 
         // The size context can't be TemplateBound into a bar control's template (TemplateBinding resolves a CLR
         // property name and an attached property reports SourceMissing), so the inherited value CHANGE stamps a
@@ -69,6 +79,18 @@ public class Ribbon : TabControl
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(ButtonSizeProperty, value);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e); // TabControl handles strip Left/Right/Home/End/Ctrl+PgUp/PgDn; RibbonTab handles File activate
+
+        // Escape returns focus to where it came from before entering the ribbon (the RetainsFocus return) — resolved
+        // through the RIBBON (the returning scope), so it reaches the outer focus from the tab strip AND from any group
+        // control. Only when UNHANDLED: an open dropdown / a deeper handler consumes Escape first.
+        if (!e.Handled && e.Key == Key.Escape && UIApplication.Current?.FocusManager is { } focus && focus.RestoreRetainedFocus(this))
+            e.Handled = true;
     }
 
     /// <inheritdoc/>

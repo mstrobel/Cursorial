@@ -1,4 +1,3 @@
-using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -38,28 +37,18 @@ public class RibbonGroup : HeaderedItemsControl
         Control.ThemeProperty.OverrideDefaultValue<RibbonGroup>(CursorialBarsTheme.RibbonGroupStyle());
     }
 
-    /// <summary>Creates a ribbon group: a single tab stop hosting bar controls with internal arrow navigation.</summary>
+    /// <summary>Creates a ribbon group hosting bar controls.</summary>
     public RibbonGroup()
     {
         ItemsPanel = new ItemsPanelTemplate(static _ => new RibbonGroupPanel());
-        // A group is one tab stop; arrows move among its buttons; Escape returns focus to where it came from (a
-        // non-retaining focus scope, mirroring Toolbar's chrome).
-        KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Once);
-        KeyboardNavigation.SetDirectionalNavigation(this, DirectionalNavigationMode.Contained);
-        FocusManager.SetIsFocusScope(this, true);
-        FocusManager.SetRetainsFocus(this, false);
-    }
-
-    /// <inheritdoc/>
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-
-        // Escape returns focus to where it came from (the RetainsFocus return) — resolved through the GROUP (the
-        // non-retaining scope), so it reaches the outer focus from any hosted control incl. a drop-opener barrier.
-        // Only when UNHANDLED: an open dropdown consumes Escape first (BarDropDownButton closes on it).
-        if (!e.Handled && e.Key == Key.Escape && UIApplication.Current?.FocusManager is { } focus && focus.RestoreRetainedFocus(this))
-            e.Handled = true;
+        // A group is TRANSPARENT to keyboard navigation — neither a directional-nav container, a focus scope, nor a
+        // single Tab stop. The selected tab's whole content is one seamless nav plane: arrow (directional) nav flows
+        // across group boundaries through the owning RibbonBand (the single directional container), and Tab flows
+        // control-by-control through the default (Continue) tab order — so there is no "arrows within a group, Tab to
+        // cross" mode switch. The owning Ribbon is the single returning focus scope, so Escape returns focus to before
+        // the ribbon was entered — from any group control OR the tab strip (see Ribbon.OnKeyDown). A group being Once
+        // (a single Tab stop) would also stop the band's directional collection at the group edge — the coupling that
+        // made arrows unable to cross groups; leaving it Continue lets directional descend into every control.
     }
 
     /// <inheritdoc cref="DialogLauncherRequestedEvent"/>

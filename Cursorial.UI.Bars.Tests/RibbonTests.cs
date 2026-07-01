@@ -349,7 +349,8 @@ public sealed class RibbonTests
         Assert.False(file.IsSelected);         // …still not selected
     }
 
-    [Fact] // Escape from within a ribbon group returns focus to where it came from (the group is a non-retaining scope)
+    [Fact] // Escape from within a ribbon group returns focus to where it came from before entering the ribbon (the
+           // Ribbon — not the group — is the single non-retaining returning scope for the whole surface)
     public void Ribbon_EscapeInGroupRestoresFocus()
     {
         using var host = NewHost();
@@ -365,7 +366,7 @@ public sealed class RibbonTests
 
         outside.Focus();
         host.RunUntilIdle();
-        groupButton.Focus(FocusNavigationMethod.Tab); // enter the group via Tab (captures the return target)
+        groupButton.Focus(FocusNavigationMethod.Tab); // enter the ribbon via Tab (captures the return target)
         host.RunUntilIdle();
         Assert.True(groupButton.IsFocused);
 
@@ -373,6 +374,62 @@ public sealed class RibbonTests
         host.RunUntilIdle();
         Assert.True(outside.IsFocused);      // Escape returned focus to where it came from
         Assert.False(groupButton.IsFocused);
+    }
+
+    [Fact] // #138: Escape from the TAB STRIP (a tab header, not group content) returns focus to the pre-entry element —
+           // the whole ribbon is the returning scope, so the strip is covered, not just the content.
+    public void Ribbon_EscapeOnTabStripRestoresFocus()
+    {
+        using var host = NewHost();
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", Group("G", new BarButton { Content = "A" })));
+        ribbon.Items.Add(Tab("Insert", Group("H", new BarButton { Content = "B" })));
+        var outside = new Button { Content = "Editor", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(ribbon);
+        root.Children.Add(outside);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        outside.Focus();
+        host.RunUntilIdle();
+        var home = ribbon.ItemContainerGenerator.ContainerFromIndex(0) as RibbonTab;
+        home!.Focus(FocusNavigationMethod.Tab); // Tab onto the tab strip (a header)
+        host.RunUntilIdle();
+        Assert.True(home.IsFocused);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.True(outside.IsFocused);   // Escape from the STRIP returned focus to before the ribbon was entered
+        Assert.False(home.IsFocused);
+    }
+
+    [Fact] // #139: arrow (directional) navigation flows ACROSS RibbonGroup boundaries — from the last control of one
+           // group, Right moves to the first control of the NEXT group (the band is one directional continuum, no
+           // Tab-mode switch needed). It still does not switch tabs.
+    public void Ribbon_DirectionalNavCrossesGroupBoundaries()
+    {
+        using var host = NewHost();
+        var a = new BarButton { Content = "A" };
+        var b = new BarButton { Content = "B" }; // last control of group G
+        var c = new BarButton { Content = "C" }; // first control of the NEXT group H
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", Group("G", a, b), Group("H", c)));
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        b.Focus(); // last control of the first group
+        host.RunUntilIdle();
+        Assert.True(b.IsFocused);
+
+        host.SendKey(Key.RightArrow); // crosses the G→H group boundary to the first control of the next group
+        host.RunUntilIdle();
+        Assert.True(c.IsFocused);              // reached the next group's control by arrow alone
+        Assert.Equal(0, ribbon.SelectedIndex); // …and did NOT switch tabs
+
+        host.SendKey(Key.LeftArrow); // and back across the boundary
+        host.RunUntilIdle();
+        Assert.True(b.IsFocused);
     }
 
     // ───────────────────────── P3a: contextual tabs (the purple, conditional band tab) ─────────────────────────

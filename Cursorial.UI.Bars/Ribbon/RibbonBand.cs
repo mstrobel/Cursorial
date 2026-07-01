@@ -1,5 +1,6 @@
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Bars;
 
@@ -10,6 +11,12 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public sealed class RibbonBand : Panel
 {
+    /// <summary>Creates a ribbon band. The band is the single directional-navigation container for the whole selected
+    /// tab's content, so arrow keys flow across <see cref="RibbonGroup"/> boundaries to the geometrically-nearest
+    /// control (the groups declare no directional mode of their own); <see cref="DirectionalNavigationMode.Contained"/>
+    /// stops nav at the band's outer edges (no wrap).</summary>
+    public RibbonBand() => KeyboardNavigation.SetDirectionalNavigation(this, DirectionalNavigationMode.Contained);
+
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {

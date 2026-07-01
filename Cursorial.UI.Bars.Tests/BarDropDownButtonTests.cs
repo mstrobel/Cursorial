@@ -203,6 +203,68 @@ public sealed class BarDropDownButtonTests
         Assert.Same(editor, host.Application.FocusManager.FocusedElement); // …and focus auto-returned to the editor
     }
 
+    [Fact] // invoking a dropdown item closes the dropdown (menu-like), and the command still runs
+    public void PopupButton_InvokingItemClosesDropDown()
+    {
+        using var host = NewHost();
+        var ran = 0;
+        var item = new Button { Content = "One", Width = 8, Height = 1, Command = new BarCommand(() => ran++) };
+        var content = new StackPanel { Orientation = Orientation.Vertical };
+        content.Children.Add(item);
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = content,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        ClickAt(host, button);
+        Assert.True(button.IsDropDownOpen);
+
+        ClickAt(host, item); // invoke a content item
+        Assert.Equal(1, ran);                  // the command ran…
+        Assert.False(button.IsDropDownOpen);   // …and the dropdown closed (menu-like)
+    }
+
+    [Fact] // Down advances through dropdown items (not stuck on the first); Up from the first returns to the opener
+    public void PopupButton_DropDownArrowNav()
+    {
+        using var host = NewHost();
+        var one = new Button { Content = "One", Width = 8, Height = 1 };
+        var two = new Button { Content = "Two", Width = 8, Height = 1 };
+        var content = new StackPanel { Orientation = Orientation.Vertical };
+        content.Children.Add(one);
+        content.Children.Add(two);
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = content,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+        button.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.DownArrow); // open (focus stays on face)
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // enter → first item
+        host.RunUntilIdle();
+        Assert.True(one.IsFocused);
+
+        host.SendKey(Key.DownArrow); // advance → second item (NOT stuck on the first)
+        host.RunUntilIdle();
+        Assert.True(two.IsFocused);
+
+        host.SendKey(Key.UpArrow); // back to the first
+        host.RunUntilIdle();
+        Assert.True(one.IsFocused);
+
+        host.SendKey(Key.UpArrow); // up from the first → back to the opener face (menu-like)
+        host.RunUntilIdle();
+        Assert.True(button.IsFocused);
+    }
+
     private sealed class DropVm; // a non-UIElement dropdown content object (realized through an implicit DataTemplate)
 
     [Fact] // a DataTemplated dropdown (non-UIElement content) is still keyboard-enterable — the entry walks the REALIZED

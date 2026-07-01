@@ -377,7 +377,8 @@ internal static class CursorialBarsTheme
     // ComboBoxItem rows — the built-in item theme). Provides the ComboBox template parts (content site, editable text
     // box, drop caret, items host, popup) so the inherited ComboBox behavior works unchanged.
     public static Style BarComboBoxStyle()
-        => new Style { Key = "Bars.BarComboBox" }
+    {
+        var theme = new Style { Key = "Bars.BarComboBox" }
             .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
@@ -421,6 +422,12 @@ internal static class CursorialBarsTheme
                 rootGrid.Children.Add(popup);
                 return rootGrid;
             }));
+        // A focused field gets the input-focus fill (the face Border binds Background to Control.Background). Also
+        // covers BarGallery (a BarComboBox-themed ComboBox), so both show a keyboard-focus cue.
+        theme.Children.Add(new Style("^:focus").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover));
+        return theme;
+    }
 
     // A bare 1-cell ▾ caret button for the combobox face — no chrome, foreground-inheriting, non-focusable.
     private static Style ComboCaretStyle()
@@ -514,6 +521,11 @@ internal static class CursorialBarsTheme
             .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
         theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
             .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
+            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
+        // Keyboard focus on the strip: the active tab reads as FOCUSED (a hover-strength fill over the dropped active
+        // look) so it is distinct from a selected-but-focus-elsewhere tab — the "which tab has keyboard focus" cue.
+        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
+            .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
             .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
         theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
             .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)

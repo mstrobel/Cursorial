@@ -431,6 +431,15 @@ public class ComboBox : SelectingItemsControl
             case Key.UpArrow when count > 0:
                 MoveSelection(SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - 1));
                 break;
+            // Non-editable: Left/Right also move next/prev so a horizontally-laid-out drop-down (a BarGallery's
+            // WrapPanel of swatches) is traversable by arrow in its flow direction, not only by Up/Down. (Editable
+            // keeps Left/Right for the text caret.)
+            case Key.RightArrow when count > 0 && !editable:
+                MoveSelection(SelectedIndex < 0 ? 0 : Math.Min(count - 1, SelectedIndex + 1));
+                break;
+            case Key.LeftArrow when count > 0 && !editable:
+                MoveSelection(SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - 1));
+                break;
             case Key.Home when count > 0 && !editable:
                 MoveSelection(0);
                 break;
@@ -468,8 +477,15 @@ public class ComboBox : SelectingItemsControl
     {
         base.OnLostFocus(e);
 
-        // Editable: leaving the control commits the typed text (unless the focus just moved into our own drop-down).
-        if (IsEditable && !IsKeyboardFocusWithin)
+        // Focus left the control AND its drop-down (IsKeyboardFocusWithin covers the popup, whose Child is a logical
+        // descendant): close the drop-down so it never lingers open with focus elsewhere, and — when editable — commit
+        // the typed text. Moving focus INTO the drop-down keeps IsKeyboardFocusWithin true, so it stays open.
+        if (IsKeyboardFocusWithin)
+            return;
+
+        if (IsDropDownOpen)
+            SetDropDownOpen(false);
+        if (IsEditable)
             CommitText();
     }
 

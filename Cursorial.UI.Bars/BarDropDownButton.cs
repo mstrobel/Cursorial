@@ -87,10 +87,24 @@ public abstract class BarDropDownButton : ButtonBase
             _popup.SetCurrentValue(Popup.IsOpenProperty, _isDropDownOpen); // sync the part to current state
         }
 
+        if (_contentSite is not null)
+            _contentSite.RemoveHandler(ButtonBase.ClickEvent, OnDropDownItemClick);
+
         _contentSite = GetTemplatePart<ContentPresenter>(PartDropDownContent);
         if (_contentSite is not null)
+        {
             _contentSite.Content = DropDownContent; // code-set (a TemplateBinding in Popup.Child would not resolve)
+            // The dropdown is a self-contained arrow-nav scope so Up/Down move among its items (Contained, NOT Cycle:
+            // Up from the first item returns focus to the opener face — see OnKeyDown — like a menu). Invoking any
+            // item closes the dropdown (menu-like).
+            KeyboardNavigation.SetDirectionalNavigation(_contentSite, DirectionalNavigationMode.Contained);
+            _contentSite.AddHandler(ButtonBase.ClickEvent, OnDropDownItemClick, handledEventsToo: true);
+        }
     }
+
+    // A drop-down item was invoked (a Click bubbling out of the content) — close the drop-down (the Popup's W4 restore
+    // returns focus to the face). Menu-like: the command still runs (the Click already fired), we just dismiss.
+    private void OnDropDownItemClick(object? sender, ClickEventArgs e) => CloseDropDown();
 
     private static void OnDropDownContentChanged(UIObject sender, object? oldValue, object? newValue)
     {
@@ -109,6 +123,8 @@ public abstract class BarDropDownButton : ButtonBase
         // the same framework-wide Popup-teardown gap ComboBox has (tracked separately as a Popup-layer fix).
         if (_popup is not null)
             _popup.Closed -= OnPopupClosed;
+        if (_contentSite is not null)
+            _contentSite.RemoveHandler(ButtonBase.ClickEvent, OnDropDownItemClick);
         _popup = null;
         _contentSite = null;
         base.OnTemplateDetaching(old);
@@ -145,6 +161,14 @@ public abstract class BarDropDownButton : ButtonBase
     /// <summary>Moves focus into the open dropdown's first focusable item (the content must already be laid out).</summary>
     protected bool EnterDropDown() => FocusFirstDropDownItem();
 
+    /// <summary>Whether keyboard focus is already inside the dropdown content (vs on the opener face).</summary>
+    private bool IsDropDownContentFocused => _contentSite?.IsKeyboardFocusWithin ?? false;
+
+    /// <summary>Whether the FIRST focusable dropdown item currently has keyboard focus (so Up returns to the opener).</summary>
+    private bool IsFirstDropDownItemFocused
+        => UIApplication.Current?.FocusManager is { } focus && _contentSite?.Child is { } content
+        && ReferenceEquals(focus.FocusedElement, FirstFocusable(content));
+
     /// <inheritdoc/>
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -154,8 +178,18 @@ public abstract class BarDropDownButton : ButtonBase
 
         switch (e.Key)
         {
+            case Key.DownArrow when _isDropDownOpen && !IsDropDownContentFocused:
+                EnterDropDown(); // open with focus still on the FACE → move focus into the content's first item
+                e.Handled = true;
+                break;
+            // When focus is ALREADY in the dropdown content, Down is directional navigation among the items (handled
+            // by the content's own nav scope) — do NOT re-enter at the first item, so Down actually advances.
             case Key.DownArrow when _isDropDownOpen:
-                EnterDropDown(); // already open (content laid out) → move focus into it
+                break;
+            // Up from the FIRST dropdown item returns focus to the opener face (menu-like) instead of stalling or
+            // cycling; deeper items let Up bubble to the content's own Contained nav (moves to the previous item).
+            case Key.UpArrow when _isDropDownOpen && IsFirstDropDownItemFocused:
+                Focus(FocusNavigationMethod.Directional);
                 e.Handled = true;
                 break;
             case Key.DownArrow:

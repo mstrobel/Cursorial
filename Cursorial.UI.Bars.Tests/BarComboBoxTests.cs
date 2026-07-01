@@ -69,4 +69,26 @@ public sealed class BarComboBoxTests
         Assert.Equal("Three", combo.SelectedItem);
         Assert.Contains("Three", host.GetRowText(0)); // the face reflects the new selection
     }
+
+    [Fact] // the drop-down closes when focus leaves the control (it must not linger open with focus elsewhere)
+    public void BarComboBox_ClosesDropDownOnFocusLoss()
+    {
+        using var host = NewHost();
+        var combo = new BarComboBox { ItemsSource = new[] { "One", "Two", "Three" } };
+        var outside = new Button { Content = "Editor", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(combo);
+        root.Children.Add(outside);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        combo.Focus();
+        combo.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        Assert.True(combo.IsDropDownOpen);
+
+        outside.Focus(); // focus leaves the combo entirely
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen); // the drop-down closed on blur
+    }
 }

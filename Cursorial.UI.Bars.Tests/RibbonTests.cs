@@ -3,6 +3,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 
@@ -313,5 +314,31 @@ public sealed class RibbonTests
         Assert.Equal(1, ribbon.SelectedIndex); // selection did NOT stick on File
         Assert.True(home.IsFocused);           // focus tracks the settled selection…
         Assert.False(file.IsFocused);          // …and is NOT stranded on the un-selectable File tab
+    }
+
+    [Fact] // Escape from within a ribbon group returns focus to where it came from (the group is a non-retaining scope)
+    public void Ribbon_EscapeInGroupRestoresFocus()
+    {
+        using var host = NewHost();
+        var groupButton = new BarButton { Content = "Paste" };
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", Group("Clipboard", groupButton)));
+        var outside = new Button { Content = "Editor", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(ribbon);
+        root.Children.Add(outside);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        outside.Focus();
+        host.RunUntilIdle();
+        groupButton.Focus(FocusNavigationMethod.Tab); // enter the group via Tab (captures the return target)
+        host.RunUntilIdle();
+        Assert.True(groupButton.IsFocused);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.True(outside.IsFocused);      // Escape returned focus to where it came from
+        Assert.False(groupButton.IsFocused);
     }
 }

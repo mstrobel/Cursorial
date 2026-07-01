@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
@@ -34,5 +35,31 @@ public sealed class BarGalleryTests
         Assert.True(gallery.IsDropDownOpen);
         Assert.Equal(3, gallery.ItemContainerGenerator.ContainerCount); // the grid realized its cells
         Assert.NotNull(gallery.ItemsPanel); // a WrapPanel items-panel template is configured (the grid layout)
+    }
+
+    [Fact] // the horizontal gallery navigates its open drop-down with Left/Right (its flow direction), not only Up/Down
+    public void BarGallery_LeftRightNavigatesItems()
+    {
+        using var host = NewHost();
+        var gallery = new BarGallery
+        {
+            ItemsSource = new[] { "Sm", "Md", "Lg" },
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        gallery.SelectedIndex = 0;
+        host.ShowRoot(gallery);
+        host.RunUntilIdle();
+        gallery.Focus();
+        gallery.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.Equal(1, gallery.SelectedIndex); // Right advanced the selection in the horizontal grid
+
+        host.SendKey(Key.LeftArrow);
+        host.RunUntilIdle();
+        Assert.Equal(0, gallery.SelectedIndex); // Left moved it back
     }
 }

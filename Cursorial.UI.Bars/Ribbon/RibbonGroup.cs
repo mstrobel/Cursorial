@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -41,10 +42,24 @@ public class RibbonGroup : HeaderedItemsControl
     public RibbonGroup()
     {
         ItemsPanel = new ItemsPanelTemplate(static _ => new RibbonGroupPanel());
-        // A group is one tab stop; arrows move among its buttons (mirrors Toolbar's focus-scope chrome).
+        // A group is one tab stop; arrows move among its buttons; Escape returns focus to where it came from (a
+        // non-retaining focus scope, mirroring Toolbar's chrome).
         KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Once);
         KeyboardNavigation.SetDirectionalNavigation(this, DirectionalNavigationMode.Contained);
         FocusManager.SetIsFocusScope(this, true);
+        FocusManager.SetRetainsFocus(this, false);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        // Escape returns focus to where it came from (the RetainsFocus return) — resolved through the GROUP (the
+        // non-retaining scope), so it reaches the outer focus from any hosted control incl. a drop-opener barrier.
+        // Only when UNHANDLED: an open dropdown consumes Escape first (BarDropDownButton closes on it).
+        if (!e.Handled && e.Key == Key.Escape && UIApplication.Current?.FocusManager is { } focus && focus.RestoreRetainedFocus(this))
+            e.Handled = true;
     }
 
     /// <inheritdoc cref="DialogLauncherRequestedEvent"/>

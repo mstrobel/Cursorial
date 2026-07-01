@@ -271,18 +271,48 @@
             <bars:BarButton Command="{Binding Settings}" bars:Toolbar.OverflowMode="Always" />
           </bars:Toolbar>
 
-          <!-- The Ribbon (Surface B): the SAME BarCommands as the Toolbar above, arranged into tabbed groups — the
-               "define once, bind everywhere" proof. Large Paste/Find (glyph-over-label); small B/I/U toggles. Switch
-               tabs by click or Left/Right; the File tab opens Backstage (a stub); Font's ⋰ is the dialog launcher. -->
+          <!-- Right-click ANYWHERE in the body to pop the MiniToolbar (a floating strip of the same commands, at the
+               pointer). The Border fills the page (LastChildFill) so the whole area is the right-click target; only
+               the caption is centered. -->
+          <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
+            <bars:MiniToolbar.Bar>
+              <bars:MiniToolbar>
+                <bars:BarButton Command="{Binding Cut}" />
+                <bars:BarButton Command="{Binding Copy}" />
+                <bars:BarButton Command="{Binding Paste}" />
+                <bars:BarSeparator />
+                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+              </bars:MiniToolbar>
+            </bars:MiniToolbar.Bar>
+            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Border>
+        </DockPanel>
+      </DataTemplate>
+
+      <!-- The Ribbon page (Surface B): the same kind of bar controls + commands, arranged into tabbed groups. Its
+           OWN command instances (not the Toolbar page's) so the two surfaces don't collide on access keys — a real
+           app hosts one surface at a time. Large Paste/Find (glyph-over-label); small B/I/U; switch tabs by click or
+           Left/Right; the File tab opens Backstage (a stub); Clipboard's ⋰ is the dialog launcher. -->
+      <DataTemplate DataType="vm:RibbonViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
           <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
             <bars:RibbonTab Header="File" IsFileTab="True" />
             <bars:RibbonTab Header="_Home">
-              <bars:RibbonGroup Header="Clipboard">
+              <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
                 <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />
                 <bars:BarButton Command="{Binding Cut}" />
                 <bars:BarButton Command="{Binding Copy}" />
               </bars:RibbonGroup>
-              <bars:RibbonGroup Header="Font" HasDialogLauncher="True">
+              <bars:RibbonGroup Header="Font">
                 <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
                 <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
               </bars:RibbonGroup>
@@ -299,20 +329,9 @@
             </bars:RibbonTab>
           </bars:Ribbon>
 
-          <!-- Right-click the body to pop the MiniToolbar (a floating strip of the same commands, at the pointer). -->
-          <Border VerticalAlignment="Center" HorizontalAlignment="Center" Padding="2,1"
-                  Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
-            <bars:MiniToolbar.Bar>
-              <bars:MiniToolbar>
-                <bars:BarButton Command="{Binding Cut}" />
-                <bars:BarButton Command="{Binding Copy}" />
-                <bars:BarButton Command="{Binding Paste}" />
-                <bars:BarSeparator />
-                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
-                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
-              </bars:MiniToolbar>
-            </bars:MiniToolbar.Bar>
-            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
+            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
           </Border>
         </DockPanel>
       </DataTemplate>

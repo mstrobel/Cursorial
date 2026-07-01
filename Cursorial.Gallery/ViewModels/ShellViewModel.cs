@@ -24,6 +24,7 @@ public sealed class ShellViewModel : ViewModelBase
             new InputsPageViewModel(),
             new MenusViewModel(),
             new BarsViewModel(),
+            new RibbonViewModel(),
             new TabControlViewModel(),
             new ScrollViewerPageViewModel()
         ];

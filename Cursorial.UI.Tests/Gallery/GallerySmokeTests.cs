@@ -121,18 +121,42 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("Edit:", screen);              // the BarLabel caption
         Assert.Contains("»", screen);                  // the overflow chevron (forced by the Always-mode "Settings" item)
 
-        // The Ribbon (Surface B) also materialized via the loader: its tabs + group footers render, and the SAME
-        // BarCommands drive it (the "define once, bind everywhere" proof — Paste/Find are Large glyph-over-label).
-        var ribbon = FindDescendant<Ribbon>(root);
-        Assert.NotNull(ribbon);
-        Assert.Contains("Home", screen);       // the RibbonTab strip
-        Assert.Contains("Clipboard", screen);  // a RibbonGroup footer
-        Assert.Contains("Font", screen);
-
         // Narrowing the terminal folds more of the bar — it must not throw and the chevron stays.
         host.SendResize(44, 24);
         host.RunUntilIdle();
         Assert.Contains("»", Screen(host, 24));
+    }
+
+    [Fact] // the Ribbon page (Surface B) resolves the Cursorial.UI.Bars Ribbon via the runtime XAML loader: its tabs +
+           // group footers render, the RibbonTab Groups content + Ribbon.ButtonSize attached property resolve, and a
+           // tab switch by click swaps the band
+    public void RibbonPage_RendersRibbon_AndSwitchesTabs()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        shell.SelectedPage = shell.Pages.OfType<RibbonViewModel>().Single();
+        host.RunUntilIdle();
+
+        var ribbon = FindDescendant<Ribbon>(root);
+        Assert.NotNull(ribbon); // the Ribbon materialized via the XAML loader (Groups content + Ribbon.ButtonSize)
+
+        var screen = Screen(host, 24);
+        output.WriteLine(screen);
+        Assert.Contains("Home", screen);       // the RibbonTab strip
+        Assert.Contains("Insert", screen);
+        Assert.Contains("Clipboard", screen);  // a RibbonGroup footer (Home is auto-selected)
+        Assert.Contains("Paste", screen);      // a Large bar button in the band
+
+        // Click the Insert tab → the band swaps to Insert's group.
+        var insert = AllDescendants<RibbonTab>(root).Single(t => t.Header as string == "_Insert");
+        var origin = insert.TranslateToScreen(0, 0);
+        host.SendClick(origin.Column + 1, origin.Row);
+        host.RunUntilIdle();
+        Assert.Contains("History", Screen(host, 24)); // the Insert band's group footer
     }
 
     [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)

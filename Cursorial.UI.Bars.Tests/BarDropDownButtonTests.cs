@@ -203,6 +203,79 @@ public sealed class BarDropDownButtonTests
         Assert.Same(editor, host.Application.FocusManager.FocusedElement); // …and focus auto-returned to the editor
     }
 
+    private sealed class DropVm; // a non-UIElement dropdown content object (realized through an implicit DataTemplate)
+
+    [Fact] // a DataTemplated dropdown (non-UIElement content) is still keyboard-enterable — the entry walks the REALIZED
+           // presenter child, not the raw content object (before the fix, `DropDownContent is UIElement` failed the cast)
+    public void PopupButton_DataTemplatedContent_DownEnters()
+    {
+        using var host = NewHost();
+        Button? templatedFirst = null;
+        host.Application.Resources[new DataTemplateKey(typeof(DropVm))] = new DataTemplate
+        {
+            Content = new FuncTemplateContent(_ =>
+            {
+                var panel = new StackPanel { Orientation = Orientation.Vertical };
+                templatedFirst = new Button { Content = "Item", Width = 8, Height = 1 };
+                panel.Children.Add(templatedFirst);
+                return panel;
+            }),
+        };
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = new DropVm(),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        ClickAt(host, button);
+        Assert.True(button.IsDropDownOpen);
+        Assert.True(button.IsFocused);
+
+        host.SendKey(Key.DownArrow); // the DataTemplated content is laid out → Down moves focus into it
+        host.RunUntilIdle();
+
+        Assert.NotNull(templatedFirst);
+        Assert.True(templatedFirst!.IsFocused);
+    }
+
+    [Fact] // OnTemplateDetaching unhooks the old parts so a re-template rebinds cleanly to the fresh template (the
+           // control still opens/closes through the new PART_Popup — the OnPopupClosed handler is not left stranded)
+    public void PopupButton_ReTemplate_RebindsCleanly()
+    {
+        using var host = NewHost();
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = null, // no live element to re-parent across the presenter rebuild
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        ClickAt(host, button); // open + close once through the original template's PART_Popup
+        Assert.True(button.IsDropDownOpen);
+        button.IsDropDownOpen = false;
+        host.RunUntilIdle();
+        Assert.False(button.IsDropDownOpen);
+
+        // Swap in a FRESH theme instance → the control re-templates (OnTemplateDetaching on the old parts, then
+        // OnApplyTemplate binds the new ones). The old popup's Closed handler must be unhooked, not stranded.
+        var ex = Record.Exception(() =>
+        {
+            button.SetValue(Control.ThemeProperty, CursorialBarsTheme.BarPopupButtonStyle());
+            host.RunUntilIdle();
+        });
+        Assert.Null(ex);
+
+        // The fresh template's PART_Popup drives open/close correctly.
+        ClickAt(host, button);
+        Assert.True(button.IsDropDownOpen);
+        button.IsDropDownOpen = false;
+        host.RunUntilIdle();
+        Assert.False(button.IsDropDownOpen);
+    }
+
     [Fact] // detaching the button while its dropdown is open closes it (no leaked popup surface)
     public void Detach_ClosesDropDown()
     {

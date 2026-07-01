@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
@@ -134,5 +135,84 @@ public sealed class BarControlsTests
 
         Assert.Contains("Font:", host.GetRowText(0));
         Assert.False(label.Focusable);
+    }
+
+    // ── BarCommand auto-fill on a runtime Command swap (Phase-1 audit) ──
+
+    [Fact] // swapping Command to a different BarCommand REFRESHES the auto-filled label (no stale text)
+    public void BarButton_AutoFilledLabelRefreshesOnCommandSwap()
+    {
+        var (host, button) = Show(() => TopLeft(new BarButton { Command = new BarCommand(() => { }) { Text = "Copy" } }));
+        using var _h = host;
+        Assert.Equal("Copy", button.Content);
+
+        button.Command = new BarCommand(() => { }) { Text = "Paste" };
+        host.RunUntilIdle();
+
+        Assert.Equal("Paste", button.Content);            // refreshed — NOT the stale "Copy" (the fixed bug)
+        Assert.Contains("Paste", host.GetRowText(0));
+        Assert.DoesNotContain("Copy", host.GetRowText(0));
+    }
+
+    [Fact] // clearing Command clears the previously auto-filled label (nothing stranded)
+    public void BarButton_AutoFilledLabelClearsWhenCommandRemoved()
+    {
+        var (host, button) = Show(() => TopLeft(new BarButton { Command = new BarCommand(() => { }) { Text = "Copy" } }));
+        using var _h = host;
+        Assert.Equal("Copy", button.Content);
+
+        button.Command = null;
+        host.RunUntilIdle();
+
+        Assert.Null(button.Content);                      // the stale auto-fill was cleared
+        Assert.DoesNotContain("Copy", host.GetRowText(0));
+    }
+
+    [Fact] // an explicit Content still wins after a Command swap (the helper never clobbers an author value)
+    public void BarButton_ExplicitContentSurvivesCommandSwap()
+    {
+        var (host, button) = Show(() => TopLeft(new BarButton { Content = "Mine", Command = new BarCommand(() => { }) { Text = "Copy" } }));
+        using var _h = host;
+        Assert.Equal("Mine", button.Content);
+
+        button.Command = new BarCommand(() => { }) { Text = "Paste" };
+        host.RunUntilIdle();
+
+        Assert.Equal("Mine", button.Content);             // the explicit author value is untouched by the swap
+    }
+
+    // ── caps-nocolor interactive cue for the bar button family (Phase-1 audit) ──
+
+    [Fact] // under the NoColor tier a focused BarButton reverse-videos (the palette fill collapses to Default) — the
+           // bar controls fall outside the shared exact-type .caps-nocolor layer, so their theme carries the cue
+    public void BarButton_FocusInverseCue_UnderNoColor()
+    {
+        var (host, button) = Show(() => TopLeft(new BarButton { Content = "Cut" }));
+        using var _h = host;
+
+        host.Application.RequestedColorTier = ColorDepth.NoColor;
+        host.RunUntilIdle();
+        Assert.Equal(ColorDepth.NoColor, host.Application.ActualThemeVariant.Tier);
+
+        button.Focus();
+        host.RunUntilIdle();
+
+        Assert.Equal(TextAttributes.Inverse, TextElement.GetTextAttributes(button)); // the monochrome focus cue
+    }
+
+    [Fact] // under a color tier the SAME focus does NOT set Inverse (the palette fill is the cue — no double-invert)
+    public void BarButton_FocusNoInverseCue_UnderColor()
+    {
+        var (host, button) = Show(() => TopLeft(new BarButton { Content = "Cut" }));
+        using var _h = host;
+
+        host.Application.RequestedColorTier = ColorDepth.Truecolor;
+        host.RunUntilIdle();
+        Assert.Equal(ColorDepth.Truecolor, host.Application.ActualThemeVariant.Tier);
+
+        button.Focus();
+        host.RunUntilIdle();
+
+        Assert.NotEqual(TextAttributes.Inverse, TextElement.GetTextAttributes(button)); // color fill IS the cue
     }
 }

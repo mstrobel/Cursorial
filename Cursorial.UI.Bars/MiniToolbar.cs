@@ -20,6 +20,10 @@ public sealed class MiniToolbar : ItemsControl
 
     private Popup? _popup;
     private UIElement? _watchedTarget;
+    private UIElement? _pendingTarget; // the anchor to watch once the popup's surface actually opens (Popup.Opened)
+    private bool _isOpen;              // the REAL surface-open state (Popup.IsOpen reflects only the IsOpenProperty DP)
+
+    internal UIElement? WatchedTargetForTests => _watchedTarget;
 
     static MiniToolbar()
     {
@@ -39,8 +43,8 @@ public sealed class MiniToolbar : ItemsControl
     /// <summary>Sets <see cref="BarProperty"/>.</summary>
     public static void SetBar(UIElement element, MiniToolbar? value) => element.SetValue(BarProperty, value);
 
-    /// <summary>Whether the strip is currently shown.</summary>
-    public bool IsOpen => _popup?.IsOpen ?? false;
+    /// <summary>Whether the strip is currently shown (the real surface-open state, not just the requested flag).</summary>
+    public bool IsOpen => _isOpen;
 
     /// <summary>Opens the strip at the pointer over <paramref name="target"/> (the right-click anchor). Re-opening
     /// relocates an open strip.</summary>
@@ -49,17 +53,23 @@ public sealed class MiniToolbar : ItemsControl
         ArgumentNullException.ThrowIfNull(target);
 
         _popup ??= CreatePopup();
-        if (_popup.IsOpen)
+        if (_isOpen)
             _popup.SetCurrentValue(Popup.IsOpenProperty, false); // a Popup re-places only on the closed→open edge
 
+        // The anchor is watched from Popup.Opened (real surface open), NOT here: if OpenCore bails (no live
+        // WindowManager) Opened never fires, so a failed open cannot strand the DetachedFromLogicalTree subscription.
+        _pendingTarget = target;
         _popup.PlacementTarget = target;
         _popup.Placement = PlacementMode.Pointer; // land at the right-click cell
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
-        WatchTarget(target);
     }
 
     /// <summary>Closes the strip (a no-op when already closed).</summary>
-    public void Close() => _popup?.SetCurrentValue(Popup.IsOpenProperty, false);
+    public void Close()
+    {
+        _popup?.SetCurrentValue(Popup.IsOpenProperty, false);
+        UnwatchTarget(); // belt-and-suspenders: release the watch even if the popup never truly opened (no Closed fires)
+    }
 
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
@@ -71,11 +81,24 @@ public sealed class MiniToolbar : ItemsControl
     private Popup CreatePopup()
     {
         var popup = new Popup { Child = this, StaysOpen = false }; // StaysOpen=false ⇒ light-dismiss participant
+        popup.Opened += OnPopupOpened;
         popup.Closed += OnPopupClosed;
         return popup;
     }
 
-    private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => UnwatchTarget();
+    // The surface actually opened — now arm the anchor watch (a bailed OpenCore never reaches here, so no leak).
+    private void OnPopupOpened(object? sender, EventArgs e)
+    {
+        _isOpen = true;
+        if (_pendingTarget is { } target)
+            WatchTarget(target);
+    }
+
+    private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
+    {
+        _isOpen = false;
+        UnwatchTarget();
+    }
 
     // The anchor lives in the host tree; if it detaches while the strip is open, nothing else would close the
     // separate popup surface — watch its logical-tree detach and close on it (mirrors ContextMenu).

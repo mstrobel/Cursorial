@@ -48,6 +48,9 @@ public abstract class BarDropDownButton : ButtonBase
     private Popup? _popup;
     private ContentPresenter? _contentSite; // PART_DropDownContent — hosts DropDownContent (code-set, see the property)
 
+    /// <summary>The shared <see cref="BarCommand"/> auto-fill state for the concrete split/popup buttons.</summary>
+    private protected readonly BarCommandSync CommandSync = new();
+
     /// <inheritdoc cref="DropDownContentProperty"/>
     public object? DropDownContent { get => GetValue(DropDownContentProperty); set => SetValue(DropDownContentProperty, value); }
 
@@ -93,6 +96,22 @@ public abstract class BarDropDownButton : ButtonBase
     {
         if (sender is BarDropDownButton { _contentSite: { } site })
             site.Content = newValue;
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTemplateDetaching(TemplateInstance old)
+    {
+        // Unhook the old parts (mirrors ComboBox) so a re-template can't strand the OnPopupClosed handler on a
+        // torn-down Popup. Deliberately do NOT touch the popup's open state here: neither closing it (a WM-surface
+        // popup closed mid-detach re-enters the style engine and double-retracts its content's frames) nor flipping
+        // the :open pseudo-class (a restyle mid-detach hits the same crash). A re-template-while-open therefore
+        // re-opens on the fresh template — the ComboBox-consistent behavior; the transient old-surface orphan rides
+        // the same framework-wide Popup-teardown gap ComboBox has (tracked separately as a Popup-layer fix).
+        if (_popup is not null)
+            _popup.Closed -= OnPopupClosed;
+        _popup = null;
+        _contentSite = null;
+        base.OnTemplateDetaching(old);
     }
 
     /// <inheritdoc/>
@@ -150,8 +169,12 @@ public abstract class BarDropDownButton : ButtonBase
         }
     }
 
+    // Walk the REALIZED presenter child, not the raw DropDownContent object: the PART_DropDownContent presenter
+    // realizes every content kind (a UIElement, a string, or a DataTemplate over a view-model) into its visual Child,
+    // whereas `DropDownContent is UIElement` only sees element content — a DataTemplated dropdown would open but never
+    // be enterable by keyboard.
     private bool FocusFirstDropDownItem()
-        => _isDropDownOpen && DropDownContent is UIElement content
+        => _isDropDownOpen && _contentSite?.Child is { } content
         && FirstFocusable(content) is { } first && first.Focus(FocusNavigationMethod.Directional);
 
     private static UIElement? FirstFocusable(UIElement element)

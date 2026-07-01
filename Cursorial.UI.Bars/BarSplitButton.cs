@@ -65,6 +65,6 @@ public class BarSplitButton : BarDropDownButton
     protected override void OnCommandStateChanged()
     {
         base.OnCommandStateChanged();
-        BarCommandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
+        CommandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
     }
 }

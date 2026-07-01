@@ -147,7 +147,17 @@ public static class CursorialTheme
         noColor[ThemeKeys.SliderTrackPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
         noColor[ThemeKeys.AccessKeyIndicatorBrush] = defaultBrush;
+        // Reverse-video is the monochrome interactive cue (the palette fill collapsed to Default). This lives ONLY
+        // at the NoColor floor; the None counterpart at the Ansi16 wildcard floor (below) keeps it from bleeding up.
+        noColor[ThemeKeys.InteractiveInverseAttributes] = TextAttributes.Inverse;
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
+
+        // The color-tier None floor for InteractiveInverseAttributes. The CD8 probe DESCENDS tiers
+        // (Truecolor→Ansi256→Ansi16→NoColor), so a bare NoColor=Inverse would resolve for every color tier too.
+        // Ansi16 is the lowest color tier, so every color tier's descent reaches this None before the NoColor
+        // Inverse below it, while a true NoColor variant (whose descent is NoColor-only) never sees it.
+        var ansi16Floor = new ResourceDictionary { [ThemeKeys.InteractiveInverseAttributes] = TextAttributes.None };
+        dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.Ansi16)] = ansi16Floor;
     }
 
     // The per-control override keys (style-guide KEYS), each a live ResourceReference alias of a palette

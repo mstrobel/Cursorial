@@ -257,6 +257,14 @@ public static class ThemeKeys
     /// <summary>Disabled button fill (--disabled-bg).</summary>
     public const string ButtonBackgroundDisabled = "Theme.ButtonBackgroundDisabled";
 
+    /// <summary>A per-tier <see cref="Cursorial.Output.TextAttributes"/> value carrying the caps-nocolor interactive
+    /// cue: <see cref="Cursorial.Output.TextAttributes.None"/> on a color tier (the palette fill IS the cue, so no
+    /// text attribute), <see cref="Cursorial.Output.TextAttributes.Inverse"/> under the NoColor tier (colors collapse
+    /// to Default, so reverse-video restores the focus/pressed distinction). Consumed by control themes whose type is
+    /// not reached by the shared exact-type <c>.caps-nocolor</c> style layer — e.g. the ButtonBase-derived bar
+    /// controls (their <c>:focus</c>/<c>:pressed</c> rules set the inherited TextAttributes to this key).</summary>
+    public const string InteractiveInverseAttributes = "Theme.InteractiveInverseAttributes";
+
     // ToggleSwitch / CheckBox / RadioButton.
     /// <summary>Check/radio glyph + label ink (--text).</summary>
     public const string ToggleForegroundNormal = "Theme.ToggleForegroundNormal";

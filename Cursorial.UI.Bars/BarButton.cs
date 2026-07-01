@@ -16,6 +16,8 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public class BarButton : ButtonBase
 {
+    private readonly BarCommandSync _commandSync = new();
+
     /// <summary>The button's icon — an <see cref="Controls.Icon"/>/icon source or a glyph string (rendered beside the label).</summary>
     public static readonly StyledProperty<object?> IconProperty =
         UIProperty.Register<BarButton, object?>(nameof(Icon));
@@ -39,28 +41,49 @@ public class BarButton : ButtonBase
     protected override void OnCommandStateChanged()
     {
         base.OnCommandStateChanged();
-        BarCommandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
+        _commandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
     }
 }
 
-/// <summary>Shared <see cref="BarCommand"/> → bar-control auto-fill (the define-once display metadata flowing into a
-/// control's Content/Icon/InputGestureText). Used by every <see cref="ButtonBase"/>-derived bar control so the
-/// behavior is identical across <see cref="BarButton"/>, <see cref="BarToggleButton"/>, and the split/popup buttons.</summary>
-internal static class BarCommandSync
+/// <summary>Per-control <see cref="BarCommand"/> → display-metadata auto-fill (the define-once Text/Icon/gesture
+/// flowing into a control's Content/Icon/InputGestureText). One instance per <see cref="ButtonBase"/>-derived bar
+/// control (<see cref="BarButton"/>, <see cref="BarToggleButton"/>, and the split/popup buttons), so the behavior is
+/// identical everywhere. It remembers which properties IT filled, so a runtime <see cref="ButtonBase.Command"/> swap
+/// refreshes or clears the auto-filled values instead of leaving the old command's label stranded — while never
+/// clobbering an explicit author/style value (which it never recorded as its own).</summary>
+internal sealed class BarCommandSync
 {
-    /// <summary>Fills the control's unset Content/Icon/InputGestureText from a <see cref="BarCommand"/> via
-    /// <c>SetCurrentValue</c> (so an explicit local/style value wins, and the fill is a harmless idempotent re-run on
-    /// each command-state change). A non-<see cref="BarCommand"/> <see cref="ICommand"/> supplies nothing.</summary>
-    public static void AutoFill(ContentControl control, ICommand? command, StyledProperty<object?> iconProperty, StyledProperty<string?> gestureProperty)
-    {
-        if (command is not BarCommand bar)
-            return;
+    private bool _filledContent, _filledIcon, _filledGesture;
 
-        if (bar.Text is { } text && !control.IsSet(ContentControl.ContentProperty))
-            control.SetCurrentValue(ContentControl.ContentProperty, text);
-        if (bar.Icon is { } icon && !control.IsSet(iconProperty))
-            control.SetCurrentValue(iconProperty, icon);
-        if (bar.InputGestureText is { } gesture && !control.IsSet(gestureProperty))
-            control.SetCurrentValue(gestureProperty, gesture);
+    /// <summary>Reconciles Content/Icon/InputGestureText against <paramref name="command"/>'s display metadata. A
+    /// non-<see cref="BarCommand"/> <see cref="ICommand"/> (or <see langword="null"/>) supplies nothing, so any value
+    /// this helper previously filled is cleared.</summary>
+    public void AutoFill(ContentControl control, ICommand? command, StyledProperty<object?> iconProperty, StyledProperty<string?> gestureProperty)
+    {
+        var bar = command as BarCommand;
+        Apply(control, ContentControl.ContentProperty, (object?) bar?.Text, ref _filledContent);
+        Apply(control, iconProperty, bar?.Icon, ref _filledIcon);
+        Apply(control, gestureProperty, bar?.InputGestureText, ref _filledGesture);
+    }
+
+    // Fill from the command when the control carries no explicit author/style value; refresh our OWN prior fill on a
+    // command change; clear it when the new command supplies nothing (a swap to null / a raw ICommand). The `filled`
+    // flag is how we tell our SetCurrentValue graft apart from an author value — after the first fill both look like a
+    // LocalValue, so IsSet alone can't (the stale-label bug).
+    private static void Apply<T>(ContentControl control, StyledProperty<T> property, T? value, ref bool filled)
+    {
+        if (control.IsSet(property) && !filled)
+            return; // an explicit author/style value we didn't put there — it wins
+
+        if (value is not null)
+        {
+            control.SetCurrentValue(property, value);
+            filled = true;
+        }
+        else if (filled)
+        {
+            control.ClearValue(property); // our stale auto-fill — the new command has nothing to offer here
+            filled = false;
+        }
     }
 }

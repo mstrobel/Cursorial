@@ -18,6 +18,8 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public class BarToggleButton : ToggleButton
 {
+    private readonly BarCommandSync _commandSync = new();
+
     /// <inheritdoc cref="BarButton.IconProperty"/>
     public static readonly StyledProperty<object?> IconProperty =
         BarButton.IconProperty.AddOwner<BarToggleButton>(); // same identity as BarButton's, so one template binds both
@@ -53,7 +55,7 @@ public class BarToggleButton : ToggleButton
     protected override void OnCommandStateChanged()
     {
         base.OnCommandStateChanged();
-        BarCommandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
+        _commandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
         SyncCheckedFromCommand();
     }
 
@@ -61,7 +63,7 @@ public class BarToggleButton : ToggleButton
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
         base.OnAttachedToTree(in e);
-        BarCommandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
+        _commandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
         SyncCheckedFromCommand(); // initial reflect (no CanExecuteChanged has fired yet)
     }
 

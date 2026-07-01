@@ -80,4 +80,45 @@ public sealed class MiniToolbarTests
         host.RunUntilIdle();
         Assert.False(strip.IsOpen);
     }
+
+    [Fact] // the target-watch tracks the open strip: armed on open, released on Close() and on light-dismiss
+    public void MiniToolbar_TargetWatch_TracksOpenState()
+    {
+        var (host, _, target, strip) = Build();
+        using var _h = host;
+
+        host.SendClick(10, 4, MouseButton.Right);
+        host.RunUntilIdle();
+        Assert.True(strip.IsOpen);
+        Assert.Same(target, strip.WatchedTargetForTests); // watching while open
+
+        strip.Close();
+        host.RunUntilIdle();
+        Assert.Null(strip.WatchedTargetForTests);          // released on Close()
+
+        host.SendClick(10, 4, MouseButton.Right);
+        host.RunUntilIdle();
+        Assert.Same(target, strip.WatchedTargetForTests);
+
+        host.SendClick(38, 11); // light-dismiss
+        host.RunUntilIdle();
+        Assert.Null(strip.WatchedTargetForTests);          // released on light-dismiss (via OnPopupClosed)
+    }
+
+    [Fact] // Open() with no live WindowManager must not strand the target-watch: the popup never opens, so Closed never
+           // fires and OnPopupClosed (the sole unwatch site) would never run — the fix skips the watch when not open
+    public void MiniToolbar_OpenWithNoWindowManager_DoesNotLeakWatch()
+    {
+        Assert.Null(UIApplication.Current); // no host on this thread → Popup.OpenCore bails (no WindowManager)
+
+        var strip = new MiniToolbar();
+        strip.Items.Add(new BarButton { Content = "Cut" });
+        var target = new Border { Width = 10, Height = 3 };
+        MiniToolbar.SetBar(target, strip);
+
+        strip.Open(target);
+
+        Assert.False(strip.IsOpen);                  // OpenCore bailed
+        Assert.Null(strip.WatchedTargetForTests);    // …and the DetachedFromLogicalTree subscription was NOT stranded
+    }
 }

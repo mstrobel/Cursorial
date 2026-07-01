@@ -56,10 +56,12 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
         theme.Children.Add(new Style("^:focus")
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
+            .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
         theme.Children.Add(new Style("^:pressed")
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
+            .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -73,7 +75,8 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
+                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
         // Checked = the accent whole-cell fill (the guide's toggle "on" look), text inverted to on-accent.
         theme.Children.Add(new Style("^:checked")
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)

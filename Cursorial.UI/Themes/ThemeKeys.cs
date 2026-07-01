@@ -357,6 +357,14 @@ public static class ThemeKeys
     /// <summary>Disabled tab ink (--muted).</summary>
     public const string TabForegroundDisabled = "Theme.TabForegroundDisabled";
 
+    // Ribbon (Cursorial.UI.Bars Surface B). The ribbon body reuses SurfaceBrush (--ribbon), the File tab reuses
+    // Accent/OnAccent, group names + launcher reuse MutedBrush, large-button glyphs reuse Accent2Brush, and the
+    // active-tab underline reuses TabUnderlinePen — only the tab-strip recess and the dropped-active-tab fill are new.
+    /// <summary>The ribbon tab-strip background (--tabstrip — recessed behind the tabs).</summary>
+    public const string RibbonTabStripBrush = "Theme.RibbonTabStripBrush";
+    /// <summary>The active ribbon tab's dropped fill (--tab-active).</summary>
+    public const string RibbonTabActiveBrush = "Theme.RibbonTabActiveBrush";
+
     // ProgressBar.
     /// <summary>Determinate progress fill (--green).</summary>
     public const string ProgressFillNormal = "Theme.ProgressFillNormal";

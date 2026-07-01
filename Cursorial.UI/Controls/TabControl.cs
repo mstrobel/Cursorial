@@ -87,6 +87,12 @@ public class TabControl : SelectingItemsControl
         if (e.Handled)
             return;
 
+        // Strip navigation (Left/Right/Home/End/Ctrl+PgUp/PgDn) applies ONLY when a tab HEADER has focus — not when
+        // focus is inside the selected tab's CONTENT (e.g. a Ribbon group's buttons), where arrows are the content's
+        // own directional navigation. Without this guard, arrowing within a tab body hijacks tab switching.
+        if (!IsTabHeaderFocused(e.OriginalSource))
+            return;
+
         var count = ItemContainerGenerator.ContainerCount;
         if (count == 0)
             return;
@@ -107,7 +113,21 @@ public class TabControl : SelectingItemsControl
         }
 
         Selection.Select(target);
-        ItemContainerGenerator.ContainerFromIndex(target)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
+        // Focus the tab that ENDED UP selected, not the pre-select target: a SelectionChanged handler may have
+        // redirected the selection (e.g. the Ribbon skips its non-selectable File tab), and focus must track it.
+        var focusIndex = SelectedIndex >= 0 ? SelectedIndex : target;
+        ItemContainerGenerator.ContainerFromIndex(focusIndex)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
         e.Handled = true;
+    }
+
+    // Whether the key event originated from one of this control's tab headers (a container), vs from content deeper in
+    // the selected tab's body. Containers are logical children of the TabControl and visual children of the strip
+    // panel; a walk up the visual chain from the focused element reaches the container when a header is focused.
+    private bool IsTabHeaderFocused(UIElement? source)
+    {
+        for (var node = source; node is not null; node = node.VisualParent)
+            if (node is TabItem tab && ItemContainerGenerator.IndexFromContainer(tab) >= 0)
+                return true;
+        return false;
     }
 }

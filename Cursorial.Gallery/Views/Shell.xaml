@@ -271,6 +271,34 @@
             <bars:BarButton Command="{Binding Settings}" bars:Toolbar.OverflowMode="Always" />
           </bars:Toolbar>
 
+          <!-- The Ribbon (Surface B): the SAME BarCommands as the Toolbar above, arranged into tabbed groups — the
+               "define once, bind everywhere" proof. Large Paste/Find (glyph-over-label); small B/I/U toggles. Switch
+               tabs by click or Left/Right; the File tab opens Backstage (a stub); Font's ⋰ is the dialog launcher. -->
+          <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
+            <bars:RibbonTab Header="File" IsFileTab="True" />
+            <bars:RibbonTab Header="_Home">
+              <bars:RibbonGroup Header="Clipboard">
+                <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />
+                <bars:BarButton Command="{Binding Cut}" />
+                <bars:BarButton Command="{Binding Copy}" />
+              </bars:RibbonGroup>
+              <bars:RibbonGroup Header="Font" HasDialogLauncher="True">
+                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+              </bars:RibbonGroup>
+              <bars:RibbonGroup Header="Editing">
+                <bars:BarButton Command="{Binding Find}" bars:Ribbon.ButtonSize="Large" />
+              </bars:RibbonGroup>
+            </bars:RibbonTab>
+            <bars:RibbonTab Header="_Insert">
+              <bars:RibbonGroup Header="History">
+                <bars:BarButton Command="{Binding Undo}" />
+                <bars:BarButton Command="{Binding Redo}" />
+                <bars:BarButton Command="{Binding Settings}" />
+              </bars:RibbonGroup>
+            </bars:RibbonTab>
+          </bars:Ribbon>
+
           <!-- Right-click the body to pop the MiniToolbar (a floating strip of the same commands, at the pointer). -->
           <Border VerticalAlignment="Center" HorizontalAlignment="Center" Padding="2,1"
                   Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">

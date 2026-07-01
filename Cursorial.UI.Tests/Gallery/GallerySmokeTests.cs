@@ -121,6 +121,14 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("Edit:", screen);              // the BarLabel caption
         Assert.Contains("»", screen);                  // the overflow chevron (forced by the Always-mode "Settings" item)
 
+        // The Ribbon (Surface B) also materialized via the loader: its tabs + group footers render, and the SAME
+        // BarCommands drive it (the "define once, bind everywhere" proof — Paste/Find are Large glyph-over-label).
+        var ribbon = FindDescendant<Ribbon>(root);
+        Assert.NotNull(ribbon);
+        Assert.Contains("Home", screen);       // the RibbonTab strip
+        Assert.Contains("Clipboard", screen);  // a RibbonGroup footer
+        Assert.Contains("Font", screen);
+
         // Narrowing the terminal folds more of the bar — it must not throw and the chevron stays.
         host.SendResize(44, 24);
         host.RunUntilIdle();

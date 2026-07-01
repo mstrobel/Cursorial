@@ -147,6 +147,9 @@ public static class CursorialTheme
         noColor[ThemeKeys.SliderTrackPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
         noColor[ThemeKeys.AccessKeyIndicatorBrush] = defaultBrush;
+        // Ribbon: no fill under monochrome — the active tab is marked by the ASCII-heavy underline (TabUnderlinePen).
+        noColor[ThemeKeys.RibbonTabStripBrush] = defaultBrush;
+        noColor[ThemeKeys.RibbonTabActiveBrush] = defaultBrush;
         // Reverse-video is the monochrome interactive cue (the palette fill collapsed to Default). This lives ONLY
         // at the NoColor floor; the None counterpart at the Ansi16 wildcard floor (below) keeps it from bleeding up.
         noColor[ThemeKeys.InteractiveInverseAttributes] = TextAttributes.Inverse;
@@ -358,6 +361,10 @@ public static class CursorialTheme
         rgb[ThemeKeys.WindowTitleBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#3F78F3") : Color.FromHex("#23385D"));
         rgb[ThemeKeys.WindowTitleBarActiveBackground] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
 
+        // Ribbon (Surface B): the strip recess (--tabstrip) and the dropped active-tab fill (--tab-active).
+        rgb[ThemeKeys.RibbonTabStripBrush] = new SolidColorBrush(dark ? Color.FromHex("#1b1e2e") : Color.FromHex("#d2d3da"));
+        rgb[ThemeKeys.RibbonTabActiveBrush] = new SolidColorBrush(dark ? Color.FromHex("#15161e") : Color.FromHex("#fdfdfe"));
+
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi256)] = rgb;
 
         // (B,Ansi16): hand-picked palette indices — beat the quantizer (spec §1). Pinned for role
@@ -406,6 +413,10 @@ public static class CursorialTheme
         ansi16[ThemeKeys.SliderTrackPen] = Pens.Heavy.WithColor(Color.FromPalette(8));                          // faint/grey
         ansi16[ThemeKeys.ObscuredOverlayBrush] = Palette(8);
         ansi16[ThemeKeys.AccessKeyIndicatorBrush] = Palette(dark ? 15 : 0);
+        // Ribbon: the descent never ascends to Ansi256, so the strip recess and dropped active-tab fill need explicit
+        // Ansi16 indices or they collapse to the NoColor floor (no fill) on 16-color terminals.
+        ansi16[ThemeKeys.RibbonTabStripBrush] = Palette(dark ? 0 : 7);   // recess, tracks Surface/Panel
+        ansi16[ThemeKeys.RibbonTabActiveBrush] = Palette(dark ? 0 : 15); // dropped active fill, tracks the band
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;
     }
 

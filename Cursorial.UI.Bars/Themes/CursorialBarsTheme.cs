@@ -29,6 +29,9 @@ internal static class CursorialBarsTheme
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
 
+        // Medium / Small (the default): the horizontal [icon][label] face — the Toolbar bar-button face verbatim.
+        // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
+        // Toolbar button renders byte-for-byte as before.
         var row = new StackPanel { Orientation = Orientation.Horizontal };
 
         var icon = new ContentPresenter();
@@ -40,9 +43,45 @@ internal static class CursorialBarsTheme
 
         row.Children.Add(icon);
         row.Children.Add(label);
-        border.Child = row;
+        ctx.RegisterName(PartMediumFace, row);
+
+        // Large (the ribbon glyph-over-label form): a centered vertical [glyph][label], glyph re-inked --accent-2.
+        // Hidden until :size-large; a collapsed face contributes nothing so Medium is unaffected.
+        var largeGlyph = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
+        largeGlyph.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
+        largeGlyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.Accent2Brush);
+
+        var largeLabel = new ContentPresenter { RecognizesAccessKey = true, HorizontalAlignment = HorizontalAlignment.Center };
+        largeLabel.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+        var largeCol = new StackPanel { Orientation = Orientation.Vertical, HorizontalAlignment = HorizontalAlignment.Center };
+        largeCol.Children.Add(largeGlyph);
+        largeCol.Children.Add(largeLabel);
+        ctx.RegisterName(PartLargeFace, largeCol);
+
+        border.Child = new Grid { Children = { row, largeCol } };
+
+        // The size cascade lives in the TEMPLATE's own styles (part-targeting /template/ rules must — the TabItem /
+        // obscured-overlay precedent). The LARGE face is hidden by default (Medium/Small show the [icon][label] row);
+        // a :size-large control swaps to it. Because Medium collapses the large face, a Medium control renders
+        // byte-identically to the plain Toolbar face.
+        border.Styles.Add(new Style(Selectors.Is<ButtonBase>())
+        {
+            Children =
+            {
+                new Style(Selectors.Nesting().Template().Name(PartLargeFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLargeFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartMediumFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+            },
+        });
         return border;
     });
+
+    private const string PartMediumFace = "PART_MediumFace";
+    private const string PartLargeFace = "PART_LargeFace";
 
     // A bar button is flat on the toolbar at rest (no resting Background — the surface shows through); only the
     // interactive states fill, using the Button-specific brush keys (style-guide KEYS) so the bars re-skin in step
@@ -409,4 +448,130 @@ internal static class CursorialBarsTheme
                 border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
                 return border;
             }));
+
+    // ───────────────────────────── Ribbon (Surface B) ─────────────────────────────
+
+    // The ribbon frame: a tab strip (--tabstrip recess) docked over the selected tab's band (--ribbon/--surface). It
+    // re-skins the inherited TabControl strip/content-host split — the selected RibbonTab's Content (its groups band)
+    // shows in PART_ContentHost, exactly as a TabControl hosts the selected tab's content.
+    public static Style RibbonStyle()
+        => new Style { Key = "Bars.Ribbon" }
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var itemsHost = new ItemsPresenter();
+                ctx.RegisterName("PART_ItemsHost", itemsHost);
+                var strip = new Border { Child = itemsHost, Occludes = true };
+                strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
+                DockPanel.SetDock(strip, Dock.Top);
+
+                var content = new ContentPresenter();
+                ctx.RegisterName("PART_ContentHost", content);
+                content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
+                content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+                content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+                var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
+                body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
+                DockPanel.SetDock(body, Dock.Bottom);
+
+                var panel = new DockPanel();
+                panel.Children.Add(strip);
+                panel.Children.Add(body);
+                return panel;
+            }));
+
+    // A ribbon tab (: TabItem): the strip label + the inherited accent underline. Inactive = --text-dim; the active
+    // tab drops to --tab-active + --text; the File tab is accent-filled. RibbonTab reuses TabItem.OnApplyTemplate to
+    // paint PART_Underline, so the template keeps the header-over-underline shape.
+    public static Style RibbonTabStyle()
+    {
+        var template = new ControlTemplate(ctx =>
+        {
+            var header = new ContentPresenter { RecognizesAccessKey = true };
+            ctx.RegisterName("PART_ContentPresenter", header);
+            header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+
+            var headerHost = new Border { Padding = new Margins(1, 0), Child = header, Occludes = true };
+            headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+            ctx.RegisterName("PART_HeaderSite", headerHost);
+
+            var underline = new Separator { Margin = new Margins(1, 0, 1, 0) };
+            underline.SetResourceReference(Control.BorderPenProperty, ThemeKeys.TabUnderlinePen);
+            ctx.RegisterName("PART_Underline", underline);
+
+            var stack = new StackPanel();
+            stack.Children.Add(headerHost);
+            stack.Children.Add(underline);
+            return new Border { Child = stack };
+        });
+
+        var theme = new Style { Key = "Bars.RibbonTab" }
+            .Set(Control.TemplateProperty, template);
+
+        theme.Children.Add(new Style(Selectors.Nesting().Template().Name("PART_HeaderSite"))
+            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush));
+        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
+            .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
+            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
+        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
+            .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
+            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
+        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
+            .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)
+            .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush));
+        return theme;
+    }
+
+    // A ribbon group: the controls row (PART_ItemsHost = a RibbonGroupPanel) over a muted group-name footer with an
+    // optional ⋰ launcher, and a trailing │ separator the band hides on the last group. HeaderedItemsControl has no
+    // default theme, so this is mandatory or the group renders as a bare ItemsControl with no label.
+    public static Style RibbonGroupStyle()
+    {
+        var template = new ControlTemplate(ctx =>
+        {
+            var host = new ItemsPresenter();
+            ctx.RegisterName("PART_ItemsHost", host);
+
+            var name = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
+            ctx.RegisterName("PART_GroupName", name);
+            name.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+            name.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+
+            var launcher = new BarButton { Content = "⋰", Focusable = false, IsTabStop = false };
+            ctx.RegisterName("PART_Launcher", launcher);
+
+            var footer = new DockPanel();
+            DockPanel.SetDock(launcher, Dock.Right);
+            footer.Children.Add(launcher);
+            footer.Children.Add(name);
+
+            var column = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1, 0) };
+            column.Children.Add(host);
+            column.Children.Add(footer);
+
+            var separator = new TextBlock { Text = "│", VerticalAlignment = VerticalAlignment.Center };
+            separator.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.FaintBrush);
+            ctx.RegisterName("PART_GroupSeparator", separator);
+
+            var outer = new StackPanel { Orientation = Orientation.Horizontal };
+            outer.Children.Add(column);
+            outer.Children.Add(separator);
+
+            // The ⋰ launcher is hidden unless the group opts in (HasDialogLauncher ⇒ :has-launcher). Part-targeting
+            // rules live in the template's own styles (the size-cascade / obscured-overlay precedent).
+            outer.Styles.Add(new Style(Selectors.Is<RibbonGroup>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().Template().Name("PART_Launcher"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":has-launcher").Template().Name("PART_Launcher"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                },
+            });
+            return outer;
+        });
+
+        return new Style { Key = "Bars.RibbonGroup" }
+            .Set(Control.TemplateProperty, template);
+    }
 }

@@ -30,6 +30,11 @@ public sealed class BarsViewModel : PageViewModel
 
         ItalicState = new CheckableCommandParameter();
         Italic = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Italic")) { Text = "_Italic", IsCheckable = true };
+
+        // A split button (primary action + ▾ dropdown) and a popup button (whole control opens its menu); the dropdown
+        // rows invoke Pick with a label. The combobox picks a font (SelectedFont).
+        Color = new BarCommand(() => Report("Color (default)")) { Text = "Color" };
+        Pick = new BarCommand(p => Report(p?.ToString() ?? ""));
     }
 
     public override string Title => "Bars / Toolbar";
@@ -52,6 +57,24 @@ public sealed class BarsViewModel : PageViewModel
 
     public ICommand Italic { get; }
     public CheckableCommandParameter ItalicState { get; }
+
+    /// <summary>The split button's primary action; the ▾ zone opens a dropdown of <see cref="Pick"/> choices.</summary>
+    public ICommand Color { get; }
+
+    /// <summary>A dropdown/menu choice (parameter = the label shown in <see cref="Status"/>).</summary>
+    public ICommand Pick { get; }
+
+    /// <summary>The BarComboBox choices (font family).</summary>
+    public string[] Fonts { get; } = { "Cascadia Code", "Consolas", "Menlo", "Fira Code", "JetBrains Mono" };
+
+    private string _selectedFont = "Cascadia Code";
+
+    /// <summary>The BarComboBox selection.</summary>
+    public string SelectedFont
+    {
+        get => _selectedFont;
+        set { if (Set(ref _selectedFont, value)) Report($"Font → {value}"); }
+    }
 
     private void Toggle(CheckableCommandParameter state, string label)
     {

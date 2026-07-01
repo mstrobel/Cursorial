@@ -245,6 +245,27 @@
             <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
             <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
             <bars:BarSeparator />
+            <bars:BarComboBox Width="18" ItemsSource="{Binding Fonts}" SelectedItem="{Binding SelectedFont, Mode=TwoWay}" />
+            <bars:BarSeparator />
+            <bars:BarSplitButton Content="Color" Command="{Binding Color}">
+              <bars:BarSplitButton.DropDownContent>
+                <StackPanel Orientation="Vertical">
+                  <Button Content="Red" Command="{Binding Pick}" CommandParameter="Color → Red" />
+                  <Button Content="Green" Command="{Binding Pick}" CommandParameter="Color → Green" />
+                  <Button Content="Blue" Command="{Binding Pick}" CommandParameter="Color → Blue" />
+                </StackPanel>
+              </bars:BarSplitButton.DropDownContent>
+            </bars:BarSplitButton>
+            <bars:BarPopupButton Content="Align">
+              <bars:BarPopupButton.DropDownContent>
+                <StackPanel Orientation="Vertical">
+                  <Button Content="Left" Command="{Binding Pick}" CommandParameter="Align → Left" />
+                  <Button Content="Center" Command="{Binding Pick}" CommandParameter="Align → Center" />
+                  <Button Content="Right" Command="{Binding Pick}" CommandParameter="Align → Right" />
+                </StackPanel>
+              </bars:BarPopupButton.DropDownContent>
+            </bars:BarPopupButton>
+            <bars:BarSeparator />
             <bars:BarButton Command="{Binding Find}" />
             <bars:BarButton Command="{Binding Settings}" bars:Toolbar.OverflowMode="Always" />
           </bars:Toolbar>

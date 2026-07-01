@@ -327,4 +327,66 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^Button:pressed").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed));
         return theme;
     }
+
+    // ───────────────────────────── BarComboBox ─────────────────────────────
+
+    // The bar combobox face: a FLAT recessed field (a WellBrush fill, NO chrome border — the bar deviates from the
+    // default ComboBox's bordered field) over [ value | ▾ ], dropping the standard ComboBox list (ElevationPopup +
+    // ComboBoxItem rows — the built-in item theme). Provides the ComboBox template parts (content site, editable text
+    // box, drop caret, items host, popup) so the inherited ComboBox behavior works unchanged.
+    public static Style BarComboBoxStyle()
+        => new Style { Key = "Bars.BarComboBox" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var selected = new ContentPresenter(); // the read-only face value (visible when !IsEditable)
+                ctx.RegisterName("PART_ContentSite", selected);
+                selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
+                selected.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+                var editable = new TextBox { Visibility = Visibility.Collapsed }; // the editable face (visible when IsEditable)
+                ctx.RegisterName("PART_EditableTextBox", editable);
+                editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(ComboBox.PlaceholderTextProperty));
+                editable.SetBinding(TextBox.IsReadOnlyProperty, new TemplateBinding(ComboBox.IsReadOnlyProperty));
+
+                var faceContent = new Grid { Margin = new Margins(1, 0) }; // the two faces overlap; the collapsed one is 0-wide
+                faceContent.Children.Add(selected);
+                faceContent.Children.Add(editable);
+
+                var caret = new Button { Content = "▾", Focusable = false, IsTabStop = false, Theme = ComboCaretStyle() };
+                ctx.RegisterName("PART_DropDown", caret); // the ComboBox wires its Click to toggle the list
+                DockPanel.SetDock(caret, Dock.Right);
+
+                var row = new DockPanel();
+                row.Children.Add(caret);        // docked right (the ▾ toggle)
+                row.Children.Add(faceContent);  // fills the remaining width
+
+                var face = new Border { Child = row }; // FLAT: no BorderPen
+                face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+                var host = new ItemsPresenter();
+                ctx.RegisterName("PART_ItemsHost", host);
+                var list = new Border { Child = host };
+                list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+                list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+                list.SetBinding(UIElement.MaxHeightProperty, new TemplateBinding(ComboBox.MaxDropDownHeightProperty));
+                var popup = new Popup { Child = list };
+                ctx.RegisterName("PART_Popup", popup);
+
+                var rootGrid = new Grid(); // the Popup adds no layout (0×0); the face fills the cell
+                rootGrid.Children.Add(face);
+                rootGrid.Children.Add(popup);
+                return rootGrid;
+            }));
+
+    // A bare 1-cell ▾ caret button for the combobox face — no chrome, foreground-inheriting, non-focusable.
+    private static Style ComboCaretStyle()
+        => new Style { Key = "Bars.ComboCaret" }
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var caret = new ContentPresenter();
+                caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                return caret;
+            }));
 }

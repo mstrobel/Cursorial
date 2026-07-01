@@ -194,4 +194,137 @@ internal static class CursorialBarsTheme
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 return border;
             }));
+
+    // ───────────────────────────── BarPopupButton / BarSplitButton ─────────────────────────────
+
+    // The dropdown Popup (PART_Popup): a bordered elevation surface hosting the button's DropDownContent. The content
+    // presenter is a NAMED PART (PART_DropDownContent) whose Content the control sets in code — a TemplateBinding
+    // inside Popup.Child does not resolve (the popup-child subtree carries no TemplatedParent stamp).
+    private static Popup BuildDropDownPopup(TemplateBuildContext ctx)
+    {
+        var content = new ContentPresenter();
+        ctx.RegisterName("PART_DropDownContent", content);
+        var popupBorder = new Border { Child = content };
+        popupBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+        popupBorder.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+        var popup = new Popup { Child = popupBorder };
+        ctx.RegisterName("PART_Popup", popup);
+        return popup;
+    }
+
+    private static ContentPresenter BuildIcon()
+    {
+        var icon = new ContentPresenter();
+        icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarDropDownButton.IconProperty));
+        icon.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        return icon;
+    }
+
+    // The whole-control popup-button face: a Background-filled Border over [icon] [label] [ ▾ caret].
+    public static Style BarPopupButtonStyle()
+    {
+        var theme = new Style { Key = "Bars.BarPopupButton" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var border = new Border();
+                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                var label = new ContentPresenter { RecognizesAccessKey = true };
+                label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                var caret = new TextBlock { Text = " ▾" };
+                caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                row.Children.Add(BuildIcon());
+                row.Children.Add(label);
+                row.Children.Add(caret);
+                border.Child = row;
+
+                var grid = new Grid();
+                grid.Children.Add(border);
+                grid.Children.Add(BuildDropDownPopup(ctx));
+                return grid;
+            }));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+        theme.Children.Add(new Style("^:focus")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+        theme.Children.Add(new Style("^:pressed")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)); // active while its dropdown is open
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+        return theme;
+    }
+
+    // The two-zone split-button face: a [icon] [label] PRIMARY zone (runs the action) + a tinted ▾ zone (PART_DropDown)
+    // that opens the dropdown. The interactive fills apply to the primary zone; the ▾ zone owns its own tint.
+    public static Style BarSplitButtonStyle()
+    {
+        var theme = new Style { Key = "Bars.BarSplitButton" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
+            .Set(Control.PaddingProperty, new Margins(0, 0)) // the zones own their own padding
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var primary = new Border { Padding = new Margins(1, 0) };
+                primary.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                var label = new ContentPresenter { RecognizesAccessKey = true };
+                label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                row.Children.Add(BuildIcon());
+                row.Children.Add(label);
+                primary.Child = row;
+
+                var dropZone = new Button
+                {
+                    Content = "▾",
+                    Focusable = false, // a mouse target only — Down on the split button opens the dropdown by keyboard
+                    Theme = DropZoneStyle(),
+                    VerticalAlignment = VerticalAlignment.Stretch,
+                };
+                ctx.RegisterName("PART_DropDown", dropZone);
+
+                var band = new StackPanel { Orientation = Orientation.Horizontal };
+                band.Children.Add(primary);
+                band.Children.Add(dropZone);
+
+                var grid = new Grid();
+                grid.Children.Add(band);
+                grid.Children.Add(BuildDropDownPopup(ctx));
+                return grid;
+            }));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+        theme.Children.Add(new Style("^:focus")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+        theme.Children.Add(new Style("^:pressed")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+        return theme;
+    }
+
+    // The split button's ▾ zone: a tinted caret button (resting tint = the guide's --ddzone), non-focusable.
+    private static Style DropZoneStyle()
+    {
+        var theme = new Style { Key = "Bars.SplitDropZone" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var border = new Border();
+                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                var caret = new ContentPresenter();
+                caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                border.Child = caret;
+                return border;
+            }));
+        theme.Children.Add(new Style("^Button:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed));
+        theme.Children.Add(new Style("^Button:pressed").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed));
+        return theme;
+    }
 }

@@ -1,0 +1,228 @@
+using Cursorial.Input;
+using Cursorial.Rendering;
+using Cursorial.UI;
+using Cursorial.UI.Bars;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
+using Cursorial.UI.Testing;
+
+namespace Cursorial.Tests.UI.Bars;
+
+// The bar drop-openers (bars guide): BarPopupButton (whole control opens its dropdown) and BarSplitButton (a label
+// primary action + a separate ▾ zone that opens the dropdown). Both host DropDownContent in a Popup; opening ENTERS
+// the content; the opener is a retaining focus-scope barrier so a pointer-open never trips a Toolbar's auto-return.
+public sealed class BarDropDownButtonTests
+{
+    private static UITestHost NewHost(int w = 30, int h = 8) =>
+        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+
+    private static StackPanel DropContent(out Button firstItem)
+    {
+        firstItem = new Button { Content = "One", Width = 8, Height = 1 };
+        var panel = new StackPanel { Orientation = Orientation.Vertical };
+        panel.Children.Add(firstItem);
+        panel.Children.Add(new Button { Content = "Two", Width = 8, Height = 1 });
+        return panel;
+    }
+
+    private static void ClickAt(UITestHost host, UIElement element)
+    {
+        var origin = element.TranslateToScreen(0, 0);
+        host.SendMouseMove(origin.Column + 1, origin.Row); // hover (arms the release-click gate)
+        host.RunFrame();
+        host.SendClick(origin.Column + 1, origin.Row);
+        host.RunUntilIdle();
+    }
+
+    [Fact] // BarPopupButton: a click opens the dropdown, focus STAYS on the face; Down then enters the content
+    public void PopupButton_ClickOpens_FocusStaysOnFace_DownEnters()
+    {
+        using var host = NewHost();
+        var content = DropContent(out var first);
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = content,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        ClickAt(host, button);
+        Assert.True(button.IsDropDownOpen);
+        Assert.True(button.IsFocused); // focus stays on the opener (ComboBox model); barrier kept it from yanking
+
+        host.SendKey(Key.DownArrow); // the content is laid out now → Down moves focus into it
+        host.RunUntilIdle();
+        Assert.True(first.IsFocused);
+    }
+
+    [Fact] // BarPopupButton: a second click (on the anchor) closes it (the opener owns the toggle)
+    public void PopupButton_SecondClickCloses()
+    {
+        using var host = NewHost();
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        ClickAt(host, button);
+        Assert.True(button.IsDropDownOpen);
+
+        ClickAt(host, button);
+        Assert.False(button.IsDropDownOpen);
+    }
+
+    [Fact] // BarPopupButton: Down opens (focus on face), Down again enters; Escape closes + returns focus to the face
+    public void PopupButton_DownOpens_DownEnters_EscapeReturnsToFace()
+    {
+        using var host = NewHost();
+        var content = DropContent(out var first);
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = content,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        button.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.DownArrow); // opens (focus stays on the face)
+        host.RunUntilIdle();
+        Assert.True(button.IsDropDownOpen);
+        Assert.True(button.IsFocused);
+
+        host.SendKey(Key.DownArrow); // enters (content laid out)
+        host.RunUntilIdle();
+        Assert.True(first.IsFocused);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(button.IsDropDownOpen);
+        Assert.True(button.IsFocused); // returned to the face (the Popup W4 restore)
+    }
+
+    [Fact] // BarSplitButton: the ▾ zone opens the dropdown; the PRIMARY command does NOT run
+    public void SplitButton_ArrowZoneOpens_NotCommand()
+    {
+        using var host = NewHost();
+        var ran = 0;
+        var split = new BarSplitButton
+        {
+            Content = "Paste", Command = new BarCommand(() => ran++), DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(split);
+        host.RunUntilIdle();
+
+        ClickAt(host, split.DropZoneForTests!); // click the ▾ zone specifically
+
+        Assert.True(split.IsDropDownOpen);
+        Assert.Equal(0, ran); // the primary action did NOT fire
+    }
+
+    [Fact] // BarSplitButton: the primary (keyboard-activate) runs the command; the dropdown does NOT open
+    public void SplitButton_PrimaryRunsCommand_NotDropDown()
+    {
+        using var host = NewHost();
+        var ran = 0;
+        var split = new BarSplitButton
+        {
+            Content = "Paste", Command = new BarCommand(() => ran++), DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(split);
+        host.RunUntilIdle();
+
+        split.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter); // the primary action
+
+        host.RunUntilIdle();
+        Assert.Equal(1, ran);
+        Assert.False(split.IsDropDownOpen);
+    }
+
+    [Fact] // barrier: a popup button on a non-retaining Toolbar opened by POINTER keeps focus on the opener — the
+           // retaining focus-scope barrier stops the Toolbar's auto-return from yanking focus back to the editor
+    public void PopupButton_OnToolbar_PointerOpen_DoesNotYankToEditor()
+    {
+        using var host = NewHost(40, 10);
+        var popup = new BarPopupButton { Content = "Align", DropDownContent = DropContent(out _) };
+        var toolbar = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        toolbar.Items.Add(popup);
+        var editor = new Button { Content = "Editor", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(toolbar);
+        root.Children.Add(editor);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        editor.Focus();
+        host.RunUntilIdle();
+
+        ClickAt(host, popup); // pointer-open
+
+        Assert.True(popup.IsDropDownOpen);
+        Assert.True(popup.IsFocused);            // focus stayed on the opener…
+        Assert.NotSame(editor, host.Application.FocusManager.FocusedElement); // …and was NOT yanked back to the editor
+    }
+
+    [Fact] // BarSplitButton PRIMARY action on a Toolbar auto-returns focus to the editor (like a BarButton) — only the
+           // ▾ zone is a barrier, so the split button itself is NOT, and its primary invoke returns focus normally
+    public void SplitButton_OnToolbar_PrimaryInvoke_AutoReturnsToEditor()
+    {
+        using var host = NewHost(48, 10);
+        var ran = 0;
+        var split = new BarSplitButton { Content = "Paste", Command = new BarCommand(() => ran++), DropDownContent = DropContent(out _) };
+        var toolbar = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        toolbar.Items.Add(split);
+        var editor = new Button { Content = "Editor", Width = 8, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(toolbar);
+        root.Children.Add(editor);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        editor.Focus();
+        host.RunUntilIdle();
+
+        // Click the PRIMARY (label) zone at the split's left edge (the ▾ zone is at the right).
+        var origin = split.TranslateToScreen(0, 0);
+        host.SendMouseMove(origin.Column + 1, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column + 1, origin.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, ran);                    // the primary command ran
+        Assert.False(split.IsDropDownOpen);      // the dropdown did NOT open
+        Assert.Same(editor, host.Application.FocusManager.FocusedElement); // …and focus auto-returned to the editor
+    }
+
+    [Fact] // detaching the button while its dropdown is open closes it (no leaked popup surface)
+    public void Detach_ClosesDropDown()
+    {
+        using var host = NewHost();
+        var button = new BarPopupButton
+        {
+            Content = "Align", DropDownContent = DropContent(out _),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+        ClickAt(host, button);
+        Assert.True(button.IsDropDownOpen);
+
+        var ex = Record.Exception(() =>
+        {
+            host.ShowRoot(new BarButton { Content = "X" }); // detaches the popup button
+            host.RunUntilIdle();
+        });
+        Assert.Null(ex);
+        Assert.False(button.IsDropDownOpen);
+    }
+}

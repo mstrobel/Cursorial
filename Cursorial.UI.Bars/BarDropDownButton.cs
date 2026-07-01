@@ -1,0 +1,181 @@
+using Cursorial.Input;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
+
+namespace Cursorial.UI.Bars;
+
+/// <summary>
+/// The shared base for the bar drop-openers — a <see cref="ButtonBase"/> that hosts a dropdown <see cref="Popup"/>
+/// (<c>PART_Popup</c>) over its <see cref="DropDownContent"/> (a menu, a gallery, …). <see cref="BarPopupButton"/>
+/// opens the dropdown from the whole control; <see cref="BarSplitButton"/> opens it from a separate <c>▾</c> zone
+/// while the label runs the primary action.
+/// <para>
+/// Opening moves focus INTO the dropdown content (a drop-opener enters rather than parking on the face); the dropdown
+/// closes back to the face on Escape / light-dismiss / a content invoke (the <see cref="Popup"/>'s on-close focus
+/// restore returns focus to the opener, since the opener was focused when the popup opened). The <b>opener</b> element
+/// is a retaining focus scope (a <c>FindReturningScope</c> barrier) so a pointer-click-open never trips an enclosing
+/// non-retaining <see cref="Toolbar"/>'s auto-return and yanks focus back out of the dropdown — which opener is the
+/// barrier differs per control (the whole <see cref="BarPopupButton"/>; only the <c>▾</c> part of a
+/// <see cref="BarSplitButton"/>, so its primary label action still auto-returns like a <see cref="BarButton"/>).
+/// </para>
+/// </summary>
+[TemplatePart(PartPopup, typeof(Popup))]
+public abstract class BarDropDownButton : ButtonBase
+{
+    private protected const string PartPopup = "PART_Popup";
+    private protected const string PartDropDownContent = "PART_DropDownContent";
+
+    /// <summary>The content shown in the dropdown Popup (a menu of items, a gallery grid, …). Hosted through the
+    /// code-set <c>PART_DropDownContent</c> presenter — a <c>TemplateBinding</c> inside <c>Popup.Child</c> does not
+    /// resolve (the popup-child subtree carries no <c>TemplatedParent</c> stamp).</summary>
+    public static readonly StyledProperty<object?> DropDownContentProperty =
+        UIProperty.Register<BarDropDownButton, object?>(nameof(DropDownContent), changed: OnDropDownContentChanged);
+
+    /// <inheritdoc cref="BarButton.IconProperty"/>
+    public static readonly StyledProperty<object?> IconProperty =
+        BarButton.IconProperty.AddOwner<BarDropDownButton>(); // same identity as BarButton's — one template binds both
+
+    /// <inheritdoc cref="BarButton.InputGestureTextProperty"/>
+    public static readonly StyledProperty<string?> InputGestureTextProperty =
+        BarButton.InputGestureTextProperty.AddOwner<BarDropDownButton>();
+
+    /// <summary>Whether the dropdown is open (<c>:open</c>; two-way with the Popup).</summary>
+    public static readonly DirectProperty<BarDropDownButton, bool> IsDropDownOpenProperty =
+        UIProperty.RegisterDirect<BarDropDownButton, bool>(
+            nameof(IsDropDownOpen), static b => b._isDropDownOpen, static (b, v) => b.SetDropDownOpen(v));
+
+    private bool _isDropDownOpen;
+    private Popup? _popup;
+    private ContentPresenter? _contentSite; // PART_DropDownContent — hosts DropDownContent (code-set, see the property)
+
+    /// <inheritdoc cref="DropDownContentProperty"/>
+    public object? DropDownContent { get => GetValue(DropDownContentProperty); set => SetValue(DropDownContentProperty, value); }
+
+    /// <inheritdoc cref="IconProperty"/>
+    public object? Icon { get => GetValue(IconProperty); set => SetValue(IconProperty, value); }
+
+    /// <inheritdoc cref="InputGestureTextProperty"/>
+    public string? InputGestureText { get => GetValue(InputGestureTextProperty); set => SetValue(InputGestureTextProperty, value); }
+
+    /// <inheritdoc cref="IsDropDownOpenProperty"/>
+    public bool IsDropDownOpen { get => _isDropDownOpen; set => SetDropDownOpen(value); }
+
+    /// <summary>The dropdown Popup template part (available after <see cref="OnApplyTemplate"/>) — the concrete
+    /// controls consult it for hit-test / focus-containment decisions.</summary>
+    private protected Popup? DropDownPopup => _popup;
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        if (_popup is not null)
+            _popup.Closed -= OnPopupClosed;
+
+        _popup = GetTemplatePart<Popup>(PartPopup);
+
+        if (_popup is not null)
+        {
+            _popup.PlacementTarget = this;
+            _popup.Placement = PlacementMode.Bottom;
+            _popup.KeepOpenOnAnchorPress = true; // the opener owns the toggle (no dismiss-then-reopen race)
+            _popup.Closed -= OnPopupClosed;
+            _popup.Closed += OnPopupClosed;
+            _popup.SetCurrentValue(Popup.IsOpenProperty, _isDropDownOpen); // sync the part to current state
+        }
+
+        _contentSite = GetTemplatePart<ContentPresenter>(PartDropDownContent);
+        if (_contentSite is not null)
+            _contentSite.Content = DropDownContent; // code-set (a TemplateBinding in Popup.Child would not resolve)
+    }
+
+    private static void OnDropDownContentChanged(UIObject sender, object? oldValue, object? newValue)
+    {
+        if (sender is BarDropDownButton { _contentSite: { } site })
+            site.Content = newValue;
+    }
+
+    /// <inheritdoc/>
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        SetDropDownOpen(false); // release the popup surface so it doesn't leak on detach
+        base.OnDetachedFromTree(in e);
+    }
+
+    /// <summary>Opens the dropdown (if closed). Focus stays on the opener face (the retaining focus-scope barrier keeps
+    /// an enclosing Toolbar from yanking it); <see cref="EnterDropDown"/> moves focus into the content once it is laid
+    /// out (Down when open, matching ComboBox — fresh content is not laid out synchronously on open).</summary>
+    protected void OpenDropDown()
+    {
+        if (!_isDropDownOpen)
+            SetDropDownOpen(true);
+    }
+
+    /// <summary>Closes the dropdown (the Popup's on-close restore returns focus to the face).</summary>
+    protected void CloseDropDown() => SetDropDownOpen(false);
+
+    /// <summary>Opens when closed, closes when open — the whole-control / ▾-zone toggle.</summary>
+    protected void ToggleDropDown()
+    {
+        if (_isDropDownOpen)
+            SetDropDownOpen(false);
+        else
+            SetDropDownOpen(true);
+    }
+
+    /// <summary>Moves focus into the open dropdown's first focusable item (the content must already be laid out).</summary>
+    protected bool EnterDropDown() => FocusFirstDropDownItem();
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled)
+            return;
+
+        switch (e.Key)
+        {
+            case Key.DownArrow when _isDropDownOpen:
+                EnterDropDown(); // already open (content laid out) → move focus into it
+                e.Handled = true;
+                break;
+            case Key.DownArrow:
+                OpenDropDown(); // Down opens; a subsequent Down enters
+                e.Handled = true;
+                break;
+            case Key.Escape when _isDropDownOpen:
+                CloseDropDown(); // Escape closes; the Popup W4 restore returns focus to the face
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private bool FocusFirstDropDownItem()
+        => _isDropDownOpen && DropDownContent is UIElement content
+        && FirstFocusable(content) is { } first && first.Focus(FocusNavigationMethod.Directional);
+
+    private static UIElement? FirstFocusable(UIElement element)
+    {
+        if (element is { Focusable: true, IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
+            return element;
+
+        for (var i = 0; i < element.VisualChildrenCount; i++)
+            if (FirstFocusable(element.GetVisualChild(i)) is { } found)
+                return found;
+
+        return null;
+    }
+
+    private void SetDropDownOpen(bool value)
+    {
+        if (!SetAndRaise(IsDropDownOpenProperty, ref _isDropDownOpen, value))
+            return;
+
+        PseudoClasses.Set(":open", value);
+        _popup?.SetCurrentValue(Popup.IsOpenProperty, value); // light-dismiss/Escape write back via OnPopupClosed
+    }
+
+    // Light-dismiss / Escape / a content invoke closed the popup — sync state. Focus return to the face is the
+    // Popup's own W4 on-close restore (the opener was the focused element captured when the popup opened).
+    private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetDropDownOpen(false);
+}

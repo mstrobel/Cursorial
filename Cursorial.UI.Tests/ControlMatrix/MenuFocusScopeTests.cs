@@ -120,6 +120,60 @@ public sealed class MenuFocusScopeTests
         Assert.Same(h.Editor, h.Focus.FocusedElement);
     }
 
+    private static void Click(UITestHost host, UIElement element)
+    {
+        var origin = element.TranslateToScreen(0, 0);
+        host.SendClick(origin.Column + 1, origin.Row);
+    }
+
+    [Fact] // #134 (user-found): clicking a top-level header with the POINTER must acquire keyboard focus so directional
+           // navigation works afterward, and arm the auto-return (Pointer method) so a leaf-invoke / Escape returns
+           // focus to the pre-menu origin. Before the fix a pointer-open left focus on the origin, so arrows were dead.
+    public void PointerClickHeader_AcquiresFocus_EnablesDirectionalNav()
+    {
+        var h = Build();
+        using var _ = h.Host;
+
+        h.Editor.Focus();
+        h.Host.RunUntilIdle();
+        Assert.Same(h.Editor, h.Focus.FocusedElement);
+
+        Click(h.Host, h.File); // pointer-open the File submenu
+        h.Host.RunUntilIdle();
+        Assert.True(h.File.IsSubmenuOpen);
+        Assert.True(h.Menu.IsKeyboardFocusWithin, "a pointer click on a header must acquire keyboard focus");
+        Assert.Same(h.File, h.Focus.FocusedElement);
+
+        h.Host.SendKey(Key.DownArrow); // directional nav now works: descend into the submenu
+        h.Host.RunUntilIdle();
+        Assert.Same(h.New, h.Focus.FocusedElement);
+
+        h.Host.SendKey(Key.Escape); // whole-chain collapse + auto-return to the pre-menu origin
+        h.Host.RunUntilIdle();
+        Assert.False(h.File.IsSubmenuOpen);
+        Assert.Same(h.Editor, h.Focus.FocusedElement);
+    }
+
+    [Fact] // #134: after a pointer-open, clicking a leaf invokes it and returns focus to the origin (the Pointer entry
+           // armed the auto-return, so the leaf-invoke CloseMenuChain resolves the captured pre-menu origin).
+    public void PointerClickHeaderThenLeaf_Invokes_ReturnsToOrigin()
+    {
+        var h = Build();
+        using var _ = h.Host;
+
+        h.Editor.Focus();
+        h.Host.RunUntilIdle();
+
+        Click(h.Host, h.File);      // pointer-open File
+        h.Host.RunUntilIdle();
+        Click(h.Host, h.Save);      // click the Save leaf
+        h.Host.RunUntilIdle();
+
+        Assert.Equal(1, h.SaveCmd.Runs);
+        Assert.False(h.File.IsSubmenuOpen);
+        Assert.Same(h.Editor, h.Focus.FocusedElement); // returned to the pre-menu origin
+    }
+
     [Fact] // invoking a leaf runs its command, dismisses the whole menu, and returns focus to the origin
     public void LeafInvoke_RunsCommand_ReturnsToOrigin()
     {

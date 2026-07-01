@@ -220,6 +220,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
         if (HasItems)
         {
+            // A click is a deliberate activation (unlike a hover, which must not steal focus — OnMouseEnter): take
+            // keyboard focus so the menu enters keyboard mode (arrows then navigate — #134) and, via the Pointer
+            // method, arm the auto-return so a later leaf-invoke / Escape returns focus to the pre-menu origin (the
+            // Menu is a non-retaining scope). Focus first so OnGotFocus's CloseSiblings runs before the open. Pointer
+            // focus never sets :focus-visible (doc §7.7), so a mouse-opened header shows the highlight, not the ring.
+            Focus(FocusNavigationMethod.Pointer);
+
             if (_isSubmenuOpen)
                 SetSubmenuOpen(false); // toggle closed
             else

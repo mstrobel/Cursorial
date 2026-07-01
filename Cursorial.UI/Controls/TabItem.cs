@@ -149,6 +149,9 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
         if (IsSelected && e.IsMultiMatch)
             return; // the manager already focused us; multi-match never invokes (ND18)
 
+        if (!IsSelectable)
+            return; // a command tab is focus-only on access-key (the manager already focused it) — never selects
+
         IsSelected = true;
     }
 }

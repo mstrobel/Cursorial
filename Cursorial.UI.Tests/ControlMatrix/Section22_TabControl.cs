@@ -306,4 +306,91 @@ public sealed class Section22_TabControl
         Assert.Same(lead, FocusManager.GetFocusedElement(rootScope)); // NOT the TabItem — the prime fenced itself off
         Assert.Same(lead, focus.FocusedElement);                      // actual focus untouched
     }
+
+    // ── IsSelectable: a focusable-but-not-selectable command tab (the "never the selected tab" contract on a plain
+    //    TabControl — the model, not just the input gates, must enforce it) ──────────────────────────────────────────
+
+    private static (UITestHost Host, TabControl Tabs, TabItem Cmd, TabItem A, TabItem B) CommandTab()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var cmd = new TabItem { Header = "Cmd", Content = "bodyCmd", IsSelectable = false }; // index 0, non-selectable
+        var a = new TabItem { Header = "A", Content = "bodyA" };
+        var b = new TabItem { Header = "B", Content = "bodyB" };
+        var tabs = new TabControl();
+        tabs.Items.Add(cmd);
+        tabs.Items.Add(a);
+        tabs.Items.Add(b);
+        host.ShowRoot(tabs);
+        host.RunUntilIdle();
+        return (host, tabs, cmd, a, b);
+    }
+
+    [Fact] // C9.NS1: auto-select skips a non-selectable tab at index 0 and lands on the first selectable one
+    public void C9_NS1_AutoSelectSkipsNonSelectable()
+    {
+        var (host, tabs, cmd, a, _) = CommandTab();
+        using var _h = host;
+        Assert.Equal(1, tabs.SelectedIndex); // A (index 1), not the non-selectable Cmd (index 0)
+        Assert.True(a.IsSelected);
+        Assert.False(cmd.IsSelected);
+    }
+
+    [Fact] // C9.NS2: programmatic SelectedIndex / SelectedItem onto a non-selectable tab is rejected (clamps to -1)
+    public void C9_NS2_ProgrammaticSelectRejected()
+    {
+        var (host, tabs, cmd, a, _) = CommandTab();
+        using var _h = host;
+        Assert.Equal(1, tabs.SelectedIndex);
+
+        tabs.SelectedIndex = 0; // the non-selectable index
+        host.RunUntilIdle();
+        Assert.False(cmd.IsSelected);
+        Assert.NotEqual(0, tabs.SelectedIndex); // did NOT select it
+
+        tabs.SelectedItem = cmd; // the non-selectable item
+        host.RunUntilIdle();
+        Assert.False(cmd.IsSelected);
+        _ = a;
+    }
+
+    [Fact] // C9.NS3: setting a non-selectable container's IsSelected=true (binding / direct) is rejected and reverted
+    public void C9_NS3_ContainerIsSelectedFoldRejected()
+    {
+        var (host, tabs, cmd, a, _) = CommandTab();
+        using var _h = host;
+
+        cmd.IsSelected = true; // fold attempt
+        host.RunUntilIdle();
+
+        Assert.False(cmd.IsSelected);   // driven back to false — container and model stay consistent
+        Assert.True(a.IsSelected);      // the real selection is untouched
+        Assert.Equal(1, tabs.SelectedIndex);
+    }
+
+    [Fact] // C9.NS4: clicking a non-selectable tab FOCUSES it (reachable) but does not select it
+    public void C9_NS4_ClickFocusesNotSelects()
+    {
+        var (host, tabs, cmd, a, _) = CommandTab();
+        using var _h = host;
+
+        Click(host, cmd);
+        Assert.True(cmd.IsFocused);      // reachable/focusable
+        Assert.False(cmd.IsSelected);    // …but not selected
+        Assert.Equal(1, tabs.SelectedIndex);
+        _ = a;
+    }
+
+    [Fact] // C9.NS5: a TabControl whose tabs are ALL non-selectable selects nothing (no band) — the degenerate case
+    public void C9_NS5_AllNonSelectableSelectsNothing()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        using var _h = host;
+        var tabs = new TabControl();
+        tabs.Items.Add(new TabItem { Header = "X", Content = "bodyX", IsSelectable = false });
+        tabs.Items.Add(new TabItem { Header = "Y", Content = "bodyY", IsSelectable = false });
+        host.ShowRoot(tabs);
+        host.RunUntilIdle();
+
+        Assert.True(tabs.SelectedIndex < 0); // nothing selectable → no selection
+    }
 }

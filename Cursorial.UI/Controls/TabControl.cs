@@ -58,11 +58,25 @@ public class TabControl : SelectingItemsControl
     /// <inheritdoc/>
     protected override bool IsItemItsOwnContainer(object? item) => item is TabItem;
 
-    // Auto-select the first tab when nothing is selected (a tab control with content but no selection is useless).
+    // A command tab (IsSelectable=false — the Ribbon's File tab) is focusable but never the selected tab; the base
+    // model consults this on EVERY selection path (auto-select, programmatic, IsSelected fold, gesture, type-ahead).
+    private protected override bool IsIndexSelectable(int index)
+        => ItemContainerGenerator.ContainerFromIndex(index) is not TabItem { IsSelectable: false };
+
+    // Auto-select the first SELECTABLE, non-Collapsed tab when nothing is selected (a tab control with content but no
+    // selection is useless). A command tab (File) or a hidden tab is skipped; if none qualifies, selection stays -1.
     private void EnsureSelection()
     {
-        if (SelectedIndex < 0 && ItemContainerGenerator.ContainerCount > 0)
-            Selection.Select(0);
+        if (SelectedIndex >= 0)
+            return;
+
+        var count = ItemContainerGenerator.ContainerCount;
+        for (var i = 0; i < count; i++)
+            if (ItemContainerGenerator.ContainerFromIndex(i) is TabItem { IsSelectable: true, Visibility: not Visibility.Collapsed })
+            {
+                Selection.Select(i);
+                return;
+            }
     }
 
     // The content host shows the selected tab's Content (the strip shows only the headers). A TabItem's Content is

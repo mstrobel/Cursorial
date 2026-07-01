@@ -533,6 +533,13 @@ internal static class CursorialBarsTheme
             {
                 new Style(Selectors.Nesting().Template().Name("PART_HeaderSite"))
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush),
+                // The File tab's resting identity (accent fill). Declared BEFORE the interaction cues so a hovered /
+                // keyboard-focused File tab still reads as hovered/focused — an equal-specificity tie is broken by
+                // declaration order (the ListBoxItem convention: identity first, interaction cues after). Without this
+                // order the File tab shows NO focus cue when reached by arrow keys, defeating "File is reachable".
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
                 new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
@@ -545,9 +552,6 @@ internal static class CursorialBarsTheme
                 new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
-                new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
-                    .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)
-                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
 
                 // Contextual tab (guide §5): purple ink on a tinted well (resting) / on the dropped band fill (active).
                 // The compound `:ribbon-contextual:selected` out-specifies the plain `:selected` rule (2 classLike vs 1,

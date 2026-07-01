@@ -95,6 +95,9 @@ public abstract class SelectingItemsControl : ItemsControl
     /// (Ctrl = toggle, Shift = range-from-anchor, otherwise replace) — the input mapping onto the model primitives.</summary>
     private protected void SelectByGesture(int index, KeyModifiers modifiers)
     {
+        if (!IsIndexSelectable(index))
+            return; // a non-selectable container (a command tab) is focus-only — a gesture never selects it
+
         var ctrl = (modifiers & KeyModifiers.Control) != 0;
         var shift = (modifiers & KeyModifiers.Shift) != 0;
 
@@ -140,6 +143,15 @@ public abstract class SelectingItemsControl : ItemsControl
         if (index < 0)
             return;
 
+        if (isSelected && !IsIndexSelectable(index))
+        {
+            // A non-selectable container (a command tab) reported IsSelected=true (a binding / direct set) — reject it:
+            // leave the model unchanged and drive the container's IsSelected back to false so the two stay consistent.
+            if (container is ISelectableContainer selectable)
+                selectable.SetIsSelectedFromOwner(false);
+            return;
+        }
+
         if (isSelected && !_selection.IsSelected(index))
         {
             if (SelectionMode == SelectionMode.Single)
@@ -163,7 +175,18 @@ public abstract class SelectingItemsControl : ItemsControl
     private protected override int CurrentTextSearchIndex => _selectedIndex;
 
     /// <summary>A type-ahead match selects the item (selectors); subclasses refine with focus.</summary>
-    private protected override void OnTextSearchMatch(int containerIndex) => _selection.Select(containerIndex);
+    private protected override void OnTextSearchMatch(int containerIndex)
+    {
+        if (IsIndexSelectable(containerIndex))
+            _selection.Select(containerIndex);
+    }
+
+    /// <summary>Whether the container at <paramref name="index"/> may be SELECTED (default true). A subclass whose
+    /// containers can be focusable-but-not-selectable (a TabControl's command tab) overrides this so the "never
+    /// selected" rule holds on <b>every</b> model entry — auto-select, programmatic <see cref="SelectedIndex"/>/
+    /// <see cref="SelectedItem"/>, a container <c>IsSelected=true</c> fold, gesture, and type-ahead — not just the
+    /// input gates.</summary>
+    private protected virtual bool IsIndexSelectable(int index) => true;
 
     /// <summary>Re-target hook (CD-P9-9): the selection emptied because a removal dropped every selected item.
     /// The base does nothing; <see cref="ListBox"/> re-selects the nearest surviving item.</summary>
@@ -226,9 +249,13 @@ public abstract class SelectingItemsControl : ItemsControl
     // Clamp out-of-range to "no selection" so SelectedIndex and SelectedItem can never disagree (the model itself is
     // count-agnostic; the control knows the item count). A negative value clears via the model's own −1 handling.
     private void SetSelectedIndexExternal(int value)
-        => _selection.Select(value >= ItemContainerGenerator.ContainerCount ? -1 : value);
+        => _selection.Select(value >= 0 && value < ItemContainerGenerator.ContainerCount && IsIndexSelectable(value) ? value : -1);
 
-    private void SetSelectedItemExternal(object? value) => _selection.Select(value is null ? -1 : IndexFromItem(value));
+    private void SetSelectedItemExternal(object? value)
+    {
+        var index = value is null ? -1 : IndexFromItem(value);
+        _selection.Select(index >= 0 && IsIndexSelectable(index) ? index : -1);
+    }
 
     private static void OnSelectionModeChanged(UIObject sender, SelectionMode oldValue, SelectionMode newValue)
     {

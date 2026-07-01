@@ -271,7 +271,19 @@
             <bars:BarButton Command="{Binding Settings}" bars:Toolbar.OverflowMode="Always" />
           </bars:Toolbar>
 
-          <Border VerticalAlignment="Center" HorizontalAlignment="Center" Padding="2,1">
+          <!-- Right-click the body to pop the MiniToolbar (a floating strip of the same commands, at the pointer). -->
+          <Border VerticalAlignment="Center" HorizontalAlignment="Center" Padding="2,1"
+                  Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
+            <bars:MiniToolbar.Bar>
+              <bars:MiniToolbar>
+                <bars:BarButton Command="{Binding Cut}" />
+                <bars:BarButton Command="{Binding Copy}" />
+                <bars:BarButton Command="{Binding Paste}" />
+                <bars:BarSeparator />
+                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+              </bars:MiniToolbar>
+            </bars:MiniToolbar.Bar>
             <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
           </Border>
         </DockPanel>

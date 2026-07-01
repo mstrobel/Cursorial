@@ -389,4 +389,21 @@ internal static class CursorialBarsTheme
                 caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
                 return caret;
             }));
+
+    // ───────────────────────────── MiniToolbar ─────────────────────────────
+
+    // The right-click floating strip: an elevation-popup Border over a horizontal ItemsPresenter (the hosted bar
+    // controls). No resting fill on the bar controls themselves — the strip's ElevationPopup panel is the surface.
+    public static Style MiniToolbarStyle()
+        => new Style { Key = "Bars.MiniToolbar" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationPopup)
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var host = new ItemsPresenter();
+                ctx.RegisterName("PART_ItemsHost", host);
+                var border = new Border { Child = host };
+                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+                return border;
+            }));
 }

@@ -66,15 +66,32 @@ public class RibbonTab : TabItem
     /// <inheritdoc/>
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
-        // The File tab is a command, not a selectable band: a click opens Backstage and does NOT change selection.
+        // The File tab is a command, not a selectable band: a click FOCUSES it (it is reachable/highlights) and opens
+        // Backstage, but does NOT change selection (the shown band stays put; File has no band).
         if (IsFileTab && !e.Handled && e.Button == MouseButton.Left)
         {
+            Focus();
             RaiseEvent(new RoutedEventArgs(Ribbon.BackstageRequestedEvent, this));
             e.Handled = true;
             return;
         }
 
         base.OnMouseDown(e);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        // Enter / Space on the FOCUSED File tab activates it (opens Backstage) — the keyboard twin of a click, so a
+        // File tab reached by arrow keys is activatable. A content tab's Enter/Space is the base TabItem's (no-op).
+        if (IsFileTab && !e.Handled && IsFocused && IsActivationKey(e))
+        {
+            RaiseEvent(new RoutedEventArgs(Ribbon.BackstageRequestedEvent, this));
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 
     /// <inheritdoc/>
@@ -89,6 +106,13 @@ public class RibbonTab : TabItem
 
         base.OnAccessKey(e);
     }
+
+    // Enter, or a modifier-free spacebar. The spacebar's identity is (Key.Character, " ") on every wire (ND10);
+    // Key.Space is only NUL→Ctrl+Space, which carries Control — excluded by the modifier-free gate.
+    private static bool IsActivationKey(KeyEventArgs e)
+        => e.Key == Key.Enter
+           || (e.Modifiers == KeyModifiers.None
+               && (e.Key == Key.Space || (e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' ')));
 
     /// <inheritdoc/>
     protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
@@ -134,8 +158,12 @@ public class RibbonTab : TabItem
 
     private static void OnIsFileTabChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is RibbonTab tab)
-            tab.PseudoClasses.Set(":ribbon-file", newValue);
+        if (sender is not RibbonTab tab)
+            return;
+        tab.PseudoClasses.Set(":ribbon-file", newValue);
+        // The File tab is a command, not a selectable band: reachable/focusable, but never the selected tab (a click
+        // or arrow focuses it without selecting; its band would be empty). Enter/click opens Backstage instead.
+        tab.IsSelectable = !newValue;
     }
 
     private static void OnIsContextualChanged(UIObject sender, bool oldValue, bool newValue)

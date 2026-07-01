@@ -1,5 +1,6 @@
 using Cursorial.Gallery.ViewModels;
 using Cursorial.UI;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Xaml;
 
@@ -26,6 +27,11 @@ public static class GalleryApp
         var vm = new ShellViewModel();
 
         root.DataContext = vm;
+
+        // The Ribbon's File tab raises BackstageRequested (bubbling) on activation — Backstage is a later phase, so
+        // the gallery just echoes it into the Ribbon page's status so File reads as a real, activatable command tab.
+        root.AddHandler(Ribbon.BackstageRequestedEvent,
+            (_, _) => (vm.SelectedPage as RibbonViewModel)?.NotifyBackstageRequested());
 
         return root;
     }

@@ -88,5 +88,10 @@ public sealed class RibbonViewModel : PageViewModel
         Report($"{label} {(state.IsChecked ? "on" : "off")}");
     }
 
+    /// <summary>The File tab was activated (click / Enter / Alt+F) — Backstage is the P3e full-window File view (not
+    /// built yet), so the gallery just echoes that File is a reachable, activatable command tab.</summary>
+    public void NotifyBackstageRequested() =>
+        Status = "File → Backstage requested (the full-window File view lands in Ribbon P3e).";
+
     private void Report(string what) => Status = $"{what} invoked.";
 }

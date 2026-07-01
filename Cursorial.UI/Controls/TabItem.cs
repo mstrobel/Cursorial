@@ -28,6 +28,13 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
     public static readonly StyledProperty<bool> IsSelectedProperty =
         UIProperty.Register<TabItem, bool>(nameof(IsSelected), defaultValue: false, changed: OnIsSelectedChanged);
 
+    /// <summary>Whether this tab can be SELECTED (default true). A non-selectable tab still participates in the strip's
+    /// focus/arrow navigation (it is reachable and highlights when focused) but is never made the selected tab — a
+    /// click/arrow onto it FOCUSES it without changing the shown body. Used for a command-style tab that has no body
+    /// of its own (the Ribbon's File tab, which opens Backstage on activation rather than selecting a band).</summary>
+    public static readonly StyledProperty<bool> IsSelectableProperty =
+        UIProperty.Register<TabItem, bool>(nameof(IsSelectable), defaultValue: true);
+
     private bool _ownerDriven; // guards the owner→container write so it never echoes back into the model
     private Separator? _underline;
 
@@ -45,6 +52,13 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
     {
         get => GetValue(IsSelectedProperty);
         set => SetValue(IsSelectedProperty, value);
+    }
+
+    /// <inheritdoc cref="IsSelectableProperty"/>
+    public bool IsSelectable
+    {
+        get => GetValue(IsSelectableProperty);
+        set => SetValue(IsSelectableProperty, value);
     }
 
     /// <inheritdoc/>
@@ -91,7 +105,8 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
             return;
 
         Focus();
-        owner.HandleContainerPointerSelect(this, e.Modifiers, e.ClickCount);
+        if (IsSelectable) // a command tab (IsSelectable=false) focuses on click but never selects (its own OnMouseDown activates)
+            owner.HandleContainerPointerSelect(this, e.Modifiers, e.ClickCount);
         e.Handled = true;
     }
 

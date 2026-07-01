@@ -294,28 +294,59 @@ public sealed class RibbonTests
         Assert.Equal(0, ribbon.SelectedIndex); // STILL on Home — the arrow did not hijack tab switching
     }
 
-    [Fact] // arrowing onto the File tab from the strip keeps focus AND selection on the content tab (no divergence
-           // between :selected and :focus-visible — the redirect is honored by the focus target)
-    public void Ribbon_ArrowOntoFileTabTracksSelection()
+    [Fact] // the File tab is a command, not a band: arrowing onto it FOCUSES it (reachable, highlights) WITHOUT
+           // selecting it (the shown band stays on the content tab), and you can arrow back off it — not a one-way trap
+    public void Ribbon_FileTabIsFocusableButNotSelectable()
     {
         using var host = NewHost();
         var ribbon = new Ribbon();
         var file = new RibbonTab { Header = "File", IsFileTab = true };
         var home = Tab("Home", Group("G", new BarButton { Content = "A" }));
+        var insert = Tab("Insert", Group("H", new BarButton { Content = "B" }));
         ribbon.Items.Add(file);
         ribbon.Items.Add(home);
+        ribbon.Items.Add(insert);
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
-        Assert.Equal(1, ribbon.SelectedIndex); // Home (File skipped)
+        Assert.Equal(1, ribbon.SelectedIndex); // Home auto-selected (File skipped)
 
         home.Focus(); // focus the Home tab header (on the strip)
         host.RunUntilIdle();
-        host.SendKey(Key.LeftArrow); // targets index 0 = the File tab
-
+        host.SendKey(Key.LeftArrow); // arrow onto the File tab
         host.RunUntilIdle();
-        Assert.Equal(1, ribbon.SelectedIndex); // selection did NOT stick on File
-        Assert.True(home.IsFocused);           // focus tracks the settled selection…
-        Assert.False(file.IsFocused);          // …and is NOT stranded on the un-selectable File tab
+
+        Assert.True(file.IsFocused);           // File is now REACHABLE and focused (highlights)…
+        Assert.Equal(1, ribbon.SelectedIndex); // …but it is NOT selected — the shown band stays on Home
+        Assert.False(file.IsSelected);
+
+        host.SendKey(Key.RightArrow); // arrow back OFF File → Home (selects it) — File is not a trap
+        host.RunUntilIdle();
+        Assert.True(home.IsFocused);
+        Assert.Equal(1, ribbon.SelectedIndex);
+        Assert.False(file.IsFocused);
+    }
+
+    [Fact] // Enter (and click) on the focused File tab opens Backstage; arrow-reached File is keyboard-activatable
+    public void Ribbon_FileTabEnterOpensBackstage()
+    {
+        using var host = NewHost();
+        var ribbon = new Ribbon();
+        var file = new RibbonTab { Header = "File", IsFileTab = true };
+        ribbon.Items.Add(file);
+        ribbon.Items.Add(Tab("Home", Group("G", new BarButton { Content = "A" })));
+        var raised = 0;
+        ribbon.BackstageRequested += (_, _) => raised++;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        file.Focus(); // focus the File tab (as an arrow-onto would)
+        host.RunUntilIdle();
+        Assert.True(file.IsFocused);
+
+        host.SendKey(Key.Enter); // activate it
+        host.RunUntilIdle();
+        Assert.Equal(1, raised);               // Backstage requested
+        Assert.False(file.IsSelected);         // …still not selected
     }
 
     [Fact] // Escape from within a ribbon group returns focus to where it came from (the group is a non-retaining scope)

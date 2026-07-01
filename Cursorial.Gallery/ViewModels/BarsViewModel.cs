@@ -76,6 +76,18 @@ public sealed class BarsViewModel : PageViewModel
         set { if (Set(ref _selectedFont, value)) Report($"Font → {value}"); }
     }
 
+    /// <summary>The BarGallery choices (font size — the drop-down lays them out as a grid).</summary>
+    public string[] Sizes { get; } = { "10", "11", "12", "13", "14", "16", "18", "24" };
+
+    private string _selectedSize = "13";
+
+    /// <summary>The BarGallery selection.</summary>
+    public string SelectedSize
+    {
+        get => _selectedSize;
+        set { if (Set(ref _selectedSize, value)) Report($"Size → {value}"); }
+    }
+
     private void Toggle(CheckableCommandParameter state, string label)
     {
         state.Toggle(); // the command owns the checked state; the toggle button re-syncs on the re-query

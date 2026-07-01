@@ -246,6 +246,7 @@
             <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
             <bars:BarSeparator />
             <bars:BarComboBox Width="18" ItemsSource="{Binding Fonts}" SelectedItem="{Binding SelectedFont, Mode=TwoWay}" />
+            <bars:BarGallery Width="6" ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize, Mode=TwoWay}" />
             <bars:BarSeparator />
             <bars:BarSplitButton Content="Color" Command="{Binding Color}">
               <bars:BarSplitButton.DropDownContent>

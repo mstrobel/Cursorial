@@ -78,19 +78,49 @@ public class Ribbon : TabControl
     protected override bool IsItemItsOwnContainer(object? item) => item is RibbonTab;
 
     // The File tab is a command, not a selectable band. TabControl.EnsureSelection auto-selects index 0 (which may be
-    // File) and Left/Right can land on it — redirect any selection that lands on a File tab to the nearest content
-    // tab so its empty band is never shown. Silent (no Backstage): a File CLICK opens Backstage via RibbonTab.
+    // File) and Left/Right can land on it — redirect any selection that lands on a File tab (or a hidden contextual
+    // tab) to the nearest content tab so its empty/blank band is never shown. Silent (no Backstage): a File CLICK
+    // opens Backstage via RibbonTab.
     private void OnRibbonSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_redirectingSelection || SelectedIndex < 0)
             return;
-        if (ItemContainerGenerator.ContainerFromIndex(SelectedIndex) is not RibbonTab { IsFileTab: true })
+        if (ItemContainerGenerator.ContainerFromIndex(SelectedIndex) is not RibbonTab selected || IsContentTab(selected))
             return;
 
+        RedirectToFirstContentTab();
+    }
+
+    // A contextual tab that hides while it is the selected tab strands selection on a Collapsed tab (no band, no
+    // self-raised SelectionChanged) — redirect to the first content tab so the band never blanks. Called by RibbonTab.
+    internal void OnContextualTabHidden(RibbonTab tab)
+    {
+        if (_redirectingSelection || !ReferenceEquals(SelectedItemContainer(), tab))
+            return;
+
+        RedirectToFirstContentTab();
+    }
+
+    // A contextual tab re-shown while the ribbon has NO valid selection (every content tab was hidden, so a prior
+    // redirect settled at -1) recovers selection onto the first content tab — otherwise a re-shown sole content tab
+    // would stay blank (no structural change re-runs EnsureSelection). Called by RibbonTab on Visibility→Visible.
+    internal void OnContextualTabShown(RibbonTab tab)
+    {
+        if (_redirectingSelection || SelectedIndex >= 0)
+            return;
+
+        RedirectToFirstContentTab();
+    }
+
+    private void RedirectToFirstContentTab()
+    {
         _redirectingSelection = true;
         try
         {
-            SelectedIndex = FirstContentTabIndex(); // -1 (nothing selected) if the ribbon is all File tabs
+            // -1 (nothing selected) if the ribbon has no visible content tab right now — a transient state at startup
+            // (containers not yet realized) that EnsureSelection recovers, and the recoverable all-hidden state that
+            // OnContextualTabShown recovers when a content tab re-appears.
+            SelectedIndex = FirstContentTabIndex();
         }
         finally
         {
@@ -98,13 +128,18 @@ public class Ribbon : TabControl
         }
     }
 
+    // A content tab is an ordinary selectable band tab: not the File command tab, and (if contextual) currently shown.
+    private static bool IsContentTab(RibbonTab tab) => !tab.IsFileTab && tab.Visibility != Visibility.Collapsed;
+
+    private RibbonTab? SelectedItemContainer()
+        => SelectedIndex >= 0 ? ItemContainerGenerator.ContainerFromIndex(SelectedIndex) as RibbonTab : null;
+
     private int FirstContentTabIndex()
     {
         var count = ItemContainerGenerator.ContainerCount;
         for (var i = 0; i < count; i++)
-            if (ItemContainerGenerator.ContainerFromIndex(i) is RibbonTab { IsFileTab: false })
+            if (ItemContainerGenerator.ContainerFromIndex(i) is RibbonTab tab && IsContentTab(tab))
                 return i;
         return -1;
     }
-
 }

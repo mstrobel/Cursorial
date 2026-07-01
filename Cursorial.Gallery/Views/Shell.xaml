@@ -327,11 +327,29 @@
                 <bars:BarButton Command="{Binding Settings}" />
               </bars:RibbonGroup>
             </bars:RibbonTab>
+
+            <!-- P3a: a CONTEXTUAL tab — purple-tinted, shown only when a "table" is selected. Its Visibility binds to
+                 the VM; when it's the active tab and hides, the Ribbon falls back to the first content tab (no blank band). -->
+            <bars:RibbonTab Header="Table" IsContextual="True"
+                            Visibility="{Binding TableToolsVisibility}">
+              <bars:RibbonGroup Header="Cells">
+                <bars:BarButton Command="{Binding MergeCells}" bars:Ribbon.ButtonSize="Large" />
+                <bars:BarButton Command="{Binding SplitCells}" />
+              </bars:RibbonGroup>
+              <bars:RibbonGroup Header="Table">
+                <bars:BarButton Command="{Binding DeleteTable}" />
+              </bars:RibbonGroup>
+            </bars:RibbonTab>
           </bars:Ribbon>
 
           <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
-            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" HorizontalAlignment="Center"
-                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <TextBlock Text="{Binding Status}" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+              <!-- Toggle the contextual tab: check to select a "table" (the purple Table tab appears), uncheck to hide it. -->
+              <CheckBox Content="_Table selected (show the contextual Table tab)" Margin="0,1,0,0"
+                        IsChecked="{Binding TableSelected, Mode=TwoWay}" HorizontalAlignment="Center" />
+            </StackPanel>
           </Border>
         </DockPanel>
       </DataTemplate>

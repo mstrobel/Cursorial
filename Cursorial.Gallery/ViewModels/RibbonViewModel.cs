@@ -1,5 +1,6 @@
 using System.Windows.Input;
 
+using Cursorial.UI;
 using Cursorial.UI.Bars;
 
 namespace Cursorial.Gallery.ViewModels;
@@ -13,6 +14,7 @@ namespace Cursorial.Gallery.ViewModels;
 public sealed class RibbonViewModel : PageViewModel
 {
     private string _status = "Ready — invoke a command, switch tabs, or press Alt for access keys.";
+    private bool _tableSelected;
 
     public RibbonViewModel()
     {
@@ -30,6 +32,11 @@ public sealed class RibbonViewModel : PageViewModel
         Italic = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Italic")) { Text = "_Italic", IsCheckable = true };
 
         Options = new BarCommand(() => Report("Clipboard options")); // the ⋰ dialog launcher target
+
+        // Contextual-tab demo (P3a): TableSelected (two-way from the body CheckBox) shows/hides the purple "Table" tab.
+        MergeCells = new BarCommand(() => Report("Merge cells")) { Text = "_Merge" };
+        SplitCells = new BarCommand(() => Report("Split cells")) { Text = "_Split" };
+        DeleteTable = new BarCommand(() => Report("Delete table")) { Text = "_Delete" };
     }
 
     public override string Title => "Ribbon";
@@ -52,6 +59,28 @@ public sealed class RibbonViewModel : PageViewModel
     public CheckableCommandParameter BoldState { get; }
     public ICommand Italic { get; }
     public CheckableCommandParameter ItalicState { get; }
+
+    public ICommand MergeCells { get; }
+    public ICommand SplitCells { get; }
+    public ICommand DeleteTable { get; }
+
+    /// <summary>Whether a "table" is selected — drives the contextual Table tab's visibility (P3a). Two-way from the
+    /// body CheckBox: checking it shows the purple Table tab, unchecking hides it (and the ribbon falls back if it
+    /// was active).</summary>
+    public bool TableSelected
+    {
+        get => _tableSelected;
+        set
+        {
+            if (!Set(ref _tableSelected, value))
+                return;
+            Raise(nameof(TableToolsVisibility));
+            Report(value ? "Table selected — the purple Table tab appears" : "Table deselected — the tab hides");
+        }
+    }
+
+    /// <summary>The contextual Table tab's visibility (bound in XAML; a contextual tab is hidden when not relevant).</summary>
+    public Visibility TableToolsVisibility => _tableSelected ? Visibility.Visible : Visibility.Collapsed;
 
     private void Toggle(CheckableCommandParameter state, string label)
     {

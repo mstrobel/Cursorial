@@ -489,11 +489,27 @@ internal static class CursorialBarsTheme
     {
         var template = new ControlTemplate(ctx =>
         {
+            // A contextual tab reads as `│ Table ▾` (guide §5): a leading divider, the header, a trailing caret. The
+            // divider/caret are Collapsed on an ordinary tab (measure 0 ⇒ a normal tab renders byte-identically) and
+            // flipped Visible for `:ribbon-contextual`. They inherit the header's Foreground (purple when contextual).
+            var divider = new TextBlock { Text = "│ ", Visibility = Visibility.Collapsed };
+            ctx.RegisterName("PART_ContextDivider", divider);
+
             var header = new ContentPresenter { RecognizesAccessKey = true };
             ctx.RegisterName("PART_ContentPresenter", header);
             header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
 
-            var headerHost = new Border { Padding = new Margins(1, 0), Child = header, Occludes = true };
+            // A LEFT MARGIN, not a leading space: TextBlock drops leading whitespace (its paragraph packs WordWrap), so
+            // " ▾" would render as a gap-less `▾`. The divider's TRAILING space in "│ " survives, so it needs no margin.
+            var caret = new TextBlock { Text = "▾", Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+            ctx.RegisterName("PART_ContextCaret", caret);
+
+            var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
+            headerRow.Children.Add(divider);
+            headerRow.Children.Add(header);
+            headerRow.Children.Add(caret);
+
+            var headerHost = new Border { Padding = new Margins(1, 0), Child = headerRow, Occludes = true };
             headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
             ctx.RegisterName("PART_HeaderSite", headerHost);
 
@@ -507,26 +523,62 @@ internal static class CursorialBarsTheme
             return new Border { Child = stack };
         });
 
-        var theme = new Style { Key = "Bars.RibbonTab" }
-            .Set(Control.TemplateProperty, template);
+        // Part-targeting rules live in the TEMPLATE's .Styles under a type-anchored wrapper (Selectors.OfType), NOT the
+        // theme Style's .Children — a `^`/Template().Name() rule with no type context does not match (the base TabItem
+        // theme, ControlThemes.TabItemTheme, is the precedent). Setting them here is what makes the header fill/ink
+        // actually paint.
+        template.Styles.Add(new Style(Selectors.OfType<RibbonTab>())
+        {
+            Children =
+            {
+                new Style(Selectors.Nesting().Template().Name("PART_HeaderSite"))
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush),
+                new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
+                new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
+                // Keyboard focus on the strip: the active tab reads as FOCUSED (a hover-strength fill over the dropped
+                // active look) so it is distinct from a selected-but-focus-elsewhere tab — the "which tab has keyboard
+                // focus" cue.
+                new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
 
-        theme.Children.Add(new Style(Selectors.Nesting().Template().Name("PART_HeaderSite"))
-            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush));
-        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
-            .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
-            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
-        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
-            .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
-            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
-        // Keyboard focus on the strip: the active tab reads as FOCUSED (a hover-strength fill over the dropped active
-        // look) so it is distinct from a selected-but-focus-elsewhere tab — the "which tab has keyboard focus" cue.
-        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
-            .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
-            .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush));
-        theme.Children.Add(new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
-            .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)
-            .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush));
-        return theme;
+                // Contextual tab (guide §5): purple ink on a tinted well (resting) / on the dropped band fill (active).
+                // The compound `:ribbon-contextual:selected` out-specifies the plain `:selected` rule (2 classLike vs 1,
+                // SD5) so the active contextual tab keeps its purple ink instead of --text. The purple underline is the
+                // pen swap in RibbonTab.OnApplyTemplate (the template lane pins it; a Style rule can't). Divider + caret
+                // (Collapsed by default) show for a contextual tab.
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonContextualFillBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.PurpleBrush),
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").PseudoClass(":selected").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.PurpleBrush),
+                // Hover + keyboard-focus cues on a contextual tab keep the purple ink but take the hover-strength fill,
+                // mirroring the normal-tab cues. Compound (classLike 2) so they out-specify plain :pointerover /
+                // :focus-visible (classLike 1); declared AFTER :ribbon-contextual:selected (also classLike 2) so a
+                // hovered/focused ACTIVE contextual tab reads as hovered/focused (declaration-order tiebreak).
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.PurpleBrush),
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
+                    .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.PurpleBrush),
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextDivider"))
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextCaret"))
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+            },
+        });
+
+        return new Style { Key = "Bars.RibbonTab" }
+            .Set(Control.TemplateProperty, template);
     }
 
     // A ribbon group: the controls row (PART_ItemsHost = a RibbonGroupPanel) over a muted group-name footer with an

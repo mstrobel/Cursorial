@@ -150,6 +150,10 @@ public static class CursorialTheme
         // Ribbon: no fill under monochrome — the active tab is marked by the ASCII-heavy underline (TabUnderlinePen).
         noColor[ThemeKeys.RibbonTabStripBrush] = defaultBrush;
         noColor[ThemeKeys.RibbonTabActiveBrush] = defaultBrush;
+        // A contextual tab has no purple to lean on under mono; its only cue is the underline — authored ASCII-heavy
+        // (visually identical to the accent one here) since RibbonTabActiveBrush = defaultBrush leaves nothing else.
+        noColor[ThemeKeys.RibbonContextualFillBrush] = defaultBrush;
+        noColor[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         // Reverse-video is the monochrome interactive cue (the palette fill collapsed to Default). This lives ONLY
         // at the NoColor floor; the None counterpart at the Ansi16 wildcard floor (below) keeps it from bleeding up.
         noColor[ThemeKeys.InteractiveInverseAttributes] = TextAttributes.Inverse;
@@ -364,6 +368,8 @@ public static class CursorialTheme
         // Ribbon (Surface B): the strip recess (--tabstrip) and the dropped active-tab fill (--tab-active).
         rgb[ThemeKeys.RibbonTabStripBrush] = new SolidColorBrush(dark ? Color.FromHex("#1b1e2e") : Color.FromHex("#d2d3da"));
         rgb[ThemeKeys.RibbonTabActiveBrush] = new SolidColorBrush(dark ? Color.FromHex("#15161e") : Color.FromHex("#fdfdfe"));
+        rgb[ThemeKeys.RibbonContextualFillBrush] = new SolidColorBrush(dark ? Color.FromHex("#2a2440") : Color.FromHex("#e0d8ef"));
+        rgb[ThemeKeys.RibbonContextualUnderlinePen] = new Pen(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e")) { Weight = StrokeWeight.Heavy };
 
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi256)] = rgb;
 
@@ -417,6 +423,8 @@ public static class CursorialTheme
         // Ansi16 indices or they collapse to the NoColor floor (no fill) on 16-color terminals.
         ansi16[ThemeKeys.RibbonTabStripBrush] = Palette(dark ? 0 : 7);   // recess, tracks Surface/Panel
         ansi16[ThemeKeys.RibbonTabActiveBrush] = Palette(dark ? 0 : 15); // dropped active fill, tracks the band
+        ansi16[ThemeKeys.RibbonContextualFillBrush] = Palette(dark ? 0 : 7);          // tinted well, tracks the recess
+        ansi16[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)13 : (byte)5)); // purple
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;
     }
 

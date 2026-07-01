@@ -103,13 +103,23 @@ public class TabControl : SelectingItemsControl
         int target;
         switch (e.Key)
         {
-            case Key.LeftArrow when !ctrl:  target = Math.Max(0, current - 1); break;
-            case Key.RightArrow when !ctrl: target = Math.Min(count - 1, current + 1); break;
-            case Key.Home when !ctrl:       target = 0; break;
-            case Key.End when !ctrl:        target = count - 1; break;
-            case Key.PageUp when ctrl:      target = (current - 1 + count) % count; break; // cycle (wrap)
-            case Key.PageDown when ctrl:    target = (current + 1) % count; break;
+            // Skip Collapsed tabs and continue in the pressed direction — a hidden tab (e.g. a Ribbon contextual tab)
+            // is a realized, counted container but is non-navigable; landing on it and letting a SelectionChanged
+            // handler redirect warps selection to the wrong place (traps interior traversal / jumps backward past a
+            // trailing hidden tab). At a hidden edge there is nothing to move to, so stay put (target < 0 below).
+            case Key.LeftArrow when !ctrl:  target = NextVisibleIndex(current - 1, -1, count); break;
+            case Key.RightArrow when !ctrl: target = NextVisibleIndex(current + 1, +1, count); break;
+            case Key.Home when !ctrl:       target = NextVisibleIndex(0, +1, count); break;
+            case Key.End when !ctrl:        target = NextVisibleIndex(count - 1, -1, count); break;
+            case Key.PageUp when ctrl:      target = CycleVisibleIndex(current, -1, count); break; // cycle (wrap)
+            case Key.PageDown when ctrl:    target = CycleVisibleIndex(current, +1, count); break;
             default: return; // not a tab-nav key — leave unhandled
+        }
+
+        if (target < 0 || target == current)
+        {
+            e.Handled = true; // a tab-nav key with nowhere visible to go (a hidden edge) is consumed, not passed on
+            return;
         }
 
         Selection.Select(target);
@@ -118,6 +128,29 @@ public class TabControl : SelectingItemsControl
         var focusIndex = SelectedIndex >= 0 ? SelectedIndex : target;
         ItemContainerGenerator.ContainerFromIndex(focusIndex)?.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
         e.Handled = true;
+    }
+
+    // The first NON-Collapsed container at or beyond `start`, stepping by `step` (±1); -1 if none in that direction.
+    // A Collapsed tab (a hidden Ribbon contextual tab) is realized + counted but non-navigable, so it is skipped.
+    private int NextVisibleIndex(int start, int step, int count)
+    {
+        for (var i = start; i >= 0 && i < count; i += step)
+            if (ItemContainerGenerator.ContainerFromIndex(i) is { Visibility: not Visibility.Collapsed })
+                return i;
+        return -1;
+    }
+
+    // The next NON-Collapsed container from `from` with wraparound (Ctrl+PageUp/PageDown cycle over visible tabs only);
+    // `from` itself if none other is visible.
+    private int CycleVisibleIndex(int from, int step, int count)
+    {
+        for (var n = 1; n <= count; n++)
+        {
+            var i = (((from + step * n) % count) + count) % count;
+            if (ItemContainerGenerator.ContainerFromIndex(i) is { Visibility: not Visibility.Collapsed })
+                return i;
+        }
+        return from;
     }
 
     // Whether the key event originated from one of this control's tab headers (a container), vs from content deeper in

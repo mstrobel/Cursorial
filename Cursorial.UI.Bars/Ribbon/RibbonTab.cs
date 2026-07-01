@@ -2,6 +2,7 @@ using Cursorial.Input;
 using Cursorial.Markup;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Bars;
 
@@ -13,6 +14,11 @@ namespace Cursorial.UI.Bars;
 /// a <see cref="TabItem"/>'s content is (single-hosting — the tab's own template renders only the header).
 /// <para>Set <see cref="IsFileTab"/> for the special accent File tab: it raises
 /// <see cref="Ribbon.BackstageRequestedEvent"/> on click instead of selecting a band.</para>
+/// <para>Set <see cref="IsContextual"/> for a conditional, purple-tinted tab (a "Table Tools"-style tab shown only
+/// when relevant, guide §5). It is an ordinary selectable band tab — only its skin (purple ink, tinted well, purple
+/// underline, <c>│</c> divider + <c>▾</c> caret) differs. Hide it (<see cref="UIElement.Visibility"/> =
+/// <see cref="Visibility.Collapsed"/>) when it stops being relevant; if it was the selected tab the owning
+/// <see cref="Ribbon"/> redirects selection to the first content tab so the band never blanks.</para>
 /// </summary>
 [ContentProperty(nameof(Groups))]
 public class RibbonTab : TabItem
@@ -21,7 +27,16 @@ public class RibbonTab : TabItem
     public static readonly StyledProperty<bool> IsFileTabProperty =
         UIProperty.Register<RibbonTab, bool>(nameof(IsFileTab), defaultValue: false, changed: OnIsFileTabChanged);
 
+    /// <summary>Whether this is a contextual tab — a conditional, purple-tinted band tab (guide §5). Stamps
+    /// <c>:ribbon-contextual</c> (the skin) and swaps the active underline to the purple pen; hiding it while it is the
+    /// selected tab makes the owning <see cref="Ribbon"/> redirect selection so the band never blanks.</summary>
+    public static readonly StyledProperty<bool> IsContextualProperty =
+        UIProperty.Register<RibbonTab, bool>(nameof(IsContextual), defaultValue: false, changed: OnIsContextualChanged);
+
+    private const string PartUnderline = "PART_Underline";
+
     private readonly RibbonBand _band = new();
+    private Separator? _underline;
 
     static RibbonTab()
     {
@@ -34,8 +49,19 @@ public class RibbonTab : TabItem
     /// <inheritdoc cref="IsFileTabProperty"/>
     public bool IsFileTab { get => GetValue(IsFileTabProperty); set => SetValue(IsFileTabProperty, value); }
 
+    /// <inheritdoc cref="IsContextualProperty"/>
+    public bool IsContextual { get => GetValue(IsContextualProperty); set => SetValue(IsContextualProperty, value); }
+
     /// <summary>The groups shown in this tab's band (the XAML content: <c>&lt;RibbonTab&gt;&lt;RibbonGroup/&gt;…</c>).</summary>
     public UIElementCollection Groups => _band.Children;
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate(); // TabItem grabs PART_Underline, pins TabUnderlinePen + shows/hides it by selection.
+        _underline = GetTemplatePart<Separator>(PartUnderline);
+        UpdateContextualUnderline();
+    }
 
     /// <inheritdoc/>
     protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -64,9 +90,59 @@ public class RibbonTab : TabItem
         base.OnAccessKey(e);
     }
 
+    /// <inheritdoc/>
+    protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnPropertyChanged(in args);
+
+        if (ReferenceEquals(args.Property, VisibilityProperty) && IsContextual)
+        {
+            switch (args.GetNewValue<Visibility>())
+            {
+                // Hiding the SELECTED contextual tab strands selection on a Collapsed tab (which renders no band and
+                // does not self-raise SelectionChanged) — the owner redirects to the first content tab (band never blanks).
+                case Visibility.Collapsed when IsSelected:
+                    OwnerRibbon?.OnContextualTabHidden(this);
+                    break;
+                // Re-showing a contextual tab recovers selection if every content tab had been hidden (SelectedIndex < 0).
+                case Visibility.Visible:
+                    OwnerRibbon?.OnContextualTabShown(this);
+                    break;
+            }
+        }
+    }
+
+    // The owning Ribbon is this container's nearest logical-parent SelectingItemsControl (a generated container is a
+    // logical child of the Ribbon — punch 43); a walk covers an own-container nested under a wrapper.
+    private Ribbon? OwnerRibbon
+    {
+        get
+        {
+            for (UIElement? node = LogicalParent; node is not null; node = node.LogicalParent)
+                if (node is Ribbon ribbon)
+                    return ribbon;
+            return null;
+        }
+    }
+
+    // The active-tab underline is TabUnderlinePen for a normal tab and the purple RibbonContextualUnderlinePen for a
+    // contextual one. TabItem pins the pen (SetResourceReference) in OnApplyTemplate, so re-point AFTER base — a Style
+    // rule can't win over that pin (the template lane), and this mirrors how TabItem itself owns the underline.
+    private void UpdateContextualUnderline()
+        => _underline?.SetResourceReference(Control.BorderPenProperty,
+            IsContextual ? ThemeKeys.RibbonContextualUnderlinePen : ThemeKeys.TabUnderlinePen);
+
     private static void OnIsFileTabChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is RibbonTab tab)
             tab.PseudoClasses.Set(":ribbon-file", newValue);
+    }
+
+    private static void OnIsContextualChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is not RibbonTab tab)
+            return;
+        tab.PseudoClasses.Set(":ribbon-contextual", newValue); // the skin (fill + purple ink + divider/caret)
+        tab.UpdateContextualUnderline();                       // the purple ↔ accent underline pen swap
     }
 }

@@ -364,6 +364,12 @@ public static class ThemeKeys
     public const string RibbonTabStripBrush = "Theme.RibbonTabStripBrush";
     /// <summary>The active ribbon tab's dropped fill (--tab-active).</summary>
     public const string RibbonTabActiveBrush = "Theme.RibbonTabActiveBrush";
+    /// <summary>A contextual ribbon tab's tinted resting well (--ctx-fill — the purple recess an inactive contextual
+    /// tab sits in; the active one drops into <see cref="RibbonTabActiveBrush"/> but keeps its purple ink).</summary>
+    public const string RibbonContextualFillBrush = "Theme.RibbonContextualFillBrush";
+    /// <summary>The active contextual ribbon tab's underline (purple heavy — the <see cref="TabUnderlinePen"/> twin in
+    /// --ctx; the sole active cue under the nocolor tier, so it is authored there too).</summary>
+    public const string RibbonContextualUnderlinePen = "Theme.RibbonContextualUnderlinePen";
 
     // ProgressBar.
     /// <summary>Determinate progress fill (--green).</summary>

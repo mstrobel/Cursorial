@@ -1,4 +1,6 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
@@ -341,4 +343,281 @@ public sealed class RibbonTests
         Assert.True(outside.IsFocused);      // Escape returned focus to where it came from
         Assert.False(groupButton.IsFocused);
     }
+
+    // ───────────────────────── P3a: contextual tabs (the purple, conditional band tab) ─────────────────────────
+
+    private static Color Resolve(UIElement el, string key)
+        => ((SolidColorBrush) el.FindResource(key)!).Color;
+
+    private static Color PenColor(UIElement el, string key)
+        => ((SolidColorBrush) ((Pen) el.FindResource(key)!).Brush!).Color;
+
+    // A ribbon with a File tab, two content tabs (Home, Insert), and a trailing contextual "Table" tab.
+    private static (Ribbon ribbon, RibbonTab home, RibbonTab table) ContextualRibbon()
+    {
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(new RibbonTab { Header = "File", IsFileTab = true });
+        var home = Tab("Home", Group("Clipboard", new BarButton { Content = "Paste" }));
+        ribbon.Items.Add(home);
+        ribbon.Items.Add(Tab("Insert", Group("Tables", new BarButton { Content = "Ins" })));
+        var table = Tab("Table", Group("Layout", new BarButton { Content = "Merge" }));
+        table.IsContextual = true;
+        ribbon.Items.Add(table);
+        return (ribbon, home, table);
+    }
+
+    // The column of the first occurrence of `needle` on `row` (the strip is row 0; bands are on lower rows).
+    private static int ColumnOf(UITestHost host, int row, string needle)
+        => host.GetRowText(row).IndexOf(needle, StringComparison.Ordinal);
+
+    [Fact] // a shown-inactive contextual tab renders in purple ink (--ctx) — distinct from a normal tab's dim ink
+    public void Contextual_RestingSkinIsPurple()
+    {
+        using var host = NewHost();
+        var (ribbon, _, _) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var purple = Resolve(ribbon, ThemeKeys.PurpleBrush);
+        var tableCol = ColumnOf(host, 0, "Table");
+        Assert.True(tableCol >= 0, "the contextual tab label is on the strip");
+        Assert.Equal(purple, host.GetCell(tableCol, 0).Style.Foreground); // purple ink, resting (not selected)
+
+        var homeCol = ColumnOf(host, 0, "Home");
+        Assert.NotEqual(purple, host.GetCell(homeCol, 0).Style.Foreground); // a normal tab is NOT purple
+    }
+
+    [Fact] // the │ divider and ▾ caret cells render for a contextual tab, WITH a separating space before the caret
+    public void Contextual_DividerAndCaretCells()
+    {
+        using var host = NewHost();
+        var (ribbon, _, _) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        // divider + space + label(5) + gap + caret, read cell-by-cell. The caret lands at tableCol+6 — one cell PAST
+        // the label's last glyph (tableCol+4) — proving the audit-#5 separating gap (pre-fix it rendered adjacent
+        // "Table▾" at tableCol+5, because a TextBlock drops a leading " ▾" space; a left Margin survives).
+        var tableCol = ColumnOf(host, 0, "Table");
+        Assert.True(tableCol >= 2);
+        Assert.Equal("│", host.GetCell(tableCol - 2, 0).Grapheme);      // divider before the label
+        Assert.Equal("▾", host.GetCell(tableCol + 6, 0).Grapheme);      // caret after a 1-cell gap
+        Assert.NotEqual("▾", host.GetCell(tableCol + 5, 0).Grapheme);   // NOT adjacent to the label
+    }
+
+    [Fact] // selecting the contextual tab KEEPS its purple ink (the :ribbon-contextual:selected rule out-specifies :selected)
+    public void Contextual_ActiveKeepsPurpleInk()
+    {
+        using var host = NewHost();
+        var (ribbon, _, table) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var tableCol = ColumnOf(host, 0, "Table");
+        table.IsSelected = true; // select the contextual tab (avoid pointer :pointerover masking the resting ink)
+        host.RunUntilIdle();
+        Assert.True(table.IsSelected);
+
+        var purple = Resolve(ribbon, ThemeKeys.PurpleBrush);
+        var text = Resolve(ribbon, ThemeKeys.TextBrush);
+        var activeCol = ColumnOf(host, 0, "Table");
+        Assert.Equal(purple, host.GetCell(activeCol, 0).Style.Foreground); // still purple, NOT the normal --text ink
+        Assert.NotEqual(text, host.GetCell(activeCol, 0).Style.Foreground);
+        Assert.Contains("Merge", string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText))); // its band shows
+    }
+
+    [Fact] // the active contextual tab's underline is purple; a normal active tab's underline is accent blue
+    public void Contextual_ActiveUnderlineIsPurple()
+    {
+        using var host = NewHost();
+        var (ribbon, _, table) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var accentPen = PenColor(ribbon, ThemeKeys.TabUnderlinePen);
+        var ctxPen = PenColor(ribbon, ThemeKeys.RibbonContextualUnderlinePen);
+        Assert.NotEqual(accentPen, ctxPen); // the two pens differ in color (purple vs accent)
+
+        var homeCol = ColumnOf(host, 0, "Home");
+        Assert.Equal(accentPen, host.GetCell(homeCol, 1).Style.Foreground); // Home (auto-selected) underline = accent
+
+        table.IsSelected = true;
+        host.RunUntilIdle();
+        var ctxCol = ColumnOf(host, 0, "Table");
+        Assert.Equal(ctxPen, host.GetCell(ctxCol, 1).Style.Foreground); // contextual active underline = purple
+    }
+
+    [Fact] // THE SHARP EDGE: hiding the ACTIVE contextual tab redirects selection to the first content tab (band never blanks)
+    public void Contextual_HideActiveRedirectsSelection()
+    {
+        using var host = NewHost();
+        var (ribbon, home, table) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        table.IsSelected = true;
+        host.RunUntilIdle();
+        Assert.True(table.IsSelected);
+        Assert.Contains("Merge", string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText)));
+
+        table.Visibility = Visibility.Collapsed; // the table was deselected in the app → hide its tab
+        host.RunUntilIdle();
+
+        Assert.True(home.IsSelected);            // selection fell back to the first content tab
+        Assert.False(table.IsSelected);
+        var all = string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText));
+        Assert.Contains("Paste", all);           // Home's band renders — never a blank band
+        Assert.DoesNotContain("Merge", all);     // the hidden tab's band is gone
+        Assert.DoesNotContain("Table", host.GetRowText(0)); // the strip no longer shows the hidden tab
+    }
+
+    [Fact] // a hidden-then-shown contextual tab is an ordinary selectable band tab (select shows its band)
+    public void Contextual_ShowThenSelectShowsBand()
+    {
+        using var host = NewHost();
+        var (ribbon, _, table) = ContextualRibbon();
+        table.Visibility = Visibility.Collapsed; // start hidden
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.DoesNotContain("Table", host.GetRowText(0));
+
+        table.Visibility = Visibility.Visible; // the table got selected in the app → show its tab
+        host.RunUntilIdle();
+        Assert.True(ColumnOf(host, 0, "Table") >= 0);
+
+        table.IsSelected = true;
+        host.RunUntilIdle();
+        Assert.True(table.IsSelected);
+        Assert.Contains("Merge", string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText)));
+    }
+
+    [Fact] // selecting a HIDDEN contextual tab redirects to a content tab (a Collapsed tab is not a content tab)
+    public void Contextual_SelectHiddenTab_Redirects()
+    {
+        using var host = NewHost();
+        var (ribbon, home, table) = ContextualRibbon();
+        table.Visibility = Visibility.Collapsed; // hidden from the start
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        ribbon.SelectedIndex = ribbon.Items.IndexOf(table); // try to select the hidden tab
+        host.RunUntilIdle();
+
+        Assert.True(home.IsSelected);               // redirected to the first content tab
+        Assert.False(table.IsSelected);
+        Assert.Contains("Paste", string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText))); // never blank
+    }
+
+    [Fact] // hiding a NON-selected contextual tab does not disturb selection (only the ACTIVE-tab hide redirects)
+    public void Contextual_HideInactiveTab_KeepsSelection()
+    {
+        using var host = NewHost();
+        var (ribbon, home, table) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.True(home.IsSelected); // Home is the auto-selected content tab; the contextual Table is NOT selected
+
+        table.Visibility = Visibility.Collapsed;
+        host.RunUntilIdle();
+
+        Assert.True(home.IsSelected); // selection unchanged — the hide of a non-active tab is a no-op for selection
+    }
+
+    [Fact] // audit #4: an all-contextual ribbon (File + one contextual tab) recovers its band when the tab re-shows
+    public void Contextual_AllContextualRibbon_RecoversOnReshow()
+    {
+        using var host = NewHost();
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(new RibbonTab { Header = "File", IsFileTab = true });
+        var table = Tab("Table", Group("Layout", new BarButton { Content = "Merge" }));
+        table.IsContextual = true;
+        ribbon.Items.Add(table);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.True(table.IsSelected); // the sole content tab is selected
+        table.Visibility = Visibility.Collapsed; // hide the only content tab → nothing to select (band blank)
+        host.RunUntilIdle();
+        Assert.True(ribbon.SelectedIndex < 0);
+
+        table.Visibility = Visibility.Visible; // re-show it → selection recovers onto it (band returns)
+        host.RunUntilIdle();
+        Assert.True(table.IsSelected);
+        Assert.Contains("Merge", string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText)));
+    }
+
+    [Fact] // audit #5 (dark/light flip re-skins): the contextual fill + underline are DynamicResource-wired, same layout
+    public void Contextual_ThemeFlipReSkins()
+    {
+        using var host = NewHost();
+        var (ribbon, _, _) = ContextualRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var beforePurple = Resolve(ribbon, ThemeKeys.PurpleBrush);
+        var beforeCol = ColumnOf(host, 0, "Table");
+        Assert.Equal(beforePurple, host.GetCell(beforeCol, 0).Style.Foreground);
+
+        host.Application.RequestedThemeBase = host.Application.ActualThemeVariant.Base == ThemeBase.Dark ? ThemeBase.Light : ThemeBase.Dark;
+        host.RunUntilIdle();
+
+        var afterPurple = Resolve(ribbon, ThemeKeys.PurpleBrush);
+        Assert.NotEqual(beforePurple, afterPurple); // the tier's purple changed
+        var afterCol = ColumnOf(host, 0, "Table");
+        Assert.Equal(afterPurple, host.GetCell(afterCol, 0).Style.Foreground); // the tab tracked the new purple
+    }
+
+    [Fact] // audit #1/#2: Left/Right arrow nav SKIPS a Collapsed contextual tab and continues in the pressed direction
+    public void Contextual_ArrowNavSkipsHiddenTab()
+    {
+        using var host = NewHost();
+        var ribbon = new Ribbon();
+        var home = Tab("Home", Group("G", new BarButton { Content = "A" }));
+        var table = Tab("Table", Group("L", new BarButton { Content = "M" }));
+        table.IsContextual = true;
+        var insert = Tab("Insert", Group("H", new BarButton { Content = "B" }));
+        ribbon.Items.Add(home);   // 0
+        ribbon.Items.Add(table);  // 1 (contextual, INTERIOR)
+        ribbon.Items.Add(insert); // 2
+        table.Visibility = Visibility.Collapsed; // hide the interior contextual tab
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.True(home.IsSelected);
+
+        home.Focus(); // focus the Home header on the strip
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow); // Right skips the hidden Table and lands on Insert (not trapped, not redirected)
+        host.RunUntilIdle();
+
+        Assert.True(insert.IsSelected); // reached Insert past the hidden interior tab
+        Assert.False(table.IsSelected);
+    }
+
+    [Fact] // audit #2: Right from the last visible tab, past a hidden TRAILING contextual tab, stays put (no backward jump)
+    public void Contextual_ArrowNavPastTrailingHidden_StaysPut()
+    {
+        using var host = NewHost();
+        var ribbon = new Ribbon();
+        var home = Tab("Home", Group("G", new BarButton { Content = "A" }));
+        var insert = Tab("Insert", Group("H", new BarButton { Content = "B" }));
+        var table = Tab("Table", Group("L", new BarButton { Content = "M" }));
+        table.IsContextual = true;
+        ribbon.Items.Add(home);   // 0
+        ribbon.Items.Add(insert); // 1
+        ribbon.Items.Add(table);  // 2 (contextual, TRAILING)
+        table.Visibility = Visibility.Collapsed;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        insert.IsSelected = true;
+        host.RunUntilIdle();
+        insert.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow); // nowhere visible to the right → stays on Insert (NOT a backward jump to Home)
+
+        host.RunUntilIdle();
+        Assert.True(insert.IsSelected);
+        Assert.False(home.IsSelected);
+    }
+
 }

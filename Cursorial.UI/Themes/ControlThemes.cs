@@ -315,8 +315,22 @@ internal static class ControlThemes
     });
 
     private static Style ComboBoxTheme()
-        => new Style { Key = "Theme.ComboBox" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
+        => new Style
+           {
+               Key = "Theme.ComboBox",
+               Children =
+               {
+                   new Style("^:focus")
+                      .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                      .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus),
+                   new Style("^:pointerover")
+                      .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                      .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover),
+                   new Style("^:disabled")
+                      .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
+                      .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush)
+               }
+           }.SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, ComboBoxTemplate());
 

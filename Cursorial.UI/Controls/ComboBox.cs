@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -154,6 +155,12 @@ public class ComboBox : SelectingItemsControl
             _editableTextBox.SetCurrentValue(TextBox.TextProperty, _text ?? "");
             _editableTextBox.TextChanged += OnEditableTextChanged;
         }
+
+        // The face templates SelectionBoxItem with the ItemTemplate — a binding (not an imperative set) so it follows
+        // a runtime ItemTemplate change, wired here rather than in the control template so every ComboBox template
+        // gets it without repeating the binding. SelectionBoxItem stays the ITEM; the presenter builds the display
+        // copy (never the drop-down's live container).
+        _contentSite?.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(ItemTemplateProperty));
 
         if (_dropDown is not null)
             _dropDown.Click += OnDropDownClick;

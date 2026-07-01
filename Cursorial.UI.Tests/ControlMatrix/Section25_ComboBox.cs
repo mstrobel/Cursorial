@@ -154,4 +154,43 @@ public sealed class Section25_ComboBox
         Assert.NotNull(box.SelectedItem);
         Assert.False(box.IsDropDownOpen);
     }
+
+    [Fact] // C12.ItemTemplate: the (non-editable) face TEMPLATES the selected item with ItemTemplate. SelectionBoxItem
+           // stays the ITEM (meaningful to consumers — never a rendered instance); PART_ContentSite's ContentTemplate
+           // follows ItemTemplate via a binding, so the presenter builds the display copy AND a runtime template swap
+           // re-templates the face.
+    public void C12_ItemTemplate_TemplatesFace_SelectionBoxItemStaysTheItem()
+    {
+        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var _ = host;
+        var template = new DataTemplate { Content = new FuncTemplateContent(_ => new TextBlock("MARK")) };
+        var box = new ComboBox
+        {
+            ItemsSource = new[] { "alpha", "beta", "gamma" },
+            ItemTemplate = template,
+            Width = 12, Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(box);
+        host.RunUntilIdle();
+
+        box.SelectedIndex = 1;
+        host.RunUntilIdle();
+
+        Assert.Equal("beta", box.SelectionBoxItem);                  // the ITEM — NOT a rendered UIElement instance
+        Assert.Same(template, box.ContentSitePart!.ContentTemplate); // the face's ContentTemplate followed ItemTemplate
+        var faceRow = host.GetRowText(0);
+        Assert.Contains("MARK", faceRow);                            // …and the presenter rendered the TEMPLATE,
+        Assert.DoesNotContain("beta", faceRow);                      // …not the item's raw text
+
+        // A runtime ItemTemplate change re-templates the face (a binding, not a one-time set — no OnItemTemplateChanged
+        // override / hook needed).
+        var template2 = new DataTemplate { Content = new FuncTemplateContent(_ => new TextBlock("TWO")) };
+        box.ItemTemplate = template2;
+        host.RunUntilIdle();
+
+        Assert.Same(template2, box.ContentSitePart!.ContentTemplate);
+        Assert.Contains("TWO", host.GetRowText(0));
+    }
 }

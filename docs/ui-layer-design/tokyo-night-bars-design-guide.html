@@ -136,6 +136,34 @@
 
   u{text-decoration-thickness:1px;text-underline-offset:2px;}
   a{color:var(--accent);}
+/* ===== Backstage (File menu full-window) ===== */
+  .backstage{display:inline-block;vertical-align:top;background:var(--canvas);width:max-content;font-variant-ligatures:none;}
+  .bs-top{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;gap:10px;padding:1px 10px;}
+  .bs-top .back{cursor:pointer;} .bs-top .ttl{font-weight:bold;}
+  .bs-main{display:flex;}
+  .bs-rail{background:var(--ribbon);padding:4px 0;min-width:16ch;}
+  .bs-rail .item{display:flex;align-items:center;gap:8px;padding:1px 14px 1px 12px;color:var(--text-dim);cursor:pointer;}
+  .bs-rail .item .ic{color:var(--accent-2);width:1ch;display:inline-block;text-align:center;}
+  .bs-rail .item:hover{background:var(--btn-hover);color:var(--text);}
+  .bs-rail .item.sel{background:var(--accent);color:var(--on-accent);}
+  .bs-rail .item.sel .ic{color:var(--on-accent);}
+  .bs-rail .sep{border-top:1px solid var(--faint);margin:4px 8px;}
+  .bs-rail .grp{color:var(--muted);font-size:10px;padding:2px 12px 0;}
+  .bs-detail{background:var(--canvas);padding:8px 16px;min-width:52ch;color:var(--text-dim);}
+  .bs-detail .dt-h{color:var(--text);font-size:15px;font-weight:bold;margin-bottom:2px;}
+  .bs-detail .dt-sub{color:var(--muted);font-size:11px;margin-bottom:10px;}
+  .bs-tile{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--panel);padding:8px 14px;margin:0 8px 8px 0;cursor:pointer;min-width:12ch;}
+  .bs-tile:hover{background:var(--btn-hover);color:var(--text);}
+  .bs-tile .tic{color:var(--accent-2);font-size:20px;line-height:1.1;}
+  .bs-tile .tcap{font-size:11px;color:var(--text-dim);}
+  .bs-recent{display:flex;flex-direction:column;gap:0;}
+  .bs-recent .r{display:flex;gap:10px;padding:1px 0;color:var(--text-dim);cursor:pointer;}
+  .bs-recent .r:hover{color:var(--text);}
+  .bs-recent .r .nm{color:var(--text);} .bs-recent .r .pth{color:var(--muted);}
+  .bs-recent .r .pin{margin-left:auto;color:var(--muted);}
+  .bs-btn{display:inline-flex;align-items:center;padding:1px 12px;background:var(--accent);color:var(--on-accent);cursor:pointer;margin-top:2px;}
+  .bs-btn.sec{background:var(--surface);color:var(--text);}
+  .bs-field{background:var(--well);color:var(--text);padding:1px 8px;display:inline-block;min-width:34ch;}
 </style>
 </head>
 <body>
@@ -278,13 +306,52 @@
   <div class="specimen"><div class="speclabel">Standard band — Format tab, grouped controls</div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="split"><span class="a"><span class="ic" style="font-size:16px"></span></span><span class="z">▾</span></span><span class="rbig"><span class="ic"></span><span class="cap">Copy</span></span></div><div class="gl">Clipboard</div></div><div class="rg"><div class="gr"><span class="combo" style="min-width:12ch"><span>Heading 2</span><span class="dd">▾</span></span></div><div class="gl">Style</div></div><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="rsm ">&lt;/&gt;</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span><span class="rbig"><span class="ic"></span><span class="cap">Image</span></span><span class="rbig"><span class="ic"></span><span class="cap">Code</span></span></div><div class="gl">Insert</div></div></div></div></div>
   <div class="specimen"><div class="speclabel">Contextual tab group — appears when a table is selected (accent-tinted)</div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="t ctx">│ Table ▾</span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="split"><span class="a"><span class="ic" style="font-size:16px"></span></span><span class="z">▾</span></span><span class="rbig"><span class="ic"></span><span class="cap">Copy</span></span></div><div class="gl">Clipboard</div></div><div class="rg"><div class="gr"><span class="combo" style="min-width:12ch"><span>Heading 2</span><span class="dd">▾</span></span></div><div class="gl">Style</div></div><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="rsm ">&lt;/&gt;</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span><span class="rbig"><span class="ic"></span><span class="cap">Image</span></span><span class="rbig"><span class="ic"></span><span class="cap">Code</span></span></div><div class="gl">Insert</div></div></div></div></div>
 
+
+  <h3 class="sub">Backstage — the File menu as a full-window view</h3>
+  <p class="body">The <b>File</b> tab is special: instead of dropping a menu, it takes over the whole window with a <b>Backstage</b> — a
+  left rail of document-level <i>destinations</i> (New, Open, Save, Export, Print, Account, Options) and a <b>detail pane</b> that swaps
+  per destination. Application-scoped actions live here, away from the content-editing commands on the other tabs. A <span style="color:var(--accent-2)">◂</span> returns to the document.</p>
+  <div class="specimen"><div class="speclabel">Backstage — &ldquo;Open&rdquo; destination selected (recent documents + places)</div><div class="backstage"><div class="bs-top"><span class="back">◂</span><span class="ttl">File</span></div><div class="bs-main"><div class="bs-rail"><div class="item"><span class="ic"></span>New</div><div class="item sel"><span class="ic"></span>Open</div><div class="item"><span class="ic"></span>Save</div><div class="item"><span class="ic"></span>Save As</div><div class="item"><span class="ic"></span>Export</div><div class="item"><span class="ic"></span>Print</div><div class="sep"></div><div class="item"><span class="ic"></span>Share</div><div class="item"><span class="ic"></span>Account</div><div class="item"><span class="ic"></span>Options</div></div><div class="bs-detail">
+  <div class="dt-h">Open</div>
+  <div class="dt-sub">Choose a document to open</div>
+  <div style="display:flex;gap:0;margin-bottom:10px">
+    <div class="bs-tile"><span class="tic"></span><span class="tcap">Recent</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">This PC</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">Browse…</span></div>
+  </div>
+  <div class="grp" style="color:var(--muted);font-size:11px;margin-bottom:3px">Recent documents</div>
+  <div class="bs-recent">
+    <div class="r"><span class="nm">release-notes.md</span><span class="pth">~/projects/tui/docs/</span><span class="pin" style="color:var(--accent)">★</span></div>
+    <div class="r"><span class="nm">architecture.md</span><span class="pth">~/projects/tui/</span><span class="pin" style="color:var(--accent)">★</span></div>
+    <div class="r"><span class="nm">CHANGELOG.md</span><span class="pth">~/projects/tui/</span><span class="pin">☆</span></div>
+    <div class="r"><span class="nm">scratch.md</span><span class="pth">~/tmp/</span><span class="pin">☆</span></div>
+  </div>
+</div></div></div></div>
+  <p class="body">Selecting a different rail item swaps only the detail pane — the rail persists. &ldquo;Export,&rdquo; for instance, shows
+  format tiles and a form:</p>
+  <div class="specimen"><div class="speclabel">Backstage — &ldquo;Export&rdquo; destination (detail pane changed, rail unchanged)</div><div class="backstage"><div class="bs-top"><span class="back">◂</span><span class="ttl">File</span></div><div class="bs-main"><div class="bs-rail"><div class="item"><span class="ic"></span>New</div><div class="item"><span class="ic"></span>Open</div><div class="item"><span class="ic"></span>Save</div><div class="item"><span class="ic"></span>Save As</div><div class="item sel"><span class="ic"></span>Export</div><div class="item"><span class="ic"></span>Print</div><div class="sep"></div><div class="item"><span class="ic"></span>Share</div><div class="item"><span class="ic"></span>Account</div><div class="item"><span class="ic"></span>Options</div></div><div class="bs-detail" style="min-width:52ch">
+  <div class="dt-h">Export</div>
+  <div class="dt-sub">Produce a shareable copy</div>
+  <div style="display:flex;gap:0;margin-bottom:12px">
+    <div class="bs-tile"><span class="tic"></span><span class="tcap">PDF</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">HTML</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">Plain text</span></div>
+  </div>
+  <div class="grp" style="color:var(--muted);font-size:11px;margin-bottom:4px">Export as PDF</div>
+  <div style="margin-bottom:4px">Destination &nbsp;<span class="bs-field">~/projects/tui/docs/release-notes.pdf</span></div>
+  <div style="margin-bottom:10px;color:var(--muted);font-size:11px">Page size: Letter · Include: syntax highlighting, page numbers</div>
+  <span class="bs-btn">Export</span> &nbsp; <span class="bs-btn sec">Cancel</span>
+</div></div></div></div>
+  <div class="callout"><div class="ct">STRUCTURE</div>
+  The Backstage is its own surface, but built from the same parts: the rail is a vertical list of <code class="in">BarButton</code>s
+  (destinations), and each detail pane is an ordinary panel of controls — tiles are large buttons, the recents list is a selectable
+  list, and forms use <code class="in">BarComboBox</code>/fields. In XAML: <code class="in">&lt;cmd:Backstage&gt;</code> with
+  <code class="in">&lt;cmd:BackstageItem Header="Export"&gt;</code> children, each wrapping its pane content.</div>
+
   <p class="body">The ribbon&rsquo;s additional concepts, all built from the same controls:</p>
   <ul class="body">
     <li><b>Tabs &amp; groups</b> — commands cluster into named groups (Clipboard, Style, Inline, Paragraph, Insert), each group a row of
     bar controls with a label beneath.</li>
     <li><b>Contextual tabs</b> — a tab group that appears only when relevant (a table, an image), tinted with <code class="in">--ctx</code>
     so it reads as conditional.</li>
-    <li><b>Backstage</b> — the File menu expands to a full-window view for document-level actions (New, Open, Export, Settings).</li>
+    <li><b>Backstage</b> — the File menu expands to the full-window view shown above: a rail of document-level destinations (New, Open,
+    Save, Export, Print, Account, Options) over a per-destination detail pane.</li>
     <li><b>Density tiers</b> — as width shrinks, groups step from large icon-over-label buttons → small inline buttons → a single
     collapsed group dropdown. Three discrete tiers, not a fluid slide.</li>
     <li><b>QAT</b> — a Quick Access Toolbar above/below the ribbon is literally <i>Surface A embedded in Surface B</i>: a mini toolbar

@@ -72,6 +72,10 @@
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="1" />
               <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="4" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="1" />
+              <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
@@ -100,6 +104,26 @@
             <TextBox Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left"
                      x:Name="PermissionsEditor" Width="28" Text="Read Schema, Read Data" IsReadOnly="True" />
 
+            <Label Grid.Column="4" Grid.Row="0"
+                   Target="{x:Reference ColorSelector}" Content="Favorite _Color"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <ComboBox Grid.Column="6" Grid.Row="0" HorizontalAlignment="Left"
+                      x:Name="ColorSelector" Width="28" IsEditable="False" ItemsSource="{Binding Colors}"
+                      SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ColorInfo">
+                  <DockPanel>
+                    <Border DockPanel.Dock="Left" Width="2" Background="{Binding Color}" Margin="1,0" />
+                    <TextBlock Text="{Binding Name}" />
+                  </DockPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <TextBlock Grid.Column="6" Grid.Row="1"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
+                       Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.Name, StringFormat='Selected: {0}'}"/>
+
             <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left"
                       Content="_Reveal password" Margin="0,1,0,0" IsChecked="{Binding ShowPassword, Mode=TwoWay}" />
             <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left"
@@ -115,7 +139,7 @@
               <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
             </StackPanel>
-
+            
             <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
                  parameter (x:Reference), so Undo/Redo stay in the view-model; the field's own Ctrl+Z / Ctrl+Y work too. -->
             <DockPanel Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="4" Margin="0,1,0,0" LastChildFill="True">
@@ -486,6 +510,7 @@
     
     <StatusBar DockPanel.Dock="Bottom">
       <StatusBarItem Classes="alternate" Content="{Binding ThemeDescription}" />
+      <StatusBarItem Classes="alternate" Content="{Binding Focus}" />
       <StatusBarItem Content="{Binding Path=SelectedPage.Status, TargetNullValue=''}" />
     </StatusBar>
 

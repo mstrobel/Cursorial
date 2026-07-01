@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Gallery.Infrastructure;
 using Cursorial.UI.Controls;
 
@@ -28,6 +29,7 @@ public sealed class InputsPageViewModel : PageViewModel
         // when there is nothing to undo.
         UndoCommand = new RelayCommand<TextBox>(editor => editor.Undo());
         RedoCommand = new RelayCommand<TextBox>(editor => editor.Redo());
+        SelectedColor = Colors[5];
     }
 
     public override string Title => "Inputs";
@@ -71,6 +73,33 @@ public sealed class InputsPageViewModel : PageViewModel
         set { if (Set(ref _journal, value ?? "")) Raise(nameof(Status)); }
     }
 
+    public IList<ColorInfo> Colors { get; } =
+        [
+
+            new(Brushes.Black, "Black"),
+            new(Brushes.Red, "Red"),
+            new(Brushes.Green, "Green"),
+            new(Brushes.Yellow, "Yellow"),
+            new(Brushes.Blue, "Blue"),
+            new(Brushes.Magenta, "Magenta"),
+            new(Brushes.Cyan, "Cyan"),
+            new(Brushes.White, "White"),
+            new(Brushes.LightBlack, "Light Black"),
+            new(Brushes.LightRed, "Light Red"),
+            new(Brushes.LightGreen, "Light Green"),
+            new(Brushes.LightYellow, "Light Yellow"),
+            new(Brushes.LightBlue, "Light Blue"),
+            new(Brushes.LightMagenta, "Light Magenta"),
+            new(Brushes.LightCyan, "Light Cyan"),
+            new(Brushes.LightWhite, "Light White"),
+        ];
+
+    public ColorInfo SelectedColor
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>Reverts the most recent edit in the Journal field (the editor is the command parameter).</summary>
     public RelayCommand<TextBox> UndoCommand { get; }
 
@@ -82,4 +111,16 @@ public sealed class InputsPageViewModel : PageViewModel
         $"Name=\"{_name}\"   Password.Length={_password.Length}   Subscribed={_subscribed}   Volume={_volume:0}   Journal.Lines={JournalLineCount}";
 
     private int JournalLineCount => _journal.Length == 0 ? 0 : _journal.AsSpan().Count('\n') + 1;
+}
+
+public class ColorInfo
+{
+    public SolidColorBrush Color { get; }
+    public string Name { get; }
+
+    public ColorInfo(SolidColorBrush color, string name)
+    {
+        Color = color;
+        Name = name;
+    }
 }

@@ -210,6 +210,7 @@ public static class CursorialTheme
         Alias(ThemeKeys.InputForegroundNormal, ThemeKeys.TextBrush);
         Alias(ThemeKeys.InputBackgroundNormal, ThemeKeys.SurfaceBrush);
         Alias(ThemeKeys.InputBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.InputForegroundHover, ThemeKeys.TextBrush);
         Alias(ThemeKeys.InputBackgroundFocus, ThemeKeys.WellBrush);
         Alias(ThemeKeys.InputSelectionActive, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.SelectionInactiveBrush, ThemeKeys.SelectionInactiveBrush);
@@ -218,6 +219,7 @@ public static class CursorialTheme
 
         // ListItem (ListBox / ComboBox drop-down item).
         Alias(ThemeKeys.ListItemForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ListItemForegroundHover, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.ListItemBackgroundSelected, ThemeKeys.SelectionBrush);
         // Gallery `.item.rev { background: --text; color: --panel }` (final style guide): a list item sits on the

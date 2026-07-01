@@ -420,8 +420,15 @@ internal static class CursorialBarsTheme
             }));
         // A focused field gets the input-focus fill (the face Border binds Background to Control.Background). Also
         // covers BarGallery (a BarComboBox-themed ComboBox), so both show a keyboard-focus cue.
-        theme.Children.Add(new Style("^:focus").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover));
+        theme.Children.Add(new Style("^:focus")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
         return theme;
     }
 

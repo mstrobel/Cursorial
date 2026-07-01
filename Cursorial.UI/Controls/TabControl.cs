@@ -72,11 +72,13 @@ public class TabControl : SelectingItemsControl
 
         var count = ItemContainerGenerator.ContainerCount;
         for (var i = 0; i < count; i++)
+        {
             if (ItemContainerGenerator.ContainerFromIndex(i) is TabItem { IsSelectable: true, Visibility: not Visibility.Collapsed })
             {
                 Selection.Select(i);
                 return;
             }
+        }
     }
 
     // The content host shows the selected tab's Content (the strip shows only the headers). A TabItem's Content is

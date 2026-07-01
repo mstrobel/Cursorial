@@ -284,6 +284,8 @@ public static class ThemeKeys
     public const string InputBackgroundNormal = "Theme.InputBackgroundNormal";
     /// <summary>Hovered input fill (--hover).</summary>
     public const string InputBackgroundHover = "Theme.InputBackgroundHover";
+    /// <summary>Hovered input ink (--text).</summary>
+    public const string InputForegroundHover = "Theme.InputForegroundHover";
     /// <summary>Focused input fill — the recessed well (--well).</summary>
     public const string InputBackgroundFocus = "Theme.InputBackgroundFocus";
     /// <summary>Input selection fill, control focused (--sel).</summary>
@@ -300,6 +302,8 @@ public static class ThemeKeys
     public const string ListItemForegroundNormal = "Theme.ListItemForegroundNormal";
     /// <summary>Hovered list-item fill (--hover).</summary>
     public const string ListItemBackgroundHover = "Theme.ListItemBackgroundHover";
+    /// <summary>Hovered list-item ink (--text).</summary>
+    public const string ListItemForegroundHover = "Theme.ListItemForegroundHover";
     /// <summary>Selected list-item fill, focused container (--sel).</summary>
     public const string ListItemBackgroundSelected = "Theme.ListItemBackgroundSelected";
     /// <summary>Keyboard-focused list-item ink — reverse-video.</summary>

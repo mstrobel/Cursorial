@@ -50,6 +50,13 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
     private readonly List<UIElement> _visible = [];
     private readonly List<UIElement> _overflow = [];
 
+    // Per-container natural (unbounded) width, captured while the container is on the ROW band (attached to the live
+    // surface). An overflowed container lives in the popup band, whose closed surface is NOT laid out, so measuring it
+    // there yields DesiredSize 0 — reading that live width into the fold would make an already-overflowed item look
+    // zero-width, so the fold thinks it fits, un-reserves its space, and the row silently clips instead of folding.
+    // The fold reads THIS cache (last known row-band natural width) so band membership can't corrupt the accounting.
+    private readonly Dictionary<UIElement, int> _naturalWidths = [];
+
     /// <summary>The popup-side vertical band the panel pushes overflowed containers into (the toolbar's
     /// <c>PART_OverflowHost</c>). Until set, the panel keeps every item on the row (clipped if too wide).</summary>
     public Panel? OverflowHost
@@ -127,6 +134,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
         _overflowHost?.Children.Clear();
         Children.Clear();
         _containers.Clear();
+        _naturalWidths.Clear();
         _generator = null;
         _owner = null;
         _toolbar = null;
@@ -157,6 +165,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
                     foreach (var container in removed)
                     {
                         _containers.Remove(container);
+                        _naturalWidths.Remove(container);
                         DetachFromBands(container);
                     }
                 break;
@@ -179,6 +188,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
                 _overflowHost?.Children.Clear();
                 Children.Clear();
                 _containers.Clear();
+                _naturalWidths.Clear();
                 for (var i = 0; i < _generator.ContainerCount; i++)
                     if (_generator.ContainerFromIndex(i) is { } container)
                         _containers.Add(container);
@@ -214,7 +224,14 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
         {
             var c = _containers[i];
             c.Measure(new Size(LayoutMath.Unbounded, availableSize.Rows));
-            naturalSum = LayoutMath.Add(naturalSum, c.DesiredSize.Columns);
+
+            // A measured width of 0 means the container is off the live surface (in the closed popup band, or briefly
+            // unparented mid-reconcile) — keep the last row-band natural width. A real (>0) measure refreshes it.
+            var measured = c.DesiredSize.Columns;
+            if (measured > 0)
+                _naturalWidths[c] = measured;
+
+            naturalSum = LayoutMath.Add(naturalSum, NaturalWidthOf(c));
             rowHeight = Math.Max(rowHeight, c.DesiredSize.Rows);
         }
 
@@ -244,7 +261,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
             if (mode == ToolbarOverflowMode.Always)
                 anyAlways = true;
             else if (mode == ToolbarOverflowMode.Never)
-                neverWidth = LayoutMath.Add(neverWidth, c.DesiredSize.Columns);
+                neverWidth = LayoutMath.Add(neverWidth, NaturalWidthOf(c));
         }
 
         // PASS 1 — does the full set fit with NO chevron reserve (and no Always item forcing one)?
@@ -254,7 +271,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
             var fits = true;
             foreach (var c in _containers)
             {
-                total = LayoutMath.Add(total, c.DesiredSize.Columns);
+                total = LayoutMath.Add(total, NaturalWidthOf(c));
                 if (total > availableWidth) { fits = false; break; } // strictly-greater: exact fit stays
             }
             if (fits)
@@ -281,14 +298,14 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
                 default: // AsNeeded
                     if (folded)
                         _overflow.Add(c);
-                    else if (LayoutMath.Add(running, c.DesiredSize.Columns) > boundary)
+                    else if (LayoutMath.Add(running, NaturalWidthOf(c)) > boundary)
                     {
                         folded = true;
                         _overflow.Add(c);
                     }
                     else
                     {
-                        running = LayoutMath.Add(running, c.DesiredSize.Columns);
+                        running = LayoutMath.Add(running, NaturalWidthOf(c));
                         _visible.Add(c);
                     }
                     break;
@@ -350,9 +367,16 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
     // the other band first) and reordering the rest. Mirrors ItemsPresenter.SyncAll's index reconcile.
     private void PlaceInBand(Panel band, List<UIElement> list)
     {
+        // A separator reads as an upright │ on the horizontal row but as a horizontal ─ rule in the vertical popup
+        // band — flip its orientation to match the band it's rendering in (guide §3; DrawLine spans the arranged axis).
+        var separatorOrientation = ReferenceEquals(band, _overflowHost) ? Orientation.Horizontal : Orientation.Vertical;
+
         for (var i = 0; i < list.Count; i++)
         {
             var c = list[i];
+            if (c is BarSeparator separator)
+                separator.Orientation = separatorOrientation;
+
             var current = band.Children.IndexOf(c);
             if (current < 0)
             {
@@ -393,7 +417,9 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
         var modeHash = 17;
         foreach (var c in _containers)
         {
-            widthHash = widthHash * 31 + c.DesiredSize.Columns;
+            // Hash the NATURAL width (the fold input), not the live DesiredSize — an overflowed item's live width is 0
+            // (closed popup band), so hashing it would flip the latch every time an item crosses the boundary.
+            widthHash = widthHash * 31 + NaturalWidthOf(c);
             modeHash = modeHash * 31 + (int) ModeOf(c) + 1;
         }
 
@@ -428,12 +454,18 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
         for (var i = 0; i < children.Count; i++)
         {
             var c = children[i];
-            var w = c.DesiredSize.Columns;
+            var w = NaturalWidthOf(c);
             c.Arrange(new Rect(x, 0, w, finalSize.Rows));
             x = LayoutMath.Add(x, w);
         }
         return finalSize;
     }
+
+    // The container's natural (unbounded) width for the fold: the last width measured while it was on the row band
+    // (live surface). Falls back to the live DesiredSize for a container never yet cached (its first fold, before it
+    // has ever been row-band-measured — everything starts on the row, so the fallback only bites the bootstrap pass).
+    private int NaturalWidthOf(UIElement container)
+        => _naturalWidths.TryGetValue(container, out var w) ? w : container.DesiredSize.Columns;
 
     private ToolbarOverflowMode ModeOf(UIElement container) => Toolbar.GetOverflowMode(container);
 

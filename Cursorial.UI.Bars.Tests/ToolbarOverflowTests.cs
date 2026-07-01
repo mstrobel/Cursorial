@@ -284,6 +284,35 @@ public sealed class ToolbarOverflowTests
         }
     }
 
+    [Fact] // user-found: a separator reads as an upright │ on the row but must flip to a horizontal ─ rule when it
+           // folds into the vertical overflow popup (the panel sets Separator.Orientation by band).
+    public void OverflowedSeparator_FlipsToHorizontal_InPopup()
+    {
+        using var host = NewHost(width: 14);
+        var folds = new BarSeparator();
+        // Row: [Cut][Copy] fill the narrow row; [Undo][folds][Delete] fold into the popup — so `folds` is an INTERIOR
+        // separator of the popup band (Undo before it, Delete after), kept by the leading/trailing-separator trim.
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Undo"), folds, Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+
+        Assert.True(InOverflow(folds), "the interior separator should fold into the popup");
+        Assert.Equal(Orientation.Horizontal, folds.Orientation); // flipped in the vertical popup band
+
+        // The popup renders the flipped separator as a ─ rule.
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        var popupText = host.GetRowText(1) + host.GetRowText(2) + host.GetRowText(3) + host.GetRowText(4);
+        Assert.Contains("─", popupText);
+
+        // Widen back — the folded separator returns to the row and flips upright again.
+        host.SendResize(60, 6);
+        host.RunUntilIdle();
+        Assert.True(OnRow(folds));
+        Assert.Equal(Orientation.Vertical, folds.Orientation);
+    }
+
     // ───────────────────────── P2b: chevron / overflow-popup keyboard navigation (#124) ─────────────────────────
 
     [Fact] // Down on the focused chevron opens the overflow popup AND moves focus into the band (the chevron is a

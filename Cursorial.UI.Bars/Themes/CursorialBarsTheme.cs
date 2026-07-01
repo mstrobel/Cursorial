@@ -126,15 +126,11 @@ internal static class CursorialBarsTheme
 
     // ───────────────────────────── BarSeparator ─────────────────────────────
 
+    // A thin faint rule (BarSeparator renders a │ / ─ glyph run colored by Foreground — orientation-aware, no glyph
+    // template, robust for a single-cell-tall bar row where a DrawLine rule degenerates).
     public static Style SeparatorStyle()
         => new Style { Key = "Bars.BarSeparator" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.FaintBrush)
-            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
-            {
-                var glyph = new TextBlock { Text = "│" };
-                glyph.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-                return glyph;
-            }));
+            .SetResource(Control.ForegroundProperty, ThemeKeys.FaintBrush);
 
     // ───────────────────────────── BarLabel ─────────────────────────────
 

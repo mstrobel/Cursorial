@@ -117,6 +117,10 @@ public static class BackstageHost
         backstage.BackRequested += OnBack;
         popup.Closed += OnClosed;
         popup.Open();
+        // The popup lays out synchronously on open (PlacePopup → RunLayoutPass), so the rail is realized now — move
+        // focus into it so the menu is keyboard-navigable without a pointer (a Popup, unlike an activated Window, gets
+        // no auto-focus). FullScreen relies on window-activation auto-focus instead.
+        backstage.FocusSelectedDestination();
         return tcs.Task;
     }
 }

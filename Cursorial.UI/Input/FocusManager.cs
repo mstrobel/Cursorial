@@ -460,8 +460,13 @@ public sealed class FocusManager
         if (_pendingActivationRoot is not {} root)
             return;
 
-        // Stale-park hygiene: only retry while this is still the active root and focus is still empty.
-        if (!ReferenceEquals(ActiveRoot, root) || FocusedElement is not null)
+        // Stale-park hygiene: only retry while this is still the active root, and only if focus hasn't already landed
+        // WITHIN it (an app/user focus we must not override). Focus that sits OUTSIDE the root does NOT count as
+        // "landed": OnWindowDeactivated deliberately leaves physical focus on the previous root (S4 policy), so when a
+        // modal window activates over an owner that still holds focus, that stale outside focus must NOT abandon the
+        // park — the activation still has to pull focus into the newly-active (modal) root, or the modal's content
+        // never auto-focuses and Tab reaches the obscured owner behind it.
+        if (!ReferenceEquals(ActiveRoot, root) || (FocusedElement is { } current && root.IsAncestorOf(current)))
         {
             _pendingActivationRoot = null;
             return;

@@ -85,6 +85,19 @@ public class Backstage : TabControl
         remove => RemoveHandler(BackRequestedEvent, value!);
     }
 
+    /// <summary>Moves keyboard focus onto the selected rail destination (or the first selectable one) so a freshly-shown
+    /// Backstage is keyboard-navigable without a pointer. A no-op (returns false) when no container is realized/focusable
+    /// yet — the FullScreen host relies on window-activation auto-focus instead; the Menu host calls this after the
+    /// popup lays out (synchronously on open).</summary>
+    public bool FocusSelectedDestination()
+    {
+        var count = ItemContainerGenerator.ContainerCount;
+        var index = SelectedIndex >= 0 ? SelectedIndex : NextSelectableIndex(0, +1, count);
+        return index >= 0
+            && ItemContainerGenerator.ContainerFromIndex(index) is { } container
+            && container.Focus(FocusNavigationMethod.Restore);
+    }
+
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new BackstageItem();
 

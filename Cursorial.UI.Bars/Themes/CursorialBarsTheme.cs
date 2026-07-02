@@ -802,8 +802,9 @@ internal static class CursorialBarsTheme
         var template = new ControlTemplate(ctx =>
         {
             // The rail: a ◂ back button docked at the top over the destinations list. PART_BackButton is wired to
-            // BackRequested in Backstage.OnApplyTemplate (the ◂ / Escape twin).
-            var back = new BarButton { Content = "◂" };
+            // BackRequested in Backstage.OnApplyTemplate (the ◂ / Escape twin). It is NOT a tab stop (Focusable=false) —
+            // Escape is its keyboard twin — so a freshly-shown Backstage auto-focuses the first DESTINATION, not the ◂.
+            var back = new BarButton { Content = "◂", Focusable = false, IsTabStop = false };
             ctx.RegisterName("PART_BackButton", back);
             DockPanel.SetDock(back, Dock.Top);
 

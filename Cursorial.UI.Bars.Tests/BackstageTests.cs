@@ -283,13 +283,16 @@ public sealed class BackstageTests
 
     // ───────────────────────────── Increments 3/4 — BackstageHost ─────────────────────────────
 
-    [Fact] // FullScreen host: ShowAsync opens a maximized modal window rendering the Backstage; ◂/Escape closes it
-    public async Task BackstageHost_FullScreen_OpensAndBackCloses()
+    [Fact] // FullScreen host: ShowAsync opens a maximized modal window that AUTO-FOCUSES the rail (even though the
+           // anchor behind it held focus), so Escape (no forced focus) closes it
+    public async Task BackstageHost_FullScreen_OpensAutoFocusesRail_AndBackCloses()
     {
         using var host = NewHost();
         var anchor = new BarButton { Content = "File" };
         host.ShowRoot(anchor);
+        anchor.Focus(); // focus sits on the owner BEHIND the modal (the case that used to strand focus)
         host.RunUntilIdle();
+        Assert.True(anchor.IsFocused);
 
         var bs = NewBackstage(Dest("New", "New-detail"), Dest("Save", "Save-detail"));
         var task = BackstageHost.ShowAsync(bs, anchor);
@@ -297,22 +300,23 @@ public sealed class BackstageTests
 
         Assert.False(task.IsCompleted);
         Assert.Contains("New-detail", AllRows(host)); // the Backstage took over the window
+        Assert.True(Container(bs, 0).IsFocused);       // focus auto-moved INTO the rail's first destination (the modal focus fix)…
+        Assert.False(anchor.IsFocused);                // …and off the obscured owner behind it
 
-        Container(bs, 0).Focus();
-        host.RunUntilIdle();
-        host.SendKey(Key.Escape); // ◂ keyboard twin → BackRequested → the host closes the window
+        host.SendKey(Key.Escape); // ◂ keyboard twin (no forced focus) → BackRequested → the host closes the window
         host.RunUntilIdle();
 
         await task; // completes on dismissal (the continuation resumes on the UI thread the pump drives)
         Assert.True(task.IsCompletedSuccessfully);
     }
 
-    [Fact] // Menu host: ShowAsync opens a File-anchored popup; Escape light-dismisses it and completes the task
-    public async Task BackstageHost_Menu_OpensAnchoredAndDismisses()
+    [Fact] // Menu host: ShowAsync opens a File-anchored popup that AUTO-FOCUSES the rail; Escape (no forced focus) dismisses it
+    public async Task BackstageHost_Menu_OpensAutoFocusesRail_AndDismisses()
     {
         using var host = NewHost();
         var anchor = new BarButton { Content = "File" };
         host.ShowRoot(anchor);
+        anchor.Focus();
         host.RunUntilIdle();
 
         var bs = NewBackstage(Dest("New", "New-detail"), Dest("Save", "Save-detail"));
@@ -321,11 +325,10 @@ public sealed class BackstageTests
         host.RunUntilIdle();
 
         Assert.False(task.IsCompleted);
-        Assert.Contains("New", AllRows(host)); // the popup rail rendered
+        Assert.Contains("New", AllRows(host));   // the popup rail rendered
+        Assert.True(Container(bs, 0).IsFocused);  // the menu auto-focused its rail (a Popup gets no window activation)
 
-        Container(bs, 0).Focus();
-        host.RunUntilIdle();
-        host.SendKey(Key.Escape); // BackRequested → popup.Close()
+        host.SendKey(Key.Escape); // BackRequested → popup.Close() (works because focus is in the rail)
         host.RunUntilIdle();
 
         await task;

@@ -136,6 +136,12 @@ public class Backstage : TabControl
 
     private bool HandleRailKey(KeyEventArgs e)
     {
+        // Rail navigation claims only the UNMODIFIED forms — a Ctrl/Shift/Alt chord falls through to the base handler,
+        // an ancestor InputBinding, or the dispatcher's navigation tail (mirroring TabControl's `when !ctrl` discipline;
+        // otherwise a modifier-agnostic match would silently swallow, e.g., a Ctrl+Home an app bound above the Backstage).
+        if (e.Modifiers != KeyModifiers.None)
+            return false;
+
         if (e.Key == Key.Escape)
         {
             RaiseEvent(new RoutedEventArgs(BackRequestedEvent, this)); // ◂ keyboard twin — the host closes the surface
@@ -157,6 +163,12 @@ public class Backstage : TabControl
             case Key.DownArrow: target = NextSelectableIndex(focused + 1, +1, count); break;
             case Key.Home:      target = NextSelectableIndex(0, +1, count); break;
             case Key.End:       target = NextSelectableIndex(count - 1, -1, count); break;
+            // Left/Right have no meaning on a VERTICAL rail — CONSUME them (return true) rather than let the base
+            // TabControl's horizontal index nav run: that nav (NextVisibleIndex) skips only Collapsed containers, NOT
+            // IsSelectable=false rows, so a Left/Right off a content row would strand focus on a separator/section head
+            // (a dead row with no detail pane). The rail is Up/Down-navigable only.
+            case Key.LeftArrow:
+            case Key.RightArrow: return true;
             default:            return false;
         }
 

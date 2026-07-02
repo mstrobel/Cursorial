@@ -223,6 +223,47 @@ public sealed class BackstageTests
         Assert.Equal(1, backs);
     }
 
+    [Fact] // audit-3: Left/Right on the VERTICAL rail is consumed (a no-op), never handed to the base TabControl's
+           // horizontal index nav — which skips only Collapsed, NOT IsSelectable=false rows, and would strand focus on
+           // a separator (a dead row with no detail pane)
+    public void Backstage_LeftRightDoesNotStrandOnSeparator()
+    {
+        using var host = NewHost();
+        var bs = NewBackstage(Dest("New", "n"), Dest("---", "sep", selectable: false), Dest("Save", "s"));
+        host.ShowRoot(bs);
+        host.RunUntilIdle();
+        Container(bs, 0).Focus(); // the "New" content row; the separator is index 1
+        host.RunUntilIdle();
+
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.True(Container(bs, 0).IsFocused);   // focus stayed on the content row
+        Assert.False(Container(bs, 1).IsFocused);  // the separator did NOT steal focus
+        Assert.Equal(0, bs.SelectedIndex);
+
+        host.SendKey(Key.LeftArrow);
+        host.RunUntilIdle();
+        Assert.True(Container(bs, 0).IsFocused);
+        Assert.False(Container(bs, 1).IsFocused);
+    }
+
+    [Fact] // audit-4: a MODIFIED arrow (Ctrl+Down) is NOT claimed as plain rail nav — rail navigation is unmodified-only,
+           // so a modified chord falls through to the base handler / an ancestor binding (base ignores it via `when !ctrl`)
+    public void Backstage_ModifiedArrowNotConsumedAsRailNav()
+    {
+        using var host = NewHost();
+        var bs = NewBackstage(Dest("New", "n"), Dest("Save", "s"));
+        host.ShowRoot(bs);
+        host.RunUntilIdle();
+        Container(bs, 0).Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.DownArrow, KeyModifiers.Control); // must NOT move rail selection
+        host.RunUntilIdle();
+
+        Assert.Equal(0, bs.SelectedIndex); // unchanged — the modified chord was not treated as rail nav
+    }
+
     // ───────────────────────────── Increment 4 — DisplayMode compaction ─────────────────────────────
 
     [Fact] // FullScreen (default) shows the ◂ back button; Menu mode collapses it (:backstage-menu compaction)

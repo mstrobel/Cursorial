@@ -25,6 +25,16 @@ public static class BackstageHost
         ArgumentNullException.ThrowIfNull(backstage);
         ArgumentNullException.ThrowIfNull(anchor);
 
+        // Both hosting paths need a running application (a WindowManager). Fail FAST and symmetrically here rather than
+        // let the FullScreen path throw from ShowDialogAsync while the Menu path silently hangs (a Popup that can't open
+        // never raises Closed, so its completion task would never complete — wedging a fire-and-forget caller). Guarding
+        // before any window/handler setup also means a failed call strands no state, so the Backstage stays re-showable.
+        if (UIApplication.Current?.WindowManager is null)
+        {
+            return Task.FromException(new InvalidOperationException(
+                "No window manager is available to show the Backstage (the application is not running)."));
+        }
+
         return backstage.DisplayMode == BackstageDisplayMode.Menu
             ? ShowMenu(backstage, anchor)
             : ShowFullScreen(backstage);
@@ -61,7 +71,20 @@ public static class BackstageHost
 
         backstage.BackRequested += OnBack;
         window.Closed += OnClosed;
-        _ = window.ShowDialogAsync(); // modal; the frame loop is the pump. Closed drives our completion, not this task.
+        try
+        {
+            _ = window.ShowDialogAsync(); // modal; the frame loop is the pump. Closed drives our completion, not this task.
+        }
+        catch (Exception ex)
+        {
+            // A synchronous throw (e.g. the window can't be shown) must unwind the setup so nothing is stranded and the
+            // Backstage stays re-showable — Closed won't fire, so do the OnClosed cleanup here and fault the task.
+            window.Closed -= OnClosed;
+            backstage.BackRequested -= OnBack;
+            window.Content = null;
+            tcs.TrySetException(ex);
+        }
+
         return tcs.Task;
     }
 

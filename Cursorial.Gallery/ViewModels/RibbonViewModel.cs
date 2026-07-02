@@ -21,12 +21,12 @@ public sealed class RibbonViewModel : PageViewModel
     {
         // Descriptions light up SuperTips (rich hover help) — hover a control to see the titled, multi-line tip the
         // command auto-provisions (title = the command name, the accelerator, and this body).
-        Cut = new BarCommand(() => Report("Cut")) { Text = "Cu_t", InputGestureText = "Ctrl+X", Description = "Cut the selection to the clipboard." };
+        Cut = new BarCommand(() => Report("Cut")) { Text = "C_ut", InputGestureText = "Ctrl+X", Description = "Cut the selection to the clipboard." };
         Copy = new BarCommand(() => Report("Copy")) { Text = "_Copy", InputGestureText = "Ctrl+C", Description = "Copy the selection to the clipboard." };
         Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", InputGestureText = "Ctrl+V", Description = "Paste the clipboard contents at the cursor." };
-        Find = new BarCommand(() => Report("Find")) { Text = "_Find", InputGestureText = "Ctrl+F", Description = "Find text in the document." };
-        Undo = new BarCommand(() => Report("Undo")) { Text = "_Undo", InputGestureText = "Ctrl+Z", Description = "Undo the last action." };
-        Redo = new BarCommand(() => Report("Redo")) { Text = "_Redo", InputGestureText = "Ctrl+Y", Description = "Redo the last undone action." };
+        Find = new BarCommand(() => Report("Find")) { Text = "Fi_nd", InputGestureText = "Ctrl+F", Description = "Find text in the document." };
+        Undo = new BarCommand(() => Report("Undo")) { Text = "Undo", InputGestureText = "Ctrl+Z", Description = "Undo the last action." };
+        Redo = new BarCommand(() => Report("Redo")) { Text = "Redo", InputGestureText = "Ctrl+Y", Description = "Redo the last undone action." };
         Settings = new BarCommand(() => Report("Settings")) { Text = "_Settings", Description = "Open application settings." };
 
         // Quick Access Toolbar (caption row): Undo/Redo/Paste start ON; the customize ▾ checklist toggles the rest.

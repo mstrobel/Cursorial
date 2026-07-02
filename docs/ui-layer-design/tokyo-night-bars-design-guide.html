@@ -121,6 +121,13 @@
   .rib-tabs .t{padding:1px 12px;color:var(--text-dim);}
   .rib-tabs .t.active{background:var(--tab-active);color:var(--text);}
   .rib-tabs .t.ctx{color:var(--ctx);}
+  /* QAT — trailing mini-toolbar in the tab strip */
+  .rib-tabs .qatspacer{flex:1;}
+  .rib-tabs .qat{display:inline-flex;align-items:center;gap:0;padding:0 4px;}
+  .rib-tabs .qat .qb{display:inline-flex;align-items:center;padding:0 .75ch;color:var(--text-dim);cursor:pointer;}
+  .rib-tabs .qat .qb:hover{background:var(--btn-hover);color:var(--text);}
+  .rib-tabs .qat .qb.dd{color:var(--muted);}
+  .rib-tabs .qat .qb .ic{color:var(--accent-2);}
   .rib-body{display:flex;background:var(--ribbon);padding:3px 4px;align-items:stretch;}
   .rg{display:flex;flex-direction:column;align-items:center;padding:0 6px;gap:2px;}
   .rg:not(:last-child){border-right:1px solid var(--faint);}
@@ -354,9 +361,29 @@
     Save, Export, Print, Account, Options) over a per-destination detail pane.</li>
     <li><b>Density tiers</b> — as width shrinks, groups step from large icon-over-label buttons → small inline buttons → a single
     collapsed group dropdown. Three discrete tiers, not a fluid slide.</li>
-    <li><b>QAT</b> — a Quick Access Toolbar above/below the ribbon is literally <i>Surface A embedded in Surface B</i>: a mini toolbar
-    of pinned commands. Same control set, nested.</li>
+    <li><b>QAT (Quick Access Toolbar)</b> — a mini toolbar of pinned, always-visible commands: literally <i>Surface A embedded in
+    Surface B</i>, same control set, nested. On a full ribbon it can take its own row above the tabs; on the <b>compact ribbon</b> that row
+    is exactly the space you're saving, so it rides the tab strip instead — see the placement below.</li>
   </ul>
+
+  <h3 class="sub">QAT placement in the compact ribbon</h3>
+  <p class="body">The compact ribbon is two rows — a <b>tab strip</b> and a <b>band</b> — and its whole purpose is to not spend a third. A
+  classic QAT wants its own row, which is the one thing unavailable here. The resolution follows from a property of the tab strip: <b>tabs
+  are left-packed, so the right side of that row is dead space.</b> The QAT fills it — <b>[DECISION] trailing (right-aligned) in the tab
+  strip</b>, costing zero extra rows and consuming cells that were otherwise wasted. Right-alignment gives a natural gutter between the
+  left-packed tabs and the QAT, and it lands in the same zone as the ribbon-collapse chevron / window controls, which reads as familiar.</p>
+  <div class="specimen"><div class="speclabel">Compact ribbon — QAT trailing in the tab strip (Save · Undo · Redo + customize ▾), filling the strip's right-side slack</div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="qatspacer"></span><span class="qat"><span class="qb"></span><span class="qb">↶</span><span class="qb">↷</span><span class="qb dd">▾</span></span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="rsm ">&lt;/&gt;</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr"><span class="combo" style="min-width:12ch"><span>Heading 2</span><span class="dd">▾</span></span></div><div class="gl">Style</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span><span class="rbig"><span class="ic"></span><span class="cap">Link</span></span></div><div class="gl">Insert</div></div></div></div></div>
+  <p class="body"><b>[DECISION] Overflow — degrade to a collapsed popup.</b> When width is tight enough that the inline QAT and the tabs would
+  compete, the QAT collapses <b>first</b> (before the tabs) to a single <span style="color:var(--accent)">⋯▾</span> popup button at the
+  strip's trailing edge — the same &ldquo;collapse to <span class="mono">»</span>&rdquo; principle the toolbar uses (Surface A), applied to
+  the nested QAT. This is the degraded tier, not the default: the QAT is meant to be one click away, so it only hides behind the popup when
+  cells genuinely run out. Tabs always win the space contest against the QAT, since losing a tab is worse than tucking pinned commands into
+  a menu.</p>
+  <div class="specimen"><div class="speclabel">Compact ribbon, tight width — QAT collapsed to a ⋯ popup so the tabs keep their cells</div><div class="ribbon" style="max-width:52ch"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="qatspacer"></span><span class="qat"><span class="qb dd">⋯▾</span></span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span></div><div class="gl">Para</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span></div><div class="gl">Insert</div></div></div></div></div>
+  <div class="callout"><div class="ct">WHY NOT THE BAND ROW</div>
+  The band row also has right-side slack, but the band is <b>contextual</b> — it changes per active tab — while the QAT is <b>global and
+  persistent</b>. Anchoring a persistent toolbar in a tab-switching row is semantically wrong and visually unstable (it would appear to
+  shift as bands change width). The tab strip is the correct host precisely because it, like the QAT, is constant across tab switches.</div>
   <div class="callout warn"><div class="ct">⚠ COST</div>
   A classic ribbon eats ~15&ndash;17% of an 80×24 terminal before any content. Offer it, but don&rsquo;t default to it — and make the
   <b>minimized ribbon</b> (tabs only, band drops on click) a first-class state, not an afterthought.</div>

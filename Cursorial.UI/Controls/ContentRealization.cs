@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using Cursorial.UI.Data;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -77,10 +79,14 @@ internal static class ContentRealization
             // ⑤ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
             // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22), through the string format.
             case string s:
-                return new TextBlock(SafeFormat(host, stringFormat, s));
+                var stb = new TextBlock(SafeFormat(host, stringFormat, s));
+                stb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
+                return stb;
 
             default:
-                return new TextBlock(SafeFormat(host, stringFormat, content));
+                var dtb = new TextBlock(SafeFormat(host, stringFormat, content));
+                dtb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
+                return dtb;
         }
     }
 

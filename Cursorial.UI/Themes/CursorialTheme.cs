@@ -1,4 +1,3 @@
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 
@@ -219,6 +218,7 @@ public static class CursorialTheme
 
         // ListItem (ListBox / ComboBox drop-down item).
         Alias(ThemeKeys.ListItemForegroundNormal, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ListItemBackgroundNormal, ThemeKeys.PanelBrush);
         Alias(ThemeKeys.ListItemForegroundHover, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.ListItemBackgroundSelected, ThemeKeys.SelectionBrush);

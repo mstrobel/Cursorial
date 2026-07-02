@@ -111,6 +111,114 @@ public sealed class RibbonTests
         Assert.Equal(1, ribbon.SelectedIndex);
     }
 
+    [Fact] // ↕: Down off a focused tab header drops focus into the ribbon body (the selected tab's first control)
+    public void Ribbon_DownFromTab_EntersBody()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var home = Tab("Home", Group("Clipboard", button));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        home.Focus();
+        host.RunUntilIdle();
+        Assert.True(home.IsFocused);
+
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.True(button.IsFocused);   // focus crossed the strip→body boundary
+        Assert.False(home.IsFocused);
+    }
+
+    [Fact] // ↕: Up from the ribbon body's top row climbs back to the selected tab header
+    public void Ribbon_UpFromBody_ReturnsToTab()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var home = Tab("Home", Group("Clipboard", button));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        button.Focus();
+        host.RunUntilIdle();
+        Assert.True(button.IsFocused);
+
+        host.SendKey(Key.UpArrow);
+        host.RunUntilIdle();
+
+        Assert.True(home.IsFocused);      // climbed body→strip back to the active tab
+        Assert.False(button.IsFocused);
+    }
+
+    [Fact] // ↕ round trip: Down into the body then Up returns to the same tab
+    public void Ribbon_DownThenUp_RoundTripsTabAndBody()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var home = Tab("Home", Group("Clipboard", button));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        home.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+        Assert.True(button.IsFocused);
+
+        host.SendKey(Key.UpArrow);
+        host.RunUntilIdle();
+        Assert.True(home.IsFocused);
+    }
+
+    [Fact] // ↕: Down off the FILE tab must NOT drop into the (redirected) content band it has no association with
+    public void Ribbon_DownFromFileTab_DoesNotEnterBody()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(new RibbonTab { Header = "File", IsFileTab = true });
+        ribbon.Items.Add(Tab("Home", Group("Clipboard", button)));
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var file = (RibbonTab)ribbon.ItemContainerGenerator.ContainerFromIndex(0)!;
+        file.Focus();
+        host.RunUntilIdle();
+        Assert.True(file.IsFocused);
+
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.False(button.IsFocused); // Down off File did not enter the selected content tab's band
+    }
+
+    [Fact] // ↕: a MINIMIZED ribbon has no body — Down off a tab stays on the tab (nothing focusable to enter)
+    public void Ribbon_DownFromTab_Minimized_StaysOnTab()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var home = Tab("Home", Group("Clipboard", button));
+        var ribbon = new Ribbon { IsMinimized = true };
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        home.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.True(home.IsFocused);      // the collapsed body offers nothing to enter
+        Assert.False(button.IsFocused);
+    }
+
     [Fact] // a Large button renders glyph-over-label (2 rows); a Medium button is a single row
     public void Ribbon_LargeButtonIsTallerThanMedium()
     {

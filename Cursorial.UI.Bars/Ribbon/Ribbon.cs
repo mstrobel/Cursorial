@@ -52,8 +52,10 @@ public class Ribbon : TabControl
     private const string PartQatPopup = "PART_QatPopup";
     private const string PartQatChecklistHost = "PART_QatChecklistHost";
     private const string PartPinButton = "PART_PinButton";
+    private const string PartContentHost = "PART_ContentHost";
 
     private ButtonBase? _pinButton;
+    private UIElement? _bodyContentHost; // the selected tab's band host — the ↕ Down target / Up origin
 
     private readonly ObservableCollection<BarCommand> _quickAccessCommands = [];
     private readonly ObservableCollection<BarCommand> _quickAccessCandidates = [];
@@ -188,8 +190,64 @@ public class Ribbon : TabControl
         // Escape returns focus to where it came from before entering the ribbon (the RetainsFocus return) — resolved
         // through the RIBBON (the returning scope), so it reaches the outer focus from the tab strip AND from any group
         // control. Only when UNHANDLED: an open dropdown / a deeper handler consumes Escape first.
-        if (!e.Handled && e.Key == Key.Escape && UIApplication.Current?.FocusManager is { } focus && focus.RestoreRetainedFocus(this))
+        if (!e.Handled && e.Key == Key.Escape && UIApplication.Current?.FocusManager is { } escapeFocus && escapeFocus.RestoreRetainedFocus(this))
+        {
             e.Handled = true;
+            return;
+        }
+
+        // ↕ crossing between the tab strip and the ribbon body (Office parity). Down off a focused tab HEADER drops
+        // into the body (its remembered / first control); Up from the body's TOP row — no directional target above it
+        // within the Contained band — climbs back to the selected tab header (rather than moving within the body).
+        // Unmodified arrows only, and only when nothing deeper already consumed the key (a group's own directional nav,
+        // an open dropdown). Left/Right/other arrows fall to the base TabControl / the band's directional nav.
+        if (!e.Handled && e.Modifiers == KeyModifiers.None && UIApplication.Current?.FocusManager is { } focus)
+        {
+            if (e.Key == Key.DownArrow && FocusedTabContainer(e.OriginalSource) is not null)
+                e.Handled = EnterBody(focus);
+            else if (e.Key == Key.UpArrow && AtBodyTop(focus, e.OriginalSource))
+                e.Handled = FocusSelectedTab();
+        }
+    }
+
+    // The CONTENT-tab header the key came from (a realized container of THIS ribbon), or null when focus is in the
+    // body — or on the File tab. Down off the File tab must NOT drop into the (redirected) selected content band that
+    // File has no association with: File's own activation (Enter/Space/click) opens Backstage, and Down is left to
+    // fall through, so the ↕ crossing only bridges a CONTENT tab to its own band.
+    private RibbonTab? FocusedTabContainer(UIElement? source)
+    {
+        for (var node = source; node is not null; node = node.VisualParent)
+        {
+            if (node is RibbonTab { IsFileTab: false } tab && ItemContainerGenerator.IndexFromContainer(tab) >= 0)
+                return tab;
+        }
+
+        return null;
+    }
+
+    // True when focus sits inside the ribbon body with no directional target above it within the Contained band —
+    // the top row, from which Up climbs back to the tab strip instead of moving within the body.
+    private bool AtBodyTop(FocusManager focus, UIElement? source)
+        => source is not null
+           && _bodyContentHost is { } host && host.IsAncestorOf(source)
+           && focus.FindNext(source, FocusNavigationDirection.Up) is null;
+
+    // Drop focus into the ribbon body (the selected tab's band): its remembered focus, else the first tab-ordered
+    // control. A no-op (false) when the body is minimized / hidden or holds nothing focusable — Down then does nothing.
+    private bool EnterBody(FocusManager focus)
+        => !IsMinimized
+           && _bodyContentHost is { IsEffectivelyVisible: true } host
+           && focus.ResolveFocusEntry(host) is { } target
+           && target.Focus(FocusNavigationMethod.Directional);
+
+    // Climb back to the tab strip: focus the selected tab header (the tab whose band the body shows), or the first
+    // content tab if selection is somehow clear.
+    private bool FocusSelectedTab()
+    {
+        var index = SelectedIndex >= 0 ? SelectedIndex : FirstContentTabIndex();
+        return index >= 0
+               && ItemContainerGenerator.ContainerFromIndex(index) is { } tab
+               && tab.Focus(FocusNavigationMethod.Directional);
     }
 
     /// <inheritdoc/>
@@ -197,6 +255,7 @@ public class Ribbon : TabControl
     {
         base.OnApplyTemplate();
 
+        _bodyContentHost = GetTemplatePart<UIElement>(PartContentHost);
         _qatAbove = GetTemplatePart<Toolbar>(PartQuickAccessAbove);
         _qatBelow = GetTemplatePart<Toolbar>(PartQuickAccessBelow);
 

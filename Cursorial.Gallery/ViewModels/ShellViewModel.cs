@@ -38,6 +38,8 @@ public sealed class ShellViewModel : ViewModelBase
 
     public string ThemeDescription => $"{UIApplication.Current?.ActualThemeVariant.ToString().ToLowerInvariant()}";
 
+    public bool DiagnosticsOverflowed { get; private set; }
+
     public LifoList<string> Diagnostics { get; } = new(new ObservableCollection<string>());
 
     public ICommand CycleThemeVariant { get; }
@@ -128,5 +130,19 @@ public sealed class ShellViewModel : ViewModelBase
 
         if (UIApplication.Current is {} app)
             app.Shutdown();
+    }
+
+    public void AddDiagnostic(string message)
+    {
+        if (DiagnosticsOverflowed)
+            return;
+        
+        Diagnostics.Add(message);
+        
+        if (Diagnostics.Count >= 999)
+        {
+            DiagnosticsOverflowed = true;
+            Diagnostics.Add("[WARNING  ] 1,000 diagnostics have been reported. No more will be displayed.");
+        }
     }
 }

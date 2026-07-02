@@ -299,7 +299,9 @@ public static class ThemeKeys
 
     // ListItem (ListBox / ComboBox drop-down item).
     /// <summary>List-item ink (--text).</summary>
-    public const string ListItemForegroundNormal = "Theme.ListItemForegroundNormal";
+    public const string ListItemBackgroundNormal = "Theme.ListItemForegroundNormal";
+    /// <summary>List-item fill (--surface).</summary>
+    public const string ListItemForegroundNormal = "Theme.ListItemBackgroundNormal";
     /// <summary>Hovered list-item fill (--hover).</summary>
     public const string ListItemBackgroundHover = "Theme.ListItemBackgroundHover";
     /// <summary>Hovered list-item ink (--text).</summary>

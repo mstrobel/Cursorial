@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
 
@@ -276,6 +277,15 @@ public sealed class ContentPresenter : UIElement
     {
         if (_child is {} old)
         {
+            // A presenter-BUILT child (a TextBlock realized from string/object content — NOT borrowed element content,
+            // where the child IS the content and the author owns it) is presenter-owned and discarded here. Tear its
+            // bindings down: RemoveVisualChild does NOT run TearDown (by design), so a Source-anchored binding it
+            // carries — e.g. the fallback TextBlock's live TextWrapping link back to THIS presenter — would otherwise
+            // leak its observer onto us on every content rebuild (each discarded child pinned alive). Borrowed content
+            // (old == _realizedContent) is left untouched — its bindings belong to the author, not us.
+            if (!ReferenceEquals(old, _realizedContent))
+                BindingOperations.TearDown(old);
+
             if (_childLogicallyOwned && ReferenceEquals(old.LogicalParent, this))
                 RemoveLogicalChild(old);
             RemoveVisualChild(old);
@@ -294,6 +304,29 @@ public sealed class ContentPresenter : UIElement
         {
             _childLogicallyOwned = ReferenceEquals(built.LogicalParent, this);
             AddVisualChildOnly(built);
+            RedirectBorrowedContentInheritance(built);
+        }
+    }
+
+    // WPF parity for BORROWED element content — a UIElement hosted here whose LOGICAL owner is a foreign control.
+    // The canonical case is a TabControl: a TabItem's Content is a logical child of the TabItem, but visually it is
+    // shown ONLY here (the TabControl's PART_ContentHost). AddVisualChildOnly rewires the content's inheritance
+    // parent to its UIParent (= its logical owner, the TabItem), so it would inherit values (Foreground, …) from
+    // that item — e.g. the rail item's STATE-DEPENDENT label ink (dark on a light focus fill), which is invisible on
+    // the detail surface, and which flips as the item gains/loses :focus. Re-point the inheritance parent at THIS
+    // visual host so inherited values flow from the content area instead — matching WPF, where hosted content
+    // inherits through the visual tree. RemoveVisualChild restores it to UIParent on unhost (symmetric).
+    //
+    // Left untouched (default UIParent-driven inheritance) when the content is logically owned by THIS presenter
+    // (free-standing chain-③ adoption) or by this presenter's OWN templated parent — an ordinary ContentControl
+    // (Button.Content), where UIParent already IS the correct source and no redirect is needed.
+    private void RedirectBorrowedContentInheritance(UIElement child)
+    {
+        if (child.LogicalParent is { } owner &&
+            !ReferenceEquals(owner, this) &&
+            !ReferenceEquals(owner, TemplatedParent))
+        {
+            child.SetInheritanceParent(this);
         }
     }
 

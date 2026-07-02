@@ -3,7 +3,9 @@
 // these tests block on purpose (the blocked work is thread-pool-side and cannot deadlock).
 #pragma warning disable xUnit1031
 
+using Cursorial.Rendering.Text;
 using Cursorial.Tests.UI.LayoutMatrix;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Hosting;
@@ -34,6 +36,28 @@ public sealed class ResizePipelineTests
         Assert.Equal((100, 30), (probe.Bounds.Columns, probe.Bounds.Rows));
         Assert.True(host.LastFrameBytes.Length > 0);            // full redraw emitted
         Assert.Equal(new string('X', 100), host.GetRowText(29));
+    }
+
+    [Fact] // regression: a surface SHRINK must re-measure the whole subtree against the NEW (smaller) constraint —
+           // a WordWrap TextBlock that fit one line at the wide size re-wraps when the surface shrinks. The root
+           // re-measures at rootConstraint (not the stale earlier available size), cascading fresh constraints down.
+           // (The same root-remeasure path the WM drives when it pins a popup to its content-desired size after the
+           // provisional viewport measure — the Backstage-description-not-wrapping bug.)
+    public void Resize_Shrink_ReWrapsSubtreeAgainstNewConstraint()
+    {
+        using var host = UITestHost.Create();
+        var text = new TextBlock { Text = "one two three four five six seven eight", TextWrapping = WrapMode.WordWrap };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(text);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, text.DesiredSize.Rows); // fits on one line at the 80-wide default
+
+        host.SendResize(12, 24); // shrink hard — the phrase can no longer fit on one line
+        host.RunUntilIdle();
+
+        Assert.True(text.DesiredSize.Rows > 1, $"expected the TextBlock to re-wrap on shrink; rows={text.DesiredSize.Rows}");
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
-using Cursorial.UI;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
@@ -822,7 +822,7 @@ internal static class CursorialBarsTheme
             DockPanel.SetDock(railBorder, Dock.Left);
 
             // The detail pane: the selected destination's Content (the rail persists across a swap).
-            var detail = new ContentPresenter { Margin = new Margins(1, 0) };
+            var detail = new ContentPresenter { Margin = new Margins(2, 1) };
             ctx.RegisterName("PART_ContentHost", detail);
             detail.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
             detail.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
@@ -845,6 +845,8 @@ internal static class CursorialBarsTheme
                 {
                     new Style(Selectors.Nesting().PseudoClass(":backstage-menu").Template().Name("PART_BackButton"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":backstage-menu").Template().Name("PART_ContentHost"))
+                        .Set(TextBlock.TextWrappingProperty, WrapMode.WordWrap),
                 },
             });
             return root;
@@ -876,6 +878,9 @@ internal static class CursorialBarsTheme
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
                 return border;
             }));
+        theme.Children.Add(new Style("^")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundNormal)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal));
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
         theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
         theme.Children.Add(new Style("^:focus-visible")

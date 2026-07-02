@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -9,6 +10,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.Text; // Margins
 using Cursorial.UI;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
@@ -173,26 +175,26 @@ internal sealed class InspectorDemo : IDemo
                              </Border>
                            
                              <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
-                               <bars:RibbonTab Header="File" IsFileTab="True" />
+                               <bars:RibbonTab Header="_File" IsFileTab="True" />
                                <bars:RibbonTab Header="_Home">
                                  <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
-                                   <bars:BarButton Command="{Binding Paste}" ToolTipService.Tip="Paste" Icon="{Icon Glyph='&#xf0ea;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Command="{Binding Cut}" ToolTipService.Tip="Cut" Icon="{Icon Glyph='&#xf0c4;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Command="{Binding Copy}" ToolTipService.Tip="Copy" Icon="{Icon Glyph='&#xf0c5;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding _Paste}" ToolTipService.Tip="Paste" Icon="{Icon Glyph='&#xf0ea;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Cu_t}" ToolTipService.Tip="Cut" Icon="{Icon Glyph='&#xf0c4;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Co_py}" ToolTipService.Tip="Copy" Icon="{Icon Glyph='&#xf0c5;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
                                  </bars:RibbonGroup>
-                                 <bars:RibbonGroup Header="Font">
+                                 <bars:RibbonGroup Header="Fo_nt">
                                    <bars:BarToggleButton Content="Bold" CommandParameter="{Binding BoldState}" />
                                    <bars:BarToggleButton Content="Italic" CommandParameter="{Binding ItalicState}" />
                                  </bars:RibbonGroup>
                                  <bars:RibbonGroup Header="Editing">
-                                   <bars:BarButton Content="Find" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Content="F_ind" bars:Ribbon.ButtonSize="Large" />
                                  </bars:RibbonGroup>
                                </bars:RibbonTab>
                                <bars:RibbonTab Header="_Insert">
                                  <bars:RibbonGroup Header="History">
-                                   <bars:BarButton Content="Undo" />
-                                   <bars:BarButton Content="Redo" />
-                                   <bars:BarButton Content="Settings" />
+                                   <bars:BarButton Content="_Undo" />
+                                   <bars:BarButton Content="_Redo" />
+                                   <bars:BarButton Content="Settin_gs" />
                                  </bars:RibbonGroup>
                                </bars:RibbonTab>
                            
@@ -357,7 +359,7 @@ internal sealed class InspectorDemo : IDemo
     {
         private TextBlock _status = null!;
         private Border _canvas = null!; // hosts the loaded tree (or the placeholder / error)
-        private StackPanel _inspectorContent = null!;
+        private Border _inspectorContent = null!;
         private UIElement? _lastInspected;
         private UIElement? _lastInspectedParent;
         private UIElement? _lastInspectedRelative;
@@ -407,19 +409,16 @@ internal sealed class InspectorDemo : IDemo
             root.Children.Add(statusBar);
 
             // The inspector panel (docked right): a scrollable provenance report for the element under the cursor.
-            _inspectorContent = new StackPanel { Margin = new Margins(1, 0) };
+            _inspectorContent = new Border
+                                {
+                                    Width = 50,
+                                    BorderPen = Pens.Light,
+                                    Title = " inspector "
+                                };
 
-            var inspectorPanel = new Border
-                                 {
-                                     Width = 50,
-                                     BorderPen = Pens.Light,
-                                     Title = " inspector ",
-                                     Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _inspectorContent },
-                                 };
-
-            inspectorPanel.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
-            DockPanel.SetDock(inspectorPanel, Dock.Right);
-            root.Children.Add(inspectorPanel);
+            _inspectorContent.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+            DockPanel.SetDock(_inspectorContent, Dock.Right);
+            root.Children.Add(_inspectorContent);
 
             // The canvas (fills the rest): the loaded tree. Hover / focus over it drives the inspector — the
             // handlers are scoped to the canvas, so hovering the inspector panel never inspects itself.
@@ -580,7 +579,7 @@ internal sealed class InspectorDemo : IDemo
             element.AddHandler(UIElement.PreviewKeyDownEvent,
                               (_, e) =>
                               {
-                                  if (e is { Key: Key.F12, Modifiers: KeyModifiers.None })
+                                  if (e is { Key: Key.F12, Modifiers: KeyModifiers.None } || e is { Text.Span: "s" or "S", Modifiers: KeyModifiers.Alt })
                                   {
                                       ToggleInspection();
                                       e.Handled = true;
@@ -636,6 +635,30 @@ internal sealed class InspectorDemo : IDemo
                 _lastInspectedParent = null;
                 _lastInspectedRelative = null;
                 _canvas.Child = tree; // render the loaded tree
+
+                var opening = false;
+
+                tree.AddHandler(Ribbon.BackstageRequestedEvent,
+                                async (_, e) =>
+                                {
+                                    if (opening || e.Source is not {} anchor)
+                                        return;
+
+                                    opening = true;
+
+                                    try
+                                    {
+                                        var backstage = BuildBackstage();
+                                        _status.Text = "File → Backstage opened (◂ or Esc to return).";
+                                        await BackstageHost.ShowAsync(backstage, anchor);
+                                        _status.Text = "Backstage closed — back to the document.";
+                                    }
+                                    finally
+                                    {
+                                        opening = false;
+                                    }
+                                });
+
                 Inspect(null);
             }
             catch (Exception ex) // XamlParseException (line+col in the message) / type-resolution / cast
@@ -644,6 +667,49 @@ internal sealed class InspectorDemo : IDemo
             }
 
             UpdateStatus();
+        }
+
+        private Backstage BuildBackstage()
+        {
+            var backstage = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+            backstage.Items.Add(Destination("_New", "Start a new, empty document."));
+            backstage.Items.Add(Destination("_Open", "Open an existing document from disk."));
+            backstage.Items.Add(Destination("_Save", "Save the current document."));
+            backstage.Items.Add(Destination("Save _As", "Save the document under a new name."));
+            backstage.Items.Add(Destination("_Export", "Export the document to another format."));
+            backstage.Items.Add(Destination("_Print", "Print the document."));
+            backstage.Items.Add(new BackstageItem { Header = "──────", IsSelectable = false }); // a non-selectable rule
+            backstage.Items.Add(Destination("_Account", "Your account, sign-in, and connected services."));
+            backstage.Items.Add(Destination("_Options", "Application options and preferences."));
+
+            backstage.SelectionChanged += (_, _) =>
+                                          {
+                                              if (backstage.SelectedItem is BackstageItem { Header: string header })
+                                                  _status.Text = $"Backstage → {header.Replace("_", string.Empty)}";
+                                          };
+            return backstage;
+        }
+
+        // One rail destination: the Header is the rail label (access-key folded); the Content is the detail pane shown when
+        // it is selected (a title over a description over an action button). Invoking the action button runs its command AND
+        // closes the Backstage (the Backstage's detail-pane close-on-invoke — the Office "act and return" model).
+        private BackstageItem Destination(string header, string detail)
+        {
+            var name = header.Replace("_", string.Empty);
+
+            var title = new TextBlock { Text = name, Margin = new Margins(0, 0, 0, 1), TextWrapping = WrapMode.WordWrap };
+            var body = new TextBlock { Text = detail, TextWrapping = WrapMode.WordWrap };
+            var action = new BarButton
+                         {
+                             Content = $"◆ {name}",
+                             Margin = new Margins(0, 1, 0, 0),
+                             Command = new BarCommand(() => _status.Text = $"{name} invoked — returned to the document.")
+                         };
+            var pane = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1, 0) };
+            pane.Children.Add(title);
+            pane.Children.Add(body);
+            pane.Children.Add(action);
+            return new BackstageItem { Header = header, Content = pane };
         }
 
         private void ShowError(string message)
@@ -672,7 +738,7 @@ internal sealed class InspectorDemo : IDemo
         private UIElement? AscendTree(UIElement? anchor, UIElement? current)
         {
             var e = current ?? anchor;
-            return e?.VisualParent ?? e?.LogicalParent;
+            return e?.VisualParent ?? e?.UIParent;
         }
 
         private UIElement? DescendTree(UIElement? anchor, UIElement? current)
@@ -682,7 +748,7 @@ internal sealed class InspectorDemo : IDemo
             UIElement? e;
             UIElement? prev = anchor;
 
-            for (e = anchor; e is not null; e = e.VisualParent ?? e.LogicalParent)
+            for (e = anchor; e is not null; e = e.VisualParent ?? e.UIParent)
             {
                 if (e == current) return prev;
                 prev = e;
@@ -716,8 +782,7 @@ internal sealed class InspectorDemo : IDemo
             _lastInspected = element;
             _lastInspectedParent = parent;
 
-            while (_inspectorContent.Children.Count > 0)
-                _inspectorContent.Children.RemoveAt(_inspectorContent.Children.Count - 1);
+            _inspectorContent.Child = null;
 
             _lastInspectedRelative = direction switch
                                      {
@@ -730,40 +795,52 @@ internal sealed class InspectorDemo : IDemo
 
             if (current is null)
             {
-                _inspectorContent.Children.Add(new TextBlock("\n  Hover or Tab to an element\n  in the loaded tree.\n  " +
-                                                             "Use [ and ] to transcend\n  template elements."));
+                _inspectorContent.Child = new TextBlock("\n  Hover or Tab to an element\n  in the loaded tree.\n  " +
+                                                        "Use [ and ] to transcend\n  template elements.");
 
                 UpdateStatus();
                 return;
             }
 
+            var seen = new HashSet<UIElement>();
             var tree = new TreeView();
+            
+            // ScrollViewer.SetVerticalScrollBarVisibility(tree, ScrollBarVisibility.Visible); // avoid items shifting with (dis)appearance of scrollbar 
 
-            tree.Items.Add(InspectNode(current));
+            tree.Items.Add(InspectNode(current, seen: seen));
 
-            if (current is Control c)
-            {
-                var attributes = c.GetType().GetCustomAttributes(typeof(TemplatePartAttribute), true);
+            // if (current is Control c)
+            // {
+            //     var attributes = c.GetType().GetCustomAttributes(typeof(TemplatePartAttribute), true);
+            //
+            //     foreach (var attribute in attributes.OfType<TemplatePartAttribute>())
+            //     {
+            //         if (c.GetTemplatePart<UIElement>(attribute.Name) is {} part)
+            //             tree.Items.Add(InspectNode(part, attribute.Name, seen: seen));
+            //     }
+            // }
 
-                foreach (var attribute in attributes.OfType<TemplatePartAttribute>())
-                {
-                    if (c.GetTemplatePart<UIElement>(attribute.Name) is {} part)
-                        tree.Items.Add(InspectNode(part, attribute.Name));
-                }
-            }
-
-            _inspectorContent.Children.Add(tree);
+            _inspectorContent.Child = tree;
             UpdateStatus();
         }
 
-        private TreeViewItem InspectNode(UIElement current, string? name = null)
+        private TreeViewItem InspectNode(UIElement current, string? name = null, HashSet<UIElement>? seen = null,
+                                         bool expanded = true)
         {
+            seen ??= new HashSet<UIElement>();
+
+            if (seen.Add(current) is false)
+                return Node(FormatValue(current), NoValue, inlineValue: $"{RuntimeHelpers.GetHashCode(current):x8}");
+
             if (string.IsNullOrWhiteSpace(name))
                 name = BuildElementPath(current);
             else
                 name = current.GetType().Name is { Length: > 0 } tName ? $"{tName}#{name}" : name;
 
-            var root = Node(name, NoValue, ThemeKeys.GreenBrush);
+            var root = Node($"{name} ({RuntimeHelpers.GetHashCode(current):x8})",
+                            NoValue, 
+                            ThemeKeys.GreenBrush,
+                            expanded: expanded);
 
             var pseudoClasses = string.Join(
                 ", ",
@@ -775,6 +852,9 @@ internal sealed class InspectorDemo : IDemo
                     .Concat(current.Classes.Select(c => $".{c}")));
 
             root.Items.Add(Node("Classes", pseudoClasses));
+
+            root.Items.Add(Node(nameof(UIElement.DesiredSize), current.DesiredSize));
+            root.Items.Add(Node(nameof(UIElement.Bounds), current.Bounds));
 
             var properties = current.GetSetProperties().OrderBy(p => p.Name).ToArray();
 
@@ -804,10 +884,16 @@ internal sealed class InspectorDemo : IDemo
                            };
                 }
 
-                var item = Node($"{property.OwnerType.Name}.{property.Name}", NoValue);
+                var item = Node($"{property.OwnerType.Name}.{property.Name}", NoValue,
+                                inlineValue: current.GetValue(property), expanded: false);
 
                 item.Items.Add(Node(nameof(e.TargetDescription), e.TargetDescription));
-                item.Items.Add(Node("Value", current.GetValue(property)));
+
+                item.Items.Add(current.GetValue(property) switch
+                               {
+                                   UIElement ev => InspectNode(ev, name, seen: seen, expanded: false),
+                                   var o        => Node("Value", o, expanded: false)
+                               });
 
                 if (resourceKey is not null)
                     item.Items.Add(Node("Resource Key", resourceKey));
@@ -826,6 +912,58 @@ internal sealed class InspectorDemo : IDemo
                 // _inspectorContent.Children.Add(new TextBlock(line));
 
                 root.Items.Add(item);
+            }
+
+            if (current.VisualChildrenCount is var vcc and > 0)
+            {
+                var vc = Node("VisualChildren", NoValue, expanded: false);
+
+                vc.IsExpanded = false;
+
+                for (int i = 0; i < vcc; i++)
+                {
+                    if (current.GetVisualChild(i) is {} child)
+                    {
+                        var childNode = Node($"VisualChildren[{i}]", InspectNode(child, seen: seen, expanded: false));
+                        childNode.IsExpanded = false;
+                        vc.Items.Add(childNode);
+                    }
+                }
+
+                root.Items.Add(vc);
+            }
+
+            if (current.LogicalChildrenList is { Count: var lcc and >0 } logicalChildren)
+            {
+                var lc = Node("LogicalChildren", NoValue, expanded: false);
+
+                for (int i = 0; i < lcc; i++)
+                {
+                    if (logicalChildren[i] is {} child)
+                    {
+                        var childNode = Node($"LogicalChildren[{i}]", InspectNode(child, seen: seen, expanded: false));
+                        lc.Items.Add(childNode);
+                    }
+                }
+
+                root.Items.Add(lc);
+            }
+
+            if (current.VisualParent is {} vp)
+                root.Items.Add(Node("VisualParent", InspectNode(vp, seen: seen, expanded: true), expanded: false));
+
+            if (current.LogicalParent is {} lp)
+                root.Items.Add(Node("LogicalParent", InspectNode(lp, seen: seen, expanded: true), expanded: false));
+
+            if (current.UIParent is {} up && !ReferenceEquals(current.LogicalParent, up))
+                root.Items.Add(Node("UIParent", InspectNode(up, seen: seen, expanded: true), expanded: false));
+
+            if (current.GetInheritanceParent() is {} ip &&
+                !ReferenceEquals(current.LogicalParent, ip) &&
+                !ReferenceEquals(current.VisualParent, ip))
+            {
+                root.Items.Add(Node("InheritanceParent",
+                                    ip is UIElement ipe ? InspectNode(ipe, seen: seen, expanded: true) : ip, expanded: false));
             }
 
             return root;
@@ -874,7 +1012,8 @@ internal sealed class InspectorDemo : IDemo
 
         private static readonly object NoValue = new();
 
-        private static TreeViewItem Node(string? name, object? value, string? brush = ThemeKeys.MutedBrush)
+        private static TreeViewItem Node(string? name, object? value, string? brush = ThemeKeys.MutedBrush,
+                                         object? inlineValue = null, bool expanded = true)
         {
             var hasName = name is not null;
             var type = value?.GetType() ?? typeof(object);
@@ -882,22 +1021,31 @@ internal sealed class InspectorDemo : IDemo
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
                 type = Nullable.GetUnderlyingType(type);
 
-            var isSimple = type is { IsPrimitive: true } or { IsEnum: true } or { FullName: "System.String" };
+            var isSimple = inlineValue is null && 
+                           type is { IsPrimitive: true } or { IsEnum: true } or { FullName: "System.String" };
 
             var header = hasName
-                             ? isSimple ?
-                                   $"[b][brush {brush}]{Sanitize(name)}:[/brush][/b] {FormatValue(value)}"
-                                   : $"[b][brush {brush}]{Sanitize(name)}[/brush][/b]"
+                             ? isSimple
+                                   ? $"[b][brush {brush}]{Sanitize(name)}:[/brush][/b] {FormatValue(value)}"
+                                   : $"[b][brush {brush}]{Sanitize(name)}" +
+                                     (inlineValue is not null 
+                                          ? $":[/brush][/b] [brush {ThemeKeys.TextBrush}]{FormatValue(inlineValue)}[/brush]"
+                                          : "[/brush][/b]")
                              : FormatValue(value);
 
             var item = new TreeViewItem
                        {
-                           IsExpanded = true,
+                           IsExpanded = expanded,
                            Header = new TextBlock { Markup = header, TextWrapping = WrapMode.WordWrap }
                        };
 
             if (hasName && !isSimple && value != NoValue)
-                item.Items.Add(Node(null, value));
+            {
+                if (value is TreeViewItem tv)
+                    item.Items.Add(tv);
+                else
+                    item.Items.Add(Node(null, value));
+            }
 
             return item;
         }
@@ -916,6 +1064,7 @@ internal sealed class InspectorDemo : IDemo
                     {
                         null                       => "(null)",
                         string s                   => QuoteValue(s),
+                        UIElement e                => $"{{{value.GetType().Name}}} ({RuntimeHelpers.GetHashCode(e):x8})",
                         Array a                    => $"[{string.Join(", ", a.Cast<object>().Select(FormatValue))}]" + (a.Length > 0 ? " " : ""),
                         System.Collections.IList l => $"[{string.Join(", ", l.Cast<object>().Select(FormatValue))}]",
                         UIProperty p               => $"{p.OwnerType.Name}.{p.Name}",
@@ -1001,7 +1150,7 @@ internal sealed class InspectorDemo : IDemo
             var tree = new List<UIElement>();
             var sb = new StringBuilder();
 
-            for (UIElement? e = current; e is not null; e = e.VisualParent ?? e.LogicalParent ?? e.TemplatedParent)
+            for (UIElement? e = current; e is not null; e = e.VisualParent ?? e.UIParent)
                 tree.Add(e);
 
             for (var index = tree.Count - 1; index >= 0; index--)

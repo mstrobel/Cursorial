@@ -292,6 +292,326 @@ public sealed class BackstageTests
         Assert.Equal(1, backs); // …and the Backstage asked to close (BackRequested)
     }
 
+    // repro (live path): the detail-pane button close must fire through the REAL hosted surface (a modal Window /
+    // Popup opened by BackstageHost), not only when the Backstage is the app root. The gallery reported it failing
+    // in the terminal while ShowRoot-based tests passed — the untested gap is the hosted-surface path below.
+    [Fact]
+    public async Task BackstageHost_FullScreen_DetailPaneButtonInvoke_ClosesWindow()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        var ran = 0;
+        var action = new BarButton { Content = "◆ Save", Command = new BarCommand(() => ran++) };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(new TextBlock { Text = "Save the document." });
+        pane.Children.Add(action);
+        var bs = new Backstage();
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = pane });
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+        Assert.False(task.IsCompleted); // the modal is up
+
+        var origin = action.TranslateToScreen(1, 0);
+        host.SendMouseMove(origin.Column, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, ran);            // the command ran…
+        await task;                      // …and the modal window closed (the host task completed)
+        Assert.True(task.IsCompletedSuccessfully);
+
+        // The surface must be visually GONE too (a logical close that never re-renders looks exactly like
+        // "it won't close" to the user — the gap the ShowRoot/task-only tests missed).
+        host.RunUntilIdle();
+        Assert.DoesNotContain("Save the document.", AllRows(host));
+        Assert.Contains("File", AllRows(host)); // the document (the anchor) is visible again
+    }
+
+    [Fact]
+    public async Task BackstageHost_Menu_DetailPaneButtonInvoke_ClosesPopup()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        var ran = 0;
+        var action = new BarButton { Content = "◆ Save", Command = new BarCommand(() => ran++) };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(new TextBlock { Text = "Save the document." });
+        pane.Children.Add(action);
+        var bs = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = pane });
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+        Assert.False(task.IsCompleted);
+
+        var origin = action.TranslateToScreen(1, 0);
+        host.SendMouseMove(origin.Column, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, ran);
+        await task;
+        Assert.True(task.IsCompletedSuccessfully);
+    }
+
+    [Fact] // keyboard invoke (Enter on a focused detail-pane button) must close the hosted modal window
+    public async Task BackstageHost_FullScreen_DetailPaneKeyboardInvoke_ClosesWindow()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        var ran = 0;
+        var action = new BarButton { Content = "◆ Save", Command = new BarCommand(() => ran++) };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(new TextBlock { Text = "Save the document." });
+        pane.Children.Add(action);
+        var bs = new Backstage();
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = pane });
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+
+        action.Focus();
+        host.RunUntilIdle();
+        Assert.True(action.IsFocused);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, ran);
+        await task;
+        Assert.True(task.IsCompletedSuccessfully);
+    }
+
+    [Fact] // keyboard invoke (Enter on a focused detail-pane button) must close the hosted menu popup
+    public async Task BackstageHost_Menu_DetailPaneKeyboardInvoke_ClosesPopup()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        var ran = 0;
+        var action = new BarButton { Content = "◆ Save", Command = new BarCommand(() => ran++) };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(new TextBlock { Text = "Save the document." });
+        pane.Children.Add(action);
+        var bs = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = pane });
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+
+        action.Focus();
+        host.RunUntilIdle();
+        Assert.True(action.IsFocused);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, ran);
+        await task;
+        Assert.True(task.IsCompletedSuccessfully);
+    }
+
+    [Fact] // after navigating the rail to a NON-first destination, clicking THAT pane's button must still close
+           // (the detail pane swapped content in the persistent PART_ContentHost — the close handler must survive the swap)
+    public async Task BackstageHost_Menu_SwappedDestinationButtonInvoke_ClosesPopup()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        BarButton MakePane(string name, out BackstageItem item)
+        {
+            var action = new BarButton { Content = $"◆ {name}" };
+            var pane = new StackPanel { Orientation = Orientation.Vertical };
+            pane.Children.Add(new TextBlock { Text = $"{name} detail." });
+            pane.Children.Add(action);
+            item = new BackstageItem { Header = name, Content = pane };
+            return action;
+        }
+
+        var savedRan = 0;
+        _ = MakePane("New", out var newItem);
+        var saveButton = MakePane("Save", out var saveItem);
+        saveButton.Command = new BarCommand(() => savedRan++);
+
+        var bs = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+        bs.Items.Add(newItem);
+        bs.Items.Add(saveItem);
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+        Assert.Equal(0, bs.SelectedIndex); // "New" auto-selected
+
+        bs.SelectedIndex = 1;              // navigate to "Save" — the detail pane swaps
+        host.RunUntilIdle();
+
+        var origin = saveButton.TranslateToScreen(1, 0);
+        host.SendMouseMove(origin.Column, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, savedRan);
+        await task;
+        Assert.True(task.IsCompletedSuccessfully);
+    }
+
+    [Fact] // GHOSTING repro: keyboard rail-nav in a POPUP-hosted Backstage must fully repaint the detail zone —
+           // the previous destination's detail text must be ERASED, not left ghosting under the new pane (the live
+           // symptom: keyboard-select renders garbled while mouse-select is clean, because no pointer motion forces
+           // a hover-driven zone re-render).
+    public async Task BackstageHost_Menu_KeyboardRailNav_RepaintsDetailZone_NoGhost()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        var bs = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+        bs.Items.Add(new BackstageItem { Header = "New", Content = "Create-a-brand-new-document." });
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = "Save-the-current-document." });
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+        Assert.Equal(0, bs.SelectedIndex);
+        Assert.Contains("Create-a-brand-new-document.", AllRows(host));
+
+        // Navigate the rail by KEYBOARD (Down) — selection follows focus, the detail pane swaps to "Save".
+        Container(bs, 0).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, bs.SelectedIndex);
+        Assert.Contains("Save-the-current-document.", AllRows(host));           // the new pane rendered…
+        Assert.DoesNotContain("Create-a-brand-new-document.", AllRows(host));   // …and the OLD pane was erased (no ghost)
+
+        bs.BackRequested += (_, _) => { };
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        await task;
+    }
+
+    [Fact] // GHOSTING repro with the gallery's RICH detail pane (StackPanel: title + body + action button) — a
+           // multi-child pane in a popup zone is where a partial repaint would hide. Keyboard rail-nav must erase
+           // the whole previous pane, not leave any line ghosting.
+    public async Task BackstageHost_Menu_KeyboardRailNav_RichPane_NoGhost()
+    {
+        using var host = NewHost();
+        var anchor = new BarButton { Content = "File" };
+        host.ShowRoot(anchor);
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        BackstageItem Dest2(string name, string body)
+        {
+            var pane = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1, 0) };
+            pane.Children.Add(new TextBlock { Text = $"TITLE-{name}", Margin = new Margins(0, 0, 0, 1) });
+            pane.Children.Add(new TextBlock { Text = body });
+            pane.Children.Add(new BarButton { Content = $"ACT-{name}", Margin = new Margins(0, 1, 0, 0) });
+            return new BackstageItem { Header = name, Content = pane };
+        }
+
+        var bs = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+        bs.Items.Add(Dest2("New", "Body-New-create-empty."));
+        bs.Items.Add(Dest2("Save", "Body-Save-persist-now."));
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+        Assert.Contains("TITLE-New", AllRows(host));
+        Assert.Contains("Body-New-create-empty.", AllRows(host));
+        Assert.Contains("ACT-New", AllRows(host));
+
+        Container(bs, 0).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // keyboard rail nav → detail pane swaps New → Save
+        host.RunUntilIdle();
+
+        // The new pane is fully present…
+        Assert.Contains("TITLE-Save", AllRows(host));
+        Assert.Contains("Body-Save-persist-now.", AllRows(host));
+        Assert.Contains("ACT-Save", AllRows(host));
+        // …and NO line of the old pane ghosts.
+        Assert.DoesNotContain("TITLE-New", AllRows(host));
+        Assert.DoesNotContain("Body-New-create-empty.", AllRows(host));
+        Assert.DoesNotContain("ACT-New", AllRows(host));
+
+        bs.BackRequested += (_, _) => { };
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        await task;
+    }
+
+    [Fact] // REGRESSION: the detail-pane content must inherit its foreground from PART_ContentHost (the visual host,
+           // TextBrush), NOT from its logical owner the BackstageItem (whose state-dependent rail-label ink is dark and
+           // invisible on the detail surface — and flips with the rail row's :focus). WPF parity: hosted content inherits
+           // through the visual tree. Was: body inherited the rail item's ink (rgb 23,26,38); now: the host's TextBrush.
+    public void Backstage_DetailContent_InheritsForegroundFromContentHost_NotRailItem()
+    {
+        using var host = NewHost();
+        var body = new TextBlock { Text = "BODY-TEXT" };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(body);
+        var bs = new Backstage();
+        bs.Items.Add(new BackstageItem { Header = "New", Content = pane });
+        host.ShowRoot(bs);
+        host.RunUntilIdle();
+
+        var contentHost = pane.VisualParent!;   // PART_ContentHost (ContentPresenter, foreground = TextBrush)
+        var railItem = pane.LogicalParent!;      // BackstageItem (foreground = dark rail-label ink)
+
+        var bodyFg = TextElement.GetForeground(body);
+        Assert.NotNull(bodyFg);
+        Assert.Same(TextElement.GetForeground(contentHost), bodyFg); // inherits the HOST's brush…
+        Assert.NotSame(TextElement.GetForeground(railItem), bodyFg);  // …not the rail item's
+
+        // And it stays correct when the rail row is focused (the state that used to darken the detail text).
+        Container(bs, 0).Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        Assert.Same(TextElement.GetForeground(contentHost), TextElement.GetForeground(body));
+    }
+
+    [Fact] // GUARD for the inheritance-redirect fix: directly-set TabItem content must still inherit DataContext
+           // (the redirect re-points ALL inherited properties at the content host — but the host's chain reaches the
+           // same TabControl DataContext, so a {Binding} in tab content still resolves).
+    public void TabControl_DirectlySetContent_StillInheritsDataContext()
+    {
+        using var host = NewHost();
+        var tc = new Cursorial.UI.Controls.TabControl { DataContext = "HELLO-CTX" };
+        var leaf = new TextBlock();
+        var pane = new StackPanel();
+        pane.Children.Add(leaf);
+        tc.Items.Add(new Cursorial.UI.Controls.TabItem { Header = "A", Content = pane });
+        host.ShowRoot(tc);
+        host.RunUntilIdle();
+
+        // DataContext still inherits down through the content host into the directly-set content (the redirect
+        // re-points inheritance at the presenter, whose chain reaches the same TabControl DataContext).
+        Assert.Equal("HELLO-CTX", pane.GetValue(UIElement.DataContextProperty));
+        Assert.Equal("HELLO-CTX", leaf.GetValue(UIElement.DataContextProperty));
+    }
+
     // ───────────────────────────── Increment 4 — DisplayMode compaction ─────────────────────────────
 
     [Fact] // FullScreen (default) shows the ◂ back button; Menu mode collapses it (:backstage-menu compaction)

@@ -602,9 +602,12 @@ public sealed class AccessKeyManager
                    : target is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true });
 
     /// <summary>
-    /// The target's scope: walking its ancestor chain (route walk — <c>VisualParent ??
-    /// LogicalParent</c>, self-inclusive), the first node that is a live scope-stack root or the
-    /// active window root.
+    /// The target's scope: walking its ancestor chain (the SAME <c>VisualParent ?? UIParent</c> walk
+    /// as <see cref="EventRoute"/> and S3's hit-test — self-inclusive), the first node that is a live
+    /// scope-stack root or the active window root. Using <see cref="UIElement.UIParent"/> (not
+    /// <c>LogicalParent</c>) is load-bearing: it honors the surface-root bridge hops (a <c>Popup</c>
+    /// bridges to its <c>PlacementTarget</c>), so a target hosted in a popup/menu surface resolves to
+    /// the enclosing scope/active root instead of dead-ending at the surface boundary.
     /// </summary>
     private UIElement? ResolveScope(UIElement target)
     {
@@ -613,7 +616,7 @@ public sealed class AccessKeyManager
         // _scopeStack lookups to a HashSet alongside the list.
         var activeRoot = _focus.ActiveRoot;
 
-        for (var node = target; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = target; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (_scopeStack.Contains(node) || ReferenceEquals(node, activeRoot))
                 return node;

@@ -139,7 +139,7 @@ internal sealed class FocusNavigator
     {
         UIElement? onceAncestor = null;
 
-        for (var node = from; node is not null && !ReferenceEquals(node, container); node = node.VisualParent ?? node.LogicalParent)
+        for (var node = from; node is not null && !ReferenceEquals(node, container); node = node.VisualParent ?? node.UIParent)
         {
             if (KeyboardNavigation.GetTabNavigation(node) == KeyboardNavigationMode.Once)
                 onceAncestor = node; // keep the highest Once below the container — the one collection stopped at
@@ -286,7 +286,7 @@ internal sealed class FocusNavigator
 
     private static bool IsWithin(UIElement element, UIElement container)
     {
-        for (var node = element.VisualParent ?? element.LogicalParent; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = element.VisualParent ?? element.UIParent; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (ReferenceEquals(node, container))
                 return true;
@@ -372,7 +372,7 @@ internal sealed class FocusNavigator
             if (KeyboardNavigation.GetTabNavigation(node) == KeyboardNavigationMode.Cycle)
                 return node;
 
-            if ((node.VisualParent ?? node.LogicalParent) is not {} parent)
+            if ((node.VisualParent ?? node.UIParent) is not {} parent)
                 return node; // window/popup roots default Cycle (doc §7.7 — no OS to Tab out to)
 
             node = parent;
@@ -400,7 +400,7 @@ internal sealed class FocusNavigator
         UIElement? container = null;
         var mode = DirectionalNavigationMode.None;
 
-        for (var node = current; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = current; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             var m = KeyboardNavigation.GetDirectionalNavigation(node);
 

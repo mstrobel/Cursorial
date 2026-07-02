@@ -528,7 +528,7 @@ public sealed class FocusManager
     /// </summary>
     internal void OnElementDetached(UIElement element, UIElement detachingRoot)
     {
-        for (var node = element; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = element; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (ReferenceEquals(node.GetValue(FocusedElementProperty), element))
                 node.SetValue(FocusedElementProperty, (UIElement?) null);
@@ -567,7 +567,7 @@ public sealed class FocusManager
         // navigable when the notification fires; everything at or below it is skipped.
         var start = detachingRoot ?? invalidated;
 
-        for (var node = start.VisualParent ?? start.LogicalParent; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = start.VisualParent ?? start.UIParent; node is not null; node = node.VisualParent ?? node.UIParent)
         {
             if (IsValidFocusTarget(node))
             {
@@ -598,7 +598,7 @@ public sealed class FocusManager
     /// <summary>Whether <paramref name="node"/> is <paramref name="root"/> or inside its subtree (route-walk chain).</summary>
     private static bool IsWithinSubtree(UIElement node, UIElement root)
     {
-        for (var n = node; n is not null; n = n.VisualParent ?? n.LogicalParent)
+        for (var n = node; n is not null; n = n.VisualParent ?? n.UIParent)
         {
             if (ReferenceEquals(n, root))
                 return true;
@@ -783,10 +783,10 @@ public sealed class FocusManager
         _newChainScratch.Clear();
     }
 
-    /// <summary>Leaf-first self-plus-ancestors chain over the route walk (<c>VisualParent ?? LogicalParent</c>).</summary>
+    /// <summary>Leaf-first self-plus-ancestors chain over the route walk (<c>VisualParent ?? UIParent</c>).</summary>
     private static void BuildFocusChain(UIElement? leaf, List<UIElement> chain)
     {
-        for (var node = leaf; node is not null; node = node.VisualParent ?? node.LogicalParent)
+        for (var node = leaf; node is not null; node = node.VisualParent ?? node.UIParent)
             chain.Add(node);
     }
 

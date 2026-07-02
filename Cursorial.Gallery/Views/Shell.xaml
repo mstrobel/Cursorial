@@ -192,7 +192,7 @@
               <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" />
               <MenuItem Header="_Paste" InputGestureText="Ctrl+V" />
               <Separator/>
-              <MenuItem Header="F_ind">
+              <MenuItem Header="Fi_nd">
                 <MenuItem Header="Find _Next"     InputGestureText="F3" />
                 <MenuItem Header="Find _Previous" InputGestureText="Shift+F3" />
               </MenuItem>
@@ -332,7 +332,7 @@
           <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
                customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1">
-            <bars:RibbonTab Header="File" IsFileTab="True" />
+            <bars:RibbonTab Header="_File" IsFileTab="True" />
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
                 <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />
@@ -347,7 +347,7 @@
                 <bars:BarButton Command="{Binding Find}" bars:Ribbon.ButtonSize="Large" />
               </bars:RibbonGroup>
             </bars:RibbonTab>
-            <bars:RibbonTab Header="_Insert">
+            <bars:RibbonTab Header="Inse_rt">
               <bars:RibbonGroup Header="History">
                 <bars:BarButton Command="{Binding Undo}" />
                 <bars:BarButton Command="{Binding Redo}" />
@@ -503,7 +503,7 @@
     
     <Expander x:Name="DiagnosticsExpander" DockPanel.Dock="Bottom" Header="Dia_gnostics">
       <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="8">
-        <ListBox ItemsSource="{Binding Diagnostics}" />
+        <ListBox ItemsSource="{Binding Diagnostics}" VirtualizingPanel.IsVirtualizing="True" />
       </ScrollViewer>
     </Expander>
 

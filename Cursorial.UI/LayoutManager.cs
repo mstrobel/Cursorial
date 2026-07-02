@@ -225,7 +225,18 @@ public sealed class LayoutManager
             if (element.IsMeasureValid || element.VisualRoot != _root)
                 continue;
 
-            element.Measure(element.HasMeasureConstraint ? element.LastMeasureConstraint : rootConstraint);
+            // The ROOT's constraint IS this surface's size (rootConstraint): when the surface resizes — a viewport
+            // change, or the WM pinning a popup to its content-desired size after the provisional viewport measure —
+            // RunLayoutPass invalidates + enqueues the root, and it must re-measure at the NEW size and cascade fresh
+            // constraints down, NOT re-measure against the stale (larger) LastMeasureConstraint the earlier pass left
+            // it (else the whole subtree re-wraps/stretches against the old available width — the popup-shrink bug).
+            // A NON-root dirty element drained in ISOLATION (its parent still measure-valid) keeps its OWN
+            // LastMeasureConstraint: its available space is genuinely unchanged, and forcing it to rootConstraint would
+            // collapse a legitimately >viewport child (a VirtualizingStackPanel container measured Unbounded on the
+            // scroll axis, ScrollContentPresenter content at MaxScrollExtent).
+            element.Measure(ReferenceEquals(element, _root) || !element.HasMeasureConstraint
+                                ? rootConstraint
+                                : element.LastMeasureConstraint);
         }
     }
 

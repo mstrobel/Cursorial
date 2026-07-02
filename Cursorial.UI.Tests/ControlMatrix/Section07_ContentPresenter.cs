@@ -258,4 +258,30 @@ public sealed class Section07_ContentPresenter
 
         Assert.Equal("templated", Assert.IsType<TextBlock>(cp.Child).Text); // the template wins; format unused
     }
+
+#if DEBUG
+    [Fact] // regression: a fallback TextBlock's live TextWrapping binding (Source = the presenter) must be torn down
+           // when the presenter rebuilds its child on a content change — else each discarded TextBlock leaks a strong
+           // observer onto the presenter (an unbounded per-change leak on any presenter showing changing string content).
+    public void FallbackChildRebuild_TearsDownDiscardedChildBindings()
+    {
+        var cp = new ContentPresenter { Content = "seed" };
+        using var host = Attach(cp);
+
+        Cursorial.UI.Data.BindingLeakTracker.ResetForTests();
+        for (var i = 0; i < 8; i++)
+        {
+            cp.Content = $"c{i}"; // new string identity ⇒ the fallback TextBlock is rebuilt (a fresh binding installed)
+            host.RunFrame();
+        }
+
+        // Swap to element content so the LAST fallback TextBlock is discarded too. Every rebuilt fallback child's
+        // TextWrapping binding was disposed on discard — none leak onto the presenter.
+        cp.Content = new Border();
+        host.RunFrame();
+
+        Assert.DoesNotContain(Cursorial.UI.Data.BindingLeakTracker.Sweep(), l => l.Path.Contains("TextWrapping"));
+        Cursorial.UI.Data.BindingLeakTracker.ResetForTests();
+    }
+#endif
 }

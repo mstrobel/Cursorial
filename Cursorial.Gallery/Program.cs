@@ -29,12 +29,12 @@ try
     var root = GalleryApp.BuildRoot();
     var vm = root.DataContext as ShellViewModel;
     
-    void OnStyleDebugDiagnosticsDiagnosticEmitted(string c, string m) => vm?.Diagnostics.Add($"[Style] {c}: {m}");
-    void OnControlDiagnosticsDiagnosticRaised(ControlDiagnosticEvent d) => vm?.Diagnostics.Add($"[Control  ] {d.Kind}: {d.Message} " + $"({d.Element?.GetType().Name}" + (d.Element is { Name: { Length: > 0 } n } ? $"#{n})" : ")"));
-    void OnBindingDiagnosticsTraceEmitted(BindingTraceEvent d) => vm?.Diagnostics.Add($"[Binding  ] {d.Level} - {d.Kind}: {d.Message} " + $"(Target={d.TargetDescription}; Path={d.Path})");
-    void OnLayoutDiagnosticsDiagnosticRaised(LayoutDiagnosticEvent d) => vm?.Diagnostics.Add($"[Layout   ] {d.Kind}: {d.Message} ({FormatElement(d.Element)})");
-    void OnAnimationDiagnosticsTrackError(StoryboardTrackError e) => vm?.Diagnostics.Add($"[Animation] {FormatElement(e.Scope)}: {e.Message} " + $"({e.Track.TargetProperty?.Name})");
-    void OnUIDiagnosticsRejectedValue(UIObject t, UIProperty p, object? v) => vm?.Diagnostics.Add($"[Rejected ] {FormatElement(t)}.{p.Name} = {v}");
+    void OnStyleDebugDiagnosticsDiagnosticEmitted(string c, string m) => vm?.AddDiagnostic($"[Style    ] {c}: {m}");
+    void OnControlDiagnosticsDiagnosticRaised(ControlDiagnosticEvent d) => vm?.AddDiagnostic($"[Control  ] {d.Kind}: {d.Message} " + $"({d.Element?.GetType().Name}" + (d.Element is { Name: { Length: > 0 } n } ? $"#{n})" : ")"));
+    void OnBindingDiagnosticsTraceEmitted(BindingTraceEvent d) => vm?.AddDiagnostic($"[Binding  ] {d.Level} - {d.Kind}: {d.Message} " + $"(Target={d.TargetDescription}; Path={d.Path})");
+    void OnLayoutDiagnosticsDiagnosticRaised(LayoutDiagnosticEvent d) => vm?.AddDiagnostic($"[Layout   ] {d.Kind}: {d.Message} ({FormatElement(d.Element)})");
+    void OnAnimationDiagnosticsTrackError(StoryboardTrackError e) => vm?.AddDiagnostic($"[Animation] {FormatElement(e.Scope)}: {e.Message} " + $"({e.Track.TargetProperty?.Name})");
+    void OnUIDiagnosticsRejectedValue(UIObject t, UIProperty p, object? v) => vm?.AddDiagnostic($"[Rejected ] {FormatElement(t)}.{p.Name} = {v}");
 
     StyleDebugDiagnostics.DiagnosticEmitted += OnStyleDebugDiagnosticsDiagnosticEmitted;
     ControlDiagnostics.DiagnosticRaised += OnControlDiagnosticsDiagnosticRaised;

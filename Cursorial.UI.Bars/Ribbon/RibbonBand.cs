@@ -23,6 +23,8 @@ public sealed class RibbonBand : Panel
     {
         KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Once);
         KeyboardNavigation.SetDirectionalNavigation(this, DirectionalNavigationMode.Contained);
+        FocusManager.SetIsFocusScope(this, true);
+        FocusManager.SetRetainsFocus(this, false);
     }
 
     /// <inheritdoc/>

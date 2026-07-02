@@ -152,7 +152,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("Paste", screen);      // a Large bar button in the band
 
         // Click the Insert tab → the band swaps to Insert's group.
-        var insert = AllDescendants<RibbonTab>(root).Single(t => t.Header as string == "_Insert");
+        var insert = AllDescendants<RibbonTab>(root).Single(t => t.Header as string == "Inse_rt");
         var origin = insert.TranslateToScreen(0, 0);
         host.SendClick(origin.Column + 1, origin.Row);
         host.RunUntilIdle();

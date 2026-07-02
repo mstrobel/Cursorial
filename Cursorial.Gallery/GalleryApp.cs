@@ -1,5 +1,7 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Gallery.ViewModels;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
@@ -84,14 +86,14 @@ public static class GalleryApp
     private static BackstageItem Destination(string header, string detail, RibbonViewModel vm)
     {
         var name = header.Replace("_", string.Empty);
-        var title = new TextBlock { Text = name, Margin = new Margins(0, 0, 0, 1) };
-        var body = new TextBlock { Text = detail };
+        var title = new TextBlock { Text = name, Margin = new Margins(0, 0, 0, 1), TextWrapping = WrapMode.WordWrap };
+        var body = new TextBlock { Text = detail, TextWrapping = WrapMode.WordWrap };
         var action = new BarButton
-        {
-            Content = $"◆ {name}",
-            Margin = new Margins(0, 1, 0, 0),
-            Command = new BarCommand(() => vm.ReportBackstage($"{name} invoked — returned to the document.")),
-        };
+                     {
+                         Content = $"◆ {name}",
+                         Margin = new Margins(0, 1, 0, 0),
+                         Command = new BarCommand(() => vm.ReportBackstage($"{name} invoked — returned to the document.")),
+                     };
         var pane = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1, 0) };
         pane.Children.Add(title);
         pane.Children.Add(body);

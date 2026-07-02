@@ -159,6 +159,27 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("History", Screen(host, 24)); // the Insert band's group footer
     }
 
+    [Fact] // the GalleryRibbon self-populates the QAT from the RibbonViewModel, and a described command auto-provisions a SuperTip
+    public void RibbonPage_QuickAccessAndSuperTips_AreWired()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        shell.SelectedPage = shell.Pages.OfType<RibbonViewModel>().Single();
+        host.RunUntilIdle();
+
+        var ribbon = FindDescendant<Ribbon>(root)!;
+        Assert.Equal(3, ribbon.QuickAccessCommands.Count);      // Undo/Redo/Paste populated by GalleryRibbon on DataContext set
+        Assert.True(ribbon.QuickAccessCandidates.Count >= 3);   // the customize ▾ checklist candidates
+
+        // A described command auto-provisioned a SuperTip on its bar control (hover help bound to the command).
+        var paste = AllDescendants<BarButton>(root).First(b => b.Command is BarCommand { Text: "_Paste" });
+        Assert.IsType<SuperTip>(ToolTipService.GetTip(paste));
+    }
+
     [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)
     public void InputsPage_TwoWayBinding_RoundTrips()
     {

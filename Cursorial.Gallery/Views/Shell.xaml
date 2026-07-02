@@ -3,6 +3,7 @@
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
            xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
+           xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
            Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}">
     <DockPanel.InputBindings>
@@ -328,7 +329,9 @@
             </StackPanel>
           </Border>
 
-          <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
+          <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
+               customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
+          <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1">
             <bars:RibbonTab Header="File" IsFileTab="True" />
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
@@ -364,7 +367,7 @@
                 <bars:BarButton Command="{Binding DeleteTable}" />
               </bars:RibbonGroup>
             </bars:RibbonTab>
-          </bars:Ribbon>
+          </gallery:GalleryRibbon>
 
           <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
             <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
@@ -377,6 +380,11 @@
                    File-anchored menu (the gentler default on a terminal). -->
               <CheckBox Content="Full-_screen Backstage (else a File-anchored menu)" Margin="0,1,0,0"
                         IsChecked="{Binding FullScreenBackstage, Mode=TwoWay}" HorizontalAlignment="Center" />
+              <!-- Try: the caption row's QAT (Undo/Redo/Paste) + its customize ▾; the ⌃ pin (top-right) or a
+                   double-click on a tab minimizes the ribbon; hover a command for its SuperTip. -->
+              <TextBlock Text="QAT ▾ customizes · ⌃ pin / double-click a tab minimizes · hover for SuperTips"
+                         Margin="0,1,0,0" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
             </StackPanel>
           </Border>
         </DockPanel>

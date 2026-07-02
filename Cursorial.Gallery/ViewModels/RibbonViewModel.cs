@@ -19,13 +19,19 @@ public sealed class RibbonViewModel : PageViewModel
 
     public RibbonViewModel()
     {
-        Cut = new BarCommand(() => Report("Cut")) { Text = "Cu_t", InputGestureText = "Ctrl+X" };
-        Copy = new BarCommand(() => Report("Copy")) { Text = "_Copy", InputGestureText = "Ctrl+C" };
-        Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", InputGestureText = "Ctrl+V" };
-        Find = new BarCommand(() => Report("Find")) { Text = "_Find", InputGestureText = "Ctrl+F" };
-        Undo = new BarCommand(() => Report("Undo")) { Text = "_Undo", InputGestureText = "Ctrl+Z" };
-        Redo = new BarCommand(() => Report("Redo")) { Text = "_Redo", InputGestureText = "Ctrl+Y" };
-        Settings = new BarCommand(() => Report("Settings")) { Text = "_Settings" };
+        // Descriptions light up SuperTips (rich hover help) — hover a control to see the titled, multi-line tip the
+        // command auto-provisions (title = the command name, the accelerator, and this body).
+        Cut = new BarCommand(() => Report("Cut")) { Text = "Cu_t", InputGestureText = "Ctrl+X", Description = "Cut the selection to the clipboard." };
+        Copy = new BarCommand(() => Report("Copy")) { Text = "_Copy", InputGestureText = "Ctrl+C", Description = "Copy the selection to the clipboard." };
+        Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", InputGestureText = "Ctrl+V", Description = "Paste the clipboard contents at the cursor." };
+        Find = new BarCommand(() => Report("Find")) { Text = "_Find", InputGestureText = "Ctrl+F", Description = "Find text in the document." };
+        Undo = new BarCommand(() => Report("Undo")) { Text = "_Undo", InputGestureText = "Ctrl+Z", Description = "Undo the last action." };
+        Redo = new BarCommand(() => Report("Redo")) { Text = "_Redo", InputGestureText = "Ctrl+Y", Description = "Redo the last undone action." };
+        Settings = new BarCommand(() => Report("Settings")) { Text = "_Settings", Description = "Open application settings." };
+
+        // Quick Access Toolbar (caption row): Undo/Redo/Paste start ON; the customize ▾ checklist toggles the rest.
+        QuickAccessDefaults = [(BarCommand) Undo, (BarCommand) Redo, (BarCommand) Paste];
+        QuickAccessCandidates = [(BarCommand) Cut, (BarCommand) Copy, (BarCommand) Paste, (BarCommand) Find, (BarCommand) Undo, (BarCommand) Redo, (BarCommand) Settings];
 
         BoldState = new CheckableCommandParameter();
         Bold = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Bold")) { Text = "_Bold", IsCheckable = true };
@@ -54,6 +60,12 @@ public sealed class RibbonViewModel : PageViewModel
     public ICommand Undo { get; }
     public ICommand Redo { get; }
     public ICommand Settings { get; }
+
+    /// <summary>Commands that start ON the Quick Access Toolbar (GalleryRibbon populates the ribbon's QuickAccessCommands from this).</summary>
+    public IReadOnlyList<BarCommand> QuickAccessDefaults { get; }
+
+    /// <summary>The full candidate set the QAT customize ▾ checklist offers (a superset of the defaults).</summary>
+    public IReadOnlyList<BarCommand> QuickAccessCandidates { get; }
     public ICommand Options { get; }
 
     public ICommand Bold { get; }

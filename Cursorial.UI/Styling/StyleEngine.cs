@@ -1502,6 +1502,9 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (graphics.Sixel || graphics.KittyGraphics || graphics.ITerm2InlineImages)
             replacement.Add("caps-images");
 
+        if (graphics.Sixel || graphics.KittyGraphics)
+            replacement.Add("caps-image-clipping");
+
         if (graphics.KittyGraphics)
             replacement.Add("caps-image-occlusion");
 

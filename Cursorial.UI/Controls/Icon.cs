@@ -1,6 +1,6 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Markup;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
@@ -123,7 +123,7 @@ public class Icon : Control
         if (nerdFont && !string.IsNullOrEmpty(Glyph))
         {
             Tier = IconTier.Glyph;
-            var text = new TextBlock();
+            var text = new TextBlock { TextAlignment = TextAlignment.Center };
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
             text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
             ResolvedContent = text;

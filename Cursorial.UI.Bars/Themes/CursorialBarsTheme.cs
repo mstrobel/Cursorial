@@ -49,7 +49,9 @@ internal static class CursorialBarsTheme
         // Hidden until :size-large; a collapsed face contributes nothing so Medium is unaffected.
         var largeGlyph = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
         largeGlyph.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
-        largeGlyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.Accent2Brush);
+        // TODO: Revisit large glyph color; currently it clashes horribly with the :focus-visible background.
+        // largeGlyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.Accent2Brush);
+        largeGlyph.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
 
         var largeLabel = new ContentPresenter { RecognizesAccessKey = true, HorizontalAlignment = HorizontalAlignment.Center };
         largeLabel.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -705,5 +707,98 @@ internal static class CursorialBarsTheme
 
         return new Style { Key = "Bars.RibbonGroup" }
             .Set(Control.TemplateProperty, template);
+    }
+
+    // ───────────────────────────── Backstage (the File view) ─────────────────────────────
+
+    // The Backstage frame: a left RAIL (a ◂ back button over the vertical destinations host, on the --panel recess)
+    // beside a detail PANE that swaps to the selected destination's Content (the --surface fill). It re-skins the
+    // inherited TabControl strip/content-host split — PART_ItemsHost is the rail's ItemsPresenter (a VERTICAL stack;
+    // the Backstage's ItemsPanel), PART_ContentHost shows the selected BackstageItem's Content, exactly as a
+    // TabControl hosts the selected tab's content. Both surfaces occlude (a full-window Window or a File-anchored
+    // Popup hosts the Backstage — the cells beneath must not bleed through).
+    public static Style BackstageStyle()
+    {
+        var template = new ControlTemplate(ctx =>
+        {
+            // The rail: a ◂ back button docked at the top over the destinations list. PART_BackButton is wired to
+            // BackRequested in Backstage.OnApplyTemplate (the ◂ / Escape twin).
+            var back = new BarButton { Content = "◂" };
+            ctx.RegisterName("PART_BackButton", back);
+            DockPanel.SetDock(back, Dock.Top);
+
+            var rail = new ItemsPresenter();
+            ctx.RegisterName("PART_ItemsHost", rail);
+
+            var railStack = new DockPanel { LastChildFill = true };
+            railStack.Children.Add(back); // docked top
+            railStack.Children.Add(rail); // fills the rest of the rail column
+
+            var railBorder = new Border { Child = railStack, Occludes = true };
+            railBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBrush);
+            DockPanel.SetDock(railBorder, Dock.Left);
+
+            // The detail pane: the selected destination's Content (the rail persists across a swap).
+            var detail = new ContentPresenter { Margin = new Margins(1, 0) };
+            ctx.RegisterName("PART_ContentHost", detail);
+            detail.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
+            detail.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+            detail.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+            var detailBorder = new Border { Child = detail, Occludes = true };
+            detailBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
+
+            var root = new DockPanel { LastChildFill = true };
+            root.Children.Add(railBorder);   // docked left
+            root.Children.Add(detailBorder); // fills the remaining width
+
+            // Menu display mode (:backstage-menu) compaction: a File-anchored menu is light-dismissed (Escape /
+            // click-away), so the ◂ back button is redundant chrome — collapse it (FullScreen keeps it; a maximized
+            // surface has no ambient dismiss affordance). Part-targeting rules live in the template's own styles under
+            // a type-anchored wrapper (the RibbonGroup / TabItem precedent — a bare ^/Template().Name() rule with no
+            // type context does not match).
+            root.Styles.Add(new Style(Selectors.Is<Backstage>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().PseudoClass(":backstage-menu").Template().Name("PART_BackButton"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                },
+            });
+            return root;
+        });
+
+        return new Style { Key = "Bars.Backstage" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SurfaceBrush)
+            .Set(Control.TemplateProperty, template);
+    }
+
+    // A Backstage rail row (: TabItem): a header-only row over the interactive fills, mirroring the ComboBoxItem /
+    // ListBoxItem state ladder (resting --text, :pointerover --hover, :selected --sel, keyboard focus = reverse-video
+    // :focus-visible, :disabled --muted ink). Its Header is the rail label (access-key folded); its Content is the
+    // detail pane, shown in the Backstage's PART_ContentHost when selected — so the row's own template renders only
+    // the Header (single-hosting, like a TabItem).
+    public static Style BackstageItemStyle()
+    {
+        var theme = new Style { Key = "Bars.BackstageItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var header = new ContentPresenter { RecognizesAccessKey = true };
+                ctx.RegisterName("PART_ContentPresenter", header);
+                header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+                header.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                var border = new Border { Child = header };
+                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                return border;
+            }));
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
+        theme.Children.Add(new Style("^:focus-visible")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        return theme;
     }
 }

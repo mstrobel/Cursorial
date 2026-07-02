@@ -373,6 +373,10 @@
               <!-- Toggle the contextual tab: check to select a "table" (the purple Table tab appears), uncheck to hide it. -->
               <CheckBox Content="_Table selected (show the contextual Table tab)" Margin="0,1,0,0"
                         IsChecked="{Binding TableSelected, Mode=TwoWay}" HorizontalAlignment="Center" />
+              <!-- The File tab opens Backstage: checked = a full-screen modal takeover; unchecked = a compact
+                   File-anchored menu (the gentler default on a terminal). -->
+              <CheckBox Content="Full-_screen Backstage (else a File-anchored menu)" Margin="0,1,0,0"
+                        IsChecked="{Binding FullScreenBackstage, Mode=TwoWay}" HorizontalAlignment="Center" />
             </StackPanel>
           </Border>
         </DockPanel>

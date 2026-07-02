@@ -15,6 +15,7 @@ public sealed class RibbonViewModel : PageViewModel
 {
     private string _status = "Ready — invoke a command, switch tabs, or press Alt for access keys.";
     private bool _tableSelected;
+    private bool _fullScreenBackstage;
 
     public RibbonViewModel()
     {
@@ -82,16 +83,28 @@ public sealed class RibbonViewModel : PageViewModel
     /// <summary>The contextual Table tab's visibility (bound in XAML; a contextual tab is hidden when not relevant).</summary>
     public Visibility TableToolsVisibility => _tableSelected ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>Whether the File tab opens Backstage full-screen (a maximized modal Window) or as a compact
+    /// File-anchored menu (a light-dismiss Popup). Two-way from the body CheckBox — the user's stated worry is that
+    /// full-screen overwhelms a terminal, so the menu form is the default and this reveals the full-screen form.</summary>
+    public bool FullScreenBackstage
+    {
+        get => _fullScreenBackstage;
+        set => Set(ref _fullScreenBackstage, value);
+    }
+
+    /// <summary>The <see cref="BackstageDisplayMode"/> the gallery opens Backstage in (from <see cref="FullScreenBackstage"/>).</summary>
+    public BackstageDisplayMode BackstageMode => _fullScreenBackstage ? BackstageDisplayMode.FullScreen : BackstageDisplayMode.Menu;
+
     private void Toggle(CheckableCommandParameter state, string label)
     {
         state.Toggle();
         Report($"{label} {(state.IsChecked ? "on" : "off")}");
     }
 
-    /// <summary>The File tab was activated (click / Enter / Alt+F) — Backstage is the P3e full-window File view (not
-    /// built yet), so the gallery just echoes that File is a reachable, activatable command tab.</summary>
-    public void NotifyBackstageRequested() =>
-        Status = "File → Backstage requested (the full-window File view lands in Ribbon P3e).";
+    /// <summary>Echoes a Backstage event (open / destination selected / closed) into the page status. The gallery view
+    /// (<c>GalleryApp</c>) builds + hosts the real <see cref="Backstage"/> on the File tab's <c>BackstageRequested</c>;
+    /// the VM only reports (MVVM — the control tree is the view's, not the view-model's).</summary>
+    public void ReportBackstage(string what) => Status = what;
 
     private void Report(string what) => Status = $"{what} invoked.";
 }

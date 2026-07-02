@@ -1,4 +1,5 @@
 using Cursorial.Gallery.ViewModels;
+using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
@@ -28,12 +29,65 @@ public static class GalleryApp
 
         root.DataContext = vm;
 
-        // The Ribbon's File tab raises BackstageRequested (bubbling) on activation — Backstage is a later phase, so
-        // the gallery just echoes it into the Ribbon page's status so File reads as a real, activatable command tab.
-        root.AddHandler(Ribbon.BackstageRequestedEvent,
-            (_, _) => (vm.SelectedPage as RibbonViewModel)?.NotifyBackstageRequested());
+        // The Ribbon's File tab raises BackstageRequested (bubbling) on activation — the gallery builds + hosts a real
+        // Backstage (BackstageHost picks a full-screen Window or a File-anchored menu Popup per the page's DisplayMode
+        // toggle). `opening` (a captured guard) drops a re-entrant File tap while a Backstage is already up.
+        var opening = false;
+        root.AddHandler(Ribbon.BackstageRequestedEvent, async (_, e) =>
+        {
+            if (opening || vm.SelectedPage is not RibbonViewModel ribbonVm || e.Source is not { } anchor)
+                return;
+
+            opening = true;
+            try
+            {
+                var backstage = BuildBackstage(ribbonVm);
+                ribbonVm.ReportBackstage("File → Backstage opened (◂ or Esc to return).");
+                await BackstageHost.ShowAsync(backstage, anchor);
+                ribbonVm.ReportBackstage("Backstage closed — back to the document.");
+            }
+            finally
+            {
+                opening = false;
+            }
+        });
 
         return root;
+    }
+
+    // Builds the gallery's Backstage: a rail of File destinations (each a titled detail pane) in the mode the page's
+    // toggle chose. Selection reports into the page status so the live navigation is visible.
+    private static Backstage BuildBackstage(RibbonViewModel vm)
+    {
+        var backstage = new Backstage { DisplayMode = vm.BackstageMode };
+        backstage.Items.Add(Destination("_New", "Start a new, empty document."));
+        backstage.Items.Add(Destination("_Open", "Open an existing document from disk."));
+        backstage.Items.Add(Destination("_Save", "Save the current document."));
+        backstage.Items.Add(Destination("Save _As", "Save the document under a new name."));
+        backstage.Items.Add(Destination("_Export", "Export the document to another format."));
+        backstage.Items.Add(Destination("_Print", "Print the document."));
+        backstage.Items.Add(new BackstageItem { Header = "──────", IsSelectable = false }); // a non-selectable rule
+        backstage.Items.Add(Destination("_Account", "Your account, sign-in, and connected services."));
+        backstage.Items.Add(Destination("_Options", "Application options and preferences."));
+
+        backstage.SelectionChanged += (_, _) =>
+        {
+            if (backstage.SelectedItem is BackstageItem { Header: string header })
+                vm.ReportBackstage($"Backstage → {header.Replace("_", string.Empty)}");
+        };
+        return backstage;
+    }
+
+    // One rail destination: the Header is the rail label (access-key folded); the Content is the detail pane shown
+    // when it is selected (a title over a description).
+    private static BackstageItem Destination(string header, string detail)
+    {
+        var title = new TextBlock { Text = header.Replace("_", string.Empty), Margin = new Margins(0, 0, 0, 1) };
+        var body = new TextBlock { Text = detail };
+        var pane = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1, 0) };
+        pane.Children.Add(title);
+        pane.Children.Add(body);
+        return new BackstageItem { Header = header, Content = pane };
     }
 
     /// <summary>Registers the gallery assembly with the XAML schema context once, so <c>using:Cursorial.Gallery.ViewModels</c>

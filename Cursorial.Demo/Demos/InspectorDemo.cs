@@ -44,6 +44,7 @@ internal sealed class InspectorDemo : IDemo
 
         var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
         // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
+        app.NerdFontAvailable = true;
         var controller = new Controller(app);
 
         app.Started += (_, _) => controller.OpenDialog();
@@ -157,6 +158,67 @@ internal sealed class InspectorDemo : IDemo
                              </StackPanel>
                            </Grid>
                            
+                           </DockPanel>
+                           """),
+        ("Ribbon demo", """
+                           <DockPanel xmlns="https://cursorial.dev/ui"
+                                      xmlns:x="https://cursorial.dev/xaml"
+                                      xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
+                                      LastChildFill="True">
+                             <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+                               <StackPanel Orientation="Vertical">
+                                 <TextBlock Text="{Binding Title}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+                                 <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                               </StackPanel>
+                             </Border>
+                           
+                             <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
+                               <bars:RibbonTab Header="File" IsFileTab="True" />
+                               <bars:RibbonTab Header="_Home">
+                                 <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
+                                   <bars:BarButton Command="{Binding Paste}" ToolTipService.Tip="Paste" Icon="{Icon Glyph='&#xf0ea;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Cut}" ToolTipService.Tip="Cut" Icon="{Icon Glyph='&#xf0c4;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Copy}" ToolTipService.Tip="Copy" Icon="{Icon Glyph='&#xf0c5;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                 </bars:RibbonGroup>
+                                 <bars:RibbonGroup Header="Font">
+                                   <bars:BarToggleButton Content="Bold" CommandParameter="{Binding BoldState}" />
+                                   <bars:BarToggleButton Content="Italic" CommandParameter="{Binding ItalicState}" />
+                                 </bars:RibbonGroup>
+                                 <bars:RibbonGroup Header="Editing">
+                                   <bars:BarButton Content="Find" bars:Ribbon.ButtonSize="Large" />
+                                 </bars:RibbonGroup>
+                               </bars:RibbonTab>
+                               <bars:RibbonTab Header="_Insert">
+                                 <bars:RibbonGroup Header="History">
+                                   <bars:BarButton Content="Undo" />
+                                   <bars:BarButton Content="Redo" />
+                                   <bars:BarButton Content="Settings" />
+                                 </bars:RibbonGroup>
+                               </bars:RibbonTab>
+                           
+                               <!-- P3a: a CONTEXTUAL tab — purple-tinted, shown only when a "table" is selected. Its Visibility binds to
+                                    the VM; when it's the active tab and hides, the Ribbon falls back to the first content tab (no blank band). -->
+                               <bars:RibbonTab Header="Table" IsContextual="True"
+                                               Visibility="{Binding TableToolsVisibility}">
+                                 <bars:RibbonGroup Header="Cells">
+                                   <bars:BarButton Content="MergeCells" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Content="SplitCells" />
+                                 </bars:RibbonGroup>
+                                 <bars:RibbonGroup Header="Table">
+                                   <bars:BarButton Content="DeleteTable" />
+                                 </bars:RibbonGroup>
+                               </bars:RibbonTab>
+                             </bars:Ribbon>
+                           
+                             <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
+                               <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                 <TextBlock Text="{Binding Status}" HorizontalAlignment="Center"
+                                            Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                                 <!-- Toggle the contextual tab: check to select a "table" (the purple Table tab appears), uncheck to hide it. -->
+                                 <CheckBox Content="_Table selected (show the contextual Table tab)" Margin="0,1,0,0"
+                                           IsChecked="{Binding TableSelected, Mode=TwoWay}" HorizontalAlignment="Center" />
+                               </StackPanel>
+                             </Border>
                            </DockPanel>
                            """),
         ("Settings panel", """

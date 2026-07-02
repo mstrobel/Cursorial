@@ -53,17 +53,39 @@ public class BarButton : ButtonBase
 /// clobbering an explicit author/style value (which it never recorded as its own).</summary>
 internal sealed class BarCommandSync
 {
-    private bool _filledContent, _filledIcon, _filledGesture;
+    private bool _filledContent, _filledIcon, _filledGesture, _filledTip;
 
-    /// <summary>Reconciles Content/Icon/InputGestureText against <paramref name="command"/>'s display metadata. A
-    /// non-<see cref="BarCommand"/> <see cref="ICommand"/> (or <see langword="null"/>) supplies nothing, so any value
-    /// this helper previously filled is cleared.</summary>
+    /// <summary>Reconciles Content/Icon/InputGestureText (and a SuperTip) against <paramref name="command"/>'s display
+    /// metadata. A non-<see cref="BarCommand"/> <see cref="ICommand"/> (or <see langword="null"/>) supplies nothing, so
+    /// any value this helper previously filled is cleared.</summary>
     public void AutoFill(ContentControl control, ICommand? command, StyledProperty<object?> iconProperty, StyledProperty<string?> gestureProperty)
     {
         var bar = command as BarCommand;
         Apply(control, ContentControl.ContentProperty, (object?) bar?.Text, ref _filledContent);
         Apply(control, iconProperty, bar?.Icon, ref _filledIcon);
         Apply(control, gestureProperty, bar?.InputGestureText, ref _filledGesture);
+        ApplyTip(control, bar);
+    }
+
+    // A BarCommand with a Description auto-provisions a SuperTip (rich hover help, identical wherever the command
+    // appears). Only when the control has no explicit tip the author set; our own prior auto-tip is refreshed/cleared
+    // on a command change. Uses the attached ToolTipService.Tip (not a StyledProperty, so it can't route through Apply).
+    private void ApplyTip(ContentControl control, BarCommand? bar)
+    {
+        var existing = ToolTipService.GetTip(control);
+        if (existing is not null && !_filledTip)
+            return; // an explicit tip the author/style set — it wins
+
+        if (bar?.Description is not null)
+        {
+            ToolTipService.SetTip(control, SuperTip.FromCommand(bar));
+            _filledTip = true;
+        }
+        else if (_filledTip)
+        {
+            ToolTipService.SetTip(control, null); // our stale auto-tip — the new command has no rich help
+            _filledTip = false;
+        }
     }
 
     // Fill from the command when the control carries no explicit author/style value; refresh our OWN prior fill on a

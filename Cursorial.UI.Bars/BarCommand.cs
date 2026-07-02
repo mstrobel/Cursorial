@@ -43,6 +43,11 @@ public class BarCommand : ICommand
     /// <summary>Whether the command is a toggle (a checkable bar control reflects its checked state).</summary>
     public bool IsCheckable { get; init; }
 
+    /// <summary>Rich hover-help body (the guide's SuperTip description). When set, a bound bar control auto-provisions
+    /// a <see cref="SuperTip"/> (title = <see cref="Text"/>, shortcut = <see cref="InputGestureText"/>, body = this) as
+    /// its tooltip — identical wherever the command appears. Null ⇒ no SuperTip (a plain one-line tip, if any, stands).</summary>
+    public object? Description { get; init; }
+
     /// <inheritdoc/>
     public event EventHandler? CanExecuteChanged;
 

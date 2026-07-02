@@ -881,4 +881,43 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
         return theme;
     }
+
+    // ───────────────────────────── SuperTip (rich hover help) ─────────────────────────────
+
+    // The SuperTip layout (shown inside the shared ToolTip popup, which supplies the elevation chrome): a header row
+    // [bold Title … muted accelerator], a muted Description block, and a faint Footer. Empty fields (null Text/Content)
+    // render nothing, so a title-only SuperTip collapses to one line.
+    public static Style SuperTipStyle()
+        => new Style { Key = "Bars.SuperTip" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+            {
+                var title = new TextBlock();
+                title.SetValue(TextElement.TextAttributesProperty, TextAttributes.Bold);
+                title.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.TitleProperty));
+                title.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+
+                var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
+                gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.InputGestureTextProperty));
+                gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+                DockPanel.SetDock(gesture, Dock.Right);
+
+                var header = new DockPanel();
+                header.Children.Add(gesture); // Dock.Right — the accelerator
+                header.Children.Add(title);   // fills — the command name
+
+                var description = new ContentPresenter();
+                description.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.DescriptionProperty));
+                description.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+
+                var footer = new ContentPresenter { Margin = new Margins(0, 1, 0, 0) };
+                footer.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.FooterProperty));
+                footer.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.FaintBrush);
+
+                var stack = new StackPanel { Orientation = Orientation.Vertical };
+                stack.Children.Add(header);
+                stack.Children.Add(description);
+                stack.Children.Add(footer);
+                return stack;
+            }));
 }

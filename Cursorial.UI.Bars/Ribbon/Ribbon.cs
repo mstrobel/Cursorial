@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 using Cursorial.Input;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -26,7 +28,42 @@ public class Ribbon : TabControl
     public static readonly RoutedEvent<RoutedEventArgs> BackstageRequestedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(BackstageRequested), RoutingStrategy.Bubble, typeof(Ribbon));
 
+    /// <summary>Where the Quick Access Toolbar sits — the caption row above the strip (default) or a band below the
+    /// ribbon body. Stamps <c>:qat-below</c> so the template flips which QAT host is shown.</summary>
+    public static readonly StyledProperty<RibbonQuickAccessPlacement> QuickAccessPlacementProperty =
+        UIProperty.Register<Ribbon, RibbonQuickAccessPlacement>(
+            nameof(QuickAccessPlacement), RibbonQuickAccessPlacement.AboveRibbon, changed: OnQuickAccessPlacementChanged);
+
+    /// <summary>Raised (bubbling) when the QAT customize dropdown's "More Commands…" row is invoked — the app opens its
+    /// full options dialog (the ribbon supplies none itself). Mirrors <see cref="BackstageRequestedEvent"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> QuickAccessMoreCommandsRequestedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(QuickAccessMoreCommandsRequested), RoutingStrategy.Bubble, typeof(Ribbon));
+
+    private const string PartQuickAccessAbove = "PART_QuickAccessAbove";
+    private const string PartQuickAccessBelow = "PART_QuickAccessBelow";
+    private const string PartQatCustomize = "PART_QatCustomize";
+    private const string PartQatPopup = "PART_QatPopup";
+    private const string PartQatChecklistHost = "PART_QatChecklistHost";
+
+    private readonly ObservableCollection<BarCommand> _quickAccessCommands = [];
+    private readonly ObservableCollection<BarCommand> _quickAccessCandidates = [];
+    private readonly QuickAccessGenerator _qatGenerator;
+
+    private Toolbar? _qatAbove;
+    private Toolbar? _qatBelow;
+    private ButtonBase? _qatCustomize;
+    private Popup? _qatPopup;
+    private Panel? _qatChecklistHost;
+
     private bool _redirectingSelection;
+
+    // Test hooks (Cursorial.UI.Bars.Tests has InternalsVisibleTo): the active QAT toolbar host, the customize opener,
+    // its checklist popup + host.
+    internal Toolbar? ActiveQuickAccessToolbarForTests
+        => QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon ? _qatBelow : _qatAbove;
+    internal ButtonBase? QatCustomizeForTests => _qatCustomize;
+    internal Popup? QatPopupForTests => _qatPopup;
+    internal Panel? QatChecklistForTests => _qatChecklistHost;
 
     static Ribbon()
     {
@@ -48,6 +85,12 @@ public class Ribbon : TabControl
         // Inherited, so a change on a group fans out to every hosted control; a local per-control set stamps the same.
         PseudoClassMapping.Register<UIElement, RibbonButtonSize>(
             ButtonSizeProperty, ClassifySize, ":size-large", ":size-small");
+
+        // :qat-below flips which QAT host the template shows (AboveRibbon ⇒ no class); the generator re-points to the
+        // now-visible toolbar in OnQuickAccessPlacementChanged.
+        PseudoClassMapping.Register<Ribbon, RibbonQuickAccessPlacement>(
+            QuickAccessPlacementProperty,
+            static p => p == RibbonQuickAccessPlacement.BelowRibbon ? ":qat-below" : null);
     }
 
     private static string? ClassifySize(RibbonButtonSize size) => size switch
@@ -58,13 +101,45 @@ public class Ribbon : TabControl
     };
 
     /// <summary>Creates a ribbon.</summary>
-    public Ribbon() => SelectionChanged += OnRibbonSelectionChanged;
+    public Ribbon()
+    {
+        SelectionChanged += OnRibbonSelectionChanged;
+        _qatGenerator = new QuickAccessGenerator(_quickAccessCommands);
+
+        // :has-qat gates the caption row's visibility — a ribbon that never populates the QAT renders exactly as before
+        // (no caption row). Stamped from EITHER collection being non-empty (a candidate-only ribbon still shows the
+        // customize ▾). The generator owns the commands→toolbar sync; this only drives the caption's presence.
+        _quickAccessCommands.CollectionChanged += (_, _) => UpdateHasQat();
+        _quickAccessCandidates.CollectionChanged += (_, _) => UpdateHasQat();
+    }
 
     /// <inheritdoc cref="BackstageRequestedEvent"/>
     public event EventHandler<RoutedEventArgs>? BackstageRequested
     {
         add => AddHandler(BackstageRequestedEvent, value!);
         remove => RemoveHandler(BackstageRequestedEvent, value!);
+    }
+
+    /// <inheritdoc cref="QuickAccessMoreCommandsRequestedEvent"/>
+    public event EventHandler<RoutedEventArgs>? QuickAccessMoreCommandsRequested
+    {
+        add => AddHandler(QuickAccessMoreCommandsRequestedEvent, value!);
+        remove => RemoveHandler(QuickAccessMoreCommandsRequestedEvent, value!);
+    }
+
+    /// <summary>The ordered set of commands ON the Quick Access Toolbar — the SAME <see cref="BarCommand"/>s the ribbon
+    /// groups bind (define-once). Add/remove reflects live into the QAT (via the generator).</summary>
+    public ObservableCollection<BarCommand> QuickAccessCommands => _quickAccessCommands;
+
+    /// <summary>The full candidate list the customize checklist enumerates (a superset of <see cref="QuickAccessCommands"/>
+    /// — a candidate that is off the QAT still appears, unchecked). Populate it to drive the "customize" dropdown.</summary>
+    public ObservableCollection<BarCommand> QuickAccessCandidates => _quickAccessCandidates;
+
+    /// <inheritdoc cref="QuickAccessPlacementProperty"/>
+    public RibbonQuickAccessPlacement QuickAccessPlacement
+    {
+        get => GetValue(QuickAccessPlacementProperty);
+        set => SetValue(QuickAccessPlacementProperty, value);
     }
 
     /// <summary>Reads the ribbon size tier attached to <paramref name="element"/>.</summary>
@@ -91,6 +166,118 @@ public class Ribbon : TabControl
         // control. Only when UNHANDLED: an open dropdown / a deeper handler consumes Escape first.
         if (!e.Handled && e.Key == Key.Escape && UIApplication.Current?.FocusManager is { } focus && focus.RestoreRetainedFocus(this))
             e.Handled = true;
+    }
+
+    /// <inheritdoc/>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _qatAbove = GetTemplatePart<Toolbar>(PartQuickAccessAbove);
+        _qatBelow = GetTemplatePart<Toolbar>(PartQuickAccessBelow);
+
+        if (_qatCustomize is not null)
+            _qatCustomize.Click -= OnQatCustomizeClick;
+        _qatCustomize = GetTemplatePart<ButtonBase>(PartQatCustomize);
+        if (_qatCustomize is not null)
+            _qatCustomize.Click += OnQatCustomizeClick;
+
+        if (_qatPopup is not null)
+            _qatPopup.Opened -= OnQatPopupOpened;
+        _qatPopup = GetTemplatePart<Popup>(PartQatPopup);
+        if (_qatPopup is not null)
+            _qatPopup.Opened += OnQatPopupOpened;
+
+        _qatChecklistHost = GetTemplatePart<Panel>(PartQatChecklistHost);
+
+        UpdateQatHost(); // point the generator at the placement-appropriate QAT toolbar (catch-up + re-template safe)
+    }
+
+    /// <inheritdoc/>
+    protected override void OnTemplateDetaching(TemplateInstance old)
+    {
+        if (_qatCustomize is not null)
+            _qatCustomize.Click -= OnQatCustomizeClick;
+        if (_qatPopup is not null)
+            _qatPopup.Opened -= OnQatPopupOpened;
+        _qatGenerator.SetHost(null); // release the generated controls from the torn-down toolbar
+        _qatAbove = null;
+        _qatBelow = null;
+        _qatCustomize = null;
+        _qatPopup = null;
+        _qatChecklistHost = null;
+        base.OnTemplateDetaching(old);
+    }
+
+    // Points the generator at whichever QAT toolbar the current placement shows (the :qat-below template rule flips
+    // their Visibility; the generator fills the visible one).
+    private void UpdateQatHost()
+        => _qatGenerator.SetHost(QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon ? _qatBelow : _qatAbove);
+
+    private void OnQatCustomizeClick(object? sender, ClickEventArgs e)
+    {
+        if (_qatPopup is not null)
+            _qatPopup.IsOpen = !_qatPopup.IsOpen; // the customize ▾ toggles its own checklist popup
+        e.Handled = true;
+    }
+
+    // The checklist is rebuilt on each open so late-added candidates appear and every row's checked state is fresh
+    // from current membership (a raw Popup stays open across inside toggles — light-dismiss closes only on an outside
+    // press — so a checklist is the right fit here, unlike a BarDropDownButton whose item-click closes the dropdown).
+    private void UpdateHasQat()
+        => PseudoClasses.Set(":has-qat", _quickAccessCommands.Count > 0 || _quickAccessCandidates.Count > 0);
+
+    private void OnQatPopupOpened(object? sender, EventArgs e) => RebuildChecklist();
+
+    private void RebuildChecklist()
+    {
+        if (_qatChecklistHost is null)
+            return;
+
+        _qatChecklistHost.Children.Clear();
+        foreach (var candidate in _quickAccessCandidates)
+        {
+            var command = candidate; // capture per row
+            var row = new CheckBox { Content = command.Text ?? string.Empty, IsChecked = _quickAccessCommands.Contains(command) };
+            row.Click += (_, _) => ToggleMembership(command, row.IsChecked == true);
+            _qatChecklistHost.Children.Add(row);
+        }
+
+        _qatChecklistHost.Children.Add(new BarSeparator());
+
+        var more = new BarButton { Content = "More Commands…" };
+        more.Click += (_, _) =>
+        {
+            _qatPopup?.Close();
+            RaiseEvent(new RoutedEventArgs(QuickAccessMoreCommandsRequestedEvent, this));
+        };
+        _qatChecklistHost.Children.Add(more);
+
+        var below = new CheckBox
+        {
+            Content = "Show Below the Ribbon",
+            IsChecked = QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon,
+        };
+        below.Click += (_, _) => QuickAccessPlacement =
+            below.IsChecked == true ? RibbonQuickAccessPlacement.BelowRibbon : RibbonQuickAccessPlacement.AboveRibbon;
+        _qatChecklistHost.Children.Add(below);
+    }
+
+    // Add/remove a candidate from the QAT (the generator reflects it live). Gated on the actual membership state so a
+    // programmatic IsChecked sync (which does not raise Click) never double-inserts.
+    private void ToggleMembership(BarCommand command, bool wanted)
+    {
+        var has = _quickAccessCommands.Contains(command);
+        if (wanted && !has)
+            _quickAccessCommands.Add(command);
+        else if (!wanted && has)
+            _quickAccessCommands.Remove(command);
+    }
+
+    private static void OnQuickAccessPlacementChanged(UIObject sender, RibbonQuickAccessPlacement oldValue, RibbonQuickAccessPlacement newValue)
+    {
+        if (sender is Ribbon ribbon)
+            ribbon.UpdateQatHost(); // move the generated controls to the now-visible host
     }
 
     /// <inheritdoc/>

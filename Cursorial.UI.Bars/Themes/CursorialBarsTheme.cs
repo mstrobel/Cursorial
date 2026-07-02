@@ -528,29 +528,93 @@ internal static class CursorialBarsTheme
     // re-skins the inherited TabControl strip/content-host split — the selected RibbonTab's Content (its groups band)
     // shows in PART_ContentHost, exactly as a TabControl hosts the selected tab's content.
     public static Style RibbonStyle()
-        => new Style { Key = "Bars.Ribbon" }
-            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+    {
+        var template = new ControlTemplate(ctx =>
+        {
+            // ── Caption row (above the strip): the Quick Access Toolbar + a customize ▾. Collapsed unless the ribbon
+            // actually uses the QAT (:has-qat) — a ribbon with no quick-access commands renders exactly as before. ──
+            var qatAbove = new Toolbar();
+            ctx.RegisterName("PART_QuickAccessAbove", qatAbove);
+            DockPanel.SetDock(qatAbove, Dock.Left);
+
+            var customize = new BarButton { Content = "▾" };
+            ctx.RegisterName("PART_QatCustomize", customize);
+            DockPanel.SetDock(customize, Dock.Right);
+
+            var checklistHost = new StackPanel { Orientation = Orientation.Vertical };
+            ctx.RegisterName("PART_QatChecklistHost", checklistHost);
+            var checklistBorder = new Border { Child = checklistHost };
+            checklistBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+            checklistBorder.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+            var qatPopup = new Popup { Child = checklistBorder, PlacementTarget = customize, Placement = PlacementMode.Bottom };
+            ctx.RegisterName("PART_QatPopup", qatPopup);
+
+            var captionInner = new DockPanel { LastChildFill = false };
+            captionInner.Children.Add(qatAbove);  // Dock.Left — the QAT commands
+            captionInner.Children.Add(customize);  // Dock.Right — the customize ▾
+            captionInner.Children.Add(qatPopup);   // logical-only (0 size in the caption layout)
+            var caption = new Border { Child = captionInner, Occludes = true };
+            caption.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
+            ctx.RegisterName("PART_QatCaption", caption);
+            DockPanel.SetDock(caption, Dock.Top);
+
+            // ── Tab strip ──
+            var itemsHost = new ItemsPresenter();
+            ctx.RegisterName("PART_ItemsHost", itemsHost);
+            var strip = new Border { Child = itemsHost, Occludes = true };
+            strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
+            DockPanel.SetDock(strip, Dock.Top);
+
+            // ── Below-ribbon QAT band (shown only when :qat-below) ──
+            var qatBelow = new Toolbar();
+            ctx.RegisterName("PART_QuickAccessBelow", qatBelow);
+            var belowBand = new Border { Child = qatBelow, Occludes = true };
+            belowBand.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
+            ctx.RegisterName("PART_QatBelowBand", belowBand);
+            DockPanel.SetDock(belowBand, Dock.Bottom);
+
+            // ── Body (the selected tab's band) ──
+            var content = new ContentPresenter();
+            ctx.RegisterName("PART_ContentHost", content);
+            content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+            content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+            var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
+            body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
+            DockPanel.SetDock(body, Dock.Bottom);
+
+            var panel = new DockPanel();
+            panel.Children.Add(caption);   // Dock.Top — topmost
+            panel.Children.Add(strip);     // Dock.Top — below caption
+            panel.Children.Add(belowBand); // Dock.Bottom — bottommost (below the body)
+            panel.Children.Add(body);      // Dock.Bottom — above belowBand, below strip
+
+            // Part-targeting rules live in the template's own styles under a type-anchored wrapper (the RibbonTabStyle
+            // precedent). The caption/below-band defaults are Collapsed via a plain rule; a :has-qat / :qat-below
+            // compound rule (higher classLike specificity) flips it Visible — NOT a local Visibility set, which
+            // (LocalValue lane) would out-rank and defeat these Style rules.
+            panel.Styles.Add(new Style(Selectors.OfType<Ribbon>())
             {
-                var itemsHost = new ItemsPresenter();
-                ctx.RegisterName("PART_ItemsHost", itemsHost);
-                var strip = new Border { Child = itemsHost, Occludes = true };
-                strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
-                DockPanel.SetDock(strip, Dock.Top);
+                Children =
+                {
+                    new Style(Selectors.Nesting().Template().Name("PART_QatCaption"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":has-qat").Template().Name("PART_QatCaption"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    new Style(Selectors.Nesting().Template().Name("PART_QatBelowBand"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":has-qat").PseudoClass(":qat-below").Template().Name("PART_QatBelowBand"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    new Style(Selectors.Nesting().PseudoClass(":qat-below").Template().Name("PART_QuickAccessAbove"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                },
+            });
+            return panel;
+        });
 
-                var content = new ContentPresenter();
-                ctx.RegisterName("PART_ContentHost", content);
-                content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
-                content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
-                content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
-                var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
-                body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
-                DockPanel.SetDock(body, Dock.Bottom);
-
-                var panel = new DockPanel();
-                panel.Children.Add(strip);
-                panel.Children.Add(body);
-                return panel;
-            }));
+        return new Style { Key = "Bars.Ribbon" }
+            .Set(Control.TemplateProperty, template);
+    }
 
     // A ribbon tab (: TabItem): the strip label + the inherited accent underline. Inactive = --text-dim; the active
     // tab drops to --tab-active + --text; the File tab is accent-filled. RibbonTab reuses TabItem.OnApplyTemplate to

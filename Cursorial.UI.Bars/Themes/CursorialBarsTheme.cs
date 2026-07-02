@@ -43,7 +43,8 @@ internal static class CursorialBarsTheme
 
         row.Children.Add(icon);
         row.Children.Add(label);
-        ctx.RegisterName(PartMediumFace, row);
+        ctx.RegisterName(PartMediumLabel, label);
+        ctx.RegisterName(PartSmallMediumFace, row);
 
         // Large (the ribbon glyph-over-label form): a centered vertical [glyph][label], glyph re-inked --accent-2.
         // Hidden until :size-large; a collapsed face contributes nothing so Medium is unaffected.
@@ -73,16 +74,19 @@ internal static class CursorialBarsTheme
             {
                 new Style(Selectors.Nesting().Template().Name(PartLargeFace))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartMediumLabel))
+                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                 new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLargeFace))
                     .Set(UIElement.VisibilityProperty, Visibility.Visible),
-                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartMediumFace))
+                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartSmallMediumFace))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
             },
         });
         return border;
     });
 
-    private const string PartMediumFace = "PART_MediumFace";
+    private const string PartSmallMediumFace = "PART_SmallMediumFace";
+    private const string PartMediumLabel = "PART_MediumLabel";
     private const string PartLargeFace = "PART_LargeFace";
 
     // A bar button is flat on the toolbar at rest (no resting Background — the surface shows through); only the
@@ -531,15 +535,15 @@ internal static class CursorialBarsTheme
     {
         var template = new ControlTemplate(ctx =>
         {
-            // ── Caption row (above the strip): the Quick Access Toolbar + a customize ▾. Collapsed unless the ribbon
-            // actually uses the QAT (:has-qat) — a ribbon with no quick-access commands renders exactly as before. ──
+            // ── The trailing QAT/pin column: the compact ribbon spends no caption row — the QAT fills the tab strip's
+            // right-side slack instead (bars guide §"QAT placement in the compact ribbon"). The strip is two rows tall
+            // (tab LABEL over selection UNDERLINE); this column mirrors that: the QAT cluster sits on the label row,
+            // the minimize pin on the underline row, both right-hugging the strip's dead space. ──
             var qatAbove = new Toolbar();
             ctx.RegisterName("PART_QuickAccessAbove", qatAbove);
-            DockPanel.SetDock(qatAbove, Dock.Left);
 
             var customize = new BarButton { Content = "▾" };
             ctx.RegisterName("PART_QatCustomize", customize);
-            DockPanel.SetDock(customize, Dock.Right);
 
             var checklistHost = new StackPanel { Orientation = Orientation.Vertical };
             ctx.RegisterName("PART_QatChecklistHost", checklistHost);
@@ -555,23 +559,30 @@ internal static class CursorialBarsTheme
             };
             ctx.RegisterName("PART_QatPopup", qatPopup);
 
-            var captionInner = new DockPanel { LastChildFill = false };
-            captionInner.Children.Add(qatAbove);  // Dock.Left — the QAT commands
-            captionInner.Children.Add(customize);  // Dock.Right — the customize ▾
-            captionInner.Children.Add(qatPopup);   // logical-only (0 size in the caption layout)
-            var caption = new Border { Child = captionInner, Occludes = true };
-            caption.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
-            ctx.RegisterName("PART_QatCaption", caption);
-            DockPanel.SetDock(caption, Dock.Top);
+            // The QAT cluster (label row): the QAT commands + the customize ▾, as a right-hugging unit.
+            var qatCluster = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            qatCluster.Children.Add(qatAbove);   // the QAT commands
+            qatCluster.Children.Add(customize);  // the customize ▾
+            qatCluster.Children.Add(qatPopup);   // logical-only (0 size in the strip layout)
+            ctx.RegisterName("PART_QatCluster", qatCluster);
+            DockPanel.SetDock(qatCluster, Dock.Top); // the tab-LABEL row
 
-            // ── Tab strip (+ the minimize pin/chevron at the right edge) ──
+            var pin = new BarButton { Content = "⌃", Focusable = false, IsTabStop = false, HorizontalAlignment = HorizontalAlignment.Right };
+            ctx.RegisterName("PART_PinButton", pin);
+            DockPanel.SetDock(pin, Dock.Bottom); // the selection-UNDERLINE row
+
+            // The two FIXED dock edges (Top label row / Bottom underline row) keep the pin pinned to the underline row
+            // even when the QAT cluster collapses (no QAT, or :qat-below) — it never rides up to the label row.
+            var trailing = new DockPanel { LastChildFill = false };
+            trailing.Children.Add(qatCluster); // Dock.Top
+            trailing.Children.Add(pin);        // Dock.Bottom
+            DockPanel.SetDock(trailing, Dock.Right);
+
+            // ── Tab strip: left-packed tabs FILL; the trailing QAT/pin column hugs the right ──
             var itemsHost = new ItemsPresenter();
             ctx.RegisterName("PART_ItemsHost", itemsHost);
-            var pin = new BarButton { Content = "⌃", Focusable = false, IsTabStop = false };
-            ctx.RegisterName("PART_PinButton", pin);
-            DockPanel.SetDock(pin, Dock.Right);
-            var stripInner = new DockPanel(); // LastChildFill: the items host fills; the pin docks right
-            stripInner.Children.Add(pin);
+            var stripInner = new DockPanel(); // LastChildFill: the items host fills; the trailing column docks right
+            stripInner.Children.Add(trailing);
             stripInner.Children.Add(itemsHost);
             var strip = new Border { Child = stripInner, Occludes = true };
             strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
@@ -597,8 +608,7 @@ internal static class CursorialBarsTheme
             DockPanel.SetDock(body, Dock.Bottom);
 
             var panel = new DockPanel();
-            panel.Children.Add(caption);   // Dock.Top — topmost
-            panel.Children.Add(strip);     // Dock.Top — below caption
+            panel.Children.Add(strip);     // Dock.Top — the tab strip (with the trailing QAT/pin column)
             panel.Children.Add(belowBand); // Dock.Bottom — bottommost (below the body)
             panel.Children.Add(body);      // Dock.Bottom — above belowBand, below strip
 
@@ -612,17 +622,20 @@ internal static class CursorialBarsTheme
             {
                 Children =
                 {
-                    new Style(Selectors.Nesting().Template().Name("PART_QatCaption"))
+                    // The trailing QAT cluster shows only when the ribbon populated the QAT (:has-qat); else collapsed.
+                    new Style(Selectors.Nesting().Template().Name("PART_QatCluster"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                    new Style(Selectors.Nesting().PseudoClass(":has-qat").Template().Name("PART_QatCaption"))
+                    new Style(Selectors.Nesting().PseudoClass(":has-qat").Template().Name("PART_QatCluster"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    // :qat-below moves the QAT to a band under the ribbon — hide the trailing (above) cluster, show the band.
+                    // (Ordered AFTER the :has-qat rule so the compound below state wins by document order at equal specificity.)
+                    new Style(Selectors.Nesting().PseudoClass(":qat-below").Template().Name("PART_QatCluster"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().Template().Name("PART_QatBelowBand"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":has-qat").PseudoClass(":qat-below").Template().Name("PART_QatBelowBand"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
-                    new Style(Selectors.Nesting().PseudoClass(":qat-below").Template().Name("PART_QuickAccessAbove"))
-                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                    // Minimized: collapse the body band, leaving the tab strip (+ caption) only.
+                    // Minimized: collapse the body band, leaving the tab strip (with its trailing QAT/pin) only.
                     new Style(Selectors.Nesting().PseudoClass(":minimized").Template().Name("PART_Body"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                 },

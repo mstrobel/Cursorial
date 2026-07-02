@@ -612,6 +612,51 @@ public sealed class BackstageTests
         Assert.Equal("HELLO-CTX", leaf.GetValue(UIElement.DataContextProperty));
     }
 
+    [Fact] // Tab in a Menu-mode Backstage popup STAYS in the popup (never escapes into the document behind it) and
+           // reaches the detail-pane action buttons (the popup surface traps Tab; its stops = rail + detail buttons).
+    public async Task BackstageHost_Menu_TabIsContained_AndReachesDetailButtons()
+    {
+        using var host = NewHost(60, 20);
+        var outside = new BarButton { Content = "Outside" };
+        var anchor = new BarButton { Content = "File" };
+        var shell = new StackPanel { Orientation = Orientation.Vertical };
+        shell.Children.Add(outside);
+        shell.Children.Add(anchor);
+        host.ShowRoot(shell);
+        host.RunUntilIdle();
+
+        var detail = new BarButton { Content = "◆ Save" };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(new TextBlock { Text = "Save the document." });
+        pane.Children.Add(detail);
+        var bs = new Backstage { DisplayMode = BackstageDisplayMode.Menu };
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = pane });
+
+        var task = BackstageHost.ShowAsync(bs, anchor);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+        Container(bs, 0).Focus();
+        host.RunUntilIdle();
+
+        var reachedDetail = false;
+        for (var i = 0; i < 8; i++)
+        {
+            host.SendKey(Key.Tab);
+            host.RunUntilIdle();
+            Assert.NotSame(outside, focus.FocusedElement); // never escapes into the document behind the popup
+            if (ReferenceEquals(focus.FocusedElement, detail))
+                reachedDetail = true;
+        }
+
+        Assert.True(reachedDetail, "Tab never reached the detail-pane action button");
+
+        bs.BackRequested += (_, _) => { };
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        await task;
+    }
+
     // ───────────────────────────── Increment 4 — DisplayMode compaction ─────────────────────────────
 
     [Fact] // FullScreen (default) shows the ◂ back button; Menu mode collapses it (:backstage-menu compaction)

@@ -89,6 +89,10 @@ internal sealed class QuickAccessGenerator
         UIElement control = command.IsCheckable
             ? new BarToggleButton { Command = command }
             : new BarButton { Command = command };
+
+        if (command.Icon is not null)
+            Ribbon.SetButtonSize(control, RibbonButtonSize.Small);
+
         _controls[command] = control;
         return control;
     }

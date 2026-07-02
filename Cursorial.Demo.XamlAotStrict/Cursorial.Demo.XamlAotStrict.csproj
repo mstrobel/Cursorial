@@ -53,6 +53,7 @@
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
         <!-- The X4 generator as an analyzer: emits StrictView's InitializeComponent + the generated provider. -->
         <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
                           OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

@@ -372,8 +372,13 @@ internal sealed class FocusNavigator
             if (KeyboardNavigation.GetTabNavigation(node) == KeyboardNavigationMode.Cycle)
                 return node;
 
-            if ((node.VisualParent ?? node.UIParent) is not {} parent)
-                return node; // window/popup roots default Cycle (doc §7.7 — no OS to Tab out to)
+            // The Tab CONTAINER boundary is the VISUAL/surface root — walk VisualParent ONLY, never the UIParent
+            // bridge. A popup/window surface root has VisualParent == null but a UIParent hop to its host
+            // (Popup -> PlacementTarget); crossing it would let Tab collect the HOST's stops and escape the popup
+            // (a Backstage menu tabbing out into the document behind it). Window/popup roots default Cycle and trap
+            // (doc §7.7 — no OS to Tab out to).
+            if (node.VisualParent is not {} parent)
+                return node;
 
             node = parent;
         }

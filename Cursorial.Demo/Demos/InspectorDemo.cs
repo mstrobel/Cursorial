@@ -175,12 +175,19 @@ internal sealed class InspectorDemo : IDemo
                              </Border>
                            
                              <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
+                               <!--bars:Ribbon.QuickAccessCandidates>
+                                 <bars:BarCommand Text="Paste" Icon="{Icon Glyph='&#xf0ea;'}" />
+                                 <bars:BarCommand Text="Cut"   Icon="{Icon Glyph='&#xf0c4;'}" />
+                                 <bars:BarCommand Text="Copy"  Icon="{Icon Glyph='&#xf0c5;'}" />
+                                 <bars:BarCommand Text="Undo"  Icon="{Icon Glyph='&#xf054c;'}" />
+                                 <bars:BarCommand Text="Redo"  Icon="{Icon Glyph='&#xf044e;'}" />
+                               </bars:Ribbon.QuickAccessCandidates-->
                                <bars:RibbonTab Header="_File" IsFileTab="True" />
                                <bars:RibbonTab Header="_Home">
                                  <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
-                                   <bars:BarButton Command="{Binding _Paste}" ToolTipService.Tip="Paste" Icon="{Icon Glyph='&#xf0ea;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Command="{Binding Cu_t}" ToolTipService.Tip="Cut" Icon="{Icon Glyph='&#xf0c4;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Command="{Binding Co_py}" ToolTipService.Tip="Copy" Icon="{Icon Glyph='&#xf0c5;', GlyphWidth=2}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Paste}" Content="_Paste" ToolTipService.Tip="Paste" Icon="{Icon Glyph='&#xf0ea;'}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Cut}"   Content="Cu_t"   ToolTipService.Tip="Cut"   Icon="{Icon Glyph='&#xf0c4;'}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Command="{Binding Copy}"  Content="Co_py"  ToolTipService.Tip="Copy"  Icon="{Icon Glyph='&#xf0c5;'}" bars:Ribbon.ButtonSize="Large" />
                                  </bars:RibbonGroup>
                                  <bars:RibbonGroup Header="Fo_nt">
                                    <bars:BarToggleButton Content="Bold" CommandParameter="{Binding BoldState}" />

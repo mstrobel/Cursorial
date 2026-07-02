@@ -39,11 +39,21 @@ public class Ribbon : TabControl
     public static readonly RoutedEvent<RoutedEventArgs> QuickAccessMoreCommandsRequestedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(QuickAccessMoreCommandsRequested), RoutingStrategy.Bubble, typeof(Ribbon));
 
+    /// <summary>Whether the ribbon is minimized to a tabs-only strip (the body band hidden, reclaiming rows). Stamps
+    /// <c>:minimized</c> so the template collapses the body; the pin (⌃/⌄) and a double-click on a tab toggle it, and a
+    /// click on any content tab while minimized restores it (and shows that tab's band). The Office "collapse the
+    /// ribbon" behavior.</summary>
+    public static readonly StyledProperty<bool> IsMinimizedProperty =
+        UIProperty.Register<Ribbon, bool>(nameof(IsMinimized), defaultValue: false, changed: OnIsMinimizedChanged);
+
     private const string PartQuickAccessAbove = "PART_QuickAccessAbove";
     private const string PartQuickAccessBelow = "PART_QuickAccessBelow";
     private const string PartQatCustomize = "PART_QatCustomize";
     private const string PartQatPopup = "PART_QatPopup";
     private const string PartQatChecklistHost = "PART_QatChecklistHost";
+    private const string PartPinButton = "PART_PinButton";
+
+    private ButtonBase? _pinButton;
 
     private readonly ObservableCollection<BarCommand> _quickAccessCommands = [];
     private readonly ObservableCollection<BarCommand> _quickAccessCandidates = [];
@@ -64,6 +74,7 @@ public class Ribbon : TabControl
     internal ButtonBase? QatCustomizeForTests => _qatCustomize;
     internal Popup? QatPopupForTests => _qatPopup;
     internal Panel? QatChecklistForTests => _qatChecklistHost;
+    internal ButtonBase? PinButtonForTests => _pinButton;
 
     static Ribbon()
     {
@@ -91,6 +102,11 @@ public class Ribbon : TabControl
         PseudoClassMapping.Register<Ribbon, RibbonQuickAccessPlacement>(
             QuickAccessPlacementProperty,
             static p => p == RibbonQuickAccessPlacement.BelowRibbon ? ":qat-below" : null);
+
+        // :minimized collapses PART_Body (the default false ⇒ no class ⇒ body shown, so a non-minimized ribbon is
+        // unaffected — no change-only seeding needed).
+        PseudoClassMapping.Register<Ribbon, bool>(
+            IsMinimizedProperty, static m => m ? ":minimized" : null);
     }
 
     private static string? ClassifySize(RibbonButtonSize size) => size switch
@@ -142,6 +158,13 @@ public class Ribbon : TabControl
         set => SetValue(QuickAccessPlacementProperty, value);
     }
 
+    /// <inheritdoc cref="IsMinimizedProperty"/>
+    public bool IsMinimized
+    {
+        get => GetValue(IsMinimizedProperty);
+        set => SetValue(IsMinimizedProperty, value);
+    }
+
     /// <summary>Reads the ribbon size tier attached to <paramref name="element"/>.</summary>
     public static RibbonButtonSize GetButtonSize(UIElement element)
     {
@@ -190,6 +213,13 @@ public class Ribbon : TabControl
 
         _qatChecklistHost = GetTemplatePart<Panel>(PartQatChecklistHost);
 
+        if (_pinButton is not null)
+            _pinButton.Click -= OnPinClick;
+        _pinButton = GetTemplatePart<ButtonBase>(PartPinButton);
+        if (_pinButton is not null)
+            _pinButton.Click += OnPinClick;
+        UpdatePinState(); // glyph + :pinned from the current IsMinimized
+
         UpdateQatHost(); // point the generator at the placement-appropriate QAT toolbar (catch-up + re-template safe)
     }
 
@@ -200,12 +230,15 @@ public class Ribbon : TabControl
             _qatCustomize.Click -= OnQatCustomizeClick;
         if (_qatPopup is not null)
             _qatPopup.Opened -= OnQatPopupOpened;
+        if (_pinButton is not null)
+            _pinButton.Click -= OnPinClick;
         _qatGenerator.SetHost(null); // release the generated controls from the torn-down toolbar
         _qatAbove = null;
         _qatBelow = null;
         _qatCustomize = null;
         _qatPopup = null;
         _qatChecklistHost = null;
+        _pinButton = null;
         base.OnTemplateDetaching(old);
     }
 
@@ -278,6 +311,27 @@ public class Ribbon : TabControl
     {
         if (sender is Ribbon ribbon)
             ribbon.UpdateQatHost(); // move the generated controls to the now-visible host
+    }
+
+    // The pin/chevron toggles the minimized state (⌃ collapse ↔ ⌄ expand). Focusable=false, so it never steals Tab.
+    private void OnPinClick(object? sender, ClickEventArgs e)
+    {
+        IsMinimized = !IsMinimized;
+        e.Handled = true;
+    }
+
+    private void UpdatePinState()
+    {
+        // The chevron glyph indicates state: ⌃ = "collapse" (expanded), ⌄ = "expand" (minimized). (A :pinned pseudo-
+        // class would need self-stamping on the pin — PseudoClasses is protected — so the glyph carries the cue.)
+        if (_pinButton is not null)
+            _pinButton.Content = IsMinimized ? "⌄" : "⌃";
+    }
+
+    private static void OnIsMinimizedChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is Ribbon ribbon)
+            ribbon.UpdatePinState(); // the :minimized pseudo-class (body collapse) is driven by the PseudoClassMapping
     }
 
     /// <inheritdoc/>

@@ -558,10 +558,16 @@ internal static class CursorialBarsTheme
             ctx.RegisterName("PART_QatCaption", caption);
             DockPanel.SetDock(caption, Dock.Top);
 
-            // ── Tab strip ──
+            // ── Tab strip (+ the minimize pin/chevron at the right edge) ──
             var itemsHost = new ItemsPresenter();
             ctx.RegisterName("PART_ItemsHost", itemsHost);
-            var strip = new Border { Child = itemsHost, Occludes = true };
+            var pin = new BarButton { Content = "⌃", Focusable = false, IsTabStop = false };
+            ctx.RegisterName("PART_PinButton", pin);
+            DockPanel.SetDock(pin, Dock.Right);
+            var stripInner = new DockPanel(); // LastChildFill: the items host fills; the pin docks right
+            stripInner.Children.Add(pin);
+            stripInner.Children.Add(itemsHost);
+            var strip = new Border { Child = stripInner, Occludes = true };
             strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
             DockPanel.SetDock(strip, Dock.Top);
 
@@ -580,6 +586,7 @@ internal static class CursorialBarsTheme
             content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
             content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
             var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
+            ctx.RegisterName("PART_Body", body);
             body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
             DockPanel.SetDock(body, Dock.Bottom);
 
@@ -606,6 +613,9 @@ internal static class CursorialBarsTheme
                     new Style(Selectors.Nesting().PseudoClass(":has-qat").PseudoClass(":qat-below").Template().Name("PART_QatBelowBand"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
                     new Style(Selectors.Nesting().PseudoClass(":qat-below").Template().Name("PART_QuickAccessAbove"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    // Minimized: collapse the body band, leaving the tab strip (+ caption) only.
+                    new Style(Selectors.Nesting().PseudoClass(":minimized").Template().Name("PART_Body"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                 },
             });

@@ -76,7 +76,17 @@ public class RibbonTab : TabItem
             return;
         }
 
-        base.OnMouseDown(e);
+        base.OnMouseDown(e); // selects this content tab (SelectedContent → its band)
+
+        // Minimize interactions (content tabs, left button): a double-click toggles the minimized ribbon; a click while
+        // minimized RESTORES it — base already selected this tab, so the restored band shows the clicked tab.
+        if (!IsFileTab && e.Button == MouseButton.Left && OwnerRibbon is { } ribbon)
+        {
+            if (e.ClickCount >= 2)
+                ribbon.IsMinimized = !ribbon.IsMinimized;
+            else if (ribbon.IsMinimized)
+                ribbon.IsMinimized = false;
+        }
     }
 
     /// <inheritdoc/>

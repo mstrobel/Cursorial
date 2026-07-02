@@ -101,6 +101,48 @@ public sealed class RibbonMinimizeTests
         Assert.False(ribbon.IsMinimized);
     }
 
+    [Fact] // minimize can be entered/exited REPEATEDLY (no stuck state) via BOTH the pin and tab double-clicks
+    public void Minimize_RepeatedCycles_NoStuckState()
+    {
+        using var host = NewHost();
+        var ribbon = NewRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        var pin = ribbon.PinButtonForTests!;
+        var home = (RibbonTab) ribbon.ItemContainerGenerator.ContainerFromIndex(0)!;
+        var tab = home.TranslateToScreen(1, 0);
+
+        // The ⌃ pin toggles repeatedly.
+        for (var i = 0; i < 3; i++)
+        {
+            ClickAt(host, pin.TranslateToScreen(0, 0));
+            Assert.True(ribbon.IsMinimized);
+            ClickAt(host, pin.TranslateToScreen(0, 0));
+            Assert.False(ribbon.IsMinimized);
+        }
+
+        // A real two-press double-click toggles repeatedly.
+        for (var i = 0; i < 3; i++)
+        {
+            host.SendClick(tab.Column, tab.Row, clickCount: 1);
+            host.SendClick(tab.Column, tab.Row, clickCount: 2);
+            host.RunUntilIdle();
+            Assert.True(ribbon.IsMinimized);
+            host.SendClick(tab.Column, tab.Row, clickCount: 1);
+            host.SendClick(tab.Column, tab.Row, clickCount: 2);
+            host.RunUntilIdle();
+            Assert.False(ribbon.IsMinimized);
+        }
+    }
+
+    private static void ClickAt(UITestHost host, CellPosition origin)
+    {
+        host.SendMouseMove(origin.Column, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+    }
+
     [Fact] // audit: a REAL double-click (two presses, ClickCount 1 then 2) toggles correctly in BOTH directions —
            // the count==1 restore and the count>=2 toggle must not cancel out
     public void Minimize_RealDoubleClick_TogglesBothDirections()

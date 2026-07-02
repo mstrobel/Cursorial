@@ -32,8 +32,10 @@ internal sealed class QuickAccessGenerator
         if (ReferenceEquals(_host, host))
             return;
 
+        // Remove the controls from the old host WITHOUT discarding them (keep the _controls cache): a placement flip
+        // MOVES the same instances to the new host, so a checkable BarToggleButton's IsChecked (and any per-instance
+        // state) survives the flip instead of resetting on a fresh rebuild.
         _host?.Items.Clear();
-        _controls.Clear();
         _host = host;
         if (_host is null)
             return;

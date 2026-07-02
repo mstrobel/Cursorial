@@ -546,7 +546,13 @@ internal static class CursorialBarsTheme
             var checklistBorder = new Border { Child = checklistHost };
             checklistBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
             checklistBorder.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
-            var qatPopup = new Popup { Child = checklistBorder, PlacementTarget = customize, Placement = PlacementMode.Bottom };
+            // KeepOpenOnAnchorPress: the ▾ owns the open/close toggle (Ribbon.OnQatCustomizeClick), so a press on it
+            // while open must NOT light-dismiss (else the press closes it and the release-Click reopens it — the
+            // dismiss-then-reopen race Toolbar/BarDropDownButton guard against; without it the ▾ can never close by mouse).
+            var qatPopup = new Popup
+            {
+                Child = checklistBorder, PlacementTarget = customize, Placement = PlacementMode.Bottom, KeepOpenOnAnchorPress = true,
+            };
             ctx.RegisterName("PART_QatPopup", qatPopup);
 
             var captionInner = new DockPanel { LastChildFill = false };

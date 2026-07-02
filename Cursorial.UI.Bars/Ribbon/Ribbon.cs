@@ -64,6 +64,7 @@ public class Ribbon : TabControl
     private ButtonBase? _qatCustomize;
     private Popup? _qatPopup;
     private Panel? _qatChecklistHost;
+    private CheckBox? _qatBelowToggle; // the checklist's "Show Below the Ribbon" row (tracked for check refresh)
 
     private bool _redirectingSelection;
 
@@ -125,8 +126,8 @@ public class Ribbon : TabControl
         // :has-qat gates the caption row's visibility — a ribbon that never populates the QAT renders exactly as before
         // (no caption row). Stamped from EITHER collection being non-empty (a candidate-only ribbon still shows the
         // customize ▾). The generator owns the commands→toolbar sync; this only drives the caption's presence.
-        _quickAccessCommands.CollectionChanged += (_, _) => UpdateHasQat();
-        _quickAccessCandidates.CollectionChanged += (_, _) => UpdateHasQat();
+        _quickAccessCommands.CollectionChanged += (_, _) => { UpdateHasQat(); RefreshChecklistChecks(); };
+        _quickAccessCandidates.CollectionChanged += (_, _) => { UpdateHasQat(); RebuildChecklist(); };
     }
 
     /// <inheritdoc cref="BackstageRequestedEvent"/>
@@ -212,6 +213,7 @@ public class Ribbon : TabControl
             _qatPopup.Opened += OnQatPopupOpened;
 
         _qatChecklistHost = GetTemplatePart<Panel>(PartQatChecklistHost);
+        RebuildChecklist(); // build the checklist rows NOW (before any open) so the popup surface sizes to real content
 
         if (_pinButton is not null)
             _pinButton.Click -= OnPinClick;
@@ -229,7 +231,10 @@ public class Ribbon : TabControl
         if (_qatCustomize is not null)
             _qatCustomize.Click -= OnQatCustomizeClick;
         if (_qatPopup is not null)
+        {
             _qatPopup.Opened -= OnQatPopupOpened;
+            _qatPopup.SetCurrentValue(Popup.IsOpenProperty, false); // release the WM surface + pooled scenes (Toolbar precedent)
+        }
         if (_pinButton is not null)
             _pinButton.Click -= OnPinClick;
         _qatGenerator.SetHost(null); // release the generated controls from the torn-down toolbar
@@ -238,8 +243,18 @@ public class Ribbon : TabControl
         _qatCustomize = null;
         _qatPopup = null;
         _qatChecklistHost = null;
+        _qatBelowToggle = null;
         _pinButton = null;
         base.OnTemplateDetaching(old);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        // A plain tree-detach (navigating away from the view) doesn't fire OnTemplateDetaching — close the QAT
+        // customize popup so its WM surface + pooled scenes don't leak (the Toolbar/ContextMenu leak-guard precedent).
+        _qatPopup?.SetCurrentValue(Popup.IsOpenProperty, false);
+        base.OnDetachedFromTree(in e);
     }
 
     // Points the generator at whichever QAT toolbar the current placement shows (the :qat-below template rule flips
@@ -254,20 +269,25 @@ public class Ribbon : TabControl
         e.Handled = true;
     }
 
-    // The checklist is rebuilt on each open so late-added candidates appear and every row's checked state is fresh
-    // from current membership (a raw Popup stays open across inside toggles — light-dismiss closes only on an outside
-    // press — so a checklist is the right fit here, unlike a BarDropDownButton whose item-click closes the dropdown).
     private void UpdateHasQat()
         => PseudoClasses.Set(":has-qat", _quickAccessCommands.Count > 0 || _quickAccessCandidates.Count > 0);
 
-    private void OnQatPopupOpened(object? sender, EventArgs e) => RebuildChecklist();
+    // On open, only REFRESH the checked states — the rows are already built (eagerly, in OnApplyTemplate / on a
+    // candidates change), so the popup surface was sized to real content at placement. Building rows here on Opened
+    // would add them AFTER the surface is placed/sized from an empty host → the checklist renders as a clipped sliver
+    // on first open. (A raw Popup stays open across inside toggles — light-dismiss closes only on an outside press —
+    // so a stay-open checklist fits, unlike a BarDropDownButton whose item-click closes the dropdown.)
+    private void OnQatPopupOpened(object? sender, EventArgs e) => RefreshChecklistChecks();
 
+    // Builds the checklist rows (candidate CheckBoxes + separator + "More Commands…" + "Show Below the Ribbon"). Called
+    // EAGERLY so the content exists before the popup surface is sized; a candidates change rebuilds it.
     private void RebuildChecklist()
     {
         if (_qatChecklistHost is null)
             return;
 
         _qatChecklistHost.Children.Clear();
+        _qatBelowToggle = null;
         foreach (var candidate in _quickAccessCandidates)
         {
             var command = candidate; // capture per row
@@ -286,14 +306,30 @@ public class Ribbon : TabControl
         };
         _qatChecklistHost.Children.Add(more);
 
-        var below = new CheckBox
+        _qatBelowToggle = new CheckBox
         {
             Content = "Show Below the Ribbon",
             IsChecked = QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon,
         };
-        below.Click += (_, _) => QuickAccessPlacement =
-            below.IsChecked == true ? RibbonQuickAccessPlacement.BelowRibbon : RibbonQuickAccessPlacement.AboveRibbon;
-        _qatChecklistHost.Children.Add(below);
+        _qatBelowToggle.Click += (_, _) => QuickAccessPlacement =
+            _qatBelowToggle.IsChecked == true ? RibbonQuickAccessPlacement.BelowRibbon : RibbonQuickAccessPlacement.AboveRibbon;
+        _qatChecklistHost.Children.Add(_qatBelowToggle);
+    }
+
+    // Refreshes the built rows' checked states from current membership + placement (on open, and on a membership change
+    // while open — keeping the checklist in sync without a rebuild). Candidate rows are the leading children, one per
+    // candidate in order. Programmatic IsChecked writes do NOT raise Click, so this never re-enters ToggleMembership.
+    private void RefreshChecklistChecks()
+    {
+        if (_qatChecklistHost is null)
+            return;
+
+        for (var i = 0; i < _quickAccessCandidates.Count && i < _qatChecklistHost.Children.Count; i++)
+            if (_qatChecklistHost.Children[i] is CheckBox row)
+                row.IsChecked = _quickAccessCommands.Contains(_quickAccessCandidates[i]);
+
+        if (_qatBelowToggle is not null)
+            _qatBelowToggle.IsChecked = QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon;
     }
 
     // Add/remove a candidate from the QAT (the generator reflects it live). Gated on the actual membership state so a

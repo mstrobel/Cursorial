@@ -101,6 +101,32 @@ public sealed class RibbonMinimizeTests
         Assert.False(ribbon.IsMinimized);
     }
 
+    [Fact] // audit: a REAL double-click (two presses, ClickCount 1 then 2) toggles correctly in BOTH directions —
+           // the count==1 restore and the count>=2 toggle must not cancel out
+    public void Minimize_RealDoubleClick_TogglesBothDirections()
+    {
+        using var host = NewHost();
+        var ribbon = NewRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        var home = (RibbonTab) ribbon.ItemContainerGenerator.ContainerFromIndex(0)!;
+        var origin = home.TranslateToScreen(1, 0);
+
+        // Expanded → real double-click → minimized. A real double-click is press(count=1) then press(count=2).
+        host.SendMouseMove(origin.Column, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column, origin.Row, clickCount: 1);
+        host.SendClick(origin.Column, origin.Row, clickCount: 2);
+        host.RunUntilIdle();
+        Assert.True(ribbon.IsMinimized);
+
+        // Minimized → real double-click → expanded (must NOT restore-then-re-minimize to a net no-op).
+        host.SendClick(origin.Column, origin.Row, clickCount: 1);
+        host.SendClick(origin.Column, origin.Row, clickCount: 2);
+        host.RunUntilIdle();
+        Assert.False(ribbon.IsMinimized);
+    }
+
     [Fact] // clicking a content tab while minimized RESTORES the ribbon and selects that tab (its band shows)
     public void Minimize_ClickTabWhileMinimized_RestoresAndSelects()
     {

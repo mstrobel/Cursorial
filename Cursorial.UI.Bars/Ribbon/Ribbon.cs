@@ -349,6 +349,21 @@ public class Ribbon : TabControl
             ribbon.UpdateQatHost(); // move the generated controls to the now-visible host
     }
 
+    private bool _justRestoredByClick; // set when a click-to-restore fired, so the SAME double-click's 2nd press doesn't re-minimize
+
+    // A real double-click arrives as TWO ButtonDowns (ClickCount 1 then 2). If the ClickCount==1 press restored a
+    // minimized ribbon, the ClickCount>=2 press of the same gesture must NOT toggle it back — RibbonTab consumes this
+    // flag to decide. (A single synthetic ClickCount==2 event, as in a headless SendClick(clickCount:2), never set the
+    // flag, so it still toggles.)
+    internal bool ConsumeJustRestoredByClick()
+    {
+        var value = _justRestoredByClick;
+        _justRestoredByClick = false;
+        return value;
+    }
+
+    internal void SetJustRestoredByClick(bool value) => _justRestoredByClick = value;
+
     // The pin/chevron toggles the minimized state (⌃ collapse ↔ ⌄ expand). Focusable=false, so it never steals Tab.
     private void OnPinClick(object? sender, ClickEventArgs e)
     {

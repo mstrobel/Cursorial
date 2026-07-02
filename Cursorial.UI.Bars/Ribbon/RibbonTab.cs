@@ -78,14 +78,29 @@ public class RibbonTab : TabItem
 
         base.OnMouseDown(e); // selects this content tab (SelectedContent → its band)
 
-        // Minimize interactions (content tabs, left button): a double-click toggles the minimized ribbon; a click while
-        // minimized RESTORES it — base already selected this tab, so the restored band shows the clicked tab.
+        // Minimize interactions (content tabs, left button). A real double-click arrives as TWO ButtonDowns
+        // (ClickCount 1 then 2); to avoid the count==1 restore and the count>=2 toggle cancelling out, the count==1
+        // restore records a flag the count>=2 press consumes:
+        //   • count==1, minimized  → restore (expand) + flag, so a following count>=2 (same double-click) stays expanded;
+        //   • count==1, expanded   → plain select (clear the flag);
+        //   • count>=2             → toggle, UNLESS this gesture's count==1 already restored (then leave expanded).
+        // Net: single-click-a-minimized-tab restores; double-click-expanded minimizes; double-click-minimized expands.
         if (!IsFileTab && e.Button == MouseButton.Left && OwnerRibbon is { } ribbon)
         {
             if (e.ClickCount >= 2)
-                ribbon.IsMinimized = !ribbon.IsMinimized;
+            {
+                if (!ribbon.ConsumeJustRestoredByClick())
+                    ribbon.IsMinimized = !ribbon.IsMinimized;
+            }
             else if (ribbon.IsMinimized)
+            {
                 ribbon.IsMinimized = false;
+                ribbon.SetJustRestoredByClick(true);
+            }
+            else
+            {
+                ribbon.SetJustRestoredByClick(false);
+            }
         }
     }
 

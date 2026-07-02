@@ -605,8 +605,10 @@ internal static class CursorialBarsTheme
             // Part-targeting rules live in the template's own styles under a type-anchored wrapper (the RibbonTabStyle
             // precedent). The caption/below-band defaults are Collapsed via a plain rule; a :has-qat / :qat-below
             // compound rule (higher classLike specificity) flips it Visible — NOT a local Visibility set, which
-            // (LocalValue lane) would out-rank and defeat these Style rules.
-            panel.Styles.Add(new Style(Selectors.OfType<Ribbon>())
+            // (LocalValue lane) would out-rank and defeat these Style rules. The wrapper is Is<Ribbon> (ASSIGNABLE),
+            // NOT OfType<Ribbon> (exact): a Ribbon SUBCLASS (e.g. an app's GalleryRibbon) must still match, or its
+            // :minimized body-collapse / :has-qat caption / :qat-below rules silently never apply.
+            panel.Styles.Add(new Style(Selectors.Is<Ribbon>())
             {
                 Children =
                 {

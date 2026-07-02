@@ -101,6 +101,29 @@ public sealed class RibbonMinimizeTests
         Assert.False(ribbon.IsMinimized);
     }
 
+    // An app Ribbon subclass (mirrors the gallery's GalleryRibbon) — the theme's part rules must still apply to it.
+    private sealed class DerivedRibbon : Ribbon { }
+
+    [Fact] // a Ribbon SUBCLASS minimizes too: the theme's :minimized body-collapse rule must match subclasses
+           // (Is<Ribbon>, not exact OfType<Ribbon>) — otherwise IsMinimized flips but the body never collapses
+    public void Minimize_OnRibbonSubclass_CollapsesBody()
+    {
+        using var host = NewHost();
+        var ribbon = new DerivedRibbon();
+        var home = new RibbonTab { Header = "Home" };
+        var clip = new RibbonGroup { Header = "Clipboard" };
+        clip.Items.Add(new BarButton { Content = "Paste" });
+        home.Groups.Add(clip);
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.Contains("Paste", AllRows(host));
+
+        ribbon.IsMinimized = true;
+        host.RunUntilIdle();
+        Assert.DoesNotContain("Paste", AllRows(host)); // the body collapsed on the subclass too
+    }
+
     [Fact] // minimize can be entered/exited REPEATEDLY (no stuck state) via BOTH the pin and tab double-clicks
     public void Minimize_RepeatedCycles_NoStuckState()
     {

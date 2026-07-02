@@ -129,6 +129,14 @@ public abstract class BarDropDownButton : ButtonBase
             // Up from the first item returns focus to the opener face — see OnKeyDown — like a menu). Invoking any
             // item closes the dropdown (menu-like).
             KeyboardNavigation.SetDirectionalNavigation(_contentSite, DirectionalNavigationMode.Contained);
+            // The dropdown content is also a RETAINING focus-scope barrier: it is an ANCESTOR of every realized dropdown
+            // item (unlike the opener, which is only an ancestor of the popup for the whole-control BarPopupButton — a
+            // BarSplitButton's retaining ▾ zone is a SIBLING of the popup, never on the item's returning-scope walk). So
+            // invoking a dropdown item does NOT trip an enclosing non-retaining Toolbar's auto-return (which would yank
+            // focus back to the pre-entry document instead of the Popup W4 restore-to-face). This unifies the close-focus
+            // behavior across BarPopupButton and BarSplitButton; the split button's PRIMARY label action does not cross
+            // the content presenter, so it still auto-returns like a BarButton.
+            FocusManager.SetIsFocusScope(_contentSite, true);
             _contentSite.AddHandler(ButtonBase.ClickEvent, OnDropDownItemClick, handledEventsToo: true);
         }
     }

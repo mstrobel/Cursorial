@@ -264,6 +264,34 @@ public sealed class BackstageTests
         Assert.Equal(0, bs.SelectedIndex); // unchanged — the modified chord was not treated as rail nav
     }
 
+    [Fact] // invoking a command button inside a destination's DETAIL PANE closes the Backstage (raises BackRequested)
+           // — the Office "act and return to the document" model; the command still runs (deferred close)
+    public void Backstage_DetailPaneButtonInvoke_ClosesBackstage()
+    {
+        using var host = NewHost();
+        var ran = 0;
+        var action = new BarButton { Content = "Save Now", Command = new BarCommand(() => ran++) };
+        var pane = new StackPanel { Orientation = Orientation.Vertical };
+        pane.Children.Add(new TextBlock { Text = "Save the document." });
+        pane.Children.Add(action);
+        var bs = new Backstage();
+        bs.Items.Add(new BackstageItem { Header = "Save", Content = pane });
+        var backs = 0;
+        bs.BackRequested += (_, _) => backs++;
+        host.ShowRoot(bs);
+        host.RunUntilIdle();
+
+        // click the detail-pane button (it renders in the content host since "Save" is auto-selected)
+        var origin = action.TranslateToScreen(1, 0);
+        host.SendMouseMove(origin.Column, origin.Row);
+        host.RunFrame();
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, ran);   // the command ran…
+        Assert.Equal(1, backs); // …and the Backstage asked to close (BackRequested)
+    }
+
     // ───────────────────────────── Increment 4 — DisplayMode compaction ─────────────────────────────
 
     [Fact] // FullScreen (default) shows the ◂ back button; Menu mode collapses it (:backstage-menu compaction)

@@ -44,8 +44,10 @@ public class Backstage : TabControl
         RoutedEvent<RoutedEventArgs>.Register(nameof(BackRequested), RoutingStrategy.Bubble, typeof(Backstage));
 
     private const string PartBackButton = "PART_BackButton";
+    private const string PartContentHost = "PART_ContentHost";
 
     private ButtonBase? _backButton;
+    private UIElement? _contentHost;
 
     static Backstage()
     {
@@ -114,6 +116,14 @@ public class Backstage : TabControl
         _backButton = GetTemplatePart<ButtonBase>(PartBackButton);
         if (_backButton is not null)
             _backButton.Click += OnBackButtonClick;
+
+        // Invoking a command button in the DETAIL PANE completes the Backstage interaction and returns to the document
+        // (the Office model — Save/Print/Export/… act and close). Wired on the content host so any ButtonBase.Click in a
+        // destination's pane closes the Backstage; the rail's own selection (choosing a destination) is unaffected.
+        if (_contentHost is not null)
+            _contentHost.RemoveHandler(ButtonBase.ClickEvent, OnDetailPaneClick);
+        _contentHost = GetTemplatePart<UIElement>(PartContentHost);
+        _contentHost?.AddHandler(ButtonBase.ClickEvent, OnDetailPaneClick, handledEventsToo: true);
     }
 
     /// <inheritdoc/>
@@ -121,15 +131,30 @@ public class Backstage : TabControl
     {
         if (_backButton is not null)
             _backButton.Click -= OnBackButtonClick; // unhook so a re-template doesn't strand the handler
+        _contentHost?.RemoveHandler(ButtonBase.ClickEvent, OnDetailPaneClick);
         _backButton = null;
+        _contentHost = null;
         base.OnTemplateDetaching(old);
     }
 
     private void OnBackButtonClick(object? sender, ClickEventArgs e)
     {
-        RaiseEvent(new RoutedEventArgs(BackRequestedEvent, this));
+        RaiseBackRequested();
         e.Handled = true;
     }
+
+    // A detail-pane command button was invoked. Close the Backstage — but DEFER to the next dispatcher turn so the
+    // button's own OnClick (its Command) runs first: closing synchronously here tears down the surface and detaches the
+    // button before its command executes (the BarDropDownButton read-after-raise recycling gotcha). Idempotent.
+    private void OnDetailPaneClick(object? sender, ClickEventArgs e)
+    {
+        if (UIApplication.Current?.Dispatcher is { } dispatcher)
+            dispatcher.Post(RaiseBackRequested);
+        else
+            RaiseBackRequested();
+    }
+
+    private void RaiseBackRequested() => RaiseEvent(new RoutedEventArgs(BackRequestedEvent, this));
 
     /// <inheritdoc/>
     protected override void OnKeyDown(KeyEventArgs e)

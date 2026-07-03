@@ -199,8 +199,32 @@ public sealed class RibbonTests
         Assert.False(button.IsFocused); // Down off File did not enter the selected content tab's band
     }
 
-    [Fact] // ↕: a MINIMIZED ribbon has no body — Down off a tab stays on the tab (nothing focusable to enter)
-    public void Ribbon_DownFromTab_Minimized_StaysOnTab()
+    [Fact] // Ctrl+F1 toggles minimize from within the ribbon (the keyboard route — the pin chevron is mouse-only)
+    public void Ribbon_CtrlF1_TogglesMinimize()
+    {
+        using var host = NewHost();
+        var home = Tab("Home", Group("Clipboard", new BarButton { Content = "Paste" }));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.False(ribbon.IsMinimized);
+
+        home.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.F1, KeyModifiers.Control);
+        host.RunUntilIdle();
+        Assert.True(ribbon.IsMinimized);
+
+        host.SendKey(Key.F1, KeyModifiers.Control);
+        host.RunUntilIdle();
+        Assert.False(ribbon.IsMinimized);
+    }
+
+    [Fact] // ↕ on a MINIMIZED ribbon: Down FLOATS the band (transient reveal) and enters it; Esc re-collapses + returns
+           // to the tab; the ribbon stays minimized throughout (the Office peek-the-band model).
+    public void Ribbon_DownFromTab_Minimized_FloatsBandAndEnters_EscCollapses()
     {
         using var host = NewHost();
         var button = new BarButton { Content = "Paste" };
@@ -212,11 +236,76 @@ public sealed class RibbonTests
 
         home.Focus();
         host.RunUntilIdle();
-        host.SendKey(Key.DownArrow);
+        Assert.False(button.IsFocused); // minimized: nothing entered yet
+
+        host.SendKey(Key.DownArrow); // float + enter
+        host.RunUntilIdle();
+        Assert.True(button.IsEffectivelyVisible);  // the band floated (revealed)
+        Assert.True(button.IsFocused);             // focus entered the floated band
+        Assert.True(ribbon.IsMinimized);           // still minimized — the float is transient
+
+        host.SendKey(Key.Escape); // dismiss the float
+        host.RunUntilIdle();
+        Assert.False(button.IsEffectivelyVisible); // re-collapsed
+        Assert.True(home.IsFocused);               // focus returned to the tab
+        Assert.True(ribbon.IsMinimized);
+    }
+
+    [Fact] // a floated band auto-collapses when keyboard focus LEAVES the ribbon (Office peek-then-dismiss)
+    public void Ribbon_FloatedBand_CollapsesOnFocusLeavingRibbon()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var outside = new BarButton { Content = "Outside" };
+        var ribbon = new Ribbon { IsMinimized = true };
+        ribbon.Items.Add(Tab("Home", Group("Clipboard", button)));
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(outside);
+        root.Children.Add(ribbon);
+        host.ShowRoot(root);
         host.RunUntilIdle();
 
-        Assert.True(home.IsFocused);      // the collapsed body offers nothing to enter
-        Assert.False(button.IsFocused);
+        ((RibbonTab) ribbon.ItemContainerGenerator.ContainerFromIndex(0)!).Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // float + enter the band
+        host.RunUntilIdle();
+        Assert.True(button.IsEffectivelyVisible);
+
+        outside.Focus(); // focus leaves the ribbon → the float auto-collapses
+        host.RunUntilIdle();
+        Assert.False(button.IsEffectivelyVisible);
+        Assert.True(ribbon.IsMinimized);
+    }
+
+    [Fact] // a float dismissed then RE-floated within the same interaction enters the band cleanly (the retry chain is
+           // generation-scoped, so a stale chain from the first float can't interfere with the second)
+    public void Ribbon_Minimized_RefloatAfterCollapse_EntersBand()
+    {
+        using var host = NewHost();
+        var button = new BarButton { Content = "Paste" };
+        var home = Tab("Home", Group("Clipboard", button));
+        var ribbon = new Ribbon { IsMinimized = true };
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        home.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.DownArrow); // float #1 + enter
+        host.RunUntilIdle();
+        Assert.True(button.IsFocused);
+
+        host.SendKey(Key.Escape); // dismiss float #1
+        host.RunUntilIdle();
+        Assert.False(button.IsEffectivelyVisible);
+        Assert.True(home.IsFocused);
+
+        host.SendKey(Key.DownArrow); // float #2 + enter — must land cleanly despite float #1's spent chain
+        host.RunUntilIdle();
+        Assert.True(button.IsEffectivelyVisible);
+        Assert.True(button.IsFocused);
+        Assert.True(ribbon.IsMinimized);
     }
 
     [Fact] // a Large button renders glyph-over-label (2 rows); a Medium button is a single row

@@ -546,6 +546,9 @@ internal static class CursorialBarsTheme
             ctx.RegisterName("PART_QatCustomize", customize);
 
             var checklistHost = new StackPanel { Orientation = Orientation.Vertical };
+            // Up/Down move between the candidate rows once the checklist is keyboard-entered (Ribbon.OnQatPopupOpened
+            // drops focus into the first row on a keyboard open); Contained keeps arrows inside the vertical list.
+            KeyboardNavigation.SetDirectionalNavigation(checklistHost, DirectionalNavigationMode.Contained);
             ctx.RegisterName("PART_QatChecklistHost", checklistHost);
             var checklistBorder = new Border { Child = checklistHost };
             checklistBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
@@ -573,17 +576,24 @@ internal static class CursorialBarsTheme
 
             // The two FIXED dock edges (Top label row / Bottom underline row) keep the pin pinned to the underline row
             // even when the QAT cluster collapses (no QAT, or :qat-below) — it never rides up to the label row.
-            var trailing = new DockPanel { LastChildFill = false };
+            var trailing = new DockPanel { LastChildFill = false }; // hosted in the strip Grid's Auto column (below)
             trailing.Children.Add(qatCluster); // Dock.Top
             trailing.Children.Add(pin);        // Dock.Bottom
-            DockPanel.SetDock(trailing, Dock.Right);
 
-            // ── Tab strip: left-packed tabs FILL; the trailing QAT/pin column hugs the right ──
+            // ── Tab strip: left-packed tabs FILL the star column; the trailing QAT/pin column hugs the right (Auto). A
+            // Grid — NOT a DockPanel — so the itemsHost is added FIRST (tabs precede the QAT in tab order: tabbing INTO
+            // the ribbon lands on a tab, not the QAT) yet still fills the left; the Auto column keeps the QAT on-edge
+            // when tabs overflow (the star column clips the tabs, never the QAT — a DockPanel LastChildFill=false would
+            // push the QAT off the right instead). ──
             var itemsHost = new ItemsPresenter();
             ctx.RegisterName("PART_ItemsHost", itemsHost);
-            var stripInner = new DockPanel(); // LastChildFill: the items host fills; the trailing column docks right
+            var stripInner = new Grid();
+            stripInner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star() }); // tabs fill
+            stripInner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });    // trailing QAT/pin
+            Grid.SetColumn(itemsHost, 0);
+            Grid.SetColumn(trailing, 1);
+            stripInner.Children.Add(itemsHost); // FIRST in document order ⇒ precedes the QAT in tab order
             stripInner.Children.Add(trailing);
-            stripInner.Children.Add(itemsHost);
             var strip = new Border { Child = stripInner, Occludes = true };
             strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
             DockPanel.SetDock(strip, Dock.Top);
@@ -638,6 +648,11 @@ internal static class CursorialBarsTheme
                     // Minimized: collapse the body band, leaving the tab strip (with its trailing QAT/pin) only.
                     new Style(Selectors.Nesting().PseudoClass(":minimized").Template().Name("PART_Body"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    // …but a FLOATED minimized band (transient keyboard/click reveal — Ribbon.FloatBand) shows the body:
+                    // this 2-pseudo rule out-specifies the 1-pseudo collapse above, so :floating wins WITHOUT clearing
+                    // IsMinimized. The float re-collapses (Esc / focus leaving the ribbon) by clearing :floating.
+                    new Style(Selectors.Nesting().PseudoClass(":minimized").PseudoClass(":floating").Template().Name("PART_Body"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Visible),
                 },
             });
             return panel;

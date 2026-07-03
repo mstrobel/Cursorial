@@ -127,6 +127,93 @@ public sealed class RibbonQuickAccessTests
         Assert.False(((CheckBox) checklist.Children[1]).IsChecked == true);  // Print is off
     }
 
+    [Fact] // keyboard entry: opening the customize checklist moves focus INTO the first row, and Up/Down navigate rows
+    public void QuickAccess_CustomizeChecklist_KeyboardEntry_FocusesFirstRow_AndArrowsNavigate()
+    {
+        using var host = NewHost();
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCandidates.Add(new BarCommand(() => { }) { Text = "Save" });
+        ribbon.QuickAccessCandidates.Add(new BarCommand(() => { }) { Text = "Print" });
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        ribbon.QatPopupForTests!.IsOpen = true; // the ▾ toggles this (its own test covers the click path)
+        host.RunUntilIdle();
+
+        var checklist = ribbon.QatChecklistForTests!;
+        Assert.True(((CheckBox) checklist.Children[0]).IsFocused); // focus moved INTO the checklist on open
+
+        host.SendKey(Cursorial.Input.Key.DownArrow);               // Contained directional container ⇒ Down moves to the next row
+        host.RunUntilIdle();
+        Assert.True(((CheckBox) checklist.Children[1]).IsFocused);
+    }
+
+    [Fact] // keyboard entry with NO candidate rows must NOT park focus on the "More Commands…" dismiss action (a first
+           // Enter would then close the menu); with only commands (:has-qat) the checklist opens navigable but unfocused
+    public void QuickAccess_CustomizeChecklist_KeyboardEntry_NoCandidates_DoesNotFocusDismissAction()
+    {
+        using var host = NewHost();
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" }); // :has-qat, but zero CANDIDATES
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        ribbon.QatPopupForTests!.IsOpen = true;
+        host.RunUntilIdle();
+
+        // children are exactly [BarSeparator][BarButton "More Commands…"][CheckBox "Show Below"] — no candidate rows.
+        var checklist = ribbon.QatChecklistForTests!;
+        var more = checklist.Children.OfType<BarButton>().Single();
+        Assert.False(more.IsFocused);                                    // did NOT auto-focus the dismiss action
+        Assert.False(checklist.Children.OfType<CheckBox>().Any(c => c.IsFocused)); // nor the placement toggle
+    }
+
+    [Fact] // tab order: the trailing QAT is reached AFTER the tabs — tabbing into the ribbon lands on a tab, not the QAT
+    public void QuickAccess_TabOrder_TabsPrecedeQat()
+    {
+        using var host = NewHost();
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        var outside = new BarButton { Content = "Outside" };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(outside);
+        root.Children.Add(ribbon);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        outside.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Cursorial.Input.Key.Tab); // into the ribbon
+        host.RunUntilIdle();
+
+        var focused = host.Application.FocusManager.FocusedElement;
+        Assert.True(IsWithinRibbonTab(focused), $"expected the first ribbon stop to be a tab, got {focused?.GetType().Name}");
+    }
+
+    private static bool IsWithinRibbonTab(UIElement? element)
+    {
+        for (var node = element; node is not null; node = node.VisualParent)
+        {
+            if (node is RibbonTab)
+                return true;
+        }
+
+        return false;
+    }
+
+    [Fact] // the customize checklist's rule is a HORIZONTAL separator (a vertical-list divider), not the default upright │
+    public void QuickAccess_ChecklistSeparator_IsHorizontal()
+    {
+        using var host = NewHost();
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCandidates.Add(new BarCommand(() => { }) { Text = "Save" });
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var separator = ribbon.QatChecklistForTests!.Children.OfType<BarSeparator>().Single();
+        Assert.Equal(Orientation.Horizontal, separator.Orientation);
+    }
+
     [Fact] // clicking the ▾ opens the checklist popup (the customize opener owns the toggle)
     public void QuickAccess_CustomizeButton_OpensChecklist()
     {

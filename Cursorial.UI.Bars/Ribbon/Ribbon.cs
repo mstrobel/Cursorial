@@ -187,6 +187,25 @@ public class Ribbon : TabControl
     {
         base.OnKeyDown(e); // TabControl handles strip Left/Right/Home/End/Ctrl+PgUp/PgDn; RibbonTab handles File activate
 
+        // Ctrl+F1 toggles minimize from anywhere in the ribbon (the Office keyboard accelerator). The pin chevron is a
+        // mouse affordance and deliberately not a tab stop, so this is the keyboard route to collapse/expand the band;
+        // when minimized, activating a content tab FLOATS the band (see below). An app wanting it global binds it above.
+        if (!e.Handled && e.Key == Key.F1 && (e.Modifiers & KeyModifiers.Control) != 0)
+        {
+            IsMinimized = !IsMinimized;
+            e.Handled = true;
+            return;
+        }
+
+        // A FLOATED (temporarily-revealed) band: Escape first re-collapses the float and returns to the strip; a
+        // second Escape (no longer floating) exits the ribbon via the RetainsFocus return below.
+        if (!e.Handled && e.Key == Key.Escape && _floating)
+        {
+            CollapseFloatingBand(refocusSelectedTab: true);
+            e.Handled = true;
+            return;
+        }
+
         // Escape returns focus to where it came from before entering the ribbon (the RetainsFocus return) — resolved
         // through the RIBBON (the returning scope), so it reaches the outer focus from the tab strip AND from any group
         // control. Only when UNHANDLED: an open dropdown / a deeper handler consumes Escape first.
@@ -232,13 +251,78 @@ public class Ribbon : TabControl
            && _bodyContentHost is { } host && host.IsAncestorOf(source)
            && focus.FindNext(source, FocusNavigationDirection.Up) is null;
 
-    // Drop focus into the ribbon body (the selected tab's band): its remembered focus, else the first tab-ordered
-    // control. A no-op (false) when the body is minimized / hidden or holds nothing focusable — Down then does nothing.
+    // Whether the minimized band is temporarily revealed (floated). Not a persistent property — it re-collapses on
+    // dismiss (Esc / focus leaving the ribbon), leaving IsMinimized untouched.
+    private bool _floating;
+
+    // Bumped every time the band (re)floats. A ScheduleEnterFloatedBody retry chain captures the generation it was
+    // armed under; a dismiss-then-re-float within the same interaction bumps this, so the stale chain's queued
+    // callbacks orphan themselves (they see a newer generation) and exactly one chain is ever live per float.
+    private int _floatGeneration;
+
+    // Drop focus into the ribbon body (the selected tab's band). When MINIMIZED, first FLOAT the band (a transient
+    // reveal — the Office "click/arrow a tab to peek the band" model) and enter it once it lays out; otherwise enter
+    // now. The float auto-dismisses (see the Esc branch + the focus-leaves-ribbon override below).
     private bool EnterBody(FocusManager focus)
-        => !IsMinimized
-           && _bodyContentHost is { IsEffectivelyVisible: true } host
+    {
+        if (IsMinimized)
+        {
+            if (!FloatBand())
+                return false;
+            ScheduleEnterFloatedBody(4); // the revealed body realizes over the next layout pass — enter once it does
+            return true;
+        }
+
+        return EnterBodyNow(focus);
+    }
+
+    private bool EnterBodyNow(FocusManager focus)
+        => _bodyContentHost is { IsEffectivelyVisible: true } host
            && focus.ResolveFocusEntry(host) is { } target
            && target.Focus(FocusNavigationMethod.Directional);
+
+    // Floats the minimized band: reveal it via :floating (which overrides the :minimized body collapse — a 2-pseudo
+    // rule beating the 1-pseudo collapse) WITHOUT clearing IsMinimized. Returns false when not minimized / already floating.
+    internal bool FloatBand()
+    {
+        if (!IsMinimized || _floating)
+            return false;
+        _floating = true;
+        _floatGeneration++; // arm a new retry generation; any prior chain's queued callbacks now orphan themselves
+        PseudoClasses.Set(":floating", true);
+        return true;
+    }
+
+    // Re-collapses a floated band (dismiss); optionally returns focus to the strip. A no-op when not floating.
+    private void CollapseFloatingBand(bool refocusSelectedTab)
+    {
+        if (!_floating)
+            return;
+        _floating = false;
+        PseudoClasses.Set(":floating", false);
+        if (refocusSelectedTab)
+            FocusSelectedTab();
+    }
+
+    // Retry entering the just-floated body across dispatcher turns until its content host realizes (revealing a
+    // collapsed subtree needs a layout pass before its controls are focusable). Bounded so a never-focusable body stops;
+    // aborts if the float was dismissed first.
+    private void ScheduleEnterFloatedBody(int attemptsLeft)
+    {
+        if (UIApplication.Current is not { } app)
+            return;
+
+        var generation = _floatGeneration; // this chain belongs to the float armed now
+        app.Dispatcher.Post(() =>
+        {
+            if (_floatGeneration != generation) // a dismiss+re-float replaced us — a fresh chain owns entry
+                return;
+            if (!_floating || EnterBodyNow(app.FocusManager))
+                return;
+            if (attemptsLeft > 0)
+                ScheduleEnterFloatedBody(attemptsLeft - 1);
+        });
+    }
 
     // Climb back to the tab strip: focus the selected tab header (the tab whose band the body shows), or the first
     // content tab if selection is somehow clear.
@@ -336,7 +420,36 @@ public class Ribbon : TabControl
     // would add them AFTER the surface is placed/sized from an empty host → the checklist renders as a clipped sliver
     // on first open. (A raw Popup stays open across inside toggles — light-dismiss closes only on an outside press —
     // so a stay-open checklist fits, unlike a BarDropDownButton whose item-click closes the dropdown.)
-    private void OnQatPopupOpened(object? sender, EventArgs e) => RefreshChecklistChecks();
+    private void OnQatPopupOpened(object? sender, EventArgs e)
+    {
+        RefreshChecklistChecks();
+        // Move keyboard focus INTO the checklist so a KEYBOARD-opened customize menu is navigable at once (a Popup,
+        // unlike an activated Window, gets no auto-focus — the Backstage-menu parity). The popup lays out synchronously
+        // on open, so the rows are realized now. Gated on the open being keyboard-driven: a MOUSE open must NOT yank
+        // focus off the pointer's target into the checklist (the click leaves focus where the user put it).
+        if (UIApplication.Current?.InputDispatcher.LastModality == InputModality.Keyboard)
+            FocusFirstChecklistRow();
+    }
+
+    // The first focusable checklist row (the leading candidate CheckBox), so an opened customize menu is keyboard-
+    // navigable without a pointer (Up/Down move between rows — the host is a Contained directional container). With no
+    // candidate rows the only focusables are the trailing "More Commands…" (a DISMISS action) and "Show Below" toggle —
+    // auto-focusing there would make the first Enter dismiss the menu, so skip the auto-focus entirely (the menu stays
+    // open; the user can still arrow/Tab to those actions deliberately).
+    private bool FocusFirstChecklistRow()
+    {
+        if (_qatChecklistHost is null || _quickAccessCandidates.Count == 0)
+            return false;
+
+        foreach (var child in _qatChecklistHost.Children)
+        {
+            if (child is { Focusable: true, IsEffectivelyVisible: true, IsEffectivelyEnabled: true } row
+                && row.Focus(FocusNavigationMethod.Restore))
+                return true;
+        }
+
+        return false;
+    }
 
     // Builds the checklist rows (candidate CheckBoxes + separator + "More Commands…" + "Show Below the Ribbon"). Called
     // EAGERLY so the content exists before the popup surface is sized; a candidates change rebuilds it.
@@ -355,7 +468,9 @@ public class Ribbon : TabControl
             _qatChecklistHost.Children.Add(row);
         }
 
-        _qatChecklistHost.Children.Add(new BarSeparator());
+        // A HORIZONTAL rule in the vertical checklist (BarSeparator defaults to Vertical for a horizontal bar; only the
+        // ToolbarOverflowPanel flips it by band, and this checklist is a plain vertical StackPanel).
+        _qatChecklistHost.Children.Add(new BarSeparator { Orientation = Orientation.Horizontal });
 
         var more = new BarButton { Content = "More Commands…" };
         more.Click += (_, _) =>
@@ -441,7 +556,21 @@ public class Ribbon : TabControl
     private static void OnIsMinimizedChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is Ribbon ribbon)
+        {
+            ribbon.CollapseFloatingBand(refocusSelectedTab: false); // a persistent minimize/expand ends any transient float
             ribbon.UpdatePinState(); // the :minimized pseudo-class (body collapse) is driven by the PseudoClassMapping
+        }
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnPropertyChanged(in args);
+
+        // A floated (temporarily-revealed) band auto-collapses when keyboard focus LEAVES the ribbon — Tab away, or a
+        // command that returns focus to the document (the ribbon is a non-retaining scope). The Office peek-then-dismiss.
+        if (_floating && ReferenceEquals(args.Property, IsKeyboardFocusWithinProperty) && !args.GetNewValue<bool>())
+            CollapseFloatingBand(refocusSelectedTab: false);
     }
 
     /// <inheritdoc/>

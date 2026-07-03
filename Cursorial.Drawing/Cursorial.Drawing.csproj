@@ -10,7 +10,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.Drawing</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.3.0</Version>
         <Description>The retained-scene drawing layer for Cursorial — cached-raster scenes and a compositor that only repaints what changed, brushes and gradients, a pen/box engine with automatic box-drawing junctions, charts, and UI drawing primitives (clip/translate, occluding fills, titled panels, drop/inner shadows). Built on Cursorial.Rendering + Cursorial.Animation.</Description>
         <PackageTags>terminal;tui;drawing;scene;compositor;brush;gradient;charts;crossplatform</PackageTags>
     </PropertyGroup>

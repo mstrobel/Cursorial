@@ -15,7 +15,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.Core</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.3.0</Version>
         <Description>The foundation layer of Cursorial — a cross-platform .NET library for building visually rich terminal applications with first-class mouse and keyboard support. Provides VT/ANSI input parsing, output sequence emission, capability negotiation, and session orchestration over POSIX and Windows stdio.</Description>
         <PackageTags>terminal;tui;vt;ansi;console;input;mouse;keyboard;crossplatform;posix;windows;kitty;sixel</PackageTags>
     </PropertyGroup>

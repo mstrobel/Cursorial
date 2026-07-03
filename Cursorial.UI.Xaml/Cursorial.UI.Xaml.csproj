@@ -18,7 +18,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.UI.Xaml</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.3.0</Version>
         <Description>The runtime XAML loader for Cursorial.UI — declarative markup with {Binding}/{StaticResource}/{DynamicResource}/{TemplateBinding}, ControlTemplates, ResourceDictionary with merged and theme dictionaries, styles with the full selector grammar, access-key folding, and line+column diagnostics on parse/semantic errors. Pair with Cursorial.UI.Xaml.Generator for build-time validation, code-behind, and AOT.</Description>
         <PackageTags>terminal;tui;xaml;loader;markup;binding;templates;crossplatform</PackageTags>
     </PropertyGroup>

@@ -26,7 +26,7 @@
         <IsPackable>true</IsPackable>
         <!-- Per-package NuGet metadata (shared fields — license/authors/repo/SourceLink — are in ../Directory.Build.props). -->
         <PackageId>Cursorial.UI.Xaml.Generator</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.3.0</Version>
         <Description>The Roslyn source generator for Cursorial.UI XAML — build-time XAML validation surfaced as compiler diagnostics at the .xaml line/col, typed x:Name backing fields + InitializeComponent code-behind, compiled bindings with x:DataType path checking, straight-line lowering, and an AOT/trim-clean IXamlTypeMetadataProvider that replaces reflection at runtime. Ships as an analyzer; add alongside Cursorial.UI.Xaml.</Description>
         <PackageTags>terminal;tui;xaml;roslyn;sourcegenerator;analyzer;aot;crossplatform</PackageTags>
         <!-- NU5128: analyzers ship no runtime assets. RS2008: the diagnostic IDs are the frontend's

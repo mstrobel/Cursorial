@@ -25,7 +25,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.UI.Xaml.Frontend</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.3.0</Version>
         <Description>The shared XAML parser frontend for Cursorial (netstandard2.0) — the structure-of-arrays node model (XamlDocument), the XmlReader-driven parser, the markup-extension grammar, the diagnostic contract (line+column everywhere), and the type-system abstractions consumed by BOTH the runtime loader (Cursorial.UI.Xaml) and the build-time source generator. No Cursorial.UI dependency.</Description>
         <PackageTags>terminal;tui;xaml;parser;markup;netstandard;crossplatform</PackageTags>
     </PropertyGroup>

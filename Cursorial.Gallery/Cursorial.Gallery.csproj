@@ -27,7 +27,6 @@
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />
     </ItemGroup>
 
     <ItemGroup>

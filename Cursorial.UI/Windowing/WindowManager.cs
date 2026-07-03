@@ -826,6 +826,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (_rootSurface is not null)
             _surfaces.Add(_rootSurface);
 
+        // The KeyTip overlay sits directly ABOVE the root surface (its badges annotate the root's bars) but BELOW
+        // windows and popups — so a modal Backstage window / File-anchored popup opened over the ribbon OCCLUDES the
+        // badges rather than the badges bleeding on top of it (keytips-design §8). v1 badges only root/window bar
+        // surfaces; a v2 dropdown-drill (badging an opened popup's items) will need a per-popup badge layer.
+        if (_keyTipSurface is {} keyTips)
+            _surfaces.Add(keyTips);
+
         foreach (var window in _windows)
         {
             if (window.HostSurface is {} surface)
@@ -840,9 +847,6 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         if (_fitBadgeSurface is {} badge) // the fit badge sits above everything (§8.7)
             _surfaces.Add(badge);
-
-        if (_keyTipSurface is {} keyTips) // the KeyTip overlay is topmost — badges paint over any open dropdown (keytips-design §8)
-            _surfaces.Add(keyTips);
     }
 
     // ── Popup hosting (P7-W4: light-dismiss surfaces in the band above every window) ──────────────────
@@ -1096,10 +1100,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     // ── KeyTip overlay (Cursorial.UI.Bars; keytips-design §8: a dedicated topmost hit-transparent surface) ──────
 
-    /// <summary>Shows <paramref name="badgeRoot"/> (the Bars <c>KeyTipLayer</c>) on a dedicated surface at the top of
-    /// the stack, above windows AND popups so badges paint over an open dropdown (keytips-design §8). The surface is
-    /// hit-test transparent (mouse never routes to it) and screen-sized; the layer places each badge by absolute
-    /// screen coordinates. Replaces any existing overlay. Called by the KeyTip controller's <c>Enter()</c>.</summary>
+    /// <summary>Shows <paramref name="badgeRoot"/> (the Bars <c>KeyTipLayer</c>) on a dedicated surface just above the
+    /// root surface — above the ribbon it badges, but below windows/popups so a modal Backstage occludes the badges
+    /// (keytips-design §8; see <see cref="RebuildSurfaceStack"/>). The surface is hit-test transparent (mouse never
+    /// routes to it) and screen-sized; the layer places each badge by absolute screen coordinates. Replaces any
+    /// existing overlay. Called by the KeyTip controller's <c>Enter()</c>.</summary>
     internal void ShowKeyTipOverlay(UIElement badgeRoot)
     {
         ArgumentNullException.ThrowIfNull(badgeRoot);

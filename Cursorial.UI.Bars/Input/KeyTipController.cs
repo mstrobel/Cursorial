@@ -76,18 +76,39 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         if (!_isActive || e is not KeyEventArgs k || k.Device.Kind != KeyEventKind.Down)
             return;
 
-        // Consume drill letters while active; Ctrl/Super/… chords fall through so global gestures (Ctrl+S) still fire.
-        // Escape is handled EARLIER by AccessKeyManager's Alt pre-stage via TryPopLevel (it runs before this seam), so
-        // there is no Escape branch here.
-        if (IsPlainCharacter(k))
+        // Consume drill letters + digits while active; Ctrl/Super/… chords fall through so global gestures (Ctrl+S)
+        // still fire. Escape is handled EARLIER by AccessKeyManager's Alt pre-stage via TryPopLevel (it runs before
+        // this seam), so there is no Escape branch here.
+        if (TryGetDrillChar(k, out var c))
         {
-            TypeChar(k.Text.Span[0]);
+            TypeChar(c);
             e.Handled = true;
         }
     }
 
-    private static bool IsPlainCharacter(KeyEventArgs k)
-        => k is { Key: Key.Character, Text.Length: 1 } && (k.Modifiers & DrillExcludeMask) == KeyModifiers.None;
+    // The character a key contributes to the prefix, or false to let it fall through. A plain character key (a letter,
+    // or a number-row digit — the QAT badges) OR a NUMPAD digit (keyboard-first QAT users press the numpad), with only
+    // Alt/Shift allowed (Alt is the held-mode drill modifier; a Ctrl/Super/… chord is a global gesture, not a drill).
+    private static bool TryGetDrillChar(KeyEventArgs k, out char c)
+    {
+        c = '\0';
+        if ((k.Modifiers & DrillExcludeMask) != KeyModifiers.None)
+            return false;
+
+        if (k is { Key: Key.Character, Text.Length: 1 })
+        {
+            c = k.Text.Span[0];
+            return true;
+        }
+
+        if (k.Key is >= Key.Numpad0 and <= Key.Numpad9)
+        {
+            c = (char)('0' + (k.Key - Key.Numpad0)); // Numpad1 → '1', matching the QAT digit badges
+            return true;
+        }
+
+        return false;
+    }
 
     // ───────────────────────────── FSM (keytips-design §5) ─────────────────────────────
 

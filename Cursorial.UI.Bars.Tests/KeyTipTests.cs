@@ -377,6 +377,94 @@ public sealed class KeyTipTests
         Assert.Equal("D", keyTip);        // the first LETTER ('D'), never the leading digit '3'
     }
 
+    [Fact] // A COLLAPSED tab (e.g. a contextual tab that's hidden) gets NO badge — otherwise its badge would derive a
+           // letter and, having no arranged position, land at the ribbon origin over the first tab (the reported bug).
+    public void CollapsedTab_GetsNoBadge()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+
+        var ribbon = new Ribbon();
+        var home = new RibbonTab { Header = "Home" };
+        home.Groups.Add(new RibbonGroup { Header = "Font" });
+        ribbon.Items.Add(home);
+        var contextual = new RibbonTab { Header = "Table", Visibility = Visibility.Collapsed }; // hidden contextual tab
+        contextual.Groups.Add(new RibbonGroup { Header = "Cells" });
+        ribbon.Items.Add(contextual);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        host.RunFrame();
+
+        Assert.True(controller.IsActive);
+        Assert.Null(controller.BadgeForTargetForTests(contextual)); // no 'T' badge for the collapsed tab
+        Assert.NotNull(controller.BadgeForTargetForTests(home));    // the visible tab still gets its badge
+
+        // Typing the collapsed tab's would-be letter bonks (no such badge) instead of drilling it.
+        TypeKeyTip(host, 'T');
+        host.RunFrame();
+        Assert.Equal(0, ribbon.SelectedIndex); // Home stays selected; the hidden tab was not drilled
+    }
+
+    [Fact] // QAT digit badges are activatable via the NUMPAD too (keyboard-first users), not only the number row.
+    public void NumpadDigit_ActivatesDigitBadge()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+
+        var one = new BarButton { Content = "first" };
+        KeyTip.SetKey(one, "1"); // an explicit digit badge (as the QAT assigns)
+        var clicked = false;
+        one.Click += (_, _) => clicked = true;
+        var toolbar = new Toolbar();
+        toolbar.Items.Add(one);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        // Numpad "1" (Key.Numpad1) — not a Key.Character; the controller maps it to '1'.
+        host.Application.InputDispatcher.ProcessEvent(
+            new KeyEvent { Key = Key.Numpad1, Modifiers = KeyModifiers.Alt, Kind = KeyEventKind.Down, Text = default, Timestamp = DateTimeOffset.UnixEpoch });
+        host.RunUntilIdle();
+
+        Assert.True(clicked);
+        Assert.False(controller.IsActive);
+    }
+
+    [Fact] // Layering: the KeyTip overlay sits just above the ROOT surface — below windows/popups — so a Backstage
+           // window opened over the ribbon occludes the badges instead of the badges bleeding on top of it.
+    public void Overlay_SitsAboveRoot_BelowWindows()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+        var (ribbon, _, _) = NewRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        AltDown(host);
+        host.RunFrame();
+        var surfaces = host.Application.WindowManager!.Surfaces;
+
+        var keyTipIndex = -1;
+        for (var i = 0; i < surfaces.Count; i++)
+        {
+            if (surfaces[i].IsHitTestTransparent)
+                keyTipIndex = i;
+        }
+        Assert.Equal(1, keyTipIndex); // index 0 is the root surface; the KeyTip overlay is directly above it
+
+        // Open a window over the ribbon → it stacks ABOVE the KeyTip overlay (so its content occludes the badges).
+        var window = new Window { Content = new Button { Content = "Modal" } };
+        window.Show(host.Application.WindowManager);
+        host.RunUntilIdle();
+
+        var stack = host.Application.WindowManager.Surfaces.ToList();
+        var keyTipPos = stack.FindIndex(s => s.IsHitTestTransparent);
+        var windowPos = stack.FindIndex(s => ReferenceEquals(s.HostWindow, window));
+        Assert.True(windowPos >= 0 && keyTipPos < windowPos); // KeyTip overlay is below the window
+    }
+
     [Fact] // Multi-char keytips: typing the shared prefix dims the matched letters + keeps only the viable badges.
     public void MatchedPrefix_MultiChar_FiltersToViable()
     {

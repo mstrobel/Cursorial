@@ -18,6 +18,9 @@ public sealed class KeyTipLevelBuilder
     /// <summary>Adds a leaf: typing its badge invokes <paramref name="activate"/> then exits.</summary>
     public void AddActivate(UIElement target, Action activate, KeyTipAnchor anchor = KeyTipAnchor.TopLeading)
     {
+        if (!target.IsEffectivelyVisible) // a hidden target (e.g. a collapsed contextual ribbon tab) gets no badge
+            return;
+
         var (keyTip, explicitKey) = KeyTipModel.Resolve(target);
         if (keyTip is null)
             return;
@@ -32,6 +35,9 @@ public sealed class KeyTipLevelBuilder
         UIElement target, KeyTipTargetKind kind, Action reveal, Func<KeyTipLevel?> buildNext,
         Action? retract = null, KeyTipAnchor anchor = KeyTipAnchor.TopLeading)
     {
+        if (!target.IsEffectivelyVisible)
+            return;
+
         var (keyTip, explicitKey) = KeyTipModel.Resolve(target);
         if (keyTip is null)
             return;
@@ -45,7 +51,7 @@ public sealed class KeyTipLevelBuilder
         UIElement target, string keyTip, KeyTipTargetKind kind, Action? activate, Action? reveal,
         Func<KeyTipLevel?>? buildNext = null, Action? retract = null, KeyTipAnchor anchor = KeyTipAnchor.TopLeading)
     {
-        if (string.IsNullOrEmpty(keyTip))
+        if (string.IsNullOrEmpty(keyTip) || !target.IsEffectivelyVisible)
             return;
 
         _pending.Add(new Pending(target, keyTip.ToUpperInvariant(), true, kind, anchor, activate, reveal, buildNext, retract));

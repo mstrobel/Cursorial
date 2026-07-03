@@ -99,7 +99,7 @@ public class Popup : UIElement
         IsHitTestVisibleProperty.OverrideMetadata<Popup>(new(DefaultValue: false, Coerce: (_, _) => false));
 
         AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, IsOpenProperty);
-        ShadowProperty.OverrideDefaultValue<Popup>(WindowShadow.None);
+        // ShadowProperty.OverrideDefaultValue<Popup>(WindowShadow.None);
     }
 
     /// <summary>Creates a popup.</summary>

@@ -48,9 +48,12 @@ public class Ribbon : TabControl
 
     private const string PartQuickAccessAbove = "PART_QuickAccessAbove";
     private const string PartQuickAccessBelow = "PART_QuickAccessBelow";
+    private const string PartQuickAccessCollapsed = "PART_QuickAccessCollapsed";
+    private const string PartQatCollapsed = "PART_QatCollapsed";
     private const string PartQatCustomize = "PART_QatCustomize";
     private const string PartQatPopup = "PART_QatPopup";
     private const string PartQatChecklistHost = "PART_QatChecklistHost";
+    private const string PartStrip = "PART_Strip";
     private const string PartPinButton = "PART_PinButton";
     private const string PartContentHost = "PART_ContentHost";
 
@@ -63,21 +66,28 @@ public class Ribbon : TabControl
 
     private Toolbar? _qatAbove;
     private Toolbar? _qatBelow;
+    private Toolbar? _qatCollapsedBar;      // the ⋯▾ popup's QAT mini-bar (the collapse-first degraded tier's command host)
+    private ButtonBase? _qatCollapsedButton; // the ⋯▾ opener itself (PART_QatCollapsed)
     private ButtonBase? _qatCustomize;
     private Popup? _qatPopup;
     private Panel? _qatChecklistHost;
+    private RibbonStripPanel? _strip; // reports the collapse-first verdict via CollapseChanged
     private CheckBox? _qatBelowToggle; // the checklist's "Show Below the Ribbon" row (tracked for check refresh)
 
+    private bool _qatCollapsed; // effective collapse (Above placement + has-qat + the strip's tight-width verdict)
     private bool _redirectingSelection;
 
     // Test hooks (Cursorial.UI.Bars.Tests has InternalsVisibleTo): the active QAT toolbar host, the customize opener,
-    // its checklist popup + host.
-    internal Toolbar? ActiveQuickAccessToolbarForTests
-        => QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon ? _qatBelow : _qatAbove;
+    // its checklist popup + host, and the collapse-first state.
+    internal Toolbar? ActiveQuickAccessToolbarForTests => ActiveQuickAccessHost;
     internal ButtonBase? QatCustomizeForTests => _qatCustomize;
     internal Popup? QatPopupForTests => _qatPopup;
     internal Panel? QatChecklistForTests => _qatChecklistHost;
     internal ButtonBase? PinButtonForTests => _pinButton;
+    internal ButtonBase? QatCollapsedButtonForTests => _qatCollapsedButton;
+    internal Toolbar? QatCollapsedBarForTests => _qatCollapsedBar;
+    internal bool IsQuickAccessCollapsedForTests => _qatCollapsed;
+    internal Toolbar? QatAboveForTests => _qatAbove;
 
     static Ribbon()
     {
@@ -342,6 +352,14 @@ public class Ribbon : TabControl
         _bodyContentHost = GetTemplatePart<UIElement>(PartContentHost);
         _qatAbove = GetTemplatePart<Toolbar>(PartQuickAccessAbove);
         _qatBelow = GetTemplatePart<Toolbar>(PartQuickAccessBelow);
+        _qatCollapsedBar = GetTemplatePart<Toolbar>(PartQuickAccessCollapsed);
+        _qatCollapsedButton = GetTemplatePart<ButtonBase>(PartQatCollapsed);
+
+        if (_strip is not null)
+            _strip.CollapseChanged -= OnStripCollapseChanged;
+        _strip = GetTemplatePart<RibbonStripPanel>(PartStrip);
+        if (_strip is not null)
+            _strip.CollapseChanged += OnStripCollapseChanged;
 
         if (_qatCustomize is not null)
             _qatCustomize.Click -= OnQatCustomizeClick;
@@ -365,7 +383,8 @@ public class Ribbon : TabControl
             _pinButton.Click += OnPinClick;
         UpdatePinState(); // glyph + :pinned from the current IsMinimized
 
-        UpdateQatHost(); // point the generator at the placement-appropriate QAT toolbar (catch-up + re-template safe)
+        UpdateQatCollapseState(); // reconcile :qat-collapsed against the fresh strip (defaults uncollapsed pre-layout)
+        UpdateQatHost();          // point the generator at the active QAT toolbar (catch-up + re-template safe)
     }
 
     /// <inheritdoc/>
@@ -380,9 +399,14 @@ public class Ribbon : TabControl
         }
         if (_pinButton is not null)
             _pinButton.Click -= OnPinClick;
+        if (_strip is not null)
+            _strip.CollapseChanged -= OnStripCollapseChanged;
         _qatGenerator.SetHost(null); // release the generated controls from the torn-down toolbar
         _qatAbove = null;
         _qatBelow = null;
+        _qatCollapsedBar = null;
+        _qatCollapsedButton = null;
+        _strip = null;
         _qatCustomize = null;
         _qatPopup = null;
         _qatChecklistHost = null;
@@ -400,10 +424,38 @@ public class Ribbon : TabControl
         base.OnDetachedFromTree(in e);
     }
 
-    // Points the generator at whichever QAT toolbar the current placement shows (the :qat-below template rule flips
-    // their Visibility; the generator fills the visible one).
-    private void UpdateQatHost()
-        => _qatGenerator.SetHost(QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon ? _qatBelow : _qatAbove);
+    // The QAT toolbar the generated command controls currently live in: the below-band under :qat-below, the ⋯▾
+    // popup's mini-bar when collapsed (the tight-width degraded tier), else the inline above cluster. One live control
+    // set, re-hosted between them (the generator's move-not-rebuild — placement/collapse preserve per-control state).
+    private Toolbar? ActiveQuickAccessHost
+        => QuickAccessPlacement == RibbonQuickAccessPlacement.BelowRibbon ? _qatBelow
+           : _qatCollapsed ? _qatCollapsedBar
+           : _qatAbove;
+
+    // Points the generator at the active host (the :qat-below / :qat-collapsed template rules flip which is visible;
+    // the generator fills the visible one).
+    private void UpdateQatHost() => _qatGenerator.SetHost(ActiveQuickAccessHost);
+
+    private bool HasQat => _quickAccessCommands.Count > 0 || _quickAccessCandidates.Count > 0;
+
+    // Reconcile the effective collapse from the strip's tight-width verdict. Collapse applies ONLY to the inline
+    // (Above) placement and only when there are COMMANDS to tuck into the ⋯▾ popup — gated on the commands count, NOT
+    // HasQat: a CANDIDATES-only ribbon (the ▾ present but nothing pinned) would otherwise collapse into an EMPTY ⋯▾
+    // popup (the generator hosts commands only). Below has its own full-width row; a QAT-less ribbon never shows the ⋯▾.
+    // Stamps :qat-collapsed (theme swaps the inline cluster for ⋯▾) and re-hosts the commands.
+    private void UpdateQatCollapseState()
+    {
+        var effective = QuickAccessPlacement == RibbonQuickAccessPlacement.AboveRibbon
+                        && _quickAccessCommands.Count > 0
+                        && _strip is { IsCollapsed: true };
+        if (_qatCollapsed == effective)
+            return;
+        _qatCollapsed = effective;
+        PseudoClasses.Set(":qat-collapsed", effective);
+        UpdateQatHost(); // move the commands into / out of the ⋯▾ popup mini-bar
+    }
+
+    private void OnStripCollapseChanged(object? sender, EventArgs e) => UpdateQatCollapseState();
 
     private void OnQatCustomizeClick(object? sender, ClickEventArgs e)
     {
@@ -413,7 +465,10 @@ public class Ribbon : TabControl
     }
 
     private void UpdateHasQat()
-        => PseudoClasses.Set(":has-qat", _quickAccessCommands.Count > 0 || _quickAccessCandidates.Count > 0);
+    {
+        PseudoClasses.Set(":has-qat", HasQat);
+        UpdateQatCollapseState(); // a QAT gained/lost changes whether the ⋯▾ collapse is applicable
+    }
 
     // On open, only REFRESH the checked states — the rows are already built (eagerly, in OnApplyTemplate / on a
     // candidates change), so the popup surface was sized to real content at placement. Building rows here on Opened
@@ -520,7 +575,10 @@ public class Ribbon : TabControl
     private static void OnQuickAccessPlacementChanged(UIObject sender, RibbonQuickAccessPlacement oldValue, RibbonQuickAccessPlacement newValue)
     {
         if (sender is Ribbon ribbon)
-            ribbon.UpdateQatHost(); // move the generated controls to the now-visible host
+        {
+            ribbon.UpdateQatCollapseState(); // collapse is Above-only — switching to Below clears any stale :qat-collapsed
+            ribbon.UpdateQatHost();          // move the generated controls to the now-visible host (even if collapse was unchanged)
+        }
     }
 
     private bool _justRestoredByClick; // set when a click-to-restore fired, so the SAME double-click's 2nd press doesn't re-minimize

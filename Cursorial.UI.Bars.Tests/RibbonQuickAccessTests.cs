@@ -164,8 +164,8 @@ public sealed class RibbonQuickAccessTests
         // children are exactly [BarSeparator][BarButton "More Commands…"][CheckBox "Show Below"] — no candidate rows.
         var checklist = ribbon.QatChecklistForTests!;
         var more = checklist.Children.OfType<BarButton>().Single();
-        Assert.False(more.IsFocused);                                    // did NOT auto-focus the dismiss action
-        Assert.False(checklist.Children.OfType<CheckBox>().Any(c => c.IsFocused)); // nor the placement toggle
+        Assert.False(more.IsFocused);                                          // did NOT auto-focus the dismiss action
+        Assert.DoesNotContain(checklist.Children.OfType<CheckBox>(), c => c.IsFocused); // nor the placement toggle
     }
 
     [Fact] // tab order: the trailing QAT is reached AFTER the tabs — tabbing into the ribbon lands on a tab, not the QAT
@@ -383,5 +383,136 @@ public sealed class RibbonQuickAccessTests
         host.RunUntilIdle();
 
         Assert.False(popup.IsOpen); // the popup closed on detach (surface released)
+    }
+
+    // ───────────────────────── collapse-first overflow (bars guide §"QAT placement in the compact ribbon") ─────────
+
+    [Fact] // wide strip: the inline QAT shows beside the tabs — not collapsed, the ⋯▾ button hidden
+    public void QuickAccess_WideStrip_InlineNotCollapsed()
+    {
+        using var host = NewHost(w: 80);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.False(ribbon.IsQuickAccessCollapsedForTests);              // inline fits at 80 cells
+        Assert.False(ribbon.QatCollapsedButtonForTests!.IsEffectivelyVisible); // ⋯▾ hidden
+        Assert.Empty(ribbon.QatCollapsedBarForTests!.Items);             // commands NOT in the collapsed bar
+    }
+
+    [Fact] // tight strip: the QAT collapses FIRST (before the tabs) to the ⋯▾ popup button; the commands re-host into
+           // its mini-bar and the inline cluster hides — the design's degraded tier
+    public void QuickAccess_TightStrip_CollapsesToPopupButton()
+    {
+        using var host = NewHost(w: 80);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.False(ribbon.IsQuickAccessCollapsedForTests);
+
+        host.SendResize(16, 12); // tight — the inline QAT can't fit beside File/Home/Insert
+        host.RunUntilIdle();
+
+        Assert.True(ribbon.IsQuickAccessCollapsedForTests);                  // collapsed
+        Assert.True(ribbon.QatCollapsedButtonForTests!.IsEffectivelyVisible); // ⋯▾ shown
+        Assert.Same(ribbon.QatCollapsedBarForTests, ribbon.ActiveQuickAccessToolbarForTests); // commands re-hosted…
+        Assert.Single(ribbon.QatCollapsedBarForTests!.Items);               // …into the ⋯▾ popup mini-bar
+    }
+
+    [Fact] // widening back un-collapses: the commands return to the inline cluster and the ⋯▾ hides again
+    public void QuickAccess_CollapsedThenWidened_UnCollapses()
+    {
+        using var host = NewHost(w: 16);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.True(ribbon.IsQuickAccessCollapsedForTests); // starts tight ⇒ collapsed
+
+        host.SendResize(80, 12);
+        host.RunUntilIdle();
+
+        Assert.False(ribbon.IsQuickAccessCollapsedForTests);                   // un-collapsed
+        Assert.False(ribbon.QatCollapsedButtonForTests!.IsEffectivelyVisible); // ⋯▾ hidden
+        Assert.Empty(ribbon.QatCollapsedBarForTests!.Items);                   // commands left the popup mini-bar
+    }
+
+    [Fact] // a ribbon with NO QAT never collapses (the ⋯▾ never appears), even at a tight width
+    public void QuickAccess_NoQat_NeverCollapses()
+    {
+        using var host = NewHost(w: 12);
+        var ribbon = NewRibbon(); // no QuickAccessCommands / Candidates
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.False(ribbon.IsQuickAccessCollapsedForTests);
+        Assert.False(ribbon.QatCollapsedButtonForTests!.IsEffectivelyVisible);
+    }
+
+    [Fact] // below-ribbon placement has its own full-width row — collapse never applies (no ⋯▾) even when tight
+    public void QuickAccess_BelowPlacement_NeverCollapses()
+    {
+        using var host = NewHost(w: 16);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        ribbon.QuickAccessPlacement = RibbonQuickAccessPlacement.BelowRibbon;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.False(ribbon.IsQuickAccessCollapsedForTests);
+        Assert.False(ribbon.QatCollapsedButtonForTests!.IsEffectivelyVisible);
+        Assert.NotSame(ribbon.QatCollapsedBarForTests, ribbon.ActiveQuickAccessToolbarForTests); // hosted below, NOT in ⋯▾
+    }
+
+    [Fact] // regression: below-ribbon placement keeps the customize ▾ accessible (only the COMMANDS relocate to the
+           // below band; the ▾ stays at its stable strip-trailing home) — :qat-below must not strand the whole cluster
+    public void QuickAccess_BelowPlacement_CustomizeButtonStaysAccessible()
+    {
+        using var host = NewHost(w: 80);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        ribbon.QuickAccessPlacement = RibbonQuickAccessPlacement.BelowRibbon;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.True(ribbon.QatCustomizeForTests!.IsEffectivelyVisible); // the ▾ did NOT vanish in below mode
+        Assert.Contains("▾", AllRows(host));                           // …and it renders
+
+        ribbon.QatPopupForTests!.IsOpen = true; // its checklist popup still opens
+        host.RunUntilIdle();
+        Assert.True(ribbon.QatPopupForTests!.IsOpen);
+    }
+
+    [Fact] // audit: below mode collapses the now-EMPTY above toolbar (an empty Toolbar otherwise reserves ~3 cells for
+           // its Hidden overflow chevron and paints a discolored box left of the ▾) — the ▾ stays, the box is gone
+    public void QuickAccess_BelowPlacement_EmptyAboveToolbarCollapsed()
+    {
+        using var host = NewHost(w: 80);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCommands.Add(new BarCommand(() => { }) { Text = "Save" });
+        ribbon.QuickAccessPlacement = RibbonQuickAccessPlacement.BelowRibbon;
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.False(ribbon.QatAboveForTests!.IsEffectivelyVisible); // the emptied above toolbar collapsed (no box)
+        Assert.Equal(0, ribbon.QatAboveForTests!.DesiredSize.Columns);
+        Assert.True(ribbon.QatCustomizeForTests!.IsEffectivelyVisible); // …the customize ▾ still shows
+    }
+
+    [Fact] // audit: a CANDIDATES-only ribbon (nothing pinned) must NOT collapse into an EMPTY ⋯▾ popup — collapse is
+           // gated on real commands (what the popup hosts); the customize ▾ stays inline instead
+    public void QuickAccess_CandidatesOnly_TightWidth_DoesNotCollapse()
+    {
+        using var host = NewHost(w: 16);
+        var ribbon = NewRibbon();
+        ribbon.QuickAccessCandidates.Add(new BarCommand(() => { }) { Text = "Save" }); // a candidate, NOT a command
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.False(ribbon.IsQuickAccessCollapsedForTests);                   // no commands ⇒ never collapses
+        Assert.False(ribbon.QatCollapsedButtonForTests!.IsEffectivelyVisible); // ⋯▾ hidden (would be empty)
+        Assert.True(ribbon.QatCustomizeForTests!.IsEffectivelyVisible);        // customize ▾ stays inline
     }
 }

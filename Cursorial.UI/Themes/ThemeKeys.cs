@@ -42,6 +42,12 @@ public static class ThemeKeys
     /// <summary>Intensified fill for a focused <i>text</i> field.</summary>
     public const string WellBrush = "Theme.WellBrush";
     
+    /// <summary>Fill for toolbars and similar.</summary>
+    public const string ToolBarBrush = "Theme.ToolBarBrush";
+    
+    /// <summary>Fill for ribbons and similar.</summary>
+    public const string RibbonBrush = "Theme.RibbonBrush";
+    
     /// <summary>Selection fill (selected item/text) in a focused container.</summary>
     public const string SelectionBrush = "Theme.SelectionBrush";
 

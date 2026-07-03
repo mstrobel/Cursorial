@@ -189,7 +189,7 @@ internal static class CursorialBarsTheme
 
     public static Style ToolbarStyle()
         => new Style { Key = "Bars.Toolbar" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ToolBarBrush)
             // The overflow engine: a ToolbarOverflowPanel splits the live containers between the row and the popup.
             .Set(ItemsControl.ItemsPanelProperty, new ItemsPanelTemplate(static _ => new ToolbarOverflowPanel()))
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
@@ -568,32 +568,38 @@ internal static class CursorialBarsTheme
             qatCluster.Children.Add(customize);  // the customize ▾
             qatCluster.Children.Add(qatPopup);   // logical-only (0 size in the strip layout)
             ctx.RegisterName("PART_QatCluster", qatCluster);
-            DockPanel.SetDock(qatCluster, Dock.Top); // the tab-LABEL row
+
+            // The collapse-first ⋯▾ (bars guide §"QAT placement in the compact ribbon" [DECISION]): when the tabs and
+            // the inline QAT would compete for cells, RibbonStripPanel stamps :qat-collapsed and the inline cluster
+            // hides for this popup button, which drops the QAT commands (re-hosted by the ribbon into PART_QuickAccess-
+            // Collapsed) as a floating mini-bar. Tabs keep their cells; the QAT is one click away.
+            var qatCollapsedBar = new Toolbar();
+            ctx.RegisterName("PART_QuickAccessCollapsed", qatCollapsedBar);
+            var qatCollapsedSurface = new Border { Child = qatCollapsedBar };
+            qatCollapsedSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+            qatCollapsedSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+            var qatCollapsedButton = new BarPopupButton { Content = "⋯", DropDownContent = qatCollapsedSurface };
+            ctx.RegisterName("PART_QatCollapsed", qatCollapsedButton);
 
             var pin = new BarButton { Content = "⌃", Focusable = false, IsTabStop = false, HorizontalAlignment = HorizontalAlignment.Right };
             ctx.RegisterName("PART_PinButton", pin);
-            DockPanel.SetDock(pin, Dock.Bottom); // the selection-UNDERLINE row
 
-            // The two FIXED dock edges (Top label row / Bottom underline row) keep the pin pinned to the underline row
-            // even when the QAT cluster collapses (no QAT, or :qat-below) — it never rides up to the label row.
-            var trailing = new DockPanel { LastChildFill = false }; // hosted in the strip Grid's Auto column (below)
-            trailing.Children.Add(qatCluster); // Dock.Top
-            trailing.Children.Add(pin);        // Dock.Bottom
-
-            // ── Tab strip: left-packed tabs FILL the star column; the trailing QAT/pin column hugs the right (Auto). A
-            // Grid — NOT a DockPanel — so the itemsHost is added FIRST (tabs precede the QAT in tab order: tabbing INTO
-            // the ribbon lands on a tab, not the QAT) yet still fills the left; the Auto column keeps the QAT on-edge
-            // when tabs overflow (the star column clips the tabs, never the QAT — a DockPanel LastChildFill=false would
-            // push the QAT off the right instead). ──
+            // ── Tab strip: left-packed tabs FILL the left; the trailing QAT/pin column right-hugs the strip's dead space
+            // (RibbonStripPanel: QAT on the label row, pin on the underline row). The itemsHost is added FIRST so the
+            // tabs precede the QAT in tab order (tabbing INTO the ribbon lands on a tab). The panel owns the collapse-
+            // first fold: the inline cluster gives way to ⋯▾ before the tabs ever clip. ──
             var itemsHost = new ItemsPresenter();
             ctx.RegisterName("PART_ItemsHost", itemsHost);
-            var stripInner = new Grid();
-            stripInner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star() }); // tabs fill
-            stripInner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });    // trailing QAT/pin
-            Grid.SetColumn(itemsHost, 0);
-            Grid.SetColumn(trailing, 1);
-            stripInner.Children.Add(itemsHost); // FIRST in document order ⇒ precedes the QAT in tab order
-            stripInner.Children.Add(trailing);
+            var stripInner = new RibbonStripPanel();
+            stripInner.Children.Add(itemsHost);          // FIRST ⇒ precedes the QAT in tab order
+            stripInner.Children.Add(qatCluster);         // inline QAT (label row)
+            stripInner.Children.Add(qatCollapsedButton); // ⋯▾ (label row, shown only when :qat-collapsed)
+            stripInner.Children.Add(pin);                // minimize pin (underline row)
+            stripInner.Tabs = itemsHost;
+            stripInner.QatFull = qatCluster;
+            stripInner.QatCollapsed = qatCollapsedButton;
+            stripInner.Pin = pin;
+            ctx.RegisterName("PART_Strip", stripInner);
             var strip = new Border { Child = stripInner, Occludes = true };
             strip.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonTabStripBrush);
             DockPanel.SetDock(strip, Dock.Top);
@@ -637,10 +643,27 @@ internal static class CursorialBarsTheme
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":has-qat").Template().Name("PART_QatCluster"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
-                    // :qat-below moves the QAT to a band under the ribbon — hide the trailing (above) cluster, show the band.
-                    // (Ordered AFTER the :has-qat rule so the compound below state wins by document order at equal specificity.)
-                    new Style(Selectors.Nesting().PseudoClass(":qat-below").Template().Name("PART_QatCluster"))
+                    // NOTE: :qat-below does NOT collapse the cluster — it moves the COMMANDS to the below band (the
+                    // generator re-hosts them, leaving qatAbove empty), so the cluster keeps just the customize ▾ at its
+                    // stable top-right home. Collapsing the whole cluster here would strand the ▾ (and its checklist
+                    // popup), leaving below-placement with no way to customize the QAT.
+                    // The now-empty above toolbar IS collapsed, though — an empty Toolbar still reserves ~3 cells for its
+                    // Hidden overflow chevron and paints its fill there, a discolored box left of the ▾ (Collapsed
+                    // measures 0; Hidden does not). Collapsing PART_QuickAccessAbove specifically drops the box while the
+                    // ▾ stays. (Above/uncollapsed, qatAbove hosts the commands, so :has-qat leaves it Visible.)
+                    new Style(Selectors.Nesting().PseudoClass(":qat-below").Template().Name("PART_QuickAccessAbove"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    // :qat-collapsed (the strip is too tight — RibbonStripPanel's collapse-first verdict, gated by the
+                    // ribbon on has-qat + Above placement) hides the inline cluster for the ⋯▾ popup button. Ordered
+                    // AFTER :has-qat so it wins the PART_QatCluster contest at equal specificity (1 pseudo + 1 name).
+                    new Style(Selectors.Nesting().PseudoClass(":qat-collapsed").Template().Name("PART_QatCluster"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    // The ⋯▾ collapse button is hidden by default and shown only under :qat-collapsed (the ribbon never
+                    // stamps it without an inline QAT to collapse, so it can't appear on a QAT-less ribbon).
+                    new Style(Selectors.Nesting().Template().Name("PART_QatCollapsed"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":qat-collapsed").Template().Name("PART_QatCollapsed"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Visible),
                     new Style(Selectors.Nesting().Template().Name("PART_QatBelowBand"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":has-qat").PseudoClass(":qat-below").Template().Name("PART_QatBelowBand"))

@@ -332,7 +332,7 @@
           <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
                customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1">
-            <bars:RibbonTab Header="_File" IsFileTab="True" />
+            <bars:RibbonTab Header="≡ _File" IsFileTab="True" />
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
                 <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />

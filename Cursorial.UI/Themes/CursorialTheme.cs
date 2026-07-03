@@ -367,7 +367,10 @@ public static class CursorialTheme
         rgb[ThemeKeys.WindowTitleBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#3F78F3") : Color.FromHex("#23385D"));
         rgb[ThemeKeys.WindowTitleBarActiveBackground] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
 
+        rgb[ThemeKeys.ToolBarBrush] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#dedee3"));
+        
         // Ribbon (Surface B): the strip recess (--tabstrip) and the dropped active-tab fill (--tab-active).
+        rgb[ThemeKeys.RibbonBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#dedee3"));
         rgb[ThemeKeys.RibbonTabStripBrush] = new SolidColorBrush(dark ? Color.FromHex("#1b1e2e") : Color.FromHex("#d2d3da"));
         rgb[ThemeKeys.RibbonTabActiveBrush] = new SolidColorBrush(dark ? Color.FromHex("#15161e") : Color.FromHex("#fdfdfe"));
         rgb[ThemeKeys.RibbonContextualFillBrush] = new SolidColorBrush(dark ? Color.FromHex("#2a2440") : Color.FromHex("#e0d8ef"));
@@ -387,6 +390,8 @@ public static class CursorialTheme
         ansi16[ThemeKeys.WindowBackground] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 0 : 7);
+        ansi16[ThemeKeys.ToolBarBrush] = Palette(dark ? 0 : 7);
+        ansi16[ThemeKeys.RibbonBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.WellBrush] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.SelectionBrush] = Palette(8);
         ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(8);    // 16-color: no distinct inactive shade — tracks active selection

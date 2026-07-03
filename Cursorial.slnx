@@ -66,19 +66,15 @@
     <File Path=".github/workflows/ci.yml" />
     <File Path=".github/workflows/release.yml" />
   </Folder>
-  <Folder Name="/Logos/">
-    <File Path="cursorial_banner.png" />
-    <File Path="cursorial_banner.svg" />
-    <File Path="cursorial_icon.png" />
-    <File Path="cursorial_icon.svg" />
-  </Folder>
   <Folder Name="/Resources/">
-    <File Path="cursorial_banner.png" />
-    <File Path="cursorial_banner.svg" />
-    <File Path="cursorial_icon.png" />
-    <File Path="cursorial_icon.svg" />
     <File Path="README.md" />
     <File Path="readme_title_banner.png" />
+  </Folder>
+  <Folder Name="/Resources/Logos/">
+    <File Path="cursorial_banner.png" />
+    <File Path="cursorial_banner.svg" />
+    <File Path="cursorial_icon.png" />
+    <File Path="cursorial_icon.svg" />
   </Folder>
   <Folder Name="/Samples/">
     <Project Path="Cursorial.Demo/Cursorial.Demo.csproj" />
@@ -86,28 +82,28 @@
     <Project Path="Cursorial.Demo.XamlAotStrict/Cursorial.Demo.XamlAotStrict.csproj" />
     <Project Path="Cursorial.Gallery/Cursorial.Gallery.csproj" />
   </Folder>
-  <Folder Name="/Markup/">
-    <Project Path="Cursorial.UI.Xaml.Frontend/Cursorial.UI.Xaml.Frontend.csproj" />
-    <Project Path="Cursorial.UI.Xaml.Generator.Tests/Cursorial.UI.Xaml.Generator.Tests.csproj" />
-    <Project Path="Cursorial.UI.Xaml.Generator/Cursorial.UI.Xaml.Generator.csproj" />
-    <Project Path="Cursorial.UI.Xaml/Cursorial.UI.Xaml.csproj" />
-  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Cursorial.Animation.Tests/Cursorial.Animation.Tests.csproj" />
     <Project Path="Cursorial.Core.Tests/Cursorial.Core.Tests.csproj" />
     <Project Path="Cursorial.Drawing.Tests/Cursorial.Drawing.Tests.csproj" />
     <Project Path="Cursorial.Rendering.Tests/Cursorial.Rendering.Tests.csproj" />
-    <Project Path="Cursorial.UI.Bars.Tests/Cursorial.UI.Bars.Tests.csproj" />
     <Project Path="Cursorial.UI.Testing/Cursorial.UI.Testing.csproj" />
+    <Project Path="Cursorial.UI.Bars.Tests/Cursorial.UI.Bars.Tests.csproj" />
     <Project Path="Cursorial.UI.Tests/Cursorial.UI.Tests.csproj" />
     <Project Path="Cursorial.UI.Xaml.Tests/Cursorial.UI.Xaml.Tests.csproj" />
+    <Project Path="Cursorial.UI.Xaml.Generator.Tests/Cursorial.UI.Xaml.Generator.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Markup/">
+    <Project Path="Cursorial.UI.Xaml/Cursorial.UI.Xaml.csproj" />
+    <Project Path="Cursorial.UI.Xaml.Frontend/Cursorial.UI.Xaml.Frontend.csproj" />
+    <Project Path="Cursorial.UI.Xaml.Generator/Cursorial.UI.Xaml.Generator.csproj" />
   </Folder>
   <Project Path="Cursorial.Animation/Cursorial.Animation.csproj" />
   <Project Path="Cursorial.Core/Cursorial.Core.csproj" />
   <Project Path="Cursorial.Drawing/Cursorial.Drawing.csproj" />
   <Project Path="Cursorial.Rendering/Cursorial.Rendering.csproj" />
   <Project Path="Cursorial.Shared/Cursorial.Shared.csproj" />
+  <Project Path="Cursorial.UI/Cursorial.UI.csproj" />
   <Project Path="Cursorial.UI.Bars/Cursorial.UI.Bars.csproj" />
   <Project Path="Cursorial.UI.Themes/Cursorial.UI.Themes.csproj" />
-  <Project Path="Cursorial.UI/Cursorial.UI.csproj" />
 </Solution>

@@ -954,8 +954,9 @@ byte writers with a TUI abstraction, and for higher-level frameworks to build on
 
 ## Toolchain
 
-- .NET SDK **10.0.0** is pinned in `global.json` with `rollForward: latestMinor` and `allowPrerelease: false`. Any newer
-  10.x SDK works; pre-release SDKs and 11.x will be rejected.
+- .NET SDK **10.0.100** is pinned in `global.json` with `rollForward: latestMinor` and `allowPrerelease: false`. Any newer
+  10.x SDK works; pre-release SDKs and 11.x will be rejected. (The floor must be a full SDK version — `10.0.100`, not
+  `10.0.0` — or a strict resolver rejects it: "a full SDK version is required" when `rollForward` is set.)
 - Target framework: `net10.0`. `ImplicitUsings` and `Nullable` are both enabled.
 - Embrace latest C# language featuers to the extent they make code easier to read and maintain.
 - Prefer using [ReadOnly]Span<T> and Memory<T> for buffers and I/O.

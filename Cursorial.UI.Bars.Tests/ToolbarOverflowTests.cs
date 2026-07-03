@@ -83,7 +83,7 @@ public sealed class ToolbarOverflowTests
         host.ShowRoot(toolbar);
         host.RunUntilIdle();
 
-        Assert.Equal(0, toolbar.Items.Count);                                        // Items.Count is 0 under ItemsSource…
+        Assert.Empty(toolbar.Items);                                                 // Items.Count is 0 under ItemsSource…
         Assert.Equal(Visibility.Hidden, toolbar.OverflowToggleForTests!.Visibility); // …yet the chevron reserves (not Collapsed)
     }
 

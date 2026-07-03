@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
@@ -641,6 +642,8 @@ internal static class CursorialBarsTheme
                     // The trailing QAT cluster shows only when the ribbon populated the QAT (:has-qat); else collapsed.
                     new Style(Selectors.Nesting().Template().Name("PART_QatCluster"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().Template().Name("PART_QuickAccessAbove"))
+                        .Set(Control.BackgroundProperty, null),
                     new Style(Selectors.Nesting().PseudoClass(":has-qat").Template().Name("PART_QatCluster"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
                     // NOTE: :qat-below does NOT collapse the cluster — it moves the COMMANDS to the below band (the
@@ -811,7 +814,15 @@ internal static class CursorialBarsTheme
             footer.Children.Add(launcher);
             footer.Children.Add(name);
 
-            var column = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1, 0) };
+            // Bottom-align the whole group column (controls over the name footer) within the band height so EVERY
+            // group's name sits on the band's bottom row — a 2-row (medium) group and a 3-row (large-button) group
+            // otherwise top-pack, landing their names on different rows. The RibbonBand arranges each group at the full
+            // band height, so a Bottom alignment drops the shorter column's content to the floor (name on the last row,
+            // controls just above), which reads as a common baseline across mixed sizes.
+            var column = new StackPanel
+            {
+                Orientation = Orientation.Vertical, Margin = new Margins(1, 0), VerticalAlignment = VerticalAlignment.Bottom,
+            };
             column.Children.Add(host);
             column.Children.Add(footer);
 

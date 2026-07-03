@@ -36,6 +36,32 @@ public sealed class RibbonTests
 
     private static BarButton Large(BarButton b) { Ribbon.SetButtonSize(b, RibbonButtonSize.Large); return b; }
 
+    [Fact] // mixed button sizes: every group's NAME sits on the SAME (band bottom) row — a large 3-row group and a
+           // medium 2-row group must not paint their names on different rows (they bottom-align to a common baseline)
+    public void Ribbon_GroupNames_BottomAlign_AcrossMixedButtonSizes()
+    {
+        using var host = NewHost();
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home",
+            Group("Clip", Large(new BarButton { Content = "Paste" })), // large ⇒ 3-row group (glyph over label + name)
+            Group("Fnt", new BarToggleButton { Content = "B" })));     // medium ⇒ 2-row group (single button + name)
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var clipRow = RowContaining(host, "Clip");
+        var fntRow = RowContaining(host, "Fnt");
+        Assert.True(clipRow >= 0 && fntRow >= 0, $"group names not found (Clip={clipRow}, Fnt={fntRow})");
+        Assert.Equal(clipRow, fntRow); // same row ⇒ names share the band's bottom baseline
+    }
+
+    private static int RowContaining(UITestHost host, string text)
+    {
+        for (var r = 0; r < 10; r++)
+            if (host.GetRowText(r).Contains(text))
+                return r;
+        return -1;
+    }
+
     [Fact] // a docked ribbon renders: the tab strip, the selected tab's groups, their buttons, and the group labels
     public void Ribbon_DockedRenders()
     {

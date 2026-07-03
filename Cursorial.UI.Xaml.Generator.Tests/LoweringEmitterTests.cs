@@ -309,6 +309,148 @@ namespace TestApp
         Assert.Equal("first", label.Text); // the reflective indexer binding resolves Tags[0]
     }
 
+    [Fact] // #153 — a namespace-PREFIXED type-qualified binding path `(ui:Grid.Row)` in the reflective lane: the
+    // emitted `new Binding("...")` carries no xmlns resolver, so the generator bakes the resolved owner into a
+    // LookupPathTypeResolver so it binds `(ui:Grid.Row)` identically to the loader's xmlns-aware resolver.
+    public void Lowered_PrefixedBindingPath_BakesResolvedOwnerResolver()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:ui=\"https://cursorial.dev/ui\" x:Class=\"TestApp.PrefixView\">" +
+            "<Button x:Name=\"B\" Width=\"{Binding (ui:Grid.Row), Mode=OneWay}\"/>" +
+            "</StackPanel>";
+
+        var lowered = Lower(xaml, GeneratorHarness.ReferencedCompilation("PrefixRewriteHost"));
+
+        // The raw prefixed path is preserved AND a resolver baking the resolved owner (Grid) is emitted.
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"(ui:Grid.Row)\")", lowered);
+        Assert.Contains(
+            "TypeResolver = new global::Cursorial.UI.Data.LookupPathTypeResolver((\"ui:Grid\", typeof(global::Cursorial.UI.Controls.Grid)))",
+            lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+    }
+
+    [Fact] // #153 — end-to-end: the rewritten prefixed path binds live to the SAME owner as the runtime loader.
+    public void Lowered_PrefixedBindingPath_BindsSameAsLoader()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:ui=\"https://cursorial.dev/ui\" x:Class=\"TestApp.PrefixBindView\">" +
+            "<Button x:Name=\"B\" Width=\"{Binding (ui:Grid.Row), Mode=OneWay}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp { public partial class PrefixBindView : StackPanel { public PrefixBindView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("PrefixBindHost");
+        var lowered = Lower(xaml, compilation);
+        var assembly = GeneratorHarness.EmitAndLoad(
+            compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+
+        // A DataContext UIElement carrying Grid.Row = 3 — the binding reads (Grid.Row) off it.
+        var source = new Border();
+        Grid.SetRow(source, 3);
+
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.PrefixBindView")!)!;
+        var loweredButton = Assert.IsType<Button>(view.Children[0]);
+        view.DataContext = source;
+
+        // The loader builds the reference tree from the same XAML (reflection provider, xmlns-aware path resolver).
+        var runtime = (StackPanel)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        var runtimeButton = Assert.IsType<Button>(runtime.Children[0]);
+        var runtimeSource = new Border();
+        Grid.SetRow(runtimeSource, 3);
+        runtime.DataContext = runtimeSource;
+
+        Assert.Equal(3, loweredButton.Width);              // the rewritten (Grid.Row) resolved the owner and bound 3
+        Assert.Equal(runtimeButton.Width, loweredButton.Width); // ... identically to the loader
+    }
+
+    [Fact] // #153 — an UNBOUND prefix can't be resolved at build: the binding still emits with the RAW path (the
+    // runtime surfaces the same unresolved-token error the loader would) — no crash, no silent drop, no TODO.
+    public void Lowered_UnboundPrefixBindingPath_KeepsRawPath()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" x:Class=\"TestApp.UnboundView\">" +
+            "<Button Width=\"{Binding (zzz:Grid.Row), Mode=OneWay}\"/>" +
+            "</StackPanel>";
+
+        var lowered = Lower(xaml, GeneratorHarness.ReferencedCompilation("UnboundPrefixHost"));
+
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"(zzz:Grid.Row)\")", lowered); // raw path preserved
+        Assert.DoesNotContain("TODO X5", lowered);                                             // emitted, not dropped
+    }
+
+    [Fact] // #153 — a MIXED path keeps the raw path and bakes only the prefixed group's owner; plain hops are verbatim.
+    public void Lowered_MixedBindingPath_BakesOnlyPrefixedOwner()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:ui=\"https://cursorial.dev/ui\" x:Class=\"TestApp.MixedPrefixView\">" +
+            "<Button Width=\"{Binding Sub.(ui:Grid.Row), Mode=OneWay}\"/>" +
+            "</StackPanel>";
+
+        var lowered = Lower(xaml, GeneratorHarness.ReferencedCompilation("MixedPrefixHost"));
+
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Sub.(ui:Grid.Row)\")", lowered);
+        Assert.Contains("(\"ui:Grid\", typeof(global::Cursorial.UI.Controls.Grid))", lowered);
+    }
+
+    [Fact] // #153 (hardening) — a resolvable prefixed pattern INSIDE a string-indexer key must NOT be collected: the
+    // scanner skips indexer contents, so NO resolver is baked (a naive scanner would resolve ui:Grid there).
+    public void Lowered_IndexerKeyWithParens_NotCollected()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:ui=\"https://cursorial.dev/ui\" x:Class=\"TestApp.IndexerParenView\">" +
+            "<Button Width=\"{Binding Map['a(ui:Grid.Row)'], Mode=OneWay}\"/>" +
+            "</StackPanel>";
+
+        var lowered = Lower(xaml, GeneratorHarness.ReferencedCompilation("IndexerParenHost"));
+
+        Assert.Contains("Map['a(ui:Grid.Row)']", lowered);       // the indexer key is preserved verbatim
+        Assert.DoesNotContain("LookupPathTypeResolver", lowered); // the parens inside the key were NOT treated as a segment
+    }
+
+    [Fact] // #153 (the audit's high finding) — a prefixed owner that registered NO UIProperty (a plain CLR property
+    // qualified for clarity) is baked via typeof(...) too, so it resolves — where a simple-name rewrite would throw.
+    public void Lowered_PrefixedBindingPath_UnregisteredOwner_BindsSameAsLoader()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:t=\"using:TestApp\" x:Class=\"TestApp.UnregOwnerView\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding (t:Person.FullName), Mode=OneWay}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class Person { public string FullName { get; set; } = """"; }   // a plain VM — NO registered UIProperty
+    public partial class UnregOwnerView : StackPanel { public UnregOwnerView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("UnregOwnerHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // The unregistered owner is baked by typeof — no simple-name rewrite (which would make the runtime throw).
+        Assert.Contains("(\"t:Person\", typeof(global::TestApp.Person))", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.UnregOwnerView")!)!;
+        var label = Assert.IsType<TextBlock>(view.Children[0]);
+
+        var personType = assembly.GetType("TestApp.Person")!;
+        var person = System.Activator.CreateInstance(personType)!;
+        personType.GetProperty("FullName")!.SetValue(person, "Ada");
+        view.DataContext = person;
+
+        Assert.Equal("Ada", label.Text); // the qualified plain CLR property resolved — the generated view did NOT throw
+    }
+
     [Fact] // P1-REVIEW Fix A — a path through a Nullable<T> hop bails to the reflective lane: the compiled step
     // pattern `is global::System.DateTime? __t` would not parse, and `.Value` would NRE. The lowered code COMPILES.
     public void Lowered_Binding_NullableHop_FallsBackToReflective()

@@ -1751,7 +1751,20 @@ internal static class LoweringEmitter
             return false;
         }
 
-        string path = Escape(BindingPathOf(node) ?? string.Empty);
+        // A namespace-prefixed type-qualified path segment `(prefix:Type.Member)` resolves its owner against the
+        // document's xmlns in the loader; the emitted `new Binding("...")` carries no resolver, so bake the resolved
+        // owners into a TypeResolver here so the reflective binding resolves them identically (#153). null ⇒ a prefix
+        // couldn't be resolved at build — keep the raw path (fails at bind time exactly as the loader would) + info.
+        string rawPath = BindingPathOf(node) ?? string.Empty;
+        var prefixedOwners = CollectPrefixedPathOwners(c, rawPath);
+        if (prefixedOwners is null)
+        {
+            c.Info($"{{Binding}} path '{rawPath}' has a namespace-prefixed type qualification whose owner could not be " +
+                   "resolved at build; it stays reflective and resolves via the registry default at bind time (may not match the loader).");
+            prefixedOwners = [];
+        }
+
+        string path = Escape(rawPath);
         var inits = new List<string>(ModeInit(modeName))
         {
             relSource,
@@ -1760,6 +1773,7 @@ internal static class LoweringEmitter
             StringInit("Source", NamedText(node, "Source")),       // mirrors the handler: Source = the bare string
             StringInit("StringFormat", NamedText(node, "StringFormat")),
             StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+            PathTypeResolverInit(prefixedOwners),                  // #153 — baked owners for prefixed type-qualified paths
         };
 
         c.Line(
@@ -1806,6 +1820,87 @@ internal static class LoweringEmitter
     // The binding path: the first positional argument, else the Path= named argument (mirrors the runtime handler).
     private static string? BindingPathOf(MarkupExtensionNode node)
         => node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } p ? p : NamedText(node, "Path");
+
+    // Collects every distinct namespace-PREFIXED type-qualified owner token `(prefix:Type.Member)` in a binding path,
+    // resolved to its owner symbol against the document xmlns (#153). The emitted `new Binding("...")` carries no
+    // resolver, so its reflective `DefaultPathTypeResolver` (registry simple-name only) can't bind a prefix — nor a
+    // plain non-UIProperty owner qualified for clarity. So the caller bakes these owners into a LookupPathTypeResolver
+    // (typeof(...) per token), resolving them exactly as the loader's xmlns resolver does — registered UIProperty
+    // owners AND plain CLR-property owners alike, ambiguity-proof. Unprefixed `(Type.Member)` segments already resolve
+    // by registry simple-name at runtime and are NOT collected (the resolver's default fallback handles them).
+    //
+    // Indexer contents are skipped: a quoted key `['a(ui:X.Y)']` may contain '(', ':', '.' that are NOT a segment
+    // (mirror BindingPath.ParseIndexer — a quoted key runs to its closing quote, then ']' closes the indexer). The
+    // FIRST '.' inside a group splits Type from Member (matches BindingPath.ParseTypeQualified). Returns:
+    //   • a (possibly empty) list of (token, owner) — empty ⇒ no prefixed owners, emit the plain binding;
+    //   • null ⇒ a prefix could NOT be resolved at build (unbound prefix / unknown type) — the caller keeps the raw
+    //     path (which fails at bind time exactly as the loader's unbound-prefix parse would) and records an info.
+    private static List<(string Token, INamedTypeSymbol Owner)>? CollectPrefixedPathOwners(Context c, string path)
+    {
+        var owners = new List<(string, INamedTypeSymbol)>();
+        if (path.IndexOf('(') < 0)
+            return owners; // no type-qualified segment
+
+        int i = 0;
+        while (i < path.Length)
+        {
+            char ch = path[i];
+
+            if (ch == '[')
+            {
+                int j = i + 1;
+                if (j < path.Length && path[j] == '\'')
+                {
+                    j++;
+                    while (j < path.Length && path[j] != '\'')
+                        j++;
+                    if (j < path.Length)
+                        j++; // consume the closing quote
+                }
+                while (j < path.Length && path[j] != ']')
+                    j++;
+                i = j < path.Length ? j + 1 : j; // consume the closing ']'
+                continue;
+            }
+
+            if (ch != '(')
+            {
+                i++;
+                continue;
+            }
+
+            int close = path.IndexOf(')', i);
+            if (close < 0)
+                break; // unterminated group — the runtime parser reports it; nothing to collect
+
+            string body = path.Substring(i + 1, close - i - 1); // `Type.Member` (Type may be `prefix:Local`)
+            int dot = body.IndexOf('.');
+            string typeToken = dot < 0 ? body : body.Substring(0, dot);
+            if (dot >= 0 && typeToken.IndexOf(':') >= 0)
+            {
+                if (XamlDataTypeScope.ResolveToken(c.Doc, typeToken, c.Resolver) is not { } owner)
+                    return null; // unresolvable prefix — caller keeps the raw path + records an info
+
+                if (!owners.Exists(o => string.Equals(o.Item1, typeToken, System.StringComparison.Ordinal)))
+                    owners.Add((typeToken, owner));
+            }
+
+            i = close + 1;
+        }
+
+        return owners;
+    }
+
+    // The `TypeResolver = new LookupPathTypeResolver(("token", typeof(Owner)), ...)` initializer baking a binding
+    // path's namespace-prefixed type-qualified owners (#153); "" when there are none (dropped by Initializers).
+    private static string PathTypeResolverInit(List<(string Token, INamedTypeSymbol Owner)> owners)
+    {
+        if (owners.Count == 0)
+            return string.Empty;
+
+        var pairs = string.Join(", ", owners.Select(o => $"(\"{Escape(o.Token)}\", typeof({Global(o.Owner)}))"));
+        return $"TypeResolver = new global::Cursorial.UI.Data.LookupPathTypeResolver({pairs})";
+    }
 
     private static bool HasNamed(MarkupExtensionNode node, string name) => node.FindNamed(name) is not null;
 

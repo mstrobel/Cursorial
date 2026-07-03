@@ -122,9 +122,26 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("Edit:", screen);              // the BarLabel caption
         Assert.Contains("»", screen);                  // the overflow chevron (forced by the Always-mode "Settings" item)
 
-        // Narrowing the terminal folds more of the bar — it must not throw and the chevron stays.
+        var toolbar = FindDescendant<Toolbar>(root)!;
+        var barsVm = shell.Pages.OfType<BarsViewModel>().Single();
+
+        // Invoke Copy via its access key (Alt+C from "_Copy") while the bar is WIDE — Copy is on the visible row here
+        // (at a narrow width it folds into the CLOSED » popup, where it is detached and its access key inactive). The
+        // Alt-down + char go in one batch (the cue's sampled activation window). This proves the access-key →
+        // BarCommand → bound status round-trip AND shortens SelectedPage.Status from the long seed to "Copy invoked.".
+        host.Application.InputDispatcher.ProcessEvent(AltDown());
+        host.Application.InputDispatcher.ProcessEvent(AltChar('C'));
+        host.RunUntilIdle();
+        Assert.Equal("Copy invoked.", barsVm.Status);
+
+        // Narrowing folds more of the bar into the » popup — it must not throw and the chevron stays. Ordering matters:
+        // the shell's bottom StatusBar wraps its SelectedPage.Status item in the ~22-col band right of the nav, growing
+        // the bar vertically; with the long SEED text that squeezes this toolbar to zero rows at 44x24. Invoking a
+        // command first (above) collapses the status to one line, so the FOLD — not the status squeeze — is what's
+        // under test. A live user hits the same ordering: run a command, then narrow.
         host.SendResize(44, 24);
         host.RunUntilIdle();
+        Assert.True(toolbar.Bounds.Rows > 0, $"toolbar should keep height once the status is short (was {toolbar.Bounds})");
         Assert.Contains("»", Screen(host, 24));
     }
 
@@ -230,6 +247,8 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
     private static KeyEvent AltChar(char c) =>
         new() { Key = Key.Character, Modifiers = KeyModifiers.Alt, Kind = KeyEventKind.Down, Text = c.ToString().AsMemory(), Timestamp = DateTimeOffset.UnixEpoch };
+
+
 
     [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)
     public void InputsPage_TwoWayBinding_RoundTrips()

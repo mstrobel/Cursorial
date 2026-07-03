@@ -502,4 +502,108 @@ public sealed class WindowPopupTests
         Assert.True(face.IsPointerOver);
         Assert.False(popup.IsPointerOver);
     }
+
+    [Fact] // #129: an open popup self-closes when its anchor (placement target / logical owner) leaves the tree — the
+           // Child roots a separate surface, so nothing else would close the orphan (a page navigation / tab switch).
+    public void PopupSelfClosesWhenTargetDetaches()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var target = new UIControls.Button { Content = "anchor" };
+        var popup = new Popup { Child = new UIControls.Button { Content = "menu" }, PlacementTarget = target };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(target);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(popup.IsOpen);
+        Assert.Same(popup, Assert.Single(host.Application.WindowManager!.Popups));
+
+        // The target leaves the tree while the popup is open → the popup self-closes (no orphaned surface).
+        root.Children.Remove(target);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(popup.IsOpen);
+        Assert.Empty(host.Application.WindowManager!.Popups);
+    }
+
+    [Fact] // #129 (audit-1): the HEADLINE scenario — the popup element sits DEEP inside a page that is swapped out
+           // wholesale (page navigation / tab switch). The nested anchor's logical-detach never fires (that event is
+           // NOT recursive), so the anchor-watch alone would orphan the surface; the popup element's own recursive
+           // OnDetachedFromTree is what self-closes it. This is the primary case in-template popups actually hit.
+    public void PopupSelfClosesWhenNestedInsideSwappedOutPage()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        // A "page": a panel with a nested anchor and the popup itself nested beneath the page root (NOT a direct child
+        // of the host root — the popup element is deep inside the subtree that gets swapped).
+        var anchor = new UIControls.Button { Content = "anchor" };
+        var popup = new Popup { Child = new UIControls.Button { Content = "menu" }, PlacementTarget = anchor };
+        var page = new UIControls.StackPanel();
+        var inner = new UIControls.StackPanel();
+        inner.Children.Add(anchor);
+        inner.Children.Add(popup); // nested one level below the page root
+        page.Children.Add(inner);
+
+        // Host the page as ContentControl.Content — navigating away removes the page ROOT logically, not the nested
+        // anchor or popup (the real page-switch shape).
+        var content = new UIControls.ContentControl { Content = page };
+        host.ShowRoot(content);
+        Assert.True(host.RunUntilIdle());
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(popup.IsOpen);
+        Assert.Same(popup, Assert.Single(host.Application.WindowManager!.Popups));
+
+        // Navigate away: swap the whole page out. The page root is removed; the nested popup never sees a
+        // logical-detach, but its recursive OnDetachedFromTree fires → self-close.
+        content.Content = new UIControls.Button { Content = "other page" };
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(popup.IsOpen);
+        Assert.Empty(host.Application.WindowManager!.Popups);
+    }
+
+    [Fact] // #129 (audit-2): re-anchoring an OPEN popup (PlacementTarget swapped A→B) must move the detach watch to B —
+           // removing B closes it, and removing the stale A must NOT.
+    public void PopupReanchoredWhileOpen_WatchesNewTarget_NotStaleOne()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var a = new UIControls.Button { Content = "A" };
+        var b = new UIControls.Button { Content = "B" };
+        var popup = new Popup { Child = new UIControls.Button { Content = "menu" }, PlacementTarget = a };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(a);
+        root.Children.Add(b);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(popup.IsOpen);
+
+        // Re-anchor to B while open.
+        popup.PlacementTarget = b;
+        Assert.True(host.RunUntilIdle());
+
+        // Removing the STALE anchor A must NOT close the popup (the watch moved to B).
+        root.Children.Remove(a);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(popup.IsOpen);
+
+        // Removing the CURRENT anchor B closes it.
+        root.Children.Remove(b);
+        Assert.True(host.RunUntilIdle());
+        Assert.False(popup.IsOpen);
+        Assert.Empty(host.Application.WindowManager!.Popups);
+    }
 }

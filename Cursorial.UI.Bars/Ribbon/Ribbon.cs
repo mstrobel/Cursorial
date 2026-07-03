@@ -295,15 +295,15 @@ public class Ribbon : TabControl
         }
     }
 
-    // The CONTENT-tab header the key came from (a realized container of THIS ribbon), or null when focus is in the
-    // body — or on the File tab. Down off the File tab must NOT drop into the (redirected) selected content band that
-    // File has no association with: File's own activation (Enter/Space/click) opens Backstage, and Down is left to
-    // fall through, so the ↕ crossing only bridges a CONTENT tab to its own band.
+    // The tab header the key came from (a realized container of THIS ribbon), or null when focus is in the body. The
+    // File tab counts too: while it is merely FOCUSED (not activated — activation opens Backstage on Enter/Space/click)
+    // the previously-selected content band is still shown, so Down should drop into that VISIBLE band like any other
+    // tab (EnterBody targets the shown _bodyContentHost, not File's own — File has no band).
     private RibbonTab? FocusedTabContainer(UIElement? source)
     {
         for (var node = source; node is not null; node = node.VisualParent)
         {
-            if (node is RibbonTab { IsFileTab: false } tab && ItemContainerGenerator.IndexFromContainer(tab) >= 0)
+            if (node is RibbonTab tab && ItemContainerGenerator.IndexFromContainer(tab) >= 0)
                 return tab;
         }
 
@@ -311,11 +311,27 @@ public class Ribbon : TabControl
     }
 
     // True when focus sits inside the ribbon body with no directional target above it within the Contained band —
-    // the top row, from which Up climbs back to the tab strip instead of moving within the body.
+    // the top row, from which Up climbs back to the tab strip instead of moving within the body. A COLLAPSED group's
+    // opener always qualifies: its group's controls live in a (closed) flyout, so nothing sits above it in its own
+    // column — but the opener is a single bottom-aligned button, so directional Up would otherwise score a DIAGONAL
+    // neighbor (the first control of the taller uncollapsed group beside it) instead of climbing to the tab strip.
     private bool AtBodyTop(FocusManager focus, UIElement? source)
         => source is not null
            && _bodyContentHost is { } host && host.IsAncestorOf(source)
-           && focus.FindNext(source, FocusNavigationDirection.Up) is null;
+           && (IsCollapsedGroupOpener(source) || focus.FindNext(source, FocusNavigationDirection.Up) is null);
+
+    // Whether focus is on a collapsed group's [name ▾] opener (a collapsed group has no other focusable in the body —
+    // its controls are in the closed flyout — so walking up to a Collapsed RibbonGroup identifies the opener).
+    private static bool IsCollapsedGroupOpener(UIElement? source)
+    {
+        for (var node = source; node is not null; node = node.VisualParent)
+        {
+            if (node is RibbonGroup { Density: RibbonGroupDensity.Collapsed })
+                return true;
+        }
+
+        return false;
+    }
 
     // Whether the minimized band is temporarily revealed (floated). Not a persistent property — it re-collapses on
     // dismiss (Esc / focus leaving the ribbon), leaving IsMinimized untouched.

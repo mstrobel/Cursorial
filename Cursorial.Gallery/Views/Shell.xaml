@@ -529,6 +529,6 @@
 
     <!-- Content host: the selected page view-model, resolved to its view by the implicit DataTemplates above.
          ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
-    <ContentControl Content="{Binding SelectedPage}"/>
+    <ContentControl Content="{Binding SelectedPage}" ClipToBounds="True"/>
 
 </DockPanel>

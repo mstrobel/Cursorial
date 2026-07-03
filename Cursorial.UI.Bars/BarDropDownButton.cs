@@ -61,6 +61,14 @@ public abstract class BarDropDownButton : ButtonBase
     public static readonly DirectProperty<BarDropDownButton, string> CaretGlyphProperty =
         UIProperty.RegisterDirect<BarDropDownButton, string>(nameof(CaretGlyph), static b => b._caretGlyph);
 
+    /// <summary>Whether a KEYBOARD open moves focus straight into the dropdown's first item — the MenuItem submenu
+    /// model — even under <see cref="PlacementMode.Bottom"/> (default <see langword="false"/>, the ComboBox model
+    /// where the open parks on the face and a second Down enters). A ribbon group that collapses to a <c>[name ▾]</c>
+    /// dropdown sets this so one Down both opens the flyout AND enters the hosted controls. A MOUSE open still parks
+    /// (only the <see cref="_pendingEnter"/> keyboard path is affected).</summary>
+    public static readonly StyledProperty<bool> FocusContentOnOpenProperty =
+        UIProperty.Register<BarDropDownButton, bool>(nameof(FocusContentOnOpen));
+
     private bool _isDropDownOpen;
     private string _caretGlyph = CaretFor(PlacementMode.Bottom);
     private bool _pendingEnter; // a side-placement open requested focus-into; completed on Popup.Opened (content laid out)
@@ -91,6 +99,9 @@ public abstract class BarDropDownButton : ButtonBase
 
     /// <inheritdoc cref="CaretGlyphProperty"/>
     public string CaretGlyph => _caretGlyph;
+
+    /// <inheritdoc cref="FocusContentOnOpenProperty"/>
+    public bool FocusContentOnOpen { get => GetValue(FocusContentOnOpenProperty); set => SetValue(FocusContentOnOpenProperty, value); }
 
     /// <summary>The dropdown Popup template part (available after <see cref="OnApplyTemplate"/>) — the concrete
     /// controls consult it for hit-test / focus-containment decisions.</summary>
@@ -192,7 +203,7 @@ public abstract class BarDropDownButton : ButtonBase
     // placement is still a side one — a Bottom (ComboBox-model) open must always park focus on the face.
     private void OnPopupOpened(object? sender, EventArgs e)
     {
-        var enter = _pendingEnter && DropDownPlacement is PlacementMode.Left or PlacementMode.Right;
+        var enter = _pendingEnter && (FocusContentOnOpen || DropDownPlacement is PlacementMode.Left or PlacementMode.Right);
         _pendingEnter = false;
         if (enter)
             FocusFirstDropDownItem();
@@ -268,10 +279,24 @@ public abstract class BarDropDownButton : ButtonBase
     /// <summary>Whether keyboard focus is already inside the dropdown content (vs on the opener face).</summary>
     private bool IsDropDownContentFocused => _contentSite?.IsKeyboardFocusWithin ?? false;
 
-    /// <summary>Whether the FIRST focusable dropdown item currently has keyboard focus (so Up returns to the opener).</summary>
-    private bool IsFirstDropDownItemFocused
-        => UIApplication.Current?.FocusManager is { } focus && _contentSite?.Child is { } content
-        && ReferenceEquals(focus.FocusedElement, FirstFocusable(content));
+    /// <summary>Whether the dropdown content's OWN nav can still move focus in the back-arrow direction — a VERTICAL
+    /// menu with an item above the focused one. When it can't (a HORIZONTAL flyout, where the back arrow is orthogonal
+    /// to the layout, or the first item of a vertical menu), the back arrow returns to the opener face instead of
+    /// letting focus escape the flyout. Checked by walking the focus target IN the content (a found target outside the
+    /// content — a stray escape to the ribbon body/tab strip — counts as "no content back target").</summary>
+    private bool ContentHasBackTarget(PlacementMode placement)
+        => UIApplication.Current?.FocusManager is { FocusedElement: { } focused } focus
+        && _contentSite is { } site
+        && focus.FindNext(focused, BackDirectionFor(placement)) is { } next
+        && site.IsAncestorOf(next);
+
+    private static FocusNavigationDirection BackDirectionFor(PlacementMode placement) => placement switch
+    {
+        PlacementMode.Right => FocusNavigationDirection.Left,
+        PlacementMode.Left => FocusNavigationDirection.Right,
+        PlacementMode.Top => FocusNavigationDirection.Down,
+        _ => FocusNavigationDirection.Up,
+    };
 
     /// <inheritdoc/>
     protected override void OnKeyDown(KeyEventArgs e)
@@ -306,10 +331,10 @@ public abstract class BarDropDownButton : ButtonBase
             {
                 return; // focus already in the content → let its own nav advance (leave unhandled, DO NOT re-enter)
             }
-            else if (sideways)
+            else if (sideways || FocusContentOnOpen)
             {
-                _pendingEnter = true; // submenu model: one press opens AND enters (completed on Popup.Opened)
-                OpenDropDown();
+                _pendingEnter = true; // submenu model: one press opens AND enters (completed on Popup.Opened) — a side
+                OpenDropDown();       // placement, or a Bottom opener opted into FocusContentOnOpen (a collapsed group)
             }
             else
             {
@@ -325,7 +350,7 @@ public abstract class BarDropDownButton : ButtonBase
         // navigates vertically (Up/Down), so a Top placement's back arrow (Down) would collide with "advance to the next
         // item" and trap the first item — Top/Center/Pointer therefore get no first-item back-out (Escape still closes).
         if (placement is PlacementMode.Bottom or PlacementMode.Left or PlacementMode.Right
-            && e.Key == BackKeyFor(placement) && _isDropDownOpen && IsFirstDropDownItemFocused)
+            && e.Key == BackKeyFor(placement) && _isDropDownOpen && IsDropDownContentFocused && !ContentHasBackTarget(placement))
         {
             Focus(FocusNavigationMethod.Directional);
             e.Handled = true;

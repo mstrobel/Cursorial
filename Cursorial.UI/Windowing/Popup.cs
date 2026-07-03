@@ -195,6 +195,7 @@ public class Popup : UIElement
         var restoreFocusTo = (Child?.IsKeyboardFocusWithin ?? false) ? _restoreFocusTo : null;
         _restoreFocusTo = null;
 
+        UnwatchTarget(); // stop watching the anchor's detach — we're closing anyway
         _open = false;
         _manager?.ClosePopup(this);
         _manager = null;
@@ -228,11 +229,71 @@ public class Popup : UIElement
         _open = true;
         _manager.OpenPopup(this);
         SyncOwnerInheritanceBridge(); // bridge DataContext/inherited props to the owner (standalone case)
+        WatchTarget();                // self-close if the anchor leaves the tree while we're open (surface-orphan gap)
         Opened?.Invoke(this, EventArgs.Empty);
     }
 
+    // ── Detach self-close (the framework-wide surface-orphan gap) ────────────────────────────────────
+    // The Child roots its OWN popup surface (a separate tree), so when the popup's host context leaves the tree (a page
+    // navigation / tab switch / template swap), NOTHING else closes the orphaned surface. TWO complementary hooks close
+    // it, because "leaves the tree" has two shapes:
+    //   (1) the POPUP ELEMENT itself detaches — the common in-template case (a BarPopupButton/ComboBox/Menu/DatePicker
+    //       whose popup part sits deep inside the swapped subtree). Handled by OnDetachedFromTree below: the recursive
+    //       visual-detach walk fires on every descendant, so a NESTED popup self-closes (this is the headline scenario).
+    //   (2) the popup element SURVIVES but its ANCHOR detaches — a popup rooted at a stable location whose
+    //       PlacementTarget is removed independently. Handled by the WatchTarget logical-detach watch. NOTE the
+    //       DetachedFromLogicalTree event fires ONLY on the directly-removed node (not recursively), so this leg covers
+    //       a directly-removed anchor; a deeply-nested surviving-popup anchor is the residual edge (no visual-detach
+    //       EVENT exists to watch on an arbitrary element — only the element's own OnDetachedFromTree virtual).
+    // Closing on the visual-detach walk is safe: MenuItem.OnDetachedFromTree closes its submenu the same way, and a WM
+    // topology mutation during layout/render defers via the §8.8 deferred-topology queue. Every leg funnels through the
+    // idempotent CloseCore, so the two hooks (and the control-level closes) compose without double-retraction.
+
+    private UIElement? _watchedTarget;
+
+    private void WatchTarget()
+    {
+        var target = EffectiveTarget;
+        if (ReferenceEquals(_watchedTarget, target))
+            return;
+
+        UnwatchTarget();
+        _watchedTarget = target;
+        if (target is not null)
+            target.DetachedFromLogicalTree += OnTargetDetached;
+    }
+
+    private void UnwatchTarget()
+    {
+        if (_watchedTarget is { } target)
+            target.DetachedFromLogicalTree -= OnTargetDetached;
+        _watchedTarget = null;
+    }
+
+    private void OnTargetDetached(object? sender, LogicalTreeAttachmentEventArgs e) => CloseCore(PopupCloseReason.TargetDetached);
+
+    /// <inheritdoc/>
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        // Hook (1): the popup element itself left the tree (its ancestor page/tab/template was swapped) — self-close so
+        // the separate Child surface is never orphaned. Idempotent with the control-level closes (SetDropDownOpen,
+        // SetSubmenuOpen) and the anchor watch. Close BEFORE base so the WM release runs while our state is intact.
+        if (_open)
+            CloseCore(PopupCloseReason.TargetDetached);
+        base.OnDetachedFromTree(in e);
+    }
+
     private static void OnPlacementTargetChanged(UIObject sender, UIElement? oldValue, UIElement? newValue)
-        => ((Popup)sender).SyncOwnerInheritanceBridge();
+    {
+        var popup = (Popup)sender;
+        popup.SyncOwnerInheritanceBridge();
+
+        // Re-anchor the detach watch (hook 2) to the new target when the popup is re-anchored WHILE OPEN — else the
+        // watch stays armed on the old target (a spurious close if the old one later detaches, and no close if the new
+        // one does). WatchTarget re-reads EffectiveTarget and no-ops when it is unchanged.
+        if (popup._open)
+            popup.WatchTarget();
+    }
 
     /// <summary>
     /// Bridges the property-system inheritance parent (DataContext + inherited properties) to the

@@ -248,6 +248,8 @@ public class RibbonGroup : HeaderedItemsControl
         ApplySeparatorVisibility();
 
         _collapsedButton = GetTemplatePart<BarPopupButton>(PartCollapsedButton);
+        if (_collapsedButton is not null)
+            _collapsedButton.FocusContentOnOpen = true; // Down opens the flyout AND enters the hosted group (one press)
         _collapsedPopupHost = GetTemplatePart<RibbonGroupPanel>(PartCollapsedPopupHost);
         // Reconcile the current tier against the fresh flyout part: a group re-templated while Collapsed re-hosts the
         // live controls into the new flyout band (the Ribbon.OnApplyTemplate reconcile precedent).

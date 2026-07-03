@@ -443,6 +443,7 @@ public sealed partial class UIApplication : IAsyncDisposable
            Dispatcher.JobCount == 0 &&
            _windowManager is not { HasPendingLayout: true } &&
            _windowManager is not { HasDirtyVisuals: true } &&
+           _windowManager is not { HasDeferredTopology: true } && // a mid-layout close drains next frame (§8.8)
            StyleHooks is not { HasPendingActivations: true } &&
            AnimationDriver is not { HasActiveAnimations: true } &&
            Volatile.Read(ref _renderRequested) == 0 &&

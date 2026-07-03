@@ -203,8 +203,9 @@ public sealed class RibbonTests
         Assert.True(home.IsFocused);
     }
 
-    [Fact] // ↕: Down off the FILE tab must NOT drop into the (redirected) content band it has no association with
-    public void Ribbon_DownFromFileTab_DoesNotEnterBody()
+    [Fact] // ↕: Down off the FILE tab drops into the currently-SHOWN band — while File is merely focused (not activated
+           // into Backstage) the selected content tab's band is visible, so Down enters it like any other tab.
+    public void Ribbon_DownFromFileTab_EntersShownBand()
     {
         using var host = NewHost();
         var button = new BarButton { Content = "Paste" };
@@ -222,7 +223,7 @@ public sealed class RibbonTests
         host.SendKey(Key.DownArrow);
         host.RunUntilIdle();
 
-        Assert.False(button.IsFocused); // Down off File did not enter the selected content tab's band
+        Assert.True(button.IsKeyboardFocusWithin); // Down off File entered the shown Home band
     }
 
     [Fact] // Ctrl+F1 toggles minimize from within the ribbon (the keyboard route — the pin chevron is mouse-only)

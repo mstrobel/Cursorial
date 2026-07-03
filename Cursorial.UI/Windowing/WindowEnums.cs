@@ -115,7 +115,11 @@ public enum PopupCloseReason : byte
     HostClosed,
 
     /// <summary>The screen was resized (a light-dismiss popup; <c>StaysOpen</c> popups re-place instead).</summary>
-    ScreenResized
+    ScreenResized,
+
+    /// <summary>The popup's anchor (its placement target / logical owner) left the tree — the popup surface would
+    /// otherwise be orphaned (a page navigation / tab switch / template swap while the popup was open).</summary>
+    TargetDetached
 }
 
 /// <summary>

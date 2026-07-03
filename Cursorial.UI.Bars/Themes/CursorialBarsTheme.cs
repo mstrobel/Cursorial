@@ -591,8 +591,9 @@ internal static class CursorialBarsTheme
             var qatCollapsedBar = new Toolbar();
             ctx.RegisterName("PART_QuickAccessCollapsed", qatCollapsedBar);
             var qatCollapsedSurface = new Border { Child = qatCollapsedBar };
-            qatCollapsedSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
-            qatCollapsedSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+            // NOTE: The content inside the collapsed QAT popup has its own border and fill; keep the popup transparent.
+            //     qatCollapsedSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+            //     qatCollapsedSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
             var qatCollapsedButton = new BarPopupButton { Content = "⋯", DropDownContent = qatCollapsedSurface };
             ctx.RegisterName("PART_QatCollapsed", qatCollapsedButton);
 
@@ -849,8 +850,9 @@ internal static class CursorialBarsTheme
             var collapsedPopupHost = new RibbonGroupPanel(); // the flyout container band (RibbonGroup moves the LIVE controls here)
             ctx.RegisterName("PART_CollapsedPopupHost", collapsedPopupHost);
             var collapsedPopupSurface = new Border { Child = collapsedPopupHost, Padding = new Margins(1, 0) };
-            collapsedPopupSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
-            collapsedPopupSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+            // NOTE: The ribbon group in the popup has its own border and fill; keep the popup transparent.
+            //     collapsedPopupSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+            //     collapsedPopupSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
 
             // Bottom-aligned so the collapsed [name ▾] opener lands on the band's bottom row, matching the inline
             // column's Bottom alignment (#151) — a collapsed group's label shares the same baseline as its neighbors' names.

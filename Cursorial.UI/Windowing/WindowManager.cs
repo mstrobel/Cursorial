@@ -154,6 +154,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     // ── IWindowSystem ──────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>Whether topology mutations are queued for the next <see cref="DrainDeferredTopology"/> — the app is
+    /// NOT idle until they drain (a popup/window close requested mid-layout applies one frame later, §8.8).</summary>
+    internal bool HasDeferredTopology => _deferredTopology.Count > 0;
+
     /// <inheritdoc/>
     public void DrainDeferredTopology()
     {

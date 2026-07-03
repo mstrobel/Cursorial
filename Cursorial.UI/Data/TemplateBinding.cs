@@ -57,12 +57,13 @@ public sealed class TemplateBinding : BindingBase
         // the underlying expression rides the reflection binding over the relative-source anchor that
         // already resolves `TemplatedParent`. A converter/parameter forfeits the typed path but works.
         var binding = new Binding(Property.Name)
-        {
-            RelativeSource = RelativeSource.TemplatedParent,
-            Mode = BindingMode.OneWay,
-            Converter = Converter,
-            ConverterParameter = ConverterParameter
-        };
+                      {
+                          RelativeSource = RelativeSource.TemplatedParent,
+                          Mode = BindingMode.OneWay,
+                          Converter = Converter,
+                          ConverterParameter = ConverterParameter,
+                          StringFormat = StringFormat
+                      };
 
         return binding.CreateExpression(in context);
     }

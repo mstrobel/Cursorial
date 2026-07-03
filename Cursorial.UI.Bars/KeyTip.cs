@@ -98,12 +98,12 @@ public sealed class KeyTip
             if (tabLetter is null || groupLetter is null || controlLetter is null)
                 return null;
 
-            return $"Alt, {tabLetter}, {groupLetter}, {controlLetter}";
+            return $"Alt␣{tabLetter}␣{groupLetter}␣{controlLetter}";
         }
 
         // A flat toolbar control (not the ribbon's QAT): Alt → control. QAT digits + popup items are the v2 legs.
         if (toolbar is not null && ribbon is null)
-            return ToolbarKeyTipHost.ResolveControlKeyTip(toolbar, target) is { } controlLetter ? $"Alt, {controlLetter}" : null;
+            return ToolbarKeyTipHost.ResolveControlKeyTip(toolbar, target) is { } controlLetter ? $"Alt␣{controlLetter}" : null;
 
         return null;
     }

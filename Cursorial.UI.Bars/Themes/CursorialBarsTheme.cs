@@ -1004,38 +1004,67 @@ internal static class CursorialBarsTheme
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
+                var titlePanel = new WrapPanel { Orientation = Orientation.Horizontal };
+
                 var title = new TextBlock();
                 title.SetValue(TextElement.TextAttributesProperty, TextAttributes.Bold);
                 title.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.TitleProperty));
                 title.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
 
-                var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
-                gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.InputGestureTextProperty));
+                var gesture = new TextBlock { Margin = new Margins(1, 0, 0, 0) };
+                gesture.SetBinding(TextBlock.TextProperty, 
+                                   new TemplateBinding(SuperTip.InputGestureTextProperty) { StringFormat = "({0})" });
                 gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
-                DockPanel.SetDock(gesture, Dock.Right);
 
-                var header = new DockPanel();
-                header.Children.Add(gesture); // Dock.Right — the accelerator
-                header.Children.Add(title);   // fills — the command name
+                titlePanel.Children.Add(title);
+                titlePanel.Children.Add(gesture);
 
                 // The KeyTip drill hops (e.g. "Alt, H, F, B"), in amber to echo the badges. Collapsed by the SuperTip
                 // when there is no sequence (KeyTips off / not reachable).
                 var hops = new TextBlock();
                 hops.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.KeyTipSequenceProperty));
-                hops.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.KeyTipBrush);
+                hops.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+                DockPanel.SetDock(hops, Dock.Right);
                 ctx.RegisterName("PART_KeyTips", hops);
 
-                var description = new ContentPresenter();
+                var header = new DockPanel();
+                header.Children.Add(hops); // Dock.Right — the accelerator
+                header.Children.Add(titlePanel);   // fills — the command name
+
+                var description = new ContentPresenter { Margin = new Margins(0, 1, 0, 0)};
                 description.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.DescriptionProperty));
-                description.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+                description.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush);
+                description.SetBinding(UIElement.VisibilityProperty,
+                                       new TemplateBinding(SuperTip.DescriptionProperty)
+                                       {
+                                           Converter = ValueConverter.Create(
+                                               convert: (value, _, _, _) => 
+                                                   value switch
+                                                       {
+                                                           "" or null => Visibility.Collapsed,
+                                                           _          => Visibility.Visible
+                                                           
+                                                       })
+                                       });
 
                 var footer = new ContentPresenter { Margin = new Margins(0, 1, 0, 0) };
                 footer.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.FooterProperty));
                 footer.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.FaintBrush);
+                footer.SetBinding(UIElement.VisibilityProperty,
+                                  new TemplateBinding(SuperTip.FooterProperty)
+                                  {
+                                      Converter = ValueConverter.Create(
+                                          convert: (value, _, _, _) => 
+                                              value switch
+                                              {
+                                                  "" or null => Visibility.Collapsed,
+                                                  _          => Visibility.Visible
+                                                  
+                                              })
+                                  });
 
                 var stack = new StackPanel { Orientation = Orientation.Vertical };
                 stack.Children.Add(header);
-                stack.Children.Add(hops);
                 stack.Children.Add(description);
                 stack.Children.Add(footer);
                 return stack;

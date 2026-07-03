@@ -532,7 +532,7 @@ public sealed class KeyTipTests
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
 
-        Assert.Equal("Alt, H, F, B", KeyTip.GetHopSequence(bold));
+        Assert.Equal("Alt␣H␣F␣B", KeyTip.GetHopSequence(bold));
     }
 
     [Fact] // A flat toolbar control's hop sequence is Alt → control.
@@ -546,7 +546,7 @@ public sealed class KeyTipTests
         host.ShowRoot(toolbar);
         host.RunUntilIdle();
 
-        Assert.Equal("Alt, X", KeyTip.GetHopSequence(cut));
+        Assert.Equal("Alt␣X", KeyTip.GetHopSequence(cut));
     }
 
     [Fact] // No hop sequence when KeyTips isn't enabled on the app (the hint would be misleading).
@@ -579,7 +579,7 @@ public sealed class KeyTipTests
 
         var tip = Assert.IsType<SuperTip>(ToolTipService.GetTip(boldButton));
         Assert.Same(boldButton, tip.Anchor);
-        Assert.Equal("Alt, H, F, B", KeyTip.GetHopSequence(boldButton)); // _Bold folds to 'B'
+        Assert.Equal("Alt␣H␣F␣B", KeyTip.GetHopSequence(boldButton)); // _Bold folds to 'B'
     }
 
     [Fact] // Audit: a DISABLED bar control gets no hop hint — the overlay never badges it, so the hop would lie.
@@ -620,7 +620,7 @@ public sealed class KeyTipTests
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
 
-        Assert.Equal("Alt, H, F, B", KeyTip.GetHopSequence(bold)); // the survivor's real hop
+        Assert.Equal("Alt␣H␣F␣B", KeyTip.GetHopSequence(bold)); // the survivor's real hop
         Assert.Null(KeyTip.GetHopSequence(border));                // the dropped collider — no hop
     }
 

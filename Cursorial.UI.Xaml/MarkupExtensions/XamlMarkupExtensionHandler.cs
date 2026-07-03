@@ -245,6 +245,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             Converter = ResolveConverter(builder, node, line, column),
             StringFormat = Named(node, "StringFormat"),
             FallbackValue = fallback ?? UIProperty.UnsetValue,
+            // The xmlns-aware resolver so a `(prefix:Type.Member)` attached-property path resolves its owner against
+            // the document's root xmlns table (a bare `(Grid.Row)` still resolves via the registry default).
+            TypeResolver = builder.PathTypeResolver,
         };
     }
 

@@ -227,12 +227,16 @@ public sealed class BindingPath
             var open = _pos;
             _pos++; // consume '('
 
+            // The type token may be namespace-qualified — (prefix:Type.Member) — so a ':' is part of the token, not a
+            // cast marker. A source cast is (Type)rest with NO '.member' inside the parens; we detect that by hitting
+            // ')' before any '.'. The prefix is resolved by the IPathTypeResolver (an xmlns-aware one from the XAML
+            // loader; the code-first default resolves simple owner names only).
             var typeStart = _pos;
-            while (_pos < _text.Length && _text[_pos] != '.' && _text[_pos] != ')' && _text[_pos] != ':')
+            while (_pos < _text.Length && _text[_pos] != '.' && _text[_pos] != ')')
                 _pos++;
 
-            if (_pos < _text.Length && _text[_pos] == ':')
-                throw Fail(open, "source casts ((local:T)x) are unsupported by design.");
+            if (_pos < _text.Length && _text[_pos] == ')')
+                throw Fail(open, "source casts ((local:T)x) are unsupported by design; an attached segment is '(Type.Member)'.");
 
             if (_pos >= _text.Length || _text[_pos] != '.')
                 throw Fail(open, "malformed attached segment; expected '(Type.Member)'.");

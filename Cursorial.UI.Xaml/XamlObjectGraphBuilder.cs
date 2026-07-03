@@ -32,6 +32,7 @@ internal sealed class XamlObjectGraphBuilder
     // The namespace-aware selector resolver (lazy — only Styles need it): binds 'prefix|Type' selector
     // tokens + prefixed TargetTypes against the document's root xmlns table (#23).
     private XamlSelectorTypeResolver? _selectorResolver;
+    private XamlPathTypeResolver? _pathResolver;
 
     // The object whose member set is currently in progress and the document root (the
     // IRootObjectProvider surface — matrix X125).
@@ -348,6 +349,12 @@ internal sealed class XamlObjectGraphBuilder
     /// <summary>The namespace-aware selector resolver over the document's root xmlns table + loader metadata.</summary>
     private XamlSelectorTypeResolver SelectorResolver
         => _selectorResolver ??= new XamlSelectorTypeResolver(_doc.Namespaces, _options.MetadataProvider);
+
+    /// <summary>The namespace-aware binding-path type resolver — resolves a <c>(prefix:Type.Member)</c> attached
+    /// segment's owner against the document's root xmlns table + loader metadata (bare tokens fall back to the
+    /// registry). Handed to every XAML-authored <c>Binding</c> so prefixed attached-property paths resolve.</summary>
+    internal Cursorial.UI.Data.IPathTypeResolver PathTypeResolver
+        => _pathResolver ??= new XamlPathTypeResolver(_doc.Namespaces, _options.MetadataProvider);
 
     /// <summary>
     /// Builds a Style's selector from its <c>TargetType</c> as an EXACT-type selector (the resolved CLR type),

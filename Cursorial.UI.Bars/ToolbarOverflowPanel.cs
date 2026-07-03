@@ -422,7 +422,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
     {
         if (_containers.Count == 0)
         {
-            _toolbar?.SetOverflowState(hasOverflow: false, overflowCount: 0);
+            _toolbar?.SetOverflowState(hasOverflow: false, overflowCount: 0, isEmpty: true);
             _hasFolded = false;
             return finalSize;
         }
@@ -455,7 +455,7 @@ public sealed class ToolbarOverflowPanel : Panel, IItemsHostPanel
 
             var hasOverflow = _overflow.Count > 0;
             ReconcileBands(hasOverflow);
-            _toolbar?.SetOverflowState(hasOverflow, CountCommands(_overflow));
+            _toolbar?.SetOverflowState(hasOverflow, CountCommands(_overflow), isEmpty: false); // reached only past the Count==0 guard
 
             _lastFinalWidth = finalSize.Columns;
             _lastContainerCount = _containers.Count;

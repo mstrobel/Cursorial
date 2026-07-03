@@ -97,18 +97,28 @@ public class Toolbar : ItemsControl
         element.SetValue(OverflowModeProperty, value);
     }
 
-    /// <summary>The panel reports the fold result here (read-only state + chevron visibility + auto-close on un-overflow).</summary>
-    internal void SetOverflowState(bool hasOverflow, int overflowCount)
+    /// <summary>The panel reports the fold result here (read-only state + chevron visibility + auto-close on un-overflow).
+    /// <paramref name="isEmpty"/> is the panel's authoritative realized-container emptiness (NOT <c>Items.Count</c>,
+    /// which stays 0 under <c>ItemsSource</c>), so the chevron reserve tracks what actually renders.</summary>
+    internal void SetOverflowState(bool hasOverflow, int overflowCount, bool isEmpty)
     {
         SetAndRaise(HasOverflowProperty, ref _hasOverflow, hasOverflow);
         SetAndRaise(OverflowCountProperty, ref _overflowCount, overflowCount);
 
-        // The chevron is ALWAYS measured (so the panel can reserve its width), so its idle state is Hidden (still
-        // measured), never Collapsed (which would zero its measure and break the reserve). Visible↔Hidden is a
-        // render-side flip — no measure invalidation, so this never re-enters the fold.
+        // Chevron visibility: Visible when overflowing; Hidden (measured — reserves its width so content doesn't jump
+        // when overflow later appears) when there ARE items but none overflow; Collapsed (measures 0) when the toolbar
+        // is EMPTY. The Collapsed-when-empty case is what stops an item-less toolbar from painting a Background box: a
+        // Hidden chevron still reserves ~N cells, and the toolbar's Border fills that footprint with Control.Background
+        // (the empty-QAT discoloration). Empty ⇒ no items to fold ⇒ the reserve is pointless, so drop it entirely. The
+        // Visible↔Hidden flip is render-side (no measure change); the Hidden↔Collapsed flip on an empty↔non-empty
+        // transition IS a measure change, but that transition is a real content change (items added/removed) that
+        // re-lays-out anyway, and the empty state is stable so it settles at once. Emptiness comes from the panel
+        // (realized containers) so an ItemsSource-populated toolbar with no overflow still reserves the chevron.
         if (_chevron is not null)
         {
-            _chevron.Visibility = hasOverflow ? Visibility.Visible : Visibility.Hidden;
+            _chevron.Visibility = hasOverflow ? Visibility.Visible
+                : isEmpty ? Visibility.Collapsed
+                : Visibility.Hidden;
             _chevron.IsTabStop = hasOverflow;
         }
 

@@ -37,6 +37,56 @@ public sealed class ToolbarOverflowTests
     private static bool OnRow(UIElement c) => c.VisualParent is ToolbarOverflowPanel;
     private static bool InOverflow(UIElement c) => c.VisualParent is StackPanel; // the popup band host
 
+    [Fact] // an EMPTY toolbar collapses its overflow-chevron reserve entirely: a Hidden chevron still measures ~N cells
+           // and the toolbar's Border fills that footprint with Control.Background (a discolored box); Collapsed measures
+           // 0, so an auto-sized empty toolbar takes zero width and paints nothing.
+    public void EmptyToolbar_CollapsesChevronReserve_NoBox()
+    {
+        using var host = NewHost(width: 40);
+        // Left-aligned ⇒ the toolbar auto-sizes to its content (a stretched toolbar always fills its slot); with no
+        // items the only content is the chevron reserve, so the auto-size width IS the box footprint.
+        var toolbar = new Toolbar { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.Equal(Visibility.Collapsed, toolbar.OverflowToggleForTests!.Visibility); // reserve dropped, not Hidden
+        Assert.Equal(0, toolbar.DesiredSize.Columns);                                   // no footprint ⇒ no box
+    }
+
+    [Fact] // gaining an item restores the chevron reserve (Hidden, not Collapsed) so content won't jump when overflow
+           // later appears; removing the last item collapses it again
+    public void Toolbar_ChevronReserve_TracksEmptyTransitions()
+    {
+        using var host = NewHost(width: 40);
+        var toolbar = new Toolbar { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.Equal(Visibility.Collapsed, toolbar.OverflowToggleForTests!.Visibility); // empty ⇒ collapsed
+
+        toolbar.Items.Add(Btn("Cut"));
+        host.RunUntilIdle();
+        Assert.Equal(Visibility.Hidden, toolbar.OverflowToggleForTests!.Visibility); // has item, no overflow ⇒ reserved
+
+        toolbar.Items.Clear();
+        host.RunUntilIdle();
+        Assert.Equal(Visibility.Collapsed, toolbar.OverflowToggleForTests!.Visibility); // empty again ⇒ collapsed
+    }
+
+    [Fact] // audit: emptiness is the panel's realized-container count, NOT Items.Count (which stays 0 under ItemsSource).
+           // A non-overflowing ItemsSource-populated toolbar must still RESERVE the chevron (Hidden), or content jumps
+           // when overflow later appears.
+    public void Toolbar_ItemsSource_NonOverflowing_ReservesChevron()
+    {
+        using var host = NewHost(width: 60);
+        var toolbar = new Toolbar { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        toolbar.ItemsSource = new object[] { Btn("Cut"), Btn("Copy") }; // ItemsSource ⇒ the direct Items collection stays empty
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.Equal(0, toolbar.Items.Count);                                        // Items.Count is 0 under ItemsSource…
+        Assert.Equal(Visibility.Hidden, toolbar.OverflowToggleForTests!.Visibility); // …yet the chevron reserves (not Collapsed)
+    }
+
     [Fact] // everything fits → no overflow, no chevron, all items on the row band
     public void NoOverflow_WhenItemsFit()
     {

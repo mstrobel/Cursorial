@@ -161,6 +161,28 @@ public sealed class RibbonDensityTests
         Assert.Equal(RibbonGroupDensity.Normal, wide.DensityForTests);
     }
 
+    [Fact] // audit: collapsing a group while one of its controls is focused repairs focus to the [name ▾] opener
+           // (deferred until the opener's :density-collapsed visibility flip lands) — focus is never stranded
+    public void Density_Collapse_WhileFocused_RepairsFocusToOpener()
+    {
+        var paste = LargeIcon("Paste", "▪");
+        var group = Group("Clip", paste, LargeIcon("Copy", "▪"), LargeIcon("Format", "▪"));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", group));
+        using var host = NewHost(w: 90);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        paste.Focus();
+        host.RunUntilIdle();
+        Assert.True(paste.IsFocused);
+
+        host.SendResize(8, H); // collapse ⇒ paste moves into the closed flyout
+        host.RunUntilIdle();
+        Assert.Equal(RibbonGroupDensity.Collapsed, group.DensityForTests);
+        Assert.True(group.CollapsedButtonForTests!.IsKeyboardFocusWithin); // focus repaired to the opener, not stranded
+    }
+
     [Fact] // audit gap: an UNCAPPED group must actually REST at Compact through a middle width range — not skip from
            // Normal straight to Collapsed (the deferred-restyle bug the analytic fold fixes). Sweep the width down.
     public void Density_Uncapped_RestsAtCompact_ThroughAMiddleRange()

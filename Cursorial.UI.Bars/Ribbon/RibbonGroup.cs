@@ -110,13 +110,40 @@ public class RibbonGroup : HeaderedItemsControl
         var isCollapsed = value == RibbonGroupDensity.Collapsed;
         if (wasCollapsed != isCollapsed)
         {
-            // Focus repair: if focus is inside the group's controls, hand it to the collapsed opener BEFORE they leave
-            // the inline surface — never strand focus in a closed, unlaid-out popup.
-            if (isCollapsed && IsKeyboardFocusWithin)
-                _collapsedButton?.Focus(FocusNavigationMethod.Programmatic);
+            // Capture whether focus was inside BEFORE the controls leave the inline surface for the (closed) flyout.
+            var hadFocusWithin = isCollapsed && IsKeyboardFocusWithin;
             ReconcileCollapsedHosting();
+            // Focus repair: the opener's :density-collapsed Visibility flip is a DEFERRED restyle, so it isn't
+            // focusable yet this frame (a Focus() here would silently no-op). Defer + retry until it materializes.
+            if (hadFocusWithin)
+                ScheduleCollapsedFocusRepair(4);
         }
         InvalidateMeasure();
+    }
+
+    // Hand focus to the collapsed opener once its deferred :density-collapsed visibility flip has landed (retried
+    // across dispatcher turns — the QAT float ScheduleEnterFloatedBody pattern). Only repairs if the group is still
+    // collapsed and nothing else already claimed focus, so a light-dismiss / competing handler wins cleanly.
+    private void ScheduleCollapsedFocusRepair(int attemptsLeft)
+    {
+        if (UIApplication.Current is not { } app)
+            return;
+
+        app.Dispatcher.Post(() =>
+        {
+            if (_density != RibbonGroupDensity.Collapsed)
+                return; // widened again before the repair ran — nothing to do
+
+            if (_collapsedButton is { IsEffectivelyVisible: true } opener)
+            {
+                if (!opener.IsKeyboardFocusWithin)
+                    opener.Focus(FocusNavigationMethod.Programmatic);
+                return;
+            }
+
+            if (attemptsLeft > 0)
+                ScheduleCollapsedFocusRepair(attemptsLeft - 1); // opener not visible yet (restyle pending) — retry
+        });
     }
 
     // Called by the inline RibbonGroupPanel (the adoption owner) when it connects/disconnects as the items host. The

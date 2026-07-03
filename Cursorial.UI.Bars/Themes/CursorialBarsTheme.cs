@@ -852,7 +852,9 @@ internal static class CursorialBarsTheme
             collapsedPopupSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
             collapsedPopupSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
 
-            var collapsedButton = new BarPopupButton { DropDownContent = collapsedPopupSurface };
+            // Bottom-aligned so the collapsed [name ▾] opener lands on the band's bottom row, matching the inline
+            // column's Bottom alignment (#151) — a collapsed group's label shares the same baseline as its neighbors' names.
+            var collapsedButton = new BarPopupButton { DropDownContent = collapsedPopupSurface, VerticalAlignment = VerticalAlignment.Bottom };
             collapsedButton.SetBinding(ContentControl.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
             ctx.RegisterName("PART_CollapsedButton", collapsedButton);
 

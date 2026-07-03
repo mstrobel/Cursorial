@@ -54,12 +54,22 @@ public class Section12_CompiledLane
         for (var i = 0; i < 64; i++) // warm up: materialize the typed entry + the subscription closure
             vm.BumpAge();
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 256; i++)
-            vm.BumpAge();
-        var delta = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Steady-state allocation = the MINIMUM over a few attempts. The assembly already disables tiered JIT +
+        // server/concurrent GC (see the csproj), yet a CPU-starved CI runner (this failed only on macOS CI, where the
+        // full-solution `dotnet test` runs 7 assemblies at once) can still land a ONE-TIME JIT/lazy-init allocation
+        // inside a single measured window — the observed spike was a flat ~6 KB, uncorrelated with the push count.
+        // Re-warming between attempts settles it; a GENUINE per-push allocation allocates on EVERY attempt, so the min
+        // stays > 0 and this assertion still catches it (the zero-box contract is unchanged, just measured robustly).
+        long best = long.MaxValue;
+        for (var attempt = 0; attempt < 4 && best != 0; attempt++)
+        {
+            for (var i = 0; i < 256; i++) vm.BumpAge(); // re-warm / settle before the measured window
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 256; i++) vm.BumpAge();
+            best = Math.Min(best, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
-        Assert.True(delta == 0, $"compiled typed push allocated {delta} B in steady state (expected 0).");
+        Assert.True(best == 0, $"compiled typed push allocated {best} B in steady state (expected 0).");
     }
 
     [Fact] // B148 — member chain; a swapped intermediate rewires downstream, the typed Getter re-reads

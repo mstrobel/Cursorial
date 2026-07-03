@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A chart is a draw-op, not a surface: it paints itself into a rectangular <c>area</c> of a

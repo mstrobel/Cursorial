@@ -2,15 +2,26 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 
+using FT =  Cursorial.Rendering.Text.FormattedText;
+
 namespace Cursorial.Tests.Rendering.Text;
 
 public class TextFormatterTests
 {
-    private static string LineText(FormattedLine line)
+    private static string LineText(FormattedLine line, int providedColumns, TextAlignment alignment)
     {
         var sb = new System.Text.StringBuilder();
-        foreach (var run in line.Runs)
-            if (run is FormattedTextRun text) sb.Append(text.Text);
+
+        for (var index = 0; index < line.Runs.Length; index++)
+        {
+            var run = line.Runs[index];
+            if (run is FormattedTextRun text)
+            {
+                sb.Append(' ', FT.ComputeAnchorColumn(new(0, 0, providedColumns, 1), text.Text.Length, alignment))
+                  .Append(text.Text);
+            }
+        }
+
         return sb.ToString();
     }
 
@@ -43,7 +54,7 @@ public class TextFormatterTests
         var para = FirstParagraph(ft);
 
         Assert.Single(para.Lines);
-        Assert.Equal("hello", LineText(para.Lines[0]));
+        Assert.Equal("hello", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
         Assert.Equal(5, para.Lines[0].Columns);
     }
 
@@ -60,32 +71,35 @@ public class TextFormatterTests
     public void WordWrap_BreaksAtSpaces()
     {
         var doc = Paragraph("the quick brown fox", WrapMode.WordWrap);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
         Assert.Equal(2, para.Lines.Length);
-        Assert.Equal("the quick", LineText(para.Lines[0]));
-        Assert.Equal("brown fox", LineText(para.Lines[1]));
+        Assert.Equal("the quick", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+        Assert.Equal("brown fox", LineText(para.Lines[1], ft.ProvidedColumns, para.Alignment));
     }
 
     [Fact]
     public void WordWrap_LongerThanBudget_BreaksAtCharBoundary()
     {
         var doc = Paragraph("supercalifragilistic", WrapMode.WordWrap);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
         Assert.Equal(2, para.Lines.Length);
-        Assert.Equal("supercalif", LineText(para.Lines[0]));
-        Assert.Equal("ragilistic", LineText(para.Lines[1]));
+        Assert.Equal("supercalif", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+        Assert.Equal("ragilistic", LineText(para.Lines[1], ft.ProvidedColumns, para.Alignment));
     }
 
     [Fact]
     public void WordWrap_TrailingWhitespaceOnLineDropped()
     {
         var doc = Paragraph("hello world foo bar", WrapMode.WordWrap);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 12));
+        var ft = new TextFormatter().Format(doc, 12);
+        var para = FirstParagraph(ft);
 
         foreach (var line in para.Lines)
-            Assert.DoesNotMatch(@" $", LineText(line));
+            Assert.DoesNotMatch(@" $", LineText(line, ft.ProvidedColumns, para.Alignment));
     }
 
     // ---- WordWrapOverflow ----
@@ -94,11 +108,12 @@ public class TextFormatterTests
     public void WordWrapOverflow_LongWordOverflowsPastEdge()
     {
         var doc = Paragraph("short supercalifragilistic", WrapMode.WordWrapOverflow);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
         Assert.Equal(2, para.Lines.Length);
-        Assert.Equal("short", LineText(para.Lines[0]));
-        Assert.Equal("supercalifragilistic", LineText(para.Lines[1]));
+        Assert.Equal("short", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+        Assert.Equal("supercalifragilistic", LineText(para.Lines[1], ft.ProvidedColumns, para.Alignment));
         Assert.Equal(20, para.Lines[1].Columns);  // overflows past 10-cell budget
     }
 
@@ -108,7 +123,8 @@ public class TextFormatterTests
     public void CharacterWrap_BreaksAtAnyCharacter()
     {
         var doc = Paragraph("the quick brown fox", WrapMode.CharacterWrap);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 5));
+        var ft = new TextFormatter().Format(doc, 5);
+        var para = FirstParagraph(ft);
 
         // Each line is exactly 5 cells (except possibly the last).
         Assert.True(para.Lines.Length >= 4);
@@ -122,10 +138,11 @@ public class TextFormatterTests
     public void NoWrap_KeepsEverythingOnOneLine_OverflowingWidth()
     {
         var doc = Paragraph("the quick brown fox", WrapMode.NoWrap);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 8));
+        var ft = new TextFormatter().Format(doc, 8);
+        var para = FirstParagraph(ft);
 
         Assert.Single(para.Lines);
-        Assert.Equal("the quick brown fox", LineText(para.Lines[0]));
+        Assert.Equal("the quick brown fox", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
     }
 
     // ---- Hard breaks ----
@@ -136,11 +153,12 @@ public class TextFormatterTests
         var doc = new RichTextBuilder()
             .Run("line one").LineBreak().Run("line two")
             .Build();
-        var para = FirstParagraph(new TextFormatter().Format(doc, 80));
+        var ft = new TextFormatter().Format(doc, 80);
+        var para = FirstParagraph(ft);
 
         Assert.Equal(2, para.Lines.Length);
-        Assert.Equal("line one", LineText(para.Lines[0]));
-        Assert.Equal("line two", LineText(para.Lines[1]));
+        Assert.Equal("line one", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+        Assert.Equal("line two", LineText(para.Lines[1], ft.ProvidedColumns, para.Alignment));
     }
 
     // ---- Soft hyphens ----
@@ -152,15 +170,16 @@ public class TextFormatterTests
         // through the source file.
         string text = "ABCD­EFGH";
         var doc = new RichTextBuilder().Run(text).Build();
-        var para = FirstParagraph(new TextFormatter().Format(doc, 6));
+        var ft = new TextFormatter().Format(doc, 6);
+        var para = FirstParagraph(ft);
 
         // Diagnostic on failure — surface what we actually got, so debugging is straightforward.
         Assert.True(
             para.Lines.Length == 2,
             $"Expected 2 lines, got {para.Lines.Length}: " +
-            string.Join(" | ", para.Lines.Select(l => $"'{LineText(l)}' ({l.Columns}c)")));
-        Assert.Equal("ABCD-", LineText(para.Lines[0]));
-        Assert.Equal("EFGH", LineText(para.Lines[1]));
+            string.Join(" | ", para.Lines.Select(l => $"'{LineText(l, ft.ProvidedColumns, para.Alignment)}' ({l.Columns}c)")));
+        Assert.Equal("ABCD-", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+        Assert.Equal("EFGH", LineText(para.Lines[1], ft.ProvidedColumns, para.Alignment));
     }
 
     [Fact]
@@ -169,10 +188,11 @@ public class TextFormatterTests
         var doc = new RichTextBuilder()
             .Run("ABCD­EFGH")
             .Build();
-        var para = FirstParagraph(new TextFormatter().Format(doc, 20));
+        var ft = new TextFormatter().Format(doc, 20);
+        var para = FirstParagraph(ft);
 
         Assert.Single(para.Lines);
-        Assert.Equal("ABCDEFGH", LineText(para.Lines[0]));
+        Assert.Equal("ABCDEFGH", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
     }
 
     // ---- Trimming ----
@@ -181,9 +201,10 @@ public class TextFormatterTests
     public void Trim_CharacterEllipsis_OnOverlongLine()
     {
         var doc = Paragraph("this is too long", WrapMode.NoWrap, trim: TextTrimming.CharacterEllipsis);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 8));
+        var ft = new TextFormatter().Format(doc, 8);
+        var para = FirstParagraph(ft);
 
-        Assert.EndsWith("…", LineText(para.Lines[0]));
+        Assert.EndsWith("…", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
         Assert.True(para.Lines[0].Columns <= 8);
     }
 
@@ -191,9 +212,10 @@ public class TextFormatterTests
     public void Trim_WordEllipsis_TruncatesAtWordBoundary()
     {
         var doc = Paragraph("the quick brown fox", WrapMode.NoWrap, trim: TextTrimming.WordEllipsis);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 12));
+        var ft = new TextFormatter().Format(doc, 12);
+        var para = FirstParagraph(ft);
 
-        var text = LineText(para.Lines[0]);
+        var text = LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment);
         Assert.EndsWith("…", text);
         // Should cut at a word boundary, not mid-word.
         Assert.DoesNotContain("quic…", text);
@@ -204,9 +226,10 @@ public class TextFormatterTests
     public void Trim_ClipFromEnd_TruncatesNoEllipsis()
     {
         var doc = Paragraph("supercalifragilistic", WrapMode.NoWrap, trim: TextTrimming.ClipFromEnd);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 5));
+        var ft = new TextFormatter().Format(doc, 5);
+        var para = FirstParagraph(ft);
 
-        Assert.Equal("super", LineText(para.Lines[0]));
+        Assert.Equal("super", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
         Assert.Equal(5, para.Lines[0].Columns);
     }
 
@@ -215,10 +238,11 @@ public class TextFormatterTests
     {
         var doc = Paragraph("one two three four five six seven eight nine ten",
                             WrapMode.WordWrap, trim: TextTrimming.CharacterEllipsis, maxLines: 2);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
         Assert.Equal(2, para.Lines.Length);
-        Assert.EndsWith("…", LineText(para.Lines[^1]));
+        Assert.EndsWith("…", LineText(para.Lines[^1], ft.ProvidedColumns, para.Alignment));
     }
 
     // ---- Document-level MaxRows ----
@@ -232,7 +256,7 @@ public class TextFormatterTests
 
         var para = FirstParagraph(ft);
         Assert.Equal(2, para.Lines.Length);
-        Assert.EndsWith("…", LineText(para.Lines[^1]));
+        Assert.EndsWith("…", LineText(para.Lines[^1], ft.ProvidedColumns, para.Alignment));
     }
 
     // ---- Alignment ----
@@ -241,29 +265,32 @@ public class TextFormatterTests
     public void Alignment_Left_NoPaddingApplied()
     {
         var doc = Paragraph("hello", align: TextAlignment.Left);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 20));
+        var ft = new TextFormatter().Format(doc, 20);
+        var para = FirstParagraph(ft);
 
-        Assert.Equal("hello", LineText(para.Lines[0]));
+        Assert.Equal("hello", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
     }
 
     [Fact]
     public void Alignment_Right_PadsToEdge()
     {
         var doc = Paragraph("hello", align: TextAlignment.Right);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
-        var text = LineText(para.Lines[0]);
+        var text = LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment);
         Assert.Equal("     hello", text);
-        Assert.Equal(10, para.Lines[0].Columns);
+        Assert.Equal(10, para.Lines[0].Columns + (ft.ProvidedColumns - para.Lines[0].Columns));
     }
 
     [Fact]
     public void Alignment_Center_CentersLine()
     {
         var doc = Paragraph("hi", align: TextAlignment.Center);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
-        var text = LineText(para.Lines[0]);
+        var text = LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment);
         // 10 - 2 = 8; half is 4 leading spaces.
         Assert.Equal("    hi", text);
     }
@@ -271,7 +298,7 @@ public class TextFormatterTests
     [Fact]
     public void Alignment_Justify_DistributesSlackAcrossGaps()
     {
-        var doc = Paragraph("one two three four", WrapMode.WordWrap, align: TextAlignment.Justify);
+        var doc = Paragraph("one two three four 123456789012345", WrapMode.WordWrap, align: TextAlignment.Justify);
         // Width = 14 ("one two three "+ "four"... wait, "one two three" = 13 chars, "four" = 4)
         // budget = 18 → "one two three" fits (13), with " four" we have 18 exactly.
         // Force wrap by using 13-cell budget: "one two three" wraps to one line (13 cells);
@@ -291,7 +318,8 @@ public class TextFormatterTests
     public void Alignment_Justify_LastLineStaysLeft()
     {
         var doc = Paragraph("alpha beta gamma delta", align: TextAlignment.Justify);
-        var para = FirstParagraph(new TextFormatter().Format(doc, 10));
+        var ft = new TextFormatter().Format(doc, 10);
+        var para = FirstParagraph(ft);
 
         // Last line should not be padded to budget.
         var last = para.Lines[^1];
@@ -310,7 +338,8 @@ public class TextFormatterTests
         builder.Run(" more");
         var doc = builder.Build();
 
-        var para = FirstParagraph(new TextFormatter().Format(doc, 80));
+        var ft = new TextFormatter().Format(doc, 80);
+        var para = FirstParagraph(ft);
         var line = para.Lines[0];
 
         Assert.Contains(line.Runs.OfType<FormattedTextRun>(),
@@ -330,8 +359,9 @@ public class TextFormatterTests
             withMap.Run("abc");
         var doc2 = withMap.Build();
 
-        var para = FirstParagraph(new TextFormatter().Format(doc2, 80));
-        Assert.Equal("ａｂｃ", LineText(para.Lines[0]));
+        var ft = new TextFormatter().Format(doc2, 80);
+        var para = FirstParagraph(ft);
+        Assert.Equal("ａｂｃ", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
         // Each fullwidth char is 2 cells; "abc" → 6 cells.
         Assert.Equal(6, para.Lines[0].Columns);
     }

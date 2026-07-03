@@ -46,6 +46,16 @@ public sealed class VtInputMode
     public bool Win32InputModeEnabled { get; set; }
 
     /// <summary>
+    /// True when the terminal is in legacy 8-bit meta input mode (<c>metaSendsEscape</c> off): Alt+&lt;key&gt;
+    /// arrives as the key byte with the high bit set (<c>key | 0x80</c>) rather than as <c>ESC key</c>. This is
+    /// <b>mutually exclusive with UTF-8 input</b> (a high byte is otherwise a UTF-8 lead/continuation), so it
+    /// defaults to <see langword="false"/> and must be opted into only for a terminal known to be in 8-bit mode.
+    /// The negotiator does not auto-enable it (there is no reliable query); it is reachable by explicit
+    /// application opt-in. <see cref="VtInputDevice"/> mirrors it onto the classifier each pump iteration.
+    /// </summary>
+    public bool EightBitMetaInput { get; set; }
+
+    /// <summary>
     /// Single-cell width in pixels reported by the terminal via <c>CSI 16 t</c>, when known.
     /// The negotiator probes for this during identification and stores the result here so the
     /// SGR-Pixels mouse decoder can map pixel coordinates back to cell coordinates without

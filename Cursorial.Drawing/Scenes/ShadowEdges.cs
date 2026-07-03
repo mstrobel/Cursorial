@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>The element edges a shadow is cast from.</summary>
@@ -20,5 +22,5 @@ public enum ShadowEdges : byte
     Bottom = 8,
 
     /// <summary>All four edges.</summary>
-    All = Left | Top | Right | Bottom,
+    All = Left | Top | Right | Bottom
 }

@@ -16,16 +16,16 @@ public class ShadowTests
     [Fact]
     public void DropShadow_FallsOffMonotonically_OverNonBlackBase()
     {
-        var b = DrawHarness.Render(10, 10,
-            ctx => ctx.DrawDropShadow(new Rect(2, 2, 4, 3), ShadowGeometry.Drop(radius: 2, offset: 1, strength: 0.5), Black),
+        var b = DrawHarness.Render(14, 10,
+            ctx => ctx.DrawDropShadow(new Rect(2, 2, 4, 3), ShadowGeometry.Drop(radius: 4, strength: 0.5), Black),
             baseBackground: White);
 
-        // Stepping down through the bottom band, away from the element, gets progressively lighter.
-        int near = b[3, 5].Style.Background.Red;   // adjacent to the element edge
-        int mid = b[3, 6].Style.Background.Red;
-        int far = b[3, 7].Style.Background.Red;
+        // Stepping out through the right band, away from the element edge, gets progressively lighter.
+        int near = b[6, 3].Style.Background.Red;   // adjacent to the right edge (cols 2..5 → colEnd 6)
+        int mid = b[7, 3].Style.Background.Red;
+        int far = b[8, 3].Style.Background.Red;
         Assert.True(near < mid && mid < far, $"expected monotonic falloff, got {near} < {mid} < {far}");
-        Assert.True(far < 255, "the outermost shadow cell still darkens the base");
+        Assert.True(far < 255, "the outer shadow cell still darkens the base");
     }
 
     [Fact]
@@ -99,29 +99,14 @@ public class ShadowTests
     }
 
     [Fact]
-    public void DropShadow_OffsetTrimsNearCorners()
-    {
-        // Offset 1, radius 0 → the crisp shadow is the silhouette displaced by the offset minus the element:
-        // the lit (near) corners — the right band's top cell and the bottom band's left cell — are NOT shaded.
-        var b = DrawHarness.Render(12, 10,
-            ctx => ctx.DrawDropShadow(new Rect(3, 3, 5, 4),
-                                      ShadowGeometry.Drop(radius: 0, offset: 1, edges: ShadowEdges.Bottom | ShadowEdges.Right), Black),
-            baseBackground: White);
-        Assert.True(b[8, 5].Style.Background.Red < 255, "right sliver casts");   // (8,5): in the displaced right sliver
-        Assert.True(b[5, 7].Style.Background.Red < 255, "bottom sliver casts");  // (5,7): in the displaced bottom sliver
-        Assert.Equal(White, b[8, 3].Style.Background);   // right band's top cell (lit corner) → not shaded
-        Assert.Equal(White, b[3, 7].Style.Background);   // bottom band's left cell (lit corner) → not shaded
-    }
-
-    [Fact]
     public void DropShadow_DarkensForegroundGlyphBeneathIt()
     {
         // A glyph the shadow falls on (same scene) keeps its grapheme but its foreground dims toward the shadow.
         var fg = Color.FromRgb(210, 210, 210);
         var b = DrawHarness.Render(12, 10, ctx =>
         {
-            ctx.Set(8, 5, "x", Style.Default.WithForeground(fg));   // a glyph in the shadow's path
-            ctx.DrawDropShadow(new Rect(3, 3, 5, 4), ShadowGeometry.Drop(radius: 1, offset: 1, strength: 0.7), Black);
+            ctx.Set(8, 5, "x", Style.Default.WithForeground(fg));   // a glyph in the shadow's path (right of cols 3..7)
+            ctx.DrawDropShadow(new Rect(3, 3, 5, 4), ShadowGeometry.Drop(radius: 1, strength: 0.7), Black);
         }, baseBackground: White);
         Assert.Equal("x", b[8, 5].Grapheme);
         Assert.True(b[8, 5].Style.Foreground.Red < fg.Red, "the glyph beneath the shadow is darkened");

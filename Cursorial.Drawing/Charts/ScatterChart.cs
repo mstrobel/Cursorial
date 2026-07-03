@@ -1,7 +1,8 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A scatter chart: a marker glyph at each point. Whole-cell markers (●○■◆▲✕) are written immediately;
@@ -14,7 +15,7 @@ public sealed class ScatterChart : IChart
     private readonly PointD[] _points;
 
     /// <summary>Create a scatter chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
-    public ScatterChart(ReadOnlySpan<PointD> points, IBrush brush)
+    public ScatterChart(ReadOnlySpan<PointD> points, IBrush? brush = null)
     {
         _points = points.ToArray();
         Brush = brush ?? Brushes.Default;
@@ -74,7 +75,7 @@ public sealed class ScatterChart : IChart
         {
             if (!ChartMath.Finite(p)) continue;
             var (column, row) = cells.ToCell(p.X, p.Y);
-            if ((uint) column >= (uint) context.Bounds.Columns || (uint) row >= (uint) context.Bounds.Rows) continue;
+            if (!context.IsVisible(column, row)) continue;
 
             var color = Brush.ColorAt(column, row, area);
             context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));

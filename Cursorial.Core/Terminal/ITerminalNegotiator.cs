@@ -65,6 +65,22 @@ public interface ITerminalNegotiator : IAsyncDisposable
     Task RestoreAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Re-emits the opt-in <b>enable</b> sequences that the most recent <see cref="NegotiateAsync"/>
+    /// applied, on whatever screen is currently active, WITHOUT changing the restore accounting (the
+    /// tracked push/pop balance is untouched). Intended for a consumer that switched screen buffers
+    /// after negotiation: the Kitty keyboard flag stack is per-screen-buffer, so entering the
+    /// alternate screen starts a fresh, empty stack and silently drops key-up / repeat reporting until
+    /// the flags are re-applied. The screen-independent global modes (mouse / focus / paste / Win32) are
+    /// re-issued idempotently; the per-screen Kitty push is <b>not</b> idempotent — each call appends
+    /// another entry to the active screen's stack, so call this <b>at most once per screen-buffer entry</b>
+    /// (the matching screen-leave DECRST 1049 reclaims it). A no-op when nothing was applied, the
+    /// negotiator was already restored, or negotiation never ran. The default implementation is a no-op
+    /// for negotiators with no screen-local state to re-apply.
+    /// </summary>
+    ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
+
+    /// <summary>
     /// Build the byte sequence that <see cref="RestoreAsync"/> would write to the output sink,
     /// without performing any I/O of its own, and mark the negotiator as restored so subsequent
     /// <see cref="RestoreAsync"/> calls become no-ops. The caller is responsible for writing

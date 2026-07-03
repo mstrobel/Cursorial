@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.Animation\Cursorial.Animation.csproj" />
+        <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
+        <ProjectReference Include="..\Cursorial.Shared\Cursorial.Shared.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.UI.Tests" />
+        <InternalsVisibleTo Include="Cursorial.UI.Testing" />
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
+        <!-- The first-party Bars library rides privileged engine seams (the KeyTip overlay's Alt-cue hooks +
+             WM surface stack), mirroring the Xaml assembly's grant. Third-party bar libraries stay public-only. -->
+        <InternalsVisibleTo Include="Cursorial.UI.Bars" />
+        <InternalsVisibleTo Include="Cursorial.Demo" />
+        <InternalsVisibleTo Include="Cursorial.Gallery" />
+        <InternalsVisibleTo Include="cursorial-demo" />
+        <InternalsVisibleTo Include="Cursorial.Demo.XamlAotStrict" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Update="UIElement.Input.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="UIElement.Layout.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="UIElement.Properties.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="UIElement.Render.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="UIElement.Styling.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="UIElement.Data.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="UIElement.Resources.cs">
+        <DependentUpon>UIElement.cs</DependentUpon>
+      </Compile>
+      <Compile Update="Hosting\UIApplication.Theme.cs">
+        <DependentUpon>UIApplication.cs</DependentUpon>
+      </Compile>
+      <Compile Update="Hosting\UIApplication.FrameLoop.cs">
+        <DependentUpon>UIApplication.cs</DependentUpon>
+      </Compile>
+    </ItemGroup>
+
+</Project>

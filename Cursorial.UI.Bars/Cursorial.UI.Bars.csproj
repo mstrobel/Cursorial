@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The command-bars suite (design guides docs/ui-layer-design/tokyo-night-bars-design-guide.html et al.) — the
+        cell-grid analogue of Actipro's Bars: one shared set of bar controls (BarButton/BarToggleButton/…) surfaced
+        as a Toolbar (this phase) and a Ribbon (later), all driven by ICommand. Depends on Cursorial.UI; the bar
+        buttons derive from its ButtonBase/ToggleButton. Themes are code-first (Themes/CursorialBarsTheme.cs); a XAML
+        twin overlay can follow. No embedded XAML here, so no generator wiring.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.UI.Bars.Tests" />
+    </ItemGroup>
+
+</Project>

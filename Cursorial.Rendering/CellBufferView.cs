@@ -24,7 +24,8 @@ namespace Cursorial.Rendering;
 /// <para>
 /// <b>Clipping.</b> Writes outside <c>[0, Columns) × [0, Rows)</c> are silently dropped by
 /// <see cref="Set"/>, <see cref="Fill(in Cell)"/>, <see cref="Clear"/>, and the fragment / dirty-region
-/// methods. The indexer (<c>view[r, c]</c>) instead <em>validates</em> coordinates and throws on
+/// methods. (On a view re-based via <see cref="WithOrigin"/> the addressable local range moves with
+/// the origin; writes always clip to the same backing window.) The indexer (<c>view[r, c]</c>) instead <em>validates</em> coordinates and throws on
 /// out-of-bounds access — it is the explicit form for when the caller has already proven the
 /// write is in range. The semantic split matches <see cref="CellBuffer"/>'s indexer-vs-Set
 /// behavior: indexers are "I know this is in bounds, do it"; <c>Set</c> is "place this if
@@ -58,6 +59,14 @@ namespace Cursorial.Rendering;
 public readonly struct CellBufferView : ICellSurface
 {
     private readonly CellBuffer _buffer;
+
+    // Backing-buffer coordinates of the addressable window's top-left. For every view produced by the
+    // public constructors and View(...) this equals (OffsetColumn, OffsetRow) — the local origin sits at
+    // the window's corner and every range check reduces to the classic [0, Columns) / [0, Rows) form.
+    // WithOrigin re-bases the origin away from the window (it may even be negative — content scrolled
+    // above/left of a viewport) while the window stays fixed; writes always clip to the window.
+    private readonly int _windowColumn;
+    private readonly int _windowRow;
 
     /// <summary>
     /// Construct a view spanning the entire <paramref name="buffer"/>. Equivalent to
@@ -93,9 +102,54 @@ public readonly struct CellBufferView : ICellSurface
         _buffer = buffer;
         OffsetRow = clampedOffsetRow;
         OffsetColumn = clampedOffsetColumn;
+        _windowRow = clampedOffsetRow;
+        _windowColumn = clampedOffsetColumn;
         Rows = Math.Max(0, clampedRowEnd - clampedOffsetRow);
         Columns = Math.Max(0, clampedColumnEnd - clampedOffsetColumn);
     }
+
+    // The re-based form produced by WithOrigin: the window is inherited verbatim; only the origin moves.
+    private CellBufferView(CellBuffer buffer, int originColumn, int originRow,
+                           int windowColumn, int windowRow, int columns, int rows)
+    {
+        _buffer = buffer;
+        OffsetColumn = originColumn;
+        OffsetRow = originRow;
+        _windowColumn = windowColumn;
+        _windowRow = windowRow;
+        Columns = columns;
+        Rows = rows;
+    }
+
+    /// <summary>
+    /// Re-base this view's coordinate origin: the returned view addresses the <b>same backing window</b>
+    /// (same clip rectangle, same <see cref="Columns"/> × <see cref="Rows"/>), but its local
+    /// <c>(0, 0)</c> maps to the backing-buffer cell
+    /// (<paramref name="originColumn"/>, <paramref name="originRow"/>) — a point that may lie anywhere
+    /// relative to the window, including above/left of it (negative local coordinates of the window are
+    /// then valid; positive local coordinates may fall outside it). Writes still clip to the window:
+    /// the view is a <em>viewport with a movable content origin</em>, which is what lets a painter that
+    /// works in content coordinates (formatted text, embedded content) render scrolled content into a
+    /// clip rectangle without translating every coordinate itself.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Bounds"/> (anchored at <c>(0, 0)</c>) is <b>not</b> meaningful on a re-based view —
+    /// the addressable local rectangle starts at the window's local position, not at the origin. The
+    /// coordinate-bearing operations (<see cref="Set"/>, <see cref="Write"/>, the indexer, fills,
+    /// fragments, dirty regions) all honor the re-based mapping.
+    /// </remarks>
+    public CellBufferView WithOrigin(int originColumn, int originRow)
+        => _buffer is null ? default : new(_buffer, originColumn, originRow, _windowColumn, _windowRow, Columns, Rows);
+
+    // ---- Local-coordinate window edges ----------------------------------------------------
+    // The addressable local range is [LocalColumnStart, LocalColumnEnd) × [LocalRowStart, LocalRowEnd).
+    // For all non-re-based views these are 0 / Columns / 0 / Rows, so every check below reduces to the
+    // historical form. On a re-based view they may start anywhere (including negative).
+
+    private int LocalColumnStart => _windowColumn - OffsetColumn;
+    private int LocalRowStart => _windowRow - OffsetRow;
+    private int LocalColumnEnd => _windowColumn - OffsetColumn + Columns;
+    private int LocalRowEnd => _windowRow - OffsetRow + Rows;
 
     /// <summary>
     /// The underlying buffer. Internal so external paint code can't escape the view's clip
@@ -123,15 +177,15 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>The view's rectangle in view-local coordinates: anchored at <c>(0, 0)</c>.</summary>
     public Rect Bounds => new(0, 0, Columns, Rows);
 
-    /// <summary>The view's rectangle in backing-buffer coordinates.</summary>
-    public Rect BufferBounds => new(OffsetColumn, OffsetRow, Columns, Rows);
+    /// <summary>The view's window rectangle in backing-buffer coordinates.</summary>
+    public Rect BufferBounds => new(_windowColumn, _windowRow, Columns, Rows);
 
     /// <summary>The view's dimensions, in cells.</summary>   
     public (int Columns, int Rows) Dimensions => (Columns, Rows);
     
-    /// <summary>True when (<paramref name="row"/>, <paramref name="column"/>) is inside the view.</summary>
+    /// <summary>True when (<paramref name="row"/>, <paramref name="column"/>) is inside the view's window.</summary>
     public bool Contains(int column, int row)
-        => row >= 0 && row < Rows && column >= 0 && column < Columns;
+        => row >= LocalRowStart && row < LocalRowEnd && column >= LocalColumnStart && column < LocalColumnEnd;
 
     // ---- Cursor pass-through ------------------------------------------------------------
 
@@ -146,10 +200,10 @@ public readonly struct CellBufferView : ICellSurface
         get => _buffer is null ? 0 : _buffer.CursorRow - OffsetRow;
         set
         {
-            if ((uint) value >= (uint) Rows)
+            if (value < LocalRowStart || value >= LocalRowEnd)
                 throw new ArgumentOutOfRangeException(
                     nameof(value), value,
-                    $"Cursor row {value} is outside the view's rows [0, {Rows}). Use the underlying buffer if an out-of-view cursor position is intentional.");
+                    $"Cursor row {value} is outside the view's rows [{LocalRowStart}, {LocalRowEnd}). Use the underlying buffer if an out-of-view cursor position is intentional.");
             _buffer.CursorRow = value + OffsetRow;
         }
     }
@@ -160,10 +214,10 @@ public readonly struct CellBufferView : ICellSurface
         get => _buffer is null ? 0 : _buffer.CursorColumn - OffsetColumn;
         set
         {
-            if ((uint) value >= (uint) Columns)
+            if (value < LocalColumnStart || value >= LocalColumnEnd)
                 throw new ArgumentOutOfRangeException(
                     nameof(value), value,
-                    $"Cursor column {value} is outside the view's columns [0, {Columns}).");
+                    $"Cursor column {value} is outside the view's columns [{LocalColumnStart}, {LocalColumnEnd}).");
             _buffer.CursorColumn = value + OffsetColumn;
         }
     }
@@ -225,7 +279,7 @@ public readonly struct CellBufferView : ICellSurface
     public int Set(int column, int row, string? grapheme, in Style style)
     {
         if (_buffer is null) return 0;
-        if ((uint) row >= (uint) Rows || (uint) column >= (uint) Columns) return 0;
+        if (!Contains(column, row)) return 0;
 
         int width = string.IsNullOrEmpty(grapheme) ? 1 : GraphemeWidth.ClusterWidth(grapheme.AsSpan());
         if (width < 1) width = 1;
@@ -234,10 +288,8 @@ public readonly struct CellBufferView : ICellSurface
         // can't safely write a continuation that points to a column outside our region. The
         // backing buffer applies the same logic at its own right edge; this is the view's
         // version anchored on the view's right edge.
-        if (width == 2 && column + 1 >= Columns)
-        {
+        if (width == 2 && column + 1 >= LocalColumnEnd)
             return _buffer.Set(column + OffsetColumn, row + OffsetRow, null, style);
-        }
 
         return _buffer.Set(column + OffsetColumn, row + OffsetRow, grapheme, style);
     }
@@ -247,13 +299,16 @@ public readonly struct CellBufferView : ICellSurface
     /// view-local <c>(column, row)</c>, advancing the column by each cluster's width (1 or 2) and
     /// applying the active blending mode per cell — see <see cref="Set(int, int, string?, in Style)"/>.
     /// A start outside the view is dropped (returns 0); a cluster that would not fit in the
-    /// remaining columns stops the write rather than being clipped. Control characters (including
-    /// newlines) are not interpreted. Returns the number of columns written.
+    /// remaining columns stops the write rather than being clipped. The write is single-row by
+    /// contract: it <b>stops at the first C0/C1 control character</b> (including newlines and tabs)
+    /// rather than storing it as a junk cell — split text into lines (or use the drawing layer's
+    /// multi-line text) for multi-row layout, and expand tabs upstream. Returns the number of
+    /// columns written.
     /// </summary>
     public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
     {
         if (_buffer is null || text.IsEmpty) return 0;
-        if ((uint) row >= (uint) Rows || (uint) column >= (uint) Columns) return 0;
+        if (!Contains(column, row)) return 0;
 
         int start = column;
         var clusters = text.GetGraphemeEnumerator();
@@ -261,11 +316,15 @@ public readonly struct CellBufferView : ICellSurface
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
+
+            // Stop at the first control character — this is a single-row, printable-text write.
+            if (CellBuffer.IsC0OrC1Control(cluster[0])) break;
+
             int width = GraphemeWidth.ClusterWidth(cluster);
             if (width < 1) width = 1;
 
             // Stop at the view's right edge rather than placing a degraded glyph.
-            if (column + width > Columns) break;
+            if (column + width > LocalColumnEnd) break;
 
             column += Set(column, row, cluster.ToString(), style);
         }
@@ -294,12 +353,12 @@ public readonly struct CellBufferView : ICellSurface
     {
         if (_buffer is null || region.IsEmpty || IsEmpty) return;
 
-        // Clip the rect against the view's bounds in view-local space, then translate to backing
+        // Clip the rect against the view's window in view-local space, then translate to backing
         // coordinates — the same projection MarkDirty uses.
-        int row = Math.Max(0, region.Row);
-        int col = Math.Max(0, region.Column);
-        int rowEnd = Math.Min(Rows, region.RowEnd);
-        int colEnd = Math.Min(Columns, region.ColumnEnd);
+        int row = Math.Max(LocalRowStart, region.Row);
+        int col = Math.Max(LocalColumnStart, region.Column);
+        int rowEnd = Math.Min(LocalRowEnd, region.RowEnd);
+        int colEnd = Math.Min(LocalColumnEnd, region.ColumnEnd);
         if (row >= rowEnd || col >= colEnd) return;
 
         _buffer.Fill(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row), cell);
@@ -349,7 +408,7 @@ public readonly struct CellBufferView : ICellSurface
     /// fragments must not depend on each other's visual ordering at the cell layer.
     /// </summary>
     public FragmentDictionary Fragments =>
-        _buffer is null ? FragmentDictionary.Empty : new(_buffer.FragmentsInternal, Bounds);
+        _buffer is null ? FragmentDictionary.Empty : new(_buffer.FragmentsInternal, OffsetColumn, OffsetRow);
 
     /// <summary>
     /// Register <paramref name="fragment"/> at the view-local <c>(column, row)</c>. Translates
@@ -381,6 +440,13 @@ public readonly struct CellBufferView : ICellSurface
     /// <see cref="AddFragment"/> for the layering contract.
     /// </summary>
     public bool RemoveFragment(CellPosition position) => RemoveFragment(position.Column, position.Row);
+
+    /// <summary>
+    /// Remove every fragment registered against the backing buffer. The compositor uses a full-buffer
+    /// view, so this clears all of them — used on a full recomposite so fragments orphaned by a discarded
+    /// compositor (the <c>ResetCompositor</c> path) are dropped, not left stranded on the target.
+    /// </summary>
+    public void ClearFragments() => _buffer?.ClearFragments();
 
     /// <summary>
     /// True when a fragment with the given <paramref name="key"/> is currently registered on
@@ -434,7 +500,7 @@ public readonly struct CellBufferView : ICellSurface
             var source = _buffer.DirtyRegions;
             if (source.Count == 0) return [];
 
-            return new ProjectedDirtyRegions(source, OffsetColumn, OffsetRow, Columns, Rows);
+            return new ProjectedDirtyRegions(source, OffsetColumn, OffsetRow, _windowColumn, _windowRow, Columns, Rows);
         }
     }
 
@@ -450,15 +516,34 @@ public readonly struct CellBufferView : ICellSurface
     {
         if (_buffer is null || region.IsEmpty || IsEmpty) return;
 
-        // Clip the rect against the view's bounds in view-local space first.
-        int row = Math.Max(0, region.Row);
-        int col = Math.Max(0, region.Column);
-        int rowEnd = Math.Min(Rows, region.RowEnd);
-        int colEnd = Math.Min(Columns, region.ColumnEnd);
+        // Clip the rect against the view's window in view-local space first.
+        int row = Math.Max(LocalRowStart, region.Row);
+        int col = Math.Max(LocalColumnStart, region.Column);
+        int rowEnd = Math.Min(LocalRowEnd, region.RowEnd);
+        int colEnd = Math.Min(LocalColumnEnd, region.ColumnEnd);
         if (row >= rowEnd || col >= colEnd) return;
 
         // Translate to backing-buffer coords and forward.
         _buffer.MarkDirty(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row));
+    }
+
+    /// <summary>
+    /// Mark a <see cref="Rect"/> (view-local) for unconditional re-emission on the next render —
+    /// the rect is clipped against the view's window and translated to backing-buffer coordinates.
+    /// See <see cref="CellBuffer.ForceRepaint(in Rect)"/> for the semantics (expands emission, used
+    /// to overwrite a removed Cells-layer image's lingering pixels).
+    /// </summary>
+    public void ForceRepaint(in Rect region)
+    {
+        if (_buffer is null || region.IsEmpty || IsEmpty) return;
+
+        int row = Math.Max(LocalRowStart, region.Row);
+        int col = Math.Max(LocalColumnStart, region.Column);
+        int rowEnd = Math.Min(LocalRowEnd, region.RowEnd);
+        int colEnd = Math.Min(LocalColumnEnd, region.ColumnEnd);
+        if (row >= rowEnd || col >= colEnd) return;
+
+        _buffer.ForceRepaint(new Rect(col + OffsetColumn, row + OffsetRow, colEnd - col, rowEnd - row));
     }
 
     // ---- Sub-views ----------------------------------------------------------------------
@@ -475,11 +560,11 @@ public readonly struct CellBufferView : ICellSurface
         // (which is equivalently empty) rather than throwing through the constructor.
         if (_buffer is null) return default;
 
-        // Compute the requested rect in this view's local space, then clip against the view.
-        int localRow = Math.Max(0, offsetRow);
-        int localCol = Math.Max(0, offsetColumn);
-        int localRowEnd = Math.Min(Rows, offsetRow + Math.Max(0, rows));
-        int localColEnd = Math.Min(Columns, offsetColumn + Math.Max(0, columns));
+        // Compute the requested rect in this view's local space, then clip against the view's window.
+        int localRow = Math.Max(LocalRowStart, offsetRow);
+        int localCol = Math.Max(LocalColumnStart, offsetColumn);
+        int localRowEnd = Math.Min(LocalRowEnd, offsetRow + Math.Max(0, rows));
+        int localColEnd = Math.Min(LocalColumnEnd, offsetColumn + Math.Max(0, columns));
 
         int clippedRows = Math.Max(0, localRowEnd - localRow);
         int clippedCols = Math.Max(0, localColEnd - localCol);
@@ -502,18 +587,18 @@ public readonly struct CellBufferView : ICellSurface
 
     private void ValidateCoordinates(int column, int row)
     {
-        if ((uint) row >= (uint) Rows)
+        if (row < LocalRowStart || row >= LocalRowEnd)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(row), row,
-                $"Row {row} is outside the view's rows [0, {Rows}).");
+                $"Row {row} is outside the view's rows [{LocalRowStart}, {LocalRowEnd}).");
         }
 
-        if ((uint) column >= (uint) Columns)
+        if (column < LocalColumnStart || column >= LocalColumnEnd)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(column), column,
-                $"Column {column} is outside the view's columns [0, {Columns}).");
+                $"Column {column} is outside the view's columns [{LocalColumnStart}, {LocalColumnEnd}).");
         }
     }
 
@@ -542,7 +627,8 @@ public readonly struct CellBufferView : ICellSurface
     /// pattern and is single-pass.
     /// </remarks>
     private sealed class ProjectedDirtyRegions(
-        IReadOnlyList<Rect> source, int offsetColumn, int offsetRow, int columns, int rows)
+        IReadOnlyList<Rect> source, int offsetColumn, int offsetRow,
+        int windowColumn, int windowRow, int columns, int rows)
         : IReadOnlyList<Rect>
     {
         public int Count
@@ -585,12 +671,14 @@ public readonly struct CellBufferView : ICellSurface
 
         private bool TryProject(Rect region, out Rect projected)
         {
-            // Intersect the backing-buffer region with the view's backing rect, then translate the
-            // overlap into view-local coordinates.
-            int colStart = Math.Max(region.Column, offsetColumn);
-            int rowStart = Math.Max(region.Row, offsetRow);
-            int colEnd = Math.Min(region.ColumnEnd, offsetColumn + columns);
-            int rowEnd = Math.Min(region.RowEnd, offsetRow + rows);
+            // Intersect the backing-buffer region with the view's window rect, then translate the
+            // overlap into view-local coordinates. A re-based view (WithOrigin) can map part of the
+            // window to negative local coordinates, which Rect can't carry — clamp the intersection
+            // to the origin so only the locally-expressible portion projects.
+            int colStart = Math.Max(region.Column, Math.Max(windowColumn, offsetColumn));
+            int rowStart = Math.Max(region.Row, Math.Max(windowRow, offsetRow));
+            int colEnd = Math.Min(region.ColumnEnd, windowColumn + columns);
+            int rowEnd = Math.Min(region.RowEnd, windowRow + rows);
 
             if (colStart >= colEnd || rowStart >= rowEnd)
             {

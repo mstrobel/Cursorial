@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A numeric data range [<see cref="Min"/>, <see cref="Max"/>] for a chart axis. Construct explicitly,

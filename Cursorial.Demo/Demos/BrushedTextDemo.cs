@@ -1,7 +1,10 @@
 using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
+
+// ReSharper disable CheckNamespace
 
 // Phase-6 showcase: brush-aware rich text, two panels. (1) A BLOCK-scoped 2-D gradient sampled per cell against
 // each block's rect — one sweep flows across and down a whole wrapped paragraph. (2) An INLINE-scoped 1-D gradient
@@ -14,11 +17,11 @@ internal sealed class BrushedTextDemo : InteractiveDemo
     public override string Description =>
         "Brush-aware rich text — block-scoped 2-D + inline-scoped wrap-invariant gradients (Phase 6).";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Brushed rich-text demo. Opening alt screen — press q or Ctrl+C to exit.";
 
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
     private RichText _doc = null!;
     private RichText _inlineDoc = null!;
     private TextFormatter _formatter = null!;
@@ -120,6 +123,9 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         return builder.Build();
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

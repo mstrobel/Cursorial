@@ -1,7 +1,8 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A line chart: the data connected by an interpolated curve, rasterized into braille at sub-cell
@@ -17,7 +18,7 @@ public sealed class LineChart : IChart
     private readonly PointD[] _points;
 
     /// <summary>Create a line chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
-    public LineChart(ReadOnlySpan<PointD> points, IBrush brush)
+    public LineChart(ReadOnlySpan<PointD> points, IBrush? brush = null)
     {
         _points = points.ToArray();
         Brush = brush ?? Brushes.Default;
@@ -66,7 +67,7 @@ public sealed class LineChart : IChart
     /// <summary>
     /// Fill the area between the curve and the zero baseline. The fill is a cell <b>background</b>, so the
     /// foreground braille curve still draws over it and a translucent <see cref="AreaBrush"/> alpha-blends
-    /// with lower layers (e.g. overlapping <c>MultiLineChart.ToLayers</c> fills compose, red∩blue → purple).
+    /// with lower layers (e.g., overlapping <c>MultiLineChart.ToLayers</c> fills compose, red∩blue → purple).
     /// </summary>
     public bool FillArea { get; init; }
 
@@ -120,7 +121,7 @@ public sealed class LineChart : IChart
                     // Keep the row furthest from the baseline — the curve's peak in this column.
                     if (!hasCurve![idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
                         curveFrac[idx] = f;
-                    hasCurve![idx] = true;
+                    hasCurve[idx] = true;
                 }
 
             if (recordId >= 0)
@@ -144,7 +145,7 @@ public sealed class LineChart : IChart
             foreach (var p in finite)
             {
                 var (column, row) = cells.ToCell(p.X, p.Y);
-                if ((uint) column >= (uint) context.Bounds.Columns || (uint) row >= (uint) context.Bounds.Rows) continue;
+                if (!context.IsVisible(column, row)) continue;
 
                 var color = Brush.ColorAt(column, row, area);
                 context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));
@@ -174,9 +175,11 @@ public sealed class LineChart : IChart
                 if (coverage >= MinCellCoverage) { first = Math.Min(first, r); last = Math.Max(last, r); }
             }
             if (first <= last)
+            {
                 // Sample the brush against the whole chart area (not the 1-column paint rect) so a gradient
                 // area-fill flows across the chart rather than restarting per column.
                 context.FillRectangle(new Rect(area.Column + idx, area.Row + first, 1, last - first + 1), fillBrush, area);
+            }
         }
     }
 

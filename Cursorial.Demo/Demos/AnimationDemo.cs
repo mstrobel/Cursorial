@@ -1,9 +1,13 @@
 using Cursorial.Animation;
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
+
+// ReSharper disable CheckNamespace
 
 // Phase-5 animation showcase. The library is time-free; THIS demo owns the only clock (frame counter ×
 // FrameInterval) and asks each animation for its value at the elapsed offset. Shows: an animated gradient
@@ -17,7 +21,7 @@ internal sealed class AnimationDemo : InteractiveDemo
     public override IReadOnlyList<string> Aliases => ["animation", "anim"];
     public override string Description => "Easings, animated gradients (BrushInterpolator), slide/fade composite-param animation, and a RectAnimation focus box.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Animation demo. Opening alt screen — ←/→ (or any key) cycles the easing; q or Ctrl+C exits.";
 
     protected override bool Animated => true;
@@ -36,9 +40,9 @@ internal sealed class AnimationDemo : InteractiveDemo
     private static readonly Color Cyan = Color.FromRgb(120, 220, 232);
     private static readonly Color Label = Color.FromRgb(150, 160, 200);
 
-    private SceneCompositor _compositor = null!;
-    private Scene _dynamic = null!;
-    private Scene _slide = null!;
+    private SceneCompositor? _compositor;
+    private Scene? _dynamic;
+    private Scene? _slide;
 
     private IAnimation<IBrush> _gradient = null!;
     private IAnimation<CompositeParameters> _slideMove = null!;
@@ -127,12 +131,15 @@ internal sealed class AnimationDemo : InteractiveDemo
     {
         TimeSpan t = FrameInterval * frame;
 
-        _dynamic.Invalidate();
-        _dynamic.Draw(ctx => Paint(ctx, t));
+        _dynamic?.Invalidate();
+        _dynamic?.Draw(ctx => Paint(ctx, t));
 
-        _compositor.Composite(
-            [new SceneLayer(_dynamic), new SceneLayer(_slide, _slideMove.ValueAt(t))],
-            Buffer.AsView());
+        if (_dynamic is {} dynamic && _slide is {} slide)
+        {
+            _compositor?.Composite(
+                [new SceneLayer(dynamic), new SceneLayer(slide, _slideMove.ValueAt(t))],
+                Buffer.AsView());
+        }
     }
 
     private void Paint(DrawingContext ctx, TimeSpan t)

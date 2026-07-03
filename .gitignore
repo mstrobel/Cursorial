@@ -1,5 +1,7 @@
 bin/
 obj/
+!generated/**
+!**/generated/**
 .DS_Store
 /packages/
 riderModule.iml

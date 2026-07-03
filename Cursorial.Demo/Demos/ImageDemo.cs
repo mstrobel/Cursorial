@@ -4,6 +4,8 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Imaging;
 
+// ReSharper disable CheckNamespace
+
 // Inline-image showcase. Loads a PNG / JPEG / GIF from a path argument (with ~/ and embedded:
 // support) and renders it via the best available terminal graphics protocol — Kitty, iTerm2, or
 // Sixel — falling back to a cell-grid placeholder where none is supported. Event-driven: the image

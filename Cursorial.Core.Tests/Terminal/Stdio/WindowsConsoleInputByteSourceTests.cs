@@ -1,5 +1,3 @@
-namespace Cursorial.Tests.Terminal.Stdio;
-
 // WindowsConsoleInputByteSource now reads INPUT_RECORDs via ReadConsoleInputW, not raw bytes
 // via ReadFile. ReadConsoleInputW only works against real console handles, so the previous
 // pipe-handle-based integration tests can't be repurposed for it. The source's correctness on

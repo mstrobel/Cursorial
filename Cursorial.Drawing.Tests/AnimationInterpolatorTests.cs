@@ -1,7 +1,11 @@
 using Cursorial.Animation;
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+
+// ReSharper disable RedundantCast
 
 namespace Cursorial.Tests.Drawing;
 
@@ -292,5 +296,95 @@ public class DrawingAnimationConvenienceTests
         var mid = a.ValueAt(TimeSpan.FromSeconds(0.5));
         Assert.Equal(2.0, mid.X, 10);
         Assert.Equal(4.0, mid.Y, 10);
+    }
+}
+
+public class PenInterpolatorTests
+{
+    private static Pen I(Pen a, Pen b, double t) => PenInterpolator.Instance.Interpolate(a, b, t);
+
+    [Fact]
+    public void Brush_BlendsThroughBrushInterpolator()
+    {
+        var a = new Pen(new SolidColorBrush(Color.FromRgb(0, 0, 0)));
+        var b = new Pen(new SolidColorBrush(Color.FromRgb(100, 200, 40)));
+        var s = Assert.IsType<SolidColorBrush>(I(a, b, 0.5).Brush);
+        Assert.Equal(Color.FromRgb(50, 100, 20), s.Color);
+    }
+
+    [Fact]
+    public void Brush_ReferenceEqual_PassesThroughSameInstance()
+    {
+        var shared = new SolidColorBrush(Color.FromRgb(10, 20, 30));
+        var result = I(new Pen(shared), new Pen(shared).WithWeight(StrokeWeight.Heavy), 0.25);
+        Assert.Same(shared, result.Brush);
+    }
+
+    [Fact]
+    public void Brush_NullOnEitherSide_SnapsAtMidpoint()
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(255, 0, 0));
+        var a = new Pen((IBrush?) null);
+        var b = new Pen(brush);
+        Assert.Null(I(a, b, 0.3).Brush);          // from's null wins below the midpoint
+        Assert.Same(brush, I(a, b, 0.7).Brush);   // to's brush wins at/after it
+
+        Assert.Null(I(a, new Pen((IBrush?) null), 0.5).Brush);   // both null stays null
+    }
+
+    [Fact]
+    public void DiscreteMembers_SnapAtMidpoint()
+    {
+        var a = Pens.Heavy.WithDash(LineDash.Triple).WithJunction(JunctionMode.Break)
+            .WithAttributes(TextAttributes.Bold);
+        var b = Pens.Double.WithCorners(CornerStyle.Rounded).WithEndCap(EndCap.Stub)
+            .WithGlyphSet(GlyphSet.Ascii);
+
+        var early = I(a, b, 0.49);
+        Assert.Equal(StrokeWeight.Heavy, early.Weight);
+        Assert.Equal(LineDash.Triple, early.Dash);
+        Assert.Equal(JunctionMode.Break, early.Junction);
+        Assert.Equal(TextAttributes.Bold, early.Attributes);
+
+        var late = I(a, b, 0.5);
+        Assert.Equal(StrokeWeight.Double, late.Weight);
+        Assert.Equal(CornerStyle.Rounded, late.Corners);
+        Assert.Equal(EndCap.Stub, late.EndCap);
+        Assert.Equal(GlyphSet.Ascii, late.GlyphSet);
+        Assert.Equal(TextAttributes.None, late.Attributes);
+    }
+
+    [Fact]
+    public void IdenticalEndpoints_RoundTrip()
+    {
+        var pen = Pens.Rounded.WithColor(Color.FromRgb(1, 2, 3));
+        var result = I(pen, pen, 0.5);
+        Assert.Equal(pen.Weight, result.Weight);
+        Assert.Equal(pen.Corners, result.Corners);
+        var s = Assert.IsType<SolidColorBrush>(result.Brush);
+        Assert.Equal(Color.FromRgb(1, 2, 3), s.Color);
+    }
+
+    [Fact]
+    public void Singleton() => Assert.Same(PenInterpolator.Instance, PenInterpolator.Instance);
+}
+
+public class PenAnimationTests
+{
+    [Fact]
+    public void PenAnimation_IsAnAnimationOfPen_AndInterpolates()
+    {
+        var a = new PenAnimation(
+            new Pen(new SolidColorBrush(Color.FromRgb(0, 0, 0))),
+            Pens.Heavy.WithBrush(new SolidColorBrush(Color.FromRgb(200, 100, 50))),
+            TimeSpan.FromSeconds(1));
+        Assert.IsAssignableFrom<Animation<Pen>>(a);
+
+        var mid = a.ValueAt(TimeSpan.FromSeconds(0.5));
+        var s = Assert.IsType<SolidColorBrush>(mid.Brush);
+        Assert.Equal(Color.FromRgb(100, 50, 25), s.Color);
+        Assert.Equal(StrokeWeight.Heavy, mid.Weight);   // discrete snapped to `to` at the midpoint
+
+        Assert.Equal(StrokeWeight.Heavy, a.ValueAt(TimeSpan.FromSeconds(1)).Weight);
     }
 }

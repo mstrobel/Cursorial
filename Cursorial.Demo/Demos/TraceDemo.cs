@@ -1,11 +1,12 @@
 using System.Buffers;
 using System.Text;
 
-using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
 using Cursorial.Terminal;
 using Cursorial.Terminal.Stdio;
+
+// ReSharper disable CheckNamespace
 
 // Protocol-debugging demo: streams raw stdin bytes alongside the decoded InputEvents they produce,
 // side-by-side, so you can see exactly which wire bytes a keypress / mouse action / paste emits and

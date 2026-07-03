@@ -11,6 +11,11 @@ using Cursorial.Rendering.Imaging;
 
 namespace Cursorial.Tests.Drawing;
 
+// FragmentDictionary exposes Count + a struct enumerator but does not implement IEnumerable, so xUnit's
+// Assert.Empty/Assert.Single (which require IEnumerable) do not apply — Assert.Equal(N, …Count) is the only
+// idiomatic form here. Silence the xUnit2013 "use Assert.Empty/Single" suggestion (a false positive).
+#pragma warning disable xUnit2013
+
 // Phase 6b.1: DrawContent registers an out-of-band fragment on the scene buffer, and SceneCompositor carries
 // it onto the composite target (offset-translated) so the frame renderer can emit it.
 public class FragmentPassthroughTests
@@ -146,7 +151,7 @@ public class FragmentPassthroughTests
         var frag = new SixelFragment(new byte[20 * 10 * 4], pixelWidth: 20, pixelHeight: 10, cellSize: new Size(2, 1));
         var clipped = frag.Clip(new Rect(0, 0, 1, 1));
         Assert.NotNull(clipped);
-        Assert.Equal(new Size(1, 1), clipped!.GetSize());
+        Assert.Equal(new Size(1, 1), clipped.GetSize());
     }
 
     [Fact]
@@ -168,7 +173,7 @@ public class FragmentPassthroughTests
 
         var clipped = frag.Clip(new Rect(0, 0, 1, 1));
         Assert.NotNull(clipped);
-        Assert.Equal(new Size(1, 1), clipped!.GetSize());
+        Assert.Equal(new Size(1, 1), clipped.GetSize());
 
         var output = new ArrayBufferWriter<byte>();
         clipped.Emit(0, 0, output, OutputCapabilities.None);
@@ -238,7 +243,7 @@ public class FragmentPassthroughTests
         Assert.NotNull(clipped);
 
         var output = new ArrayBufferWriter<byte>();
-        clipped!.Emit(0, 0, output, OutputCapabilities.None);
+        clipped.Emit(0, 0, output, OutputCapabilities.None);
         string header = Encoding.ASCII.GetString(output.WrittenSpan);
         header = header[..header.IndexOf(';')];
         Assert.Contains("x=10,", header);   // non-zero source X — the right half of the image
@@ -316,7 +321,7 @@ public class FragmentPassthroughTests
         var frag = new SixelFragment(new byte[3 * 4 * 4], pixelWidth: 3, pixelHeight: 4, cellSize: new Size(8, 1));
         var clipped = frag.Clip(new Rect(7, 0, 1, 1));   // rightmost cell
         Assert.NotNull(clipped);
-        Assert.Equal(new Size(1, 1), clipped!.GetSize());
+        Assert.Equal(new Size(1, 1), clipped.GetSize());
     }
 
     [Fact]
@@ -363,6 +368,295 @@ public class FragmentPassthroughTests
         }
     }
 
+    // ---- Orphaned-fragment cleanup across a compositor swap (ResetCompositor path) ----------------
+
+    [Fact] // A fresh compositor's first (full) composite clears fragments a discarded compositor left on the target.
+    public void FreshCompositor_FullComposite_ClearsOrphanedFragments()
+    {
+        IBufferFragment frag = new FakeFragment(2, 1);
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(3, 1, 2, 1), new FragmentContent(frag), OutputCapabilities.None));
+
+        var target = new CellBuffer(10, 4);
+        // Compositor A places the fragment, then is discarded — exactly the WindowManager.ResetCompositor path
+        // (a popup open/close rebuilds the SceneCompositor, losing its _fragmentAnchors).
+        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView());
+        Assert.True(target.AsView().ContainsFragment(frag.Key));
+
+        // The element is gone (tab switched away): a FRESH compositor composites a scene with NO fragment.
+        // Its first composite is a full reset, which must drop A's orphan rather than strand the image on screen.
+        using var empty = Scene.Create(10, 4);
+        empty.Draw(_ => { });
+        new SceneCompositor(Style.Default).Composite([Layer(empty)], target.AsView());
+
+        Assert.Equal(0, target.AsView().Fragments.Count); // orphan cleared (the image-not-removed bug)
+    }
+
+    [Fact] // A fresh compositor whose scene STILL has the fragment re-registers it (clear-then-rebuild loses nothing).
+    public void FreshCompositor_FullComposite_ReRegistersAStillPresentFragment()
+    {
+        IBufferFragment frag = new FakeFragment(2, 1);
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(3, 1, 2, 1), new FragmentContent(frag), OutputCapabilities.None));
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView()); // compositor A
+        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView()); // fresh B — still present
+
+        Assert.True(target.AsView().ContainsFragment(frag.Key));
+        Assert.Equal(1, target.AsView().Fragments.Count);
+    }
+
+    // ---- Occlusion of a graphics-protocol fragment by a higher OPAQUE surface (the popup-over-image bug) ----
+
+    private static SceneLayer Occluder(Scene scene, int z, int offsetColumn = 0, int offsetRow = 0) =>
+        new(scene, new CompositeParameters(offsetColumn, offsetRow)) { SurfaceZ = z, IsOccluder = true };
+
+    [Fact] // A higher opaque surface (a popup) fully over the image suppresses it — it can't be one source-crop.
+    public void Composite_SuppressesAFragmentFullyCoveredByAHigherOccluderSurface()
+    {
+        var frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var occ = Scene.Create(10, 4);
+        occ.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+
+        Assert.Equal(0, target.AsView().Fragments.Count); // image hidden under the popup → its cells/placeholder show
+    }
+
+    [Fact] // A higher occluder over a clean edge crops the image to the visible band (re-anchored).
+    public void Composite_CropsAFragmentUnderAHigherOccluderCleanEdge()
+    {
+        var frag = new CroppableFragment(4, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var occ = Scene.Create(4, 1); // covers the top row across the fragment's full width
+        occ.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+
+        Assert.Equal(1, target.AsView().Fragments.Count);
+        foreach (var (anchor, entry) in target.AsView().Fragments)
+        {
+            Assert.Equal((0, 1), anchor);                           // re-anchored below the occluder
+            Assert.Equal(new Size(4, 1), entry.Fragment.GetSize()); // cropped to the visible bottom band
+        }
+    }
+
+    [Fact] // A higher zone of the SAME surface never occludes the surface's own image.
+    public void Composite_DoesNotOccludeAFragmentByASameSurfaceLayer()
+    {
+        IBufferFragment frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var higherZone = Scene.Create(10, 4);
+        higherZone.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite(
+            [new SceneLayer(lower) { SurfaceZ = 0 }, new SceneLayer(higherZone) { SurfaceZ = 0, IsOccluder = true }], target.AsView());
+
+        Assert.True(target.AsView().ContainsFragment(frag.Key)); // same SurfaceZ → not occluded
+    }
+
+    [Fact] // A higher surface NOT flagged as an occluder (transparent) leaves the image fully visible.
+    public void Composite_DoesNotOccludeUnderAHigherNonOccluderSurface()
+    {
+        IBufferFragment frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var higher = Scene.Create(10, 4);
+        higher.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        new SceneCompositor(Style.Default).Composite(
+            [new SceneLayer(lower) { SurfaceZ = 0 }, new SceneLayer(higher) { SurfaceZ = 1, IsOccluder = false }], target.AsView());
+
+        Assert.True(target.AsView().ContainsFragment(frag.Key));
+    }
+
+    // ---- Genuine-removal force-repaint of a Cells-layer image (the lingering-pixels / tab-switch bug) ----
+    // A Cells-layer image (iTerm2/Sixel) has NO protocol erase — its pixels linger on the terminal until a cell
+    // paints over them. The front buffer records the covered cells as a bg-only placeholder, so once the image is
+    // gone an unchanged-content diff re-emits nothing and the pixels persist. The compositor force-repaints the
+    // vacated footprint when (and only when) the image's source scene is genuinely gone — never on mere occlusion.
+
+    private static bool IntersectsFootprint(IReadOnlyList<Rect> regions, in Rect footprint)
+    {
+        foreach (var r in regions)
+            if (r.Intersects(footprint)) return true;
+        return false;
+    }
+
+    [Fact] // An image present last work-frame but gone this one is force-repainted so its lingering pixels are erased.
+    public void Composite_ForceRepaintsAGenuinelyRemovedCellsImage()
+    {
+        IBufferFragment frag = new FakeFragment(2, 2);
+        using var withImage = Scene.Create(10, 4);
+        withImage.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var empty = Scene.Create(10, 4);
+        empty.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        var compositor = new SceneCompositor(Style.Default);
+        compositor.Composite([Layer(withImage)], target.AsView());  // image committed → it joins the ghost set
+        target.ClearForceRepaint();                                 // ignore the first-frame full-union marks
+
+        compositor.Composite([Layer(empty)], target.AsView());      // scene unloaded → genuine removal
+
+        Assert.True(IntersectsFootprint(target.ForceRepaintRegions, new Rect(1, 1, 2, 2)));
+    }
+
+    [Fact] // An OCCLUDED image is NOT force-repainted — its pixels must linger and re-emit when the popup lifts.
+    public void Composite_DoesNotForceRepaintAnOccludedCellsImage()
+    {
+        IBufferFragment frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var occ = Scene.Create(10, 4);
+        occ.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+        var compositor = new SceneCompositor(Style.Default);
+        compositor.Composite([new SceneLayer(lower) { SurfaceZ = 0 }], target.AsView());   // image visible
+        target.ClearForceRepaint();
+
+        // The popup opens fully over the image: it's suppressed from the target, but its scene is still alive.
+        compositor.Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+
+        Assert.Equal(0, target.AsView().Fragments.Count);                                  // suppressed (occlusion)
+        Assert.False(IntersectsFootprint(target.ForceRepaintRegions, new Rect(1, 1, 2, 2)));  // but NOT erased
+    }
+
+    [Fact] // The reported bug: an OCCLUDED image whose scene unloads ACROSS a compositor reset is still erased.
+    public void AdoptGhostFootprints_ForceRepaintsAnOccludedImageRemovedAcrossAReset()
+    {
+        IBufferFragment frag = new CroppableFragment(2, 2);
+        using var lower = Scene.Create(10, 4);
+        lower.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+        using var occ = Scene.Create(10, 4);
+        occ.Draw(_ => { });
+        using var empty = Scene.Create(10, 4);
+        empty.Draw(_ => { });
+
+        var target = new CellBuffer(10, 4);
+
+        // A — the image is visible (Media tab, no popup). It joins A's ghost set.
+        var a = new SceneCompositor(Style.Default);
+        a.Composite([new SceneLayer(lower) { SurfaceZ = 0 }], target.AsView());
+
+        // B — a popup opened (WindowManager.ResetCompositor): adopt A's ghost; the image is now occluded
+        // (suppressed from the target as a registered fragment, but its scene is still alive, so it stays a ghost).
+        var b = new SceneCompositor(Style.Default);
+        b.AdoptGhostFootprints(a);
+        b.Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+        Assert.Equal(0, target.AsView().Fragments.Count);   // confirms the image is NOT a registered target fragment
+        target.ClearForceRepaint();
+
+        // C — a tab switch dismissed the popup (another ResetCompositor): adopt B's ghost; the image scene is gone.
+        // The ghost hand-off is the only record of the occluded image, so without it this removal would be missed.
+        var c = new SceneCompositor(Style.Default);
+        c.AdoptGhostFootprints(b);
+        c.Composite([Layer(empty)], target.AsView());
+
+        Assert.True(IntersectsFootprint(target.ForceRepaintRegions, new Rect(1, 1, 2, 2)));
+    }
+
+    [Fact] // A negative folded offset (scrolled content / a window dragged off the top-left) must not crash the live-footprint build.
+    public void Composite_NegativeOffsetCellsImage_DoesNotThrow()
+    {
+        // anchor (1,1) + offset (-3,-3) = (-2,-2): an unclamped Rect ctor would throw ArgumentOutOfRangeException
+        // and take down the frame loop. The footprint must clamp to the on-screen remainder instead.
+        IBufferFragment frag = new FakeFragment(2, 2);
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+
+        var target = new CellBuffer(10, 4);
+        var ex = Record.Exception(() =>
+            new SceneCompositor(Style.Default).Composite([Layer(scene, offsetColumn: -3, offsetRow: -3)], target.AsView()));
+
+        Assert.Null(ex);
+    }
+
+    [Fact] // An image that SHRINKS in place (window resize) must force-repaint the exposed L-remainder.
+    public void Composite_ShrinkInPlaceCellsImage_ForceRepaintsTheExposedRemainder()
+    {
+        var target = new CellBuffer(12, 6);
+        var compositor = new SceneCompositor(Style.Default);
+
+        IBufferFragment big = new FakeFragment(6, 4);
+        using (var sceneBig = Scene.Create(12, 6))
+        {
+            sceneBig.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 6, 4), new FragmentContent(big), OutputCapabilities.None));
+            compositor.Composite([Layer(sceneBig)], target.AsView());   // 6x4 committed → ghost
+            target.ClearForceRepaint();
+
+            // The image shrinks to 2x2 at the same anchor (a different fragment identity). The exposed L-shaped
+            // remainder (the old 6x4 minus the new 2x2) must be force-repainted to erase the lingering pixels;
+            // the 2x2 the new image still occupies must NOT be (it would partially erase the surviving image).
+            IBufferFragment small = new FakeFragment(2, 2);
+            using var sceneSmall = Scene.Create(12, 6);
+            sceneSmall.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 2), new FragmentContent(small), OutputCapabilities.None));
+            compositor.Composite([Layer(sceneSmall)], target.AsView());
+        }
+
+        // The bottom band (rows 2-3) and the right band (cols 2-5, rows 0-1) of the old footprint are exposed.
+        Assert.True(IntersectsFootprint(target.ForceRepaintRegions, new Rect(0, 2, 6, 2)));  // bottom band exposed
+        Assert.True(IntersectsFootprint(target.ForceRepaintRegions, new Rect(4, 0, 2, 2)));  // right band exposed
+        // The cell the surviving 2x2 image still covers must not be force-repainted.
+        Assert.False(IntersectsFootprint(target.ForceRepaintRegions, new Rect(0, 0, 1, 1))); // under the survivor
+    }
+
+    [Fact] // A removed image partially overlapped by a DIFFERENT surviving image: only the disjoint remainder is erased.
+    public void Composite_RemovedImageOverlappingASurvivor_ForceRepaintsOnlyTheDisjointPart()
+    {
+        var target = new CellBuffer(12, 4);
+        var compositor = new SceneCompositor(Style.Default);
+
+        // Frame 1: two distinct Cells-layer images, A at cols [0,4) and B at cols [3,7) (they share col 3).
+        IBufferFragment a = new FakeFragment(4, 2);
+        IBufferFragment b = new FakeFragment(4, 2);
+        using (var s1 = Scene.Create(12, 4))
+        {
+            s1.Draw(ctx =>
+            {
+                ctx.DrawContent(new Rect(0, 0, 4, 2), new FragmentContent(a), OutputCapabilities.None);
+                ctx.DrawContent(new Rect(3, 0, 4, 2), new FragmentContent(b), OutputCapabilities.None);
+            });
+            compositor.Composite([Layer(s1)], target.AsView());
+            target.ClearForceRepaint();
+
+            // Frame 2: A is gone; B survives at [3,7). A's ghost minus B leaves cols [0,3) — only that is erased.
+            using var s2 = Scene.Create(12, 4);
+            s2.Draw(ctx => ctx.DrawContent(new Rect(3, 0, 4, 2), new FragmentContent(b), OutputCapabilities.None));
+            compositor.Composite([Layer(s2)], target.AsView());
+        }
+
+        Assert.True(IntersectsFootprint(target.ForceRepaintRegions, new Rect(0, 0, 3, 2)));   // A's disjoint part erased
+        Assert.False(IntersectsFootprint(target.ForceRepaintRegions, new Rect(3, 0, 4, 2)));  // B's footprint preserved
+    }
+
+    [Fact] // When the surface stack empties (Composite over an empty layer set), a committed image's ghost is erased.
+    public void Composite_EmptyLayerSet_ForceRepaintsThePriorGhost()
+    {
+        IBufferFragment frag = new FakeFragment(2, 2);
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
+
+        var target = new CellBuffer(10, 4);
+        var compositor = new SceneCompositor(Style.Default);
+        compositor.Composite([Layer(scene)], target.AsView());   // image committed → ghost
+        target.ClearForceRepaint();
+
+        compositor.Composite([], target.AsView());               // stack emptied (null root / last surface closed)
+
+        Assert.True(IntersectsFootprint(target.ForceRepaintRegions, new Rect(1, 1, 2, 2)));
+    }
+
     // A test fragment that CAN crop (returns a smaller fragment), to exercise the compositor's crop path.
     private sealed class CroppableFragment(int width, int height) : IBufferFragment
     {
@@ -370,7 +664,7 @@ public class FragmentPassthroughTests
         public Size GetSize() => _size;
         public bool IsSupported(OutputCapabilities capabilities) => true;
         public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities) { }
-        public IBufferFragment? Clip(in Rect visible) => new CroppableFragment(visible.Columns, visible.Rows);
+        public IBufferFragment Clip(in Rect visible) => new CroppableFragment(visible.Columns, visible.Rows);
     }
 
     // A minimal out-of-band fragment for tests — never actually emits.

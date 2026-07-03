@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — dropdown vs split disambiguation</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --toolbar:#1f2335; --btn-hover:#2e3349; --ddzone:#343c5e;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --toolbar:#dedee3; --btn-hover:#cbccd1; --ddzone:#cdd0dd;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:"Cascadia Code NF","JetBrainsMono Nerd Font",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1060px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;max-width:880px;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:24px 0 8px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:6px;max-width:860px;line-height:1.55;}
+
+  /* comparison table */
+  .cmp{display:grid;grid-template-columns:18ch max-content max-content max-content 1fr;gap:0 18px;align-items:center;}
+  .cmp .hd{color:var(--muted);font-size:11px;padding:4px 0;border-bottom:1px solid var(--surface);}
+  .cmp .strat{color:var(--text-dim);padding:6px 0;}
+  .cmp .strat .sk{color:var(--muted);font-size:10px;}
+  .cmp .cellwrap{padding:5px 0;}
+  .verdict{font-size:11px;color:var(--muted);padding:5px 0;}
+  .verdict .good{color:var(--green);} .verdict .bad{color:var(--red);} .verdict .mid{color:var(--amber);}
+
+  /* base button styles */
+  .tb{display:inline-flex;align-items:stretch;background:var(--toolbar);white-space:nowrap;font-variant-ligatures:none;}
+  .b{display:inline-flex;align-items:center;gap:1ch;padding:0 1ch;color:var(--text-dim);cursor:pointer;}
+  .b .ti{color:var(--accent-2);}
+  .b:hover{background:var(--btn-hover);color:var(--text);}
+  .dd{color:var(--muted);}
+  .dd.acc{color:var(--accent);}
+
+  /* strategy-specific */
+  /* A: distinct shapes */
+  .glyph-menu{color:var(--muted);}      /* popup */
+  .glyph-split{color:var(--accent);}    /* split arrow, active */
+
+  /* B: tinted dropdown zone (no separator, bg implies sub-button) */
+  .b.splitB{padding:0;gap:0;}
+  .b.splitB .act{padding:0 1ch;display:inline-flex;align-items:center;gap:1ch;}
+  .b.splitB .act:hover{background:var(--btn-hover);}
+  .b.splitB .zone{padding:0 .75ch;color:var(--accent);background:var(--ddzone);display:inline-flex;align-items:center;}
+  .b.splitB .zone:hover{background:var(--accent);color:var(--on-accent);}
+
+  /* D: spacing — caret hugs (popup) vs pushed (split) */
+  .hug{margin-left:-.5ch;}
+  .push{margin-left:1.5ch;}
+
+  /* E: color encoding */
+  .b.splitE .lab{color:var(--text);}
+  .b.splitE .dd{color:var(--accent);}
+  .b.popupE .lab{color:var(--text-dim);}
+  .b.popupE .dd{color:var(--muted);}
+
+  /* hover demo */
+  .hoverbox{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;}
+  .demo{}
+  .demo .dl{color:var(--muted);font-size:11px;margin-bottom:3px;}
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — dropdown vs split disambiguation</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+  <div class="legend">
+    <b>Problem:</b> a <b>dropdown button</b> (one target — whole thing opens a menu) and a <b>split button</b> (two targets — label acts, arrow opens a menu)
+    both end in <span style="color:var(--muted)">▾</span>. The split currently needs a <span style="color:var(--faint)">│</span> separator cell to read as two zones.
+    Below: six ways to encode the difference <b>without spending a separator cell</b> — mostly by changing the dropdown glyph or its cell treatment.
+  </div>
+
+  <h2 class="sec">▸ Six strategies, side by side</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div class="cmp"><div class="hd">strategy</div><div class="hd">dropdown button</div><div class="hd">split button</div><div class="hd"></div><div class="hd">assessment</div><div class="strat">A · Distinct shapes<br><span class="sk">popup ▾ · split ⏷</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Align</span><span class="dd">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Paste</span><span class="dd acc">⏷</span></span></span></div><div></div><div class="verdict"><span class="mid">◐</span> Two carets differ in silhouette, but ⏷ vs ▾ is subtle at one cell; relies on the user learning the code.</div><div class="strat">A2 · Caret vs chevron<br><span class="sk">popup ▾ · split ˅</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Align</span><span class="dd">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Paste</span><span class="dd acc">˅</span></span></span></div><div></div><div class="verdict"><span class="bad">✗</span> Chevron ˅ is too close to the filled triangle ▾ and renders inconsistently across fonts.</div><div class="strat">B · Tinted arrow zone<br><span class="sk">split arrow on its own fill cell</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Align</span><span class="dd">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b splitB"><span class="act"><span class="lab">Paste</span></span><span class="zone">▾</span></span></span></div><div></div><div class="verdict"><span class="good">✓</span> The arrow cell gets a background tint — it reads as a distinct sub-button with zero extra cells. Strongest structural cue.</div><div class="strat">C · Color only<br><span class="sk">popup muted ▾ · split accent ▾</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b popupE"><span class="lab">Align</span><span class="dd">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b splitE"><span class="lab">Paste</span><span class="dd">▾</span></span></span></div><div></div><div class="verdict"><span class="mid">◐</span> Same glyph; the split arrow is accent (active target), popup arrow muted (passive). Subtle but cheap; fails in monochrome.</div><div class="strat">D · Spacing<br><span class="sk">popup hugs · split pushes arrow right</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Align</span><span class="dd hug">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab" style="margin-right:1.5ch">Paste</span><span class="dd acc">▾</span></span></span></div><div></div><div class="verdict"><span class="mid">◐</span> A gap before the split arrow implies separation without a glyph there — but the gap is itself ~1 cell, so it barely saves over a separator.</div><div class="strat">E · Boxed split glyph<br><span class="sk">popup ▾ · split ⊟ (framed)</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Align</span><span class="dd">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b"><span class="lab">Paste</span><span class="dd acc">⊟</span></span></span></div><div></div><div class="verdict"><span class="bad">✗</span> ⊟ reads as a checkbox/collapse glyph, not "menu". Wrong connotation.</div><div class="strat">F · Combined: tint + accent<br><span class="sk">B + C together (recommended)</span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b popupE"><span class="lab">Align</span><span class="dd">▾</span></span></span></div><div class="cellwrap"><span class="tb" style="padding:0"><span class="b splitB"><span class="act"><span class="lab">Paste</span></span><span class="zone">▾</span></span></span></div><div></div><div class="verdict"><span class="good">✓✓</span> Tinted zone (structure) + accent arrow (active) stack two independent cues. Survives hover, low vision, and monochrome-ish themes.</div></div></div>
+  <div class="caption">Each row shows the same two controls — a one-target <b>dropdown</b> and a two-target <b>split</b> — under a different encoding. The split's job is to look like “label + a separately-clickable arrow” without spending a <span style="color:var(--faint)">│</span> cell. Single-channel cues (shape alone, colour alone) are weak at one-cell scale; the structural cue of giving the arrow its own <b>tinted cell</b> (B) is the clearest, and stacking it with an accent arrow (F) adds redundancy.</div>
+
+  <h2 class="sec">▸ Recommended (F) — hover behaviour, the real test</h2>
+  <div style="overflow-x:auto;padding-bottom:2px">
+  <div class="hoverbox">
+    <div class="demo">
+      <div class="dl">Dropdown button — hover anywhere highlights the whole control (one target)</div>
+      <span class="tb" style="padding:0"><span class="b popupE" style="background:var(--btn-hover);color:var(--text)"><span class="lab" style="color:var(--text)">Align</span><span class="dd">▾</span></span></span>
+    </div>
+    <div class="demo">
+      <div class="dl">Split — hover the label (action zone lights, arrow zone stays tinted)</div>
+      <span class="tb" style="padding:0"><span class="b splitB"><span class="act" style="background:var(--btn-hover)"><span class="lab" style="color:var(--text)">Paste</span></span><span class="zone">▾</span></span></span>
+    </div>
+    <div class="demo">
+      <div class="dl">Split — hover the arrow (arrow zone inverts to accent, action stays)</div>
+      <span class="tb" style="padding:0"><span class="b splitB"><span class="act"><span class="lab">Paste</span></span><span class="zone" style="background:var(--accent);color:var(--on-accent)">▾</span></span></span>
+    </div>
+  </div>
+</div>
+  <div class="caption">Disambiguation has to survive interaction. With the <b>tinted-zone</b> approach the two hit targets are obvious on hover: hovering the <b>label</b> lights only the action zone while the arrow keeps its standing tint; hovering the <b>arrow</b> inverts just that cell to accent. A plain dropdown button, by contrast, highlights as a single block — which is exactly the signal that it’s one target. No separator cell anywhere; the arrow’s background tint does all the structural work, and its accent colour reinforces “independently clickable.”</div>
+
+  <h2 class="sec">▸ At toolbar scale — mixed row</h2>
+  <div style="overflow-x:auto;padding-bottom:2px">
+    <span class="tb"><span class="b"><span class="ti"></span><span class="lab">Paste</span></span><span class="b splitB"><span class="act"><span class="ti"></span><span class="lab">Copy</span></span><span class="zone">▾</span></span><span class="dd" style="color:var(--faint);padding:0 .5ch;display:inline-flex;align-items:center">│</span><span class="b popupE"><span class="lab">Align</span><span class="dd">▾</span></span><span class="b splitB"><span class="act"><span class="lab">Color</span></span><span class="zone">▾</span></span><span class="b popupE"><span class="lab">Insert</span><span class="dd">▾</span></span></span>
+  </div>
+  <div class="caption">In a real row the difference is immediate: <b>Copy</b> and <b>Color</b> (split) carry a tinted arrow cell, while <b>Align</b> and <b>Insert</b> (dropdown) have a bare muted caret hugging the label. A reader scans “does the arrow sit in its own shaded cell?” to know whether the label is independently clickable — no separator, one glyph cell each. Group separators (the real <span style="color:var(--faint)">│</span>) can still appear between unrelated clusters, but they’re no longer load-bearing for split-vs-dropdown.</div>
+
+</div>
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+  });
+</script>
+</body>
+</html>

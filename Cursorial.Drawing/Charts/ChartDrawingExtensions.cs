@@ -1,7 +1,7 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>One-liner chart sugar on <see cref="DrawingContext"/>, so the common cases need no chart object.</summary>
 public static class ChartDrawingExtensions

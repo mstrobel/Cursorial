@@ -1,6 +1,9 @@
 using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+
+// ReSharper disable CheckNamespace
 
 // Phase-3 + 4b showcase: the Pen / box / junction engine and braille diagonal lines. Box weights
 // (light/heavy/double/ascii), rounded + dashed strokes, a junction table grid (corners/tees/crosses
@@ -13,11 +16,11 @@ internal sealed class PensDemo : InteractiveDemo
     public override IReadOnlyList<string> Aliases => ["strokes"];
     public override string Description => "Pen box drawing: weights, corners, dashes, junctions, gradient strokes, braille diagonals.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Pens demo. Opening alt screen — press q or Ctrl+C to exit.";
 
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
 
     protected override void Initialize() => Build();
 
@@ -88,6 +91,9 @@ internal sealed class PensDemo : InteractiveDemo
         ctx.DrawLine(49, 13, 56, 20, green);
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

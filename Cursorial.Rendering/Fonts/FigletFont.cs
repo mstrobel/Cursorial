@@ -226,10 +226,10 @@ public sealed class FigletFont : IGlyphFont
                 if (cluster != " " && cluster.Length == 1)
                 {
                     var existing = buffer[targetCol, targetRow];
-                    if (existing.Grapheme is { Length: > 0 } prev
-                        && prev.Length == 1 && prev[0] is var prevCh
-                        && prevCh != ' '
-                        && TrySmush(prevCh, ch, out char smushed))
+                    if (existing.Grapheme is { Length: > 0 and 1 } prev &&
+                        prev[0] is var prevCh &&
+                        prevCh != ' ' &&
+                        TrySmush(prevCh, ch, out char smushed))
                     {
                         cluster = smushed.ToString();
                     }

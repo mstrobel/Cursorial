@@ -1,6 +1,8 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
 
+// ReSharper disable CheckNamespace
+
 // Kitty OSC 66 text-sizing demonstration. One-shot (no render loop): opens a session, emits a
 // fixed sequence of sized-text samples, then waits for Enter (or Ctrl+C) before returning.
 // Implements IDemo directly, mirroring NegotiateDemo. Body migrated verbatim from the former

@@ -1,10 +1,10 @@
-using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
-using Cursorial.Terminal;
+
+// ReSharper disable CheckNamespace
 
 // OSC 4 palette showcase. Queries the terminal's full extended 256-color palette via round-trip
 // OSC 4 color queries, then renders the resolved entries as a labeled grid of swatches (hex code +
@@ -22,7 +22,7 @@ internal sealed class PaletteDemo : InteractiveDemo
     public override string Description =>
         "Query and display the terminal's extended 256-color palette as a labeled swatch grid.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Palette demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     // The in-flight palette query (started in Initialize, resolved by the teed OnInputEvent calls)

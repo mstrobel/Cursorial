@@ -2,11 +2,12 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
 
-using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
+
+// ReSharper disable CheckNamespace
 
 // Base for render-loop demos. Owns the whole interactive harness ONCE: alt-screen entry/exit, the
 // background input pump, the optional CURSORIAL_TRACE_OUTPUT capture, the dirty/animated render
@@ -39,7 +40,7 @@ internal abstract class InteractiveDemo : IDemo
     protected virtual bool OnEvent(InputEvent evt) => false;  // return true if state changed (request a redraw)
     protected virtual void OnResize(int columns, int rows) => Buffer.Resize(columns, rows);
 
-    // Request a redraw from OUTSIDE the input-event flow — e.g. a Task continuation when async work
+    // Request a redraw from OUTSIDE the input-event flow — e.g., a Task continuation when async work
     // (a palette query, a network fetch) completes off the last input event. Thread-safe: sets a flag
     // the render loop consumes on its next tick (≤ FrameInterval later). Without this, a non-animated
     // demo only repaints on input/resize, so an async result that lands after the final input event
@@ -49,6 +50,10 @@ internal abstract class InteractiveDemo : IDemo
 
     public async Task RunAsync(string argument)
     {
+        // ReSharper disable MethodHasAsyncOverloadWithCancellation
+        // ReSharper disable MethodSupportsCancellation
+        // ReSharper disable MethodHasAsyncOverload
+        
         Argument = argument;
         if (IntroMessage is { } intro) Console.WriteLine(intro);
 
@@ -77,19 +82,21 @@ internal abstract class InteractiveDemo : IDemo
         // Background pump for input events — main loop polls the queue between renders.
         var events = new ConcurrentQueue<InputEvent>();
         using var stopCts = new CancellationTokenSource();
-        var inputPump = Task.Run(async () =>
-        {
-            try
-            {
-                // ReSharper disable AccessToDisposedClosure
-                await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
-                {
-                    events.Enqueue(evt);
-                }
-                // ReSharper restore AccessToDisposedClosure
-            }
-            catch (OperationCanceledException) { }
-        });
+
+        var inputPump =
+            Task.Run(async () =>
+                     {
+                         try
+                         {
+                             // ReSharper disable AccessToDisposedClosure
+                             await foreach (var evt in session.Input.ReadAllAsync(stopCts.Token))
+                             {
+                                 events.Enqueue(evt);
+                             }
+                             // ReSharper restore AccessToDisposedClosure
+                         }
+                         catch (OperationCanceledException) {}
+                     });
 
         // Optional diagnostic: when CURSORIAL_TRACE_OUTPUT is set, mirror every frame's emitted
         // bytes to a file. Each frame is preceded by a short ASCII marker, so the resulting
@@ -143,6 +150,7 @@ internal abstract class InteractiveDemo : IDemo
 
                     var scratch = new ArrayBufferWriter<byte>();
                     Renderer.Render(Buffer, scratch);
+
                     await writer.WriteAsync(scratch.WrittenMemory);
                     await writer.FlushAsync();
 
@@ -185,9 +193,16 @@ internal abstract class InteractiveDemo : IDemo
         // first (it writes OSC palette-reset sequences to the still-open sink), then the session
         // (negotiator restore + tcflush + cooked-mode restore). Both are idempotent, so the
         // `using` / `await using` declarations safely no-op at method end.
+
+        // ReSharper disable DisposeOnUsingVariable
         dp.Dispose();
         await ds.DisposeAsync();
+        // ReSharper restore DisposeOnUsingVariable
 
         Console.WriteLine($"{Name} demo exited.");
+
+        // ReSharper enable MethodHasAsyncOverload
+        // ReSharper enable MethodSupportsCancellation
+        // ReSharper enable MethodHasAsyncOverloadWithCancellation
     }
 }

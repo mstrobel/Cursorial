@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 using Cursorial.Input;
@@ -496,6 +495,32 @@ public sealed class TerminalSession : IAsyncDisposable
                 // stream comes back to life.
                 if (_input is VtInputDevice device) device.ResumePump();
             }
+        }
+        finally
+        {
+            _negotiatorLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Re-applies the negotiated screen-local opt-ins (notably the Kitty keyboard flag push, whose
+    /// stack is per-screen-buffer) on whatever screen is currently active, without changing the
+    /// negotiator's restore accounting. A consumer that switched to the alternate screen AFTER
+    /// <see cref="OpenAsync(TerminalSessionOptions?, CancellationToken)">OpenAsync</see> negotiated on
+    /// the main screen calls this once, after the switch, so key-up / repeat reporting actually
+    /// engages on the alt screen. The screen-independent global modes (mouse / focus / paste / Win32)
+    /// are re-issued idempotently. Serialized against <see cref="RenegotiateAsync"/> so the two never
+    /// write the output sink concurrently.
+    /// </summary>
+    public async ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        await _negotiatorLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            await _negotiator.ReapplyScreenLocalOptInsAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {

@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>Per-axis configuration for <see cref="Axes"/>.</summary>
 public sealed record Axis

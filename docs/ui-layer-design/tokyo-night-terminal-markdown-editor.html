@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — terminal markdown editor</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e; --canvas:#15161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --ribbon:#24283b; --toolbar:#1f2335; --btn-hover:#2e3349; --ddzone:#343c5e;
+    --tabstrip:#1b1e2e; --tab-active:#15161e; --caret:#7aa2f7;
+    --code-bg:#1a1b26; --quote-bar:#414868; --tbl-head:#1f2335; --tbl-rowalt:#1a1c28;
+    --h1:#7dcfff; --h2:#7aa2f7; --h3:#bb9af7; --link:#7dcfff; --mdsyn:#565f89;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8; --canvas:#fdfdfe;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --ribbon:#dedee3; --toolbar:#dedee3; --btn-hover:#cbccd1; --ddzone:#cdd0dd;
+    --tabstrip:#d2d3da; --tab-active:#fdfdfe; --caret:#34548a;
+    --code-bg:#eceef3; --quote-bar:#c4c5cc; --tbl-head:#e9e9ed; --tbl-rowalt:#f0f1f4;
+    --h1:#0f4b6e; --h2:#34548a; --h3:#5a3e8e; --link:#0f4b6e; --mdsyn:#9699a3;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:"Cascadia Code NF","JetBrainsMono Nerd Font",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1080px;margin:0 auto;padding:22px 20px 70px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 16px;color:var(--muted);font-size:11px;line-height:1.7;max-width:900px;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:26px 0 8px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:8px;max-width:900px;line-height:1.55;}
+
+  /* ===== app window ===== */
+  .app{width:max-content;max-width:100%;background:var(--bg);font-variant-ligatures:none;}
+  /* title bar */
+  .apptitle{background:var(--surface);color:var(--text-dim);display:flex;align-items:center;padding:1px 8px;gap:8px;}
+  .apptitle .nm{color:var(--text);} .apptitle .mod{color:var(--amber);}
+  .apptitle .wc{margin-left:auto;display:flex;gap:0;color:var(--muted);}
+  .apptitle .wc span{padding:0 6px;cursor:pointer;}
+  .apptitle .wc .min{color:var(--amber);} .apptitle .wc .max{color:var(--green);} .apptitle .wc .cls{color:var(--red);}
+
+  /* ===== ribbon ===== */
+  .ribbon{background:var(--ribbon);}
+  .rib-tabs{display:flex;background:var(--tabstrip);align-items:flex-end;}
+  .rib-tabs .file{background:var(--accent);color:var(--on-accent);padding:1px 12px;cursor:pointer;}
+  .rib-tabs .t{padding:1px 12px;color:var(--text-dim);cursor:pointer;}
+  .rib-tabs .t.active{background:var(--tab-active);color:var(--text);}
+  .rib-tabs .t:hover:not(.active){background:var(--hover);color:var(--text);}
+  .rib-tabs .sp{flex:1;}
+  .rib-body{display:flex;gap:0;background:var(--ribbon);padding:3px 4px;align-items:stretch;}
+  .rg{display:flex;flex-direction:column;align-items:center;padding:0 6px;gap:2px;}
+  .rg:not(:last-child){border-right:1px solid var(--faint);}
+  .rg .gl{color:var(--muted);font-size:10px;margin-top:1px;}
+  .rg .gr{display:flex;align-items:center;gap:1px;flex:1;}
+  /* ribbon buttons */
+  .rb{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:1px 5px;color:var(--text-dim);cursor:pointer;min-width:3ch;}
+  .rb:hover{background:var(--btn-hover);color:var(--text);}
+  .rb.lg{padding:1px 8px;}
+  .rb .ic{color:var(--accent-2);font-size:15px;line-height:1.1;}
+  .rb .cap{font-size:10px;}
+  .rb.on{background:var(--accent);color:var(--on-accent);} .rb.on .ic{color:var(--on-accent);}
+  /* small inline buttons (toggles) */
+  .rbi{display:inline-flex;align-items:center;padding:0 1ch;color:var(--text-dim);cursor:pointer;height:1.5em;}
+  .rbi:hover{background:var(--btn-hover);color:var(--text);}
+  .rbi.on{background:var(--accent);color:var(--on-accent);font-weight:bold;}
+  .rbi.bold{font-weight:bold;} .rbi.ital{font-style:italic;} .rbi.under{text-decoration:underline;}
+  .rsep{color:var(--faint);display:inline-flex;align-items:center;padding:0 1px;}
+  /* split/popup in ribbon */
+  .rsplit{display:inline-flex;align-items:stretch;}
+  .rsplit .a{display:inline-flex;align-items:center;padding:0 .5ch 0 1ch;color:var(--text-dim);cursor:pointer;}
+  .rsplit .a:hover{background:var(--btn-hover);color:var(--text);}
+  .rsplit .z{display:inline-flex;align-items:center;padding:0 .5ch;background:var(--ddzone);color:var(--accent);cursor:pointer;}
+  .rsplit .z:hover{background:var(--accent);color:var(--on-accent);}
+  .rpop{display:inline-flex;align-items:center;gap:.5ch;padding:0 1ch;color:var(--text-dim);cursor:pointer;}
+  .rpop:hover{background:var(--btn-hover);color:var(--text);}
+  .rpop .dd{color:var(--muted);}
+  .rcombo{display:inline-flex;align-items:center;gap:.5ch;padding:0 1ch;background:var(--well);color:var(--text);cursor:pointer;min-width:11ch;justify-content:space-between;}
+  .rcombo .dd{color:var(--accent);}
+
+  /* ===== document canvas ===== */
+  .canvas{background:var(--canvas);color:var(--text-dim);padding:6px 0;min-height:18em;width:84ch;max-width:100%;}
+  .doc{padding:0 3ch;}
+  .doc .ln{display:block;min-height:1.5em;}
+  /* rendered markdown */
+  .md-h1{color:var(--h1);font-weight:bold;font-size:15px;}
+  .md-h2{color:var(--h2);font-weight:bold;}
+  .md-h3{color:var(--h3);font-weight:bold;}
+  .md-b{color:var(--text);font-weight:bold;}
+  .md-i{color:var(--text);font-style:italic;}
+  .md-code{background:var(--code-bg);color:var(--accent-2);padding:0 .5ch;}
+  .md-link{color:var(--link);text-decoration:underline;}
+  .md-li{color:var(--text-dim);}
+  .md-li .bullet{color:var(--accent);}
+  .md-li .num{color:var(--accent);}
+  .md-quote{color:var(--text-dim);font-style:italic;}
+  .md-quote .bar{color:var(--quote-bar);}
+  .md-task .box{color:var(--accent);}
+  .md-task.done{color:var(--muted);text-decoration:line-through;}
+  .md-task.done .box{color:var(--green);}
+  .md-hr{color:var(--faint);}
+  .md-syn{color:var(--mdsyn);}  /* visible markdown syntax marks (on active line) */
+.caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .seltext{background:var(--sel);color:var(--text);}
+  /* active line highlight */
+  .ln.active{background:var(--well);}
+  /* code block */
+  .md-codeblock{background:var(--code-bg);padding:2px 2ch;display:block;}
+  .md-codeblock .kw{color:var(--purple);} .md-codeblock .fn{color:var(--accent);}
+  .md-codeblock .str{color:var(--green);} .md-codeblock .cm{color:var(--muted);}
+  .md-codeblock .fence{color:var(--mdsyn);}
+
+  /* table cells: fixed ch-width inline-blocks so box-drawing and text always align */
+  .trow{display:block;white-space:nowrap;line-height:1.5;}
+  .tc{display:inline-block;white-space:pre;overflow:hidden;vertical-align:bottom;}
+  .trow{color:var(--mdsyn);}     /* box-drawing glyphs (borders, corners, pipes) are dim */
+  .tc .md-b{color:var(--text);} .tc{color:var(--text-dim);}
+
+  /* ===== status bar ===== */
+  .status{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;padding:0 8px;gap:14px;font-size:11px;}
+  .status .seg{display:flex;gap:5px;} .status .sp{flex:1;}
+  .status.alt{background:var(--surface);color:var(--text-dim);}
+  .status.alt .k{color:var(--accent-2);}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--caret);animation:ibeamblink 1.06s steps(1) infinite;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — terminal markdown editor — 96×40</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+  <div class="legend">
+    <b>Composed app:</b> a ribbon (the bar controls), a <b>WYSIWYG</b> document canvas where markdown renders in place — headings, bold/italic,
+    lists, quotes, code, and <b>tables drawn as real box-grids that grow and shrink with content</b> — and a status bar. Editing happens on the
+    rendered form; the cursor lives in styled text. All whole-cell, both themes.
+  </div>
+
+  <h2 class="sec">▸ The editor — ribbon, WYSIWYG canvas, status bar</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div class="app"><div class="apptitle"><span class="nm">release-notes.md</span><span class="mod">●</span><span style="color:var(--muted)">— Markdown Editor</span><span class="wc"><span class="min">─</span><span class="max">▢</span><span class="cls">✕</span></span></div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="sp"></span><span class="t" style="color:var(--muted)">⌕ Find</span></div><div class="rib-body"><div class="rg"><div class="gr">
+      <span class="rsplit"><span class="a"><span class="ic" style="color:var(--accent-2);font-size:15px"></span></span><span class="z">▾</span></span>
+      <span class="rb "><span class="ic"></span><span class="cap">Copy</span></span><span class="rb "><span class="ic"></span><span class="cap">Cut</span></span>
+    </div><div class="gl">Clipboard</div></div><div class="rg"><div class="gr">
+      <span class="rcombo" style="min-width:13ch"><span>Heading 2</span><span class="dd">▾</span></span>
+    </div><div class="gl">Style</div></div><div class="rg"><div class="gr">
+      <span class="rbi bold on">B</span><span class="rbi ital">I</span><span class="rbi under">S</span><span class="rsep">│</span>
+      <span class="rbi ">&lt;/&gt;</span><span class="rbi "></span><span class="rsep">│</span>
+      <span class="rsplit"><span class="a">A</span><span class="z">▾</span></span>
+    </div><div class="gl">Inline</div></div><div class="rg"><div class="gr">
+      <span class="rbi ">•</span><span class="rbi ">1.</span><span class="rbi ">☑</span><span class="rsep">│</span>
+      <span class="rbi ">❝</span><span class="rbi ">⌗</span><span class="rsep">│</span>
+      <span class="rpop">Align <span class="dd">▾</span></span>
+    </div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr">
+      <span class="rb lg"><span class="ic"></span><span class="cap">Table</span></span><span class="rb "><span class="ic"></span><span class="cap">Image</span></span><span class="rb "><span class="ic"></span><span class="cap">Code</span></span><span class="rb "><span class="ic"></span><span class="cap">Link</span></span>
+    </div><div class="gl">Insert</div></div></div></div><div class="canvas"><div class="doc"><span class="ln"><span class="md-h1"><span class="md-syn"># </span>Release Notes — v4.8</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln">The <span class="md-b">markdown editor</span> now renders <span class="md-i">in place</span> — what you type is </span>
+<span class="ln">shown formatted, including <span class="md-code">inline code</span> and <span class="md-link">links</span>.</span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="md-h2"><span class="md-syn">## </span>What's new</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="md-li"><span class="bullet">•</span> WYSIWYG tables that reflow as you edit</span></span>
+<span class="ln"><span class="md-li"><span class="bullet">•</span> Live heading + emphasis rendering</span></span>
+<span class="ln active"><span class="md-task done"><span class="box">[✓]</span> Whole-cell discipline throughout</span></span>
+<span class="ln"><span class="md-task"><span class="box">[ ]</span> Export to PDF <span class="caret">|</span></span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="md-quote"><span class="bar">▌</span> Tables are the showcase — they grow as rows are added.</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="md-h3"><span class="md-syn">### </span>Feature status</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln trow"><span class="tc" style="width:1ch">┌</span><span class="tc" style="width:16ch">────────────────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:13ch">─────────────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┐</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:16ch"> <span class="md-b">Feature</span>        </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> <span class="md-b">Status</span>      </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch"> <span class="md-b">Owner</span> </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">├</span><span class="tc" style="width:16ch">────────────────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:13ch">─────────────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┤</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:16ch"> Ribbon         </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> Done        </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch">  mz   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:16ch"> WYSIWYG tables </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> In progress </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch">  mz   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:16ch"> PDF export     </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> Planned     </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch">  al   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">└</span><span class="tc" style="width:16ch">────────────────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:13ch">─────────────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┘</span></span></div></div><div class="status"><span class="seg"> release-notes.md</span><span class="seg">UTF-8</span><span class="seg">Markdown</span><span class="sp"></span><span class="seg">Ln 11, Col 18</span><span class="seg">28 words</span><span class="seg">WYSIWYG</span></div></div></div>
+  <div class="caption">The full app: a <b>Format</b> ribbon (the bar controls — Bold lit, the heading-style combo, list/quote/code toggles, an Insert group), the document <b>canvas</b> where markdown renders in place, and an accent status bar. The cursor sits in rendered text (after "Export to PDF"), the active line is subtly filled, and a completed task shows its [✓]. The heading shows its <span style="color:var(--mdsyn)"># </span>syntax mark dimmed — on the line being edited, the raw marks reveal; elsewhere they're hidden.</div>
+  <h2 class="sec">▸ Tables grow and shrink with content</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div style="display:flex;flex-wrap:wrap;align-items:flex-start"><div style="margin-right:30px"><div style="color:var(--muted);font-size:11px;margin-bottom:4px">1 row</div><div class="canvas" style="width:max-content;min-height:0;padding:4px 0"><div class="doc"><span class="ln trow"><span class="tc" style="width:1ch">┌</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┐</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> <span class="md-b">Item</span>   </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> <span class="md-b">Qty</span> </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">├</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┤</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> Apples </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> 6   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">└</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┘</span></span></div></div></div><div style="margin-right:30px"><div style="color:var(--muted);font-size:11px;margin-bottom:4px">+ row added → grid extends</div><div class="canvas" style="width:max-content;min-height:0;padding:4px 0"><div class="doc"><span class="ln trow"><span class="tc" style="width:1ch">┌</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┐</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> <span class="md-b">Item</span>   </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> <span class="md-b">Qty</span> </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">├</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┤</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> Apples </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> 6   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> Pears  </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> 12  </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">└</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┘</span></span></div></div></div><div style="margin-right:30px"><div style="color:var(--muted);font-size:11px;margin-bottom:4px">+ typing a longer value → column widens, caret in cell</div><div class="canvas" style="width:max-content;min-height:0;padding:4px 0"><div class="doc"><span class="ln trow"><span class="tc" style="width:1ch">┌</span><span class="tc" style="width:13ch">─────────────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┐</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> <span class="md-b">Item</span>        </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> <span class="md-b">Qty</span> </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">├</span><span class="tc" style="width:13ch">─────────────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┤</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> Apples      </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> 6   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> Pears       </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> 12  </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:13ch"> Dragonfruit<span class="caret">|</span> </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:5ch"> 3   </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">└</span><span class="tc" style="width:13ch">─────────────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:5ch">─────</span><span class="tc" style="width:1ch">┘</span></span></div></div></div></div></div>
+  <div class="caption">The showcase. A markdown table renders as a real <b>box-drawing grid</b>, and its borders are computed from content: <b>adding a row</b> extends the grid downward (new ├─┼─┤ + row + relocated └─┴─┘), and <b>typing a longer value</b> widens that column so every border cell stays aligned. The author never touches a pipe — they edit cells and the grid reflows, exactly like a GUI table but in characters.</div>
+  <h2 class="sec">▸ WYSIWYG — rendered vs the raw markdown it replaces</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div style="display:flex;flex-wrap:wrap;align-items:flex-start"><div style="margin-right:24px"><div style="color:var(--muted);font-size:11px;margin-bottom:4px">raw markdown (what a plain editor shows)</div><div class="canvas" style="width:max-content;min-height:0;padding:6px 0;background:var(--code-bg)"><div class="doc"><span class="ln"><span class="md-syn">## Quarterly metrics</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="md-syn">| Region | Q3    | Q4    |</span></span>
+<span class="ln"><span class="md-syn">|--------|-------|-------|</span></span>
+<span class="ln"><span class="md-syn">| West   | 1,240 | 1,810 |</span></span>
+<span class="ln"><span class="md-syn">| East   | 980   | 1,030 |</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="md-syn">See **the dashboard** for `live` data.</span></span></div></div></div><div style="margin-right:24px"><div style="color:var(--muted);font-size:11px;margin-bottom:4px">WYSIWYG (what this editor shows)</div><div class="canvas" style="width:max-content;min-height:0;padding:6px 0;background:var(--canvas)"><div class="doc"><span class="ln"><span class="md-h2">Quarterly metrics</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln trow"><span class="tc" style="width:1ch">┌</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┬</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┐</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> <span class="md-b">Region</span> </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch">    <span class="md-b">Q3</span> </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch">    <span class="md-b">Q4</span> </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">├</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┼</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┤</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> West   </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch"> 1,240 </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch"> 1,810 </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">│</span><span class="tc" style="width:8ch"> East   </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch">   980 </span><span class="tc" style="width:1ch">│</span><span class="tc" style="width:7ch"> 1,030 </span><span class="tc" style="width:1ch">│</span></span>
+<span class="ln trow"><span class="tc" style="width:1ch">└</span><span class="tc" style="width:8ch">────────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┴</span><span class="tc" style="width:7ch">───────</span><span class="tc" style="width:1ch">┘</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln">See <span class="md-b">the dashboard</span> for <span class="md-code">live</span> data.</span></div></div></div></div></div>
+  <div class="caption">Why it matters. <b>Left:</b> what a plain text editor shows — pipes, dashes, asterisks, backticks. <b>Right:</b> the same document in this editor — the table is a grid, <span class="md-b">**bold**</span> is bold, <span class="md-code">`code`</span> is tinted. In a terminal the rendered form lives in the <i>same</i> character grid as the source, so WYSIWYG isn't a separate preview pane — it's the editing surface itself.</div>
+  <h2 class="sec">▸ Insert table — size picker</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div class="canvas" style="width:max-content;min-height:0;padding:6px 1ch;background:var(--panel)"><div style="color:var(--text);font-size:11px;margin-bottom:3px">Insert table — <span class="md-b">3 × 3</span></div><div class="doc" style="padding:0 1ch"><span class="ln"><span style="color:var(--accent)">▢</span> <span style="color:var(--accent)">▢</span> <span style="color:var(--accent)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span></span>
+<span class="ln"><span style="color:var(--accent)">▢</span> <span style="color:var(--accent)">▢</span> <span style="color:var(--accent)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span></span>
+<span class="ln"><span style="color:var(--accent)">▢</span> <span style="color:var(--accent)">▢</span> <span style="color:var(--accent)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span></span>
+<span class="ln"><span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span></span>
+<span class="ln"><span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span> <span style="color:var(--faint)">▢</span></span></div></div></div>
+  <div class="caption">Insert ▸ Table opens a drag-to-size grid picker (here 3×3 highlighted). On commit it drops an empty grid of that size into the document at the cursor, ready to fill — and from there it grows by the rules above.</div>
+
+</div>
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+  });
+</script>
+</body>
+</html>

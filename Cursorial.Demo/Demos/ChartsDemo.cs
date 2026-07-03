@@ -1,6 +1,10 @@
 using Cursorial.Drawing;
+using Cursorial.Drawing.Charts;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+
+// ReSharper disable CheckNamespace
 
 // Chart showcase: block-element bar charts, sparklines, axed braille line/scatter charts, and the deferred
 // features now landed — signed bars (negatives below a zero baseline) with category labels, line-chart area
@@ -14,7 +18,7 @@ internal sealed class ChartsDemo : InteractiveDemo
     public override string Description =>
         "Bars (signed + categories), sparklines, lines/scatter + axes, area fill, gaps, layered translucent fills.";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Charts demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private static readonly double[] Bars = [3, 7, 4, 9, 5, 8, 2, 6];
@@ -26,8 +30,8 @@ internal sealed class ChartsDemo : InteractiveDemo
     private static readonly PointD[] OverlayA = [new(0, 2), new(1, 5), new(2, double.NaN), new(3, 4), new(4, 7), new(5, 3)];
     private static readonly PointD[] OverlayB = [new(0, 6), new(1, 3), new(2, 5), new(3, 8), new(4, 4), new(5, 6)];
 
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
     private Scene[] _overlay = [];          // ToLayers scenes, composited over _scene
     private (int Column, int Row) _overlayAt;
     private const int NewBand = 21;         // row where the new-features band starts
@@ -146,19 +150,27 @@ internal sealed class ChartsDemo : InteractiveDemo
 
     protected override void RenderFrame(long frame)
     {
+        if (_scene is not {} scene)
+            return;
+
         if (_overlay.Length == 0)
         {
-            _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
             return;
         }
 
         // Main scene first, then each ToLayers fill layer offset into the area-fill region so their
         // translucent backgrounds compose (overlap blends rather than last-writer-wins).
         var layers = new SceneLayer[1 + _overlay.Length];
+
         layers[0] = new SceneLayer(_scene);
+
         for (int i = 0; i < _overlay.Length; i++)
+        {
             layers[i + 1] = new SceneLayer(_overlay[i],
-                new CompositeParameters(offsetColumn: _overlayAt.Column, offsetRow: _overlayAt.Row));
-        _compositor.Composite(layers, Buffer.AsView());
+                                           new CompositeParameters(offsetColumn: _overlayAt.Column, offsetRow: _overlayAt.Row));
+        }
+
+        _compositor?.Composite(layers, Buffer.AsView());
     }
 }

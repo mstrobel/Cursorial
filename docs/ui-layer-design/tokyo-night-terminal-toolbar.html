@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — standalone toolbar with overflow</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --toolbar:#1f2335; --btn-hover:#2e3349; --btn-press:#33467c; --ddzone:#343c5e;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --toolbar:#dedee3; --btn-hover:#cbccd1; --btn-press:#a8aecb; --ddzone:#cdd0dd;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:"Cascadia Code NF","JetBrainsMono Nerd Font",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1080px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;max-width:880px;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:28px 0 10px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:8px;max-width:880px;line-height:1.6;}
+
+  /* toolbar */
+  .tbwrap{margin:6px 0 4px;}
+  .tblabel{color:var(--muted);font-size:11px;margin-bottom:3px;}
+  .toolbar{display:inline-flex;align-items:stretch;background:var(--toolbar);white-space:nowrap;font-variant-ligatures:none;}
+  .tbtn{display:inline-flex;align-items:center;gap:1ch;padding:0 1ch;color:var(--text-dim);cursor:pointer;}
+  .tbtn:hover{background:var(--btn-hover);color:var(--text);}
+  .tbtn .ti{color:var(--accent-2);}
+  .tbtn.toggle{padding:0 1ch;font-weight:bold;}
+  .tbtn.toggle.on{background:var(--accent);color:var(--on-accent);}
+  .tbtn.toggle.on .ti{color:var(--on-accent);}
+  .tsep{color:var(--faint);display:inline-flex;align-items:center;}
+  .tfill{display:inline-flex;}
+  /* split button: two hit zones */
+  .tbtn.split{padding:0;gap:0;}
+  .tbtn.split .tact{display:inline-flex;align-items:center;gap:1ch;padding:0 1ch;}
+  .tbtn.split .tact:hover{background:var(--btn-hover);}
+  .tbtn.split .tdiv{display:none;}                 /* strategy F: no separator cell */
+  .tbtn.split .tdd{padding:0 .75ch;color:var(--accent);background:var(--ddzone);display:inline-flex;align-items:center;}
+  .tbtn.split .tdd:hover{background:var(--accent);color:var(--on-accent);}
+  .tbtn.split:hover{background:transparent;}
+  /* popup button */
+  .tbtn.popup .tddp{color:var(--muted);margin-left:.5ch;}
+  .tbtn.popup:hover .tddp{color:var(--accent);}
+  /* combo (gallery) */
+  .tbtn.combo{background:var(--well);gap:.5ch;}
+  .tbtn.combo .tcv{color:var(--text);}
+  .tbtn.combo .tddp{color:var(--accent);}
+  .tbtn.combo:hover{background:var(--well);}
+  /* overflow button */
+  .ovf{display:inline-flex;align-items:center;padding:0 1ch;color:var(--accent);background:var(--toolbar);cursor:pointer;font-weight:bold;}
+  .ovf:hover{background:var(--btn-hover);}
+
+  /* ruler */
+  .ruler{color:var(--muted);font-size:10px;margin-top:2px;}
+  .ruler .rw{color:var(--text-dim);} .ruler .rof{color:var(--amber);}
+
+  /* overflow / dropdown popups */
+  .pop{background:var(--panel);width:max-content;min-width:18ch;margin-top:1px;}
+  .pop .pi{display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+  .pop .pi:hover{background:var(--hover);color:var(--text);}
+  .pop .pi.sel{background:var(--sel);color:var(--text);}
+  .pop .pi .ci{color:var(--accent-2);width:1ch;display:inline-block;text-align:center;}
+  .pop .pi .rk{margin-left:auto;color:var(--muted);padding-left:18px;}
+  .pop .psep{border-top:1px solid var(--surface);margin:3px 0;}
+  .pop .pgrouplabel{color:var(--muted);font-size:11px;padding:1px 10px 0;}
+  .pop .pi.toggle.on .ci{color:var(--green);}
+
+  /* gallery grid popup (for color / font preview) */
+  .galpop{background:var(--panel);width:max-content;margin-top:1px;padding:3px;}
+  .galrow{display:flex;gap:2px;}
+  .galcell{width:2ch;height:1.3em;cursor:pointer;}
+  .galcell.sel{box-shadow:0 0 0 1px var(--text),0 0 0 2px var(--accent);}
+  .galpop .gallabel{color:var(--muted);font-size:11px;padding:1px 2px 3px;}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — standalone toolbar — 96×40</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+  <div class="legend">
+    <b>Standalone toolbar with discrete overflow:</b> one row of bar controls — buttons, a toggle group, split &amp; popup buttons,
+    and gallery comboboxes — that <b>pockets its tail into a » popup</b> when the row runs out of cells. This is the cell-grid
+    answer to the ribbon’s fluid variant resizing: no interpolation, just a computed decision about which controls fit.
+  </div>
+
+  <h2 class="sec">▸ Full toolbar — all controls fit</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div class="tbwrap"><div class="tblabel">Roomy — full width, everything fits</div><div class="toolbar" style="--cols:89"><span class="tbtn button"><span class="tl">Paste</span></span><span class="tbtn split"><span class="tact"><span class="tl">Copy</span></span><span class="tdiv">│</span><span class="tdd">▾</span></span><span class="tsep">│</span><span class="tbtn combo"><span class="tcv">Cascadia</span><span class="tddp">▾</span></span><span class="tbtn combo"><span class="tcv">13</span><span class="tddp">▾</span></span><span class="tsep">│</span><span class="tbtn toggle on"><span class="tl">B</span></span><span class="tbtn toggle"><span class="tl">I</span></span><span class="tbtn toggle"><span class="tl">U</span></span><span class="tsep">│</span><span class="tbtn split"><span class="tact"><span class="tl">Color</span></span><span class="tdiv">│</span><span class="tdd">▾</span></span><span class="tbtn popup"><span class="tl">Align</span><span class="tddp">▾</span></span><span class="tsep">│</span><span class="tbtn popup"><span class="tl">Insert</span><span class="tddp">▾</span></span><span class="tbtn button"><span class="tl">Table</span></span><span class="tbtn button"><span class="tl">Link</span></span><span class="tfill">&nbsp;&nbsp;</span></div><div class="ruler"><span class="rw">89 cells</span> · 16 shown · all fit</div></div><div class="caption">The complete Format toolbar at full width: <b>Paste</b> button, <b>Copy</b> split button, a gallery <b>font</b> + <b>size</b> combo pair, the <b>B/I/U</b> toggle group (Bold active, shown by the accent fill), a <b>Color</b> split button, <b>Align</b>/<b>Insert</b> popup buttons, and <b>Table</b>/<b>Link</b> buttons. The split buttons (Copy, Color) carry their dropdown arrow in a <span style="color:var(--accent)">tinted accent cell</span> — no separator needed — while popup buttons (Align, Insert) show a bare caret. Group <span style="color:var(--faint)">│</span> separators still divide unrelated clusters. Every control is one or more whole cells; nothing is clipped.</div></div>
+  <h2 class="sec">▸ Narrowed once — tail pockets into the » popup</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div class="tbwrap"><div class="tblabel">Medium — tail begins to overflow</div><div class="toolbar" style="--cols:46"><span class="tbtn button"><span class="tl">Paste</span></span><span class="tbtn split"><span class="tact"><span class="tl">Copy</span></span><span class="tdiv">│</span><span class="tdd">▾</span></span><span class="tsep">│</span><span class="tbtn combo"><span class="tcv">Cascadia</span><span class="tddp">▾</span></span><span class="tbtn combo"><span class="tcv">13</span><span class="tddp">▾</span></span><span class="tsep">│</span><span class="tbtn toggle on"><span class="tl">B</span></span><span class="tbtn toggle"><span class="tl">I</span></span><span class="ovf" title="8 more">»</span></div><div class="ruler"><span class="rw">46 cells</span> · 8 shown · <span class="rof">8 overflowed</span></div></div><div class="caption">Dragged narrower. The toolbar packs controls left-to-right until the next one wouldn’t fit before the reserved <span style="color:var(--accent)">»</span> cell, then pockets everything from there into the overflow popup. Trailing separators are trimmed at the fold so the visible row never ends on a stray <span style="color:var(--faint)">│</span>. Note this is a <b>discrete</b> step — the boundary jumps a whole control at a time, unlike a ribbon’s pixel-by-pixel group reflow.</div></div>
+  <h2 class="sec">▸ Narrowed further — overflow popup open</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div class="tbwrap"><div class="tblabel">Narrow — most controls overflow (popup shown open)</div><div class="toolbar" style="--cols:30"><span class="tbtn button"><span class="tl">Paste</span></span><span class="tbtn split"><span class="tact"><span class="tl">Copy</span></span><span class="tdiv">│</span><span class="tdd">▾</span></span><span class="tfill">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="ovf" title="13 more">»</span></div><div class="ruler"><span class="rw">30 cells</span> · 2 shown · <span class="rof">13 overflowed</span></div></div><div style="margin-left:0"><div class="pop"><div class="pi"><span class="ci"></span>Cascadia<span class="rk">▾</span></div><div class="pi"><span class="ci"></span>13<span class="rk">▾</span></div><div class="psep"></div><div class="pi toggle on"><span class="ci"></span>B<span class="rk">on</span></div><div class="pi"><span class="ci"></span>I<span class="rk">off</span></div><div class="pi"><span class="ci"></span>U<span class="rk">off</span></div><div class="psep"></div><div class="pi"><span class="ci"></span>Color<span class="rk">▸</span></div><div class="pi"><span class="ci"></span>Align<span class="rk">▸</span></div><div class="psep"></div><div class="pi"><span class="ci"></span>Insert<span class="rk">▸</span></div><div class="pi"><span class="ci"></span>Table</div><div class="pi"><span class="ci"></span>Link</div></div></div><div class="caption">At a tight width only the first few controls stay on the row; the rest live behind <span style="color:var(--accent)">»</span>, shown here <b>open</b>. Overflowed controls keep their identity in the menu — split/popup buttons show a <span style="color:var(--muted)">▸</span> submenu arrow, the combos show their value + <span style="color:var(--muted)">▾</span>, toggles show on/off state, and plain buttons show their <span style="color:var(--muted)">^key</span> accelerator. This is how a toolbar stays fully usable at any width without ever reflowing its content.</div></div>
+  <h2 class="sec">▸ Contextual states — split zones, menus, galleries</h2>
+  <div style="overflow-x:auto;padding-bottom:2px"><div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start"><div><div class="tbwrap"><div class="tblabel">Split button — two hit zones (hover label vs hover arrow)</div><div class="toolbar" style="padding:0"><span class="tbtn split"><span class="tact" style="background:var(--btn-hover);color:var(--text)"><span class="ti"></span><span class="tl">Copy</span></span><span class="tdiv">│</span><span class="tdd">▾</span></span><span class="tsep">│</span><span class="tbtn split"><span class="tact"><span class="ti"></span><span class="tl">Copy</span></span><span class="tdiv">│</span><span class="tdd" style="background:var(--accent);color:var(--on-accent)">▾</span></span></div><div class="ruler">left: hovering the action zone (label lights) · right: hovering the arrow zone (inverts to accent)</div></div><div style="height:14px"></div><div class="tbwrap"><div class="tblabel">Popup button — Align menu open</div><div class="toolbar" style="padding:0;width:max-content"><span class="tbtn popup" style="background:var(--btn-hover);color:var(--text)"><span class="ti"></span><span class="tl">Align</span><span class="tddp" style="color:var(--accent)">▾</span></span></div><div class="pop" style="min-width:20ch"><div class="pi sel"><span class="ci"></span>Left<span class="rk">^L</span></div><div class="pi"><span class="ci"></span>Center<span class="rk">^E</span></div><div class="pi"><span class="ci"></span>Right<span class="rk">^R</span></div><div class="pi"><span class="ci"></span>Justify<span class="rk">^J</span></div></div></div></div><div><div class="tbwrap"><div class="tblabel">Gallery combobox — font list with live-preview rows</div><div class="toolbar" style="padding:0;width:max-content"><span class="tbtn combo" style="background:var(--well)"><span class="tcv">Cascadia</span><span class="tddp">▾</span></span></div><div class="pop" style="min-width:22ch"><div class="pgrouplabel">Theme &amp; mono</div><div class="pi sel"><span class="ci"></span>Cascadia Code<span class="rk">✓</span></div><div class="pi"><span class="ci"></span>JetBrains Mono</div><div class="pi"><span class="ci"></span>SF Mono</div><div class="pi"><span class="ci"></span>Iosevka</div><div class="psep"></div><div class="pi"><span class="ci">⌕</span>More fonts…</div></div></div></div><div><div class="tbwrap"><div class="tblabel">Color split button — gallery grid popup</div><div class="toolbar" style="padding:0;width:max-content"><span class="tbtn split"><span class="tact"><span class="ti"></span><span class="tl">Color</span></span><span class="tdiv">│</span><span class="tdd" style="background:var(--accent);color:var(--on-accent)">▾</span></span></div><div class="galpop"><div class="gallabel">Theme palette</div><div class="galrow"><span class="galcell sel" style="background:#7aa2f7"></span><span class="galcell" style="background:#7dcfff"></span><span class="galcell" style="background:#9ece6a"></span><span class="galcell" style="background:#e0af68"></span><span class="galcell" style="background:#f7768e"></span><span class="galcell" style="background:#bb9af7"></span><span class="galcell" style="background:#c0caf5"></span><span class="galcell" style="background:#565f89"></span></div><div class="galrow"><span class="galcell" style="background:#2ac3de"></span><span class="galcell" style="background:#b4f9f8"></span><span class="galcell" style="background:#ff9e64"></span><span class="galcell" style="background:#41a6b5"></span><span class="galcell" style="background:#ff007c"></span><span class="galcell" style="background:#73daca"></span><span class="galcell" style="background:#e6e7ec"></span><span class="galcell" style="background:#1a1b26"></span></div><div class="gallabel" style="padding-top:4px">More colors…</div></div></div></div></div><div class="caption">The bar controls in action. A <b>split button</b> has two hit zones — the left runs the default action, the right arrow opens the menu. With no separator cell, the arrow lives in its own <span style="color:var(--accent)">tinted accent cell</span> so it reads as independently clickable; hovering each zone highlights only that zone. A <b>popup button</b> (one target) shows a bare caret and drops a standard menu with accelerators. The <b>gallery combobox</b> drops font choices as preview rows (the selected one ticked). And the <b>Color split button</b> drops a <b>gallery grid</b> — a whole-cell swatch palette, the active colour ringed. These are the shared controls that the toolbar, menus, and a ribbon would all reuse.</div></div>
+
+  <h2 class="sec">▸ Split button in depth — Paste (primary action + popup contents)</h2>
+  <div style="overflow-x:auto;padding-bottom:2px">
+    <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+      <div>
+        <div class="tbwrap"><div class="tblabel">Default action on the left · Paste Special menu on the ▾</div>
+          <div class="toolbar" style="padding:0;width:max-content">
+            <span class="tbtn split">
+              <span class="tact"><span class="ti"></span><span class="tl">Paste</span></span>
+              <span class="tdiv">│</span>
+              <span class="tdd" style="background:var(--accent);color:var(--on-accent)">▾</span>
+            </span>
+          </div>
+          <div class="ruler"><span class="rw">left zone</span> → pastes with source formatting (default) · <span class="rw">▾ zone</span> → opens the menu below</div>
+        </div>
+        <div class="pop" style="min-width:30ch">
+          <div class="pgrouplabel">Paste</div>
+          <div class="pi sel"><span class="ci"></span>Keep Source Formatting<span class="rk">^V</span></div>
+          <div class="pi"><span class="ci"></span>Merge Formatting<span class="rk">^⇧V</span></div>
+          <div class="pi"><span class="ci"></span>Values Only<span class="rk">^⌥V</span></div>
+          <div class="pi"><span class="ci"></span>Paste as Plain Text</div>
+          <div class="psep"></div>
+          <div class="pi"><span class="ci"></span>Paste Special…<span class="rk">^⇧⌥V</span></div>
+          <div class="pi"><span class="ci"></span>Paste and Match Style</div>
+        </div>
+      </div>
+
+      <div style="max-width:34ch">
+        <div class="tblabel" style="margin-bottom:6px">Anatomy</div>
+        <div style="color:var(--text-dim);line-height:1.7">
+          <div><span class="acc2"></span> <span class="txt" style="color:var(--text)">Paste</span> &nbsp;<span class="dim" style="color:var(--muted)">— the <b style="color:var(--text-dim);font-weight:normal">primary action</b>. Clicking the label runs the most-common variant (Keep Source Formatting) with no menu, the same as pressing <span style="color:var(--text-dim)">^V</span>.</span></div>
+          <div style="margin-top:6px"><span class="acc" style="color:var(--accent)">▾</span> &nbsp;<span class="dim" style="color:var(--muted)">— the <b style="color:var(--text-dim);font-weight:normal">dropdown zone</b>. A separate hit target that opens the full menu of paste variants without triggering a paste.</span></div>
+          <div style="margin-top:6px"><span class="dim" style="color:var(--muted)">The split exists precisely because the action and its options differ: you usually want one default paste, but occasionally need to choose. The checked row (<span style="color:var(--text-dim)">Keep Source Formatting</span>) is what the left zone does, so the menu also tells you what the button <i>is</i>.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">A concrete split button. The <b>left zone</b> carries a named <b>primary action</b> — <span style="color:var(--text)">Paste</span>, equivalent to <span style="color:var(--muted)">^V</span> — and clicking it pastes immediately. The <b>▾ zone</b> is a distinct hit target that opens the <b>Paste Special</b> menu: Keep Source Formatting (the current default, ticked), Merge Formatting, Values Only, Plain Text, and the fuller Paste Special… options, each with its accelerator. Critically, the ticked menu row is what the left zone does — so the menu both <i>offers</i> alternatives and <i>documents</i> the button’s current behaviour. That dual role is the whole reason to use a split button instead of a plain button + separate menu.</div>
+
+</div>
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+    tt.textContent=(light?'tokyo-night-light':'tokyo-night')+' — standalone toolbar — 96×40';
+  });
+</script>
+</body>
+</html>

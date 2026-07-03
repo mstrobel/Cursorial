@@ -1,4 +1,4 @@
-using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
@@ -16,7 +16,7 @@ public class OccludeTests
     public void FillOpaque_WritesSpaceBearingCells_WithBackground()
     {
         var b = DrawHarness.Render(4, 2, ctx => ctx.FillOpaque(new Rect(0, 0, 2, 2), Blue));
-        Assert.Equal(" ", b[0, 0].Grapheme);            // a real (space) glyph, not a blank null cell
+        Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[0, 0].Grapheme);            // a real (space) glyph, not a blank null cell
         Assert.Equal(Blue, b[0, 0].Style.Background);
     }
 
@@ -26,7 +26,7 @@ public class OccludeTests
         var b = DrawHarness.RenderLayers(4, 3, null,
             lower => lower.Set(1, 1, "X", Style.Default.WithForeground(Red)),   // bottom
             upper => upper.FillOpaque(new Rect(0, 0, 3, 3), Blue));             // top
-        Assert.Equal(" ", b[1, 1].Grapheme);            // the lower 'X' is hidden
+        Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 1].Grapheme);            // the lower 'X' is hidden
         Assert.Equal(Blue, b[1, 1].Style.Background);
     }
 
@@ -67,7 +67,7 @@ public class OccludeTests
             ctx.FillOpaque(new Rect(1, 0, 2, 1), Blue);                 // overwrites the continuation
         });
         Assert.True(string.IsNullOrEmpty(b[0, 0].Grapheme));   // orphaned WideLeft cleaned up
-        Assert.Equal(" ", b[1, 0].Grapheme);
+        Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 0].Grapheme);
         Assert.Equal(Blue, b[1, 0].Style.Background);
     }
 
@@ -79,6 +79,6 @@ public class OccludeTests
         var b = DrawHarness.RenderLayers(4, 3, Color.FromRgb(0, 0, 0),
             lower => lower.Set(1, 1, "X", Style.Default.WithForeground(Red)),
             upper => upper.FillOpaque(new Rect(0, 0, 3, 3), frosted));
-        Assert.Equal(" ", b[1, 1].Grapheme);   // glyph occluded regardless of fill alpha
+        Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 1].Grapheme);   // glyph occluded regardless of fill alpha
     }
 }

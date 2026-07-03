@@ -1,0 +1,609 @@
+using Cursorial.Input;
+using Cursorial.Rendering;
+using Cursorial.Terminal;
+using Cursorial.UI;
+using Cursorial.UI.Bars;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
+using Cursorial.UI.Testing;
+
+namespace Cursorial.Tests.UI.Bars;
+
+// Phase 1 spec for the Toolbar's discrete overflow (the Actipro live-control re-parent model): the ToolbarOverflowPanel
+// folds the trailing items into the chevron popup by moving the LIVE container instances between the row band (the
+// panel itself) and the overflow band (the popup's StackPanel), preserving the Toolbar as their logical parent. Band
+// membership is asserted via the public VisualParent/LogicalParent (row = ToolbarOverflowPanel, overflow = StackPanel).
+public sealed class ToolbarOverflowTests
+{
+    private static UITestHost NewHost(int width, int height = 6) => UITestHost.Create(new UITestHostOptions
+    {
+        InitialSize = new Size(width, height),
+        Capabilities = TestCapabilities.KittyTruecolor,
+    });
+
+    // A toolbar that STRETCHES to the host width (so overflow tracks the available space — a Left-aligned toolbar
+    // auto-sizes to its content and would never overflow, by design) and is pinned to the top so its row is row 0 and
+    // the overflow popup drops onto rows 1+.
+    private static Toolbar NewToolbar(params UIElement[] items)
+    {
+        var toolbar = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        foreach (var item in items)
+            toolbar.Items.Add(item);
+        return toolbar;
+    }
+
+    private static BarButton Btn(string label) => new() { Content = label };
+
+    private static bool OnRow(UIElement c) => c.VisualParent is ToolbarOverflowPanel;
+    private static bool InOverflow(UIElement c) => c.VisualParent is StackPanel; // the popup band host
+
+    [Fact] // an EMPTY toolbar collapses its overflow-chevron reserve entirely: a Hidden chevron still measures ~N cells
+           // and the toolbar's Border fills that footprint with Control.Background (a discolored box); Collapsed measures
+           // 0, so an auto-sized empty toolbar takes zero width and paints nothing.
+    public void EmptyToolbar_CollapsesChevronReserve_NoBox()
+    {
+        using var host = NewHost(width: 40);
+        // Left-aligned ⇒ the toolbar auto-sizes to its content (a stretched toolbar always fills its slot); with no
+        // items the only content is the chevron reserve, so the auto-size width IS the box footprint.
+        var toolbar = new Toolbar { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.Equal(Visibility.Collapsed, toolbar.OverflowToggleForTests!.Visibility); // reserve dropped, not Hidden
+        Assert.Equal(0, toolbar.DesiredSize.Columns);                                   // no footprint ⇒ no box
+    }
+
+    [Fact] // gaining an item restores the chevron reserve (Hidden, not Collapsed) so content won't jump when overflow
+           // later appears; removing the last item collapses it again
+    public void Toolbar_ChevronReserve_TracksEmptyTransitions()
+    {
+        using var host = NewHost(width: 40);
+        var toolbar = new Toolbar { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.Equal(Visibility.Collapsed, toolbar.OverflowToggleForTests!.Visibility); // empty ⇒ collapsed
+
+        toolbar.Items.Add(Btn("Cut"));
+        host.RunUntilIdle();
+        Assert.Equal(Visibility.Hidden, toolbar.OverflowToggleForTests!.Visibility); // has item, no overflow ⇒ reserved
+
+        toolbar.Items.Clear();
+        host.RunUntilIdle();
+        Assert.Equal(Visibility.Collapsed, toolbar.OverflowToggleForTests!.Visibility); // empty again ⇒ collapsed
+    }
+
+    [Fact] // audit: emptiness is the panel's realized-container count, NOT Items.Count (which stays 0 under ItemsSource).
+           // A non-overflowing ItemsSource-populated toolbar must still RESERVE the chevron (Hidden), or content jumps
+           // when overflow later appears.
+    public void Toolbar_ItemsSource_NonOverflowing_ReservesChevron()
+    {
+        using var host = NewHost(width: 60);
+        var toolbar = new Toolbar { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        toolbar.ItemsSource = new object[] { Btn("Cut"), Btn("Copy") }; // ItemsSource ⇒ the direct Items collection stays empty
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.Empty(toolbar.Items);                                                 // Items.Count is 0 under ItemsSource…
+        Assert.Equal(Visibility.Hidden, toolbar.OverflowToggleForTests!.Visibility); // …yet the chevron reserves (not Collapsed)
+    }
+
+    [Fact] // everything fits → no overflow, no chevron, all items on the row band
+    public void NoOverflow_WhenItemsFit()
+    {
+        using var host = NewHost(width: 60);
+        var a = Btn("Cut");
+        var b = Btn("Copy");
+        var c = Btn("Paste");
+        var toolbar = NewToolbar(a, b, c);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.False(toolbar.HasOverflow);
+        Assert.Equal(0, toolbar.OverflowCount);
+        Assert.True(OnRow(a) && OnRow(b) && OnRow(c));
+        Assert.DoesNotContain("»", host.GetRowText(0));
+        var row = host.GetRowText(0);
+        Assert.Contains("Cut", row);
+        Assert.Contains("Paste", row);
+    }
+
+    [Fact] // a narrow bar folds the trailing items into the popup; the chevron appears
+    public void FoldsTrailingItems_WhenNarrow()
+    {
+        using var host = NewHost(width: 14);
+        var a = Btn("Cut");
+        var b = Btn("Copy");
+        var c = Btn("Paste");
+        var d = Btn("Delete");
+        var toolbar = NewToolbar(a, b, c, d);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(toolbar.HasOverflow);
+        Assert.True(toolbar.OverflowCount > 0);
+        Assert.Contains("»", host.GetRowText(0));
+
+        // The leading item stays on the row; the trailing item folds into the overflow band.
+        Assert.True(OnRow(a), "first item should remain on the row");
+        Assert.True(InOverflow(d), "last item should overflow into the popup band");
+    }
+
+    [Fact] // an overflowed control stays a LOGICAL child of the Toolbar (its command/inheritance is unbroken)
+    public void OverflowedItem_StaysLogicalChildOfToolbar()
+    {
+        using var host = NewHost(width: 14);
+        var ran = 0;
+        var d = new BarButton { Content = "Delete", Command = new BarCommand(() => ran++) };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), d);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(InOverflow(d));               // re-parented into the popup band (visual)
+        Assert.Same(toolbar, d.LogicalParent);    // …but still a logical child of the Toolbar (inheritance intact)
+
+        // Open the popup so the overflowed control is attached on the popup surface (an overflowed item is detached
+        // while the popup is closed — by design), then activate it: the command resolves and runs, proving the
+        // logical/inheritance/command chain survives the cross-surface re-parent.
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        d.Focus();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(1, ran);
+    }
+
+    [Fact] // opening the chevron shows the SAME live controls in the popup; closing returns them to the row
+    public void OpenChevron_ShowsLiveOverflowedControls()
+    {
+        using var host = NewHost(width: 14);
+        var d = Btn("Delete");
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), d);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(d));
+
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        // The popup band drops below the row; the overflowed label renders on a popup row (its instance is unchanged).
+        var popupText = host.GetRowText(1) + host.GetRowText(2) + host.GetRowText(3);
+        Assert.Contains("Delete", popupText);
+        Assert.True(InOverflow(d)); // still the same instance in the popup band
+    }
+
+    [Fact] // widening the bar returns the items to the row AND force-closes the popup
+    public void Widen_ReturnsItemsToRow_AndClosesPopup()
+    {
+        using var host = NewHost(width: 14);
+        var d = Btn("Delete");
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), d);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+        Assert.True(toolbar.IsOverflowOpen);
+
+        host.SendResize(60, 6);
+        host.RunUntilIdle();
+
+        Assert.False(toolbar.HasOverflow);
+        Assert.False(toolbar.IsOverflowOpen);     // un-overflow force-closes the popup
+        Assert.True(OnRow(d));                    // returned to the row band
+        Assert.DoesNotContain("»", host.GetRowText(0));
+    }
+
+    [Fact] // CD-P9-3: removing an item that is currently overflowed must not crash or strand a dangling visual parent
+    public void RemoveOverflowedItem_NoCrash()
+    {
+        using var host = NewHost(width: 14);
+        var d = Btn("Delete");
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), d);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(d));
+
+        toolbar.Items.Remove(d);
+        host.RunUntilIdle();
+
+        Assert.Null(d.VisualParent);   // detached from the overflow band synchronously (no dangling visual parent)
+        Assert.Null(d.LogicalParent);  // generator's FinishUnrealize ran the logical detach after the visual detach
+    }
+
+    [Fact] // the discrete fold moves a WHOLE control across the boundary (never splits one) — exact fit stays
+    public void Fold_IsWholeControl_NotSplit()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        // Every container is in exactly one band (row XOR overflow) — none half-placed.
+        foreach (var item in toolbar.Items)
+        {
+            var c = (UIElement) item!;
+            Assert.True(OnRow(c) ^ InOverflow(c), $"{((BarButton) c).Content} must be in exactly one band");
+        }
+    }
+
+    [Fact] // OverflowMode.Never pins an item to the row even when the bar is too narrow
+    public void OverflowModeNever_PinsToRow()
+    {
+        using var host = NewHost(width: 14);
+        var pinned = Btn("Cut");
+        Toolbar.SetOverflowMode(pinned, ToolbarOverflowMode.Never);
+        var toolbar = NewToolbar(pinned, Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(OnRow(pinned)); // never overflows
+    }
+
+    [Fact] // OverflowMode.Always keeps an item in the popup and forces the chevron even when everything else fits
+    public void OverflowModeAlways_StaysInPopup_AndForcesChevron()
+    {
+        using var host = NewHost(width: 60);
+        var always = Btn("Settings");
+        Toolbar.SetOverflowMode(always, ToolbarOverflowMode.Always);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), always);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(toolbar.HasOverflow);   // forced by the Always item
+        Assert.True(InOverflow(always));
+        Assert.Contains("»", host.GetRowText(0));
+    }
+
+    [Fact] // audit fix: changing OverflowMode on an item currently in the popup band re-folds the row. The item's
+           // VisualParent is the popup host (not the panel), so the changed handler must reach the panel via the
+           // logical chain — invalidating VisualParent would silently miss the overflowed item.
+    public void OverflowMode_ChangeOnOverflowedItem_RefoldsRow()
+    {
+        using var host = NewHost(width: 30);
+        var settings = Btn("Settings");
+        Toolbar.SetOverflowMode(settings, ToolbarOverflowMode.Always);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), settings);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(settings)); // Always ⇒ pinned to the popup band
+        Assert.True(toolbar.HasOverflow);
+
+        // Flip it to AsNeeded — at width 30 everything now fits, so it must return to the row and overflow clears.
+        Toolbar.SetOverflowMode(settings, ToolbarOverflowMode.AsNeeded);
+        host.RunUntilIdle();
+        Assert.True(OnRow(settings));
+        Assert.False(toolbar.HasOverflow);
+    }
+
+    [Fact] // audit fix: detaching the toolbar while the overflow popup is open closes it cleanly (no leaked surface)
+    public void Detach_WhilePopupOpen_ClosesPopup()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        Assert.True(toolbar.IsOverflowOpen);
+
+        // Replace the root → the toolbar detaches; OnDetachedFromTree must close the popup (no dangling surface, no crash).
+        var ex = Record.Exception(() =>
+        {
+            host.ShowRoot(new BarButton { Content = "X" });
+            host.RunUntilIdle();
+        });
+        Assert.Null(ex);
+        Assert.False(toolbar.IsOverflowOpen);
+    }
+
+    [Fact] // audit fix: re-templating the toolbar while the popup is open closes the OLD popup (OnTemplateDetaching
+           // leak guard — without it the old PART_OverflowPopup's TopLevelSurface leaks)
+    public void Retemplate_WhilePopupOpen_ClosesOldPopup()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        Assert.True(toolbar.IsOverflowOpen);
+
+        // Force a re-template by assigning a fresh theme (a new ControlTemplate instance) — OnTemplateDetaching fires.
+        var ex = Record.Exception(() =>
+        {
+            toolbar.Theme = CursorialBarsTheme.ToolbarStyle();
+            host.RunUntilIdle();
+        });
+        Assert.Null(ex);
+        Assert.False(toolbar.IsOverflowOpen);
+    }
+
+    [Fact] // anti-thrash: the fold converges (no oscillation) at a boundary width
+    public void Fold_ConvergesAtBoundaryWidth()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"), Btn("Find"));
+        host.ShowRoot(toolbar);
+        // RunUntilIdle returns false if it never settles within the frame budget (oscillation would do that).
+        Assert.True(host.RunUntilIdle(), "the fold must converge (no re-parent oscillation)");
+
+        // Step the width down one cell at a time across the boundary; each step must settle.
+        for (var w = 30; w >= 8; w--)
+        {
+            host.SendResize(w, 6);
+            Assert.True(host.RunUntilIdle(), $"width {w} must converge");
+        }
+    }
+
+    [Fact] // user-found: a separator reads as an upright │ on the row but must flip to a horizontal ─ rule when it
+           // folds into the vertical overflow popup (the panel sets Separator.Orientation by band).
+    public void OverflowedSeparator_FlipsToHorizontal_InPopup()
+    {
+        using var host = NewHost(width: 14);
+        var folds = new BarSeparator();
+        // Row: [Cut][Copy] fill the narrow row; [Undo][folds][Delete] fold into the popup — so `folds` is an INTERIOR
+        // separator of the popup band (Undo before it, Delete after), kept by the leading/trailing-separator trim.
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Undo"), folds, Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+
+        Assert.True(InOverflow(folds), "the interior separator should fold into the popup");
+        Assert.Equal(Orientation.Horizontal, folds.Orientation); // flipped in the vertical popup band
+
+        // The popup renders the flipped separator as a ─ rule.
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        var popupText = host.GetRowText(1) + host.GetRowText(2) + host.GetRowText(3) + host.GetRowText(4);
+        Assert.Contains("─", popupText);
+
+        // Widen back — the folded separator returns to the row and flips upright again.
+        host.SendResize(60, 6);
+        host.RunUntilIdle();
+        Assert.True(OnRow(folds));
+        Assert.Equal(Orientation.Vertical, folds.Orientation);
+    }
+
+    // ───────────────────────── P2b: chevron / overflow-popup keyboard navigation (#124) ─────────────────────────
+
+    [Fact] // Down on the focused chevron opens the overflow popup AND moves focus into the band (the chevron is a
+           // drop-opener — Down enters rather than parking on the chevron).
+    public void ChevronDown_OpensAndEntersOverflow()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.RunUntilIdle();
+        Assert.Same(chevron, host.Application.FocusManager.FocusedElement);
+
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.True(toolbar.IsOverflowOpen);                                  // opened
+        Assert.True(toolbar.OverflowHostForTests!.IsKeyboardFocusWithin);     // focus moved INTO the band
+        Assert.NotSame(chevron, host.Application.FocusManager.FocusedElement);
+    }
+
+    [Fact] // Enter on the chevron (its Click) opens-and-enters identically — a drop-opener activation enters the band.
+    public void ChevronActivate_OpensAndEntersOverflow()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Enter); // ButtonBase activates on key-down → Click → OnChevronClick → open + enter
+        host.RunUntilIdle();
+
+        Assert.True(toolbar.IsOverflowOpen);
+        Assert.True(toolbar.OverflowHostForTests!.IsKeyboardFocusWithin);
+    }
+
+    [Fact] // Up from the FIRST overflowed item steps back to the chevron (the popup stays open — the closer only fires
+           // once focus leaves the chevron too).
+    public void UpFromFirstOverflowItem_StepsBackToChevron()
+    {
+        using var host = NewHost(width: 14);
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.SendKey(Key.DownArrow);     // open + enter onto the first overflow item
+        host.RunUntilIdle();
+        Assert.True(toolbar.OverflowHostForTests!.IsKeyboardFocusWithin);
+
+        host.SendKey(Key.UpArrow);       // from the first item, Up returns to the chevron
+        host.RunUntilIdle();
+
+        Assert.Same(chevron, host.Application.FocusManager.FocusedElement);
+        Assert.True(toolbar.IsOverflowOpen); // still open (focus is on the chevron, not gone from both)
+    }
+
+    [Fact] // the overflow popup closes once keyboard focus leaves BOTH the chevron and the band (focus to a row button).
+    public void FocusLeavesChevronAndBand_ClosesPopup()
+    {
+        using var host = NewHost(width: 14);
+        var cut = Btn("Cut");
+        var toolbar = NewToolbar(cut, Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        var chevron = toolbar.OverflowToggleForTests!;
+        chevron.Focus();
+        host.SendKey(Key.DownArrow);     // open + enter
+        host.RunUntilIdle();
+        Assert.True(toolbar.IsOverflowOpen);
+
+        cut.Focus();                     // a row button — focus leaves both the chevron and the band
+        host.RunUntilIdle();
+        Assert.False(toolbar.IsOverflowOpen); // the closer shuts the popup
+    }
+
+    [Fact] // P2b (#124, user-found): arrow to the chevron then BACK to a bar button, then Escape — focus must return to
+           // the ORIGIN, not the chevron. Re-entering the toolbar scope from the chevron (a NESTED retaining barrier
+           // scope) must not re-capture the chevron as the return target (the MarkReturnableEntry containment fix).
+    public void ArrowToChevronThenBackToButton_Escape_ReturnsToOrigin()
+    {
+        using var host = NewHost(width: 14, height: 8);
+        var cut = Btn("Cut");
+        var toolbar = NewToolbar(cut, Btn("Copy"), Btn("Paste"), Btn("Delete"));
+        var editor = new Button { Content = "Editor" };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(toolbar); // row 0 (the overflow popup drops below)
+        root.Children.Add(editor);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow);
+
+        var focus = host.Application.FocusManager;
+        var chevron = toolbar.OverflowToggleForTests!;
+
+        editor.Focus();                                   // the origin (root scope memory = editor)
+        cut.Focus(FocusNavigationMethod.Tab);             // Tab INTO the bar — captures editor's scope as the return
+        host.RunUntilIdle();
+        Assert.Same(cut, focus.FocusedElement);
+
+        chevron.Focus(FocusNavigationMethod.Directional); // arrow to the chevron (a nested barrier scope)
+        host.RunUntilIdle();
+        Assert.Same(chevron, focus.FocusedElement);
+
+        cut.Focus(FocusNavigationMethod.Directional);     // arrow BACK to a button — must NOT re-capture the chevron
+        host.RunUntilIdle();
+        Assert.Same(cut, focus.FocusedElement);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.Same(editor, focus.FocusedElement);        // returned to the origin, NOT the chevron
+    }
+
+    // ───────────────────── #137: drop-opener side placement in the overflow menu ─────────────────────
+
+    private static StackPanel SubItems(out Button firstSub)
+    {
+        firstSub = new Button { Content = "Left", Width = 8, Height = 1 };
+        var panel = new StackPanel { Orientation = Orientation.Vertical };
+        panel.Children.Add(firstSub);
+        panel.Children.Add(new Button { Content = "Center", Width = 8, Height = 1 });
+        return panel;
+    }
+
+    [Fact] // #137: a drop-opener folded into the (right-anchored) overflow menu opens to the SIDE (Left, ◂) like a
+           // submenu — not downward over the menu rows; back on the row it opens downward (Bottom, ▾). The caret follows.
+    public void OverflowedDropOpener_FliesOutToSide_WithMatchingCaret()
+    {
+        using var host = NewHost(width: 16);
+        var align = new BarPopupButton { Content = "Align", DropDownContent = SubItems(out _) };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), align);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(InOverflow(align));
+        Assert.Equal(PlacementMode.Left, align.DropDownPlacement); // fly out to the left (keeps it on-screen)
+        Assert.Equal("◂", align.CaretGlyph);                       // the caret follows the placement
+
+        host.SendResize(60, 6); // widen → returns to the row → downward again
+        host.RunUntilIdle();
+        Assert.True(OnRow(align));
+        Assert.Equal(PlacementMode.Bottom, align.DropDownPlacement);
+        Assert.Equal("▾", align.CaretGlyph);
+    }
+
+    [Fact] // #137: in the overflow menu, Up/Down navigate the menu ROWS (they no longer open the opener's dropdown), and
+           // the open arrow (Left, matching the Left placement) opens AND enters the submenu in one press.
+    public void OverflowedDropOpener_UpDownNavigatesMenu_LeftOpensSubmenu()
+    {
+        using var host = NewHost(width: 16, height: 10);
+        var align = new BarPopupButton { Content = "Align", DropDownContent = SubItems(out var firstSub) };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), align);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(align));
+
+        toolbar.IsOverflowOpen = true; // open the overflow so the folded opener is attached on the popup surface
+        host.RunUntilIdle();
+
+        align.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        Assert.True(align.IsFocused);
+
+        host.SendKey(Key.DownArrow); // Down navigates the menu — it must NOT open the opener's dropdown
+        host.RunUntilIdle();
+        Assert.False(align.IsDropDownOpen);
+
+        align.Focus(FocusNavigationMethod.Directional); // back onto the opener row
+        host.RunUntilIdle();
+        host.SendKey(Key.LeftArrow); // the open arrow for a Left placement → opens AND enters the submenu
+        host.RunUntilIdle();
+        Assert.True(align.IsDropDownOpen);
+        Assert.True(firstSub.IsFocused); // one-press open+enter (the MenuItem submenu model)
+    }
+
+    [Fact] // a BarComboBox folded into the overflow menu opens its list to the SIDE (Left) — same as the drop-opener
+           // buttons — instead of downward over the menu rows (which mucks with the up/down nav). Row = Bottom.
+    public void OverflowedComboBox_ListFliesOutToSide()
+    {
+        using var host = NewHost(width: 16);
+        var combo = new BarComboBox { ItemsSource = new[] { "alpha", "beta", "gamma" }, Width = 6 };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), Btn("Paste"), combo);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.True(InOverflow(combo));
+        Assert.Equal(PlacementMode.Left, combo.DropDownPlacement); // list flies out to the side in the overflow menu
+
+        host.SendResize(60, 6); // widen → returns to the row → downward again
+        host.RunUntilIdle();
+        Assert.True(OnRow(combo));
+        Assert.Equal(PlacementMode.Bottom, combo.DropDownPlacement);
+    }
+
+    [Fact] // a side-placed (overflow) BarComboBox does NOT open on Down/Up — those bubble to the parent menu so you can
+           // navigate PAST the combo to the lower menu items; it opens on the Left arrow (its flyout side) instead.
+    public void OverflowedComboBox_DownUpNavigateMenu_LeftOpens()
+    {
+        using var host = NewHost(width: 16, height: 12);
+        var combo = new BarComboBox { ItemsSource = new[] { "alpha", "beta", "gamma" }, Width = 6 };
+        var toolbar = NewToolbar(Btn("Cut"), Btn("Copy"), combo, Btn("Delete"));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(InOverflow(combo));
+
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+
+        combo.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        Assert.True(combo.IsFocused);
+
+        host.SendKey(Key.DownArrow); // must NOT open the combo — bubbles to the menu's row navigation
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen);
+
+        combo.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        host.SendKey(Key.UpArrow); // Up likewise does not open it
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen);
+
+        combo.Focus(FocusNavigationMethod.Directional);
+        host.RunUntilIdle();
+        host.SendKey(Key.LeftArrow); // the arrow toward its Left-placed flyout opens it
+        host.RunUntilIdle();
+        Assert.True(combo.IsDropDownOpen);
+
+        host.SendKey(Key.RightArrow); // the opposite arrow backs out: closes the list and returns focus to the combo
+        host.RunUntilIdle();
+        Assert.False(combo.IsDropDownOpen);
+        Assert.True(combo.IsFocused);
+    }
+}

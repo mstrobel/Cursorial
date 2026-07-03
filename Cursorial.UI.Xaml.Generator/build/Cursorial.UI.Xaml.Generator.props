@@ -1,0 +1,56 @@
+<Project>
+
+    <ItemGroup>
+      <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+    </ItemGroup>
+
+    <!--
+      Cursorial XAML generator — consumer props (WS-X4.2). Imported early (before the consumer's items),
+      this exposes the AdditionalFiles `SourceItemType` metadata to the generator so it can filter the
+      CursorialXaml inputs out of any other AdditionalFiles. The CursorialXaml → AdditionalFiles mapping
+      itself is in the paired .targets (after item evaluation).
+    -->
+
+  <ItemGroup>
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SourceItemType" />
+  </ItemGroup>
+
+  <!--
+    WS-X5.5 — the full-lowering opt-in. Set <CursorialXamlLowering>full</CursorialXamlLowering> to compile each
+    x:Class document to straight-line, reflection-free C# (no runtime XAML loader) instead of the default
+    loader-backed code-behind. A member the lowering can't yet emit is reported as a CURG3001 build warning.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="CursorialXamlLowering" />
+  </ItemGroup>
+
+  <!--
+    The generated metadata provider's [ModuleInitializer] installs it as the process-wide loader default. That
+    is an APP behavior (the app owns the default). A LIBRARY that merely ships XAML (e.g. a ResourceDictionary
+    theme) must NOT hijack the consuming app's default — its provider only covers the library's own closed type
+    set and ui-xmlns. Such a library sets <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>:
+    the provider is still emitted (build-time bakeability validation) but not auto-installed; the library's XAML
+    keeps loading through the app's provider (reflection by default).
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="CursorialXamlInstallProvider" />
+  </ItemGroup>
+
+  <!--
+    A <CursorialXaml> item is ALSO embedded as a manifest resource by default (the paired .targets), so a
+    document validated/baked at build time stays loadable at runtime via XamlLoader (ResourceDictionary themes,
+    no-x:Class views). A pure compile-time / fully-lowered consumer that never runtime-loads its XAML can set
+    <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources> to skip the embed.
+  -->
+  <PropertyGroup>
+    <CursorialXamlEmbedResources Condition="'$(CursorialXamlEmbedResources)' == ''">true</CursorialXamlEmbedResources>
+  </PropertyGroup>
+
+  <!--
+    WS-X4.7 — strict AOT. The CursorialXamlStrictAot default (PublishAot OR PublishTrimmed) is computed in the
+    paired .targets, NOT here: this .props is imported at the TOP of the project (the NuGet build/ convention), so
+    reading $(PublishAot) here would miss a consumer that sets <PublishAot>true</PublishAot> later in its csproj
+    body. The .targets is imported at the bottom, after the body — so it observes the final value.
+  -->
+
+</Project>

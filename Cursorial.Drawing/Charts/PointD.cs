@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>A 2-D data point in a chart's value space (<see cref="X"/>, <see cref="Y"/>).</summary>
 public readonly record struct PointD(double X, double Y)

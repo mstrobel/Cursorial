@@ -5,6 +5,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 
+// ReSharper disable CheckNamespace
+
 // Phase-6b showcase: images composited inside a Scene. Each icon is drawn with DrawContent, which registers
 // an out-of-band fragment (Kitty / iTerm2 / Sixel) on the scene buffer; SceneCompositor carries those
 // fragments onto the target so the frame renderer emits them — alongside the scene's ordinary cell content
@@ -16,7 +18,7 @@ internal sealed class ImageSceneDemo : InteractiveDemo
     public override IReadOnlyList<string> Aliases => ["iscene"];
     public override string Description => "Images composited inside a Scene via DrawContent (Phase 6b).";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Image-in-scene demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private static readonly (string Resource, string Fallback, string Label)[] Icons =
@@ -27,8 +29,8 @@ internal sealed class ImageSceneDemo : InteractiveDemo
     ];
 
     private IContent[] _content = null!;
-    private Scene _scene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _scene;
+    private SceneCompositor? _compositor;
 
     protected override void Initialize()
     {
@@ -74,6 +76,9 @@ internal sealed class ImageSceneDemo : InteractiveDemo
         }
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite([new SceneLayer(_scene)], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_scene is {} scene)
+            _compositor?.Composite([new SceneLayer(scene)], Buffer.AsView());
+    }
 }

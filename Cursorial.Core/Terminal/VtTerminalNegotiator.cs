@@ -306,99 +306,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         TerminalIdentification identification,
         CancellationToken cancellationToken)
     {
-        var applied = default(AppliedOptIns);
+        // Decide what to apply (family-gated). The byte emission is factored into EmitOptInEnables
+        // so the re-apply path (ReapplyScreenLocalOptInsAsync) produces byte-identical sequences from
+        // the same AppliedOptIns — the "three identical producers" discipline keeps apply ≡ re-apply.
+        var applied = DecideOptIns(options, identification);
 
-        // Mouse: SGR encoding (1006) + button-event tracking (1002) is the standard combo
-        // for press / release / drag on every modern terminal. Any-event tracking (1003) is
-        // additive on top. SGR-Pixels (1016) is a further opt-in that swaps cell coords for
-        // pixel coords on mouse reports — gated on family because terminals that don't honor
-        // 1016 typically also don't ignore the DECSET cleanly.
-        if (options.EnableMouseTracking | options.EnableExtendedMouseTracking)
-        {
-            if (options.EnableExtendedMouseTracking)
-            {
-                QueueWrite(VtInputSequences.OptInSequences.EnableSgrMouse);
-                applied.ExtendedMouseTracking = true;
-            }
-
-            QueueWrite(VtInputSequences.OptInSequences.EnableButtonMotionMouse);
-            applied.MouseButtonTracking = true;
-
-            if (options.EnableMouseTracking)
-            {
-                QueueWrite(VtInputSequences.OptInSequences.EnableMotionMouse);
-                applied.MouseMotionTracking = true;
-            }
-
-            // SGR-Pixels (1016) is a strict extension of SGR (1006): on supporting terminals
-            // we get pixel coordinates surfaced in CellPosition.PixelX/Y alongside the
-            // cell-derived Column/Row. Off by default because it changes the rate of mouse
-            // motion reports from per-cell to per-pixel — roughly 10–20× the event volume for
-            // the same user action. Opt in only when the consumer actually wants the pixel
-            // precision (drag handles, sub-cell hot-spots). Family-gated because non-supporting
-            // terminals don't always ignore the DECSET cleanly.
-            if (options.EnableSgrPixelsMouse &&
-                applied.ExtendedMouseTracking &&
-                TerminalSupportsSgrPixelsMouse(identification.Family))
-            {
-                QueueWrite(VtInputSequences.OptInSequences.EnableSgrPixelsMouse);
-                applied.SgrPixelsMouse = true;
-            }
-        }
-        else if (options.EnableMouseButtons | options.EnableMouseButtonTracking)
-        {
-            QueueWrite(VtInputSequences.OptInSequences.EnableMouseButtons);
-            applied.MouseButtons = true;
-            
-            if (options.EnableMouseButtonTracking)
-            {
-                QueueWrite(VtInputSequences.OptInSequences.EnableButtonMotionMouse);
-                applied.MouseButtonTracking = true;
-            }
-        }
-
-        if (options.EnableFocusEvents)
-        {
-            QueueWrite(VtInputSequences.OptInSequences.EnableFocusEvents);
-            applied.FocusEvents = true;
-        }
-
-        if (options.EnableBracketedPaste)
-        {
-            QueueWrite(VtInputSequences.OptInSequences.EnableBracketedPaste);
-            applied.BracketedPaste = true;
-        }
-
-        // Kitty keyboard: gate on family because pushing on a non-Kitty terminal is silently
-        // ignored, which would cause us to wrongly report the protocol as enabled.
-        if (options.EnableKittyKeyboard &&
-            TerminalSupportsKittyKeyboard(identification.Family) &&
-            options.KittyKeyboardFlags != KittyKeyboardFlags.None)
-        {
-            QueueKittyPush(options.KittyKeyboardFlags);
-            applied.KittyKeyboard = true;
-            applied.KittyFlags = options.KittyKeyboardFlags;
-        }
-
-        // Win32 input mode: only meaningful on the Windows console host or Windows Terminal.
-        if (options.EnableWin32InputMode && TerminalSupportsWin32InputMode(identification.Family))
-        {
-            QueueWrite(VtInputSequences.OptInSequences.EnableWin32InputMode);
-            applied.Win32InputMode = true;
-        }
-
-        // Synchronized output (DECSET 2026): record support so per-frame consumers (FrameRenderer)
-        // can wrap each redraw operation, but DO NOT issue DECSET 2026 here. DECSET 2026 begins a sync
-        // block that buffers output until DECRST 2026 ends it; issuing it once at session open and
-        // pairing it with DECRST at disposal makes the whole session a single sync block. Terminals
-        // that honor the protocol strictly (WezTerm, Kitty, …) buffer every byte we emit until
-        // session shutdown — interactive output stalls completely. Other terminals either don't
-        // support 2026 at all or have aggressive auto-end timeouts, hiding the bug. We still gate
-        // on family identification so the capability reflects realized support.
-        if (options.EnableSynchronizedOutput && TerminalSupportsSynchronizedOutput(identification.Family))
-        {
-            applied.SynchronizedOutput = true;
-        }
+        EmitOptInEnables(in applied);
 
         if (!applied.IsEmpty)
         {
@@ -406,6 +319,128 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
 
         _applied = applied;
+    }
+
+    /// <summary>
+    /// Resolves the opt-in set to apply from <paramref name="options"/> and the identified family
+    /// (family gating, mutual-exclusion of the two mouse modes). Pure — emits no bytes.
+    /// </summary>
+    private static AppliedOptIns DecideOptIns(NegotiationOptions options, TerminalIdentification identification)
+    {
+        var applied = default(AppliedOptIns);
+
+        // Mouse: SGR encoding (1006) + button-event tracking (1002) is the standard combo for press /
+        // release / drag on every modern terminal; any-event tracking (1003) is additive. SGR-Pixels
+        // (1016) swaps cell coords for pixel coords — family-gated because non-supporting terminals
+        // don't always ignore the DECSET cleanly. The two branches are mutually exclusive.
+        if (options.EnableMouseTracking | options.EnableExtendedMouseTracking)
+        {
+            applied.ExtendedMouseTracking = options.EnableExtendedMouseTracking;
+            applied.MouseButtonTracking = true;
+            applied.MouseMotionTracking = options.EnableMouseTracking;
+            applied.SgrPixelsMouse = options.EnableSgrPixelsMouse &&
+                                     applied.ExtendedMouseTracking &&
+                                     TerminalSupportsSgrPixelsMouse(identification.Family);
+        }
+        else if (options.EnableMouseButtons | options.EnableMouseButtonTracking)
+        {
+            applied.MouseButtons = true;
+            applied.MouseButtonTracking = options.EnableMouseButtonTracking;
+        }
+
+        applied.FocusEvents = options.EnableFocusEvents;
+        applied.BracketedPaste = options.EnableBracketedPaste;
+
+        // Kitty keyboard: gate on family because pushing on a non-Kitty terminal is silently ignored,
+        // which would cause us to wrongly report the protocol as enabled.
+        if (options.EnableKittyKeyboard &&
+            TerminalSupportsKittyKeyboard(identification.Family) &&
+            options.KittyKeyboardFlags != KittyKeyboardFlags.None)
+        {
+            applied.KittyKeyboard = true;
+            applied.KittyFlags = options.KittyKeyboardFlags;
+        }
+
+        // Win32 input mode: only meaningful on the Windows console host or Windows Terminal.
+        applied.Win32InputMode = options.EnableWin32InputMode &&
+                                 TerminalSupportsWin32InputMode(identification.Family);
+
+        // Synchronized output (DECSET 2026): record realized support so per-frame consumers
+        // (FrameRenderer) can wrap each redraw — but DO NOT issue DECSET 2026 at session level (it
+        // begins a sync block that buffers output until DECRST 2026, which would stall interactive
+        // output for the whole session on terminals that honor it strictly). Hence no byte in
+        // EmitOptInEnables; it is recorded for the capability snapshot only.
+        applied.SynchronizedOutput = options.EnableSynchronizedOutput &&
+                                     TerminalSupportsSynchronizedOutput(identification.Family);
+
+        return applied;
+    }
+
+    /// <summary>
+    /// Writes the opt-in <b>enable</b> sequences for <paramref name="applied"/> to the output sink, in
+    /// the canonical order. The single producer shared by the initial apply and the screen-local
+    /// re-apply paths, so both emit byte-identical bytes. Synchronized output emits nothing (it is
+    /// wrapped per-frame, not at session level). Does not flush.
+    /// </summary>
+    private void EmitOptInEnables(in AppliedOptIns applied)
+    {
+        // Order matches the original interleaved apply path. The two mouse modes are mutually
+        // exclusive (ExtendedMouseTracking xor MouseButtons), so this single ordered run reproduces
+        // both the extended branch [SgrMouse, ButtonMotion, Motion, SgrPixels] and the basic branch
+        // [MouseButtons, ButtonMotion] byte-for-byte.
+        // @formatter:off
+        if (applied.ExtendedMouseTracking) QueueWrite(VtInputSequences.OptInSequences.EnableSgrMouse);
+        if (applied.MouseButtons)          QueueWrite(VtInputSequences.OptInSequences.EnableMouseButtons);
+        if (applied.MouseButtonTracking)   QueueWrite(VtInputSequences.OptInSequences.EnableButtonMotionMouse);
+        if (applied.MouseMotionTracking)   QueueWrite(VtInputSequences.OptInSequences.EnableMotionMouse);
+        if (applied.SgrPixelsMouse)        QueueWrite(VtInputSequences.OptInSequences.EnableSgrPixelsMouse);
+        if (applied.FocusEvents)           QueueWrite(VtInputSequences.OptInSequences.EnableFocusEvents);
+        if (applied.BracketedPaste)        QueueWrite(VtInputSequences.OptInSequences.EnableBracketedPaste);
+        if (applied.KittyKeyboard)         QueueKittyPush(applied.KittyFlags);
+        if (applied.Win32InputMode)        QueueWrite(VtInputSequences.OptInSequences.EnableWin32InputMode);
+        // @formatter:on
+    }
+
+    /// <inheritdoc cref="ITerminalNegotiator.ReapplyScreenLocalOptInsAsync"/>
+    public async ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
+    {
+        // Re-emit the opt-in enable sequences that NegotiateAsync already applied (and
+        // VerifyAppliedOptInsAsync confirmed the terminal honored), WITHOUT touching the restore
+        // accounting — _applied is unchanged, so the negotiator still tracks exactly one push and will
+        // emit exactly one matching pop at restore.
+        //
+        // Motivating case (the reason this exists): the Kitty keyboard flag stack is per-screen-buffer.
+        // Negotiation pushes the flags on whichever screen was active at open (the main screen); a
+        // consumer that then switches to the alternate screen lands on a fresh, empty Kitty stack and
+        // silently loses key-up/repeat reporting. Re-emitting here, after the screen switch, lands the
+        // push on the now-active screen. Mouse / focus / paste / Win32 DECSETs are screen-INDEPENDENT
+        // global modes, so re-issuing them is an idempotent no-op.
+        //
+        // Restore stays symmetric: the one tracked pop fires on whatever screen is active at restore
+        // time, and the extra screen-local push evaporates when that screen buffer is left (DECRST 1049
+        // discards its Kitty stack) — so no orphan push survives teardown on any spec-conforming terminal.
+        //
+        // NOT idempotent for the Kitty push: each call appends another entry to the active screen's Kitty
+        // stack (the global mouse/focus/paste/Win32 DECSETs ARE idempotent). The wiring calls this exactly
+        // once per alt-screen entry (UIApplication.InitializeFromHost, gated on _enteredAltScreen), and the
+        // matching screen-leave DECRST 1049 reclaims every entry — so the single-call contract is what
+        // keeps it leak-free. A caller that re-enters screens itself must call once per entry.
+        //
+        // Concurrency: like the startup NegotiateAsync `_applied = applied` write, this reads `_applied`
+        // OUTSIDE the lock-free signal path (EmergencyRestoreAndDispose → BuildRestoreSequence, which sets
+        // _restored then zeroes `_applied`). The _restored check below is racy with that, and a SIGINT that
+        // lands mid-emit can interleave async enables here against the direct-syscall disables there. This
+        // is the same bounded, best-effort-during-process-death tradeoff the negotiator already documents
+        // (see the lock-free note at the top of this file); the snapshot below keeps the emit self-consistent.
+        if (Volatile.Read(ref _disposed) != 0) return;
+        if (Volatile.Read(ref _negotiated) == 0) return;
+        if (Volatile.Read(ref _restored) != 0) return;
+
+        var applied = _applied; // snapshot: emit a stable set rather than re-reading the mutable field
+        if (applied.IsEmpty) return;
+
+        EmitOptInEnables(in applied);
+        await _sink.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void QueueKittyPush(KittyKeyboardFlags flags)
@@ -1327,7 +1362,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             BracketedPaste: applied.BracketedPaste,
             FocusEvents: applied.FocusEvents,
             KittyKeyboardProtocol: kittyEnabled,
-            Win32InputMode: applied.Win32InputMode);
+            Win32InputMode: applied.Win32InputMode)
+        {
+            KittyKeyboardFlags = kittyEnabled ? applied.KittyFlags : KittyKeyboardFlags.None,
+        };
 
         return new InputCapabilities(
             Mouse: mouse,
@@ -1607,7 +1645,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // Apple Terminal does not implement DECSCUSR (CSI Ps SP q) — it mis-parses the
             // space-intermediate form and prints the literal 'q' terminator. Exclude it so the
             // renderer doesn't emit cursor-shape sequences there (same rationale as ColorControl).
-            ShapeControl: modern && identification.Family is not TerminalFamily.AppleTerminal,
+            ShapeControl: modern,
             VisibilityControl: identification.Family != TerminalFamily.Unknown,
             BlinkControl: modern,
             ColorControl: modern && identification.Family is not TerminalFamily.AppleTerminal);

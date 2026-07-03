@@ -83,6 +83,26 @@ public sealed class VtSequenceClassifier
     public bool X10MouseFramingEnabled { get; set; }
 
     /// <summary>
+    /// When true, legacy 8-bit meta input is decoded: a ground-state byte with the high bit set
+    /// (<c>0xA0–0xFF</c>) is treated as <c>Alt+&lt;key&gt;</c> — exactly the equivalent of
+    /// <c>ESC (b &amp; 0x7F)</c> in the modern meta-sends-escape mode — and never fed to the printable/UTF-8
+    /// path. This mode is <b>mutually exclusive with UTF-8 input</b> (a high byte is otherwise a UTF-8
+    /// lead/continuation), so it is OFF by default and only an explicit opt-in should enable it on a terminal
+    /// known to be in 8-bit (non-UTF-8) mode. Like <see cref="X10MouseFramingEnabled"/>, this is a mode the
+    /// classifier cannot infer from bytes alone; <see cref="VtInputDevice"/> mirrors
+    /// <see cref="VtInputMode.EightBitMetaInput"/> onto it each pump iteration.
+    /// </summary>
+    /// <remarks>
+    /// Known limitation: the bare-introducer recovery (Alt+[ / Alt+] / Alt+P / Alt+O) only engages here for
+    /// the single-key-then-idle path. A sub-50&#xa0;ms <em>back-to-back</em> 8-bit-meta introducer burst
+    /// (e.g. <c>0xDD 0xDB</c> = Alt+] then Alt+[) is not recovered: the second high byte is not <c>ESC</c>, so
+    /// the parked state's ESC-interrupt leg never fires and the byte is consumed as sequence body. The 7-bit
+    /// (<c>ESC&#xa0;]</c>) form has no such gap. This is acceptable because 8-bit meta is an off-by-default
+    /// legacy mode the negotiator never auto-enables.
+    /// </remarks>
+    public bool EightBitMetaEnabled { get; set; }
+
+    /// <summary>
     /// Feed a chunk of bytes through the classifier. Tokens are dispatched to
     /// <paramref name="sink"/> synchronously as they are framed.
     /// </summary>
@@ -99,7 +119,9 @@ public sealed class VtSequenceClassifier
 
             if (_state == State.Ground)
             {
-                if (IsPrintable(b))
+                // In 8-bit-meta mode a high byte is an Alt keypress, not printable/UTF-8 — exclude it from the
+                // print run so it falls through to StepGround. (When the mode is off, high bytes are UTF-8.)
+                if (IsPrintable(b) && !(EightBitMetaEnabled && b >= VtInputSequences.EightBitMeta))
                 {
                     if (printRunStart < 0) printRunStart = i;
                     continue;
@@ -130,8 +152,39 @@ public sealed class VtSequenceClassifier
                 ResetToGround();
                 break;
 
+            // A lone Alt+<introducer> typed under meta-sends-escape — ESC [ (Alt+[), ESC ] (Alt+]),
+            // ESC P (Alt+P), ESC O (Alt+O) — parks the machine in the matching sequence state with an empty
+            // body, waiting for a continuation a single keypress never sends. The idle timeout is the signal
+            // that the wait is over: recover it as the Alt+key it was. This is the symmetric completion of
+            // the bare-ESC commit above and the StepCsiParam ESC-abort — without it the keystroke is swallowed
+            // and (for OSC) every subsequent byte is eaten as OSC body until a stray terminator unsticks the
+            // parser. OnEscDispatch(empty, introducer) is exactly the shape VtInputInterpreter maps to a clean
+            // Alt+<key> (even 'O' — an empty-intermediate 'O' final bypasses its SS3 decode). The empty-body
+            // guard is the safety net: a partially-arrived REAL sequence (private prefix / parameters / OSC
+            // body present) is a fragmented device response — dropped, never re-read as a keypress.
+            case State.CsiEntry:
+            case State.CsiParam:
+                RecoverBareIntroducerOrDrop((byte) '[', sink);
+                break;
+
+            case State.DcsEntry:
+            case State.DcsParam:
+                RecoverBareIntroducerOrDrop((byte) 'P', sink);
+                break;
+
+            case State.OscString:
+                if (_oscLength == 0)
+                    sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) ']'); // bare ESC ] = Alt+]
+                ResetToGround(); // a non-empty body was a truncated real OSC — drop it
+                break;
+
+            case State.OscEsc:
+                // ESC ] … ESC parked awaiting ST: a real OSC that began and was cut off — drop, never Alt.
+                ResetToGround();
+                break;
+
             case State.Ss3:
-                FlushSs3AsRecovery(sink);
+                sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) 'O'); // bare ESC O = Alt+O
                 ResetToGround();
                 break;
 
@@ -144,7 +197,31 @@ public sealed class VtSequenceClassifier
                 // the partial and return to Ground.
                 ResetToGround();
                 break;
+
+            default:
+                // Backstop against stranding. Any other mid-sequence state reached when 50 ms of silence says
+                // input has stopped — a truncated CSI/DCS intermediate or ignore, an EscapeIntermediate
+                // Alt+symbol we don't yet decode, or (the case this closes) a DCS that hooked but never
+                // received its ST and sits in passthrough — is an abandoned sequence. Drop it and return to
+                // Ground rather than leaving the parser parked, silently swallowing every later keystroke
+                // (the exact failure class this whole change addresses). Ground falls here too — a harmless
+                // no-op. A genuine device response arrives as a sub-50 ms burst, so this never truncates one.
+                ResetToGround();
+                break;
         }
+    }
+
+    // Recover a bare ESC-introducer state parked on the idle timeout as Alt+<introducer> — but only when
+    // nothing followed the introducer; a private prefix / parameters / intermediates mean real sequence
+    // bytes arrived (a fragmented device response), so the partial is dropped rather than mis-keyed. (A
+    // CsiParam/DcsParam state is only reachable once a body byte arrived, so its guard always drops; it is
+    // included for symmetry with the StepCsiParam abort gate.)
+    private void RecoverBareIntroducerOrDrop(byte introducer, IVtSequenceTokenSink sink)
+    {
+        if (_privatePrefix == 0 && _parameterLength == 0 && _intermediateLength == 0)
+            sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, introducer);
+
+        ResetToGround();
     }
 
     /// <summary>
@@ -266,12 +343,23 @@ public sealed class VtSequenceClassifier
         {
             ResetSequenceBuffers();
             _state = State.Escape;
+            return;
         }
-        else
+
+        // Legacy 8-bit meta input (opt-in; see EightBitMetaEnabled): Alt+<key> arrives as (key | 0x80).
+        // Decode it as the equivalent ESC + (b & 0x7F), reusing the meta-sends-escape path verbatim so the two
+        // forms are indistinguishable downstream. Gated at >= 0xA0 so the stripped byte is a printable/DEL key,
+        // never a C0 control; 0x80–0x9F (8-bit C1 controls) fall through to OnExecute below.
+        if (EightBitMetaEnabled && b >= 0xA0)
         {
-            // C0 control or DEL.
-            sink.OnExecute(b);
+            ResetSequenceBuffers();
+            _state = State.Escape;
+            StepEscape((byte) (b & 0x7F), sink);
+            return;
         }
+
+        // C0 control or DEL.
+        sink.OnExecute(b);
     }
 
     // ---- Escape ----
@@ -360,9 +448,10 @@ public sealed class VtSequenceClassifier
 
         if (b == VtInputSequences.Escape)
         {
-            // A new ESC interrupts the SS3 — recover the partial as bare-ESC + 'O' printable
-            // and re-enter Escape state for the new sequence.
-            FlushSs3AsRecovery(sink);
+            // A new ESC interrupts the SS3 — the partial ESC O was Alt+O (mirroring StepCsiParam's Alt+[
+            // recovery), so surface it and re-enter Escape state for the interrupting sequence. Identical to
+            // the Flush() SS3 leg, so ESC O on idle and ESC O ESC <key> agree.
+            sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) 'O');
             ResetSequenceBuffers();
             _state = State.Escape;
             return;
@@ -370,16 +459,6 @@ public sealed class VtSequenceClassifier
 
         // C0 control inside SS3 — execute and stay (rare).
         if (b < 0x20) sink.OnExecute(b);
-    }
-
-    private static void FlushSs3AsRecovery(IVtSequenceTokenSink sink)
-    {
-        // Emit the held ESC as a bare-ESC dispatch and the trigger 'O' as a print so the
-        // user's two keystrokes are preserved when an SS3 sequence never completes.
-        sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
-        Span<byte> oByte = stackalloc byte[1];
-        oByte[0] = (byte) 'O';
-        sink.OnPrint(oByte);
     }
 
     // ---- CSI ----
@@ -418,6 +497,21 @@ public sealed class VtSequenceClassifier
         if (b is >= 0x40 and <= 0x7E)
         {
             DispatchCsi(b, sink);
+            return;
+        }
+
+        // ESC aborts the in-flight CSI (VT500: ESC re-enters Escape from anywhere). A *bare* `ESC [` — nothing
+        // accumulated after the introducer — was actually Alt+[ under meta-sends-escape (e.g. the user pressed
+        // Alt+[ then another Alt key), so surface it; a CSI that already carried a private prefix / parameters /
+        // intermediates was a real (now-aborted) sequence and is discarded. Either way the buffers are reset so
+        // the aborted sequence cannot leak its parameters into the next one (e.g. a following plain Up-arrow).
+        if (b == VtInputSequences.Escape)
+        {
+            if (_privatePrefix == 0 && _parameterLength == 0 && _intermediateLength == 0)
+                sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) '[');
+
+            ResetSequenceBuffers();
+            _state = State.Escape;
             return;
         }
 
@@ -474,6 +568,18 @@ public sealed class VtSequenceClassifier
     {
         if (b == VtInputSequences.Bel)
         {
+            // A bare `ESC ]` terminated by BEL was Alt+] then Ctrl+G (BEL = 0x07), not an empty OSC — no
+            // terminal emits a body-less OSC. Surface the Alt+] (matching the ESC-interrupt and idle-Flush
+            // empty-body legs, so all three OSC exits agree) and let the BEL through as its own control. A
+            // non-empty body is a genuine OSC and dispatches normally.
+            if (_oscLength == 0)
+            {
+                sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) ']');
+                ResetToGround();
+                sink.OnExecute(b); // the BEL is Ctrl+G in its own right
+                return;
+            }
+
             sink.OnOscDispatch(OscBodySpan);
             ResetToGround();
             return;
@@ -481,6 +587,21 @@ public sealed class VtSequenceClassifier
 
         if (b == VtInputSequences.Escape)
         {
+            // A bare `ESC ]` (no OSC body yet) interrupted by another ESC was Alt+] typed under
+            // meta-sends-escape — e.g. Alt+] then a second Alt key, pressed fast enough to beat the idle
+            // timer. Surface it and re-enter Escape for the interrupting sequence: the symmetric twin of
+            // StepCsiParam's Alt+[ abort and the Flush() OscString recovery, so Alt+] is reported whether it
+            // arrives alone-then-idle or back-to-back with another key. A real OSC always carries a command
+            // byte right after `]`, so an empty body here is never a genuine sequence; only with a body
+            // present is this ESC the lead of an ST (`ESC \`) terminator.
+            if (_oscLength == 0)
+            {
+                sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) ']');
+                ResetSequenceBuffers();
+                _state = State.Escape;
+                return;
+            }
+
             _state = State.OscEsc;
             return;
         }
@@ -540,6 +661,22 @@ public sealed class VtSequenceClassifier
         if (b is >= 0x40 and <= 0x7E)
         {
             HookDcs(b, sink);
+            return;
+        }
+
+        // ESC aborts the in-flight DCS (VT500: ESC re-enters Escape from anywhere). A *bare* `ESC P` —
+        // nothing accumulated after the introducer — was Alt+P under meta-sends-escape, so surface it; a DCS
+        // that already carried a prefix / parameters / intermediates is a real (now-truncated) sequence and is
+        // discarded. Either way re-enter Escape so the interrupting sequence parses cleanly. A real DCS never
+        // carries an ESC in its parameter phase — its only ESC is the ST terminator, reached from
+        // DcsPassthrough — so this branch is unambiguous. Symmetric with StepCsiParam / StepOscString.
+        if (b == VtInputSequences.Escape)
+        {
+            if (_privatePrefix == 0 && _parameterLength == 0 && _intermediateLength == 0)
+                sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, (byte) 'P');
+
+            ResetSequenceBuffers();
+            _state = State.Escape;
             return;
         }
 

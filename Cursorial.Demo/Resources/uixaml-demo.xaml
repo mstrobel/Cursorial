@@ -1,0 +1,72 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           Background="{DynamicResource {x:Static ThemeKeys.WindowBackground}}"
+           TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}">
+
+    <!-- The whole window is declarative: a control template, themed buttons + toggles, a
+         {Binding}-driven status line, access-key mnemonics, and a ScrollViewer — loaded from this one
+         embedded .xaml string at runtime by Cursorial.UI.Xaml (the P6 runtime loader). It carries NO
+         explicit colors: every control draws from the cell-faithful default theme (§11.8a), so 'd'
+         (dark/light) and 't' (color tier) re-skin the whole tree live. -->
+
+    <DockPanel.Resources>
+        <!-- A chrome ControlTemplate whose part binds to the templated parent via {TemplateBinding}. -->
+        <ControlTemplate x:Key="ChromeTemplate">
+            <Border x:Name="PART_Chrome"
+                    Background="{TemplateBinding Background}"
+                    BorderPen="Light"/>
+        </ControlTemplate>
+    </DockPanel.Resources>
+
+    <!-- Header band (docked top). -->
+    <Border DockPanel.Dock="Top" Height="1"
+            Background="{DynamicResource {x:Static ThemeKeys.StatusBarBackground}}">
+        <TextBlock Text=" Cursorial.UI — Phase 6: declarative UI loaded from XAML"/>
+        <!--Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"-->
+    </Border>
+
+    <!-- Status band (docked bottom) — its text is a {Binding} onto the demo view-model. -->
+    <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource {x:Static ThemeKeys.StatusBarBackground}}">
+        <TextBlock x:Name="Status" Text="{Binding Status}"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+    </Border>
+
+    <!-- The control panel, inside a scroller (LastChildFill). -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Border Title=" Settings " TitleForeground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}" Padding="1">
+            <StackPanel Spacing="1" Margin="1">
+
+                <TextBlock Text="Buttons (Tab focus, Space/Enter or Alt-mnemonic activates):"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                <StackPanel Orientation="Horizontal" Spacing="2" Margin="1,0">
+                    <Button x:Name="Ok"     Content="_OK"/>
+                    <Button x:Name="Cancel" Content="_Cancel"/>
+                    <Button x:Name="Apply"  Content="_Apply"/>
+                </StackPanel>
+
+                <TextBlock Text="Check boxes (Space / click toggles):"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                <StackPanel Margin="2,0">
+                    <CheckBox x:Name="Airplane"    Content=" Airplane mode"/>
+                    <CheckBox x:Name="Wifi"        Content=" Wi-Fi"  IsChecked="true"/>
+                    <CheckBox x:Name="StatusCheck" Content=" Status" IsChecked="false" IsThreeState="true"/>
+                </StackPanel>
+
+                <TextBlock Text="Radio buttons (one group; arrows move + check):"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                <StackPanel Margin="2,0">
+                    <RadioButton x:Name="Low"  Content=" Low"    GroupName="quality"/>
+                    <RadioButton x:Name="Med"  Content=" Medium" GroupName="quality" IsChecked="true"/>
+                    <RadioButton x:Name="High" Content=" High"   GroupName="quality"/>
+                </StackPanel>
+
+                <TextBlock Text="Bound text (the {Binding} on the view-model's Caption):"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                <TextBlock x:Name="Live" Text="{Binding Caption}" Margin="2,0"/>
+
+                <TextBlock Text="Keys: t = cycle color tier · d = flip dark/light · Alt = access keys · q = quit"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</DockPanel>

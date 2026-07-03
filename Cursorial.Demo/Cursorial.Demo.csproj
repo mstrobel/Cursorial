@@ -6,17 +6,41 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>Cursorial.Demo</RootNamespace>
+        <!-- The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
+             metadata provider available rather than fail-fast. The warnings it produces are expected. -->
+        <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
+        <!-- Reflection over the framework types (XAML activation via GetConstructor, brush/color tables,
+             binding accessors) needs those types + members PRESERVED. Full trimming removes e.g.
+             StackPanel's parameterless ctor (nothing references it statically) → CUR3001 at runtime. Partial
+             trim mode keeps non-opted-in assemblies (the Cursorial framework + this demo) whole; only the BCL
+             is trimmed. Larger binary, but the reflection-based demo runs. (The trim-clean route is the X4
+             generated provider / X5 lowering, not this reflection build.) -->
+        <TrimMode>partial</TrimMode>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
     </ItemGroup>
 
     <ItemGroup>
         <EmbeddedResource Include="**/*.png">
             <LogicalName>$([System.String]::new('%(RelativeDir)').Replace('\','/'))%(FileName)%(Extension)</LogicalName>
         </EmbeddedResource>
+        <!-- The uixaml demo loads its UI from this embedded .xaml at runtime. No LogicalName override, so
+             the manifest name is the default <RootNamespace>.<dotted path>:
+             Cursorial.Demo.Resources.uixaml-demo.xaml. -->
+        <EmbeddedResource Include="Resources/*.xaml" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <RuntimeHostConfigurationOption Include="Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported"
+                                        Value="$(CursorialXamlReflectionProvider)" Trim="true" />
     </ItemGroup>
 </Project>

@@ -1,3 +1,5 @@
+// ReSharper disable CheckNamespace
+
 namespace Cursorial.Drawing;
 
 /// <summary>Where a panel title sits along the top border edge.</summary>

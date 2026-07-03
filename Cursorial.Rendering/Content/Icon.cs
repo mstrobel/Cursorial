@@ -1,7 +1,6 @@
 using System.Reflection;
 
 using Cursorial.Output;
-using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Imaging;
 
 namespace Cursorial.Rendering.Content;

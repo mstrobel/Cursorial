@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — terminal DataGrid (DevExpress-style)</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --bar:#3d59a1; --bar-track:#1f2335; --rowalt:#1c1e2c;
+    --heat-hi:#2d4a2a; --heat-mid:#3a3a28; --heat-lo:#42232c;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --bar:#a9b1d6; --bar-track:#dcdde2; --rowalt:#dededf;
+    --heat-hi:#cfe0c4; --heat-mid:#ece2c0; --heat-lo:#e6c9cf;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1120px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:28px 0 10px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:8px;max-width:820px;line-height:1.6;}
+
+  /* grid frame */
+  .grid{width:max-content;max-width:100%;background:var(--panel);}
+  .grow{display:flex;}
+  .cell{padding:0 10px;white-space:nowrap;overflow:hidden;}
+  /* column widths */
+  .c-ord{width:11ch;} .c-reg{width:9ch;} .c-rep{width:12ch;} .c-date{width:13ch;}
+  .c-amt{width:21ch;} .c-mar{width:11ch;} .c-stat{width:14ch;}
+
+  /* header */
+  .ghead .grow{background:var(--surface);color:var(--accent);}
+  .ghead .cell{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;}
+  .ghead .cell:hover{background:var(--hover);}
+  .ghead .sortable .lbl{color:var(--accent);}
+  .ghead .sort{color:var(--accent-2);}
+  .ghead .filt{color:var(--muted);}
+  .ghead .filt.active{color:var(--amber);}
+
+  /* auto-filter row */
+  .filterrow .grow{background:var(--bg);color:var(--text-dim);}
+  .filterrow .cell{display:flex;align-items:center;gap:6px;}
+  .filterrow .fx{color:var(--muted);}
+  .filterrow .fval{color:var(--text);}
+  .filterrow .fplace{color:var(--muted);}
+  .filterrow .well{background:var(--well);padding:0 4px;}
+
+  /* data rows */
+  .gbody .grow{color:var(--text-dim);}
+  .gbody .grow:nth-child(even){background:var(--rowalt);}
+  .gbody .grow:hover{background:var(--hover);color:var(--text);}
+  .gbody .grow.sel{background:var(--sel);color:var(--text);}
+  .gbody .grow.sel .cell{color:var(--text);}
+  .gbody .focuscell{background:var(--well);box-shadow:none;color:var(--text);}
+
+  /* data bar in Amount */
+  .amtcell{display:flex;align-items:center;gap:8px;}
+  .amtval{color:var(--text);width:8ch;text-align:right;}
+  .bar{letter-spacing:0;}
+  .bar .f{color:var(--bar);}
+  .bar .e{color:var(--bar-track);}
+
+  /* margin badge */
+  .mar-hi{color:var(--green);} .mar-mid{color:var(--amber);} .mar-lo{color:var(--red);}
+
+  /* status pill via text color */
+  .st-ship{color:var(--green);} .st-proc{color:var(--accent-2);}
+  .st-hold{color:var(--amber);} .st-canc{color:var(--muted);}
+
+  /* heat background variant (used on Margin in formatting demo) */
+  .heat-hi{background:var(--heat-hi);color:var(--text);}
+  .heat-mid{background:var(--heat-mid);color:var(--text);}
+  .heat-lo{background:var(--heat-lo);color:var(--text);}
+
+  /* summary footer */
+  .gfoot .grow{background:var(--surface);color:var(--text);}
+  .gfoot .cell{color:var(--text);}
+  .gfoot .slabel{color:var(--muted);}
+  .gfoot .sval{color:var(--accent-2);}
+
+  /* group panel */
+  .grouppanel{background:var(--bg);color:var(--muted);padding:1px 10px;display:flex;align-items:center;gap:8px;}
+  .grouppanel .chip{background:var(--surface);color:var(--text);padding:0 8px;display:inline-flex;gap:6px;align-items:center;}
+  .grouppanel .chip .x{color:var(--muted);}
+  .grouppanel .chip .sort{color:var(--accent-2);}
+  .grouppanel .ph{color:var(--muted);}
+
+  /* group rows */
+  .grouprow{background:var(--panel);color:var(--text);display:flex;align-items:center;gap:8px;padding:0 8px;cursor:pointer;}
+  .grouprow .tw{color:var(--accent);}
+  .grouprow .gk{color:var(--text);}
+  .grouprow .gcount{color:var(--muted);}
+  .grouprow .gsum{margin-left:auto;color:var(--accent-2);}
+  .grouprow.lvl2{background:var(--bg);padding-left:22px;}
+  .indent{display:inline-block;width:3ch;}
+
+  /* filter dropdown popup */
+  .fpop{width:max-content;background:var(--panel);}
+  .fpop .fphead{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;justify-content:space-between;gap:18px;}
+  .fpop .frow{display:flex;gap:8px;padding:0 10px;color:var(--text);cursor:pointer;}
+  .fpop .frow:hover{background:var(--hover);}
+  .fpop .chk{width:3ch;display:inline-block;text-align:center;}
+  .fpop .chk.on{color:var(--green);}
+  .fpop .chk.off{color:transparent;}
+  .fpop .chk.tri{color:var(--amber);}
+  .fpop .fsearch{background:var(--well);color:var(--muted);padding:0 10px;margin:2px 6px;display:flex;gap:6px;}
+  .fpop .fsep{border-top:1px solid var(--surface);margin:3px 0;}
+  .fpop .fbtns{display:flex;gap:0;padding:2px 6px;}
+  .fpop .fbtn{padding:0 10px;cursor:pointer;}
+  .fpop .fbtn.ok{background:var(--accent);color:var(--on-accent);}
+  .fpop .fbtn.cancel{color:var(--muted);}
+  .fpop .fbtn.cancel:hover{background:var(--hover);color:var(--text);}
+
+  /* conditional-format rules manager */
+  .cfmgr{width:max-content;background:var(--panel);}
+  .cfmgr .cfhead{background:var(--surface);color:var(--muted);padding:0 10px;}
+  .cfmgr .cfrow{display:flex;gap:0;color:var(--text);}
+  .cfmgr .cfrow:hover{background:var(--hover);}
+  .cfmgr .cfrow.sel{background:var(--sel);}
+  .cfmgr .cfc{padding:0 10px;white-space:nowrap;}
+  .cf-col{width:11ch;} .cf-cond{width:20ch;} .cf-style{width:18ch;} .cf-on{width:5ch;text-align:center;}
+  .cfmgr .swatch-bar .f{color:var(--bar);} .cfmgr .swatch-bar .e{color:var(--bar-track);}
+  .cfmgr .toolbar{display:flex;gap:0;background:var(--bg);padding:1px 6px;color:var(--muted);}
+  .cfmgr .toolbar .tb{padding:0 8px;cursor:pointer;}
+  .cfmgr .toolbar .tb:hover{background:var(--hover);color:var(--text);}
+  .cfmgr .on-y{color:var(--green);} .cfmgr .on-n{color:var(--muted);}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  /* row indicator cell (edit/new markers) */
+  .c-ind{width:3ch;text-align:center;color:var(--muted);}
+  .ind-edit{color:var(--amber);} .ind-new{color:var(--green);} .ind-cur{color:var(--accent);}
+
+  /* inline editors */
+  .editrow .grow{background:var(--well);}
+  .ed{display:flex;align-items:center;gap:6px;padding:0 8px;}
+  .ed-text{background:var(--bg);color:var(--text);padding:0 4px;width:100%;}
+.ed-text .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .ed-text .selrange{background:var(--sel);color:var(--text);}
+  .ed-combo{background:var(--bg);color:var(--text);padding:0 4px;width:100%;display:flex;justify-content:space-between;}
+  .ed-combo .dd{color:var(--accent);}
+  .ed-spin{background:var(--bg);color:var(--text);padding:0 4px;width:100%;display:flex;justify-content:space-between;align-items:center;}
+  .ed-spin .spinbtns{color:var(--accent);}
+  .ed-date{background:var(--bg);color:var(--text);padding:0 4px;width:100%;display:flex;justify-content:space-between;}
+  .ed-date .cal{color:var(--accent);}
+  .ed-lookup{background:var(--bg);padding:0 4px;width:100%;display:flex;justify-content:space-between;}
+  .ed-lookup .dd{color:var(--accent);}
+  .ed-validating{box-shadow:none;}
+  .ed-err{color:var(--red);}
+
+  /* open combo popup under an editor */
+  .edpop{width:max-content;background:var(--panel);position:relative;z-index:2;}
+  .edpop .eo{padding:0 10px;color:var(--text);cursor:pointer;}
+  .edpop .eo.cur{background:var(--sel);}
+  .edpop .eo.hov{background:var(--hover);}
+  .edpop .eo .g{margin-right:6px;}
+
+  /* edit row action hint */
+  .editbar{display:flex;gap:0;background:var(--surface);color:var(--muted);padding:0 8px;width:max-content;}
+  .editbar .k{color:var(--accent);} .editbar .seg{padding:0 8px;}
+
+  /* new-row template */
+  .newrow .grow{background:var(--bg);color:var(--muted);}
+  .newrow .cell{color:var(--muted);}
+  .newrow .nplace{color:var(--muted);font-style:normal;}
+
+  /* column chooser flyout */
+  .chooser{width:max-content;background:var(--panel);}
+  .chooser .chead{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;justify-content:space-between;gap:18px;}
+  .chooser .cbody{padding:4px 8px;display:flex;flex-direction:column;gap:2px;min-width:24ch;}
+  .chooser .colchip{background:var(--surface);color:var(--text);padding:0 8px;display:flex;align-items:center;gap:8px;cursor:grab;}
+  .chooser .colchip .grip{color:var(--muted);}
+  .chooser .colchip.drag{background:var(--sel);color:var(--text);}
+  .chooser .colchip:hover{background:var(--hover);}
+  .chooser .cprompt{color:var(--muted);padding:3px 2px 1px;font-size:11px;}
+  .chooser .cfoot{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;gap:0;}
+  .chooser .cfoot .cb{padding:0 8px;cursor:pointer;}
+  .chooser .cfoot .cb:hover{background:var(--hover);color:var(--text);}
+
+  /* header during drag (drop indicators) */
+  .draghdr .grow{background:var(--surface);color:var(--accent);}
+  .draghdr .cell{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  .draghdr .drop{color:var(--accent-2);padding:0;width:1ch;}
+  .draghdr .ghostcol{background:var(--sel);color:var(--text);}
+  .draghdr .floatcol{background:var(--hover);color:var(--text);opacity:.9;}
+
+  /* summary quick-menu (context checklist) */
+  .summenu{width:max-content;background:var(--panel);}
+  .summenu .smhead{background:var(--surface);color:var(--muted);padding:0 10px;}
+  .summenu .smrow{display:flex;gap:8px;padding:0 10px;color:var(--text);cursor:pointer;}
+  .summenu .smrow:hover{background:var(--hover);}
+  .summenu .smrow.dis{color:var(--muted);}
+  .summenu .chk{width:2ch;display:inline-block;text-align:center;}
+  .summenu .chk.on{color:var(--green);}
+  .summenu .chk.off{color:transparent;}
+  .summenu .smval{margin-left:auto;color:var(--accent-2);padding-left:18px;}
+  .summenu .smsep{border-top:1px solid var(--surface);margin:3px 0;}
+  .summenu .smrow .g{color:var(--accent-2);width:2ch;display:inline-block;text-align:center;}
+  .summenu .toggle-opt{display:flex;gap:8px;padding:0 10px;color:var(--text);cursor:pointer;}
+  .summenu .toggle-opt .radio{width:2ch;display:inline-block;text-align:center;color:var(--accent);}
+  .summenu .toggle-opt.off .radio{color:var(--muted);}
+  .summenu .toggle-opt:hover{background:var(--hover);}
+
+  /* editor dialog */
+  .dlg{width:max-content;background:var(--panel);}
+  .dlg .dtitle{background:var(--surface);color:var(--text);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .dlg .dtitle .x{color:var(--muted);cursor:pointer;}
+  .dlg .dbody{padding:5px 12px;display:flex;flex-direction:column;gap:4px;min-width:44ch;}
+  .dlg .field{display:flex;align-items:center;gap:10px;}
+  .dlg .flabel{color:var(--muted);width:13ch;display:inline-block;}
+  .dlg .fctl{background:var(--bg);color:var(--text);padding:0 6px;display:flex;justify-content:space-between;min-width:20ch;}
+  .dlg .fctl .dd{color:var(--accent);}
+  .dlg .fctl.focus{background:var(--well);}
+.dlg .fctl .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .dlg .seg-toggle{display:flex;gap:0;}
+  .dlg .seg-toggle .opt{padding:0 10px;color:var(--text-dim);background:var(--bg);cursor:pointer;}
+  .dlg .seg-toggle .opt.on{background:var(--accent);color:var(--on-accent);}
+  .dlg .preview{background:var(--bg);color:var(--muted);padding:1px 8px;margin-top:2px;display:flex;gap:10px;}
+  .dlg .preview .pv{color:var(--accent-2);}
+  .dlg .dsep{border-top:1px solid var(--surface);margin:4px 0 3px;}
+  .dlg .dbtns{display:flex;gap:0;padding:0 8px 3px;justify-content:flex-end;}
+  .dlg .dbtn{padding:0 12px;cursor:pointer;}
+  .dlg .dbtn.ok{background:var(--accent);color:var(--on-accent);}
+  .dlg .dbtn.cancel{color:var(--muted);}
+  .dlg .dbtn.cancel:hover{background:var(--hover);color:var(--text);}
+  .dlg .hint{color:var(--muted);font-size:11px;}
+
+  /* stacked summary footer */
+  .gfoot .stacked{display:flex;flex-direction:column;line-height:1.25;padding-top:1px;padding-bottom:1px;}
+  .gfoot .stacked .srow{display:flex;gap:6px;}
+  .gfoot .stacked .srow .k{color:var(--muted);}
+  .gfoot .stacked .srow .v{color:var(--accent-2);}
+  .gfoot .grow.tall{align-items:stretch;}
+
+  /* inline group-summary alignment demo */
+  .alignlabel{color:var(--muted);font-size:11px;margin:6px 0 2px;}
+
+  /* add/edit rule dialog — two-pane */
+  .ruledlg{width:max-content;background:var(--panel);}
+  .ruledlg .dtitle{background:var(--surface);color:var(--text);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .ruledlg .dtitle .x{color:var(--muted);cursor:pointer;}
+  .ruledlg .two{display:flex;}
+  .ruledlg .typelist{background:var(--bg);min-width:20ch;display:flex;flex-direction:column;padding:3px 0;}
+  .ruledlg .typelist .ti{display:flex;gap:8px;padding:0 10px;color:var(--text);cursor:pointer;}
+  .ruledlg .typelist .ti .g{color:var(--accent-2);width:2ch;display:inline-block;text-align:center;}
+  .ruledlg .typelist .ti:hover{background:var(--hover);}
+  .ruledlg .typelist .ti.sel{background:var(--sel);color:var(--text);}
+  .ruledlg .typelist .tsep{border-top:1px solid var(--surface);margin:3px 8px;}
+  .ruledlg .config{padding:5px 12px;display:flex;flex-direction:column;gap:4px;min-width:50ch;}
+  .ruledlg .ctitle{color:var(--muted);}
+  .ruledlg .field{display:flex;align-items:center;gap:10px;}
+  .ruledlg .flabel{color:var(--muted);width:14ch;display:inline-block;}
+  .ruledlg .fctl{background:var(--bg);color:var(--text);padding:0 6px;display:flex;justify-content:space-between;min-width:18ch;}
+  .ruledlg .fctl.focus{background:var(--well);}
+  .ruledlg .fctl .dd{color:var(--accent);}
+.ruledlg .fctl .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .ruledlg .seg-toggle{display:flex;}
+  .ruledlg .seg-toggle .opt{padding:0 9px;color:var(--text-dim);background:var(--bg);cursor:pointer;}
+  .ruledlg .seg-toggle .opt.on{background:var(--accent);color:var(--on-accent);}
+  /* swatches */
+  .sw-bar .f{color:var(--bar);} .sw-bar .e{color:var(--bar-track);}
+  .grad{letter-spacing:0;}
+  .grad .lo{color:var(--red);} .grad .m1{color:var(--amber);} .grad .hi{color:var(--green);}
+  .stopbox{display:flex;align-items:center;gap:6px;}
+  .stopdot.lo{color:var(--red);} .stopdot.mid{color:var(--amber);} .stopdot.hi{color:var(--green);}
+  .iconset-row{display:flex;gap:10px;}
+  .iconset-row .ic{display:flex;gap:5px;align-items:center;}
+  .iconset-row .ic .up{color:var(--green);} .iconset-row .ic .flat{color:var(--amber);} .iconset-row .ic .dn{color:var(--red);}
+  .ruledlg .preview{background:var(--bg);padding:1px 8px;margin-top:3px;display:flex;gap:10px;align-items:center;}
+  .ruledlg .preview .plabel{color:var(--muted);}
+  .ruledlg .applyto{color:var(--muted);font-size:11px;}
+  .ruledlg .dsep{border-top:1px solid var(--surface);margin:4px 0 3px;}
+  .ruledlg .dbtns{display:flex;gap:0;padding:0 8px 4px;justify-content:flex-end;}
+  .ruledlg .dbtn{padding:0 12px;cursor:pointer;}
+  .ruledlg .dbtn.ok{background:var(--accent);color:var(--on-accent);}
+  .ruledlg .dbtn.cancel{color:var(--muted);}
+  .ruledlg .dbtn.cancel:hover{background:var(--hover);color:var(--text);}
+
+  /* syntax tokens (color + attributes) */
+  .code{font-family:inherit;white-space:pre-wrap;}
+  .t-field{color:var(--accent-2);text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:2px;}
+  .t-fn{color:var(--accent);font-weight:bold;}
+  .t-kw{color:var(--purple);font-weight:bold;}
+  .t-op{color:var(--muted);}
+  .t-num{color:var(--green);}
+  .t-str{color:var(--amber);}
+  .t-param{color:var(--accent-2);font-style:italic;}
+  .t-cm{color:var(--muted);font-style:italic;opacity:.8;}
+  .t-err{color:var(--red);text-decoration:underline wavy var(--red);text-underline-offset:2px;}
+
+  /* expression / filter text editor */
+  .expred{width:max-content;max-width:100%;background:var(--panel);}
+  .expred .ehead{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .expred .ehead .x{color:var(--muted);cursor:pointer;}
+  .expred .editor{display:flex;background:var(--well);}
+  .expred .gutter{color:var(--muted);background:var(--bg);padding:0 6px;text-align:right;user-select:none;}
+  .expred .gutter div{line-height:1.5;}
+  .expred .lines{padding:0 8px;color:var(--text);min-width:54ch;}
+  .expred .lines .ln{line-height:1.5;}
+.expred .lines .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .expred .lines .selrange{background:var(--sel);color:var(--text);}
+  /* intellisense / autocomplete popup */
+  .acpop{background:var(--panel);width:max-content;margin-left:8ch;}
+  .acpop . achead{background:var(--surface);color:var(--muted);padding:0 8px;}
+  .acpop .acrow{display:flex;gap:8px;padding:0 8px;color:var(--text);cursor:pointer;}
+  .acpop .acrow .k{width:2ch;text-align:center;}
+  .acpop .acrow .k.fn{color:var(--accent);} .acpop .acrow .k.fld{color:var(--accent-2);} .acpop .acrow .k.kw{color:var(--purple);}
+  .acpop .acrow .meta{margin-left:auto;color:var(--muted);padding-left:18px;}
+  .acpop .acrow.sel{background:var(--sel);}
+  .acpop .acrow.sel .meta{color:var(--text-dim);}
+  /* validation strip */
+  .vstrip{display:flex;align-items:center;gap:8px;padding:0 10px;}
+  .vstrip.ok{background:var(--bg);color:var(--green);}
+  .vstrip.err{background:var(--bg);color:var(--red);}
+  .vstrip .vg{font-weight:bold;}
+  .expred .etoolbar{display:flex;gap:0;background:var(--bg);color:var(--muted);padding:0 6px;}
+  .expred .etoolbar .tb{padding:0 8px;cursor:pointer;}
+  .expred .etoolbar .tb:hover{background:var(--hover);color:var(--text);}
+  .expred .ebtns{display:flex;gap:0;padding:3px 8px;justify-content:flex-end;background:var(--panel);}
+  .expred .ebtn{padding:0 12px;cursor:pointer;}
+  .expred .ebtn.ok{background:var(--accent);color:var(--on-accent);}
+  .expred .ebtn.cancel{color:var(--muted);}
+  .expred .ebtn.cancel:hover{background:var(--hover);color:var(--text);}
+
+  /* filter builder (tree) */
+  .fbuild{width:max-content;max-width:100%;background:var(--panel);}
+  .fbuild .fbhead{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;justify-content:space-between;gap:24px;}
+  .fbuild .tree{padding:3px 8px;}
+  .fbuild .node{display:flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.55;}
+  .fbuild .conn{color:var(--faint);}
+  .fbuild .grouptag{color:var(--purple);font-weight:bold;cursor:pointer;}
+  .fbuild .grouptag .dd{color:var(--muted);font-weight:normal;}
+  .fbuild .addbtn{color:var(--green);cursor:pointer;}
+  .fbuild .delbtn{color:var(--muted);cursor:pointer;}
+  .fbuild .field{color:var(--accent-2);text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:2px;cursor:pointer;}
+  .fbuild .cmp{color:var(--muted);cursor:pointer;}
+  .fbuild .val{color:var(--amber);cursor:pointer;}
+  .fbuild .valnum{color:var(--green);cursor:pointer;}
+  .fbuild .node.sel{background:var(--sel);}
+  .fbuild .hint{color:var(--muted);font-size:11px;padding:2px 2px 0;}
+  .fbuild .fbfoot{background:var(--surface);color:var(--muted);padding:0 10px;display:flex;gap:0;}
+  .fbuild .fbfoot .fb2{padding:0 8px;cursor:pointer;} .fbuild .fbfoot .fb2:hover{background:var(--hover);color:var(--text);}
+  .fbuild .ind{display:inline-block;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .ed-text .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .dlg .fctl .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .ruledlg .fctl .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .expred .lines .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — terminal DataGrid — 120×40</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+
+  <div class="legend">
+    <b>DevExpress-style grid → cells:</b> sortable headers carry a <b>▲/▼</b> sort glyph and a <b>▾</b> filter dropdown affordance ·
+    the auto-filter row sits under the header · Amount uses <b>data-bar</b> fills, Margin uses <b>colored-text + ▲●▼ badges</b> ·
+    summaries band the footer · grouping, the filter popup, the group panel, and the rules manager follow below.
+  </div>
+
+  <h2 class="sec">▸ Flat grid — sort, auto-filter row, conditional formatting, summary band</h2>
+  <div class="grid">
+    <!-- header -->
+    <div class="ghead">
+      <div class="grow">
+        <div class="cell c-ord sortable"><span class="lbl">Order</span><span><span class="filt">▾</span></span></div>
+        <div class="cell c-reg sortable"><span class="lbl">Region</span><span><span class="filt active">▾</span></span></div>
+        <div class="cell c-rep sortable"><span class="lbl">Rep</span><span><span class="filt">▾</span></span></div>
+        <div class="cell c-date sortable"><span class="lbl">Date</span><span><span class="sort">▲</span><span class="filt">▾</span></span></div>
+        <div class="cell c-amt sortable"><span class="lbl">Amount</span><span><span class="sort">▼</span><span class="filt">▾</span></span></div>
+        <div class="cell c-mar sortable"><span class="lbl">Margin</span><span><span class="filt">▾</span></span></div>
+        <div class="cell c-stat sortable"><span class="lbl">Status</span><span><span class="filt active">▾</span></span></div>
+      </div>
+    </div>
+    <!-- auto-filter row -->
+    <div class="filterrow">
+      <div class="grow">
+        <div class="cell c-ord"><span class="fx">⌕</span><span class="fplace">SO-…</span></div>
+        <div class="cell c-reg"><span class="fval well">East</span><span class="fx">▾</span></div>
+        <div class="cell c-rep"><span class="fplace">(All)</span><span class="fx">▾</span></div>
+        <div class="cell c-date"><span class="fplace">≥ date</span></div>
+        <div class="cell c-amt"><span class="fx">&gt;</span><span class="fval well">10,000</span></div>
+        <div class="cell c-mar"><span class="fplace">(All)</span></div>
+        <div class="cell c-stat"><span class="fval well">Shipped</span><span class="fx">▾</span></div>
+      </div>
+    </div>
+    <!-- body -->
+    <div class="gbody">
+      <!-- SO-1042 -->
+      <div class="grow">
+        <div class="cell c-ord">SO-1042</div><div class="cell c-reg">East</div><div class="cell c-rep">A. Chen</div><div class="cell c-date">2026-05-03</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$12,450</span><span class="bar"><span class="f">███</span><span class="e">░░░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 38%</span></div><div class="cell c-stat"><span class="st-ship">● Shipped</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1044</div><div class="cell c-reg">East</div><div class="cell c-rep">A. Chen</div><div class="cell c-date">2026-05-06</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$31,900</span><span class="bar"><span class="f">████████</span><span class="e">░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 41%</span></div><div class="cell c-stat"><span class="st-proc">◆ Processing</span></div>
+      </div>
+      <div class="grow sel">
+        <div class="cell c-ord">SO-1046</div><div class="cell c-reg">South</div><div class="cell c-rep">K. Brooks</div><div class="cell c-date">2026-05-09</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$19,800</span><span class="bar"><span class="f">█████</span><span class="e">░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 28%</span></div><div class="cell c-stat"><span class="st-ship">● Shipped</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1047</div><div class="cell c-reg">West</div><div class="cell c-rep">M. Ortiz</div><div class="cell c-date">2026-05-11</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$27,300</span><span class="bar"><span class="f">██████</span><span class="e">░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 35%</span></div><div class="cell c-stat"><span class="st-proc">◆ Processing</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1049</div><div class="cell c-reg">East</div><div class="cell c-rep">S. Kim</div><div class="cell c-date">2026-05-14</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$15,600</span><span class="bar"><span class="f">████</span><span class="e">░░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 31%</span></div><div class="cell c-stat"><span class="st-ship">● Shipped</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1050</div><div class="cell c-reg">South</div><div class="cell c-rep">K. Brooks</div><div class="cell c-date">2026-05-15</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$42,100</span><span class="bar"><span class="f">██████████</span><span class="e"></span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 44%</span></div><div class="cell c-stat"><span class="st-proc">◆ Processing</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1052</div><div class="cell c-reg">East</div><div class="cell c-rep">S. Kim</div><div class="cell c-date">2026-05-18</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$22,750</span><span class="bar"><span class="f">█████</span><span class="e">░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 33%</span></div><div class="cell c-stat"><span class="st-ship">● Shipped</span></div>
+      </div>
+    </div>
+    <!-- summary footer -->
+    <div class="gfoot">
+      <div class="grow">
+        <div class="cell c-ord"><span class="slabel">Count</span></div>
+        <div class="cell c-reg"><span class="sval">7</span></div>
+        <div class="cell c-rep"></div>
+        <div class="cell c-date"><span class="slabel">Σ Sum</span></div>
+        <div class="cell c-amt"><span class="sval">$171,900</span></div>
+        <div class="cell c-mar"><span class="sval">35%</span><span class="slabel"> avg</span></div>
+        <div class="cell c-stat"></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Flat grid with an active filter (Region=East implied by the highlighted <span style="color:var(--amber)">▾</span>, plus the auto-filter row showing Region "East", Amount &gt; 10,000, Status "Shipped" — values in well-fills, operators as <span style="color:var(--muted)">⌕ &gt; ▾</span> cells). Date sorts ascending (▲), Amount descending (▼). <b>Amount</b> carries data-bar fills scaled to the column max; <b>Margin</b> uses colored text with ▲/●/▼ badges; <b>Status</b> tints by state (● Shipped green, ◆ Processing cyan). The footer bands Count, Σ Sum, and avg Margin. One row shown selected.</div>
+
+  <h2 class="sec">▸ Column filter dropdown — open on "Status"</h2>
+  <div class="fpop">
+    <div class="fphead"><span>Filter: Status</span><span>⌕ ▾</span></div>
+    <div class="fsearch"><span>⌕</span><span>type to search…</span></div>
+    <div class="frow"><span class="chk tri">▪</span>(Select All)</div>
+    <div class="frow"><span class="chk on">✓</span><span class="st-ship">● Shipped</span></div>
+    <div class="frow"><span class="chk on">✓</span><span class="st-proc">◆ Processing</span></div>
+    <div class="frow"><span class="chk off">✓</span><span class="st-hold">▲ On Hold</span></div>
+    <div class="frow"><span class="chk off">✓</span><span class="st-canc">✕ Cancelled</span></div>
+    <div class="fsep"></div>
+    <div class="fbtns"><span class="fbtn ok">OK</span><span class="fbtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">Clicking a header's <span style="color:var(--muted)">▾</span> drops the checklist filter: a search field (well-fill), a tri-state "(Select All)" with the amber <span style="color:var(--amber)">▪</span> partial mark, then each distinct value with its grid styling preserved (Shipped/Processing checked, On Hold/Cancelled unchecked). OK/Cancel band the bottom — OK in accent. Same checklist grammar as the ribbon's QAT menu, applied to data values.</div>
+
+  <h2 class="sec">▸ Grouped view — by Region, then Status, with per-group summaries</h2>
+  <div class="grid">
+    <div class="ghead">
+      <div class="grow">
+        <div class="cell c-ord"><span class="lbl">Order</span></div>
+        <div class="cell c-rep"><span class="lbl">Rep</span></div>
+        <div class="cell c-date"><span class="lbl">Date</span></div>
+        <div class="cell c-amt"><span class="lbl">Amount</span></div>
+        <div class="cell c-mar"><span class="lbl">Margin</span></div>
+      </div>
+    </div>
+    <!-- Region: East -->
+    <div class="grouprow"><span class="tw">▾</span><span class="gk">Region: East</span><span class="gcount">(4)</span><span class="gsum">Σ $82,700 · avg 36%</span></div>
+      <div class="grouprow lvl2"><span class="tw">▾</span><span class="gk">Status: Shipped</span><span class="gcount">(2)</span><span class="gsum">Σ $35,200</span></div>
+        <div class="gbody"><div class="grow">
+          <div class="cell c-ord"><span class="indent"></span>SO-1042</div><div class="cell c-rep">A. Chen</div><div class="cell c-date">2026-05-03</div>
+          <div class="cell c-amt amtcell"><span class="amtval">$12,450</span><span class="bar"><span class="f">███</span><span class="e">░░░░░░░</span></span></div>
+          <div class="cell c-mar"><span class="mar-hi">▲ 38%</span></div>
+        </div>
+        <div class="grow">
+          <div class="cell c-ord"><span class="indent"></span>SO-1052</div><div class="cell c-rep">S. Kim</div><div class="cell c-date">2026-05-18</div>
+          <div class="cell c-amt amtcell"><span class="amtval">$22,750</span><span class="bar"><span class="f">█████</span><span class="e">░░░░░</span></span></div>
+          <div class="cell c-mar"><span class="mar-hi">▲ 33%</span></div>
+        </div></div>
+      <div class="grouprow lvl2"><span class="tw">▸</span><span class="gk">Status: Processing</span><span class="gcount">(2)</span><span class="gsum">Σ $47,500 · collapsed</span></div>
+    <!-- Region: South (collapsed) -->
+    <div class="grouprow"><span class="tw">▸</span><span class="gk">Region: South</span><span class="gcount">(2)</span><span class="gsum">Σ $61,900 · avg 37%</span></div>
+    <!-- Region: West (collapsed) -->
+    <div class="grouprow"><span class="tw">▸</span><span class="gk">Region: West</span><span class="gcount">(3)</span><span class="gsum">Σ $38,800 · avg 21%</span></div>
+    <div class="gfoot">
+      <div class="grow">
+        <div class="cell c-ord"><span class="slabel">Grand</span></div>
+        <div class="cell c-rep"></div>
+        <div class="cell c-date"><span class="slabel">Σ</span></div>
+        <div class="cell c-amt"><span class="sval">$203,650</span></div>
+        <div class="cell c-mar"><span class="sval">26%</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Two-level grouping (Region › Status). Group rows carry a <span style="color:var(--accent)">▾/▸</span> expander, the key, a <span style="color:var(--muted)">(count)</span>, and a right-aligned per-group summary (Σ sum, avg margin). East is expanded with its Shipped sub-group open showing rows, Processing collapsed; South and West collapsed at the region level. The grand-total footer persists below. Indentation and the level-2 background shift show nesting depth in whole cells.</div>
+
+  <h2 class="sec">▸ Group panel — "drag a column here to group"</h2>
+  <div class="grid">
+    <div class="grouppanel">
+      <span class="chip"><span class="sort">▲</span>Region <span class="x">✕</span></span>
+      <span style="color:var(--muted)">▸</span>
+      <span class="chip"><span class="sort">▲</span>Status <span class="x">✕</span></span>
+      <span class="ph">— drag a column header here to add a grouping level —</span>
+    </div>
+    <div class="ghead">
+      <div class="grow">
+        <div class="cell c-ord"><span class="lbl">Order</span><span class="filt">▾</span></div>
+        <div class="cell c-reg"><span class="lbl">Region</span><span class="filt">▾</span></div>
+        <div class="cell c-rep"><span class="lbl">Rep</span><span class="filt">▾</span></div>
+        <div class="cell c-amt"><span class="lbl">Amount</span><span class="filt">▾</span></div>
+        <div class="cell c-stat"><span class="lbl">Status</span><span class="filt">▾</span></div>
+      </div>
+    </div>
+    <div class="gbody">
+      <div class="grow" style="color:var(--muted)">
+        <div class="cell" style="width:100%;padding:0 10px">⋮ grouped rows appear below the panel — drag <span style="color:var(--text-dim)">Rep</span> into the panel to nest a third level</div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The group panel sits above the header. Each active grouping level is a chip carrying its sort direction (▲), the column name, and an <span style="color:var(--muted)">✕</span> remove cell; chips are ordered left-to-right with a <span style="color:var(--muted)">▸</span> between levels. The ghosted prompt invites dropping another header in. Removing a chip ungroups that level; reordering chips re-nests.</div>
+
+  <h2 class="sec">▸ Conditional formatting — rules manager</h2>
+  <div class="cfmgr">
+    <div class="cfhead">Conditional Formatting Rules Manager</div>
+    <div class="toolbar">
+      <span class="tb">＋ New Rule</span><span class="tb">✎ Edit</span><span class="tb">✕ Delete</span><span class="tb">▲</span><span class="tb">▼</span>
+    </div>
+    <div class="cfrow"><span class="cfc cf-col" style="color:var(--muted)">Column</span><span class="cfc cf-cond" style="color:var(--muted)">Condition</span><span class="cfc cf-style" style="color:var(--muted)">Format</span><span class="cfc cf-on" style="color:var(--muted)">On</span></div>
+    <div class="cfrow sel"><span class="cfc cf-col">Amount</span><span class="cfc cf-cond">Data bar (min→max)</span><span class="cfc cf-style swatch-bar"><span class="f">████</span><span class="e">░░</span> bar</span><span class="cfc cf-on on-y">✓</span></div>
+    <div class="cfrow"><span class="cfc cf-col">Margin</span><span class="cfc cf-cond">&gt; 25%</span><span class="cfc cf-style"><span class="mar-hi">▲ green text</span></span><span class="cfc cf-on on-y">✓</span></div>
+    <div class="cfrow"><span class="cfc cf-col">Margin</span><span class="cfc cf-cond">11–25%</span><span class="cfc cf-style"><span class="mar-mid">● amber text</span></span><span class="cfc cf-on on-y">✓</span></div>
+    <div class="cfrow"><span class="cfc cf-col">Margin</span><span class="cfc cf-cond">≤ 10%</span><span class="cfc cf-style"><span class="mar-lo">▼ red text</span></span><span class="cfc cf-on on-y">✓</span></div>
+    <div class="cfrow"><span class="cfc cf-col">Margin</span><span class="cfc cf-cond">Color scale (heat)</span><span class="cfc cf-style"><span class="heat-lo">▒</span><span class="heat-mid">▒</span><span class="heat-hi">▒</span> scale</span><span class="cfc cf-on on-n">○</span></div>
+    <div class="cfrow"><span class="cfc cf-col">Status</span><span class="cfc cf-cond">= "Cancelled"</span><span class="cfc cf-style" style="color:var(--muted)">✕ dim row</span><span class="cfc cf-on on-y">✓</span></div>
+  </div>
+  <div class="caption">The rules manager lists every conditional-format rule in priority order (toolbar reorders with ▲/▼). Each row shows the target column, the condition, a live style preview, and an on/off toggle. Here Amount uses a data bar; Margin stacks three threshold rules (green/amber/red text) with an alternative heat color-scale rule toggled off; a row-level rule dims Cancelled orders. The selected rule is editable. This is the source of truth for the formatting seen in the grids above.</div>
+
+  <h2 class="sec">▸ Inline editing — row in edit mode, per-column editors</h2>
+  <div class="grid">
+    <div class="ghead">
+      <div class="grow">
+        <div class="cell c-ind"></div>
+        <div class="cell c-ord"><span class="lbl">Order</span></div>
+        <div class="cell c-reg"><span class="lbl">Region</span></div>
+        <div class="cell c-rep"><span class="lbl">Rep</span></div>
+        <div class="cell c-date"><span class="lbl">Date</span></div>
+        <div class="cell c-amt"><span class="lbl">Amount</span></div>
+        <div class="cell c-mar"><span class="lbl">Margin</span></div>
+      </div>
+    </div>
+    <div class="gbody">
+      <!-- a normal row above -->
+      <div class="grow">
+        <div class="cell c-ind"></div>
+        <div class="cell c-ord">SO-1042</div><div class="cell c-reg">East</div><div class="cell c-rep">A. Chen</div><div class="cell c-date">2026-05-03</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$12,450</span><span class="bar"><span class="f">███</span><span class="e">░░░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 38%</span></div>
+      </div>
+      <!-- the editing row -->
+      <div class="editrow">
+        <div class="grow">
+          <div class="cell c-ind"><span class="ind-edit">✎</span></div>
+          <div class="cell c-ord ed"><span class="ed-text">SO-104<span class="caret">4</span></span></div>
+          <div class="cell c-reg ed"><span class="ed-combo"><span class="selrange">East</span><span class="dd">▾</span></span></div>
+          <div class="cell c-rep ed"><span class="ed-combo"><span>A. Chen</span><span class="dd">▾</span></span></div>
+          <div class="cell c-date ed"><span class="ed-date"><span>2026-05-06</span><span class="cal">▤</span></span></div>
+          <div class="cell c-amt ed"><span class="ed-spin"><span>31,900</span><span class="spinbtns">▲▼</span></span></div>
+          <div class="cell c-mar ed"><span class="ed-spin"><span>41%</span><span class="spinbtns">▲▼</span></span></div>
+        </div>
+      </div>
+      <!-- the Region combo dropped open, anchored under that editor -->
+      <div style="display:flex"><span style="width:14ch"></span>
+        <div class="edpop">
+          <div class="eo cur">East</div>
+          <div class="eo hov">West</div>
+          <div class="eo">North</div>
+          <div class="eo">South</div>
+        </div>
+      </div>
+      <!-- a normal row below -->
+      <div class="grow">
+        <div class="cell c-ind"></div>
+        <div class="cell c-ord">SO-1046</div><div class="cell c-reg">South</div><div class="cell c-rep">K. Brooks</div><div class="cell c-date">2026-05-09</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$19,800</span><span class="bar"><span class="f">█████</span><span class="e">░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 28%</span></div>
+      </div>
+      <!-- new-row template -->
+      <div class="newrow">
+        <div class="grow">
+          <div class="cell c-ind"><span class="ind-new">＊</span></div>
+          <div class="cell c-ord"><span class="nplace">SO-…</span></div>
+          <div class="cell c-reg"><span class="nplace">(pick)</span></div>
+          <div class="cell c-rep"><span class="nplace">(pick)</span></div>
+          <div class="cell c-date"><span class="nplace">yyyy-mm-dd</span></div>
+          <div class="cell c-amt"><span class="nplace">0</span></div>
+          <div class="cell c-mar"><span class="nplace">0%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="editbar">
+    <span class="seg"><span class="ind-edit">✎</span> editing SO-1044</span>
+    <span class="seg"><span class="k">Enter</span> commit</span>
+    <span class="seg"><span class="k">Esc</span> cancel</span>
+    <span class="seg"><span class="k">Tab</span> next cell</span>
+  </div>
+  <div class="caption">A row in edit mode: the indicator cell shows the <span style="color:var(--amber)">✎</span> pending-edit glyph and the whole row drops to the well-fill. Each column becomes its own editor — Order a <b>text box</b> (caret after "SO-104"), Region and Rep <b>combo</b> editors (Region's value selected, its dropdown shown open below with the current/hover items), Date a <b>date editor</b> with a <span style="color:var(--accent)">▤</span> calendar cell, Amount and Margin <b>spin editors</b> with <span style="color:var(--accent)">▲▼</span> steppers. The bottom <b>new-row template</b> (<span style="color:var(--green)">＊</span> indicator, ghosted placeholders) appends records. The action bar maps Enter/Esc/Tab to commit/cancel/next.</div>
+
+  <h2 class="sec">▸ Column chooser — hidden columns &amp; drag-to-show</h2>
+  <!-- header mid-drag with drop indicators -->
+  <div class="grid" style="margin-bottom:14px">
+    <div class="draghdr">
+      <div class="grow">
+        <div class="cell c-ord"><span class="lbl">Order</span></div>
+        <div class="drop">▾</div>
+        <div class="cell c-reg ghostcol"><span class="lbl">Region</span></div>
+        <div class="cell c-rep"><span class="lbl">Rep</span></div>
+        <div class="cell c-amt"><span class="lbl">Amount</span></div>
+        <div class="cell c-stat"><span class="lbl">Status</span></div>
+        <div class="cell floatcol" style="width:11ch"><span class="lbl">▣ Margin</span></div>
+      </div>
+    </div>
+    <div class="gbody">
+      <div class="grow" style="color:var(--muted)">
+        <div class="cell" style="width:100%;padding:0 10px">⋮ dragging <span style="color:var(--text-dim)">Margin</span> — the <span style="color:var(--accent-2)">▾</span> marks the drop slot between Order and Region</div>
+      </div>
+    </div>
+  </div>
+  <!-- the chooser flyout -->
+  <div class="chooser">
+    <div class="chead"><span>Column Chooser</span><span>✕</span></div>
+    <div class="cbody">
+      <div class="cprompt">Hidden columns — drag into the grid to show:</div>
+      <div class="colchip"><span class="grip">⠿</span>Discount</div>
+      <div class="colchip"><span class="grip">⠿</span>Ship Date</div>
+      <div class="colchip drag"><span class="grip">⠿</span>Margin <span style="color:var(--muted);margin-left:auto">↗ dragging</span></div>
+      <div class="colchip"><span class="grip">⠿</span>Sales Rep ID</div>
+      <div class="colchip"><span class="grip">⠿</span>Notes</div>
+    </div>
+    <div class="cfoot"><span class="cb">▦ Show All</span><span class="cb">⊘ Hide All</span></div>
+  </div>
+  <div class="caption">The column chooser floats free of the grid, parking every hidden column as a draggable chip (<span style="color:var(--muted)">⠿</span> grip handle). Dragging a chip onto the header inserts it — shown above mid-drag: Margin lifts out of the chooser as a floating <span style="color:var(--text)">▣ Margin</span> column while a <span style="color:var(--accent-2)">▾</span> drop-indicator marks the insertion slot between Order and Region (the ghosted Region header is the shift target). Dragging a header the other way — off the grid onto the chooser — hides it. Show All / Hide All band the footer.</div>
+
+  <h2 class="sec">▸ Column summary — quick menu &amp; editor dialog</h2>
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <!-- quick menu -->
+    <div>
+      <div class="alignlabel">right-click the Amount footer → quick pick</div>
+      <div class="summenu">
+        <div class="smhead">Summary: Amount</div>
+        <div class="smrow"><span class="chk on">✓</span>Sum<span class="smval">$171,900</span></div>
+        <div class="smrow"><span class="chk off">✓</span>Min<span class="smval">$12,450</span></div>
+        <div class="smrow"><span class="chk off">✓</span>Max<span class="smval">$42,100</span></div>
+        <div class="smrow"><span class="chk on">✓</span>Average<span class="smval">$24,557</span></div>
+        <div class="smrow"><span class="chk off">✓</span>Count<span class="smval">7</span></div>
+        <div class="smsep"></div>
+        <div class="smrow"><span class="g">⛭</span>More / Format…</div>
+        <div class="smrow"><span class="g">∅</span>None</div>
+      </div>
+    </div>
+    <!-- editor dialog -->
+    <div>
+      <div class="alignlabel">"More / Format…" opens the editor</div>
+      <div class="dlg">
+        <div class="dtitle"><span>Edit Summary — Amount</span><span class="x">✕</span></div>
+        <div class="dbody">
+          <div class="field"><span class="flabel">Aggregate</span><span class="fctl">Sum <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Format string</span><span class="fctl focus">$#,##0<span class="caret">|</span> <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Display text</span><span class="fctl">Sum = {0} <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Ignore null</span><span class="seg-toggle"><span class="opt on">Yes</span><span class="opt">No</span></span></div>
+          <div class="preview"><span>Preview:</span><span class="pv">Sum = $171,900</span></div>
+        </div>
+        <div class="dsep"></div>
+        <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The footer summary has two surfaces. The <b>quick menu</b> (right-click a footer cell) is a checklist of aggregates, each showing its live value — Sum and Average ticked here, so both appear in the footer; "More / Format…" and "None" sit below a separator. Choosing More opens the <b>editor dialog</b>: aggregate dropdown, a format-string field (focused, with caret — <span style="color:var(--muted)">$#,##0</span>), a display-text template with the <span style="color:var(--muted)">{0}</span> placeholder, an ignore-null toggle, and a live preview row. OK in accent.</div>
+
+  <h2 class="sec">▸ Footer with stacked summaries — Sum + Average in one cell</h2>
+  <div class="grid">
+    <div class="ghead">
+      <div class="grow">
+        <div class="cell c-ord"><span class="lbl">Order</span></div>
+        <div class="cell c-reg"><span class="lbl">Region</span></div>
+        <div class="cell c-rep"><span class="lbl">Rep</span></div>
+        <div class="cell c-amt"><span class="lbl">Amount</span></div>
+        <div class="cell c-mar"><span class="lbl">Margin</span></div>
+      </div>
+    </div>
+    <div class="gbody">
+      <div class="grow">
+        <div class="cell c-ord">SO-1042</div><div class="cell c-reg">East</div><div class="cell c-rep">A. Chen</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$12,450</span><span class="bar"><span class="f">███</span><span class="e">░░░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 38%</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1050</div><div class="cell c-reg">South</div><div class="cell c-rep">K. Brooks</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$42,100</span><span class="bar"><span class="f">██████████</span><span class="e"></span></span></div>
+        <div class="cell c-mar"><span class="mar-hi">▲ 44%</span></div>
+      </div>
+      <div class="grow">
+        <div class="cell c-ord">SO-1053</div><div class="cell c-reg">North</div><div class="cell c-rep">R. Patel</div>
+        <div class="cell c-amt amtcell"><span class="amtval">$9,400</span><span class="bar"><span class="f">██</span><span class="e">░░░░░░░░</span></span></div>
+        <div class="cell c-mar"><span class="mar-mid">● 18%</span></div>
+      </div>
+    </div>
+    <div class="gfoot">
+      <div class="grow tall">
+        <div class="cell c-ord"><span class="slabel">Count 12</span></div>
+        <div class="cell c-reg"></div>
+        <div class="cell c-rep"></div>
+        <div class="cell c-amt stacked">
+          <div class="srow"><span class="k">Σ Sum</span><span class="v">$203,650</span></div>
+          <div class="srow"><span class="k">x̄ Avg</span><span class="v">$16,971</span></div>
+        </div>
+        <div class="cell c-mar stacked">
+          <div class="srow"><span class="k">x̄ Avg</span><span class="v">26%</span></div>
+          <div class="srow"><span class="k">⌃ Max</span><span class="v">44%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">When a column carries more than one summary they stack as rows inside the single footer cell — Amount shows Σ Sum over x̄ Avg, Margin shows x̄ Avg over ⌃ Max. The footer band grows to two cell-rows tall to hold them; each summary keeps a muted label and an accent value. This is what ticking both Sum and Average in the quick menu produces.</div>
+
+  <h2 class="sec">▸ Group summary — quick menu (with align toggle) &amp; editor</h2>
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div>
+      <div class="alignlabel">right-click a group row → group summary menu</div>
+      <div class="summenu">
+        <div class="smhead">Group Summary: Amount</div>
+        <div class="smrow"><span class="chk on">✓</span>Sum<span class="smval">Σ per group</span></div>
+        <div class="smrow"><span class="chk on">✓</span>Average<span class="smval">x̄ per group</span></div>
+        <div class="smrow"><span class="chk off">✓</span>Max<span class="smval">⌃ per group</span></div>
+        <div class="smrow"><span class="chk off">✓</span>Count<span class="smval"># per group</span></div>
+        <div class="smsep"></div>
+        <div class="smhead" style="background:transparent;padding:0 10px">Show summary…</div>
+        <div class="toggle-opt"><span class="radio">◉</span>Inline on group row</div>
+        <div class="toggle-opt off"><span class="radio">○</span>Aligned under column</div>
+        <div class="smsep"></div>
+        <div class="smrow"><span class="g">⛭</span>More / Format…</div>
+      </div>
+    </div>
+    <div>
+      <div class="alignlabel">editor — per-summary aggregate, alignment, format</div>
+      <div class="dlg">
+        <div class="dtitle"><span>Group Summary — Amount</span><span class="x">✕</span></div>
+        <div class="dbody">
+          <div class="field"><span class="flabel">Aggregate</span><span class="fctl">Sum <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Format string</span><span class="fctl">Σ {0:$#,##0} <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Alignment</span><span class="seg-toggle"><span class="opt on">Inline</span><span class="opt">Under column</span></span></div>
+          <div class="field"><span class="flabel">Show in group</span><span class="seg-toggle"><span class="opt on">Header</span><span class="opt">Footer</span></span></div>
+          <div class="preview"><span>Preview:</span><span class="pv">Region: East (4) — Σ $82,700</span></div>
+        </div>
+        <div class="dsep"></div>
+        <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Group summaries get the same dual treatment, plus the option that's unique to them — <b>alignment</b>. The quick menu's aggregate checklist is followed by a "Show summary" radio pair: <span style="color:var(--accent)">◉ Inline on group row</span> (the right-aligned <span style="color:var(--muted)">Σ …</span> seen on the group rows in the grouped view) versus <span style="color:var(--muted)">○ Aligned under column</span> (rendered in that column's position, like a mini per-group footer). The editor adds the format string and a header/footer placement toggle, with a live preview of the resulting group caption.</div>
+
+  <h2 class="sec">▸ Add / edit rule — Data Bar type selected</h2>
+  <div class="ruledlg">
+    <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+    <div class="two">
+      <div class="typelist">
+        <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+        <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+        <div class="ti sel"><span class="g">▭</span>Data Bar</div>
+        <div class="ti"><span class="g">▒</span>Color Scale</div>
+        <div class="ti"><span class="g">◆</span>Icon Set</div>
+        <div class="tsep"></div>
+        <div class="ti"><span class="g">ƒ</span>Expression</div>
+      </div>
+      <div class="config">
+        <div class="ctitle">Data Bar — Amount</div>
+        <div class="field"><span class="flabel">Apply to column</span><span class="fctl">Amount <span class="dd">▾</span></span></div>
+        <div class="field"><span class="flabel">Minimum</span><span class="fctl">Lowest value <span class="dd">▾</span></span></div>
+        <div class="field"><span class="flabel">Maximum</span><span class="fctl">Highest value <span class="dd">▾</span></span></div>
+        <div class="field"><span class="flabel">Bar fill</span><span class="seg-toggle"><span class="opt on">Solid</span><span class="opt">Gradient</span></span></div>
+        <div class="field"><span class="flabel">Direction</span><span class="seg-toggle"><span class="opt on">L→R</span><span class="opt">R→L</span></span></div>
+        <div class="field"><span class="flabel">Show value</span><span class="seg-toggle"><span class="opt on">Yes</span><span class="opt">Bar only</span></span></div>
+        <div class="preview"><span class="plabel">Preview:</span><span class="amtval" style="color:var(--text)">$31,900</span><span class="bar"><span class="f" style="color:var(--bar)">████████</span><span class="e" style="color:var(--bar-track)">░░</span></span></div>
+        <div class="applyto">Scope: this column · 12 rows · live-previews on the grid as you adjust</div>
+      </div>
+    </div>
+    <div class="dsep"></div>
+    <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The add/edit rule window is two-pane: a rule-type list on the left (Highlight Cell, Top/Bottom, Data Bar, Color Scale, Icon Set, and an Expression type below a separator — Data Bar selected), and a configurator on the right that <b>reshapes per type</b>. For Data Bar: the target column, min/max anchors (Lowest/Highest value, or a number/percentile), solid-vs-gradient fill, bar direction, and a show-value toggle — with a live bar preview. OK/Cancel band the bottom.</div>
+
+  <h2 class="sec">▸ Same window — Color Scale &amp; Icon Set types</h2>
+  <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti sel"><span class="g">▒</span>Color Scale</div>
+          <div class="ti"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:42ch">
+          <div class="ctitle">Color Scale — Margin</div>
+          <div class="field"><span class="flabel">Scale</span><span class="seg-toggle"><span class="opt on">3-color</span><span class="opt">2-color</span></span></div>
+          <div class="field"><span class="flabel">Low</span><span class="stopbox"><span class="stopdot lo">●</span><span class="fctl" style="min-width:13ch">Min <span class="dd">▾</span></span></span></div>
+          <div class="field"><span class="flabel">Midpoint</span><span class="stopbox"><span class="stopdot mid">●</span><span class="fctl" style="min-width:13ch">50th pct <span class="dd">▾</span></span></span></div>
+          <div class="field"><span class="flabel">High</span><span class="stopbox"><span class="stopdot hi">●</span><span class="fctl" style="min-width:13ch">Max <span class="dd">▾</span></span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span class="grad"><span class="lo">▒▒</span><span class="m1">▒▒</span><span class="hi">▒▒</span></span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti"><span class="g">▒</span>Color Scale</div>
+          <div class="ti sel"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:42ch">
+          <div class="ctitle">Icon Set — Margin</div>
+          <div class="field"><span class="flabel">Style</span><span class="fctl" style="min-width:14ch"><span class="iconset-row"><span class="ic"><span class="dn">▼</span><span class="flat">●</span><span class="up">▲</span></span></span><span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">▲ when</span><span class="fctl">&gt;= 26% <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">● when</span><span class="fctl">11–25% <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">▼ when</span><span class="fctl">&lt; 11% <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Show</span><span class="seg-toggle"><span class="opt on">Icon+value</span><span class="opt">Icon only</span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span class="up">▲ 41%</span><span class="flat">● 18%</span><span class="dn">▼ 8%</span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+  </div>
+  <div class="caption">The same window with two other types selected, showing how the right pane reconfigures. <b>Color Scale</b> swaps in a 2/3-color toggle and per-stop anchor pickers (Low/Mid/High, each with its colored stop dot), previewed as a <span class="grad"><span class="lo">▒</span><span class="m1">▒</span><span class="hi">▒</span></span> gradient strip. <b>Icon Set</b> offers a style picker plus per-icon threshold conditions (▲/●/▼ with their cutoffs) and an icon-only toggle — the rule behind the Margin badges in the flat grid. The Expression type (not shown) would swap in a single formula field for arbitrary conditions.</div>
+
+
+  <h2 class="sec">▸ Remaining format types — Highlight Cell, Top/Bottom, Expression</h2>
+  <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+
+    <!-- Highlight Cell -->
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti sel"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti"><span class="g">▒</span>Color Scale</div>
+          <div class="ti"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:40ch">
+          <div class="ctitle">Highlight Cell — Amount</div>
+          <div class="field"><span class="flabel">Condition</span><span class="fctl" style="min-width:14ch">Greater than <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Value</span><span class="fctl focus" style="min-width:14ch">25000<span class="caret">|</span></span></div>
+          <div class="field"><span class="flabel">Format</span><span class="fctl" style="min-width:14ch">Green fill <span class="dd">▾</span></span></div>
+          <div class="field"><span class="flabel">Text</span><span class="seg-toggle"><span class="opt">Normal</span><span class="opt on">Bold</span><span class="opt">Italic</span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span class="heat-hi" style="font-weight:bold;padding:0 6px">$42,100</span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+
+    <!-- Top/Bottom -->
+    <div class="ruledlg">
+      <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+      <div class="two">
+        <div class="typelist">
+          <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+          <div class="ti sel"><span class="g">⇅</span>Top / Bottom</div>
+          <div class="ti"><span class="g">▭</span>Data Bar</div>
+          <div class="ti"><span class="g">▒</span>Color Scale</div>
+          <div class="ti"><span class="g">◆</span>Icon Set</div>
+          <div class="tsep"></div>
+          <div class="ti"><span class="g">ƒ</span>Expression</div>
+        </div>
+        <div class="config" style="min-width:40ch">
+          <div class="ctitle">Top / Bottom — Amount</div>
+          <div class="field"><span class="flabel">Rank</span><span class="seg-toggle"><span class="opt on">Top</span><span class="opt">Bottom</span></span></div>
+          <div class="field"><span class="flabel">Count</span><span class="fctl" style="min-width:10ch"><span class="ed-spin" style="padding:0"><span>3</span><span class="spinbtns" style="color:var(--accent)">▲▼</span></span></span></div>
+          <div class="field"><span class="flabel">Measure</span><span class="seg-toggle"><span class="opt on">Items</span><span class="opt">Percent</span></span></div>
+          <div class="field"><span class="flabel">Format</span><span class="fctl" style="min-width:12ch">Bold accent <span class="dd">▾</span></span></div>
+          <div class="preview"><span class="plabel">Preview:</span><span style="color:var(--accent);font-weight:bold">$42,100 · $31,900 · $27,300</span></div>
+        </div>
+      </div>
+      <div class="dsep"></div>
+      <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+    </div>
+  </div>
+  <div class="caption"><b>Highlight Cell</b> picks a comparison (Greater than / Between / Equals / Text contains…), a value (focused field with caret), a fill, and a text-attribute toggle — note Bold/Italic are real attributes now, not faked. <b>Top/Bottom</b> takes a Top-vs-Bottom rank, a count with a spin editor, an items-vs-percent measure, and a format; its preview lists the three values that would qualify.</div>
+
+  <h2 class="sec">▸ Expression rule — syntax-highlighted formula</h2>
+  <div class="ruledlg">
+    <div class="dtitle"><span>Edit Formatting Rule</span><span class="x">✕</span></div>
+    <div class="two">
+      <div class="typelist">
+        <div class="ti"><span class="g">▦</span>Highlight Cell</div>
+        <div class="ti"><span class="g">⇅</span>Top / Bottom</div>
+        <div class="ti"><span class="g">▭</span>Data Bar</div>
+        <div class="ti"><span class="g">▒</span>Color Scale</div>
+        <div class="ti"><span class="g">◆</span>Icon Set</div>
+        <div class="tsep"></div>
+        <div class="ti sel"><span class="g">ƒ</span>Expression</div>
+      </div>
+      <div class="config" style="min-width:58ch">
+        <div class="ctitle">Expression — applies to the whole row</div>
+        <div class="field" style="align-items:flex-start"><span class="flabel">Condition</span>
+          <div class="expred" style="min-width:48ch">
+            <div class="editor">
+              <div class="gutter"><div>1</div></div>
+              <div class="lines"><div class="ln code"><span class="t-field">[Margin]</span>&nbsp;<span class="t-op">&lt;</span>&nbsp;<span class="t-num">0.10</span>&nbsp;<span class="t-kw">Or</span>&nbsp;<span class="t-op">(</span><span class="t-field">[Status]</span>&nbsp;<span class="t-op">=</span>&nbsp;<span class="t-str">&#x27;On Hold&#x27;</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-field">[Amount]</span>&nbsp;<span class="t-op">&gt;</span>&nbsp;<span class="t-num">20000</span><span class="t-op">)</span></div></div>
+            </div>
+            <div class="vstrip ok"><span class="vg">✓</span>Valid boolean expression</div>
+          </div>
+        </div>
+        <div class="field"><span class="flabel">Format</span><span class="fctl" style="min-width:14ch">Red fill + bold <span class="dd">▾</span></span></div>
+        <div class="preview"><span class="plabel">Applies when true →</span><span class="t-field" style="text-decoration:none">row painted</span></div>
+      </div>
+    </div>
+    <div class="dsep"></div>
+    <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The <b>Expression</b> type swaps the right pane for a formula editor. The condition is a boolean expression over the row's columns, tokenized and colored: <span class="t-field" style="text-decoration:none">[fields]</span> underlined cyan, <span class="t-kw">And/Or/Not</span> bold purple, <span class="t-str">'strings'</span> amber, <span class="t-num">numbers</span> green, operators muted. A validation strip confirms it parses to a boolean. Any row where it's true gets the chosen format — the most general formatting type, equivalent to a hand-written rule.</div>
+
+  <h2 class="sec">▸ Filter Builder — visual condition tree</h2>
+  <div class="fbuild">
+    <div class="fbhead"><span>Filter Builder</span><span>✕</span></div>
+    <div class="tree">
+      <div class="node"><span class="grouptag">And<span class="dd"> ▾</span></span><span class="addbtn">＋</span><span class="hint" style="padding:0">root group — all must match</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">├─</span><span class="field">[Region]</span><span class="cmp">is any of <span style="color:var(--muted)">▾</span></span><span class="val">'East', 'West'</span><span class="addbtn">＋</span><span class="delbtn">✕</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">├─</span><span class="field">[Amount]</span><span class="cmp">&gt;= <span style="color:var(--muted)">▾</span></span><span class="valnum">10000</span><span class="addbtn">＋</span><span class="delbtn">✕</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">├─</span><span class="grouptag">Or<span class="dd"> ▾</span></span><span class="addbtn">＋</span><span class="delbtn">✕</span><span class="hint" style="padding:0">nested group — any matches</span></div>
+      <div class="node"><span class="ind" style="width:6ch"></span><span class="conn">│&nbsp;├─</span><span class="field">[Status]</span><span class="cmp">= <span style="color:var(--muted)">▾</span></span><span class="val">'Shipped'</span><span class="delbtn">✕</span></div>
+      <div class="node sel"><span class="ind" style="width:6ch"></span><span class="conn">│&nbsp;└─</span><span class="field">[Status]</span><span class="cmp">= <span style="color:var(--muted)">▾</span></span><span class="val">'Processing'</span><span class="delbtn">✕</span></div>
+      <div class="node"><span class="ind" style="width:3ch"></span><span class="conn">└─</span><span class="field">[Date]</span><span class="cmp">between <span style="color:var(--muted)">▾</span></span><span class="valnum">#2026-05-01# … #2026-05-31#</span><span class="delbtn">✕</span></div>
+    </div>
+    <div class="fbfoot"><span class="fb2">＋ Condition</span><span class="fb2">＋ Group</span><span class="fb2">⌫ Clear</span><span class="fb2">ƒ Edit as Text</span></div>
+  </div>
+  <div class="caption">The visual Filter Builder renders the condition as an editable tree: the green <span style="color:var(--green)">And</span>/<span style="color:var(--purple)">Or</span> group operators (clickable to toggle), child conditions connected by <span style="color:var(--muted)">├─ └─</span> box-drawing, and a nested Or-group indented one level deeper. Each condition is three clickable cells — <span class="t-field" style="text-decoration:none">field</span> · comparison · value — with ＋/✕ to add a sibling or remove. The selected condition highlights. The footer's "Edit as Text" jumps to the expression editor below.</div>
+
+  <h2 class="sec">▸ Filter — text editor with syntax highlighting &amp; IntelliSense</h2>
+  <div class="expred">
+    <div class="ehead"><span>Filter Editor — text mode</span><span class="x">✕</span></div>
+    <div class="etoolbar"><span class="tb">↶ Undo</span><span class="tb">↷ Redo</span><span class="tb">ƒ Functions ▾</span><span class="tb">[ ] Columns ▾</span><span class="tb">⛶ Visual Builder</span></div>
+    <div class="editor">
+      <div class="gutter"><div>1</div><div>2</div><div>3</div></div>
+      <div class="lines">
+        <div class="ln code"><span class="t-field">[Region]</span>&nbsp;<span class="t-kw">In</span>&nbsp;<span class="t-op">(</span><span class="t-str">&#x27;East&#x27;</span><span class="t-op">,</span>&nbsp;<span class="t-str">&#x27;West&#x27;</span><span class="t-op">)</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-field">[Amount]</span>&nbsp;<span class="t-op">&gt;=</span>&nbsp;<span class="t-num">10000</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-kw">Not</span>&nbsp;<span class="t-field">[Status]</span>&nbsp;<span class="t-op">=</span>&nbsp;<span class="t-str">&#x27;Cancelled&#x27;</span></div>
+        <div class="ln code"><span class="t-kw">And</span>&nbsp;<span class="t-fn">Contains</span><span class="t-op">(</span><span class="t-fn">Upper</span><span class="t-op">(</span><span class="t-field">[Rep]</span><span class="t-op">)</span><span class="t-op">,</span>&nbsp;<span class="t-op">&#x27;</span><span class="t-field">CH</span><span class="caret">|</span></div>
+        <div class="ln code">&nbsp;</div>
+      </div>
+    </div>
+    <!-- IntelliSense popup anchored under the caret on line 2 -->
+    <div class="acpop">
+      <div class="achead">functions &amp; columns</div>
+      <div class="acrow sel"><span class="k fn">ƒ</span>Contains(<span style="color:var(--muted)">text, substr</span>)<span class="meta">bool</span></div>
+      <div class="acrow"><span class="k fn">ƒ</span>StartsWith(<span style="color:var(--muted)">text, sub</span>)<span class="meta">bool</span></div>
+      <div class="acrow"><span class="k fld">[]</span>[Rep]<span class="meta">string</span></div>
+      <div class="acrow"><span class="k fld">[]</span>[Region]<span class="meta">string</span></div>
+      <div class="acrow"><span class="k kw">·</span>And<span class="meta">keyword</span></div>
+    </div>
+    <div class="vstrip err"><span class="vg">✕</span>Unbalanced parenthesis — expected ')' at column 26</div>
+    <div class="ebtns"><span class="ebtn ok">Apply</span><span class="ebtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The text filter editor is the power-user surface: a multi-line code field with a line-number gutter, full syntax highlighting (same tokenizer as the Expression rule), a toolbar with undo/redo plus Functions/Columns inserters and a jump back to the Visual Builder. An <b>IntelliSense</b> popup drops under the caret with functions and columns (signatures and return types shown, current item selected). The validation strip turns <span style="color:var(--red)">red</span> with a precise error and column number when the expression doesn't parse — here a deliberately unbalanced paren. A third, fully-functional example: <span class="t-fn">Contains</span><span class="t-op">(</span><span class="t-fn">Upper</span><span class="t-op">(</span><span class="t-field">[Rep]</span><span class="t-op">)</span><span class="t-op">,</span>&nbsp;<span class="t-str">&#x27;CHEN&#x27;</span><span class="t-op">)</span>&nbsp;<span class="t-kw">Or</span>&nbsp;<span class="t-field">[Date]</span>&nbsp;<span class="t-kw">Between</span>&nbsp;<span class="t-num">#2026-05-01#</span>&nbsp;<span class="t-kw">And</span>&nbsp;<span class="t-num">#2026-05-31#</span>.</div>
+
+</div>
+
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+    tt.textContent=(light?'tokyo-night-light':'tokyo-night')+' — terminal DataGrid — 120×40';
+  });
+</script>
+</body>
+</html>

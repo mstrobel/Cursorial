@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — terminal control gallery</title>
+<style>
+  /* ---- Dark (default) ---- */
+  :root,
+  [data-theme="dark"] {
+    --bg:        #0d0f19;
+    --surface:   #24283b;
+    --panel:     #222639;
+    --well:      #16161e;
+    --sel:       #33467c;
+    --sel-inactive: #30364d;
+    --altrow:    #272b41;
+    --hover:     #414868;
+    --text:      #c0caf5;
+    --text-dim:  #a9b1d6;
+    --muted:     #565f89;
+    --faint:     #414868;
+    --disabled-bg: #1f2335;
+    --accent:    #7aa2f7;
+    --accent-2:  #7dcfff;
+    --green:     #9ece6a;
+    --amber:     #e0af68;
+    --red:       #f7768e;
+    --purple:    #bb9af7;
+    --on-accent: #0d0f19;
+  }
+  /* ---- Light (Day) ---- */
+  [data-theme="light"] {
+    --bg:        #e6e7ec;
+    --surface:   #cbccd1;
+    --panel:     #e9e9ed;
+    --well:      #f6f6f8;
+    --sel:       #a8aecb;
+    --sel-inactive: #d3d5dd;
+    --altrow:    #e1e2e7;
+    --hover:     #cbccd1;
+    --text:      #343b58;
+    --text-dim:  #565a6e;
+    --muted:     #9699a3;
+    --faint:     #c4c5cc;
+    --disabled-bg: #dcdde2;
+    --accent:    #34548a;
+    --accent-2:  #0f4b6e;
+    --green:     #485e30;
+    --amber:     #8f5e15;
+    --red:       #8c4351;
+    --purple:    #5a3e8e;
+    --on-accent: #e9e9ed;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-dim);
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  .page { max-width: 1100px; margin: 0 auto; padding: 24px 22px 60px; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 22px; color: var(--muted); font-size: 12px;
+  }
+  .dots { display: inline-flex; gap: 6px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: var(--red); }
+  .dot.a { background: var(--amber); }
+  .dot.g { background: var(--green); }
+  .title-text { margin-left: 8px; }
+
+  .legend { margin: 0 0 20px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .legend b { color: var(--text-dim); font-weight: normal; }
+
+  .theme-toggle {
+    margin-left: auto;
+    font: inherit;
+    color: var(--on-accent);
+    background: var(--accent);
+    border: 0;
+    padding: 2px 12px;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { background: var(--accent-2); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 22px 28px;
+  }
+  .cell-title { color: var(--accent); margin-bottom: 10px; }
+  .rows { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .lbl { color: var(--muted); width: 70px; display: inline-block; flex: none; }
+  .note { margin-top: 6px; color: var(--muted); font-size: 11px; }
+  u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  /* control fills — whole-cell only, no borders/rings */
+  .ctl   { background: var(--surface); color: var(--text); padding: 0 8px; }
+  .ctl.btn { padding: 0 12px; }
+  .hover { background: var(--hover); }
+  .well  { background: var(--well); color: var(--text); }   /* focused text field */
+  .rev   { background: var(--text); color: var(--bg); }     /* reverse-video focus */
+  .rev-acc { background: var(--accent); color: var(--on-accent); } /* pressed / default */
+  .dis   { background: var(--disabled-bg); color: var(--muted); }
+  .ph    { color: var(--muted); }
+.caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  /* blinking underscore cursor for in-bracket focus (checkbox/radio) — whole-cell, no sub-cell rule */
+  .ucaret { color: var(--accent); animation: blink 1.06s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  /* focused+value: the glyph and the underscore cursor alternate in the same cell (two whole-cell frames) */
+  .ucell { display: inline-block; position: relative; }
+  .ucell .g { animation: glyphhide 1.06s steps(1) infinite; }
+  .ucell .u { position: absolute; left: 0; color: var(--accent); animation: glyphshow 1.06s steps(1) infinite; }
+  @keyframes glyphhide { 50% { opacity: 0; } }
+  @keyframes glyphshow { 0%, 50% { opacity: 0; } 50.01%, 100% { opacity: 1; } }
+  .boxfocus { color: var(--text); }   /* focused check/radio keeps normal colors; the cursor carries focus */
+  /* foreground-only hover for check/radio: brackets brighten to accent, no fill */
+  .boxhover { color: var(--text); }
+  .boxhover .brk { color: var(--accent); }
+  .selrange { background: var(--sel); color: var(--text); }
+  .marker { color: var(--accent); }     /* gutter focus marker */
+  .marker-sp { color: transparent; }    /* gutter placeholder, keeps cell */
+
+  .panel { background: var(--panel); width: max-content; }
+  .panel.pad { padding: 2px 0; }
+  .item { color: var(--text); padding: 0 10px; }
+  .item.alt { background: var(--altrow); }
+  .item.dim { color: var(--text-dim); }
+  .item.dim.alt { background: var(--altrow); }
+  .item.hov { background: var(--hover); color: var(--text); }
+  .item.sel-inactive { background: var(--sel-inactive); color: var(--text); }
+  .item.sel { background: var(--sel); color: var(--text); }
+  .item.dis { color: var(--muted); }
+  .item.rev { background: var(--text); color: var(--panel); }
+
+  .glyph-folder { color: var(--accent-2); }
+  .glyph-file   { color: var(--purple); }
+  .tw-arrow { color: var(--muted); }
+  .chev { color: var(--muted); }
+  .seg { display: inline-flex; }
+
+  .badge { padding: 0 8px; }
+  .badge.info { background: var(--hover); color: var(--text); }
+  .badge.ok   { background: var(--green); color: var(--on-accent); }
+  .badge.warn { background: var(--amber); color: var(--on-accent); }
+  .badge.err  { background: var(--red);   color: var(--on-accent); }
+
+  .grid-tbl { background: var(--panel); width: max-content; }
+  .grid-tbl .hdr { display: flex; background: var(--surface); color: var(--accent); }
+  .grid-tbl .gr  { display: flex; color: var(--text-dim); }
+  .grid-tbl .gr.sel { background: var(--sel); color: var(--text); }
+  .grid-tbl .gr.hov { background: var(--hover); color: var(--text); }
+  .grid-tbl .gr.dis { color: var(--muted); }
+  .grid-tbl span { padding: 0 10px; }
+  .c-id { width: 60px; } .c-name { width: 96px; } .c-size { width: 70px; }
+  .editwell { background: var(--well); padding: 0 2px; }
+
+  .cal { background: var(--panel); width: max-content; padding: 4px 8px; }
+  .cal .head { color: var(--accent); display: flex; justify-content: space-between; }
+  .cal .dow  { color: var(--muted); letter-spacing: 1px; }
+  .cal .wk   { color: var(--text-dim); letter-spacing: 1px; }
+  .cal .today { background: var(--accent); color: var(--on-accent); }
+  .cal .focus { background: var(--text); color: var(--panel); }
+  .cal .hov   { background: var(--hover); color: var(--text); }
+  .cal .dis   { color: var(--muted); }
+
+  .sb { background: var(--panel); display: inline-flex; flex-direction: column; line-height: 1.15; vertical-align: top; }
+  .sb.h { flex-direction: row; }
+  .sb-rows .row { align-items: flex-start; }
+  .sb span { display: block; height: 1.15em; flex: 0 0 auto; }
+  .sb.h span { display: inline-block; }
+  .sb .end { color: var(--muted); text-align: center; }
+  .sb .end.act { color: var(--accent); }
+  .sb .track { color: var(--panel); }
+  .sb .thumb { background: var(--faint); color: var(--faint); }
+  .sb .thumb.hov  { background: var(--muted); color: var(--muted); }
+  .sb .thumb.drag { background: var(--accent); color: var(--accent); }
+
+  .status { display: flex; background: var(--surface); width: max-content; }
+  .status span { padding: 0 8px; }
+  .status .br { background: var(--accent); color: var(--on-accent); }
+
+  @media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
+
+  /* reference tables */
+  .ref { margin-top: 40px; }
+  .ref h2 { color: var(--accent); font-size: 14px; font-weight: normal; margin: 0 0 4px; }
+  .ref p  { color: var(--muted); font-size: 11px; margin: 0 0 12px; }
+  table.spec { border-collapse: collapse; width: 100%; max-width: 760px; font-size: 12px; }
+  table.spec th, table.spec td { text-align: left; padding: 3px 14px 3px 0; vertical-align: middle; white-space: nowrap; }
+  table.spec th { color: var(--muted); font-weight: normal; border-bottom: 1px solid var(--surface); }
+  table.spec td { color: var(--text-dim); }
+  table.spec td.tok { color: var(--text); }
+  .sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 7px; }
+  .hex { color: var(--text); }
+  .ref + .ref { margin-top: 28px; }
+  .ref .actions { margin: 0 0 12px; }
+  .copybtn { font: inherit; font-size: 11px; color: var(--on-accent); background: var(--accent); border: 0; padding: 3px 12px; cursor: pointer; }
+  .copybtn:hover { background: var(--accent-2); }
+  .copybtn.done { background: var(--green); }
+  table.keys { border-collapse: collapse; width: 100%; max-width: 860px; font-size: 12px; }
+  table.keys td { padding: 2px 14px 2px 0; vertical-align: middle; white-space: nowrap; }
+  table.keys tr.grp td { color: var(--accent); padding-top: 14px; padding-bottom: 3px; border-bottom: 1px solid var(--surface); }
+  table.keys tr.grp:first-child td { padding-top: 0; }
+  table.keys td.k { color: var(--text); }
+  table.keys td.v { color: var(--text-dim); }
+  table.keys td.c { color: var(--muted); font-size: 11px; white-space: normal; }
+  table.keys td.tk { color: var(--muted); font-size: 11px; }
+
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — control gallery — 80×40</span>
+    <button class="theme-toggle" id="toggle">switch to light ▸</button>
+  </div>
+
+  <div class="legend">
+    <b>Cell-faithful conventions:</b> no sub-cell borders or focus rings.
+    Text fields show focus as an intensified <b>well</b> fill + caret · buttons & pickable items use <b>reverse-video</b> ·
+    check/radio show focus as a <b>blinking underscore cursor</b> inside the brackets · pressed/default buttons reverse-video in accent ·
+    panels are bounded by fill, not lines · the only line accents are whole-cell underlines, brackets <b>[ ]</b>/<b>( )</b>, and a gutter <b>▸</b> marker.
+  </div>
+
+  <div class="grid">
+
+    <!-- States Key -->
+    <section>
+      <div class="cell-title">▸ States key</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span class="ctl btn">&nbsp;item&nbsp;</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="ctl btn hover">&nbsp;item&nbsp;</span></div>
+        <div class="row"><span class="lbl">focus·text</span><span class="ctl btn well">&nbsp;item<span class="caret">|</span></span></div>
+        <div class="row"><span class="lbl">focus·pick</span><span class="btn rev">&nbsp;item&nbsp;</span></div>
+        <div class="row"><span class="lbl">pressed</span><span class="btn rev-acc">&nbsp;item&nbsp;</span></div>
+        <div class="row"><span class="lbl">selected</span><span class="ctl btn" style="background:var(--sel)">&nbsp;item&nbsp;</span></div>
+        <div class="row"><span class="lbl">disabled</span><span class="ctl btn dis">&nbsp;item&nbsp;</span></div>
+      </div>
+      <div class="note">text controls focus to a well + caret · pickable controls reverse-video</div>
+    </section>
+
+    <!-- Label -->
+    <section>
+      <div class="cell-title">▸ Label</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span style="color:var(--text)">Username:</span></div>
+        <div class="row"><span class="lbl">access key</span><span style="color:var(--text)"><u>F</u>ile</span></div>
+        <div class="row"><span class="lbl">access key</span><span style="color:var(--text)">S<u>a</u>ve as</span></div>
+        <div class="row"><span class="lbl">emphasis</span><span style="color:var(--accent)">Required *</span></div>
+        <div class="row"><span class="lbl">disabled</span><span style="color:var(--muted)"><u>F</u>ile</span></div>
+      </div>
+      <div class="note">mnemonic char underlined (Alt-activated)</div>
+    </section>
+
+    <!-- Button -->
+    <section>
+      <div class="cell-title">▸ Button</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span class="ctl btn">&nbsp;&nbsp;OK&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="ctl btn hover">&nbsp;&nbsp;OK&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="btn rev">&nbsp;&nbsp;OK&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">pressed</span><span class="btn rev-acc">&nbsp;&nbsp;OK&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">default</span><span class="btn rev-acc">▸ OK ◂</span></div>
+        <div class="row"><span class="lbl">disabled</span><span class="ctl btn dis">&nbsp;&nbsp;OK&nbsp;&nbsp;</span></div>
+      </div>
+      <div class="note">focus = reverse-video · pressed/default = accent reverse</div>
+    </section>
+
+    <!-- TextBox -->
+    <section>
+      <div class="cell-title">▸ TextBox</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span class="ctl">payload.json&nbsp;&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="ctl hover">payload.json&nbsp;&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="ctl well">payload<span class="caret">|</span>.json&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">selected</span><span class="ctl well"><span class="selrange">payload</span>.json&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">placeholder</span><span class="ctl ph">enter name…&nbsp;&nbsp;</span></div>
+        <div class="row"><span class="lbl">disabled</span><span class="ctl dis">payload.json&nbsp;&nbsp;&nbsp;</span></div>
+      </div>
+      <div class="note">focus = darker well + caret</div>
+    </section>
+
+    <!-- CheckBox -->
+    <section>
+      <div class="cell-title">▸ CheckBox</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">unchecked</span><span style="color:var(--text)">[ ] verbose</span></div>
+        <div class="row"><span class="lbl">checked</span><span style="color:var(--text)">[<span style="color:var(--green)">✓</span>] verbose</span></div>
+        <div class="row"><span class="lbl">indeterminate</span><span style="color:var(--text)">[<span style="color:var(--amber)">▪</span>] verbose</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="boxhover"><span class="brk">[</span><span style="color:var(--green)">✓</span><span class="brk">]</span> verbose</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="boxfocus">[<span class="ucaret">_</span>] verbose</span></div>
+        <div class="row"><span class="lbl">focused+checked</span><span class="boxfocus">[<span class="ucell"><span class="g" style="color:var(--green)">✓</span><span class="u">_</span></span>] verbose</span></div>
+        <div class="row"><span class="lbl">disabled</span><span style="color:var(--muted)">[<span style="color:var(--faint)">✓</span>] verbose</span></div>
+      </div>
+      <div class="note">bracket cells are the box · hover brightens the brackets · focus = blinking underscore cursor <span style="color:var(--accent)">_</span> inside the brackets (alternates with ✓ when checked)</div>
+    </section>
+
+    <!-- RadioButton -->
+    <section>
+      <div class="cell-title">▸ RadioButton</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">unselected</span><span style="color:var(--text)">( ) tcp</span></div>
+        <div class="row"><span class="lbl">selected</span><span style="color:var(--text)">(<span style="color:var(--accent)">●</span>) tcp</span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="boxhover"><span class="brk">(</span><span style="color:var(--accent)">●</span><span class="brk">)</span> tcp</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="boxfocus">(<span class="ucaret">_</span>) tcp</span></div>
+        <div class="row"><span class="lbl">focused+selected</span><span class="boxfocus">(<span class="ucell"><span class="g" style="color:var(--accent)">●</span><span class="u">_</span></span>) tcp</span></div>
+        <div class="row"><span class="lbl">disabled</span><span style="color:var(--muted)">(<span style="color:var(--faint)">●</span>) tcp</span></div>
+      </div>
+      <div class="note">paren cells are the bullet · hover brightens the parens · focus = blinking underscore cursor <span style="color:var(--accent)">_</span> inside the parens (alternates with ● when selected)</div>
+    </section>
+
+    <!-- ToggleSwitch -->
+    <section>
+      <div class="cell-title">▸ ToggleSwitch</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">off</span><span style="color:var(--text)">[<span class="chev">●&nbsp;&nbsp;</span>] OFF</span></div>
+        <div class="row"><span class="lbl">on</span><span style="color:var(--text)">[<span style="color:var(--green)">&nbsp;&nbsp;●</span>] ON&nbsp;</span></div>
+        <div class="row"><span class="lbl">focused</span><span class="rev">[&nbsp;&nbsp;●] ON&nbsp;</span></div>
+        <div class="row"><span class="lbl">disabled</span><span style="color:var(--muted)">[<span style="color:var(--faint)">&nbsp;&nbsp;●</span>] ON&nbsp;</span></div>
+      </div>
+      <div class="note">knob cell slides within bracket cells</div>
+    </section>
+
+    <!-- ComboBox -->
+    <section>
+      <div class="cell-title">▸ ComboBox</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span class="ctl">utf-8&nbsp;&nbsp;<span class="chev">▾</span></span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="ctl hover">utf-8&nbsp;&nbsp;<span style="color:var(--accent)">▾</span></span></div>
+        <div class="row"><span class="lbl">focused</span><span class="ctl well">utf-8&nbsp;&nbsp;<span style="color:var(--accent)">▾</span></span></div>
+        <div class="row"><span class="lbl">disabled</span><span class="ctl dis">utf-8&nbsp;&nbsp;▾</span></div>
+      </div>
+      <div class="panel pad" style="margin-top:6px;margin-left:80px;">
+        <div class="item sel">utf-8&nbsp;&nbsp;&nbsp;</div>
+        <div class="item dim">utf-16&nbsp;&nbsp;</div>
+        <div class="item hov">ascii&nbsp;&nbsp;&nbsp;</div>
+        <div class="item dis">latin-1&nbsp;</div>
+      </div>
+      <div class="note">open list = solid panel fill (no frame)</div>
+    </section>
+
+    <!-- Slider -->
+    <section>
+      <div class="cell-title">▸ Slider</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span><span style="color:var(--accent)">━━━━</span><span style="color:var(--text)">●</span><span style="color:var(--faint)">━━━━━</span></span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="hover"><span style="color:var(--accent)">━━━━</span><span style="color:var(--text)">●</span><span style="color:var(--faint)">━━━━━</span></span></div>
+        <div class="row"><span class="lbl">focused</span><span class="rev">━━━━●━━━━━</span></div>
+        <div class="row"><span class="lbl">pressed</span><span><span style="color:var(--purple)">━━━━</span><span style="color:var(--purple)">⬤</span><span style="color:var(--faint)">━━━━━</span></span></div>
+        <div class="row"><span class="lbl">disabled</span><span><span style="color:var(--faint)">━━━━</span><span style="color:var(--muted)">●</span><span style="color:var(--disabled-bg)">━━━━━</span></span></div>
+      </div>
+      <div class="note">thumb = one cell (●) · focus = reverse-video</div>
+    </section>
+
+    <!-- ProgressBar -->
+    <section>
+      <div class="cell-title">▸ ProgressBar</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">determinate</span><span><span style="color:var(--green)">████████</span><span style="color:var(--faint)">░░░░</span> <span style="color:var(--green)">66%</span></span></div>
+        <div class="row"><span class="lbl">indeterminate</span><span><span style="color:var(--faint)">░░</span><span style="color:var(--accent)">███</span><span style="color:var(--faint)">░░░░░░░</span></span></div>
+        <div class="row"><span class="lbl">paused</span><span><span style="color:var(--amber)">████████</span><span style="color:var(--faint)">░░░░</span> <span style="color:var(--amber)">‖</span></span></div>
+        <div class="row"><span class="lbl">error</span><span><span style="color:var(--red)">████</span><span style="color:var(--faint)">░░░░░░░░</span> <span style="color:var(--red)">✗</span></span></div>
+      </div>
+    </section>
+
+    <!-- ListBox -->
+    <section>
+      <div class="cell-title">▸ ListBox</div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <div class="panel">
+            <div class="item">src/main.rs&nbsp;&nbsp;</div>
+            <div class="item alt">src/lib.rs&nbsp;&nbsp;&nbsp;</div>
+            <div class="item sel">Cargo.toml&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt hov">README.md&nbsp;&nbsp;&nbsp;</div>
+            <div class="item">build.rs&nbsp;&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt dis">target/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+          </div>
+          <div class="note">focused · alternating rows · active selection · hover · disabled</div>
+        </div>
+        <div>
+          <div class="panel">
+            <div class="item">src/main.rs&nbsp;&nbsp;</div>
+            <div class="item alt">src/lib.rs&nbsp;&nbsp;&nbsp;</div>
+            <div class="item sel-inactive">Cargo.toml&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt">README.md&nbsp;&nbsp;&nbsp;</div>
+            <div class="item">build.rs&nbsp;&nbsp;&nbsp;&nbsp;</div>
+            <div class="item alt">target/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+          </div>
+          <div class="note">unfocused · same selection in the inactive brush (neutral grey)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TabControl -->
+    <section>
+      <div class="cell-title">▸ TabControl</div>
+      <div style="display:flex">
+        <span class="ctl" style="padding:0 12px">build</span>
+        <span style="color:var(--text-dim);padding:0 12px">test</span>
+        <span class="ctl hover" style="padding:0 12px">deploy</span>
+        <span style="color:var(--muted);padding:0 12px">logs</span>
+      </div>
+      <div style="display:flex">
+        <span style="color:var(--accent);padding:0 12px">━━━━━</span>
+        <span style="padding:0 12px">&nbsp;</span>
+        <span style="padding:0 12px">&nbsp;</span>
+        <span style="padding:0 12px">&nbsp;</span>
+      </div>
+      <div class="note">active tab marked by accent bar (━ cells)</div>
+    </section>
+
+    <!-- Spinner -->
+    <section>
+      <div class="cell-title">▸ Spinner / NumericUpDown</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span class="ctl">8&nbsp;<span class="chev">▲▼</span></span></div>
+        <div class="row"><span class="lbl">focused</span><span class="ctl well">8<span class="caret">|</span><span style="color:var(--accent)">▲▼</span></span></div>
+        <div class="row"><span class="lbl">pressed ▲</span><span class="ctl">8&nbsp;<span class="rev-acc">▲</span><span class="chev">▼</span></span></div>
+        <div class="row"><span class="lbl">disabled</span><span class="ctl dis">8&nbsp;▲▼</span></div>
+      </div>
+      <div class="note">focus = well + caret · button cell reverses when pressed</div>
+    </section>
+
+    <!-- Link -->
+    <section>
+      <div class="cell-title">▸ Hyperlink</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span style="color:var(--accent)"><u>readme.md</u></span></div>
+        <div class="row"><span class="lbl">hovered</span><span style="color:var(--accent-2)"><u>readme.md</u></span></div>
+        <div class="row"><span class="lbl">focused</span><span style="color:var(--accent-2);font-weight:bold"><u>readme.md</u></span></div>
+        <div class="row"><span class="lbl">visited</span><span style="color:var(--purple)"><u>readme.md</u></span></div>
+      </div>
+      <div class="note">underline is genuine cell decoration · hover brightens, focus brightens + bolds — no fill</div>
+    </section>
+
+    <!-- TreeView -->
+    <section>
+      <div class="cell-title">▸ TreeView</div>
+      <div class="panel pad">
+        <div class="item dim">▾ <span class="glyph-folder">▣</span> src</div>
+        <div class="item dim">&nbsp;&nbsp;▾ <span class="glyph-folder">▣</span> core</div>
+        <div class="item sel">&nbsp;&nbsp;&nbsp;&nbsp;<span class="glyph-file">▪</span> mod.rs&nbsp;&nbsp;</div>
+        <div class="item hov">&nbsp;&nbsp;&nbsp;&nbsp;<span class="glyph-file">▪</span> util.rs&nbsp;</div>
+        <div class="item rev">&nbsp;&nbsp;▸ <span>▣</span> tests&nbsp;</div>
+        <div class="item dis">▸ <span class="glyph-folder">▣</span> target&nbsp;</div>
+      </div>
+      <div class="note">expanded(▾) · collapsed(▸) · selected · hovered · focused(reverse) · disabled</div>
+    </section>
+
+    <!-- Menu -->
+    <section>
+      <div class="cell-title">▸ Menu (MenuBar)</div>
+      <div class="panel" style="display:flex">
+        <span class="item dim" style="padding:0 12px"><u>F</u>ile</span>
+        <span class="item hov" style="padding:0 12px"><u>E</u>dit</span>
+        <span class="item rev" style="padding:0 12px"><u>V</u>iew</span>
+        <span class="item dis" style="padding:0 12px"><u>H</u>elp</span>
+      </div>
+      <div class="note">normal · hovered · open (reverse) · disabled · mnemonics</div>
+    </section>
+
+    <!-- ContextMenu -->
+    <section>
+      <div class="cell-title">▸ ContextMenu</div>
+      <div class="panel pad">
+        <div class="item" style="display:flex;gap:18px;justify-content:space-between"><span>Cut</span><span style="color:var(--muted)">^X</span></div>
+        <div class="item hov" style="display:flex;gap:18px;justify-content:space-between"><span>Copy</span><span style="color:var(--text-dim)">^C</span></div>
+        <div class="item dis" style="display:flex;gap:18px;justify-content:space-between"><span>Paste</span><span>^V</span></div>
+        <div class="item" style="color:var(--muted)">────────────</div>
+        <div class="item" style="display:flex;gap:18px;justify-content:space-between"><span>Rename</span><span style="color:var(--muted)">▸</span></div>
+        <div class="item" style="color:var(--red)">Delete</div>
+      </div>
+      <div class="note">separator = full row of ─ cells · submenu = ▸ cell</div>
+    </section>
+
+    <!-- DataGrid -->
+    <section>
+      <div class="cell-title">▸ DataGrid</div>
+      <div class="grid-tbl">
+        <div class="hdr"><span class="c-id">id <span style="color:var(--muted)">^</span></span><span class="c-name">name</span><span class="c-size">size</span></div>
+        <div class="gr"><span class="c-id">001</span><span class="c-name">alpha</span><span class="c-size">12k</span></div>
+        <div class="gr sel"><span class="c-id">002</span><span class="c-name">beta</span><span class="c-size">8k</span></div>
+        <div class="gr hov"><span class="c-id">003</span><span class="c-name">gamma</span><span class="c-size">40k</span></div>
+        <div class="gr"><span class="c-id">004</span><span class="c-name"><span class="editwell">delta<span class="caret">|</span></span></span><span class="c-size">3k</span></div>
+        <div class="gr dis"><span class="c-id">005</span><span class="c-name">epsilon</span><span class="c-size">—</span></div>
+      </div>
+      <div class="note">sorted header(^) · selected · hovered · cell-edit (well) · disabled row</div>
+    </section>
+
+    <!-- ScrollBar -->
+    <section>
+      <div class="cell-title">▸ ScrollBar</div>
+      <div style="display:flex;gap:24px">
+        <div class="rows sb-rows">
+          <div class="row"><span class="lbl">normal</span><span class="sb"><span class="end">▲</span><span class="thumb">█</span><span class="track">░</span><span class="track">░</span><span class="end">▼</span></span></div>
+          <div class="row"><span class="lbl">hovered</span><span class="sb"><span class="end act">▲</span><span class="thumb hov">█</span><span class="track">░</span><span class="track">░</span><span class="end">▼</span></span></div>
+          <div class="row"><span class="lbl">dragging</span><span class="sb"><span class="end">▲</span><span class="track">░</span><span class="thumb drag">█</span><span class="track">░</span><span class="end">▼</span></span></div>
+        </div>
+        <div>
+          <div style="color:var(--muted);margin-bottom:3px">horizontal</div>
+          <span class="sb h"><span class="end">◀</span><span class="track">░</span><span class="thumb">██</span><span class="track">░░</span><span class="end">▶</span></span>
+        </div>
+      </div>
+      <div class="note">arrows, thumb, track all occupy whole cells</div>
+    </section>
+
+    <!-- DatePicker -->
+    <section>
+      <div class="cell-title">▸ DatePicker</div>
+      <div class="row" style="margin-bottom:8px"><span class="ctl">2026-06-13 <span class="chev">▾</span></span></div>
+      <div class="cal">
+        <div class="head"><span>◀</span><span>Jun 2026</span><span>▶</span></div>
+        <div class="dow">Su Mo Tu We Th Fr Sa</div>
+        <div class="wk">&nbsp;1&nbsp;&nbsp;2&nbsp;&nbsp;3&nbsp;&nbsp;4&nbsp;&nbsp;5&nbsp;&nbsp;6&nbsp;&nbsp;7</div>
+        <div class="wk">&nbsp;8&nbsp;&nbsp;9&nbsp;10&nbsp;11&nbsp;12&nbsp;<span class="today">13</span>&nbsp;14</div>
+        <div class="wk">15&nbsp;16&nbsp;<span class="focus">17</span>&nbsp;<span class="hov">18</span>&nbsp;19&nbsp;20&nbsp;21</div>
+        <div class="wk"><span>22</span>&nbsp;<span>23</span>&nbsp;<span class="dis">24</span>&nbsp;<span class="dis">25</span>&nbsp;<span>26</span>&nbsp;<span>27</span>&nbsp;<span>28</span></div>
+      </div>
+      <div class="note">today (accent) · focused day (reverse) · hovered · disabled</div>
+    </section>
+
+    <!-- Tooltip / Badge -->
+    <section>
+      <div class="cell-title">▸ Tooltip / Badge</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">info</span><span class="badge info">ⓘ ready to sync</span></div>
+        <div class="row"><span class="lbl">success</span><span class="badge ok">✓ 12 passed</span></div>
+        <div class="row"><span class="lbl">warning</span><span class="badge warn">⚠ 3 skipped</span></div>
+        <div class="row"><span class="lbl">error</span><span class="badge err">✗ 1 failed</span></div>
+      </div>
+    </section>
+
+    <!-- SplitButton -->
+    <section>
+      <div class="cell-title">▸ SplitButton</div>
+      <div class="rows">
+        <div class="row"><span class="lbl">normal</span><span class="seg"><span class="ctl" style="padding:0 10px">Run</span><span class="panel" style="color:var(--muted);padding:0 6px">▾</span></span></div>
+        <div class="row"><span class="lbl">hovered</span><span class="seg"><span class="ctl hover" style="padding:0 10px">Run</span><span class="ctl" style="color:var(--accent);padding:0 6px">▾</span></span></div>
+        <div class="row"><span class="lbl">focused</span><span class="seg"><span class="rev" style="padding:0 10px">Run</span><span class="ctl" style="color:var(--accent);padding:0 6px">▾</span></span></div>
+        <div class="row"><span class="lbl">pressed</span><span class="seg"><span class="rev-acc" style="padding:0 10px">Run</span><span class="ctl" style="padding:0 6px">▾</span></span></div>
+        <div class="row"><span class="lbl">disabled</span><span class="seg"><span class="dis" style="padding:0 10px">Run</span><span class="dis" style="color:var(--faint);padding:0 6px">▾</span></span></div>
+      </div>
+    </section>
+
+    <!-- Expander -->
+    <section>
+      <div class="cell-title">▸ Expander / GroupBox</div>
+      <div class="panel">
+        <div class="item" style="background:var(--surface)">▾ Advanced</div>
+        <div class="item dim">&nbsp;&nbsp;timeout&nbsp;30s</div>
+        <div class="item dim">&nbsp;&nbsp;retries&nbsp;3</div>
+      </div>
+      <div class="panel" style="margin-top:6px">
+        <div class="item">▸ Network</div>
+      </div>
+      <div class="note">expanded (▾ header) · collapsed (▸ header)</div>
+    </section>
+
+    <!-- StatusBar -->
+    <section>
+      <div class="cell-title">▸ StatusBar</div>
+      <div class="status">
+        <span class="br"> main </span>
+        <span style="color:var(--text-dim)">2↑ 1↓</span>
+        <span style="color:var(--green)">✓ utf-8</span>
+        <span style="color:var(--amber)">⚠ 2</span>
+        <span style="color:var(--red)">✗ 1</span>
+        <span style="color:var(--muted)">Ln 42, Col 8</span>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="ref">
+    <h2>Role tokens — hex by theme</h2>
+    <p>Every control part draws from this small set of semantic tokens. Swatches and hex are read live from the active theme, so they always match what renders above.</p>
+    <table class="spec" id="tokenTable">
+      <thead><tr><th>token</th><th>role</th><th>dark</th><th>light</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="ref">
+    <h2>Part &amp; state → token</h2>
+    <p>What each part uses in each state. Controls split into two families: <b style="color:var(--text-dim);font-weight:normal">text</b> (editable — focus to a well) and <b style="color:var(--text-dim);font-weight:normal">pick</b> (selectable — focus reverses video).</p>
+    <table class="spec" id="mapTable">
+      <thead><tr><th>part</th><th>family</th><th>state</th><th>fill</th><th>text</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="ref">
+    <h2>Theme resource keys</h2>
+    <p>The dictionary a WPF theme would declare — base/shared brushes first, then per-control in selector precedence; states within each control in setter/trigger order (Normal → Hover → Focus → Pressed/Active → Disabled). Values resolve live from the active theme.</p>
+    <div class="actions"><button class="copybtn" id="copyXaml">copy as XAML ResourceDictionary</button></div>
+    <table class="keys" id="keyTable"><tbody></tbody></table>
+  </div>
+</div>
+
+<script>
+  var root = document.documentElement;
+  var btn = document.getElementById('toggle');
+  var titleText = document.getElementById('titleText');
+
+  var TOKENS = [
+    ['--bg',        'page background'],
+    ['--surface',   'control fill (button, field, header)'],
+    ['--panel',     'popup / list / grid surface'],
+    ['--well',      'focused text-field fill'],
+    ['--sel',       'selection fill'],
+    ['--sel-inactive','selection fill, unfocused container'],
+    ['--altrow',    'alternating-row (zebra) fill'],
+    ['--hover',     'hover fill'],
+    ['--text',      'primary text / reverse-video field'],
+    ['--text-dim',  'secondary text'],
+    ['--muted',     'tertiary text, glyphs, disabled text'],
+    ['--faint',     'inactive track / faint glyph'],
+    ['--disabled-bg','disabled control fill'],
+    ['--accent',    'focus accent, links, pressed field'],
+    ['--accent-2',  'hover-link, folder glyph'],
+    ['--green',     'success / on'],
+    ['--amber',     'warning / paused / indeterminate mark'],
+    ['--red',       'error / danger'],
+    ['--purple',    'pressed slider, visited link, file glyph'],
+    ['--on-accent', 'text on accent/colored fill']
+  ];
+
+  var MAP = [
+    ['Button',     'pick', 'normal',   '--surface',  '--text'],
+    ['Button',     'pick', 'hover',    '--hover',    '--text'],
+    ['Button',     'pick', 'focus',    '--text',     '--bg'],
+    ['Button',     'pick', 'pressed',  '--accent',   '--on-accent'],
+    ['Button',     'pick', 'disabled', '--disabled-bg','--muted'],
+    ['TextBox',    'text', 'normal',   '--surface',  '--text'],
+    ['TextBox',    'text', 'hover',    '--hover',    '--text'],
+    ['TextBox',    'text', 'focus',    '--well',     '--text'],
+    ['TextBox',    'text', 'selected', '--sel',      '--text'],
+    ['TextBox',    'text', 'disabled', '--disabled-bg','--muted'],
+    ['Caret',      'text', 'focus',    '--accent',   '--accent'],
+    ['Check/Radio','pick', 'normal',   '--bg',       '--text'],
+    ['Check/Radio','pick', 'focus',    '--text',     '--bg'],
+    ['Check/Radio','pick', 'mark on',  '--bg',       '--green'],
+    ['List/Menu item','pick','normal', '--panel',    '--text'],
+    ['List/Menu item','pick','alt-row','--altrow',   '--text'],
+    ['List/Menu item','pick','selected','--sel',     '--text'],
+    ['List/Menu item','pick','sel (inactive)','--sel-inactive','--text'],
+    ['List/Menu item','pick','hover',  '--hover',    '--text'],
+    ['List/Menu item','pick','focus',  '--text',     '--panel'],
+    ['List/Menu item','pick','disabled','--panel',   '--muted'],
+    ['ComboBox field','text','focus',  '--well',     '--text'],
+    ['Calendar day','pick','today',    '--accent',   '--on-accent'],
+    ['Calendar day','pick','focus',    '--text',     '--panel'],
+    ['Calendar day','pick','hover',    '--hover',    '--text'],
+    ['ScrollBar thumb','pick','normal','--faint',    '--faint'],
+    ['ScrollBar thumb','pick','hover', '--muted',    '--muted'],
+    ['ScrollBar thumb','pick','drag',  '--accent',   '--accent'],
+    ['Badge',      'pick', 'success',  '--green',    '--on-accent'],
+    ['Badge',      'pick', 'warning',  '--amber',    '--on-accent'],
+    ['Badge',      'pick', 'error',    '--red',      '--on-accent']
+  ];
+
+  function hexOf(varName) {
+    return getComputedStyle(root).getPropertyValue(varName).trim();
+  }
+  function sw(varName) {
+    return '<span class="sw" style="background:' + hexOf(varName) + '"></span>';
+  }
+
+  function buildTokenTable() {
+    var dark = {}, light = {};
+    document.querySelectorAll('style')[0];
+    // read both themes by temporarily toggling
+    var cur = root.getAttribute('data-theme');
+    root.setAttribute('data-theme','dark');
+    TOKENS.forEach(function(t){ dark[t[0]] = hexOf(t[0]); });
+    root.setAttribute('data-theme','light');
+    TOKENS.forEach(function(t){ light[t[0]] = hexOf(t[0]); });
+    root.setAttribute('data-theme', cur);
+    var rows = TOKENS.map(function(t){
+      return '<tr><td class="tok">' + t[0] + '</td><td>' + t[1] +
+        '</td><td><span class="sw" style="background:' + dark[t[0]] + '"></span><span class="hex">' + dark[t[0]] + '</span></td>' +
+        '<td><span class="sw" style="background:' + light[t[0]] + '"></span><span class="hex">' + light[t[0]] + '</span></td></tr>';
+    }).join('');
+    document.querySelector('#tokenTable tbody').innerHTML = rows;
+  }
+
+  function buildMapTable() {
+    var rows = MAP.map(function(m){
+      return '<tr><td>' + m[0] + '</td><td style="color:var(--muted)">' + m[1] + '</td><td>' + m[2] +
+        '</td><td class="tok">' + sw(m[3]) + m[3] + '</td>' +
+        '<td class="tok">' + sw(m[4]) + m[4] + '</td></tr>';
+    }).join('');
+    document.querySelector('#mapTable tbody').innerHTML = rows;
+  }
+
+var KEYS = [
+  ["Base / shared", [
+    ["AccentBrush","--accent","Focus, links, pressed fields, today"],
+    ["AccentForegroundBrush","--on-accent","Text on AccentBrush"],
+    ["WellBrush","--well","Intensified fill for focused text fields"],
+    ["SelectionActiveBrush","--sel","Selected item/text, focused container"],
+    ["SelectionInactiveBrush","--sel-inactive","Selected item, unfocused container"],
+    ["AlternateRowBrush","--altrow","Even-row zebra fill in lists/grids"],
+    ["HoverBrush","--hover","Shared pointer-over fill"],
+    ["PanelBackgroundBrush","--panel","Popups, lists, grids, menus"],
+    ["DisabledBackgroundBrush","--disabled-bg","Any disabled control fill"],
+    ["DisabledForegroundBrush","--muted","Any disabled text/glyph"],
+  ]],
+  ["Button  (Button, RepeatButton)", [
+    ["ButtonForegroundNormal","--text","Standard + default button"],
+    ["ButtonBackgroundNormal","--surface",""],
+    ["ButtonBackgroundHover","--hover",""],
+    ["ButtonForegroundFocus","--bg","Reverse-video on focus"],
+    ["ButtonBackgroundFocus","--text",""],
+    ["ButtonForegroundPressed","--on-accent","Pressed + IsDefault"],
+    ["ButtonBackgroundPressed","--accent",""],
+    ["ButtonForegroundDisabled","--muted",""],
+    ["ButtonBackgroundDisabled","--disabled-bg",""],
+  ]],
+  ["ToggleSwitch / CheckBox / RadioButton", [
+    ["ToggleForegroundNormal","--text","Glyph + label"],
+    ["ToggleGlyphChecked","--green","Check / on knob"],
+    ["ToggleGlyphIndeterminate","--amber","Tri-state mark"],
+    ["ToggleBackgroundHover","--hover",""],
+    ["ToggleForegroundFocus","--bg","Reverse-video on focus"],
+    ["ToggleBackgroundFocus","--text",""],
+    ["ToggleGlyphDisabled","--faint",""],
+    ["ToggleForegroundDisabled","--muted",""],
+  ]],
+  ["Input  (TextBox, editable ComboBox, Spinner, cell-edit)", [
+    ["InputForegroundNormal","--text",""],
+    ["InputBackgroundNormal","--surface",""],
+    ["InputPlaceholderForeground","--muted",""],
+    ["InputBackgroundHover","--hover",""],
+    ["InputBackgroundFocus","--well","Focused = well fill"],
+    ["InputCaretBrush","--accent",""],
+    ["InputSelectionActive","--sel","Selection, control focused"],
+    ["InputSelectionInactive","--sel-inactive","Selection, control unfocused"],
+    ["InputForegroundDisabled","--muted",""],
+    ["InputBackgroundDisabled","--disabled-bg",""],
+  ]],
+  ["ComboBox chrome", [
+    ["ComboGlyphNormal","--muted","Drop arrow"],
+    ["ComboGlyphActive","--accent","Hover/focus arrow"],
+    ["ComboPopupBackground","--panel","Drop-down surface"],
+  ]],
+  ["ListItem  (ListBox, ListView)", [
+    ["ListItemForegroundNormal","--text",""],
+    ["ListItemBackgroundNormal","--panel",""],
+    ["ListItemBackgroundAlternate","--altrow","Even-row zebra"],
+    ["ListItemBackgroundHover","--hover",""],
+    ["ListItemForegroundFocus","--panel","Reverse-video on focus"],
+    ["ListItemBackgroundFocus","--text",""],
+    ["ListItemBackgroundSelected","--sel","Focused container"],
+    ["ListItemBackgroundSelectedInactive","--sel-inactive","Unfocused container"],
+    ["ListItemForegroundDisabled","--muted",""],
+  ]],
+  ["TreeViewItem", [
+    ["TreeItemForegroundNormal","--text",""],
+    ["TreeExpanderGlyph","--muted","v / > toggle"],
+    ["TreeFolderGlyph","--accent-2",""],
+    ["TreeLeafGlyph","--purple","File node"],
+    ["TreeItemBackgroundHover","--hover",""],
+    ["TreeItemBackgroundSelected","--sel",""],
+    ["TreeItemForegroundFocus","--panel","Reverse-video on focus"],
+    ["TreeItemBackgroundFocus","--text",""],
+    ["TreeItemForegroundDisabled","--muted",""],
+  ]],
+  ["Menu  (MenuBar, ContextMenu)", [
+    ["MenuForegroundNormal","--text",""],
+    ["MenuBackgroundNormal","--panel",""],
+    ["MenuBackgroundHover","--hover",""],
+    ["MenuForegroundOpen","--panel","Open top-level = reverse-video"],
+    ["MenuBackgroundOpen","--text",""],
+    ["MenuAcceleratorForeground","--muted","^X shortcut text"],
+    ["MenuSeparatorBrush","--muted","Row of \u2500"],
+    ["MenuDangerForeground","--red","Destructive item"],
+    ["MenuForegroundDisabled","--muted",""],
+  ]],
+  ["TabItem", [
+    ["TabForegroundSelected","--text",""],
+    ["TabBackgroundSelected","--surface",""],
+    ["TabUnderlineActive","--accent","Underline cell row"],
+    ["TabForegroundNormal","--text-dim",""],
+    ["TabBackgroundHover","--hover",""],
+    ["TabForegroundDisabled","--muted",""],
+  ]],
+  ["Slider", [
+    ["SliderTrackFilled","--accent",""],
+    ["SliderTrackEmpty","--faint",""],
+    ["SliderThumbNormal","--text",""],
+    ["SliderForegroundFocus","--bg","Reverse-video on focus"],
+    ["SliderBackgroundFocus","--text",""],
+    ["SliderThumbPressed","--purple",""],
+    ["SliderThumbDisabled","--muted",""],
+  ]],
+  ["ScrollBar", [
+    ["ScrollTrackBrush","--panel",""],
+    ["ScrollArrowBrush","--muted",""],
+    ["ScrollArrowActive","--accent",""],
+    ["ScrollThumbNormal","--faint",""],
+    ["ScrollThumbHover","--muted",""],
+    ["ScrollThumbDragging","--accent",""],
+  ]],
+  ["ProgressBar", [
+    ["ProgressFillNormal","--green",""],
+    ["ProgressFillIndeterminate","--accent",""],
+    ["ProgressFillPaused","--amber",""],
+    ["ProgressFillError","--red",""],
+    ["ProgressTrackBrush","--faint",""],
+  ]],
+  ["Calendar  (DatePicker)", [
+    ["CalendarDayForeground","--text-dim",""],
+    ["CalendarHeaderForeground","--accent","Month nav"],
+    ["CalendarDayToday","--accent","background"],
+    ["CalendarDayTodayForeground","--on-accent",""],
+    ["CalendarDayBackgroundHover","--hover",""],
+    ["CalendarDayForegroundFocus","--panel","Reverse-video on focus"],
+    ["CalendarDayBackgroundFocus","--text",""],
+    ["CalendarDayDisabled","--muted",""],
+  ]],
+  ["Hyperlink", [
+    ["LinkForegroundNormal","--accent",""],
+    ["LinkForegroundHover","--accent-2",""],
+    ["LinkForegroundVisited","--purple",""],
+    ["LinkForegroundFocus","--bg","Reverse-video on focus"],
+    ["LinkBackgroundFocus","--text",""],
+  ]],
+  ["StatusBar / Badge", [
+    ["StatusBarBackground","--surface",""],
+    ["StatusBranchBackground","--accent","Active-branch segment"],
+    ["StatusBranchForeground","--on-accent",""],
+    ["BadgeInfoBackground","--hover",""],
+    ["BadgeSuccessBackground","--green",""],
+    ["BadgeWarningBackground","--amber",""],
+    ["BadgeErrorBackground","--red",""],
+    ["BadgeForeground","--on-accent","Text on colored badge"],
+  ]],
+];
+
+  function buildKeyTable() {
+    var html = '';
+    KEYS.forEach(function(g){
+      html += '<tr class="grp"><td colspan="4">' + g[0] + '</td></tr>';
+      g[1].forEach(function(r){
+        var hex = hexOf(r[1]);
+        html += '<tr><td class="k">' + r[0] + '</td>' +
+          '<td class="v">' + sw(r[1]) + hex + '</td>' +
+          '<td class="tk">' + r[1] + '</td>' +
+          '<td class="c">' + (r[2] || '') + '</td></tr>';
+      });
+    });
+    document.querySelector('#keyTable tbody').innerHTML = html;
+  }
+
+  function xamlDict() {
+    var theme = root.getAttribute('data-theme');
+    var lines = ['<!-- Tokyo Night (' + theme + ') — generated -->',
+                 '<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"',
+                 '                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'];
+    KEYS.forEach(function(g){
+      lines.push('');
+      lines.push('  <!-- ' + g[0] + ' -->');
+      g[1].forEach(function(r){
+        var hex = '#FF' + hexOf(r[1]).replace('#','').toUpperCase();
+        var cmt = r[2] ? ('  <!-- ' + r[2] + ' -->') : '';
+        lines.push('  <SolidColorBrush x:Key="' + r[0] + '" Color="' + hex + '" />' + cmt);
+      });
+    });
+    lines.push('</ResourceDictionary>');
+    return lines.join('\n');
+  }
+
+  document.getElementById('copyXaml').addEventListener('click', function(){
+    var btn = this;
+    navigator.clipboard.writeText(xamlDict()).then(function(){
+      btn.textContent = 'copied ✓'; btn.classList.add('done');
+      setTimeout(function(){ btn.textContent = 'copy as XAML ResourceDictionary'; btn.classList.remove('done'); }, 1600);
+    }).catch(function(){
+      btn.textContent = 'clipboard blocked — see console';
+      console.log(xamlDict());
+    });
+  });
+
+  buildTokenTable();
+  buildMapTable();
+  buildKeyTable();
+
+  btn.addEventListener('click', function () {
+    var light = root.getAttribute('data-theme') === 'light';
+    root.setAttribute('data-theme', light ? 'dark' : 'light');
+    btn.textContent = light ? 'switch to light ▸' : 'switch to dark ▸';
+    titleText.textContent = light
+      ? 'tokyo-night — control gallery — 80×40'
+      : 'tokyo-night-light — control gallery — 80×40';
+    buildMapTable();
+    buildKeyTable();
+  });
+</script>
+</body>
+</html>

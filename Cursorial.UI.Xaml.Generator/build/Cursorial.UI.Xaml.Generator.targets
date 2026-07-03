@@ -1,0 +1,48 @@
+<Project>
+
+  <!--
+    Cursorial XAML generator — consumer targets (WS-X4.2). Imported after the consumer's items are
+    evaluated, this maps the first-class <CursorialXaml Include="View.xaml"/> item to an AdditionalFiles
+    entry the generator consumes, stamped with SourceItemType=CursorialXaml (the metadata the paired
+    .props made compiler-visible). Authors write <CursorialXaml>; the generator never sees raw
+    AdditionalFiles plumbing.
+  -->
+
+  <ItemGroup>
+    <AdditionalFiles Include="@(CursorialXaml)" SourceItemType="CursorialXaml" />
+  </ItemGroup>
+
+  <!--
+    Embed each <CursorialXaml> as a manifest resource too (default; opt out via CursorialXamlEmbedResources),
+    so a build-time-validated/baked document is still loadable at runtime through XamlLoader. Item metadata
+    (LogicalName, Link) flows from the CursorialXaml item, so an explicit LogicalName is honored and a plain
+    local file keeps its default RootNamespace.<path> manifest name. Authors write <CursorialXaml> once.
+  -->
+  <ItemGroup Condition="'$(CursorialXamlEmbedResources)' == 'true'">
+    <EmbeddedResource Include="@(CursorialXaml)" />
+  </ItemGroup>
+
+  <!--
+    WS-X4.7 — strict AOT. Default CursorialXamlStrictAot to true under PublishAot / PublishTrimmed. This is in the
+    .targets (imported at the BOTTOM of the project, after the consumer's csproj body), NOT the top-imported .props,
+    so it observes a <PublishAot>true</PublishAot> the consumer set anywhere in its body — the conventional place.
+    (A consumer can still force it explicitly either way; CLI /p:PublishAot is a global property, always set.)
+  -->
+  <PropertyGroup>
+    <CursorialXamlStrictAot Condition="'$(CursorialXamlStrictAot)' == '' and ('$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true')">true</CursorialXamlStrictAot>
+    <CursorialXamlStrictAot Condition="'$(CursorialXamlStrictAot)' == ''">false</CursorialXamlStrictAot>
+  </PropertyGroup>
+
+  <!--
+    When strict: trim the reflection metadata provider OUT by flipping its feature switch off. The trimmer
+    constant-folds IsReflectionMetadataProviderSupported to false and drops the [RequiresUnreferencedCode]/
+    [RequiresDynamicCode] reflection branch entirely, so the generated provider (X4.5) / full lowering (X5) is the
+    only metadata source — no IL2026/IL3050 from the reflection provider. A consumer that needs the reflection
+    loader under AOT/trim sets CursorialXamlStrictAot=false (and may author its own RuntimeHostConfigurationOption).
+  -->
+  <ItemGroup Condition="'$(CursorialXamlStrictAot)' == 'true'">
+    <RuntimeHostConfigurationOption Include="Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported"
+                                    Value="false" Trim="true" />
+  </ItemGroup>
+
+</Project>

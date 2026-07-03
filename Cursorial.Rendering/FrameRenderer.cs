@@ -68,6 +68,14 @@ public sealed class FrameRenderer
     // each render; cleared (set to false) at the start of each ComputeCoveredCells pass.
     private bool[]? _coveredCells;
 
+    // Reusable scratch buffer for the per-render "must this cell re-emit unconditionally?" lookup,
+    // populated from CellBuffer.ForceRepaintRegions. A force-repaint cell emits even when it compares
+    // equal to the front buffer — the channel exists to overwrite content the front buffer can't tell
+    // is stale, chiefly the lingering pixels of a removed Cells-layer image (iTerm2/Sixel), which has
+    // no protocol erase. The compositor marks the vacated footprint; see SceneCompositor.
+    private bool[]? _forceCells;
+    private bool _hasForceRepaint;
+
     // Reusable scratch buffer for the per-render "is this cell inside a dirty region?"
     // lookup. Only populated when FrameRendererOptions.RestrictToDirtyRegions is opted in AND
     // CellBuffer.DirtyRegions is non-empty; sized parallel to _coveredCells. Otherwise this field
@@ -188,9 +196,12 @@ public sealed class FrameRenderer
             _coveredCells = new bool[cellCount];
         if (_dirtyCells is null || _dirtyCells.Length != cellCount)
             _dirtyCells = new bool[cellCount];
+        if (_forceCells is null || _forceCells.Length != cellCount)
+            _forceCells = new bool[cellCount];
 
         ComputeCoveredCells(back);
         ComputeDirtyCells(back);
+        ComputeForceCells(back);
 
         // Scroll detection — only meaningful on incremental renders, only safe when no
         // fragments are anchored (fragments shouldn't scroll with cell content). When the
@@ -234,6 +245,10 @@ public sealed class FrameRenderer
         // explicit dirty tracking re-mark on each frame; consumers that never mark are
         // unaffected (the list was empty going in and goes out the same way).
         back.ClearDirty();
+
+        // Same for force-repaint regions — they're one-shot (the cells they cover were emitted this
+        // frame, so the front buffer is now correct and a plain diff handles them going forward).
+        back.ClearForceRepaint();
 
         _firstFrame = false;
     }
@@ -299,6 +314,33 @@ public sealed class FrameRenderer
             for (int r = Math.Max(0, region.Row); r < rowEnd; r++)
                 for (int c = Math.Max(0, region.Column); c < colEnd; c++)
                     dirty[r * back.Columns + c] = true;
+        }
+    }
+
+    /// <summary>
+    /// Recompute the force-repaint bitmask for the current frame from
+    /// <see cref="CellBuffer.ForceRepaintRegions"/>. Unlike the dirty-region mask, this is <b>always</b>
+    /// active (no opt-in) and <i>expands</i> emission: a cell inside a force-repaint region emits even
+    /// when it compares equal to the front buffer. The motivating case is a removed
+    /// <see cref="FragmentLayer.Cells"/> image whose lingering pixels the front buffer can't see are
+    /// stale (it recorded the bg-only covered placeholder). When no regions are marked,
+    /// <see cref="_hasForceRepaint"/> stays false and the diff is unaffected.
+    /// </summary>
+    private void ComputeForceCells(CellBuffer back)
+    {
+        _hasForceRepaint = back.ForceRepaintRegions.Count > 0;
+        if (!_hasForceRepaint) return;
+
+        var force = _forceCells!;
+        Array.Clear(force);
+
+        foreach (var region in back.ForceRepaintRegions)
+        {
+            int rowEnd = Math.Min(back.Rows, region.RowEnd);
+            int colEnd = Math.Min(back.Columns, region.ColumnEnd);
+            for (int r = Math.Max(0, region.Row); r < rowEnd; r++)
+                for (int c = Math.Max(0, region.Column); c < colEnd; c++)
+                    force[r * back.Columns + c] = true;
         }
     }
 
@@ -482,12 +524,19 @@ public sealed class FrameRenderer
 
                 int frontIdx = r * _frontCols + c;
 
+                // Force-repaint: this cell must emit even if it matches the front buffer (the front
+                // can't tell its content is stale — e.g. a removed Cells-layer image's lingering
+                // pixels). Computed once and honored by both the dirty-region skip and the equality
+                // short-circuit below.
+                bool forced = _hasForceRepaint && _forceCells![frontIdx];
+
                 // Dirty-region opt-in: cells outside any marked region are skipped entirely.
                 // The renderer trusts that the consumer is responsible for marking every
                 // cell they've changed; cells outside the union of regions stay as the front
                 // believed they were. This shortcut applies only when DirtyRegions is non-
-                // empty — empty regions fall back to a full-buffer diff.
-                if (_hasDirtyRegions && !_dirtyCells![frontIdx]) continue;
+                // empty — empty regions fall back to a full-buffer diff. A force-repaint cell is
+                // never skipped, even when outside every dirty region.
+                if (_hasDirtyRegions && !_dirtyCells![frontIdx] && !forced) continue;
 
                 // Compute the cell we actually want on the terminal for this position: under
                 // a Cell-layer fragment, that's a bg-only space; everywhere else it's the back
@@ -510,7 +559,7 @@ public sealed class FrameRenderer
                     continue;
                 }
 
-                if (cell == _frontCells![frontIdx]) continue;
+                if (!forced && cell == _frontCells![frontIdx]) continue;
 
                 // Wide-glyph defense for terminals that don't reliably render two-cell glyphs:
                 // pre-paint cells c and c+1 with the wide-left's style by emitting two spaces,
@@ -764,7 +813,7 @@ public sealed class FrameRenderer
         // Empty grapheme on a Single cell renders as a space; that paints the cell's background
         // and advances the cursor. WideLeft with empty grapheme is degenerate — emit two spaces
         // so the terminal still advances by 2.
-        string grapheme = string.IsNullOrEmpty(cell.Grapheme)
+        string grapheme = string.IsNullOrEmpty(cell.Grapheme) || cell.Grapheme == CellBuffer.DurableEmptyGrapheme
                               ? cell.Kind == CellKind.WideLeft ? "  " : " "
                               : cell.Grapheme;
 

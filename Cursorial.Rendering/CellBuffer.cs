@@ -36,6 +36,31 @@ namespace Cursorial.Rendering;
 /// </remarks>
 public sealed class CellBuffer : ICellSurface
 {
+    /// <summary>
+    /// A grapheme that is durable whitespace, meaning it will not be overwritten by any other
+    /// whitespace grapheme when calling <see cref="Set(int, int, string?, in Style)"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// In <c>Cursorial.Drawing</c>, opaque rectangles are filled with this grapheme. This
+    /// prevents non-occluding lines and recangles from overwriting them.
+    /// </para>
+    /// <para>
+    /// As a practical
+    /// example of why this is useful, consider a horizontal line that paints across the same
+    /// row as a block of text. The line would not occlude the <em>visible</em> text, but it
+    /// <em>would</em> occlude any whitespace spans <em>within</em> the text. Painting an
+    /// occluding background behind the text, even with a transparent brush, protects the
+    /// text block's entire bounds from occlusion.
+    /// </para>
+    /// <para>
+    /// As a consequence, however, if the text block in the previous example happened to
+    /// inhabit a surface with less than full opacity, none of the content from underlying
+    /// surfaces could be visible through the blank spaces after composition.
+    /// </para>
+    /// </remarks>
+    public static readonly string DurableEmptyGrapheme = "\u00A0";
+
     private Cell[] _cells;
     private int _columns;
     private int _rows;
@@ -51,6 +76,15 @@ public sealed class CellBuffer : ICellSurface
     // shape for repeating content).
     private readonly Dictionary<object, (int Column, int Row)> _fragmentsByKey = new();
     private readonly List<Rect> _dirtyRegions = [];
+
+    // Regions the renderer must re-emit unconditionally on the next render — even where the cell
+    // content is byte-identical to the front buffer. Distinct from _dirtyRegions: dirty marks
+    // RESTRICT emission (opt-in), force-repaint marks EXPAND it. The motivating case is a removed
+    // Cells-layer image (iTerm2/Sixel): its pixels have no protocol erase, so they linger on the
+    // terminal until a cell overwrites them — but the front buffer recorded those cells as the
+    // bg-only covered placeholder, so if the new content matches that placeholder a plain diff
+    // emits nothing and the image persists. The compositor marks the vacated footprint here.
+    private readonly List<Rect> _forceRepaintRegions = [];
 
     /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
     public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null)
@@ -185,8 +219,10 @@ public sealed class CellBuffer : ICellSurface
         // stack is a no-op (the mode just returns source), but every other mode tints / darkens /
         // lightens based on the existing color at this position.
         var blended = BlendStyle(style, previous.Style);
-
-        if (string.IsNullOrWhiteSpace(grapheme) && !previous.Grapheme.IsWhiteSpace() && style.Background.IsOpaque is false)
+        
+        if (string.IsNullOrWhiteSpace(grapheme) &&
+            !(previous.Grapheme.IsWhiteSpace() && previous.Grapheme != DurableEmptyGrapheme) &&
+            style.Background.IsOpaque is false)
         {
             var foregroundUnderneath = Color.Composite(style.Background, previous.Style.Foreground, CurrentBlendingMode);
             grapheme = previous.Grapheme;
@@ -220,8 +256,10 @@ public sealed class CellBuffer : ICellSurface
     /// wide) and applying the active blending mode per cell — exactly as
     /// <see cref="Set(int, int, string?, in Style)"/> does for a single cluster. A cluster that
     /// would not fit in the remaining columns stops the write rather than being clipped to a
-    /// partial glyph. Control characters (including newlines) are <b>not</b> interpreted; split
-    /// the text into lines yourself for multi-row layout. Returns the number of columns written.
+    /// partial glyph. The write is single-row by contract: it <b>stops at the first C0/C1 control
+    /// character</b> (including newlines and tabs) rather than storing it as a junk cell — split
+    /// text into lines (or use the drawing layer's multi-line text) for multi-row layout, and
+    /// expand tabs upstream. Returns the number of columns written.
     /// </summary>
     public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
     {
@@ -234,6 +272,10 @@ public sealed class CellBuffer : ICellSurface
         while (clusters.MoveNext())
         {
             var cluster = clusters.Current;
+
+            // Stop at the first control character — this is a single-row, printable-text write.
+            if (IsC0OrC1Control(cluster[0])) break;
+
             int width = GraphemeWidth.ClusterWidth(cluster);
             if (width < 1) width = 1;
 
@@ -246,6 +288,10 @@ public sealed class CellBuffer : ICellSurface
         return column - start;
     }
 
+    // C0 (U+0000–U+001F), DEL (U+007F), and C1 (U+0080–U+009F). Controls are grapheme-cluster
+    // boundaries on both sides (UAX #29), so checking a cluster's first char classifies the cluster.
+    internal static bool IsC0OrC1Control(char c) => c < 0x20 || (c >= 0x7F && c <= 0x9F);
+
     /// <summary>
     /// Reset every cell to <see cref="Cell.Blank"/>. Does NOT apply the active blending mode —
     /// clear is an explicit reset. Also removes every registered fragment.
@@ -257,6 +303,7 @@ public sealed class CellBuffer : ICellSurface
         _fragments.Clear();
         _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
+        _forceRepaintRegions.Clear();
 
         FillWithDefaultStyleIfKnown();
     }
@@ -269,7 +316,7 @@ public sealed class CellBuffer : ICellSurface
     /// protocol bytes at its anchor. Order is iteration order of the underlying dictionary —
     /// fragments must not depend on each other's visual ordering at the cell layer.
     /// </summary>
-    public FragmentDictionary Fragments => new(_fragments, this.Bounds);
+    public FragmentDictionary Fragments => new(_fragments, 0, 0);
 
     internal Dictionary<(int Column, int Row), FragmentEntry> FragmentsInternal => _fragments;
 
@@ -354,6 +401,26 @@ public sealed class CellBuffer : ICellSurface
     public bool RemoveFragment(CellPosition position) => RemoveFragment(position.Column, position.Row);
 
     /// <summary>
+    /// Remove every registered fragment. Cells under the removed fragments retain whatever they held —
+    /// see <see cref="AddFragment"/> for the layering contract. Marks each removed footprint dirty so a
+    /// dirty-region renderer revisits it (and a graphics-overlay renderer emits the protocol erase).
+    /// </summary>
+    public void ClearFragments()
+    {
+        if (_fragments.Count == 0)
+            return;
+
+        foreach (var (anchor, entry) in _fragments)
+        {
+            var size = entry.Fragment.GetSize();
+            MarkDirty(anchor.Column, anchor.Row, size.Columns, size.Rows);
+        }
+
+        _fragments.Clear();
+        _fragmentsByKey.Clear();
+    }
+
+    /// <summary>
     /// True when a fragment with the given <paramref name="key"/> is currently registered on
     /// the buffer. Useful for "is this image already on screen?" checks without scanning the
     /// fragment dictionary. Comparison uses <see cref="object.Equals(object)"/>, so value-type
@@ -424,6 +491,44 @@ public sealed class CellBuffer : ICellSurface
     /// callers performing manual emission can invoke it explicitly when needed.
     /// </summary>
     public void ClearDirty() => _dirtyRegions.Clear();
+
+    /// <summary>
+    /// Rectangles the renderer must re-emit on the next render <em>regardless</em> of whether the
+    /// cell content differs from the front buffer. Unlike <see cref="DirtyRegions"/> (which, when
+    /// opted in, <i>restricts</i> emission to the marked area), this <i>expands</i> it: cells inside
+    /// a force-repaint region are always eligible to emit even when they compare equal to the front
+    /// buffer. Used to overwrite content the front buffer can't see is stale — chiefly the pixels of
+    /// a removed <see cref="FragmentLayer.Cells"/> image, which has no protocol erase and lingers
+    /// until a cell paints over it.
+    /// </summary>
+    public IReadOnlyList<Rect> ForceRepaintRegions => _forceRepaintRegions;
+
+    /// <summary>
+    /// Mark a rectangular region for unconditional re-emission on the next render — see
+    /// <see cref="ForceRepaintRegions"/>. Empty rectangles are dropped silently.
+    /// </summary>
+    public void ForceRepaint(int column, int row, int columns, int rows)
+        => ForceRepaint(new Rect(column, row, columns, rows));
+
+    /// <summary>Mark a <see cref="Rect"/> for unconditional re-emission on the next render.</summary>
+    public void ForceRepaint(in Rect region)
+    {
+        if (region.IsEmpty) return;
+        if (region.Row >= _rows || region.Column >= _columns) return;
+        if (region.RowEnd <= 0 || region.ColumnEnd <= 0) return;
+
+        int col = Math.Max(0, region.Column);
+        int row = Math.Max(0, region.Row);
+        int colEnd = Math.Min(_columns, region.ColumnEnd);
+        int rowEnd = Math.Min(_rows, region.RowEnd);
+        _forceRepaintRegions.Add(new Rect(col, row, colEnd - col, rowEnd - row));
+    }
+
+    /// <summary>
+    /// Drop all force-repaint marks. The <see cref="FrameRenderer"/> calls this automatically at the
+    /// end of each render so consumers don't manage the lifecycle themselves.
+    /// </summary>
+    public void ClearForceRepaint() => _forceRepaintRegions.Clear();
 
     /// <summary>
     /// Replace every cell with <paramref name="cell"/>, blending its <see cref="Style"/> against
@@ -516,7 +621,7 @@ public sealed class CellBuffer : ICellSurface
                {
                    Foreground = Color.Composite(source.Foreground, backdrop.Background, mode),
                    Background = source.Background != Color.Default ? Color.Composite(source.Background, backdrop.Background, mode) : backdrop.Background,
-                   UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode),
+                   UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode)
                };
     }
 
@@ -567,6 +672,7 @@ public sealed class CellBuffer : ICellSurface
         _fragments.Clear();
         _fragmentsByKey.Clear();
         _dirtyRegions.Clear();
+        _forceRepaintRegions.Clear();
 
         FillWithDefaultStyleIfKnown();
     }

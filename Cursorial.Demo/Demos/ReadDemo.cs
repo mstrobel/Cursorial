@@ -2,6 +2,8 @@ using System.Text;
 
 using Cursorial.Terminal;
 
+// ReSharper disable CheckNamespace
+
 // Streaming reference demo. Opens a session and streams decoded input events to stdout one per line
 // until Ctrl+C, then prints a count. Implements IDemo directly (no render loop, so no InteractiveDemo
 // harness). Behavior is migrated verbatim from the original Program.cs ReadEventsAsync method.

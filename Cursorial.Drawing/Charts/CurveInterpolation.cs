@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>How a <see cref="LineChart"/> connects its data points.</summary>
 public enum CurveInterpolation

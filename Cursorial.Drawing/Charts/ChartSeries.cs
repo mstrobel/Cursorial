@@ -1,12 +1,13 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>One named-by-brush data series for a multi-series chart: its points and its color.</summary>
 public sealed record ChartSeries
 {
     /// <summary>Create a series over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
-    public ChartSeries(IReadOnlyList<PointD> points, IBrush brush)
+    public ChartSeries(IReadOnlyList<PointD> points, IBrush? brush = null)
     {
         ArgumentNullException.ThrowIfNull(points);
         Points = points;

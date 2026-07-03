@@ -1,10 +1,11 @@
 using System.Text;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>Which way a <see cref="BarChart"/>'s bars grow.</summary>
 public enum BarOrientation
@@ -30,7 +31,7 @@ public sealed class BarChart : IChart
     private readonly double[] _values;
 
     /// <summary>Create a bar chart over <paramref name="values"/> painted with <paramref name="brush"/>.</summary>
-    public BarChart(ReadOnlySpan<double> values, IBrush brush)
+    public BarChart(ReadOnlySpan<double> values, IBrush? brush = null)
     {
         _values = values.ToArray();
         Brush = brush ?? Brushes.Default;
@@ -158,18 +159,17 @@ public sealed class BarChart : IChart
     private void DrawCategoryLabels(DrawingContext context, in Rect area, int n, int barThickness, int gap)
     {
         int labelRow = area.Row + area.Rows - 1;
-        if ((uint) labelRow >= (uint) context.Bounds.Rows) return;
         int count = Math.Min(n, Categories!.Count);
         for (int b = 0; b < count; b++)
         {
             int laneStart = b * (barThickness + gap);
             if (laneStart >= area.Columns) break;
 
+            // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
             string text = TruncateToWidth(Categories[b] ?? "", barThickness);                  // truncate to the lane
             int offset = Math.Max(0, (barThickness - GraphemeWidth.StringWidth(text)) / 2);     // center within the lane
             int col = area.Column + laneStart + offset;
-            if ((uint) col < (uint) context.Bounds.Columns)
-                context.DrawText(col, labelRow, text, LabelColor, Colors.Transparent);
+            context.DrawText(col, labelRow, text, LabelColor, Colors.Transparent);   // per-cell clipped by the context
         }
     }
 
@@ -189,10 +189,11 @@ public sealed class BarChart : IChart
         return builder.ToString();
     }
 
-    // Write one block cell (foreground = sampled brush, transparent background) if it lies in the scene.
+    // Write one block cell (foreground = sampled brush, transparent background) if it would be visible
+    // (inside the active clip after the active translate — the scene bounds when nothing is pushed).
     private void Plot(DrawingContext context, int column, int row, string glyph, in Rect bounds)
     {
-        if ((uint) column >= (uint) context.Bounds.Columns || (uint) row >= (uint) context.Bounds.Rows)
+        if (!context.IsVisible(column, row))
             return;
 
         var color = Brush.ColorAt(column, row, bounds);

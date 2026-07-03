@@ -25,14 +25,24 @@ IReadOnlyList<IDemo> demos =
     new PensDemo(),
     new ChartsDemo(),
     new AnimationDemo(),
+    new MotionDemo(),
     new BrushedTextDemo(),
-    new UiPrimitivesDemo(),
+    new UIPrimitivesDemo(),
+    new UIPanelsDemo(),
+    new UIControlsDemo(),
+    new ControlGalleryDemo(),
+    new UIXamlDemo(),
+    new WindowingDemo(),
+    new SaveDialogDemo(),
+    new InspectorDemo(),
     new ImageSceneDemo(),
     new ImageClipDemo(),
     new ImageDemo(),
     new FormatDemo(),
     new PaletteDemo(),
     new ProbeDemo(),
+    new AccessKeysDemo(),
+    new RasterBenchDemo(),
 ];
 
 PrintBanner();
@@ -79,6 +89,12 @@ while (true)
     {
         Console.WriteLine($"Error: {ex.Message}");
         Console.WriteLine($"{ex.StackTrace}");
+        
+        for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            Console.WriteLine($"Inner: {inner.Message}");
+            Console.WriteLine($"{inner.StackTrace}");
+        }
     }
 }
 

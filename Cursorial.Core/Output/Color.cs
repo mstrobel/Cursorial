@@ -141,6 +141,7 @@ public readonly record struct Color
             throw new ArgumentException($"Invalid hex digit: '{c}'");
         }
     }
+
     /// <summary>
     /// Construct a 24-bit truecolor value with an explicit alpha channel. <paramref name="alpha"/>
     /// of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is fully transparent
@@ -153,6 +154,139 @@ public readonly record struct Color
     }
 
     /// <summary>
+    /// Construct a 24-bit truecolor value from its HSV components with an explicit alpha channel.
+    /// <paramref name="alpha"/> of 255 is fully opaque (equivalent to <see cref="FromRgb"/>); 0 is
+    /// fully transparent (compositing returns the backdrop unchanged). Intermediate values mix the
+    /// blended source color with the backdrop linearly.
+    /// </summary>
+    public static Color FromHsv(double hue, double saturation, double value, byte alpha = 255)
+    {
+        var h = hue * 6.0 % 6.0;
+        var c = value * saturation;
+        var x = c * (1 - Math.Abs(h % 2 - 1));
+        var (r, g, b) = (int)h switch
+                        {
+                            0 => (c, x, 0.0),
+                            1 => (x, c, 0.0),
+                            2 => (0.0, c, x),
+                            3 => (0.0, x, c),
+                            4 => (x, 0.0, c),
+                            _ => (c, 0.0, x),
+                        };
+        var m = value - c;
+        // ToByteClamped rounds (not truncates) and clamps to [0,255] — matching Lerp's convention. The raw
+        // (byte) cast both dropped a fractional part (≈40% of the gamut drifted ±1 on a round-trip, so
+        // Brighten(0)/Darken(0) weren't the identity) and WRAPPED mod 256 on out-of-range inputs (e.g. value>1).
+        return FromRgba(ToByteClamped((r + m) * 255), ToByteClamped((g + m) * 255), ToByteClamped((b + m) * 255), alpha);
+    }
+
+    /// <summary>
+    /// Convert this RGB color to HSV (hue, saturation, value) representation.
+    /// Returns (0, 0, 0) for non-RGB colors.
+    /// </summary>
+    public (double hue, double saturation, double value) ToHsv()
+    {
+        if (Kind != ColorKind.Rgb)
+            return (0, 0, 0);
+
+        double r = Red / 255.0;
+        double g = Green / 255.0;
+        double b = Blue / 255.0;
+
+        double max = Math.Max(r, Math.Max(g, b));
+        double min = Math.Min(r, Math.Min(g, b));
+        double delta = max - min;
+
+        double hue = 0;
+        if (delta > 0)
+        {
+            const double epsilon = 1e-10;
+            
+            if (Math.Abs(max - r) < epsilon)
+                hue = ((g - b) / delta % 6.0) / 6.0;
+            else if (Math.Abs(max - g) < epsilon)
+                hue = ((b - r) / delta + 2.0) / 6.0;
+            else
+                hue = ((r - g) / delta + 4.0) / 6.0;
+
+            if (hue < 0)
+                hue += 1.0;
+        }
+        double saturation = max > 0 ? delta / max : 0;
+        double value = max;
+
+        return (hue, saturation, value);
+    }
+
+    /// <summary>
+    /// Construct a 24-bit truecolor value from its HSL components with an explicit alpha channel.
+    /// <paramref name="hue"/>, <paramref name="saturation"/>, and <paramref name="luminosity"/> are
+    /// 0–1 fractions. <paramref name="alpha"/> of 255 is fully opaque (equivalent to
+    /// <see cref="FromRgb"/>); 0 is fully transparent.
+    /// </summary>
+    public static Color FromHsl(double hue, double saturation, double luminosity, byte alpha = 255)
+    {
+        var h = hue * 6.0 % 6.0;
+        var c = (1 - Math.Abs(2 * luminosity - 1)) * saturation;
+        var x = c * (1 - Math.Abs(h % 2 - 1));
+        var (r, g, b) = (int)h switch
+                        {
+                            0 => (c, x, 0.0),
+                            1 => (x, c, 0.0),
+                            2 => (0.0, c, x),
+                            3 => (0.0, x, c),
+                            4 => (x, 0.0, c),
+                            _ => (c, 0.0, x),
+                        };
+        var m = luminosity - c / 2;
+        // ToByteClamped rounds (not truncates) and clamps to [0,255] — matching Lerp's convention. The raw
+        // (byte) cast both dropped a fractional part (≈40% of the gamut drifted ±1 on a round-trip, so
+        // Brighten(0)/Darken(0) weren't the identity) and WRAPPED mod 256 on out-of-range inputs (e.g. value>1).
+        return FromRgba(ToByteClamped((r + m) * 255), ToByteClamped((g + m) * 255), ToByteClamped((b + m) * 255), alpha);
+    }
+
+    /// <summary>
+    /// Convert this RGB color to HSL (hue, saturation, luminosity) representation.
+    /// Returns (0, 0, 0) for non-RGB colors.
+    /// </summary>
+    public (double hue, double saturation, double luminosity) ToHsl()
+    {
+        if (Kind != ColorKind.Rgb)
+            return (0, 0, 0);
+
+        double r = Red / 255.0;
+        double g = Green / 255.0;
+        double b = Blue / 255.0;
+
+        double max = Math.Max(r, Math.Max(g, b));
+        double min = Math.Min(r, Math.Min(g, b));
+        double delta = max - min;
+
+        double luminosity = (max + min) / 2.0;
+
+        double hue = 0;
+        double saturation = 0;
+        if (delta > 0)
+        {
+            const double epsilon = 1e-10;
+
+            if (Math.Abs(max - r) < epsilon)
+                hue = ((g - b) / delta % 6.0) / 6.0;
+            else if (Math.Abs(max - g) < epsilon)
+                hue = ((b - r) / delta + 2.0) / 6.0;
+            else
+                hue = ((r - g) / delta + 4.0) / 6.0;
+
+            if (hue < 0)
+                hue += 1.0;
+
+            saturation = delta / (1 - Math.Abs(2 * luminosity - 1));
+        }
+
+        return (hue, saturation, luminosity);
+    }
+
+    /// <summary>
     /// Return a copy of this color with <see cref="Alpha"/> set to <paramref name="alpha"/>.
     /// A no-op for <see cref="ColorKind.Default"/> (alpha is meaningless there).
     /// </summary>
@@ -160,6 +294,38 @@ public readonly record struct Color
     {
         if (Kind == ColorKind.Default) return this;
         return new Color(Kind, PaletteIndex, Green, Blue, alpha);
+    }
+
+    /// <summary>
+    /// Return a lighter copy of this color by raising its HSL luminosity by
+    /// <paramref name="percentage"/> (a 0–1 fraction; defaults to 5%). The luminosity is clamped
+    /// to <c>[0, 1]</c>, so brightening a near-white color saturates at white. <see cref="Alpha"/>
+    /// is preserved. Adjusting luminosity is only meaningful for <see cref="ColorKind.Rgb"/>;
+    /// palette and default colors are returned unchanged (matching <see cref="Lerp"/>/<see cref="Composite"/>).
+    /// </summary>
+    public Color Brighten(double percentage = 0.05)
+    {
+        if (Kind != ColorKind.Rgb)
+            return this;
+
+        var (h, s, l) = ToHsl();
+        return FromHsl(h, s, Math.Clamp(l + percentage, 0.0, 1.0), Alpha);
+    }
+
+    /// <summary>
+    /// Return a darker copy of this color by lowering its HSL luminosity by
+    /// <paramref name="percentage"/> (a 0–1 fraction; defaults to 5%). The luminosity is clamped
+    /// to <c>[0, 1]</c>, so darkening a near-black color saturates at black. <see cref="Alpha"/>
+    /// is preserved. Adjusting luminosity is only meaningful for <see cref="ColorKind.Rgb"/>;
+    /// palette and default colors are returned unchanged (matching <see cref="Lerp"/>/<see cref="Composite"/>).
+    /// </summary>
+    public Color Darken(double percentage = 0.05)
+    {
+        if (Kind != ColorKind.Rgb)
+            return this;
+
+        var (h, s, l) = ToHsl();
+        return FromHsl(h, s, Math.Clamp(l - percentage, 0.0, 1.0), Alpha);
     }
 
     public override string ToString()

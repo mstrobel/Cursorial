@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cmdbar — unified command-surface design guide</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e; --canvas:#15161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --ribbon:#24283b; --toolbar:#1f2335; --btn-hover:#2e3349; --ddzone:#343c5e;
+    --tabstrip:#1b1e2e; --tab-active:#15161e;
+    --ctx:#bb9af7; --ctx-fill:#2a2440; --keytip:#e0af68;
+    --rule:#2c3147; --code-bg:#1a1b26;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8; --canvas:#fdfdfe;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --ribbon:#dedee3; --toolbar:#dedee3; --btn-hover:#cbccd1; --ddzone:#cdd0dd;
+    --tabstrip:#d2d3da; --tab-active:#fdfdfe;
+    --ctx:#5a3e8e; --ctx-fill:#e0d8ef; --keytip:#8f5e15;
+    --rule:#cdd0dd; --code-bg:#eceef3;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:"Cascadia Code NF","JetBrainsMono Nerd Font",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.55;transition:background .15s,color .15s;}
+  .page{max-width:1060px;margin:0 auto;padding:24px 22px 80px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:18px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+
+  /* document-style headings */
+  .booktitle{font-size:22px;color:var(--text);font-weight:bold;letter-spacing:.5px;margin:6px 0 2px;}
+  .booktitle .em{color:var(--accent);}
+  .subtitle{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  h2.sec{color:var(--accent);font-size:15px;font-weight:bold;margin:34px 0 4px;padding-top:14px;border-top:1px solid var(--rule);}
+  h2.sec .n{color:var(--muted);font-weight:normal;font-size:12px;margin-right:8px;}
+  h3.sub{color:var(--accent-2);font-size:13px;font-weight:bold;margin:18px 0 6px;}
+  p.body{max-width:860px;margin:8px 0;color:var(--text-dim);}
+  p.body b{color:var(--text);font-weight:normal;}
+  .lead{color:var(--text-dim);max-width:860px;font-size:13px;}
+  .note{color:var(--muted);font-size:11px;max-width:860px;line-height:1.5;margin-top:6px;}
+  ul.body{max-width:860px;color:var(--text-dim);padding-left:0;list-style:none;}
+  ul.body li{margin:5px 0;padding-left:1.4em;text-indent:-1.4em;}
+  ul.body li::before{content:"▸ ";color:var(--accent);}
+  .kbd{background:var(--surface);color:var(--text);padding:0 5px;}
+  code.in{background:var(--code-bg);color:var(--accent-2);padding:0 5px;}
+
+  /* TOC */
+  .toc{background:var(--panel);padding:10px 16px;max-width:560px;margin:10px 0 6px;}
+  .toc a{color:var(--text-dim);text-decoration:none;display:block;padding:1px 0;}
+  .toc a:hover{color:var(--accent);}
+  .toc .tn{color:var(--muted);margin-right:8px;}
+
+  /* spec callout */
+  .callout{background:var(--panel);border-left:3px solid var(--accent);padding:6px 14px;margin:12px 0;max-width:860px;}
+  .callout.warn{border-left-color:var(--amber);}
+  .callout .ct{color:var(--accent);font-size:11px;margin-bottom:2px;}
+  .callout.warn .ct{color:var(--amber);}
+
+  /* specimen frame */
+  .specimen{background:var(--canvas);padding:14px 16px;margin:10px 0;overflow-x:auto;}
+  .speclabel{color:var(--muted);font-size:11px;margin-bottom:6px;}
+
+  /* mono blocks */
+  .mono{font-variant-ligatures:none;white-space:pre;}
+  .codeblock{background:var(--code-bg);padding:10px 14px;overflow-x:auto;max-width:100%;color:var(--text-dim);margin:10px 0;}
+  .codeblock pre{margin:0;font:inherit;white-space:pre;line-height:1.5;}
+  .k-kw{color:var(--purple);} .k-fn{color:var(--accent);} .k-str{color:var(--green);}
+  .k-cm{color:var(--muted);font-style:italic;} .k-fld{color:var(--accent-2);} .k-num{color:#ff9e64;}
+  .k-tag{color:var(--red);} .k-attr{color:var(--accent-2);} .k-ns{color:var(--purple);} .k-type{color:var(--accent);} .k-punc{color:var(--muted);}
+
+  /* token swatches */
+  .tokrow{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;max-width:880px;}
+  .tok{display:flex;align-items:center;gap:6px;background:var(--panel);padding:2px 8px 2px 2px;font-size:11px;}
+  .tok .sw{width:18px;height:18px;display:inline-block;}
+  .tok .nm{color:var(--text-dim);}
+
+  /* comparison table */
+  .tbl{width:100%;max-width:880px;border-collapse:collapse;margin:10px 0;font-size:12px;}
+  .tbl th{text-align:left;color:var(--muted);font-weight:normal;padding:4px 10px;border-bottom:1px solid var(--rule);}
+  .tbl td{padding:4px 10px;border-bottom:1px solid var(--rule);color:var(--text-dim);vertical-align:top;}
+  .tbl td b{color:var(--text);font-weight:normal;}
+  .tbl tr:last-child td{border-bottom:0;}
+  .tbl .y{color:var(--green);} .tbl .n{color:var(--muted);} .tbl .p{color:var(--amber);}
+
+  /* ===== shared bar-control styles (reused across surfaces) ===== */
+  .bar{display:inline-flex;align-items:stretch;background:var(--toolbar);white-space:nowrap;font-variant-ligatures:none;vertical-align:middle;}
+  .b{display:inline-flex;align-items:center;gap:1ch;padding:0 1ch;color:var(--text-dim);cursor:pointer;}
+  .b:hover{background:var(--btn-hover);color:var(--text);}
+  .b .ic{color:var(--accent-2);}
+  .b.on{background:var(--accent);color:var(--on-accent);font-weight:bold;}
+  .b.on .ic{color:var(--on-accent);}
+  .bsep{color:var(--faint);display:inline-flex;align-items:center;padding:0 1px;}
+  .split{display:inline-flex;align-items:stretch;}
+  .split .a{display:inline-flex;align-items:center;padding:0 .5ch 0 1ch;color:var(--text-dim);cursor:pointer;}
+  .split .a:hover{background:var(--btn-hover);color:var(--text);}
+  .split .z{display:inline-flex;align-items:center;padding:0 .6ch;background:var(--ddzone);color:var(--accent);cursor:pointer;}
+  .split .z:hover{background:var(--accent);color:var(--on-accent);}
+  .popb{display:inline-flex;align-items:center;gap:.5ch;padding:0 1ch;color:var(--text-dim);cursor:pointer;}
+  .popb:hover{background:var(--btn-hover);color:var(--text);}
+  .popb .dd{color:var(--muted);}
+  .combo{display:inline-flex;align-items:center;gap:.5ch;padding:0 1ch;background:var(--well);color:var(--text);cursor:pointer;min-width:10ch;justify-content:space-between;}
+  .combo .dd{color:var(--accent);}
+  .ovf{display:inline-flex;align-items:center;padding:0 1ch;color:var(--accent);background:var(--toolbar);cursor:pointer;font-weight:bold;}
+
+  /* ribbon-specific */
+  .ribbon{background:var(--ribbon);display:inline-block;vertical-align:top;}
+  .rib-tabs{display:flex;background:var(--tabstrip);align-items:flex-end;}
+  .rib-tabs .file{background:var(--accent);color:var(--on-accent);padding:1px 12px;}
+  .rib-tabs .t{padding:1px 12px;color:var(--text-dim);}
+  .rib-tabs .t.active{background:var(--tab-active);color:var(--text);}
+  .rib-tabs .t.ctx{color:var(--ctx);}
+  /* QAT — trailing mini-toolbar in the tab strip */
+  .rib-tabs .qatspacer{flex:1;}
+  .rib-tabs .qat{display:inline-flex;align-items:center;gap:0;padding:0 4px;}
+  .rib-tabs .qat .qb{display:inline-flex;align-items:center;padding:0 .75ch;color:var(--text-dim);cursor:pointer;}
+  .rib-tabs .qat .qb:hover{background:var(--btn-hover);color:var(--text);}
+  .rib-tabs .qat .qb.dd{color:var(--muted);}
+  .rib-tabs .qat .qb .ic{color:var(--accent-2);}
+  .rib-body{display:flex;background:var(--ribbon);padding:3px 4px;align-items:stretch;}
+  .rg{display:flex;flex-direction:column;align-items:center;padding:0 6px;gap:2px;}
+  .rg:not(:last-child){border-right:1px solid var(--faint);}
+  .rg .gl{color:var(--muted);font-size:10px;margin-top:1px;}
+  .rg .gr{display:flex;align-items:center;gap:1px;flex:1;}
+  .rbig{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;padding:1px 8px;color:var(--text-dim);cursor:pointer;}
+  .rbig:hover{background:var(--btn-hover);color:var(--text);}
+  .rbig .ic{color:var(--accent-2);font-size:16px;line-height:1.1;}
+  .rbig .cap{font-size:10px;}
+  .rsm{display:inline-flex;align-items:center;padding:0 1ch;color:var(--text-dim);cursor:pointer;height:1.5em;}
+  .rsm:hover{background:var(--btn-hover);color:var(--text);}
+  .rsm.on{background:var(--accent);color:var(--on-accent);}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+  a{color:var(--accent);}
+/* ===== Backstage (File menu full-window) ===== */
+  .backstage{display:inline-block;vertical-align:top;background:var(--canvas);width:max-content;font-variant-ligatures:none;}
+  .bs-top{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;gap:10px;padding:1px 10px;}
+  .bs-top .back{cursor:pointer;} .bs-top .ttl{font-weight:bold;}
+  .bs-main{display:flex;}
+  .bs-rail{background:var(--ribbon);padding:4px 0;min-width:16ch;}
+  .bs-rail .item{display:flex;align-items:center;gap:8px;padding:1px 14px 1px 12px;color:var(--text-dim);cursor:pointer;}
+  .bs-rail .item .ic{color:var(--accent-2);width:1ch;display:inline-block;text-align:center;}
+  .bs-rail .item:hover{background:var(--btn-hover);color:var(--text);}
+  .bs-rail .item.sel{background:var(--accent);color:var(--on-accent);}
+  .bs-rail .item.sel .ic{color:var(--on-accent);}
+  .bs-rail .sep{border-top:1px solid var(--faint);margin:4px 8px;}
+  .bs-rail .grp{color:var(--muted);font-size:10px;padding:2px 12px 0;}
+  .bs-detail{background:var(--canvas);padding:8px 16px;min-width:52ch;color:var(--text-dim);}
+  .bs-detail .dt-h{color:var(--text);font-size:15px;font-weight:bold;margin-bottom:2px;}
+  .bs-detail .dt-sub{color:var(--muted);font-size:11px;margin-bottom:10px;}
+  .bs-tile{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--panel);padding:8px 14px;margin:0 8px 8px 0;cursor:pointer;min-width:12ch;}
+  .bs-tile:hover{background:var(--btn-hover);color:var(--text);}
+  .bs-tile .tic{color:var(--accent-2);font-size:20px;line-height:1.1;}
+  .bs-tile .tcap{font-size:11px;color:var(--text-dim);}
+  .bs-recent{display:flex;flex-direction:column;gap:0;}
+  .bs-recent .r{display:flex;gap:10px;padding:1px 0;color:var(--text-dim);cursor:pointer;}
+  .bs-recent .r:hover{color:var(--text);}
+  .bs-recent .r .nm{color:var(--text);} .bs-recent .r .pth{color:var(--muted);}
+  .bs-recent .r .pin{margin-left:auto;color:var(--muted);}
+  .bs-btn{display:inline-flex;align-items:center;padding:1px 12px;background:var(--accent);color:var(--on-accent);cursor:pointer;margin-top:2px;}
+  .bs-btn.sec{background:var(--surface);color:var(--text);}
+  .bs-field{background:var(--well);color:var(--text);padding:1px 8px;display:inline-block;min-width:34ch;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">cmdbar — command-surface design guide</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+
+
+  <div class="booktitle"><span class="em">Cmdbar</span> — Command-Surface Design Guide</div>
+  <p class="subtitle">A unified ribbon + toolbar + menu system for a C# / XAML terminal UI framework · WPF- &amp; Avalonia-compatible · Tokyo Night · whole-cell rendering · v1.0 draft</p>
+
+  <p class="lead">This guide specifies a single command-surface package for a <b>C# terminal UI framework with full XAML support</b>, modelled
+  on WPF and Avalonia — the cell-grid analogue of Actipro&rsquo;s <i>Bars</i> for Avalonia. Its central idea is that a <b>Ribbon</b>, a
+  <b>Toolbar</b>, and <b>Menus</b> are not three separate controls but <b>three surfaces over one shared set of bar controls</b>, all
+  driven by the standard <code class="in">ICommand</code> binding model. Build the control set once; each surface is a different XAML
+  arrangement of the same parts, bound to the same commands. Everything below is whole-cell (no sub-cell borders, no smooth gradients)
+  and ships in paired dark/light themes from one <code class="in">ResourceDictionary</code>.</p>
+
+  <div class="toc">
+    <a href="#arch"><span class="tn">1</span> Architecture — one control set, three surfaces</a>
+    <a href="#tokens"><span class="tn">2</span> Design tokens &amp; the whole-cell contract</a>
+    <a href="#controls"><span class="tn">3</span> The shared bar-control taxonomy</a>
+    <a href="#toolbar"><span class="tn">4</span> Surface A — the Toolbar (discrete overflow)</a>
+    <a href="#ribbon"><span class="tn">5</span> Surface B — the Ribbon (tabbed groups)</a>
+    <a href="#cross"><span class="tn">6</span> Cross-cutting conventions</a>
+    <a href="#api"><span class="tn">7</span> API — one command model, two XAML hosts</a>
+    <a href="#choose"><span class="tn">8</span> Choosing a surface</a>
+  </div>
+
+  <h2 class="sec" id="arch"><span class="n">1</span>Architecture — one control set, three surfaces</h2>
+  <p class="body">The package is layered, mirroring WPF/Avalonia conventions. At the bottom is a vocabulary of <b>bar controls</b> —
+  <code class="in">Control</code>-derived elements with attached properties — buttons, toggles, split buttons, popup buttons, comboboxes,
+  galleries, separators. Above that sit <b>three host surfaces</b> that arrange those controls differently, each an
+  <code class="in">ItemsControl</code>:</p>
+  <div class="codeblock"><pre>  <span class="k-cm">           ┌──────────────┬──────────────┬──────────────┐</span>
+  <span class="k-cm">  surfaces │</span>   <span class="k-fn">Toolbar</span>    <span class="k-cm">│</span>    <span class="k-fn">Ribbon</span>    <span class="k-cm">│</span>    <span class="k-fn">Menus</span>     <span class="k-cm">│</span>   <span class="k-cm">ItemsControl hosts;</span>
+  <span class="k-cm">           │</span> one row +    <span class="k-cm">│</span> tabs × groups<span class="k-cm">│</span> menu bar +   <span class="k-cm">│</span>   <span class="k-cm">arrange controls</span>
+  <span class="k-cm">           │</span> » overflow   <span class="k-cm">│</span> + backstage  <span class="k-cm">│</span> context menus<span class="k-cm">│</span>
+  <span class="k-cm">           └──────┬───────┴──────┬───────┴──────┬───────┘</span>
+  <span class="k-cm">                  └──────────────┼──────────────┘</span>
+  <span class="k-cm">           ┌──────────────────────────────────────────────┐</span>
+  <span class="k-cm">  controls │</span> <span class="k-fld">BarButton  BarToggleButton  BarSplitButton</span>     <span class="k-cm">│</span>   <span class="k-cm">Control-derived,</span>
+  <span class="k-cm">           │</span> <span class="k-fld">BarPopupButton  BarComboBox  BarGallery</span>       <span class="k-cm">│</span>   <span class="k-cm">XAML elements</span>
+  <span class="k-cm">           │</span> <span class="k-fld">BarSeparator  BarLabel</span>                        <span class="k-cm">│</span>
+  <span class="k-cm">           └──────────────────────────────────────────────┘</span>
+  <span class="k-cm">           ┌──────────────────────────────────────────────┐</span>
+  <span class="k-cm">  command  │</span> <span class="k-kw">ICommand</span> / <span class="k-kw">RoutedUICommand</span> · CanExecute ·     <span class="k-cm">│</span>   <span class="k-cm">standard WPF/Avalonia</span>
+  <span class="k-cm">  model    │</span>   Execute · Text · InputGestures · icon     <span class="k-cm">│</span>   <span class="k-cm">commanding; bound once</span>
+  <span class="k-cm">           └──────────────────────────────────────────────┘</span></pre></div>
+  <p class="body">The payoff is reuse through standard <b>commanding</b>: a <code class="in">Bold</code> <code class="in">RoutedUICommand</code>
+  is defined once and bound — via <code class="in">Command="{x:Static …}"</code> — to a ribbon toggle, a toolbar toggle, and a menu item
+  simultaneously. All three share the command&rsquo;s <code class="in">Text</code>, input gesture (<code class="in">Ctrl+B</code>), and
+  <code class="in">CanExecute</code>/checked state, because they bind the same command object to the same control type. This is exactly how
+  Bars unifies its ribbon and toolbar, and it is idiomatic WPF/Avalonia — no custom plumbing.</p>
+  <div class="callout"><div class="ct">DESIGN PRINCIPLE</div>
+  A surface is a <b>layout strategy</b>, not a new control library. If you find yourself building a &ldquo;ribbon button&rdquo; that
+  differs from a &ldquo;toolbar button,&rdquo; stop — the difference belongs in the host&rsquo;s arrangement, not in a forked control.</div>
+
+
+  <h2 class="sec" id="tokens"><span class="n">2</span>Design tokens &amp; the whole-cell contract</h2>
+  <p class="body">Every surface draws from one token set, themed dark/light. These are <code class="in">ResourceDictionary</code> entries —
+  brushes keyed by structural <i>role</i>, not raw colour — referenced with <code class="in">{DynamicResource}</code> so a single
+  dictionary swap re-skins all three surfaces live. (Shown here as the underlying CSS variables; in the framework each is a keyed brush
+  such as <code class="in">CmdToolbarBrush</code>, <code class="in">CmdAccentBrush</code>.)</p>
+  <div class="tokrow">
+    <span class="tok"><span class="sw" style="background:var(--toolbar)"></span><span class="nm">--toolbar</span></span><span class="tok"><span class="sw" style="background:var(--ribbon)"></span><span class="nm">--ribbon</span></span><span class="tok"><span class="sw" style="background:var(--tabstrip)"></span><span class="nm">--tabstrip</span></span><span class="tok"><span class="sw" style="background:var(--btn-hover)"></span><span class="nm">--btn-hover</span></span>
+    <span class="tok"><span class="sw" style="background:var(--ddzone)"></span><span class="nm">--ddzone</span></span><span class="tok"><span class="sw" style="background:var(--accent)"></span><span class="nm">--accent</span></span><span class="tok"><span class="sw" style="background:var(--accent-2)"></span><span class="nm">--accent-2</span></span><span class="tok"><span class="sw" style="background:var(--on-accent)"></span><span class="nm">--on-accent</span></span>
+    <span class="tok"><span class="sw" style="background:var(--ctx)"></span><span class="nm">--ctx (contextual)</span></span><span class="tok"><span class="sw" style="background:var(--keytip)"></span><span class="nm">--keytip</span></span><span class="tok"><span class="sw" style="background:var(--well)"></span><span class="nm">--well</span></span><span class="tok"><span class="sw" style="background:var(--faint)"></span><span class="nm">--faint</span></span>
+  </div>
+  <h3 class="sub">The whole-cell contract</h3>
+  <p class="body">Command surfaces are dense, so the rendering rules matter more here than anywhere. Three hard constraints:</p>
+  <ul class="body">
+    <li>Every control occupies an integer number of <b>cells</b>; widths are reasoned in cells, never pixels. Overflow and reflow are
+    discrete, control-at-a-time decisions.</li>
+    <li>No sub-cell structure: separators are a real <span class="mono">│</span> glyph cell, not a hairline; state is shown by
+    <b>whole-cell fill</b> or foreground, never a 1px border or focus ring.</li>
+    <li>The dropdown arrow on a split button is the one sanctioned exception to &ldquo;separators cost a cell&rdquo;: it lives in its own
+    <b>tinted cell</b> (see &sect;3), which carries the two-zone meaning without a separator glyph.</li>
+  </ul>
+  <div class="callout warn"><div class="ct">⚠ COMMON FAILURE</div>
+  Fluid, pixel-by-pixel resize (the ribbon&rsquo;s signature on the desktop) has no cell analogue. Don&rsquo;t emulate it with
+  fractional widths — express it as 2&ndash;3 discrete density tiers and a clean collapse-to-overflow. The grid&rsquo;s strength is
+  exactness; lean into it.</div>
+
+
+  <h2 class="sec" id="controls"><span class="n">3</span>The shared bar-control taxonomy</h2>
+  <p class="body">These are the parts every surface composes. Each is shown here in its toolbar form; the same control re-skins into a
+  ribbon group or a menu row unchanged.</p>
+
+  <h3 class="sub">Button · Toggle</h3>
+  <div class="specimen"><span class="bar" style="padding:0"><span class="b ">Paste</span><span class="bsep">│</span><span class="b on">B</span><span class="b ">I</span><span class="b ">U</span></span>
+  <div class="note">A <b>button</b> runs a command (one hit target). A <b>toggle</b> is a button with a checked state — checked = accent
+  whole-cell fill (Bold, above). No borders; the fill is the state.</div></div>
+
+  <h3 class="sub">SplitButton — the two-target control</h3>
+  <div class="specimen"><span class="bar" style="padding:0"><span class="split"><span class="a">Paste</span><span class="z">▾</span></span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></span>
+  <div class="note">A <b>split button</b> (Paste) has two hit zones: the <b>label</b> runs the default action, the <b>▾ zone</b> opens a
+  menu. The arrow sits in a <span style="color:var(--accent)">tinted cell</span> — no separator — so it reads as independently clickable.
+  A <b>popup button</b> (Align) is one target: the whole control opens its menu, marked by a bare caret. <i>This distinction is the
+  subject of a dedicated study; the tinted-zone solution is the resolved convention.</i></div></div>
+
+  <h3 class="sub">ComboBox / Gallery</h3>
+  <div class="specimen"><span class="bar" style="padding:0"><span class="combo"><span>Cascadia</span><span class="dd">▾</span></span><span class="combo"><span>13</span><span class="dd">▾</span></span></span>
+  <div class="note">A <b>combobox</b> is a gallery in disguise: it drops a menu-gallery of choices (with live preview on the focused row).
+  In a ribbon the same gallery can expand into a multi-row in-place grid; in a toolbar it stays a dropdown.</div></div>
+
+  <h3 class="sub">Separator</h3>
+  <div class="specimen"><span class="bar" style="padding:0"><span class="b ">Cut</span><span class="b ">Copy</span><span class="bsep">│</span><span class="b ">Find</span><span class="b ">Replace</span></span>
+  <div class="note">A single <span class="mono">│</span> cell dividing related clusters. It is the <i>only</i> load-bearing separator;
+  split buttons no longer need one (the tinted arrow zone replaced it).</div></div>
+
+
+  <h2 class="sec" id="toolbar"><span class="n">4</span>Surface A — the Toolbar</h2>
+  <p class="body">The toolbar is a <b>single row</b> of bar controls with computed <b>discrete overflow</b>: it packs controls
+  left-to-right and pockets whatever doesn&rsquo;t fit into a <span style="color:var(--accent)">»</span> popup. This is the cell-grid
+  replacement for the ribbon&rsquo;s fluid resize — no interpolation, just a measured decision about which controls fit. It costs exactly
+  one row, which is why it&rsquo;s the right default for most TUI apps.</p>
+
+  <div class="specimen"><div class="speclabel">Full width — all controls fit</div><span class="bar" style="padding:0"><span class="b ">Paste</span><span class="split"><span class="a">Copy</span><span class="z">▾</span></span><span class="bsep">│</span><span class="combo"><span>Cascadia</span><span class="dd">▾</span></span><span class="combo"><span>13</span><span class="dd">▾</span></span><span class="bsep">│</span><span class="b on">B</span><span class="b ">I</span><span class="b ">U</span><span class="bsep">│</span><span class="split"><span class="a">Color</span><span class="z">▾</span></span><span class="popb">Align<span class="dd">▾</span></span><span class="bsep">│</span><span class="popb">Insert<span class="dd">▾</span></span><span class="b ">Table</span><span class="b ">Link</span></span><div class="note" style="margin-top:4px">16 shown · all fit</div></div>
+  <div class="specimen"><div class="speclabel">Narrowed — tail pockets into the » popup</div><span class="bar" style="padding:0"><span class="b ">Paste</span><span class="split"><span class="a">Copy</span><span class="z">▾</span></span><span class="bsep">│</span><span class="combo"><span>Cascadia</span><span class="dd">▾</span></span><span class="combo"><span>13</span><span class="dd">▾</span></span><span class="bsep">│</span><span class="b on">B</span><span class="ovf">»</span></span><div class="note" style="margin-top:4px">7 shown · 9 overflowed · trailing separators trimmed at the fold</div></div>
+  <div class="specimen"><div class="speclabel">Tight — most controls overflow</div><span class="bar" style="padding:0"><span class="b ">Paste</span><span class="split"><span class="a">Copy</span><span class="z">▾</span></span><span class="ovf">»</span></span><div class="note" style="margin-top:4px">2 shown · 14 overflowed</div></div>
+
+  <p class="body">Overflowed controls keep their identity in the <span style="color:var(--accent)">»</span> menu: split/popup buttons
+  show a submenu arrow, comboboxes show value + caret, toggles show on/off state, buttons show their accelerator. The toolbar stays
+  fully usable at any width without reflowing its content.</p>
+  <div class="callout"><div class="ct">OVERFLOW ALGORITHM</div>
+  Pack each control&rsquo;s cell-width left-to-right while the running total stays under <span class="mono">width − 3</span> (reserving
+  the <span class="mono">»</span> cell); the remainder overflows. Trim trailing separators from the visible row and leading separators
+  from the popup so neither ends on a stray <span class="mono">│</span>.</div>
+
+
+  <h2 class="sec" id="ribbon"><span class="n">5</span>Surface B — the Ribbon</h2>
+  <p class="body">The ribbon arranges the same controls into <b>tabbed groups</b> — more vertical real estate (3&ndash;4 rows) in exchange
+  for showing many commands at once, labelled and spatially organised. It&rsquo;s the heavier surface; use it when command density is the
+  point. Below: the standard band, a contextual tab, and the backstage concept.</p>
+
+  <div class="specimen"><div class="speclabel">Standard band — Format tab, grouped controls</div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="split"><span class="a"><span class="ic" style="font-size:16px"></span></span><span class="z">▾</span></span><span class="rbig"><span class="ic"></span><span class="cap">Copy</span></span></div><div class="gl">Clipboard</div></div><div class="rg"><div class="gr"><span class="combo" style="min-width:12ch"><span>Heading 2</span><span class="dd">▾</span></span></div><div class="gl">Style</div></div><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="rsm ">&lt;/&gt;</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span><span class="rbig"><span class="ic"></span><span class="cap">Image</span></span><span class="rbig"><span class="ic"></span><span class="cap">Code</span></span></div><div class="gl">Insert</div></div></div></div></div>
+  <div class="specimen"><div class="speclabel">Contextual tab group — appears when a table is selected (accent-tinted)</div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="t ctx">│ Table ▾</span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="split"><span class="a"><span class="ic" style="font-size:16px"></span></span><span class="z">▾</span></span><span class="rbig"><span class="ic"></span><span class="cap">Copy</span></span></div><div class="gl">Clipboard</div></div><div class="rg"><div class="gr"><span class="combo" style="min-width:12ch"><span>Heading 2</span><span class="dd">▾</span></span></div><div class="gl">Style</div></div><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="rsm ">&lt;/&gt;</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span><span class="rbig"><span class="ic"></span><span class="cap">Image</span></span><span class="rbig"><span class="ic"></span><span class="cap">Code</span></span></div><div class="gl">Insert</div></div></div></div></div>
+
+
+  <h3 class="sub">Backstage — the File menu as a full-window view</h3>
+  <p class="body">The <b>File</b> tab is special: instead of dropping a menu, it takes over the whole window with a <b>Backstage</b> — a
+  left rail of document-level <i>destinations</i> (New, Open, Save, Export, Print, Account, Options) and a <b>detail pane</b> that swaps
+  per destination. Application-scoped actions live here, away from the content-editing commands on the other tabs. A <span style="color:var(--accent-2)">◂</span> returns to the document.</p>
+  <div class="specimen"><div class="speclabel">Backstage — &ldquo;Open&rdquo; destination selected (recent documents + places)</div><div class="backstage"><div class="bs-top"><span class="back">◂</span><span class="ttl">File</span></div><div class="bs-main"><div class="bs-rail"><div class="item"><span class="ic"></span>New</div><div class="item sel"><span class="ic"></span>Open</div><div class="item"><span class="ic"></span>Save</div><div class="item"><span class="ic"></span>Save As</div><div class="item"><span class="ic"></span>Export</div><div class="item"><span class="ic"></span>Print</div><div class="sep"></div><div class="item"><span class="ic"></span>Share</div><div class="item"><span class="ic"></span>Account</div><div class="item"><span class="ic"></span>Options</div></div><div class="bs-detail">
+  <div class="dt-h">Open</div>
+  <div class="dt-sub">Choose a document to open</div>
+  <div style="display:flex;gap:0;margin-bottom:10px">
+    <div class="bs-tile"><span class="tic"></span><span class="tcap">Recent</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">This PC</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">Browse…</span></div>
+  </div>
+  <div class="grp" style="color:var(--muted);font-size:11px;margin-bottom:3px">Recent documents</div>
+  <div class="bs-recent">
+    <div class="r"><span class="nm">release-notes.md</span><span class="pth">~/projects/tui/docs/</span><span class="pin" style="color:var(--accent)">★</span></div>
+    <div class="r"><span class="nm">architecture.md</span><span class="pth">~/projects/tui/</span><span class="pin" style="color:var(--accent)">★</span></div>
+    <div class="r"><span class="nm">CHANGELOG.md</span><span class="pth">~/projects/tui/</span><span class="pin">☆</span></div>
+    <div class="r"><span class="nm">scratch.md</span><span class="pth">~/tmp/</span><span class="pin">☆</span></div>
+  </div>
+</div></div></div></div>
+  <p class="body">Selecting a different rail item swaps only the detail pane — the rail persists. &ldquo;Export,&rdquo; for instance, shows
+  format tiles and a form:</p>
+  <div class="specimen"><div class="speclabel">Backstage — &ldquo;Export&rdquo; destination (detail pane changed, rail unchanged)</div><div class="backstage"><div class="bs-top"><span class="back">◂</span><span class="ttl">File</span></div><div class="bs-main"><div class="bs-rail"><div class="item"><span class="ic"></span>New</div><div class="item"><span class="ic"></span>Open</div><div class="item"><span class="ic"></span>Save</div><div class="item"><span class="ic"></span>Save As</div><div class="item sel"><span class="ic"></span>Export</div><div class="item"><span class="ic"></span>Print</div><div class="sep"></div><div class="item"><span class="ic"></span>Share</div><div class="item"><span class="ic"></span>Account</div><div class="item"><span class="ic"></span>Options</div></div><div class="bs-detail" style="min-width:52ch">
+  <div class="dt-h">Export</div>
+  <div class="dt-sub">Produce a shareable copy</div>
+  <div style="display:flex;gap:0;margin-bottom:12px">
+    <div class="bs-tile"><span class="tic"></span><span class="tcap">PDF</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">HTML</span></div><div class="bs-tile"><span class="tic"></span><span class="tcap">Plain text</span></div>
+  </div>
+  <div class="grp" style="color:var(--muted);font-size:11px;margin-bottom:4px">Export as PDF</div>
+  <div style="margin-bottom:4px">Destination &nbsp;<span class="bs-field">~/projects/tui/docs/release-notes.pdf</span></div>
+  <div style="margin-bottom:10px;color:var(--muted);font-size:11px">Page size: Letter · Include: syntax highlighting, page numbers</div>
+  <span class="bs-btn">Export</span> &nbsp; <span class="bs-btn sec">Cancel</span>
+</div></div></div></div>
+  <div class="callout"><div class="ct">STRUCTURE</div>
+  The Backstage is its own surface, but built from the same parts: the rail is a vertical list of <code class="in">BarButton</code>s
+  (destinations), and each detail pane is an ordinary panel of controls — tiles are large buttons, the recents list is a selectable
+  list, and forms use <code class="in">BarComboBox</code>/fields. In XAML: <code class="in">&lt;cmd:Backstage&gt;</code> with
+  <code class="in">&lt;cmd:BackstageItem Header="Export"&gt;</code> children, each wrapping its pane content.</div>
+
+  <p class="body">The ribbon&rsquo;s additional concepts, all built from the same controls:</p>
+  <ul class="body">
+    <li><b>Tabs &amp; groups</b> — commands cluster into named groups (Clipboard, Style, Inline, Paragraph, Insert), each group a row of
+    bar controls with a label beneath.</li>
+    <li><b>Contextual tabs</b> — a tab group that appears only when relevant (a table, an image), tinted with <code class="in">--ctx</code>
+    so it reads as conditional.</li>
+    <li><b>Backstage</b> — the File menu expands to the full-window view shown above: a rail of document-level destinations (New, Open,
+    Save, Export, Print, Account, Options) over a per-destination detail pane.</li>
+    <li><b>Density tiers</b> — as width shrinks, groups step from large icon-over-label buttons → small inline buttons → a single
+    collapsed group dropdown. Three discrete tiers, not a fluid slide.</li>
+    <li><b>QAT (Quick Access Toolbar)</b> — a mini toolbar of pinned, always-visible commands: literally <i>Surface A embedded in
+    Surface B</i>, same control set, nested. On a full ribbon it can take its own row above the tabs; on the <b>compact ribbon</b> that row
+    is exactly the space you're saving, so it rides the tab strip instead — see the placement below.</li>
+  </ul>
+
+  <h3 class="sub">QAT placement in the compact ribbon</h3>
+  <p class="body">The compact ribbon is two rows — a <b>tab strip</b> and a <b>band</b> — and its whole purpose is to not spend a third. A
+  classic QAT wants its own row, which is the one thing unavailable here. The resolution follows from a property of the tab strip: <b>tabs
+  are left-packed, so the right side of that row is dead space.</b> The QAT fills it — <b>[DECISION] trailing (right-aligned) in the tab
+  strip</b>, costing zero extra rows and consuming cells that were otherwise wasted. Right-alignment gives a natural gutter between the
+  left-packed tabs and the QAT, and it lands in the same zone as the ribbon-collapse chevron / window controls, which reads as familiar.</p>
+  <div class="specimen"><div class="speclabel">Compact ribbon — QAT trailing in the tab strip (Save · Undo · Redo + customize ▾), filling the strip's right-side slack</div><div class="ribbon"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="qatspacer"></span><span class="qat"><span class="qb"></span><span class="qb">↶</span><span class="qb">↷</span><span class="qb dd">▾</span></span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="rsm ">&lt;/&gt;</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span><span class="bsep">│</span><span class="popb">Align<span class="dd">▾</span></span></div><div class="gl">Paragraph</div></div><div class="rg"><div class="gr"><span class="combo" style="min-width:12ch"><span>Heading 2</span><span class="dd">▾</span></span></div><div class="gl">Style</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span><span class="rbig"><span class="ic"></span><span class="cap">Link</span></span></div><div class="gl">Insert</div></div></div></div></div>
+  <p class="body"><b>[DECISION] Overflow — degrade to a collapsed popup.</b> When width is tight enough that the inline QAT and the tabs would
+  compete, the QAT collapses <b>first</b> (before the tabs) to a single <span style="color:var(--accent)">⋯▾</span> popup button at the
+  strip's trailing edge — the same &ldquo;collapse to <span class="mono">»</span>&rdquo; principle the toolbar uses (Surface A), applied to
+  the nested QAT. This is the degraded tier, not the default: the QAT is meant to be one click away, so it only hides behind the popup when
+  cells genuinely run out. Tabs always win the space contest against the QAT, since losing a tab is worse than tucking pinned commands into
+  a menu.</p>
+  <div class="specimen"><div class="speclabel">Compact ribbon, tight width — QAT collapsed to a ⋯ popup so the tabs keep their cells</div><div class="ribbon" style="max-width:52ch"><div class="rib-tabs"><span class="file">File</span><span class="t">Home</span><span class="t">Insert</span><span class="t active">Format</span><span class="t">View</span><span class="qatspacer"></span><span class="qat"><span class="qb dd">⋯▾</span></span></div><div class="rib-body"><div class="rg"><div class="gr"><span class="rsm on">B</span><span class="rsm ">I</span><span class="rsm ">U</span><span class="bsep">│</span><span class="split"><span class="a">A</span><span class="z">▾</span></span></div><div class="gl">Inline</div></div><div class="rg"><div class="gr"><span class="rsm ">•</span><span class="rsm ">1.</span><span class="rsm ">☑</span></div><div class="gl">Para</div></div><div class="rg"><div class="gr"><span class="rbig"><span class="ic"></span><span class="cap">Table</span></span></div><div class="gl">Insert</div></div></div></div></div>
+  <div class="callout"><div class="ct">WHY NOT THE BAND ROW</div>
+  The band row also has right-side slack, but the band is <b>contextual</b> — it changes per active tab — while the QAT is <b>global and
+  persistent</b>. Anchoring a persistent toolbar in a tab-switching row is semantically wrong and visually unstable (it would appear to
+  shift as bands change width). The tab strip is the correct host precisely because it, like the QAT, is constant across tab switches.</div>
+  <div class="callout warn"><div class="ct">⚠ COST</div>
+  A classic ribbon eats ~15&ndash;17% of an 80×24 terminal before any content. Offer it, but don&rsquo;t default to it — and make the
+  <b>minimized ribbon</b> (tabs only, band drops on click) a first-class state, not an afterthought.</div>
+
+
+  <h2 class="sec" id="cross"><span class="n">6</span>Cross-cutting conventions</h2>
+  <p class="body">These apply to every surface because they belong to the shared layer, not any one host.</p>
+
+  <h3 class="sub">KeyTips — keyboard access overlay</h3>
+  <p class="body">Pressing <span class="kbd">Alt</span> overlays each control with a <span style="color:var(--keytip)">key letter</span>;
+  typing it activates the control or drills into a group. The same mechanism serves the ribbon, the toolbar, and the menu bar — one
+  accelerator model.</p>
+  <div class="specimen"><span class="bar" style="padding:0"><span class="b"><span style="color:var(--keytip)">P</span>aste</span><span class="bsep">│</span><span class="b"><span style="color:var(--keytip)">B</span></span><span class="b"><span style="color:var(--keytip)">I</span></span><span class="popb"><span style="color:var(--keytip)">A</span>lign<span class="dd">▾</span></span></span>
+  <div class="note">Alt-mode: each control shows its KeyTip letter in <span style="color:var(--keytip)">amber</span>.</div></div>
+
+  <h3 class="sub">SuperTip — rich hover help</h3>
+  <p class="body">Hovering any control (in any surface) can show a titled, multi-line tip with the command name, its accelerator, and a
+  description — richer than a one-line tooltip. Bound to the command, so it&rsquo;s identical wherever the command appears.</p>
+
+  <h3 class="sub">Menus &amp; galleries</h3>
+  <p class="body">Dropdowns from split/popup buttons, the menu bar, and context menus all use one menu primitive: rows with optional
+  icon, label, accelerator, submenu arrow, and check state. A <b>gallery</b> is a menu that lays its items out as a grid (swatches,
+  styles) with live preview — usable as a ribbon in-place grid or a dropdown.</p>
+
+  <h3 class="sub">State &amp; theming</h3>
+  <ul class="body">
+    <li><b>Hover</b> = whole-cell <code class="in">--btn-hover</code> fill on button-like targets; foreground brighten on text-like ones.</li>
+    <li><b>Checked/active</b> = <code class="in">--accent</code> fill (toggles, active tab).</li>
+    <li><b>Disabled</b> = <code class="in">--muted</code> foreground, no fill.</li>
+    <li><b>Dark/light</b> = one token swap; all surfaces follow.</li>
+  </ul>
+
+
+  <h2 class="sec" id="api"><span class="n">7</span>API — one command model, two XAML hosts</h2>
+  <p class="body">Here is the shape that makes the architecture real, in the framework&rsquo;s actual idiom. Commands are defined once in
+  C#, then bound from XAML into whichever surface(s) host them. Because everything is standard <code class="in">ICommand</code>
+  commanding, the same command drives a toolbar button and a ribbon toggle with no per-surface code.</p>
+
+  <h3 class="sub">1 · Define commands once (C#)</h3>
+  <p class="body">Use <code class="in">RoutedUICommand</code> for app-wide verbs (they carry <code class="in">Text</code> and
+  <code class="in">InputGestures</code> for free), or a <code class="in">RelayCommand</code> on a view-model for MVVM. Either implements
+  <code class="in">ICommand</code>, so the surfaces don&rsquo;t care which you choose.</p>
+  <div class="codeblock"><pre><span class="k-kw">public static class</span> <span class="k-type">FormatCommands</span>
+{
+    <span class="k-cm">// RoutedUICommand carries display text + gesture; CanExecute/Execute</span>
+    <span class="k-cm">// are wired with CommandBindings on the editor control.</span>
+    <span class="k-kw">public static readonly</span> <span class="k-type">RoutedUICommand</span> <span class="k-fld">Bold</span> =
+        <span class="k-kw">new</span>(<span class="k-str">"Bold"</span>, <span class="k-str">"Bold"</span>, <span class="k-kw">typeof</span>(<span class="k-type">FormatCommands</span>),
+            <span class="k-kw">new</span> <span class="k-type">InputGestureCollection</span> { <span class="k-kw">new</span> <span class="k-type">KeyGesture</span>(<span class="k-type">Key</span>.B, <span class="k-type">ModifierKeys</span>.Control) });
+
+    <span class="k-kw">public static readonly</span> <span class="k-type">RoutedUICommand</span> <span class="k-fld">Italic</span> = <span class="k-cm">/* Ctrl+I */</span>  <span class="k-kw">new</span>(<span class="k-str">"Italic"</span>, <span class="k-str">"Italic"</span>, <span class="k-kw">typeof</span>(<span class="k-type">FormatCommands</span>));
+    <span class="k-kw">public static readonly</span> <span class="k-type">RoutedUICommand</span> <span class="k-fld">Paste</span>  = <span class="k-type">ApplicationCommands</span>.<span class="k-fld">Paste</span>;
+}
+
+<span class="k-cm">// CanExecute / checked-state live in one place; every surface reflects it.</span>
+<span class="k-fn">CommandBindings</span>.<span class="k-fn">Add</span>(<span class="k-kw">new</span> <span class="k-type">CommandBinding</span>(<span class="k-type">FormatCommands</span>.<span class="k-fld">Bold</span>,
+    (s, e) =&gt; <span class="k-fld">Editor</span>.<span class="k-fn">ToggleBold</span>(),
+    (s, e) =&gt; e.<span class="k-fld">CanExecute</span> = <span class="k-fld">Editor</span>.<span class="k-fld">HasSelection</span>));</pre></div>
+
+  <h3 class="sub">2 · Surface A — the Toolbar (XAML)</h3>
+  <p class="body">One row of bar controls, bound by <code class="in">Command="{x:Static …}"</code>. The host sets
+  <code class="in">OverflowMode</code>; toggles bind their checked state to the command target.</p>
+  <div class="codeblock"><pre><span class="k-punc">&lt;</span><span class="k-tag">cmd:Toolbar</span> <span class="k-attr">OverflowMode</span>=<span class="k-str">"CollapseTail"</span><span class="k-punc">&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarButton</span>       <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">cmd:FormatCommands.Paste}"</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarSplitButton</span>  <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">ApplicationCommands.Copy}"</span>
+                        <span class="k-attr">MenuItemsSource</span>=<span class="k-str">"{Binding</span> <span class="k-str">CopyVariants}"</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarSeparator</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarComboBox</span>    <span class="k-attr">ItemsSource</span>=<span class="k-str">"{Binding</span> <span class="k-str">Fonts}"</span>
+                        <span class="k-attr">SelectedItem</span>=<span class="k-str">"{Binding</span> <span class="k-str">FontFamily}"</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarSeparator</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarToggleButton</span> <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">cmd:FormatCommands.Bold}"</span>   <span class="k-attr">Content</span>=<span class="k-str">"B"</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarToggleButton</span> <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">cmd:FormatCommands.Italic}"</span> <span class="k-attr">Content</span>=<span class="k-str">"I"</span> <span class="k-punc">/&gt;</span>
+<span class="k-punc">&lt;/</span><span class="k-tag">cmd:Toolbar</span><span class="k-punc">&gt;</span></pre></div>
+
+  <h3 class="sub">3 · Surface B — the Ribbon (XAML)</h3>
+  <p class="body">The <b>same commands</b>, arranged into tabs and groups. Note <code class="in">FormatCommands.Bold</code> appears here
+  exactly as it did in the toolbar — identical binding, identical text/gesture/checked-state, zero duplicated logic.</p>
+  <div class="codeblock"><pre><span class="k-punc">&lt;</span><span class="k-tag">cmd:Ribbon</span><span class="k-punc">&gt;</span>
+  <span class="k-punc">&lt;</span><span class="k-tag">cmd:RibbonTab</span> <span class="k-attr">Header</span>=<span class="k-str">"Format"</span><span class="k-punc">&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:RibbonGroup</span> <span class="k-attr">Header</span>=<span class="k-str">"Clipboard"</span><span class="k-punc">&gt;</span>
+      <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarSplitButton</span> <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">ApplicationCommands.Paste}"</span> <span class="k-attr">Size</span>=<span class="k-str">"Large"</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;/</span><span class="k-tag">cmd:RibbonGroup</span><span class="k-punc">&gt;</span>
+    <span class="k-punc">&lt;</span><span class="k-tag">cmd:RibbonGroup</span> <span class="k-attr">Header</span>=<span class="k-str">"Inline"</span><span class="k-punc">&gt;</span>
+      <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarToggleButton</span> <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">cmd:FormatCommands.Bold}"</span>   <span class="k-attr">Content</span>=<span class="k-str">"B"</span> <span class="k-punc">/&gt;</span>
+      <span class="k-punc">&lt;</span><span class="k-tag">cmd:BarToggleButton</span> <span class="k-attr">Command</span>=<span class="k-str">"{x:Static</span> <span class="k-str">cmd:FormatCommands.Italic}"</span> <span class="k-attr">Content</span>=<span class="k-str">"I"</span> <span class="k-punc">/&gt;</span>
+    <span class="k-punc">&lt;/</span><span class="k-tag">cmd:RibbonGroup</span><span class="k-punc">&gt;</span>
+    <span class="k-cm">&lt;!-- contextual tabs, backstage, QAT declared the same way --&gt;</span>
+  <span class="k-punc">&lt;/</span><span class="k-tag">cmd:RibbonTab</span><span class="k-punc">&gt;</span>
+<span class="k-punc">&lt;/</span><span class="k-tag">cmd:Ribbon</span><span class="k-punc">&gt;</span></pre></div>
+  <p class="body"><code class="in">BarToggleButton</code> bound to <code class="in">FormatCommands.Bold</code> appears in both markup blocks
+  verbatim. The <i>control element</i> (how it&rsquo;s shown) is chosen per surface; the <i>command</i> (what it does, its enabled and
+  checked state) is shared through <code class="in">{x:Static}</code>. That single fact — idiomatic WPF/Avalonia commanding — is the
+  whole package.</p>
+  <div class="callout"><div class="ct">XAML COMPATIBILITY</div>
+  Controls derive from <code class="in">Control</code> and expose dependency/styled properties, so they participate in normal XAML:
+  <code class="in">Style</code>, <code class="in">DataTemplate</code>, <code class="in">Binding</code>, triggers, and
+  <code class="in">ResourceDictionary</code> theming. The same markup compiles against the WPF-style and Avalonia-style backends; only the
+  namespace URI differs.</div>
+
+
+  <h2 class="sec" id="choose"><span class="n">8</span>Choosing a surface</h2>
+  <table class="tbl">
+    <tr><th>Concern</th><th>Toolbar</th><th>Ribbon</th><th>Menu bar</th></tr>
+    <tr><td>Vertical cost</td><td class="y">1 row</td><td class="p">3&ndash;4 rows</td><td class="y">1 row</td></tr>
+    <tr><td>Command density</td><td class="p">moderate (+ overflow)</td><td class="y">high, organised</td><td class="p">high, but hidden</td></tr>
+    <tr><td>Discoverability</td><td class="p">medium</td><td class="y">high (labelled groups)</td><td class="n">low (must open)</td></tr>
+    <tr><td>Narrow terminals</td><td class="y">degrades cleanly</td><td class="n">cramped; needs tiers</td><td class="y">fine</td></tr>
+    <tr><td>Best for</td><td><b>most apps</b> — editors, tools</td><td>command-dense suites</td><td>classic/compact apps</td></tr>
+  </table>
+  <p class="body"><b>Recommendation:</b> default to the <b>Toolbar</b> (+ a menu bar for the long tail), and offer the <b>Ribbon</b> as an
+  opt-in skin for command-dense applications. Because all three are the same controls underneath, switching a surface is a host change,
+  not a rewrite — an app can even let the user choose.</p>
+  <p class="note">This guide unifies the ribbon and toolbar mockups into one specification for the C# / XAML framework. Both surfaces, the
+  shared <code class="in">Control</code>-derived control set, the <code class="in">ICommand</code> binding model, the overflow algorithm,
+  the split-vs-dropdown convention, KeyTips/SuperTips, and the <code class="in">ResourceDictionary</code>-based dark/light theming are
+  drawn from the same whole-cell design language used across the rest of the component suite, and compile against both the WPF-style and
+  Avalonia-style backends.</p>
+
+
+</div>
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+  });
+</script>
+</body>
+</html>

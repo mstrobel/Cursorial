@@ -115,26 +115,24 @@ public sealed class ResourceLoader : IResourceLoader
 
     private static Stream? OpenFile(Uri uri)
     {
-        // @formatter:off
+        // Honor the IResourceLoader.TryLoadBytes contract ("returns null when the URI can't be resolved"): a malformed
+        // path (NUL char ⇒ ArgumentException, over-long ⇒ PathTooLongException : IOException) must return null, not throw.
         try { return System.IO.File.OpenRead(uri.LocalPath); }
-        catch (FileNotFoundException)         { return null; }
-        catch (DirectoryNotFoundException)    { return null; }
-        catch (UnauthorizedAccessException)   { return null; }
-        // @formatter:o
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
 
     private static Stream? OpenRelative(string relativePath)
     {
         if (string.IsNullOrEmpty(relativePath)) return null;
 
-        var resolved = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
-      
-        // @formatter:off
-        try { return System.IO.File.OpenRead(resolved); }
-        catch (FileNotFoundException)         { return null; }
-        catch (DirectoryNotFoundException)    { return null; }
-        catch (UnauthorizedAccessException)   { return null; }
-        // @formatter:on
+        // Path.GetFullPath/Combine themselves throw on a malformed path — keep them inside the guard so a bad relative
+        // URI resolves to null rather than throwing (the same contract as OpenFile).
+        try
+        {
+            var resolved = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
+            return System.IO.File.OpenRead(resolved);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
 
     private static Assembly? FindAssemblyByName(string assemblyName)

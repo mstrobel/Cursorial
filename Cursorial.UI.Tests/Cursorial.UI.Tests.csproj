@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <RootNamespace>Cursorial.Tests.UI</RootNamespace>
+
+        <!--
+            The §14/§13 allocation contracts (N196-N199, C238, the Store/MotionStorm benchmarks, the
+            zero-allocation clean-frame / hover / key-dispatch rows) assert exact zero deltas from
+            GC.GetAllocatedBytesForCurrentThread() around a warmed loop. Under tiered JIT a tier-1
+            re-compilation of a hot-loop method can fire *inside* the measured window — its JIT
+            allocations land on the calling thread and are charged to the delta, producing intermittent
+            small non-zero readings (a few KB, uncorrelated with iteration count) when the box is under
+            cross-process load (the full-solution `dotnet test` spawns one host per assembly). Forcing
+            full optimization on first JIT removes the mid-measurement re-JIT, so the warm-up loop truly
+            settles the code and the contracts are deterministic. Test-only runtime knob; no production
+            effect. (The single-thread property-engine contract — invariant 6 — is upheld by the
+            assembly-level DisableTestParallelization in TestAssemblyInfo.cs.)
+        -->
+        <TieredCompilation>false</TieredCompilation>
+
+        <!--
+            Same allocation-contract determinism story (above): VSTest's test host defaults to Server +
+            concurrent GC, whose background GC threads asynchronously reconcile each thread's
+            allocation-context bookkeeping that GC.GetAllocatedBytesForCurrentThread() reports — under
+            cross-process load that reconciliation can land between the two reads and charge a small
+            one-shot delta to the measured window. Workstation, non-concurrent GC keeps all allocation
+            accounting synchronous on the measuring thread, so the warmed loop's delta is exactly the
+            steady-state allocation it is asserting. Test-only; no production effect.
+        -->
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
+        <!-- The standalone gallery (#107) — referenced for the headless smoke canary (no TTY to run the real app). -->
+        <ProjectReference Include="..\Cursorial.Gallery\Cursorial.Gallery.csproj" />
+    </ItemGroup>
+
+</Project>

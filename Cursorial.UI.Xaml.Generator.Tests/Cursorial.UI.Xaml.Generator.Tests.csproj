@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <RootNamespace>Cursorial.Tests.UI.Xaml.Generator</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+        <!-- The GeneratorDriver host used to run the generator under test. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Reference the generator as a plain assembly (we drive it manually via CSharpGeneratorDriver). -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj" />
+        <!-- The runtime framework assemblies — so a test Compilation can resolve Cursorial.UI symbols
+             (and the dual-run can instantiate the real types). -->
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <!-- UITestHost — the live frame loop / app for behavioral resource + template lowering tests. -->
+        <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
+    </ItemGroup>
+
+</Project>

@@ -5,6 +5,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 
+// ReSharper disable CheckNamespace
+
 // Phase-6b.2 showcase: an image clipped at a scene boundary. Two composited layers — an unclipped label layer
 // (title + a line marking the clip edge) and an image layer clipped to the left of that edge. The image is
 // positioned to straddle the edge, so its right half is past the clip. Sixel re-crops the pixels at the edge
@@ -17,13 +19,13 @@ internal sealed class ImageClipDemo : InteractiveDemo
     public override string Description =>
         "An image clipped at a scene boundary — Sixel + Kitty crop; iTerm2 suppresses (Phase 6b.2).";
 
-    protected override string? IntroMessage =>
+    protected override string IntroMessage =>
         "Image-clip demo. Opening alt screen — press q or Ctrl+C to exit.";
 
     private IContent _image = null!;
-    private Scene _labels = null!;
-    private Scene _imageScene = null!;
-    private SceneCompositor _compositor = null!;
+    private Scene? _labels;
+    private Scene? _imageScene;
+    private SceneCompositor? _compositor;
     private int _clipColumns;
     private bool _tooSmall;
 
@@ -53,6 +55,7 @@ internal sealed class ImageClipDemo : InteractiveDemo
 
         _imageScene?.Dispose();
         _imageScene = Scene.Create(Buffer.Columns, Buffer.Rows);
+        
         if (!_tooSmall)
             _imageScene.Draw(ctx => ctx.DrawContent(new Rect(_clipColumns - 12, 3, 24, 12), _image, Capabilities.Output));
     }
@@ -76,10 +79,15 @@ internal sealed class ImageClipDemo : InteractiveDemo
         ctx.DrawText(Math.Max(0, _clipColumns - 9), 16, "← clip edge", label);
     }
 
-    protected override void RenderFrame(long frame) =>
-        _compositor.Composite(
-        [
-            new SceneLayer(_labels),
-            new SceneLayer(_imageScene, new CompositeParameters(clip: new Rect(0, 0, _clipColumns, Buffer.Rows))),
-        ], Buffer.AsView());
+    protected override void RenderFrame(long frame)
+    {
+        if (_labels is {} labels && _imageScene is {} imageScene)
+        {
+            _compositor?.Composite(
+                [
+                    new SceneLayer(labels),
+                    new SceneLayer(imageScene, new CompositeParameters(clip: new Rect(0, 0, _clipColumns, Buffer.Rows))),
+                ], Buffer.AsView());
+        }
+    }
 }

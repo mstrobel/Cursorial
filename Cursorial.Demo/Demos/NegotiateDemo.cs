@@ -2,6 +2,8 @@ using System.Text;
 
 using Cursorial.Terminal;
 
+// ReSharper disable CheckNamespace
+
 // The one-shot reference demo. Opens a session, captures the negotiated TerminalCapabilities,
 // disposes (restoring cooked mode) before printing the multi-line report — otherwise the report
 // would be written through a raw-mode terminal (OPOST off) where bare \n doesn't get a CR.

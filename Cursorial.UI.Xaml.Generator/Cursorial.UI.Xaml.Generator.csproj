@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The Fork C X4 build-time XAML generator (design doc §4.9 / §14.2 P10). A Roslyn
+        IIncrementalGenerator that consumes the netstandard2.0 Cursorial.UI.Xaml.Frontend parser
+        (source-linked, see below) to emit, at compile time: validation diagnostics, typed x:Name
+        backing fields + InitializeComponent, and a trim/AOT-clean IXamlTypeMetadataProvider that
+        replaces ReflectionXamlMetadata at runtime.
+
+        netstandard2.0 + IsRoslynComponent: a source generator runs inside the C# compiler and must
+        target netstandard2.0. It ships as an analyzer asset (analyzers/dotnet/cs), never as a
+        runtime library (IncludeBuildOutput=false) — consumers reference it with
+        OutputItemType="Analyzer" / ReferenceOutputAssembly="false".
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>false</ImplicitUsings>
+        <RootNamespace>Cursorial.UI.Xaml.Generator</RootNamespace>
+        <AssemblyName>Cursorial.UI.Xaml.Generator</AssemblyName>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <IsPackable>true</IsPackable>
+        <!-- NU5128: analyzers ship no runtime assets. RS2008: the diagnostic IDs are the frontend's
+             dynamic CUR codes, not a fixed analyzer-release-tracked set. -->
+        <NoWarn>$(NoWarn);NU5128;RS2008</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.UI.Xaml.Generator.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The compiler host supplies Roslyn at runtime; pin a floor the .NET 10 SDK's Roslyn satisfies. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Reference the netstandard2.0 parser frontend as ONE assembly (no source-link duplication).
+             InternalsVisibleTo on the frontend grants the node-graph internals; the frontend.dll +
+             its System.Memory dep ship as analyzer assets for real consumers (the X4.2 packaging step). -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+    </ItemGroup>
+
+    <!-- ── WS-X4.2 packaging ─────────────────────────────────────────────────────────────────────────
+         The consumer .props/.targets ship in build/; the generator + its copy-local runtime deps (the
+         frontend + System.Memory + facades) ship as analyzer assets so the analyzer loads in the C#
+         compiler. Microsoft.CodeAnalysis is PrivateAssets=all → never copy-local, never packed (the
+         compiler supplies its own Roslyn). -->
+    <ItemGroup>
+        <None Include="build\Cursorial.UI.Xaml.Generator.props" Pack="true" PackagePath="build" />
+        <None Include="build\Cursorial.UI.Xaml.Generator.targets" Pack="true" PackagePath="build" />
+        <None Include="$(OutputPath)\Cursorial.UI.Xaml.Generator.dll" Pack="true" PackagePath="analyzers\dotnet\cs" Visible="false" />
+    </ItemGroup>
+
+    <Target Name="_CursorialXamlPackAnalyzerDeps" BeforeTargets="_GetPackageFiles" DependsOnTargets="ResolveReferences">
+        <ItemGroup>
+            <None Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'"
+                  Pack="true" PackagePath="analyzers\dotnet\cs" Visible="false" />
+        </ItemGroup>
+    </Target>
+
+    <!-- In-repo parity: a ProjectReference consumer (OutputItemType=Analyzer) gets the generator dll as an
+         analyzer; surface its runtime deps as analyzer assets too, or the analyzer fails to load. -->
+    <PropertyGroup>
+        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);_CursorialXamlGeneratorAnalyzerDeps</GetTargetPathDependsOn>
+    </PropertyGroup>
+    <Target Name="_CursorialXamlGeneratorAnalyzerDeps" DependsOnTargets="ResolveReferences">
+        <ItemGroup>
+            <!-- .dll only — surfacing the .pdb/.xml siblings makes the compiler try to load them as analyzers (CS8034). -->
+            <TargetPathWithTargetPlatformMoniker Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'"
+                                                 IncludeRuntimeDependency="false" />
+        </ItemGroup>
+    </Target>
+
+</Project>

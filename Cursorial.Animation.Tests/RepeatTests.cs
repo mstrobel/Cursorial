@@ -1,5 +1,7 @@
 using Cursorial.Animation;
 
+// ReSharper disable RedundantTypeArgumentsOfMethod
+
 namespace Cursorial.Tests.Animation;
 
 public class RepeatTests
@@ -95,6 +97,33 @@ public class RepeatTests
     public void NullInner_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new RepeatAnimation<double>(null!, 2));
+    }
+
+    [Fact] // N27: a finite count × inner duration that overflows TimeSpan is guarded at construction — throws
+    public void Count_DurationOverflow_Throws()
+    {
+        var huge = new Animation<double>(0.0, 1.0, TimeSpan.FromTicks(long.MaxValue / 2), DoubleInterpolator.Instance);
+        Assert.Throws<OverflowException>(() => new RepeatAnimation<double>(huge, count: 5));
+    }
+
+    [Fact] // N48: Repeat/AutoReverse wrap an arbitrary source IAnimation<T> uniformly (not just two-point Animations)
+    public void Wraps_ArbitrarySource_Uniformly()
+    {
+        // A 3-stop keyframe triangle source: 0 → 10 → 0 over 2s (not a two-point Animation).
+        var source = new KeyframeAnimation<double>(
+            [new Keyframe<double>(S(0), 0.0), new Keyframe<double>(S(1), 10.0), new Keyframe<double>(S(2), 0.0)],
+            DoubleInterpolator.Instance);
+
+        var repeated = source.Repeat(2);
+        Assert.Equal(S(4), repeated.Duration);                          // 2 iterations × the source's 2s duration
+        Assert.Equal(source.ValueAt(S(0.5)), repeated.ValueAt(S(0.5))); // first iteration mirrors the source
+        Assert.Equal(source.ValueAt(S(0.5)), repeated.ValueAt(S(2.5))); // second iteration, same phase (modulo)
+        Assert.Equal(source.ValueAt(S(1.5)), repeated.ValueAt(S(3.5))); // across the iteration boundary, uniform
+
+        var pinged = source.PingPong(1);
+        Assert.Equal(S(4), pinged.Duration);                            // forward (2s) + backward (2s)
+        Assert.Equal(source.ValueAt(S(0.5)), pinged.ValueAt(S(0.5)));   // forward half mirrors the source
+        Assert.Equal(source.ValueAt(S(1.5)), pinged.ValueAt(S(2.5)));   // backward half = the source reversed
     }
 
     [Fact]

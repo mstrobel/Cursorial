@@ -128,10 +128,18 @@ therefore isn't available in Phase 1 — use composite opacity, or `FillRectangl
 
 ### 3.4 Pooling
 
-`ScenePool.Rent(cols, rows)` recycles backing buffers (resizing on reuse; the ctor re-clears to
-transparent); `Scene.Dispose()` returns the buffer. Persistent (cached) scenes are owner-held via
-`Scene.Create(...)`. Phase 1 keeps the pool simple (single free list); size-bucketing is a later
-refinement.
+`ScenePool.Rent(cols, rows)` recycles backing buffers (the `Scene` ctor re-clears to transparent);
+`Scene.Dispose()` returns the buffer. Persistent (cached) scenes are owner-held via
+`Scene.Create(...)`. The pool is **size-bucketed** (UI P2.5 batch — it replaced Phase 1's single
+free list, which resized/reallocated the recycled buffer on nearly every rent): freed buffers live
+in exact-dimension buckets, so the dominant consumer — a UI render tree renting per-zone scenes
+whose sizes are stable frame over frame — hits its exact size and the steady-state rent → return
+cycle allocates only the small `Scene` wrapper. A size miss allocates fresh and leaves other sizes
+pooled. Retention is capped (`MaxRetainedBuffers`, default 32); over the cap, a buffer is dropped
+from the least-recently-used size bucket (linear scan — bucket counts are tens at most), so cold
+sizes age out. Empty buckets are kept so the steady-state return path stays allocation-free.
+`Rent` validates dimensions against the `ushort` `Rect` cap exactly like `Scene.Create`. Not
+thread-safe — rent/return from a single render loop.
 
 ---
 
@@ -210,8 +218,9 @@ dividing by its extent).
   validated **finite** (NaN/Inf throws, mirroring the opacity guard) — but **not** range-clamped, since
   out-of-`[0,1]` points are legal (animation).
 
-Phase 2 also delivers `DrawingContext.DrawText` — **single-line, unlaid-out** brush text: walk
-grapheme clusters, sample fg/bg per cell across the run, build a scalar `Style`, `Set`.
+Phase 2 also delivers `DrawingContext.DrawText` — **unlaid-out** brush text: walk grapheme
+clusters, sample fg/bg per cell across the run, build a scalar `Style`, `Set`. (Originally
+single-line; multi-line via embedded line breaks since the 2026-06-11 line-break batch — see §13.)
 
 ---
 
@@ -445,7 +454,11 @@ with no re-raster. Conveniences `BrushAnimation` / `CompositeParametersAnimation
 out the set — `PointInterpolator` (continuous `PointD`, value space) plus the cell-quantized `SizeInterpolator`
 and `RectInterpolator` (rounded ties-away-from-zero, clamped ≥ 0 so an overshooting ease can't go negative or
 trip the `Rect` ctor), with `PointAnimation` / `SizeAnimation` / `RectAnimation` conveniences; all live in
-Drawing for the same acyclic reason (`Size`/`Rect`/`PointD` are Rendering/Drawing types, not Core's). The Consolonia
+Drawing for the same acyclic reason (`Size`/`Rect`/`PointD` are Rendering/Drawing types, not Core's).
+Added 2026-06-11: `PenInterpolator` + `PenAnimation` — the brush routes through `BrushInterpolator`
+(reference-equal brushes pass through unchanged, alloc-free; a `null` endpoint — terminal default
+foreground — snaps); every other `Pen` member is a glyph-family/flag selection, so the whole discrete
+remainder snaps at the midpoint, `CompositeParametersInterpolator`-style. The Consolonia
 scrolling-gradient case (endpoints swept past 1 + `Reflect`, looped) is validated by an animation test. New
 `animate` demo (the demo owns the only clock — frame × `FrameInterval`): an `AutoReverse` gradient sweep, an
 easing progress bar with a live curve plot and `←`/`→` keystroke cycling of the catalog, and a
@@ -653,6 +666,65 @@ remains gated. The only Core/Rendering public-surface additions beyond `Style.Tr
 - The scroll-false-positive probe (a sliding scene over patterned rows must not trip `FrameRenderer`'s
   scroll detection) is in the suite.
 
+**Hardened (UI P2.5 batch, 2026-06-11): push-stack full coverage.** The §12 intra-scene clip/translate
+stack now applies to *every* `DrawingContext` draw path (formatted text, content, deferred strokes,
+chart braille, shadows, titled boxes — see the reworked §12 bullet). Lower-layer changes made for it
+(per the invariant-7 amendment — Rendering accepts first-class improvements):
+- **`CellBufferView.WithOrigin(originColumn, originRow)`** (`Cursorial.Rendering`) — re-bases a view's
+  local origin independently of its clip window (the origin may be negative: content scrolled
+  above/left of a viewport). All coordinate checks generalized from `[0, Columns)` to the window's
+  local range; every pre-existing view (origin == window start) behaves identically. This is the
+  primitive that lets `FormattedText.Paint` / `IContent.Paint` — whose `Rect` bounds cannot express a
+  negative origin — render scrolled, clipped content unchanged.
+- **`FragmentDictionary` origin fix** (`Cursorial.Rendering`) — the view-local translation used by
+  `ContainsKey`/`TryGetValue`/`Keys` previously translated by the view's *local* bounds (always
+  `(0,0)` — a latent no-op that broke fragment lookups through any offset sub-view); it now carries
+  the view's origin as signed ints. Full-buffer views are unaffected.
+- `DrawingContext.IsVisible(column, row)` (new, public) — the push-aware visibility pre-test the chart
+  painters now use in place of raw scene-bounds guards.
+
+**Hardened (UI P2.5 batch, stage ②): pool + observability.** Two further Drawing-side changes for the
+UI layer (invariant-7 amendment), landed with the UI `RenderContext` simplification (that type is now
+a thin veneer: one pushed translate scope per element render on the §12 stack — no UI-side coordinate
+arithmetic remains):
+- **`Scene.RasterVersion` is public read-only** (was internal). It always had two consumers — the
+  compositor's content-change detection and test assertions of "this frame re-emitted from the cache"
+  — and the second forced an `InternalsVisibleTo("Cursorial.UI.Tests")` into this project, which is
+  now removed. The counter still bumps only inside `Scene.Draw` on an actual re-raster; there is no
+  public setter or bump path.
+- **`ScenePool` is size-bucketed with an LRU retention cap** — see §3.4 for the design (exact-dimension
+  buckets, `MaxRetainedBuffers` default 32, least-recently-used-bucket eviction, steady-state re-rent
+  allocates only the `Scene` wrapper — covered by an allocation assertion in the suite). This closes
+  the "single free list, resize-on-rent" deferral recorded at Phase 1. `Rent` now also validates its
+  dimensions against the `ushort` `Rect` cap, matching `Scene.Create`.
+
+**Hardened (UI P2.5 review pass, 2026-06-11):** three review findings applied on top of the batch:
+- **Transformed fills pre-clamp to the clip.** `FillRectangle`/`FillOpaque` under an active push used
+  to iterate the full requested region with a per-cell map-and-reject — O(region area) for an
+  oversized rect (`Rect` permits 65535×65535 ≈ 4.3G cells) where the unpushed paths clamp to the
+  surface. Both transformed paths now pre-intersect the iteration range with the clip mapped back
+  into local space (O(visible)); a perf-guard test rides the push-stack suite.
+- **`ScenePool` sweeps empty bucket metadata.** Empty buckets are still retained for the zero-alloc
+  steady-state return, but once the bucket table exceeds 4× `MaxRetainedBuffers`, eviction sweeps the
+  empties — unbounded size churn (an animated resize, one cell per frame for hours) can no longer
+  accrete a `Bucket` + `Stack` entry per distinct size forever. `RetainedBufferCount` is now public
+  (pool-health observability for consumers configuring a non-default cap).
+- **`DrawText` return-value contract documented for the transformed path**: it returns the columns
+  *advanced* in local coordinates — under a push, clusters the clip suppresses still advance (the
+  full local run width); with no push it stops at the surface edge and returns the clamped width.
+  (Since the §13 line-break batch the return is a `Size` — the per-line advance keeps exactly this
+  contract; the `Size` is widest-line advance × line count.)
+
+**Residual limitations (push-stack fragments — documented, deliberate):**
+- A fragment whose **anchor** (its translated bounds origin) maps outside the active clip — or off the
+  scene — is dropped whole rather than partially shown (registration is anchor-keyed; the
+  "anchored-above-the-clip, lower-half-visible" case only the compositor can express stays out of
+  reach at draw time).
+- A **cached** fragment a `FragmentContent` reuses across re-rasters is not re-cropped when only the
+  clip changed (the content's cache sees "fragment present + size unchanged" and skips re-creation).
+  For a *moving* viewport over protocol images, use the compositor-level `CompositeParameters.Clip`,
+  which re-crops from the uncropped fragment every frame.
+
 **Still carried forward (out of scope for this layer):**
 - Box vs image/sized-text **fragment** overdraw: v1 scenes are **cell-only**; fragments stay on the
   main buffer and emit after the cell pass. Offscreen fragment compositing is deferred.
@@ -677,12 +749,37 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   (`Tile`/`FlipX`/`FlipY`/`FlipXY`/`None`). Bilinear reuses `Color.Lerp` premultiplied sRGB. `FromPng`
   factories. New `IBrush` implementations — no `DrawingContext` API change.
 - **Intra-scene clip + translate stack** (`DrawingContext.PushClip`/`PushTranslate`/`Push` → nesting
-  `DrawingStateScope`; `CurrentClip`/`CurrentTranslate`). Honored by the per-cell write paths
-  (`Set`/`FillRectangle`/`FillOpaque`/`DrawText`) incl. **negative** translate (scrolled content); a wide
-  glyph at the clip's right edge degrades to blank. **v1 scope:** formatted text / content / deferred
-  `Pen` strokes / chart braille / shadows / titled-box outlines are **not** transformed by a push (draw
-  them in absolute coordinates, or isolate in a sub-scene composited at an offset). Grouped opacity stays
-  at composite granularity (`CompositeParameters.Opacity`, the §11/§1 "free via nesting" mechanism).
+  `DrawingStateScope`; `CurrentClip`/`CurrentTranslate`). Honored by **every** draw path, incl.
+  **negative** translate (scrolled content); a wide glyph at the clip's right edge degrades to blank.
+  Coverage, by mechanism:
+  - **Immediate per-cell paths** (`Set`/`FillRectangle`/`FillOpaque`/`DrawText`) — translate + clip at
+    write time; brushes sample in **local** coordinates (gradients travel with the content). The
+    original v1 surface.
+  - **Deferred `Pen` strokes (box) + chart/diagonal braille** — the ambient state is captured at
+    **record** time: stroke arms / braille dots are translated into scene coordinates and clipped as
+    they deposit, so junctions form in final scene coords (strokes of one figure recorded under
+    *different* translates still merge where they actually cross), and a clipped line runs to the
+    viewport edge with its arm intact. Record sampling bounds are signed (`SampleBounds`), normalized
+    back to the `IBrush.ColorAt` bounds-relative contract at flush — local-frame sampling equivalence
+    holds, so a translated stroke's gradient is byte-identical to the untranslated one. Explicit
+    `BeginFigure(bounds)` bounds are taken in current-local coordinates. The flush pass itself never
+    remaps (`FlushDeferred` clears the stack first, by design).
+  - **Shadows + titled boxes / panels** — translate as units; the painted band is bounded by the clip.
+  - **Formatted text + `DrawContent`** — painted through a clip-windowed, origin-re-based
+    `CellBufferView` (`View(clip).WithOrigin(dx, dy)` — see the lower-layer note below), so the
+    painter and the brush resolver keep working in local coordinates while every cell write is
+    translated + clipped (negative translate = the scrolled-document case). Fragments mirror the
+    compositor's clip rules **at draw time**: a body straddling the clip is cropped via
+    `IBufferFragment.Clip` or suppressed when the protocol can't crop. Two residuals (see §11).
+
+  Grouped opacity stays at composite granularity (`CompositeParameters.Opacity`, the §11/§1 "free via
+  nesting" mechanism).
+
+  > *History:* as landed in the §12 batch (v1), only the per-cell write paths honored the stack —
+  > formatted text / content / deferred strokes / chart braille / shadows / titled-box outlines had to
+  > be drawn in absolute coordinates or isolated in a sub-scene. That scope gotcha was closed on
+  > **2026-06-11** by the UI P2.5 batch (full-coverage rework above); the warning is preserved here
+  > only as history.
 - **`FillOpaque`** (occlude) — space-bearing fill cells that *hide* lower-layer glyphs (panels, modals),
   vs background-only `FillRectangle`. A bordered opaque panel = `FillOpaque` + `DrawBox(overwrite: true)`
   (an overwriting stroke over an opaque fill keeps the fill background under the glyph). Alpha-preserving
@@ -711,3 +808,69 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
 > P1s (rect `Fill` transparent-clear consistency; conic `spread` dropped as a no-op; `ScenePool`
 > double-dispose idempotency; `CompositeParameters.WithMode`) — all with regression tests. The
 > low-alpha premultiplied precision test (α 1–4) is now in the suite.
+
+---
+
+## 13. Line breaks across the text tier (2026-06-11, UI P2.6 fixes batch)
+
+Until this batch every plain-text entry point treated its input as a single line, and a stray
+control character became a width-1 junk cell. This section pins the line-break and control-character
+contract per tier; the changes landed together (user-pinned decisions, restated normatively here).
+
+### 13.1 `DrawingContext.DrawText` — multi-line (both overloads)
+
+- **Line breaks**: `\r\n`, `\n`, and `\r` are all line breaks (one rule, three forms — a lone `\r`
+  is a break, never an overstrike). Each subsequent line continues at the **original start column**,
+  one row down. Empty lines consume a row; a trailing newline yields a final empty line that counts.
+- **Clip/translate**: honored per line through the push stack (each cell write maps and clips
+  exactly as v1 single-line text did).
+- **Brush extent**: the brush samples against the **full multi-line extent** — widest sanitized
+  line width × line count, anchored at the call's (column, row) — so a gradient flows down the
+  lines of one call instead of restarting per line.
+- **Return type** changed `int` → `Size` (**breaking-but-cleared**; every caller swept repo-wide):
+  the text's bounding box — widest line's column advance × line count. Per-line advance keeps the
+  v1 §11 contract: the full local width under a push (clipped clusters still advance); clamped at
+  the surface's right edge — and 0 for an off-surface row — without one.
+- **Negative starts never throw** (P2.6 review fix — the multi-line rewrite briefly built the
+  brush bounds before the v1 row guard, turning a graceful no-op into a render-pass crash when
+  centering math went negative). Coordinates are signed end-to-end. With no push: rows off the
+  surface on **either** side (negative or past the bottom) draw nothing and advance 0; clusters
+  that start left of column 0 are skipped (not painted) while the run still advances through them
+  — unlike the right edge, which stops the line (so the advance counts local columns from the
+  possibly-negative start). Under a push, negative local coordinates flow through the
+  translate/clip map as v1 did for non-text draws. Brush sampling rides the internal signed
+  `SampleBounds` carrier (the deferred-stroke one): a negative anchor shifts both the rect and the
+  sample point to a zero origin — contract-equivalent under bounds-relative sampling — and an
+  extent past the ushort `Rect` cap (65,535 lines/columns) clamps defensively (the gradient
+  parameter compresses) instead of throwing.
+- **Sanitization**: `\t` is substituted with **one space** + a DEBUG diagnostic; all other C0/C1
+  controls (including DEL and the C1 range U+0080–U+009F) are **skipped** (zero columns) + a DEBUG
+  diagnostic. Sanitization is width-coherent: the measured brush extent applies the same rules.
+- **Diagnostics channel**: `DrawingDiagnostics` (+ `DrawingDiagnosticKind`/`DrawingDiagnosticEvent`)
+  mirrors `Cursorial.UI`'s `LayoutDiagnostics` shape — a static event raised through a
+  `[Conditional("DEBUG")]` emit, so the behavior (substitute/skip) is identical in release while
+  the channel compiles away.
+
+### 13.2 Single-line slots sanitize to the first line
+
+`PanelTitle` text in `DrawTitledBox` / `DrawPanel` cuts at the first `\r` or `\n` before
+truncation/gap math (+ `MultiLineTextInSingleLineSlot` DEBUG diagnostic). An empty first line
+degrades to a plain box, same as an empty title. No other Drawing-owned single-line slot exists
+today (window/OSC titles are Core's, out of scope).
+
+### 13.3 The per-tier behavior table (audited 2026-06-11)
+
+| Tier — entry point | `\r\n` / `\n` / `\r` | `\t` | Other C0/C1 | Status |
+|---|---|---|---|---|
+| Core — `AnsiTextWrap.Wrap` | Hard breaks (all three forms), re-emitted as `WrapOptions.NewLine` | Passes through verbatim, counted zero-width; also a wrap **break-opportunity** (like space — `IsWrapWhitespace`) and trimmed when trailing under `TrimTrailingSpaces` | Passes through verbatim, zero-width (ANSI escapes are recognized pass-through tokens) | Pre-existing; verified |
+| Core — `TextSizingWriter.Write/WriteSplit` | Raw passthrough into the OSC 66 payload — caller sanitizes; control bytes on the wire are terminal-defined | same | same | Pre-existing; recorded (callers are single-line by usage) |
+| Rendering — `CellBuffer.Write` / `CellBufferView.Write` / `ICellSurface.Write` | **Stops at the first C0/C1 control** and returns columns written (single-row by contract; split lines yourself or use Drawing's `DrawText`) | stop | stop | **Changed this batch** (was: width-1 junk cells) |
+| Rendering — `CellBuffer.Set` / `CellBufferView.Set` | Single-cluster raw primitive: a control cluster is stored as given (junk cell) — callers own sanitization | as given | as given | Unchanged; recorded |
+| Rendering — `RichTextBuilder` / `TextMarkup` / `TextFormatter` (`FormattedText`) | Hard breaks are **structural**: `LineBreak` inlines (`.LineBreak()`, `[br/]`) and paragraph boundaries. A literal `\n` in run text is **not** a break — the formatter deliberately treats it as a word character (wrap whitespace excludes `\r`/`\n`; markup preserves source whitespace) and it reaches `Set` as a junk cell | Expanded to `TabWidth` spaces (a `SpaceAtom` — wrappable like a space) | junk cell | Pre-existing; verified + recorded (hardening candidate if it bites; tab cell corrected post-audit — the formatter expands, it does not store) |
+| Rendering — FIGlet (`FigletFont.Measure/Paint`) | Single-line; any codepoint without a glyph — including `\n` — falls back to the **space glyph** | space glyph | space glyph | Pre-existing; recorded |
+| Rendering — `ScaledText` (OSC 66 content) | Text passes unsanitized to the protocol fragment or the fallback `IGlyphFont`; single-line by usage | as above | as above | Pre-existing; recorded |
+| Drawing — `DrawingContext.DrawText` (Color + IBrush) | **Multi-line** (§13.1) | One space + DEBUG diagnostic | Skipped + DEBUG diagnostic | **Changed this batch** |
+| Drawing — `PanelTitle` (`DrawTitledBox`/`DrawPanel`) | **First line only** (§13.2); the title then rides `DrawText`'s tab/control rules | space | skipped | **Changed this batch** |
+| Drawing — charts (`Axes` labels, `BarChart` value/category labels) | Labels ride `DrawText`, so an embedded break now continues one row down at the start column; labels are single-line by convention and numeric formatting never produces breaks | space | skipped | Inherited; recorded |
+| UI — `RenderContext.DrawText` | Thin veneer over Drawing's: multi-line + `Size` return (element-local) | space | skipped | **Changed this batch** |
+| UI — text-bearing leaves (demo labels today, `TextBlock` at S8) | Single-call `DrawText` leaves inherit multi-line; document-shaped text rides `FormattedText` (structural breaks) | — | — | Recorded |

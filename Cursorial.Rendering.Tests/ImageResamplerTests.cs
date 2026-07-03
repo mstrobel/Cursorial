@@ -1,5 +1,6 @@
-using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Imaging;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.Rendering.Tests;
 

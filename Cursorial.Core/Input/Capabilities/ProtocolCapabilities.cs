@@ -1,4 +1,5 @@
 using Cursorial.Input.Events;
+using Cursorial.Input.Parsing;
 
 namespace Cursorial.Input.Capabilities;
 
@@ -23,6 +24,15 @@ public sealed record ProtocolCapabilities(bool BracketedPaste,
                                           bool KittyKeyboardProtocol,
                                           bool Win32InputMode)
 {
+    /// <summary>
+    /// The realized Kitty keyboard progressive-enhancement flag set (<see cref="KittyKeyboardFlags.None"/>
+    /// when <see cref="KittyKeyboardProtocol"/> is false). Surfaced so a consumer that switches screen
+    /// buffers can re-apply the negotiated flags — the Kitty flag stack is per-screen-buffer, so entering
+    /// the alternate screen starts a fresh, empty stack. Init-only (the positional constructor and 4-arg
+    /// deconstruction are unchanged); defaults to <see cref="KittyKeyboardFlags.None"/>.
+    /// </summary>
+    public KittyKeyboardFlags KittyKeyboardFlags { get; init; } = KittyKeyboardFlags.None;
+
     public static ProtocolCapabilities None { get; } = new(BracketedPaste: false,
                                                            FocusEvents: false,
                                                            KittyKeyboardProtocol: false,

@@ -3,6 +3,8 @@ using System.Text;
 using Cursorial.Input;
 using Cursorial.Terminal;
 
+// ReSharper disable CheckNamespace
+
 // One-shot / streaming demo. Mirrors the plain `read` demo (ReadEventsAsync) but wraps the
 // session's input device in key-up/repeat synthesis (a device decorator) plus mouse-click
 // synthesis (an IInputTransformer), so terminals that don't natively report releases or click

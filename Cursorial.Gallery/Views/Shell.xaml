@@ -1,0 +1,534 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
+           xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
+           xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
+           xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
+           Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
+           TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}">
+    <DockPanel.InputBindings>
+      <KeyBinding Gesture="Alt+T" Command="{Binding CycleColorTier}" />
+      <KeyBinding Gesture="Alt+D" Command="{Binding CycleThemeVariant}" />
+      <KeyBinding Gesture="Alt+Q" Command="{Binding Quit}" />
+      <KeyBinding Gesture="Esc"   Command="{Binding Quit}" CommandParameter="True" />
+    </DockPanel.InputBindings>
+
+    <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
+    <DockPanel.Resources>
+
+        <DataTemplate DataType="vm:ScrollViewerPageViewModel">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="{Binding Title}" />
+                        <TextBlock Text="{Binding Summary}" />
+                        <WrapPanel>
+                            <Button Margin="1,0" Content="Cycle _V-bar" Command="{Binding CycleVerticalCommand}"/>
+                            <Button Margin="1,0" Content="Cycle _H-bar" Command="{Binding CycleHorizontalCommand}"/>
+                            <Button Margin="1,0" Content="Toggle heigh_t" Command="{Binding ToggleHeightCommand}"/>
+                            <Button Margin="1,0" Content="Toggle _width" Command="{Binding ToggleWidthCommand}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!--
+                <Border DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+                </Border>
+                -->
+
+                <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
+                              HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}"
+                              Focusable="True">
+                    <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </DataTemplate>
+
+      <DataTemplate DataType="vm:InputsPageViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!--
+          <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="{Binding Status}" />
+          </StatusBar>
+          -->
+
+          <Grid Margin="2,1">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="1" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="4" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="1" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Label Grid.Column="0" Grid.Row="0"
+                   Content="_Name" Target="{x:Reference NameEditor}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <TextBox Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left"
+                     x:Name="NameEditor" Width="28" Text="{Binding Name, Mode=TwoWay}" />
+
+            <Label Grid.Column="0" Grid.Row="1"
+                   Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <PasswordBox Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left"
+                         x:Name="PasswordEditor" Width="28" Text="{Binding Password, Mode=TwoWay}" RevealPassword="{Binding ShowPassword}" />
+
+            <Label Grid.Column="0" Grid.Row="2"
+                   Target="{x:Reference PermissionsEditor}" Content="User Pe_rmissions" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <TextBox Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left"
+                     x:Name="PermissionsEditor" Width="28" Text="Read Schema, Read Data" IsReadOnly="True" />
+
+            <Label Grid.Column="4" Grid.Row="0"
+                   Target="{x:Reference ColorSelector}" Content="Favorite _Color"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <ComboBox Grid.Column="6" Grid.Row="0" HorizontalAlignment="Left"
+                      x:Name="ColorSelector" Width="28" IsEditable="False" ItemsSource="{Binding Colors}"
+                      SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ColorInfo">
+                  <DockPanel>
+                    <Border DockPanel.Dock="Left" Width="2" Background="{Binding Color}" Margin="1,0" />
+                    <TextBlock Text="{Binding Name}" />
+                  </DockPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            
+            <TextBlock Grid.Column="6" Grid.Row="1"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
+                       Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.Name, StringFormat='Selected: {0}'}"/>
+
+            <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left"
+                      Content="_Reveal password" Margin="0,1,0,0" IsChecked="{Binding ShowPassword, Mode=TwoWay}" />
+            <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left"
+                      Content="Subscribe to _updates" IsChecked="{Binding Subscribed, Mode=TwoWay}" />
+            <CheckBox Grid.Column="2" Grid.Row="5" HorizontalAlignment="Left"
+                      Content="M_ystery third option" IsThreeState="True" />
+
+            <Label Grid.Column="0" Grid.Row="6"
+                   Target="{x:Reference VolumeSlider}" Margin="0,1,0,0" Content="_Volume" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <StackPanel Grid.Column="2" Grid.Row="6" HorizontalAlignment="Left"
+                        Orientation="Horizontal" Margin="0,1,0,0">
+              <Slider x:Name="VolumeSlider" Width="28" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
+              <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
+                         TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            </StackPanel>
+            
+            <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
+                 parameter (x:Reference), so Undo/Redo stay in the view-model; the field's own Ctrl+Z / Ctrl+Y work too. -->
+            <DockPanel Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="4" Margin="0,1,0,0" LastChildFill="True">
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,1">
+                <Label Content="_Journal" Target="{x:Reference JournalEditor}"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+                <Button Margin="2,0,0,0" MinWidth="8" Content="Undo"
+                        Command="{Binding UndoCommand}" CommandParameter="{x:Reference JournalEditor}" />
+                <Button Margin="1,0,0,0" MinWidth="8" Content="Redo"
+                        Command="{Binding RedoCommand}" CommandParameter="{x:Reference JournalEditor}" />
+                <TextBlock Margin="2,0,0,0" VerticalAlignment="Center" Text="multi-line · Ctrl+Z / Ctrl+Y"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+              </StackPanel>
+              <TextBox x:Name="JournalEditor" AcceptsReturn="True" TextWrapping="WordWrap" MinLines="3"
+                       Text="{Binding Journal, Mode=TwoWay}" />
+            </DockPanel>
+          </Grid>
+
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:MenusViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!--
+          <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="{Binding Status}" />
+          </StatusBar>
+          -->
+
+          <Menu Margin="2,1" DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+              <MenuItem Header="_New"  InputGestureText="Ctrl+N" Icon="📄" />
+              <MenuItem Header="_Open" InputGestureText="Ctrl+O" Icon="📂" />
+              <MenuItem Header="_Save" InputGestureText="Ctrl+S" Icon="💾" />
+              <Separator/>
+              <MenuItem Header="E_xit" InputGestureText="Alt+Q" Icon="❌" />
+            </MenuItem>
+            <MenuItem Header="_Edit">
+              <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" />
+              <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" />
+              <MenuItem Header="_Paste" InputGestureText="Ctrl+V" />
+              <Separator/>
+              <MenuItem Header="Fi_nd">
+                <MenuItem Header="Find _Next"     InputGestureText="F3" />
+                <MenuItem Header="Find _Previous" InputGestureText="Shift+F3" />
+              </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_View">
+              <MenuItem Header="F_ull Screen"      InputGestureText="Alt+Enter" />
+              <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" />
+              <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" />
+            </MenuItem>
+          </Menu>
+          
+          <Border VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="60" MaxHeight="30">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <ContentControl Grid.Column="0"
+                              Padding="4, 2"
+                              Background="{DynamicResource {x:Static ThemeKeys.ElevationWell}}"
+                              Content="Hover here."
+                              VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                <ToolTipService.Tip>
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Top" Margin="0,0,1,0"
+                               Text="ℹ" Foreground="{DynamicResource {x:Static ThemeKeys.InfoBrush}}" />
+                    <TextBlock Text="Tips provide helpful context." />
+                  </DockPanel>
+                </ToolTipService.Tip>
+              </ContentControl>
+
+              <ContentControl Grid.Column="1"
+                              Padding="4, 2"
+                              Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
+                              Content="Right-click&#0013;here."
+                              VerticalContentAlignment="Center" HorizontalContentAlignment="Center" >
+                <ContentControl.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" />
+                    <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" />
+                    <MenuItem Header="_Paste" InputGestureText="Ctrl+V" />
+                  </ContextMenu>
+                </ContentControl.ContextMenu>
+              </ContentControl>
+
+            </Grid>
+          </Border>
+
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:BarsViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!-- The Toolbar (Surface A): one BarCommand set, define-once. Docked top so it stretches to the page width
+               and overflows as the window narrows. "Settings" is pinned to the overflow popup (OverflowMode=Always). -->
+          <bars:Toolbar DockPanel.Dock="Top" Margin="2,1">
+            <bars:BarLabel Content="_Edit:" />
+            <bars:BarButton Command="{Binding Cut}" />
+            <bars:BarButton Command="{Binding Copy}" />
+            <bars:BarButton Command="{Binding Paste}" />
+            <bars:BarSeparator />
+            <bars:BarButton Command="{Binding Undo}" />
+            <bars:BarButton Command="{Binding Redo}" />
+            <bars:BarSeparator />
+            <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+            <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+            <bars:BarSeparator />
+            <bars:BarComboBox Width="18" ItemsSource="{Binding Fonts}" SelectedItem="{Binding SelectedFont, Mode=TwoWay}" />
+            <bars:BarGallery Width="6" ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize, Mode=TwoWay}" />
+            <bars:BarSeparator />
+            <bars:BarSplitButton Content="Color" Command="{Binding Color}">
+              <bars:BarSplitButton.DropDownContent>
+                <StackPanel Orientation="Vertical">
+                  <bars:BarButton Content="Red" Command="{Binding Pick}" CommandParameter="Color → Red" />
+                  <bars:BarButton Content="Green" Command="{Binding Pick}" CommandParameter="Color → Green" />
+                  <bars:BarButton Content="Blue" Command="{Binding Pick}" CommandParameter="Color → Blue" />
+                </StackPanel>
+              </bars:BarSplitButton.DropDownContent>
+            </bars:BarSplitButton>
+            <bars:BarPopupButton Content="Align">
+              <bars:BarPopupButton.DropDownContent>
+                <StackPanel Orientation="Vertical">
+                  <bars:BarButton Content="Left" Command="{Binding Pick}" CommandParameter="Align → Left" />
+                  <bars:BarButton Content="Center" Command="{Binding Pick}" CommandParameter="Align → Center" />
+                  <bars:BarButton Content="Right" Command="{Binding Pick}" CommandParameter="Align → Right" />
+                </StackPanel>
+              </bars:BarPopupButton.DropDownContent>
+            </bars:BarPopupButton>
+            <bars:BarSeparator />
+            <bars:BarButton Command="{Binding Find}" />
+            <bars:BarButton Command="{Binding Settings}" bars:Toolbar.OverflowMode="Always" />
+          </bars:Toolbar>
+
+          <!-- Right-click ANYWHERE in the body to pop the MiniToolbar (a floating strip of the same commands, at the
+               pointer). The Border fills the page (LastChildFill) so the whole area is the right-click target; only
+               the caption is centered. -->
+          <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
+            <bars:MiniToolbar.Bar>
+              <bars:MiniToolbar>
+                <bars:BarButton Command="{Binding Cut}" />
+                <bars:BarButton Command="{Binding Copy}" />
+                <bars:BarButton Command="{Binding Paste}" />
+                <bars:BarSeparator />
+                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+              </bars:MiniToolbar>
+            </bars:MiniToolbar.Bar>
+            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Border>
+        </DockPanel>
+      </DataTemplate>
+
+      <!-- The Ribbon page (Surface B): the same kind of bar controls + commands, arranged into tabbed groups. Its
+           OWN command instances (not the Toolbar page's) so the two surfaces don't collide on access keys — a real
+           app hosts one surface at a time. Large Paste/Find (glyph-over-label); small B/I/U; switch tabs by click or
+           Left/Right; the File tab opens Backstage (a stub); Clipboard's ⋰ is the dialog launcher. -->
+      <DataTemplate DataType="vm:RibbonViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
+               customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
+          <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1">
+            <bars:RibbonTab Header="≡ _File" IsFileTab="True" />
+            <bars:RibbonTab Header="_Home">
+              <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
+                <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />
+                <bars:BarButton Command="{Binding Cut}" />
+                <bars:BarButton Command="{Binding Copy}" />
+              </bars:RibbonGroup>
+              <bars:RibbonGroup Header="Font">
+                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
+                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+              </bars:RibbonGroup>
+              <bars:RibbonGroup Header="Editing">
+                <bars:BarButton Command="{Binding Find}" bars:Ribbon.ButtonSize="Large" />
+              </bars:RibbonGroup>
+            </bars:RibbonTab>
+            <bars:RibbonTab Header="Inse_rt">
+              <bars:RibbonGroup Header="History">
+                <bars:BarButton Command="{Binding Undo}" />
+                <bars:BarButton Command="{Binding Redo}" />
+                <bars:BarButton Command="{Binding Settings}" />
+              </bars:RibbonGroup>
+            </bars:RibbonTab>
+
+            <!-- P3a: a CONTEXTUAL tab — purple-tinted, shown only when a "table" is selected. Its Visibility binds to
+                 the VM; when it's the active tab and hides, the Ribbon falls back to the first content tab (no blank band). -->
+            <bars:RibbonTab Header="Table" IsContextual="True"
+                            Visibility="{Binding TableToolsVisibility}">
+              <bars:RibbonGroup Header="Cells">
+                <bars:BarButton Command="{Binding MergeCells}" bars:Ribbon.ButtonSize="Large" />
+                <bars:BarButton Command="{Binding SplitCells}" />
+              </bars:RibbonGroup>
+              <bars:RibbonGroup Header="Table">
+                <bars:BarButton Command="{Binding DeleteTable}" />
+              </bars:RibbonGroup>
+            </bars:RibbonTab>
+          </gallery:GalleryRibbon>
+
+          <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
+            <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <TextBlock Text="{Binding Status}" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+              <!-- Toggle the contextual tab: check to select a "table" (the purple Table tab appears), uncheck to hide it. -->
+              <CheckBox Content="_Table selected (show the contextual Table tab)" Margin="0,1,0,0"
+                        IsChecked="{Binding TableSelected, Mode=TwoWay}" HorizontalAlignment="Center" />
+              <!-- The File tab opens Backstage: checked = a full-screen modal takeover; unchecked = a compact
+                   File-anchored menu (the gentler default on a terminal). -->
+              <CheckBox Content="Full-_screen Backstage (else a File-anchored menu)" Margin="0,1,0,0"
+                        IsChecked="{Binding FullScreenBackstage, Mode=TwoWay}" HorizontalAlignment="Center" />
+              <!-- Try: the caption row's QAT (Undo/Redo/Paste) + its customize ▾; the ⌃ pin (top-right) or a
+                   double-click on a tab minimizes the ribbon; hover a command for its SuperTip. -->
+              <TextBlock Text="QAT ▾ customizes · ⌃ pin / double-click a tab minimizes · hover for SuperTips"
+                         Margin="0,1,0,0" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            </StackPanel>
+          </Border>
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:TabControlViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!--
+          <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="{Binding Status}" />
+          </StatusBar>
+          -->
+
+          <TabControl Margin="2,1">
+            <TabItem Header="F_irst Tab">
+              <TabItem.Content>
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                  </Grid.RowDefinitions>
+
+                  <Label Grid.Column="0" Grid.Row="0" Content="Te_xt Input" Target="{x:Reference TextInput}" />
+                  <TextBox x:Name="TextInput" Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left" Width="28" />
+                  <CheckBox Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left" Content="_Reveal password" Margin="0,1,0,0" />
+                  <CheckBox Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left" Content="Subscribe to _updates" />
+                </Grid>
+              </TabItem.Content>
+            </TabItem>
+            <TabItem Header="_Second Tab">
+              <Border/>
+            </TabItem>
+            <TabItem Header="T_hird Tab">
+              <Border/>
+            </TabItem>
+          </TabControl>
+
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:ButtonsViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <!--
+          <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="{Binding Status, TargetNullValue=''}" />
+          </StatusBar>
+          -->
+
+          <Grid Margin="2,1">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="2" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="2" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="2" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="2" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Button    Grid.Column="0" Grid.Row="0" Content="_Cancel" MinWidth="10" />
+            <TextBlock Grid.Column="2" Grid.Row="0" Text="normal button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button    Grid.Column="0" Grid.Row="2" Content="_Engage" MinWidth="10" Classes="accent" />
+            <TextBlock Grid.Column="2" Grid.Row="2" Text="accent button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button    Grid.Column="0" Grid.Row="4" Content="_Sync" MinWidth="10" Classes="cool" />
+            <TextBlock Grid.Column="2" Grid.Row="4" Text="cool button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button    Grid.Column="0" Grid.Row="6" Content="_Delete" MinWidth="10" Classes="danger" />
+            <TextBlock Grid.Column="2" Grid.Row="6" Text="danger button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Grid>
+
+        </DockPanel>
+      </DataTemplate>
+
+    </DockPanel.Resources>
+
+    <!-- Title bar -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}" Padding="1,0">
+        <TextBlock Text=" Cursorial — Control Gallery  —  ^t color tier · ^d light/dark · q / esc to quit)"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+    </Border>
+    
+    <Expander x:Name="DiagnosticsExpander" DockPanel.Dock="Bottom" Header="Dia_gnostics">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="8">
+        <ListBox ItemsSource="{Binding Diagnostics}" VirtualizingPanel.IsVirtualizing="True" />
+      </ScrollViewer>
+    </Expander>
+
+    <!-- Nav: a real ListBox so arrow-key / click navigation is itself part of the showcase -->
+    <ListBox x:Name="PageList"
+             DockPanel.Dock="Left"
+             Width="22"
+             ItemsSource="{Binding Pages}"
+             SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
+      <ListBox.ItemTemplate>
+            <DataTemplate>
+                <TextBlock Text="{Binding Title}"/>
+            </DataTemplate>
+        </ListBox.ItemTemplate>
+    </ListBox>
+    
+    <StatusBar DockPanel.Dock="Bottom">
+      <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
+      <StatusBarItem Classes="alternate" Content="{Binding ThemeDescription}" />
+      <StatusBarItem Classes="alternate" Content="{Binding Focus}" />
+      <StatusBarItem Content="{Binding Path=SelectedPage.Status, TargetNullValue=''}" />
+    </StatusBar>
+
+    <!-- Content host: the selected page view-model, resolved to its view by the implicit DataTemplates above.
+         ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
+    <ContentControl Content="{Binding SelectedPage}" ClipToBounds="True"/>
+
+</DockPanel>

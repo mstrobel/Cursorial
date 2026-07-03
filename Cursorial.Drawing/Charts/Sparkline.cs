@@ -1,7 +1,8 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// A single-row sparkline: each cell shows one value as a vertical eighth-block, normalized across the
@@ -14,7 +15,7 @@ public sealed class Sparkline
     private readonly double[] _values;
 
     /// <summary>Create a sparkline over <paramref name="values"/> painted with <paramref name="brush"/>.</summary>
-    public Sparkline(ReadOnlySpan<double> values, IBrush brush)
+    public Sparkline(ReadOnlySpan<double> values, IBrush? brush = null)
     {
         _values = values.ToArray();
         Brush = brush ?? Brushes.Default;
@@ -34,7 +35,6 @@ public sealed class Sparkline
     {
         ArgumentNullException.ThrowIfNull(context);
         if (_values.Length == 0 || width <= 0) return;
-        if ((uint) row >= (uint) context.Bounds.Rows) return;
 
         var range = AxisRange.FromValues(_values);
         var bounds = new Rect(column, row, width, 1);
@@ -42,7 +42,7 @@ public sealed class Sparkline
         for (int i = 0; i < width; i++)
         {
             int col = column + i;
-            if ((uint) col >= (uint) context.Bounds.Columns) continue;
+            if (!context.IsVisible(col, row)) continue;
 
             // Resample value index to the cell (nearest), so width need not equal the value count.
             int index = (width == 1 || _values.Length == 1)

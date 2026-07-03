@@ -50,16 +50,12 @@ namespace Cursorial.Terminal.Stdio;
 /// </remarks>
 internal sealed partial class WindowsHandleByteSource : IInputByteSource
 {
-    // ReSharper disable UnusedMember.Local
-
     private const int ERROR_BROKEN_PIPE = 109;
     private const int ERROR_HANDLE_EOF = 38;
     private const int ERROR_IO_PENDING = 997;
     private const int ERROR_OPERATION_ABORTED = 995;
 
     private const int ReadBufferSize = 4096;
-
-    // ReSharper restore UnusedMember.Local
 
     private readonly IntPtr _handle;
     private readonly IntPtr _readEvent;

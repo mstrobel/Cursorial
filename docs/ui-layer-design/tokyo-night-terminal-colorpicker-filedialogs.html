@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokyo Night — terminal ColorPicker &amp; File dialogs</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0d0f19; --surface:#24283b; --panel:#222639; --well:#16161e;
+    --sel:#33467c; --hover:#414868; --text:#c0caf5; --text-dim:#a9b1d6;
+    --muted:#565f89; --faint:#414868; --disabled-bg:#1f2335;
+    --accent:#7aa2f7; --accent-2:#7dcfff; --green:#9ece6a; --amber:#e0af68;
+    --red:#f7768e; --purple:#bb9af7; --on-accent:#0d0f19;
+    --check1:#1a1c28; --check2:#13141c;
+  }
+  [data-theme="light"] {
+    --bg:#e6e7ec; --surface:#cbccd1; --panel:#e9e9ed; --well:#f6f6f8;
+    --sel:#a8aecb; --hover:#cbccd1; --text:#343b58; --text-dim:#565a6e;
+    --muted:#9699a3; --faint:#c4c5cc; --disabled-bg:#dcdde2;
+    --accent:#34548a; --accent-2:#0f4b6e; --green:#485e30; --amber:#8f5e15;
+    --red:#8c4351; --purple:#5a3e8e; --on-accent:#e9e9ed;
+    --check1:#dcdde2; --check2:#cbccd1;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text-dim);
+    font-family:"Cascadia Code NF","JetBrainsMono Nerd Font",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;transition:background .15s,color .15s;}
+  .page{max-width:1140px;margin:0 auto;padding:22px 20px 60px;}
+  .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--muted);font-size:12px;}
+  .dots{display:inline-flex;gap:6px;} .dot{width:11px;height:11px;border-radius:50%;}
+  .dot.r{background:var(--red);} .dot.a{background:var(--amber);} .dot.g{background:var(--green);}
+  .title-text{margin-left:8px;}
+  .toggle{margin-left:auto;font:inherit;font-size:12px;color:var(--on-accent);background:var(--accent);border:0;padding:2px 12px;cursor:pointer;}
+  .toggle:hover{background:var(--accent-2);}
+  .legend{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.7;}
+  .legend b{color:var(--text-dim);font-weight:normal;}
+  h2.sec{color:var(--accent);font-size:13px;font-weight:normal;margin:28px 0 10px;}
+  .caption{color:var(--muted);font-size:11px;margin-top:8px;max-width:860px;line-height:1.6;}
+
+  /* generic dialog chrome */
+  .dlg{width:max-content;max-width:100%;background:var(--panel);}
+  .dlg .titlebar, .fd .titlebar{background:var(--surface);color:var(--text);padding:0 6px 0 10px;display:flex;justify-content:space-between;gap:24px;align-items:center;}
+  .dlg .titlebar .wb, .fd .titlebar .wb{color:var(--muted);}
+  .dlg .titlebar .wb .x, .fd .titlebar .wb .x{padding:0 5px;cursor:pointer;}
+  .dlg .titlebar .wb .x:hover, .fd .titlebar .wb .x:hover{color:var(--red);}
+  .dlg .dbtns{display:flex;gap:0;padding:4px 8px;justify-content:flex-end;background:var(--panel);}
+  .dlg .dbtn{padding:0 14px;cursor:pointer;}
+  .dlg .dbtn.ok{background:var(--accent);color:var(--on-accent);}
+  .dlg .dbtn.cancel{color:var(--muted);} .dlg .dbtn.cancel:hover{background:var(--hover);color:var(--text);}
+
+  /* ===== ColorPicker ===== */
+  .cp{display:flex;gap:0;}
+  .cp-main{padding:8px 10px;display:flex;gap:10px;}
+  /* SV square: grid of flat-colored cells (cell-granular, no sub-cell interpolation) */
+  .svsquare{position:relative;display:flex;flex-direction:column;line-height:0;}
+  .svrow{display:flex;height:0.92em;}
+  .svc{width:1ch;height:100%;display:inline-block;}
+  .svc.svcur{box-shadow:inset 0 0 0 1px #000, inset 0 0 0 2px #fff;}
+  /* hue strip: half-block cells — ▀ paints top half (fg) over bottom half (bg), doubling vertical res */
+  .huestrip{display:flex;flex-direction:column;line-height:0.92em;font-size:13px;}
+  .huec{width:2.5ch;height:0.92em;text-align:center;overflow:hidden;}
+  .huec.huecur{box-shadow:inset 0 0 0 1px #fff, inset 0 0 0 2px rgba(0,0,0,.6);}
+  /* alpha strip: same half-block technique, colour opacity stepping over checker tones */
+  .alphastrip{display:flex;flex-direction:column;line-height:0.92em;font-size:13px;}
+  .alphac{width:2.5ch;height:0.92em;text-align:center;overflow:hidden;}
+  .alphac.alphacur{box-shadow:inset 0 0 0 1px #fff, inset 0 0 0 2px rgba(0,0,0,.6);}
+
+  .cp-side{padding:8px 10px 8px 0;display:flex;flex-direction:column;gap:3px;min-width:24ch;}
+  .cp-preview{display:flex;gap:0;align-items:stretch;height:2.4em;margin-bottom:6px;}
+  .cp-sw{flex:1;position:relative;}
+  .cp-sw.new{background:#6FA3F7;}
+  .cp-sw.old{background:#5a86d8;}
+  .cp-sw .lbl{position:absolute;left:4px;top:0;color:var(--on-accent);font-size:11px;}
+  .cp-eyedrop{color:var(--accent);padding:0 8px;display:flex;align-items:center;cursor:pointer;background:var(--bg);margin-left:6px;}
+  .cp-eyedrop:hover{background:var(--hover);}
+  .cp-field{display:flex;align-items:center;gap:6px;}
+  .cp-field .fl{color:var(--muted);width:5ch;display:inline-block;}
+  .cp-field .fv{background:var(--bg);color:var(--text);padding:0 6px;min-width:9ch;display:flex;justify-content:space-between;}
+  .cp-field .fv.focus{background:var(--well);}.cp-field .fv .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .cp-field .fv.hex{min-width:12ch;}
+  .cp-mode{display:flex;gap:0;margin:2px 0;}
+  .cp-mode .mo{padding:0 8px;color:var(--text-dim);background:var(--bg);cursor:pointer;}
+  .cp-mode .mo.on{background:var(--accent);color:var(--on-accent);}
+  .cp-swatches{margin-top:4px;}
+  .cp-swatches .sl{color:var(--muted);font-size:11px;margin-bottom:2px;}
+  .cp-swrow{display:flex;gap:2px;flex-wrap:wrap;max-width:22ch;}
+  .cp-chip{width:2ch;height:1.3em;cursor:pointer;}
+  .cp-chip.sel{box-shadow:0 0 0 1px var(--text),0 0 0 2px var(--accent);}
+
+  /* ===== File dialog ===== */
+  .fd{width:max-content;max-width:100%;background:var(--panel);}
+  .fd-path{display:flex;align-items:center;background:var(--bg);}
+  .fd-path .nav{color:var(--muted);padding:0 5px;cursor:pointer;} .fd-path .nav:hover{color:var(--accent);}
+  .fd-path .nav.dis{color:var(--faint);cursor:default;}
+  .fd-crumb{display:flex;align-items:center;flex:1;padding:0 4px;}
+  .fd-crumb .seg{padding:0 5px;cursor:pointer;} .fd-crumb .seg:hover{background:var(--hover);color:var(--text);}
+  .fd-crumb .seg .ic{color:var(--accent);}
+  .fd-crumb .sep{color:var(--muted);}
+  .fd-crumb .seg.cur{color:var(--text);}
+  /* breadcrumb edit mode: raw editable path field */
+  .fd-pathedit{flex:1;display:flex;align-items:center;background:var(--well);padding:0 6px;margin:0 2px;color:var(--text);box-shadow:inset 0 0 0 1px var(--accent);}
+  .fd-pathedit .ptxt{white-space:pre;}
+  .fd-pathedit .pdim{color:var(--muted);}
+  .fd-pathedit .ghost{color:var(--faint);}
+.fd-pathedit .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .fd-pathedit .pe-go{margin-left:auto;color:var(--accent);padding-left:8px;cursor:pointer;}
+  /* path completion popup (Claude-Code-style) */
+  .pathpop{position:relative;z-index:5;background:var(--panel);width:max-content;min-width:34ch;box-shadow:0 0 0 1px var(--faint);margin:0 2px;}
+  .pathpop .pphead{background:var(--surface);color:var(--muted);padding:0 8px;display:flex;justify-content:space-between;gap:18px;}
+  .pathpop .pphead .cnt{color:var(--accent-2);}
+  .pathpop .pprow{display:flex;align-items:center;gap:7px;padding:0 8px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+  .pathpop .pprow:hover{background:var(--hover);color:var(--text);}
+  .pathpop .pprow.sel{background:var(--sel);color:var(--text);}
+  .pathpop .pprow .ic{width:1ch;display:inline-block;text-align:center;}
+  .pathpop .pprow .match{color:var(--accent);font-weight:bold;}
+  .pathpop .pprow.sel .match{color:var(--accent-2);}
+  .pathpop .pprow .trail{color:var(--muted);}
+  .pathpop .pprow.sel .trail{color:var(--text-dim);}
+  .pathpop .pprow .kind{margin-left:auto;color:var(--muted);font-size:11px;padding-left:18px;}
+  .pathpop .ppfoot{background:var(--surface);color:var(--muted);padding:0 8px;font-size:11px;display:flex;gap:12px;}
+  .pathpop .ppfoot .k{color:var(--text-dim);}
+  .fd-search{background:var(--well);color:var(--muted);padding:0 8px;margin:0 4px;display:flex;gap:6px;min-width:16ch;}
+
+  .fd-body{display:flex;}
+  /* places rail */
+  .fd-rail{background:var(--surface);min-width:18ch;padding:3px 0;}
+  .fd-rail .grp{color:var(--muted);font-size:11px;padding:2px 10px 0;}
+  .fd-rail .place{display:flex;align-items:center;gap:7px;padding:0 10px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+  .fd-rail .place:hover{background:var(--hover);color:var(--text);}
+  .fd-rail .place.sel{background:var(--sel);color:var(--text);}
+  .fd-rail .place .ic{width:1ch;display:inline-block;text-align:center;}
+  .fd-rail .ic-pin{color:var(--accent);} .fd-rail .ic-drive{color:var(--accent-2);} .fd-rail .ic-cloud{color:var(--purple);}
+
+  /* details list */
+  .fd-list{flex:1;background:var(--panel);min-width:54ch;}
+  .fd-lhead{display:flex;background:var(--surface);color:var(--accent);}
+  .fd-lhead .col{padding:0 8px;display:flex;justify-content:space-between;gap:6px;cursor:pointer;white-space:nowrap;}
+  .fd-lhead .col:hover{background:var(--hover);}
+  .fd-lhead .sort{color:var(--accent-2);}
+  .col-name{width:26ch;} .col-size{width:10ch;text-align:right;} .col-type{width:12ch;} .col-mod{width:16ch;}
+  .fd-row{display:flex;color:var(--text-dim);white-space:nowrap;cursor:pointer;}
+  .fd-row:nth-child(even){background:var(--bg);}
+  .fd-row:hover{background:var(--hover);color:var(--text);}
+  .fd-row.sel{background:var(--sel);color:var(--text);}
+  .fd-row .cell{padding:0 8px;overflow:hidden;}
+  .fd-row .nm{display:flex;align-items:center;gap:7px;}
+  .fd-row .ic{width:1ch;display:inline-block;text-align:center;}
+  .ic-folder{color:var(--accent-2);} .ic-img{color:var(--purple);} .ic-doc{color:var(--accent-2);}
+  .ic-code{color:var(--green);} .ic-data{color:var(--amber);} .ic-generic{color:var(--muted);}
+  .fd-row .sz{text-align:right;display:block;} .fd-row .dim{color:var(--muted);}
+
+  /* emoji icon: reserve two cells (continuation cell), so layout holds regardless of terminal width handling */
+  .ic2{display:inline-block;width:2ch;text-align:left;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;}
+  /* Nerd Font glyph: single cell, PUA codepoint; font stack falls through to any installed Nerd Font */
+  /* Nerd Font glyph: single cell, PUA codepoint; resolves from the body stack (Cascadia Code NF / JetBrainsMono Nerd Font) */
+  .icnf{display:inline-block;width:1ch;text-align:center;}
+  .fd-newfolder .cell .nm{color:var(--green);}
+  .fd-newfolder .nmedit{background:var(--well);color:var(--text);padding:0 4px;}
+.fd-newfolder .nmedit .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+
+  /* view-mode switcher (right side of path bar) */
+  .fd-viewsw{display:flex;gap:0;margin-left:4px;}
+  .fd-viewsw .vm{padding:0 6px;color:var(--muted);cursor:pointer;}
+  .fd-viewsw .vm:hover{background:var(--hover);color:var(--text);}
+  .fd-viewsw .vm.on{background:var(--accent);color:var(--on-accent);}
+
+  /* small-icons view: column-major wrap (top->bottom, then left->right), horizontal scroll */
+  .fd-smallicons{flex:1;background:var(--panel);min-width:54ch;max-width:74ch;
+    display:flex;flex-flow:column wrap;align-content:flex-start;
+    height:7.5em;overflow-x:auto;overflow-y:hidden;padding:2px 0;gap:0 0;}
+  .si-item{display:flex;align-items:center;gap:6px;width:24ch;padding:0 8px;color:var(--text-dim);cursor:pointer;white-space:nowrap;overflow:hidden;}
+  .si-item:hover{background:var(--hover);color:var(--text);}
+  .si-item.sel{background:var(--sel);color:var(--text);}
+  .si-item .ic{width:1ch;display:inline-block;text-align:center;}
+  .si-item .nm{overflow:hidden;text-overflow:ellipsis;}
+  /* a scrollbar hint track under the small-icons region */
+  .fd-hscroll{display:flex;align-items:center;background:var(--bg);color:var(--muted);}
+  .fd-hscroll .track{flex:1;color:var(--faint);overflow:hidden;white-space:nowrap;}
+  .fd-hscroll .thumb{color:var(--accent);}
+  .fd-hscroll .arr{padding:0 5px;cursor:pointer;} .fd-hscroll .arr:hover{color:var(--accent);}
+
+  /* footer: filename + filter + buttons */
+  .fd-foot{padding:4px 10px;display:flex;flex-direction:column;gap:4px;background:var(--panel);}
+  .fd-frow{display:flex;align-items:center;gap:10px;}
+  .fd-frow .fl{color:var(--muted);width:10ch;display:inline-block;}
+  .fd-frow .fname{flex:1;background:var(--well);color:var(--text);padding:0 6px;min-width:30ch;display:flex;justify-content:space-between;}
+.fd-frow .fname .caret{display:inline-block;width:0;position:relative;vertical-align:text-bottom;color:transparent;}
+  .fd-frow .filter{background:var(--bg);color:var(--text);padding:0 6px;min-width:24ch;display:flex;justify-content:space-between;}
+  .fd-frow .filter .dd{color:var(--accent);}
+  .fd-actions{display:flex;gap:0;margin-left:auto;}
+  .fd-actions .dbtn{padding:0 16px;cursor:pointer;}
+  .fd-actions .dbtn.ok{background:var(--accent);color:var(--on-accent);}
+  .fd-actions .dbtn.cancel{color:var(--muted);} .fd-actions .dbtn.cancel:hover{background:var(--hover);color:var(--text);}
+  .fd-toolbtn{color:var(--muted);padding:0 6px;cursor:pointer;} .fd-toolbtn:hover{color:var(--accent);}
+
+  /* filter dropdown popup */
+  .filterpop{background:var(--panel);width:max-content;}
+  .filterpop .fo{padding:0 10px;color:var(--text);cursor:pointer;} .filterpop .fo:hover{background:var(--hover);}
+  .filterpop .fo.sel{background:var(--sel);}
+  .filterpop .fo .ext{color:var(--muted);}
+
+  /* overwrite confirm */
+  .confirm{width:max-content;background:var(--panel);box-shadow:0 0 0 1px var(--amber);}
+  .confirm .ctitle{background:var(--amber);color:var(--on-accent);padding:0 10px;display:flex;gap:8px;align-items:center;}
+  .confirm .cbody{padding:5px 12px;color:var(--text-dim);max-width:44ch;}
+  .confirm .cbody b{color:var(--text);font-weight:normal;}
+  .confirm .cbtns{display:flex;gap:0;padding:3px 8px;justify-content:flex-end;}
+  .confirm .cbtn{padding:0 12px;cursor:pointer;} .confirm .cbtn.yes{background:var(--amber);color:var(--on-accent);}
+  .confirm .cbtn.no{color:var(--muted);} .confirm .cbtn.no:hover{background:var(--hover);color:var(--text);}
+
+  u{text-decoration-thickness:1px;text-underline-offset:2px;}
+
+  @keyframes ibeamblink{50%{opacity:0;}}
+  .cp-field .fv .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .fd-pathedit .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .fd-newfolder .nmedit .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  .fd-frow .fname .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <span class="dots"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span></span>
+    <span class="title-text" id="titleText">tokyo-night — ColorPicker &amp; File dialogs — 120×40</span>
+    <button class="toggle" id="toggle">switch to light ▸</button>
+  </div>
+
+  <div class="legend">
+    <b>Cell-granular gradients:</b> the ColorPicker's HSV square is a grid of discrete flat-colour cells (one quantised sample each),
+    and the hue &amp; alpha strips use the <b>half-block ▀ trick</b> — top half is the cell's foreground colour, bottom half its background —
+    to double vertical resolution · the file dialogs share a places rail, breadcrumb path bar, sortable details list, and a filename + type-filter footer · Save adds new-folder and overwrite-confirm.
+  </div>
+
+  <h2 class="sec">▸ ColorPicker — HSV square, hue &amp; alpha strips, channels, swatches</h2>
+  <div class="dlg" style="--curcol:#6FA3F7;">
+    <div class="titlebar"><span> Select Color</span><span class="wb"><span class="x">✕</span></span></div>
+    <div class="cp">
+      <div class="cp-main">
+        <div class="svsquare">
+<div class="svrow"><span class="svc" style="background:#FFFFFF"></span><span class="svc" style="background:#F5F9FF"></span><span class="svc" style="background:#EBF2FF"></span><span class="svc" style="background:#E0ECFF"></span><span class="svc" style="background:#D6E6FF"></span><span class="svc" style="background:#CCE0FF"></span><span class="svc" style="background:#C2D9FF"></span><span class="svc" style="background:#B8D3FF"></span><span class="svc" style="background:#ADCDFF"></span><span class="svc" style="background:#A3C6FF"></span><span class="svc" style="background:#99C0FF"></span><span class="svc" style="background:#8FBAFF"></span><span class="svc" style="background:#85B4FF"></span><span class="svc" style="background:#7AADFF"></span><span class="svc svcur" style="background:#70A7FF"></span><span class="svc" style="background:#66A1FF"></span><span class="svc" style="background:#5C9AFF"></span><span class="svc" style="background:#5294FF"></span><span class="svc" style="background:#478EFF"></span><span class="svc" style="background:#3D87FF"></span><span class="svc" style="background:#3381FF"></span><span class="svc" style="background:#297BFF"></span><span class="svc" style="background:#1F75FF"></span><span class="svc" style="background:#146EFF"></span><span class="svc" style="background:#0A68FF"></span><span class="svc" style="background:#0062FF"></span></div>
+<div class="svrow"><span class="svc" style="background:#E8E8E8"></span><span class="svc" style="background:#DFE2E8"></span><span class="svc" style="background:#D5DCE8"></span><span class="svc" style="background:#CCD7E8"></span><span class="svc" style="background:#C3D1E8"></span><span class="svc" style="background:#B9CBE8"></span><span class="svc" style="background:#B0C6E8"></span><span class="svc" style="background:#A7C0E8"></span><span class="svc" style="background:#9EBAE8"></span><span class="svc" style="background:#94B4E8"></span><span class="svc" style="background:#8BAFE8"></span><span class="svc" style="background:#82A9E8"></span><span class="svc" style="background:#79A3E8"></span><span class="svc" style="background:#6F9DE8"></span><span class="svc" style="background:#6698E8"></span><span class="svc" style="background:#5D92E8"></span><span class="svc" style="background:#538CE8"></span><span class="svc" style="background:#4A87E8"></span><span class="svc" style="background:#4181E8"></span><span class="svc" style="background:#387BE8"></span><span class="svc" style="background:#2E75E8"></span><span class="svc" style="background:#2570E8"></span><span class="svc" style="background:#1C6AE8"></span><span class="svc" style="background:#1364E8"></span><span class="svc" style="background:#095FE8"></span><span class="svc" style="background:#0059E8"></span></div>
+<div class="svrow"><span class="svc" style="background:#D1D1D1"></span><span class="svc" style="background:#C8CBD1"></span><span class="svc" style="background:#C0C6D1"></span><span class="svc" style="background:#B8C1D1"></span><span class="svc" style="background:#AFBCD1"></span><span class="svc" style="background:#A7B7D1"></span><span class="svc" style="background:#9FB2D1"></span><span class="svc" style="background:#96ADD1"></span><span class="svc" style="background:#8EA7D1"></span><span class="svc" style="background:#86A2D1"></span><span class="svc" style="background:#7D9DD1"></span><span class="svc" style="background:#7598D1"></span><span class="svc" style="background:#6C93D1"></span><span class="svc" style="background:#648ED1"></span><span class="svc" style="background:#5C89D1"></span><span class="svc" style="background:#5383D1"></span><span class="svc" style="background:#4B7ED1"></span><span class="svc" style="background:#4379D1"></span><span class="svc" style="background:#3A74D1"></span><span class="svc" style="background:#326FD1"></span><span class="svc" style="background:#2A6AD1"></span><span class="svc" style="background:#2165D1"></span><span class="svc" style="background:#195FD1"></span><span class="svc" style="background:#115AD1"></span><span class="svc" style="background:#0855D1"></span><span class="svc" style="background:#0050D1"></span></div>
+<div class="svrow"><span class="svc" style="background:#B9B9B9"></span><span class="svc" style="background:#B2B5B9"></span><span class="svc" style="background:#ABB0B9"></span><span class="svc" style="background:#A3ACB9"></span><span class="svc" style="background:#9CA7B9"></span><span class="svc" style="background:#94A3B9"></span><span class="svc" style="background:#8D9EB9"></span><span class="svc" style="background:#8699B9"></span><span class="svc" style="background:#7E95B9"></span><span class="svc" style="background:#7790B9"></span><span class="svc" style="background:#6F8CB9"></span><span class="svc" style="background:#6887B9"></span><span class="svc" style="background:#6083B9"></span><span class="svc" style="background:#597EB9"></span><span class="svc" style="background:#5279B9"></span><span class="svc" style="background:#4A75B9"></span><span class="svc" style="background:#4370B9"></span><span class="svc" style="background:#3B6CB9"></span><span class="svc" style="background:#3467B9"></span><span class="svc" style="background:#2D63B9"></span><span class="svc" style="background:#255EB9"></span><span class="svc" style="background:#1E59B9"></span><span class="svc" style="background:#1655B9"></span><span class="svc" style="background:#0F50B9"></span><span class="svc" style="background:#074CB9"></span><span class="svc" style="background:#0047B9"></span></div>
+<div class="svrow"><span class="svc" style="background:#A2A2A2"></span><span class="svc" style="background:#9C9EA2"></span><span class="svc" style="background:#959AA2"></span><span class="svc" style="background:#8F96A2"></span><span class="svc" style="background:#8892A2"></span><span class="svc" style="background:#828EA2"></span><span class="svc" style="background:#7B8AA2"></span><span class="svc" style="background:#7586A2"></span><span class="svc" style="background:#6E82A2"></span><span class="svc" style="background:#687EA2"></span><span class="svc" style="background:#617AA2"></span><span class="svc" style="background:#5B76A2"></span><span class="svc" style="background:#5472A2"></span><span class="svc" style="background:#4E6EA2"></span><span class="svc" style="background:#476AA2"></span><span class="svc" style="background:#4166A2"></span><span class="svc" style="background:#3A62A2"></span><span class="svc" style="background:#345EA2"></span><span class="svc" style="background:#2D5AA2"></span><span class="svc" style="background:#2756A2"></span><span class="svc" style="background:#2052A2"></span><span class="svc" style="background:#1A4EA2"></span><span class="svc" style="background:#134AA2"></span><span class="svc" style="background:#0D46A2"></span><span class="svc" style="background:#0642A2"></span><span class="svc" style="background:#003EA2"></span></div>
+<div class="svrow"><span class="svc" style="background:#8B8B8B"></span><span class="svc" style="background:#86888B"></span><span class="svc" style="background:#80848B"></span><span class="svc" style="background:#7A818B"></span><span class="svc" style="background:#757D8B"></span><span class="svc" style="background:#6F7A8B"></span><span class="svc" style="background:#6A778B"></span><span class="svc" style="background:#64738B"></span><span class="svc" style="background:#5F708B"></span><span class="svc" style="background:#596C8B"></span><span class="svc" style="background:#53698B"></span><span class="svc" style="background:#4E658B"></span><span class="svc" style="background:#48628B"></span><span class="svc" style="background:#435E8B"></span><span class="svc" style="background:#3D5B8B"></span><span class="svc" style="background:#38588B"></span><span class="svc" style="background:#32548B"></span><span class="svc" style="background:#2D518B"></span><span class="svc" style="background:#274D8B"></span><span class="svc" style="background:#214A8B"></span><span class="svc" style="background:#1C468B"></span><span class="svc" style="background:#16438B"></span><span class="svc" style="background:#11408B"></span><span class="svc" style="background:#0B3C8B"></span><span class="svc" style="background:#06398B"></span><span class="svc" style="background:#00358B"></span></div>
+<div class="svrow"><span class="svc" style="background:#747474"></span><span class="svc" style="background:#6F7174"></span><span class="svc" style="background:#6B6E74"></span><span class="svc" style="background:#666B74"></span><span class="svc" style="background:#616874"></span><span class="svc" style="background:#5D6674"></span><span class="svc" style="background:#586374"></span><span class="svc" style="background:#536074"></span><span class="svc" style="background:#4F5D74"></span><span class="svc" style="background:#4A5A74"></span><span class="svc" style="background:#465774"></span><span class="svc" style="background:#415474"></span><span class="svc" style="background:#3C5274"></span><span class="svc" style="background:#384F74"></span><span class="svc" style="background:#334C74"></span><span class="svc" style="background:#2E4974"></span><span class="svc" style="background:#2A4674"></span><span class="svc" style="background:#254374"></span><span class="svc" style="background:#204074"></span><span class="svc" style="background:#1C3E74"></span><span class="svc" style="background:#173B74"></span><span class="svc" style="background:#133874"></span><span class="svc" style="background:#0E3574"></span><span class="svc" style="background:#093274"></span><span class="svc" style="background:#052F74"></span><span class="svc" style="background:#002C74"></span></div>
+<div class="svrow"><span class="svc" style="background:#5D5D5D"></span><span class="svc" style="background:#595A5D"></span><span class="svc" style="background:#55585D"></span><span class="svc" style="background:#52565D"></span><span class="svc" style="background:#4E545D"></span><span class="svc" style="background:#4A515D"></span><span class="svc" style="background:#464F5D"></span><span class="svc" style="background:#434D5D"></span><span class="svc" style="background:#3F4A5D"></span><span class="svc" style="background:#3B485D"></span><span class="svc" style="background:#38465D"></span><span class="svc" style="background:#34445D"></span><span class="svc" style="background:#30415D"></span><span class="svc" style="background:#2D3F5D"></span><span class="svc" style="background:#293D5D"></span><span class="svc" style="background:#253A5D"></span><span class="svc" style="background:#21385D"></span><span class="svc" style="background:#1E365D"></span><span class="svc" style="background:#1A345D"></span><span class="svc" style="background:#16315D"></span><span class="svc" style="background:#132F5D"></span><span class="svc" style="background:#0F2D5D"></span><span class="svc" style="background:#0B2A5D"></span><span class="svc" style="background:#07285D"></span><span class="svc" style="background:#04265D"></span><span class="svc" style="background:#00245D"></span></div>
+<div class="svrow"><span class="svc" style="background:#464646"></span><span class="svc" style="background:#434446"></span><span class="svc" style="background:#404246"></span><span class="svc" style="background:#3D4046"></span><span class="svc" style="background:#3A3F46"></span><span class="svc" style="background:#383D46"></span><span class="svc" style="background:#353B46"></span><span class="svc" style="background:#323A46"></span><span class="svc" style="background:#2F3846"></span><span class="svc" style="background:#2D3646"></span><span class="svc" style="background:#2A3446"></span><span class="svc" style="background:#273346"></span><span class="svc" style="background:#243146"></span><span class="svc" style="background:#212F46"></span><span class="svc" style="background:#1F2E46"></span><span class="svc" style="background:#1C2C46"></span><span class="svc" style="background:#192A46"></span><span class="svc" style="background:#162846"></span><span class="svc" style="background:#132746"></span><span class="svc" style="background:#112546"></span><span class="svc" style="background:#0E2346"></span><span class="svc" style="background:#0B2246"></span><span class="svc" style="background:#082046"></span><span class="svc" style="background:#061E46"></span><span class="svc" style="background:#031C46"></span><span class="svc" style="background:#001B46"></span></div>
+<div class="svrow"><span class="svc" style="background:#2E2E2E"></span><span class="svc" style="background:#2D2D2E"></span><span class="svc" style="background:#2B2C2E"></span><span class="svc" style="background:#292B2E"></span><span class="svc" style="background:#272A2E"></span><span class="svc" style="background:#25292E"></span><span class="svc" style="background:#23282E"></span><span class="svc" style="background:#21262E"></span><span class="svc" style="background:#20252E"></span><span class="svc" style="background:#1E242E"></span><span class="svc" style="background:#1C232E"></span><span class="svc" style="background:#1A222E"></span><span class="svc" style="background:#18212E"></span><span class="svc" style="background:#161F2E"></span><span class="svc" style="background:#141E2E"></span><span class="svc" style="background:#131D2E"></span><span class="svc" style="background:#111C2E"></span><span class="svc" style="background:#0F1B2E"></span><span class="svc" style="background:#0D1A2E"></span><span class="svc" style="background:#0B192E"></span><span class="svc" style="background:#09172E"></span><span class="svc" style="background:#07162E"></span><span class="svc" style="background:#06152E"></span><span class="svc" style="background:#04142E"></span><span class="svc" style="background:#02132E"></span><span class="svc" style="background:#00122E"></span></div>
+<div class="svrow"><span class="svc" style="background:#171717"></span><span class="svc" style="background:#161717"></span><span class="svc" style="background:#151617"></span><span class="svc" style="background:#141517"></span><span class="svc" style="background:#131517"></span><span class="svc" style="background:#131417"></span><span class="svc" style="background:#121417"></span><span class="svc" style="background:#111317"></span><span class="svc" style="background:#101317"></span><span class="svc" style="background:#0F1217"></span><span class="svc" style="background:#0E1117"></span><span class="svc" style="background:#0D1117"></span><span class="svc" style="background:#0C1017"></span><span class="svc" style="background:#0B1017"></span><span class="svc" style="background:#0A0F17"></span><span class="svc" style="background:#090F17"></span><span class="svc" style="background:#080E17"></span><span class="svc" style="background:#070D17"></span><span class="svc" style="background:#060D17"></span><span class="svc" style="background:#060C17"></span><span class="svc" style="background:#050C17"></span><span class="svc" style="background:#040B17"></span><span class="svc" style="background:#030B17"></span><span class="svc" style="background:#020A17"></span><span class="svc" style="background:#010917"></span><span class="svc" style="background:#000917"></span></div>
+<div class="svrow"><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span><span class="svc" style="background:#000000"></span></div>
+        </div>
+        <div class="huestrip">
+<div class="huec" style="color:#FF0000;background:#FF4300">▀</div>
+<div class="huec" style="color:#FF8500;background:#FFC800">▀</div>
+<div class="huec" style="color:#F4FF00;background:#B1FF00">▀</div>
+<div class="huec" style="color:#6FFF00;background:#2CFF00">▀</div>
+<div class="huec" style="color:#00FF16;background:#00FF59">▀</div>
+<div class="huec" style="color:#00FF9B;background:#00FFDE">▀</div>
+<div class="huec" style="color:#00DEFF;background:#009BFF">▀</div>
+<div class="huec huecur" style="color:#0059FF;background:#0016FF">▀</div>
+<div class="huec" style="color:#2C00FF;background:#6F00FF">▀</div>
+<div class="huec" style="color:#B100FF;background:#F400FF">▀</div>
+<div class="huec" style="color:#FF00C8;background:#FF0085">▀</div>
+<div class="huec" style="color:#FF0043;background:#FF0000">▀</div>
+        </div>
+        <div class="alphastrip">
+<div class="alphac alphacur" style="color:#6FA3F7;background:#6B9DED">▀</div>
+<div class="alphac" style="color:#6897E5;background:#6390DA">▀</div>
+<div class="alphac" style="color:#608CD3;background:#5B84C7">▀</div>
+<div class="alphac" style="color:#5980C1;background:#5377B4">▀</div>
+<div class="alphac" style="color:#5174AF;background:#4B6BA1">▀</div>
+<div class="alphac" style="color:#4A689D;background:#435F8E">▀</div>
+<div class="alphac" style="color:#435D8B;background:#3B527B">▀</div>
+<div class="alphac" style="color:#3B5179;background:#334668">▀</div>
+<div class="alphac" style="color:#344567;background:#2B3955">▀</div>
+<div class="alphac" style="color:#2C3955;background:#232D42">▀</div>
+<div class="alphac" style="color:#252E43;background:#1B202F">▀</div>
+<div class="alphac" style="color:#1E2231;background:#13141C">▀</div>
+        </div>
+      </div>
+      <div class="cp-side">
+        <div class="cp-preview">
+          <div class="cp-sw new"><span class="lbl">new</span></div>
+          <div class="cp-sw old"><span class="lbl">was</span></div>
+          <div class="cp-eyedrop" title="pick from screen">⊙</div>
+        </div>
+        <div class="cp-mode">
+          <span class="mo on">HSV</span><span class="mo">RGB</span><span class="mo">HSL</span>
+        </div>
+        <div class="cp-field"><span class="fl">H</span><span class="fv">217<span class="dim" style="color:var(--muted)">°</span></span><span class="fl" style="width:auto">S</span><span class="fv">55<span style="color:var(--muted)">%</span></span><span class="fl" style="width:auto">V</span><span class="fv">97<span style="color:var(--muted)">%</span></span></div>
+        <div class="cp-field"><span class="fl">R</span><span class="fv">111</span><span class="fl" style="width:auto">G</span><span class="fv">163</span><span class="fl" style="width:auto">B</span><span class="fv">247</span></div>
+        <div class="cp-field"><span class="fl">Hex</span><span class="fv hex focus">#6FA3F7<span class="caret">|</span></span></div>
+        <div class="cp-field"><span class="fl">A</span><span class="fv">100<span style="color:var(--muted)">%</span></span><span style="color:var(--muted);font-size:11px">opacity</span></div>
+        <div class="cp-swatches">
+          <div class="sl">Theme palette · recent</div>
+          <div class="cp-swrow">
+            <span class="cp-chip sel" style="background:#7aa2f7;"></span>
+            <span class="cp-chip" style="background:#7dcfff;"></span>
+            <span class="cp-chip" style="background:#9ece6a;"></span>
+            <span class="cp-chip" style="background:#e0af68;"></span>
+            <span class="cp-chip" style="background:#f7768e;"></span>
+            <span class="cp-chip" style="background:#bb9af7;"></span>
+            <span class="cp-chip" style="background:#c0caf5;"></span>
+            <span class="cp-chip" style="background:#565f89;"></span>
+            <span class="cp-chip" style="background:#1a1b26;"></span>
+            <span class="cp-chip" style="background:#ff9e64;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dbtns"><span class="dbtn ok">OK</span><span class="dbtn cancel">Cancel</span></div>
+  </div>
+  <div class="caption">The HSV <b>saturation/value square</b> is a grid of discrete cells — each a single flat colour sampled at its (saturation, value) coordinate, quantised to cell granularity rather than smoothly interpolated. The <b>hue</b> and <b>alpha strips</b> use the <b>half-block technique</b>: each cell prints <span style="color:var(--text)">▀</span> with the foreground set to the upper sample and the background to the lower one, so a 12-cell strip carries 24 colour steps. The ring cursor snaps to the nearest cell. The alpha strip steps the colour's opacity over checker tones the same way. Side panel: new/was swatches, eyedropper, HSV/RGB/HSL toggle, channel fields (hex focused), opacity, and a recent/theme palette with the active chip ringed.</div>
+
+  <h2 class="sec">▸ Open File dialog — places rail, breadcrumb, sortable details</h2>
+  <div class="fd">
+    <div class="titlebar"><span> Open File</span><span class="wb"><span class="x">✕</span></span></div>
+    <div class="fd-path">
+      <span class="nav dis">◂</span><span class="nav">▸</span><span class="nav">▴</span><span class="nav" title="refresh">↻</span>
+      <div class="fd-crumb">
+        <span class="seg"><span class="ic">▣</span> Home</span><span class="sep">▸</span>
+        <span class="seg"> Projects</span><span class="sep">▸</span>
+        <span class="seg cur"> assets</span>
+      </div>
+      <span class="fd-search">⌕ Search assets</span>
+      <span class="fd-viewsw"><span class="vm on" title="Details">▤</span><span class="vm" title="Small icons">▥</span><span class="vm" title="Tiles">▦</span></span>
+    </div>
+    <div class="fd-body">
+      <div class="fd-rail">
+        <div class="grp">Quick access</div>
+        <div class="place"><span class="ic ic-pin">★</span> Recent</div>
+        <div class="place"><span class="ic ic-pin">★</span> Desktop</div>
+        <div class="place sel"><span class="ic ic-pin">★</span> Projects</div>
+        <div class="place"><span class="ic ic-pin">★</span> Downloads</div>
+        <div class="grp">This PC</div>
+        <div class="place"><span class="ic ic-drive">▤</span> Local (C:)</div>
+        <div class="place"><span class="ic ic-drive">▤</span> Data (D:)</div>
+        <div class="grp">Network</div>
+        <div class="place"><span class="ic ic-cloud">☁</span> Cloud Drive</div>
+      </div>
+      <div class="fd-list">
+        <div class="fd-lhead">
+          <span class="col col-name">Name <span class="sort">▲</span></span>
+          <span class="col col-size">Size</span>
+          <span class="col col-type">Type</span>
+          <span class="col col-mod">Modified</span>
+        </div>
+        <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-folder">▸</span> textures</span></span><span class="cell col-size dim">—</span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-20 14:02</span></div>
+        <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-folder">▸</span> icons</span></span><span class="cell col-size dim">—</span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-18 09:41</span></div>
+        <div class="fd-row sel"><span class="cell col-name"><span class="nm"><span class="ic ic-img"></span> hero-banner.png</span></span><span class="cell col-size"><span class="sz">1.4 MB</span></span><span class="cell col-type">PNG image</span><span class="cell col-mod dim">2026-06-01 11:20</span></div>
+        <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-img"></span> logo.svg</span></span><span class="cell col-size"><span class="sz">22 KB</span></span><span class="cell col-type">SVG image</span><span class="cell col-mod dim">2026-05-29 16:08</span></div>
+        <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-img"></span> thumbnail.jpg</span></span><span class="cell col-size"><span class="sz">88 KB</span></span><span class="cell col-type">JPEG image</span><span class="cell col-mod dim">2026-05-30 10:15</span></div>
+        <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-data"></span> palette.aco</span></span><span class="cell col-size"><span class="sz">4 KB</span></span><span class="cell col-type">Swatch file</span><span class="cell col-mod dim">2026-05-12 13:33</span></div>
+        <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-generic"></span> .gitkeep</span></span><span class="cell col-size"><span class="sz dim">0 B</span></span><span class="cell col-type dim">File</span><span class="cell col-mod dim">2026-04-02 08:00</span></div>
+      </div>
+    </div>
+    <div class="fd-foot">
+      <div class="fd-frow">
+        <span class="fl">File name:</span>
+        <span class="fname">hero-banner.png<span class="caret">|</span></span>
+        <span class="filter">Images (*.png;*.jpg;*.svg) <span class="dd">▾</span></span>
+      </div>
+      <div class="fd-frow">
+        <span style="color:var(--muted);font-size:11px">1 item selected · 1.4 MB</span>
+        <span class="fd-actions"><span class="dbtn ok">Open</span><span class="dbtn cancel">Cancel</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The Open dialog: nav arrows + a clickable <b>breadcrumb</b> path (with a search box), a <b>places rail</b> grouped into Quick access / This PC / Network with pinned ★, drive ▤, and cloud ☁ glyphs, and a <b>sortable details list</b> (Name sorted ▲) with per-type file glyphs, right-aligned sizes, type, and modified columns. Folders sort first. The footer carries the filename field (caret) and the <b>type-filter</b> dropdown, plus a selection summary and Open/Cancel. The <b>view switcher</b> (▤▥▦) at the path bar's right toggles the layout below.</div>
+
+  <h2 class="sec">▸ Icon pass — emoji glyphs (two-cell, continuation cell reserved)</h2>
+  <div class="fd">
+    <div class="titlebar"><span> Open File</span><span class="wb"><span class="x">✕</span></span></div>
+    <div class="fd-path">
+      <span class="nav dis">◂</span><span class="nav">▸</span><span class="nav">▴</span><span class="nav" title="refresh">↻</span>
+      <div class="fd-crumb">
+        <span class="seg"><span class="ic2">🏠</span> Home</span><span class="sep">▸</span>
+        <span class="seg"> Projects</span><span class="sep">▸</span>
+        <span class="seg cur"> assets</span>
+      </div>
+      <span class="fd-search">⌕ Search assets</span>
+    </div>
+    <div class="fd-body">
+      <div class="fd-rail">
+<div class="grp">Quick access</div>
+<div class="place"><span class="ic2 ic-pin">🕘</span> Recent</div>
+<div class="place"><span class="ic2 ic-pin">🖥️</span> Desktop</div>
+<div class="place sel"><span class="ic2 ic-pin">📌</span> Projects</div>
+<div class="place"><span class="ic2 ic-pin">⬇️</span> Downloads</div>
+<div class="grp">This PC</div>
+<div class="place"><span class="ic2 ic-drive">💾</span> Local (C:)</div>
+<div class="place"><span class="ic2 ic-drive">💾</span> Data (D:)</div>
+<div class="grp">Network</div>
+<div class="place"><span class="ic2 ic-cloud">☁️</span> Cloud Drive</div>
+      </div>
+      <div class="fd-list">
+        <div class="fd-lhead">
+          <span class="col col-name">Name <span class="sort">▲</span></span>
+          <span class="col col-size">Size</span>
+          <span class="col col-type">Type</span>
+          <span class="col col-mod">Modified</span>
+        </div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-folder">📁</span> textures</span></span><span class="cell col-size"><span class="dim">—</span></span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-20 14:02</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-folder">📁</span> icons</span></span><span class="cell col-size"><span class="dim">—</span></span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-18 09:41</span></div>
+<div class="fd-row sel"><span class="cell col-name"><span class="nm"><span class="ic2 ic-img">🖼️</span> hero-banner.png</span></span><span class="cell col-size"><span class="sz">1.4 MB</span></span><span class="cell col-type">PNG image</span><span class="cell col-mod dim">2026-06-01 11:20</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-img">🎨</span> logo.svg</span></span><span class="cell col-size"><span class="sz">22 KB</span></span><span class="cell col-type">SVG image</span><span class="cell col-mod dim">2026-05-29 16:08</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-img">🖼️</span> thumbnail.jpg</span></span><span class="cell col-size"><span class="sz">88 KB</span></span><span class="cell col-type">JPEG image</span><span class="cell col-mod dim">2026-05-30 10:15</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-data">🎨</span> palette.aco</span></span><span class="cell col-size"><span class="sz">4 KB</span></span><span class="cell col-type">Swatch file</span><span class="cell col-mod dim">2026-05-12 13:33</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-doc">📕</span> credits.pdf</span></span><span class="cell col-size"><span class="sz">240 KB</span></span><span class="cell col-type">PDF document</span><span class="cell col-mod dim">2026-05-22 09:30</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-code">🌙</span> atlas.lua</span></span><span class="cell col-size"><span class="sz">12 KB</span></span><span class="cell col-type">Lua source</span><span class="cell col-mod dim">2026-05-25 17:50</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-code">⚙️</span> build.sh</span></span><span class="cell col-size"><span class="sz">2 KB</span></span><span class="cell col-type">Shell script</span><span class="cell col-mod dim">2026-05-19 08:14</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-data">🔧</span> gradients.json</span></span><span class="cell col-size"><span class="sz">6 KB</span></span><span class="cell col-type">JSON file</span><span class="cell col-mod dim">2026-05-28 11:11</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-generic">📄</span> .gitkeep</span></span><span class="cell col-size"><span class="sz">0 B</span></span><span class="cell col-type">File</span><span class="cell col-mod dim">2026-04-02 08:00</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic2 ic-generic">📜</span> LICENSE</span></span><span class="cell col-size"><span class="sz">1 KB</span></span><span class="cell col-type">File</span><span class="cell col-mod dim">2026-04-02 08:00</span></div>
+      </div>
+    </div>
+    <div class="fd-foot">
+      <div class="fd-frow">
+        <span class="fl">File name:</span>
+        <span class="fname">hero-banner.png<span class="caret">|</span></span>
+        <span class="filter">Images (*.png;*.jpg;*.svg) <span class="dd">▾</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Same Open dialog, file-type and places glyphs swapped for <b>emoji</b>: 📁 folders, 🖼️ images, 🎨 vector/swatch, 📕 PDF, 🌙 Lua, ⚙️ shell, 🔧 JSON, 📜 license. Each is a two-cell glyph with its right-hand continuation cell reserved in the layout, so alignment holds whether the terminal renders it wide or narrow. Emoji read instantly as broad categories but cannot distinguish, say, .png from .jpg — both are 🖼️.</div>
+
+  <h2 class="sec">▸ Icon pass — Nerd Font glyphs (single-cell, per-extension)</h2>
+  <div style="color:var(--muted);font-size:11px;margin:0 0 8px;line-height:1.8">
+    glyph map (codepoint · name): folder <code>U+E5FF nf-custom-folder</code> · png/jpg <code>U+E60D nf-seti-image</code> ·
+    svg <code>U+FC1F nf-mdi-svg</code> · pdf <code>U+F1C1 nf-fa-file-pdf</code> · json <code>U+E60B nf-seti-json</code> ·
+    lua <code>U+E620 nf-seti-lua</code> · sh <code>U+F489 nf-oct-terminal</code> · git <code>U+E702 nf-dev-git</code> ·
+    license <code>U+F718 nf-oct-law</code> · star <code>U+F005</code> · drive <code>U+F0A0</code> · cloud <code>U+F0C2</code> · home <code>U+F015</code>
+  </div>
+  <div class="fd">
+    <div class="titlebar"><span> Open File</span><span class="wb"><span class="x">✕</span></span></div>
+    <div class="fd-path">
+      <span class="nav dis">◂</span><span class="nav">▸</span><span class="nav">▴</span><span class="nav" title="refresh">↻</span>
+      <div class="fd-crumb">
+        <span class="seg"><span class="icnf" title="nf-fa-home"></span> Home</span><span class="sep">▸</span>
+        <span class="seg"> Projects</span><span class="sep">▸</span>
+        <span class="seg cur"> assets</span>
+      </div>
+      <span class="fd-search">⌕ Search assets</span>
+    </div>
+    <div class="fd-body">
+      <div class="fd-rail">
+<div class="grp">Quick access</div>
+<div class="place"><span class="icnf ic-pin"></span> Recent</div>
+<div class="place"><span class="icnf ic-pin"></span> Desktop</div>
+<div class="place sel"><span class="icnf ic-pin"></span> Projects</div>
+<div class="place"><span class="icnf ic-pin"></span> Downloads</div>
+<div class="grp">This PC</div>
+<div class="place"><span class="icnf ic-drive"></span> Local (C:)</div>
+<div class="place"><span class="icnf ic-drive"></span> Data (D:)</div>
+<div class="grp">Network</div>
+<div class="place"><span class="icnf ic-cloud"></span> Cloud Drive</div>
+      </div>
+      <div class="fd-list">
+        <div class="fd-lhead">
+          <span class="col col-name">Name <span class="sort">▲</span></span>
+          <span class="col col-size">Size</span>
+          <span class="col col-type">Type</span>
+          <span class="col col-mod">Modified</span>
+        </div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-folder" title="nf-folder"></span> textures</span></span><span class="cell col-size"><span class="dim">—</span></span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-20 14:02</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-folder" title="nf-folder"></span> icons</span></span><span class="cell col-size"><span class="dim">—</span></span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-18 09:41</span></div>
+<div class="fd-row sel"><span class="cell col-name"><span class="nm"><span class="icnf ic-img" title="nf-seti-image"></span> hero-banner.png</span></span><span class="cell col-size"><span class="sz">1.4 MB</span></span><span class="cell col-type">PNG image</span><span class="cell col-mod dim">2026-06-01 11:20</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-img" title="nf-mdi-svg">ﰟ</span> logo.svg</span></span><span class="cell col-size"><span class="sz">22 KB</span></span><span class="cell col-type">SVG image</span><span class="cell col-mod dim">2026-05-29 16:08</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-img" title="nf-seti-image"></span> thumbnail.jpg</span></span><span class="cell col-size"><span class="sz">88 KB</span></span><span class="cell col-type">JPEG image</span><span class="cell col-mod dim">2026-05-30 10:15</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-data" title="nf-fa-paint_brush"></span> palette.aco</span></span><span class="cell col-size"><span class="sz">4 KB</span></span><span class="cell col-type">Swatch file</span><span class="cell col-mod dim">2026-05-12 13:33</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-doc" title="nf-fa-file_pdf"></span> credits.pdf</span></span><span class="cell col-size"><span class="sz">240 KB</span></span><span class="cell col-type">PDF document</span><span class="cell col-mod dim">2026-05-22 09:30</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-code" title="nf-seti-lua"></span> atlas.lua</span></span><span class="cell col-size"><span class="sz">12 KB</span></span><span class="cell col-type">Lua source</span><span class="cell col-mod dim">2026-05-25 17:50</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-code" title="nf-oct-terminal"></span> build.sh</span></span><span class="cell col-size"><span class="sz">2 KB</span></span><span class="cell col-type">Shell script</span><span class="cell col-mod dim">2026-05-19 08:14</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-data" title="nf-seti-json"></span> gradients.json</span></span><span class="cell col-size"><span class="sz">6 KB</span></span><span class="cell col-type">JSON file</span><span class="cell col-mod dim">2026-05-28 11:11</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-generic" title="nf-dev-git"></span> .gitkeep</span></span><span class="cell col-size"><span class="sz">0 B</span></span><span class="cell col-type">File</span><span class="cell col-mod dim">2026-04-02 08:00</span></div>
+<div class="fd-row"><span class="cell col-name"><span class="nm"><span class="icnf ic-generic" title="nf-oct-law"></span> LICENSE</span></span><span class="cell col-size"><span class="sz">1 KB</span></span><span class="cell col-type">File</span><span class="cell col-mod dim">2026-04-02 08:00</span></div>
+      </div>
+    </div>
+    <div class="fd-foot">
+      <div class="fd-frow">
+        <span class="fl">File name:</span>
+        <span class="fname">hero-banner.png<span class="caret">|</span></span>
+        <span class="filter">Images (*.png;*.jpg;*.svg) <span class="dd">▾</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The same dialog with <b>Nerd Font</b> glyphs (real Private-Use-Area codepoints, single-cell). These give <b>per-extension</b> specificity a generic icon cannot: distinct marks for .png, .svg, .json, .lua, .sh, plus folder, git, and license glyphs — the look of a modern editor file tree. As a user-enabled fallback below the graphics protocols, this is the sweet spot: one cell wide, no width ambiguity, far more specific than emoji. <span style="color:var(--amber)">Note:</span> if the glyphs show as boxes here, this viewer lacks a Nerd Font — the codepoints (hover a row for its <code>nf-*</code> name) are correct and render in a Nerd-Font-patched terminal.</div>
+
+
+  <h2 class="sec">▸ Open dialog — "Small Icons" view (column-major wrap, horizontal scroll)</h2>
+  <div class="fd">
+    <div class="titlebar"><span> Open File</span><span class="wb"><span class="x">✕</span></span></div>
+    <div class="fd-path">
+      <span class="nav dis">◂</span><span class="nav">▸</span><span class="nav">▴</span><span class="nav" title="refresh">↻</span>
+      <div class="fd-crumb">
+        <span class="seg"><span class="ic">▣</span> Home</span><span class="sep">▸</span>
+        <span class="seg"> Projects</span><span class="sep">▸</span>
+        <span class="seg cur"> assets</span>
+      </div>
+      <span class="fd-search">⌕ Search assets</span>
+      <span class="fd-viewsw"><span class="vm" title="Details">▤</span><span class="vm on" title="Small icons">▥</span><span class="vm" title="Tiles">▦</span></span>
+    </div>
+    <div class="fd-body">
+      <div class="fd-rail">
+        <div class="grp">Quick access</div>
+        <div class="place"><span class="ic ic-pin">★</span> Recent</div>
+        <div class="place"><span class="ic ic-pin">★</span> Desktop</div>
+        <div class="place sel"><span class="ic ic-pin">★</span> Projects</div>
+        <div class="place"><span class="ic ic-pin">★</span> Downloads</div>
+        <div class="grp">This PC</div>
+        <div class="place"><span class="ic ic-drive">▤</span> Local (C:)</div>
+        <div class="place"><span class="ic ic-cloud">☁</span> Cloud Drive</div>
+      </div>
+      <div class="fd-smallicons">
+        <div class="si-item"><span class="ic ic-folder">▸</span><span class="nm">textures</span></div>
+        <div class="si-item"><span class="ic ic-folder">▸</span><span class="nm">icons</span></div>
+        <div class="si-item"><span class="ic ic-folder">▸</span><span class="nm">sprites</span></div>
+        <div class="si-item"><span class="ic ic-folder">▸</span><span class="nm">fonts</span></div>
+        <div class="si-item"><span class="ic ic-folder">▸</span><span class="nm">shaders</span></div>
+        <div class="si-item sel"><span class="ic ic-img"></span><span class="nm">hero-banner.png</span></div>
+        <div class="si-item"><span class="ic ic-img"></span><span class="nm">logo.svg</span></div>
+        <div class="si-item"><span class="ic ic-img"></span><span class="nm">thumbnail.jpg</span></div>
+        <div class="si-item"><span class="ic ic-img"></span><span class="nm">icon-512.png</span></div>
+        <div class="si-item"><span class="ic ic-img"></span><span class="nm">bg-tile.png</span></div>
+        <div class="si-item"><span class="ic ic-img"></span><span class="nm">avatar.webp</span></div>
+        <div class="si-item"><span class="ic ic-data"></span><span class="nm">palette.aco</span></div>
+        <div class="si-item"><span class="ic ic-data"></span><span class="nm">gradients.json</span></div>
+        <div class="si-item"><span class="ic ic-doc"></span><span class="nm">credits.pdf</span></div>
+        <div class="si-item"><span class="ic ic-code"></span><span class="nm">atlas.lua</span></div>
+        <div class="si-item"><span class="ic ic-code"></span><span class="nm">build.sh</span></div>
+        <div class="si-item"><span class="ic ic-generic"></span><span class="nm">.gitkeep</span></div>
+        <div class="si-item"><span class="ic ic-generic"></span><span class="nm">LICENSE</span></div>
+      </div>
+    </div>
+    <div class="fd-hscroll">
+      <span class="arr">◂</span>
+      <span class="track"><span class="thumb">████████</span>░░░░░░░░░░░░░░░░░░</span>
+      <span class="arr">▸</span>
+    </div>
+    <div class="fd-foot">
+      <div class="fd-frow">
+        <span class="fl">File name:</span>
+        <span class="fname">hero-banner.png<span class="caret">|</span></span>
+        <span class="filter">Images (*.png;*.jpg;*.svg) <span class="dd">▾</span></span>
+      </div>
+      <div class="fd-frow">
+        <span style="color:var(--muted);font-size:11px">18 items · 1 selected · columns scroll horizontally →</span>
+        <span class="fd-actions"><span class="dbtn ok">Open</span><span class="dbtn cancel">Cancel</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The "Small Icons" view: each entry collapses to a compact <span style="color:var(--text)">icon + name</span> cell, and items pack <b>column-major</b> — filling top-to-bottom down a column, then wrapping to the next column rightward (textures, icons, sprites, fonts, shaders, hero-banner… reading <em>down</em> the first column, not across). When the columns exceed the dialog width the body <b>scrolls horizontally</b> — the bottom scrollbar shows the thumb at the left with more columns off-screen to the right. Folders still group ahead of files. The view switcher's middle glyph (▥) is active; ▤ returns to details, ▦ is a larger tile view.</div>
+
+  <h2 class="sec">▸ Breadcrumb in edit mode — typing a path with completion</h2>
+  <div class="fd">
+    <div class="titlebar"><span> Open File</span><span class="wb"><span class="x">✕</span></span></div>
+    <div class="fd-path">
+      <span class="nav dis">◂</span><span class="nav">▸</span><span class="nav">▴</span><span class="nav" title="refresh">↻</span>
+      <div class="fd-pathedit">
+        <span class="ptxt"><span class="pdim">~/Projects/assets/</span>te<span class="caret">|</span></span>
+        <span class="pe-go" title="go">↵</span>
+      </div>
+    </div>
+    <!-- completion dropdown anchored under the editable path -->
+    <div class="pathpop">
+      <div class="pphead"><span>~/Projects/assets/<span style="color:var(--text)">te</span></span><span class="cnt">3 matches</span></div>
+      <div class="pprow sel"><span class="ic ic-folder">▸</span><span><span class="match">te</span><span class="trail">xtures</span></span><span class="kind">folder</span></div>
+      <div class="pprow"><span class="ic ic-folder">▸</span><span><span class="trail">la</span><span class="match">te</span><span class="trail">st</span></span><span class="kind">folder · fuzzy</span></div>
+      <div class="pprow"><span class="ic ic-data"></span><span><span class="match">te</span><span class="trail">mplate.json</span></span><span class="kind">file</span></div>
+      <div class="ppfoot"><span><span class="k">Tab</span> complete</span><span><span class="k">↑↓</span> select</span><span><span class="k">↵</span> open</span><span><span class="k">Esc</span> cancel</span></div>
+    </div>
+    <div class="fd-body">
+      <div class="fd-rail">
+        <div class="grp">Quick access</div>
+        <div class="place"><span class="ic ic-pin">★</span> Recent</div>
+        <div class="place"><span class="ic ic-pin">★</span> Desktop</div>
+        <div class="place sel"><span class="ic ic-pin">★</span> Projects</div>
+        <div class="place"><span class="ic ic-pin">★</span> Downloads</div>
+        <div class="grp">This PC</div>
+        <div class="place"><span class="ic ic-drive">▤</span> Local (C:)</div>
+        <div class="place"><span class="ic ic-cloud">☁</span> Cloud Drive</div>
+      </div>
+      <div class="fd-list">
+        <div class="fd-lhead">
+          <span class="col col-name">Name <span class="sort">▲</span></span>
+          <span class="col col-size">Size</span>
+          <span class="col col-type">Type</span>
+          <span class="col col-mod">Modified</span>
+        </div>
+        <div class="fd-row sel"><span class="cell col-name"><span class="nm"><span class="ic ic-folder">▸</span> textures</span></span><span class="cell col-size dim">—</span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-20 14:02</span></div>
+        <div class="fd-row" style="opacity:.5"><span class="cell col-name"><span class="nm"><span class="ic ic-folder">▸</span> icons</span></span><span class="cell col-size dim">—</span><span class="cell col-type">Folder</span><span class="cell col-mod dim">2026-05-18 09:41</span></div>
+        <div class="fd-row" style="opacity:.5"><span class="cell col-name"><span class="nm"><span class="ic ic-img"></span> hero-banner.png</span></span><span class="cell col-size">1.4 MB</span><span class="cell col-type">PNG image</span><span class="cell col-mod dim">2026-06-01 11:20</span></div>
+        <div class="fd-row" style="opacity:.5"><span class="cell col-name"><span class="nm"><span class="ic ic-data"></span> template.json</span></span><span class="cell col-size">2 KB</span><span class="cell col-type">JSON file</span><span class="cell col-mod dim">2026-05-11 10:00</span></div>
+      </div>
+    </div>
+    <div class="fd-foot">
+      <div class="fd-frow">
+        <span class="fl">File name:</span>
+        <span class="fname"><span style="color:var(--muted)">(typing path above…)</span></span>
+        <span class="filter">Images (*.png;*.jpg;*.svg) <span class="dd">▾</span></span>
+      </div>
+      <div class="fd-frow">
+        <span style="color:var(--muted);font-size:11px">path bar in edit mode · completion filtering on "te"</span>
+        <span class="fd-actions"><span class="dbtn ok">Open</span><span class="dbtn cancel">Cancel</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Clicking into the breadcrumb (or pressing the path's empty space) flips it from segmented chips to a <b>raw editable text field</b> — the full path as a string with a caret, the already-committed prefix dimmed and the partial final segment (<span style="color:var(--text)">te</span>) live. A <b>completion dropdown</b> drops below, Claude-Code-style: matches filtered on the partial segment with the matched characters <span style="color:var(--accent);font-weight:bold">bold-highlighted</span>, folders (<span style="color:var(--accent-2)">▸</span>, which continue the path) ahead of files, fuzzy matches included and labelled, the current candidate selected, and a key-hint footer (Tab completes, ↑↓ selects, ↵ opens, Esc reverts to chips). The list behind dims to show focus is in the path bar.</div>
+
+  <h2 class="sec">▸ Save As dialog — new folder, type selector, overwrite confirm</h2>
+  <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+    <div class="fd" style="min-width:0">
+      <div class="titlebar"><span> Save As</span><span class="wb"><span class="x">✕</span></span></div>
+      <div class="fd-path">
+        <span class="nav">◂</span><span class="nav dis">▸</span><span class="nav">▴</span>
+        <div class="fd-crumb">
+          <span class="seg"><span class="ic">▣</span> Home</span><span class="sep">▸</span>
+          <span class="seg cur"> exports</span>
+        </div>
+        <span class="fd-toolbtn" title="new folder">▤＋ New folder</span>
+      </div>
+      <div class="fd-body">
+        <div class="fd-list" style="min-width:46ch">
+          <div class="fd-lhead">
+            <span class="col col-name">Name <span class="sort">▲</span></span>
+            <span class="col col-size">Size</span>
+            <span class="col col-mod">Modified</span>
+          </div>
+          <div class="fd-row newfolder fd-newfolder"><span class="cell col-name"><span class="nm"><span class="ic ic-folder">▸</span> <span class="nmedit">New folder<span class="caret">|</span></span></span></span><span class="cell col-size dim">—</span><span class="cell col-mod dim">now</span></div>
+          <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-img"></span> report-v1.png</span></span><span class="cell col-size"><span class="sz">920 KB</span></span><span class="cell col-mod dim">2026-06-02 09:10</span></div>
+          <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-img"></span> report-final.png</span></span><span class="cell col-size"><span class="sz">1.1 MB</span></span><span class="cell col-mod dim">2026-06-10 17:45</span></div>
+          <div class="fd-row"><span class="cell col-name"><span class="nm"><span class="ic ic-doc"></span> notes.pdf</span></span><span class="cell col-size"><span class="sz">240 KB</span></span><span class="cell col-mod dim">2026-06-09 12:00</span></div>
+        </div>
+      </div>
+      <div class="fd-foot">
+        <div class="fd-frow">
+          <span class="fl">File name:</span>
+          <span class="fname">report-final<span class="caret">|</span></span>
+        </div>
+        <div class="fd-frow">
+          <span class="fl">Save as type:</span>
+          <span class="filter">PNG image (*.png) <span class="dd">▾</span></span>
+          <span class="fd-actions"><span class="dbtn ok">Save</span><span class="dbtn cancel">Cancel</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="color:var(--muted);font-size:11px;margin-bottom:4px">↳ pressing Save with an existing name:</div>
+      <div class="confirm">
+        <div class="ctitle"><span>⚠</span><span>Confirm Save As</span></div>
+        <div class="cbody"><b>report-final.png</b> already exists in this folder.<br>Do you want to replace it?</div>
+        <div class="cbtns"><span class="cbtn yes">Replace</span><span class="cbtn no">Cancel</span></div>
+      </div>
+      <div style="color:var(--muted);font-size:11px;margin:10px 0 4px">↳ type-filter dropdown:</div>
+      <div class="filterpop">
+        <div class="fo sel">PNG image <span class="ext">(*.png)</span></div>
+        <div class="fo">JPEG image <span class="ext">(*.jpg;*.jpeg)</span></div>
+        <div class="fo">SVG vector <span class="ext">(*.svg)</span></div>
+        <div class="fo">PDF document <span class="ext">(*.pdf)</span></div>
+        <div class="fo">All files <span class="ext">(*.*)</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Save As adds the write-side affordances: a <b>New folder</b> toolbar action that drops an inline editable row (green, with caret) into the list, a "Save as type" selector whose <b>dropdown</b> lists each format with its extension pattern, and — when the typed name collides — the <b>overwrite confirmation</b> (amber-bordered, "already exists… replace?"). The filename field omits the extension since the type selector supplies it. Same chrome as Open, re-tasked for writing.</div>
+
+</div>
+
+<script>
+  var root=document.documentElement, btn=document.getElementById('toggle'), tt=document.getElementById('titleText');
+  btn.addEventListener('click',function(){
+    var light=root.getAttribute('data-theme')==='light';
+    root.setAttribute('data-theme',light?'dark':'light');
+    btn.textContent=light?'switch to light ▸':'switch to dark ▸';
+    tt.textContent=(light?'tokyo-night-light':'tokyo-night')+' — ColorPicker & File dialogs — 120×40';
+  });
+</script>
+</body>
+</html>

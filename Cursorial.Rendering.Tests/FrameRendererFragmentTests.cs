@@ -41,6 +41,47 @@ public class FrameRendererFragmentTests
     }
 
     [Fact]
+    public void ForceRepaintRegion_ReEmitsCellsThatMatchTheFrontBuffer()
+    {
+        // The force-repaint channel (CellBuffer.ForceRepaint) re-emits cells even when they're byte-identical
+        // to the front buffer. This is what overwrites a removed Cells-layer image's lingering pixels: the
+        // covered cell's front-buffer record is the bg-only placeholder, so after the image is gone the cell
+        // content is UNCHANGED and a plain diff would skip it (the tab-switch artifact). The compositor marks
+        // the vacated footprint here; the renderer honors it. (See SceneCompositor for who marks it in practice.)
+        var r = new FrameRenderer();
+        var bg = Color.FromRgb(40, 60, 80);
+        var buffer = new CellBuffer(5, 1);
+        buffer.Set(1, 0, " ", Style.Default.WithBackground(bg));
+        buffer.AddFragment(1, 0, new SentinelFragment(new Size(2, 1), "[F]"));
+        Render(r, buffer); // frame 1: covered → front records the bg-only placeholder
+
+        buffer.RemoveFragment(1, 0);        // the image is gone; the cells (" " + bg) are unchanged from the placeholder
+        buffer.ForceRepaint(1, 0, 2, 1);    // ...but the compositor force-repaints the vacated footprint
+        var output = Render(r, buffer);
+
+        Assert.Contains("48;2;40;60;80", output);   // the footprint cell re-emitted, overwriting the image pixels
+        Assert.DoesNotContain("[F]", output);       // the fragment itself is gone
+    }
+
+    [Fact]
+    public void ForceRepaintRegions_AreClearedAfterEachRender()
+    {
+        // Force-repaint marks are one-shot: once the cells are emitted the front buffer is correct, so the
+        // next frame must not keep re-emitting them. The renderer clears the regions at end-of-render.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        buffer.Set(1, 0, "x", Style.Default);
+        Render(r, buffer);
+
+        buffer.ForceRepaint(1, 0, 1, 1);
+        Render(r, buffer);                  // consumes the mark
+        Assert.Empty(buffer.ForceRepaintRegions);
+
+        var output = Render(r, buffer);     // nothing changed and no force mark → empty delta
+        Assert.DoesNotContain("x", output);
+    }
+
+    [Fact]
     public void CellsUnderCellLayerFragment_DropTheGlyphButKeepTheBackground()
     {
         // For Cell-layer fragments, glyphs under the footprint are skipped — they'd corrupt

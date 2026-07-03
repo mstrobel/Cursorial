@@ -466,7 +466,7 @@ public static class TextMarkup
 
         // Resolve a [brush=VALUE] tag to an opaque tag via the caller-supplied resolver. Kept brush-agnostic:
         // the parser never sees a brush type — it just attaches whatever object the resolver returns.
-        private object? ResolveBrush(string value, int position)
+        private object ResolveBrush(string value, int position)
         {
             if (string.IsNullOrEmpty(value))
                 throw Error(position, "[brush] requires a value: [brush=name] or [brush=linear:colorA,colorB].");

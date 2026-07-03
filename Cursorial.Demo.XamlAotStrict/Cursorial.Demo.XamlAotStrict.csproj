@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        WS-X4.7 — the STRICT NativeAOT proof. Unlike Cursorial.Demo.XamlAot (the reflection baseline, TrimMode=
+        partial), this app loads its XAML through the X4.6 GENERATED metadata provider (no reflection): a
+        <CursorialXaml> x:Class view whose generated InitializeComponent binds to the assembly's own generated
+        provider, installed process-wide by its [ModuleInitializer]. CursorialXamlStrictAot defaults to true under
+        PublishAot (the generator .props), so the paired .targets flip the reflection provider's feature switch OFF
+        and the trimmer drops it entirely.
+
+        Publish (PublishAot is project-local — do NOT pass /p:PublishAot, which hits NETSDK1207 on the ns2.0
+        generator/frontend):
+
+            dotnet publish Cursorial.Demo.XamlAotStrict -c Release -r osx-arm64
+
+        The gate (design doc §14.2 P10 exit): published green with ZERO IL2026/IL3050 from the XAML loading path
+        (the reflection provider trimmed out), and the native binary runs (loads the view via the generated
+        provider).
+    -->
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Cursorial.Demo.XamlAotStrict</RootNamespace>
+        <AssemblyName>cursorial-strict</AssemblyName>
+        <PublishAot>true</PublishAot>
+        <!-- FULL LOWERING is the genuinely trim-clean route: InitializeComponent is straight-line C# construction
+             with NO runtime XAML loader at all. (The X4.6 generated-provider path still routes through the runtime
+             loader, whose generic-collection-add / reflective-binding / value-conversion reflection is NOT behind
+             the metadata-provider feature switch — so it is not fully trim-clean. Full lowering avoids the loader
+             entirely.) The view here is literal-only (no bindings/converters), so the lowered code touches only
+             Cursorial.UI construction. -->
+        <CursorialXamlLowering>full</CursorialXamlLowering>
+        <!-- No runtime provider is needed (lowering never loads); don't emit the install module-init. -->
+        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
+        <!-- Lowering never runtime-loads the .xaml, so don't embed it. -->
+        <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources>
+        <!-- CursorialXamlStrictAot defaults to true under PublishAot (generator .props) → the .targets emit the
+             ReflectionMetadataProvider.IsSupported=false RuntimeHostConfigurationOption automatically. -->
+        <InvariantGlobalization>true</InvariantGlobalization>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+        <DebugType>none</DebugType>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    </PropertyGroup>
+
+    <!-- Generator consumer props (CompilerVisibleProperty/Item + the CursorialXamlStrictAot default). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
+        <!-- The X4 generator as an analyzer: emits StrictView's InitializeComponent + the generated provider. -->
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <CursorialXaml Include="StrictView.xaml" />
+    </ItemGroup>
+
+    <!-- Generator consumer targets (CursorialXaml → AdditionalFiles + EmbeddedResource; the StrictAot switch). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
+
+</Project>

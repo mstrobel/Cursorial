@@ -1,4 +1,6 @@
-namespace Cursorial.Drawing;
+using Cursorial.Drawing.Media;
+
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>Which edge a fractional block bar fills from.</summary>
 internal enum BlockAxis

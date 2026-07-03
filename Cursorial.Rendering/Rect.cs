@@ -11,10 +11,15 @@ namespace Cursorial.Rendering;
 /// </summary>
 public readonly record struct Rect
 {
-    private readonly ushort _column;
-    private readonly ushort _row;
-    private readonly ushort _columns;
-    private readonly ushort _rows;
+    /// <summary>
+    /// The maximum value of any <see cref="Rect"/> dimension or coordinate (<see cref="Column"/>/<see cref="Row"/>/
+    /// <see cref="Columns"/>/<see cref="Rows"/>). The <see cref="Rect"/> is <see cref="int"/>-backed, so this is the
+    /// full non-negative range. NOTE: <c>edge + extent</c> properties (<see cref="RowEnd"/>/<see cref="ColumnEnd"/>)
+    /// can overflow <see cref="int"/> for a hand-built <see cref="Rect"/> whose coordinate AND extent are both near
+    /// the cap — callers own that arithmetic. The LAYOUT clamp (<c>LayoutMath.MaxExtent</c>) is a separate, lower
+    /// ceiling that keeps every layout-produced <see cref="Rect"/> safely within range.
+    /// </summary>
+    public const int MaxDimension = int.MaxValue;
 
     /// <summary>
     /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
@@ -31,11 +36,6 @@ public readonly record struct Rect
 
         if (rows < 0)
             throw new ArgumentOutOfRangeException(nameof(rows), "Rectangle anchor coordinates cannot be negative.");
-
-        _column = (ushort) column;
-        _row = (ushort) row;
-        _columns = (ushort) columns;
-        _rows = (ushort) rows;
 
         Column = column;
         Row = row;
@@ -89,29 +89,29 @@ public readonly record struct Rect
     /// <summary>Left edge of the rectangle, 0-based. Inclusive.</summary>
     public int Column
     {
-        get => _column;
-        init => _column = ValidateDimension(in value);
+        get;
+        init => field = ValidateDimension(in value);
     }
 
     /// <summary>Top edge of the rectangle, 0-based. Inclusive.</summary>
     public int Row
     {
-        get => _row;
-        init => _row = ValidateDimension(in value);
+        get;
+        init => field = ValidateDimension(in value);
     }
 
     /// <summary>Width in cells. Non-negative; 0 produces an empty rectangle.</summary>
     public int Columns
     {
-        get => _columns;
-        init => _columns = ValidateDimension(in value);
+        get;
+        init => field = ValidateDimension(in value);
     }
 
     /// <summary>Height in cells. Non-negative; 0 produces an empty rectangle.</summary>
     public int Rows
     {
-        get => _rows;
-        init => _rows = ValidateDimension(in value);
+        get;
+        init => field = ValidateDimension(in value);
     }
 
     /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
@@ -125,6 +125,11 @@ public readonly record struct Rect
     /// <summary>True when this rectangle fully contains <paramref name="other"/>.</summary>
     public bool Contains(Rect other)
         => Contains(other.Column, other.Row) && Contains(other.ColumnEnd - 1, other.RowEnd - 1);
+
+    /// <summary>Returns the intersection of this rectangle with <paramref name="other"/>.</summary>
+    public Rect Intersection(Rect other)
+        => new(Math.Max(Column, other.Column), Math.Max(Row, other.Row), Math.Min(ColumnEnd, other.ColumnEnd), Math.Min(RowEnd, other.RowEnd));
+
 
     /// <summary>
     /// Deconstructs the rectangle into its top-left corner coordinates and dimensions.
@@ -223,14 +228,14 @@ public readonly record struct Rect
     public Rect Translate(int offsetColumn, int offsetRow)
         => new(Column + offsetColumn, Row + offsetRow, Columns, Rows);
     
-    private ushort ValidateDimension(in int value, [CallerMemberName] string? propertyName = "dimensions")
+    internal static int ValidateDimension(in int value, [CallerMemberName] string? propertyName = "dimensions")
     {
-        if (value is >= 0 and <= ushort.MaxValue)
-            return (ushort) value;
+        if (value is >= 0 and <= MaxDimension)
+            return value;
 
         throw new ArgumentOutOfRangeException(
             propertyName,
             value,
-            $"Rectangle {propertyName} must be between 0 and {ushort.MaxValue:N0}.");
+            $"Rect {propertyName} must be between 0 and {MaxDimension:N0}.");
     }
 }

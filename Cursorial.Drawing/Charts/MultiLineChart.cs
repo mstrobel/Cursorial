@@ -1,6 +1,6 @@
 using Cursorial.Rendering;
 
-namespace Cursorial.Drawing;
+namespace Cursorial.Drawing.Charts;
 
 /// <summary>
 /// Several line series sharing one axis range, drawn into a single braille surface by <see cref="Render"/>.

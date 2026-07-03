@@ -50,4 +50,61 @@ public sealed class KeyTip
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(AutoAssignProperty, value);
     }
+
+    /// <summary>
+    /// The KeyTip drill sequence a keyboard user presses to reach <paramref name="target"/> — e.g.
+    /// <c>"Alt, H, F, B"</c> for a Bold button in the Home tab's Font group, or <c>"Alt, X"</c> for a flat toolbar
+    /// button. Computed from the SAME derivation the badges use (<see cref="KeyTipModel"/>), walking the control's
+    /// live ancestry: its <see cref="RibbonGroup"/> and the ribbon's currently-selected tab (a hoverable control is
+    /// always in the visible tab). Returns <see langword="null"/> when KeyTips isn't enabled on the app, the control
+    /// has no derivable badge, or it isn't reachable by the v1 drill (a QAT digit / an item inside a popup — deferred
+    /// with the v2 popup drill). Used by <see cref="SuperTip"/> to show the accelerator hops in its hover help.
+    /// </summary>
+    public static string? GetHopSequence(UIElement target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (UIApplication.Current?.AccessKeys.KeyTipController is null)
+            return null; // KeyTips not enabled on this app — the hop hint would be misleading
+
+        RibbonGroup? group = null;
+        Ribbon? ribbon = null;
+        Toolbar? toolbar = null;
+        for (var element = target.VisualParent; element is not null; element = element.VisualParent)
+        {
+            group ??= element as RibbonGroup;
+            toolbar ??= element as Toolbar;
+            if (element is Ribbon found)
+            {
+                ribbon = found;
+                break;
+            }
+        }
+
+        // Resolve each hop against the level the OVERLAY would build (not a bare KeyTipModel.Resolve), so the hint
+        // inherits the eligibility filter AND the per-level collision policy: a disabled control, or one whose badge
+        // was dropped by a same-letter collision, resolves to null → no hop (it isn't reachable by that drill).
+
+        // A ribbon BAND control: Alt → tab → group → control.
+        if (ribbon is not null && group is not null)
+        {
+            var host = new RibbonKeyTipHost(ribbon);
+            var tab = ribbon.SelectedIndex >= 0
+                ? ribbon.ItemContainerGenerator.ContainerFromIndex(ribbon.SelectedIndex) as RibbonTab
+                : null;
+            var tabLetter = tab is not null ? host.ResolveTabKeyTip(tab) : null;
+            var groupLetter = host.ResolveGroupKeyTip(group);
+            var controlLetter = RibbonKeyTipHost.ResolveControlKeyTip(group, target);
+            if (tabLetter is null || groupLetter is null || controlLetter is null)
+                return null;
+
+            return $"Alt, {tabLetter}, {groupLetter}, {controlLetter}";
+        }
+
+        // A flat toolbar control (not the ribbon's QAT): Alt → control. QAT digits + popup items are the v2 legs.
+        if (toolbar is not null && ribbon is null)
+            return ToolbarKeyTipHost.ResolveControlKeyTip(toolbar, target) is { } controlLetter ? $"Alt, {controlLetter}" : null;
+
+        return null;
+    }
 }

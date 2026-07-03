@@ -1018,6 +1018,13 @@ internal static class CursorialBarsTheme
                 header.Children.Add(gesture); // Dock.Right — the accelerator
                 header.Children.Add(title);   // fills — the command name
 
+                // The KeyTip drill hops (e.g. "Alt, H, F, B"), in amber to echo the badges. Collapsed by the SuperTip
+                // when there is no sequence (KeyTips off / not reachable).
+                var hops = new TextBlock();
+                hops.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.KeyTipSequenceProperty));
+                hops.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.KeyTipBrush);
+                ctx.RegisterName("PART_KeyTips", hops);
+
                 var description = new ContentPresenter();
                 description.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.DescriptionProperty));
                 description.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
@@ -1028,6 +1035,7 @@ internal static class CursorialBarsTheme
 
                 var stack = new StackPanel { Orientation = Orientation.Vertical };
                 stack.Children.Add(header);
+                stack.Children.Add(hops);
                 stack.Children.Add(description);
                 stack.Children.Add(footer);
                 return stack;

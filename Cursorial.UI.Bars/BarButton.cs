@@ -86,7 +86,9 @@ internal sealed class BarCommandSync
 
         if (bar?.Description is not null)
         {
-            ToolTipService.SetTip(control, SuperTip.FromCommand(bar));
+            var tip = SuperTip.FromCommand(bar);
+            tip.Anchor = control; // so the tip can auto-compute its KeyTip hop sequence from the control's ribbon position
+            ToolTipService.SetTip(control, tip);
             _filledTip = true;
         }
         else if (_filledTip)

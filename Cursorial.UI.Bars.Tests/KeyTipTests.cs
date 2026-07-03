@@ -523,6 +523,107 @@ public sealed class KeyTipTests
         Assert.True(escFired);
     }
 
+    [Fact] // The KeyTip hop sequence for a ribbon BAND control is Alt → tab → group → control (for SuperTips).
+    public void HopSequence_RibbonBandControl_IsTabGroupControl()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        _ = host.Application.EnableKeyTips();
+        var (ribbon, bold, _) = NewRibbon(); // Home(H) → Font(F) → Bold(B)
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.Equal("Alt, H, F, B", KeyTip.GetHopSequence(bold));
+    }
+
+    [Fact] // A flat toolbar control's hop sequence is Alt → control.
+    public void HopSequence_ToolbarControl_IsAltPlusControl()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        _ = host.Application.EnableKeyTips();
+        var cut = new BarButton { Content = "Xut" };
+        var toolbar = new Toolbar();
+        toolbar.Items.Add(cut);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        Assert.Equal("Alt, X", KeyTip.GetHopSequence(cut));
+    }
+
+    [Fact] // No hop sequence when KeyTips isn't enabled on the app (the hint would be misleading).
+    public void HopSequence_Null_WhenKeyTipsDisabled()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor); // note: EnableKeyTips NOT called
+        var (ribbon, bold, _) = NewRibbon();
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.Null(KeyTip.GetHopSequence(bold));
+    }
+
+    [Fact] // A described BarCommand auto-provisions a SuperTip whose Anchor is the control — so the tip can compute
+           // its own hop sequence at show time.
+    public void SuperTip_ProvisionedWithAnchor_ComputesHops()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        _ = host.Application.EnableKeyTips();
+
+        var ribbon = new Ribbon();
+        var home = new RibbonTab { Header = "Home" };
+        var font = new RibbonGroup { Header = "Font" };
+        var boldButton = new BarButton { Command = new BarCommand(() => { }) { Text = "_Bold", Description = "Embolden." } };
+        font.Items.Add(boldButton);
+        home.Groups.Add(font);
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var tip = Assert.IsType<SuperTip>(ToolTipService.GetTip(boldButton));
+        Assert.Same(boldButton, tip.Anchor);
+        Assert.Equal("Alt, H, F, B", KeyTip.GetHopSequence(boldButton)); // _Bold folds to 'B'
+    }
+
+    [Fact] // Audit: a DISABLED bar control gets no hop hint — the overlay never badges it, so the hop would lie.
+    public void HopSequence_Null_ForDisabledControl()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        _ = host.Application.EnableKeyTips();
+
+        var ribbon = new Ribbon();
+        var home = new RibbonTab { Header = "Home" };
+        var font = new RibbonGroup { Header = "Font" };
+        var disabled = new BarButton { Content = "Bold", Command = new BarCommand(() => { }, () => false) };
+        font.Items.Add(disabled);
+        home.Groups.Add(font);
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.False(disabled.IsEffectivelyEnabled);  // CanExecute=false disables it
+        Assert.Null(KeyTip.GetHopSequence(disabled)); // …so no (unreachable) hop hint
+    }
+
+    [Fact] // Audit: a control whose badge was DROPPED by a same-letter collision gets no hop; the survivor keeps it.
+    public void HopSequence_CollisionDropped_NullForLoser_SurvivorKeeps()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        _ = host.Application.EnableKeyTips();
+
+        var ribbon = new Ribbon();
+        var home = new RibbonTab { Header = "Home" };
+        var font = new RibbonGroup { Header = "Font" };
+        var bold = new BarButton { Content = "Bold" };     // 'B' — first-in-order wins
+        var border = new BarButton { Content = "Border" }; // 'B' — collides → dropped
+        font.Items.Add(bold);
+        font.Items.Add(border);
+        home.Groups.Add(font);
+        ribbon.Items.Add(home);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.Equal("Alt, H, F, B", KeyTip.GetHopSequence(bold)); // the survivor's real hop
+        Assert.Null(KeyTip.GetHopSequence(border));                // the dropped collider — no hop
+    }
+
     [Fact] // Multi-char keytips: typing the shared prefix dims the matched letters + keeps only the viable badges.
     public void MatchedPrefix_MultiChar_FiltersToViable()
     {

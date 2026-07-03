@@ -18,4 +18,18 @@ public sealed class KeyTipLevel
     /// <summary>Undoes the drill that opened this level (run on Esc-pop). Null for level 0 / irreversible reveals.
     /// Settable so the controller can attach the committing drill's retract to the level built by its parked builder.</summary>
     public Action? Retract { get; set; }
+
+    /// <summary>The SURVIVING KeyTip letter for <paramref name="target"/> in this level (post collision-resolution +
+    /// eligibility filter), or <see langword="null"/> when it has no badge here — dropped by a collision, or filtered
+    /// as ineligible/hidden. Lets <see cref="KeyTip.GetHopSequence"/> report a hop that exactly matches the badges.</summary>
+    internal string? KeyTipFor(UIElement target)
+    {
+        foreach (var entry in Entries)
+        {
+            if (ReferenceEquals(entry.Target, target))
+                return entry.KeyTip;
+        }
+
+        return null;
+    }
 }

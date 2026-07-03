@@ -1,0 +1,113 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Docs/">
+    <File Path="docs/drawing-layer-design.md" />
+    <File Path="docs/ui-layer-design.md" />
+    <File Path="docs/ui-layer-design/animation-matrix.md" />
+    <File Path="docs/ui-layer-design/attached-setter-property-investigation.md" />
+    <File Path="docs/ui-layer-design/binding-matrix.md" />
+    <File Path="docs/ui-layer-design/completeness-report.md" />
+    <File Path="docs/ui-layer-design/control-matrix-p9.md" />
+    <File Path="docs/ui-layer-design/control-matrix-virt.md" />
+    <File Path="docs/ui-layer-design/control-matrix.md" />
+    <File Path="docs/ui-layer-design/decisions.md" />
+    <File Path="docs/ui-layer-design/default-theme-adoption-spec.md" />
+    <File Path="docs/ui-layer-design/input-matrix.md" />
+    <File Path="docs/ui-layer-design/judgment-property-system-coherence.md" />
+    <File Path="docs/ui-layer-design/judgment-property-system-engineering.md" />
+    <File Path="docs/ui-layer-design/judgment-property-system-ergonomics.md" />
+    <File Path="docs/ui-layer-design/judgment-styling-coherence.md" />
+    <File Path="docs/ui-layer-design/judgment-styling-engineering.md" />
+    <File Path="docs/ui-layer-design/judgment-styling-ergonomics.md" />
+    <File Path="docs/ui-layer-design/judgment-xaml-coherence.md" />
+    <File Path="docs/ui-layer-design/judgment-xaml-engineering.md" />
+    <File Path="docs/ui-layer-design/judgment-xaml-ergonomics.md" />
+    <File Path="docs/ui-layer-design/layout-matrix.md" />
+    <File Path="docs/ui-layer-design/precedence-matrix.md" />
+    <File Path="docs/ui-layer-design/proposal-property-system-avalonia.md" />
+    <File Path="docs/ui-layer-design/proposal-property-system-hybrid.md" />
+    <File Path="docs/ui-layer-design/proposal-property-system-wpf.md" />
+    <File Path="docs/ui-layer-design/proposal-styling-avalonia-selectors.md" />
+    <File Path="docs/ui-layer-design/proposal-styling-hybrid.md" />
+    <File Path="docs/ui-layer-design/proposal-styling-wpf-triggers.md" />
+    <File Path="docs/ui-layer-design/proposal-xaml-reuse-xaml.md" />
+    <File Path="docs/ui-layer-design/proposal-xaml-runtime-loader.md" />
+    <File Path="docs/ui-layer-design/proposal-xaml-source-gen.md" />
+    <File Path="docs/ui-layer-design/punch-list.md" />
+    <File Path="docs/ui-layer-design/resolutions.md" />
+    <File Path="docs/ui-layer-design/spec-animation.md" />
+    <File Path="docs/ui-layer-design/spec-app-model.md" />
+    <File Path="docs/ui-layer-design/spec-binding.md" />
+    <File Path="docs/ui-layer-design/spec-controls.md" />
+    <File Path="docs/ui-layer-design/spec-input-focus.md" />
+    <File Path="docs/ui-layer-design/spec-resources.md" />
+    <File Path="docs/ui-layer-design/spec-tree-layout.md" />
+    <File Path="docs/ui-layer-design/spec-windowing.md" />
+    <File Path="docs/ui-layer-design/style-matrix.md" />
+    <File Path="docs/ui-layer-design/tokyo-night-bars-design-guide.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-control-gallery-final.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-dropdown-split-disambiguation.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-tag-editor-anatomy.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-borderless-windows.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-colorpicker-filedialogs.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-datagrid.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-ide-shell.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-markdown-editor.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-ribbon.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-rich-editors.html" />
+    <File Path="docs/ui-layer-design/tokyo-night-terminal-toolbar.html" />
+    <File Path="docs/ui-layer-design/xaml-matrix.md" />
+  </Folder>
+  <Folder Name="/GItHub Actions/">
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
+  <Folder Name="/Logos/">
+    <File Path="cursorial_banner.png" />
+    <File Path="cursorial_banner.svg" />
+    <File Path="cursorial_icon.png" />
+    <File Path="cursorial_icon.svg" />
+  </Folder>
+  <Folder Name="/Resources/">
+    <File Path="cursorial_banner.png" />
+    <File Path="cursorial_banner.svg" />
+    <File Path="cursorial_icon.png" />
+    <File Path="cursorial_icon.svg" />
+    <File Path="README.md" />
+    <File Path="readme_title_banner.png" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="Cursorial.Demo/Cursorial.Demo.csproj" />
+    <Project Path="Cursorial.Demo.XamlAot/Cursorial.Demo.XamlAot.csproj" />
+    <Project Path="Cursorial.Demo.XamlAotStrict/Cursorial.Demo.XamlAotStrict.csproj" />
+    <Project Path="Cursorial.Gallery/Cursorial.Gallery.csproj" />
+  </Folder>
+  <Folder Name="/Markup/">
+    <Project Path="Cursorial.UI.Xaml.Frontend/Cursorial.UI.Xaml.Frontend.csproj" />
+    <Project Path="Cursorial.UI.Xaml.Generator.Tests/Cursorial.UI.Xaml.Generator.Tests.csproj" />
+    <Project Path="Cursorial.UI.Xaml.Generator/Cursorial.UI.Xaml.Generator.csproj" />
+    <Project Path="Cursorial.UI.Xaml/Cursorial.UI.Xaml.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Cursorial.Animation.Tests/Cursorial.Animation.Tests.csproj" />
+    <Project Path="Cursorial.Core.Tests/Cursorial.Core.Tests.csproj" />
+    <Project Path="Cursorial.Drawing.Tests/Cursorial.Drawing.Tests.csproj" />
+    <Project Path="Cursorial.Rendering.Tests/Cursorial.Rendering.Tests.csproj" />
+    <Project Path="Cursorial.UI.Bars.Tests/Cursorial.UI.Bars.Tests.csproj" />
+    <Project Path="Cursorial.UI.Testing/Cursorial.UI.Testing.csproj" />
+    <Project Path="Cursorial.UI.Tests/Cursorial.UI.Tests.csproj" />
+    <Project Path="Cursorial.UI.Xaml.Tests/Cursorial.UI.Xaml.Tests.csproj" />
+  </Folder>
+  <Project Path="Cursorial.Animation/Cursorial.Animation.csproj" />
+  <Project Path="Cursorial.Core/Cursorial.Core.csproj" />
+  <Project Path="Cursorial.Drawing/Cursorial.Drawing.csproj" />
+  <Project Path="Cursorial.Rendering/Cursorial.Rendering.csproj" />
+  <Project Path="Cursorial.Shared/Cursorial.Shared.csproj" />
+  <Project Path="Cursorial.UI.Bars/Cursorial.UI.Bars.csproj" />
+  <Project Path="Cursorial.UI.Themes/Cursorial.UI.Themes.csproj" />
+  <Project Path="Cursorial.UI/Cursorial.UI.csproj" />
+</Solution>

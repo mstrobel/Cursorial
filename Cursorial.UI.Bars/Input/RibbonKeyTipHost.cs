@@ -102,6 +102,25 @@ internal sealed class RibbonKeyTipHost(Ribbon ribbon) : IKeyTipHost
         return builder.Build();
     }
 
+    // ── SuperTip hop-sequence resolution (KeyTip.GetHopSequence) ──────────────────────────────────────
+    // Report the SURVIVING KeyTip letter an element would carry in the level the overlay builds, so a SuperTip hop
+    // hint inherits the SAME eligibility filter + collision policy as the badges (a disabled or collision-dropped
+    // element resolves to null → no hop). Building a level has no side effects (the drill closures aren't invoked).
+
+    /// <summary>The selected tab's surviving KeyTip letter (from the root level), or null.</summary>
+    internal string? ResolveTabKeyTip(RibbonTab tab)
+    {
+        var builder = new KeyTipLevelBuilder();
+        BuildRootLevel(builder);
+        return builder.Build().KeyTipFor(tab);
+    }
+
+    /// <summary>A group's surviving KeyTip letter (from the selected tab's group level), or null.</summary>
+    internal string? ResolveGroupKeyTip(RibbonGroup group) => BuildGroupLevel()?.KeyTipFor(group);
+
+    /// <summary>A control's surviving KeyTip letter (from its group's control level), or null.</summary>
+    internal static string? ResolveControlKeyTip(RibbonGroup group, UIElement control) => BuildControlLevel(group)?.KeyTipFor(control);
+
     // L2: a group's leaf controls + its ⋰ dialog launcher. A dropdown/split control opens on activation (drill over
     // its items deferred to v2).
     private static KeyTipLevel? BuildControlLevel(RibbonGroup group)

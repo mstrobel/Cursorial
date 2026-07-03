@@ -26,4 +26,13 @@ internal sealed class ToolbarKeyTipHost(Toolbar toolbar) : IKeyTipHost
             into.AddActivate(control, () => KeyTipController.ActivateLeaf(leaf));
         }
     }
+
+    /// <summary>A toolbar control's surviving KeyTip letter (from the built level — inherits the eligibility filter,
+    /// so a disabled / overflowed control resolves to null), for <see cref="KeyTip.GetHopSequence"/>.</summary>
+    internal static string? ResolveControlKeyTip(Toolbar toolbar, UIElement control)
+    {
+        var builder = new KeyTipLevelBuilder();
+        new ToolbarKeyTipHost(toolbar).BuildRootLevel(builder);
+        return builder.Build().KeyTipFor(control);
+    }
 }

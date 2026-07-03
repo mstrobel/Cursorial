@@ -4,6 +4,7 @@ using Cursorial.Gallery;
 using Cursorial.Gallery.Pages;
 using Cursorial.Gallery.ViewModels;
 using Cursorial.Input;
+using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
@@ -179,6 +180,56 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         var paste = AllDescendants<BarButton>(root).First(b => b.Command is BarCommand { Text: "_Paste" });
         Assert.IsType<SuperTip>(ToolTipService.GetTip(paste));
     }
+
+    [Fact] // KeyTips (#145): with EnableKeyTips armed (as Program.cs does), holding Alt over the gallery Ribbon shows the
+           // badge overlay, and a tab letter drills into that tab's band — the live wiring, gated by the KittyTruecolor preset.
+    public void RibbonPage_KeyTips_ArmOnAltAndDrill()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions
+        {
+            InitialSize = new Size(80, 24),
+            Capabilities = TestCapabilities.KittyTruecolor, // satisfies the ND23 AltHeld gate
+        });
+        var controller = host.Application.EnableKeyTips(); // the same call Program.cs makes
+
+        var root = GalleryApp.BuildRoot();
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        shell.SelectedPage = shell.Pages.OfType<RibbonViewModel>().Single();
+        host.RunUntilIdle();
+
+        var ribbon = FindDescendant<Ribbon>(root)!;
+        Assert.False(controller.IsActive);
+
+        // Alt down → the cue arms the KeyTip overlay over the ribbon (a dedicated hit-transparent surface appears).
+        host.Application.InputDispatcher.ProcessEvent(AltDown());
+        host.RunFrame();
+        Assert.True(controller.IsActive);
+        Assert.Contains(host.Application.WindowManager!.Surfaces, s => s.IsHitTestTransparent);
+
+        // Drill the Insert tab (Alt+R, from "Inse_rt") → its band's group ("History") renders (the drill selected it).
+        host.Application.InputDispatcher.ProcessEvent(AltChar('R'));
+        host.RunFrame();
+        Assert.Equal(ribbon.ItemContainerGenerator.IndexFromContainer(
+            AllDescendants<RibbonTab>(root).Single(t => t.Header as string == "Inse_rt")), ribbon.SelectedIndex);
+        Assert.True(controller.IsActive);            // still drilling (now at the group level)
+        Assert.Contains("History", Screen(host, 24)); // the Insert band is shown
+
+        // Esc twice backs out of the group level then dismisses the overlay.
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent { Key = Key.Escape, Modifiers = KeyModifiers.None, Kind = KeyEventKind.Down, Text = default, Timestamp = DateTimeOffset.UnixEpoch });
+        host.RunFrame();
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent { Key = Key.Escape, Modifiers = KeyModifiers.None, Kind = KeyEventKind.Down, Text = default, Timestamp = DateTimeOffset.UnixEpoch });
+        host.RunFrame();
+        Assert.False(controller.IsActive);
+    }
+
+    private static KeyEvent AltDown() =>
+        new() { Key = Key.LeftAlt, Modifiers = KeyModifiers.Alt, Kind = KeyEventKind.Down, Text = default, Timestamp = DateTimeOffset.UnixEpoch };
+
+    private static KeyEvent AltChar(char c) =>
+        new() { Key = Key.Character, Modifiers = KeyModifiers.Alt, Kind = KeyEventKind.Down, Text = c.ToString().AsMemory(), Timestamp = DateTimeOffset.UnixEpoch };
 
     [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)
     public void InputsPage_TwoWayBinding_RoundTrips()

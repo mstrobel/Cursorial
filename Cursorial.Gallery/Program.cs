@@ -1,6 +1,7 @@
 using Cursorial.Gallery;
 using Cursorial.Gallery.ViewModels;
 using Cursorial.UI;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
@@ -16,6 +17,12 @@ UIApplication app = UIApplication.CreateBuilder()
 
 // app.NerdFontAvailable = true;
 // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
+
+// KeyTips (#145): arm the Bars Alt-overlay accelerator over the ribbon. On a terminal that passes the ND23 gate
+// (a Kitty-keyboard / Win32 terminal with color), holding Alt shows amber badges over the tabs; letters drill
+// tab → group → control, Esc backs out. On a terminal that fails the gate it's a no-op (inline access-key
+// underlines remain the affordance). Idempotent, so it's safe to call once here.
+app.EnableKeyTips();
 
 static string FormatElement(UIObject? element)
 {

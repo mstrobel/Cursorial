@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
@@ -39,8 +40,8 @@ public class RibbonGroup : HeaderedItemsControl
     private bool _isLastInBand;
 
     private RibbonGroupDensity _density;
-    private int _naturalWidthNormal;  // frozen last-known Normal width (the band's fold input; see MeasureOverride)
-    private int _naturalWidthCompact; // frozen last-known Compact width (for the Collapsed→Compact promote step)
+    private int _naturalWidthNormal;    // frozen last-known Normal width (measured while at Normal)
+    private int _estimatedCompactWidth; // analytic Compact width, frozen alongside Normal (see ComputeCompactEstimate)
 
     private RibbonGroupPanel? _groupPanel;    // the inline items-host panel (adoption owner; set by RegisterGroupPanel)
     private BarPopupButton? _collapsedButton;
@@ -54,13 +55,44 @@ public class RibbonGroup : HeaderedItemsControl
     internal RibbonGroupDensity Density => _density;
     internal RibbonGroupDensity DensityForTests => _density;
 
-    /// <summary>The group's last-known Normal (full) width, frozen while at <see cref="RibbonGroupDensity.Normal"/> so
-    /// the band can decide whether promoting the group back to Normal fits even while it is demoted.</summary>
-    internal int NaturalWidthNormal => _naturalWidthNormal;
+    /// <summary>The group's width at a given density tier, for the band's single-pass fold. All three are STABLE
+    /// (independent of the deferred <c>:density-compact</c> restyle): Normal is the frozen measured width, Compact is
+    /// an analytic estimate frozen alongside it, Collapsed is the analytic [name ▾] dropdown width. Reading stable
+    /// widths — never the live post-restyle DesiredSize — is what lets the fold assign all tiers in one pass without
+    /// waiting a frame for a compacted face to materialize.</summary>
+    internal int TierWidth(RibbonGroupDensity tier) => tier switch
+    {
+        RibbonGroupDensity.Compact => _estimatedCompactWidth,
+        RibbonGroupDensity.Collapsed => EstimateCollapsedWidth(),
+        _ => _naturalWidthNormal,
+    };
 
-    /// <summary>The group's last-known Compact width, frozen while at <see cref="RibbonGroupDensity.Compact"/> (the
-    /// Collapsed→Compact promote step's fit input).</summary>
-    internal int NaturalWidthCompact => _naturalWidthCompact;
+    // The Collapsed dropdown is [group-name ▾]: the header's rendered width plus the caret + button padding. Analytic
+    // (never measured — the flyout is a closed popup), independent of item count.
+    private int EstimateCollapsedWidth() =>
+        GraphemeWidth.StringWidth(Header?.ToString() ?? string.Empty) + 5; // " ▾" caret + face padding, erring high
+
+    // The Compact width = the Normal width minus the label savings from each ICON-bearing button dropping to icon-only
+    // (a label-only button keeps its label — no saving). Analytic per-child (icon grapheme width + face padding),
+    // computed from the children's NORMAL measurements while the group is at Normal, so it never depends on the
+    // deferred restyle. Errs high (never over-promises savings) so the band under-collapses rather than clipping.
+    private int ComputeCompactEstimate()
+    {
+        if (_groupPanel is null)
+            return _naturalWidthNormal;
+
+        var savings = 0;
+        foreach (var container in _groupPanel.Containers)
+        {
+            if (container.GetValue(BarButton.IconProperty) is { } icon)
+            {
+                var iconOnly = GraphemeWidth.StringWidth(icon.ToString() ?? string.Empty) + 2; // border padding (1,0)
+                savings += Math.Max(0, container.DesiredSize.Columns - iconOnly);
+            }
+        }
+
+        return Math.Max(1, _naturalWidthNormal - savings);
+    }
 
     // Called by RibbonBand's fold to assign the group's density tier. Guarded no-op on a stable value (SetIsLastInBand
     // precedent). Compact fans the inherited :density-compact signal to every hosted control (icon-only faces);
@@ -152,12 +184,14 @@ public class RibbonGroup : HeaderedItemsControl
     {
         ApplySeparatorVisibility(); // idempotent; the separator is this group's own template part
         var size = base.MeasureOverride(availableSize);
-        // Freeze each tier's full width from the pass that actually renders it (a demoted group reports a shrunk width,
-        // so only the matching-tier pass is a trustworthy sample). The band promotes off these frozen widths.
+        // Freeze the Normal width AND the analytic Compact estimate from a NORMAL pass (the children are at their
+        // authored faces, so their DesiredSize is the trustworthy full width the estimate subtracts label savings from).
+        // A demoted group reports a shrunk width, so only the Normal pass is a valid sample.
         if (_density == RibbonGroupDensity.Normal)
+        {
             _naturalWidthNormal = size.Columns;
-        else if (_density == RibbonGroupDensity.Compact)
-            _naturalWidthCompact = size.Columns;
+            _estimatedCompactWidth = ComputeCompactEstimate();
+        }
         return size;
     }
 

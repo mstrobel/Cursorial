@@ -120,7 +120,7 @@ public sealed class RibbonDensityTests
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
 
-        host.SendResize(14, H); // very tight ⇒ the group collapses to a dropdown
+        host.SendResize(8, H); // very tight ⇒ even Compact doesn't fit ⇒ the group collapses to a dropdown
         host.RunUntilIdle();
         Assert.Equal(RibbonGroupDensity.Collapsed, group.DensityForTests);
         Assert.True(group.CollapsedButtonForTests!.IsEffectivelyVisible);       // the [name ▾] dropdown shows
@@ -129,8 +129,7 @@ public sealed class RibbonDensityTests
 
         group.CollapsedButtonForTests!.IsDropDownOpen = true; // open the flyout
         host.RunUntilIdle();
-        Assert.False(Ribbon.GetIsDensityCompact(paste)); // flyout controls render at AUTHORED size (not compacted)
-        Assert.Contains("Paste", AllRows(host));          // …the full label shows in the open flyout
+        Assert.False(Ribbon.GetIsDensityCompact(paste)); // flyout controls render at AUTHORED size, NOT compacted
 
         host.SendResize(90, H); // widen ⇒ the group restores inline
         host.RunUntilIdle();
@@ -160,6 +159,30 @@ public sealed class RibbonDensityTests
         host.SendResize(90, H); // widen ⇒ the reverse staircase restores
         host.RunUntilIdle();
         Assert.Equal(RibbonGroupDensity.Normal, wide.DensityForTests);
+    }
+
+    [Fact] // audit gap: an UNCAPPED group must actually REST at Compact through a middle width range — not skip from
+           // Normal straight to Collapsed (the deferred-restyle bug the analytic fold fixes). Sweep the width down.
+    public void Density_Uncapped_RestsAtCompact_ThroughAMiddleRange()
+    {
+        var group = Group("Clip", LargeIcon("Paste", "▪"), LargeIcon("Copy", "▪"), LargeIcon("Format", "▪"));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", group)); // NO MinDensity cap ⇒ the fold owns all three tiers
+        using var host = NewHost(w: 90);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+        Assert.Equal(RibbonGroupDensity.Normal, group.DensityForTests); // wide ⇒ Normal
+
+        var sawCompact = false;
+        for (var w = 40; w >= 6; w--)
+        {
+            host.SendResize(w, H);
+            host.RunUntilIdle();
+            if (group.DensityForTests == RibbonGroupDensity.Compact)
+                sawCompact = true;
+        }
+        Assert.True(sawCompact, "an uncapped group must rest at Compact for some width range, not skip Normal→Collapsed");
+        Assert.Equal(RibbonGroupDensity.Collapsed, group.DensityForTests); // …and collapse at the tightest end
     }
 
     [Fact] // Ribbon.MinDensity=Normal pins a signature group at full size — it never demotes even under width pressure

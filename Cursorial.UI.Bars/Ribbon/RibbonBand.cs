@@ -60,10 +60,6 @@ public sealed class RibbonBand : Panel
     // shallower still.
     private const RibbonGroupDensity FoldCap = RibbonGroupDensity.Collapsed;
 
-    // Hysteresis: promote a demoted group back only when the fuller tier fits with this gutter, so a width parked at a
-    // tier boundary can't demote/promote flip every frame (the RibbonStripPanel.MinGutter precedent).
-    private const int PromoteGutter = 1;
-
     /// <inheritdoc/>
     protected override Size ArrangeOverride(Size finalSize)
     {
@@ -88,74 +84,74 @@ public sealed class RibbonBand : Panel
         return finalSize;
     }
 
-    // The discrete density fold (the design guide's "three discrete tiers, not a fluid slide"). It applies AT MOST ONE
-    // tier change per arrange and relies on the LayoutManager fixpoint to iterate: a demote/promote invalidates the
-    // group's measure, the band re-measures + re-arranges, and the fold re-runs against the new widths until it
-    // settles. Reading the LIVE DesiredSize (the current-tier width) plus each group's frozen Normal width is enough —
-    // no destructive per-tier probe. Convergence: each demote strictly shrinks the widest group; the promote gutter
-    // opens an asymmetric dead band so the boundary can't oscillate; the tier lattice is finite.
+    // Reused fold scratch (few groups per band — allocate once).
+    private readonly List<RibbonGroup> _foldGroups = [];
+    private readonly List<RibbonGroupDensity> _foldTiers = [];
+
+    // The discrete density fold (the design guide's "three discrete tiers, not a fluid slide"). SINGLE PASS: it
+    // computes every group's target tier by a greedy largest-first demotion over each group's STABLE per-tier widths
+    // (RibbonGroup.TierWidth — a frozen Normal measure + an analytic Compact estimate + an analytic Collapsed
+    // constant), then assigns them. It deliberately does NOT read the live post-restyle DesiredSize: the
+    // :density-compact face-shrink is a DEFERRED restyle that only materializes next frame, so a live-width fold would
+    // never see the compacted width within one frame and would skip Compact straight to Collapsed. Because the tier
+    // widths are stable, the fold recomputes the SAME targets every pass (SetDensity is a no-op once assigned), so it
+    // converges immediately; a resize recomputes fresh from all-Normal, restoring groups on widen with no hysteresis
+    // dance (the discrete boundary is a clean 1-cell flip, not an oscillation, since the inputs don't move).
     private void ApplyDensityFold(int available)
     {
         var children = Children;
+        _foldGroups.Clear();
+        _foldTiers.Clear();
+
         var total = 0;
         for (var i = 0; i < children.Count; i++)
-            if (children[i] is RibbonGroup g && g.Visibility != Visibility.Collapsed)
-                total = LayoutMath.Add(total, g.DesiredSize.Columns);
-
-        if (total > available)
         {
-            // DEMOTE the widest demotable group one tier (largest-first sheds the most cells per step; ties go to the
-            // RIGHTMOST so the primary left groups hold their full form longest — Office parity).
-            RibbonGroup? victim = null;
-            var widest = -1;
-            for (var i = 0; i < children.Count; i++)
+            if (children[i] is RibbonGroup g && g.Visibility != Visibility.Collapsed)
             {
-                if (children[i] is not RibbonGroup g || g.Visibility == Visibility.Collapsed || DeeperTier(g) == g.Density)
-                    continue;
-                var w = g.DesiredSize.Columns;
-                if (w >= widest) // >= ⇒ the rightmost among equal widths wins the tie
+                _foldGroups.Add(g);
+                _foldTiers.Add(RibbonGroupDensity.Normal);
+                total = LayoutMath.Add(total, g.TierWidth(RibbonGroupDensity.Normal));
+            }
+        }
+
+        while (total > available)
+        {
+            // Demote the widest demotable group one tier (largest-first sheds the most cells per step; ties go to the
+            // RIGHTMOST so the primary left groups hold their full form longest — Office parity).
+            var victim = -1;
+            var widest = -1;
+            for (var i = 0; i < _foldGroups.Count; i++)
+            {
+                var cur = _foldTiers[i];
+                if (DeeperTier(_foldGroups[i], cur) == cur)
+                    continue; // at its MinDensity / FoldCap floor — not demotable
+                var w = _foldGroups[i].TierWidth(cur);
+                if (w >= widest)
                 {
                     widest = w;
-                    victim = g;
+                    victim = i;
                 }
             }
 
-            victim?.SetDensity(DeeperTier(victim));
-            return;
+            if (victim < 0)
+                break; // nothing left to demote — the collapsed row clips at the zone edge
+
+            var oldTier = _foldTiers[victim];
+            var newTier = DeeperTier(_foldGroups[victim], oldTier);
+            _foldTiers[victim] = newTier;
+            total += _foldGroups[victim].TierWidth(newTier) - _foldGroups[victim].TierWidth(oldTier);
         }
 
-        // PROMOTE a demoted group ONE tier back when its shallower tier fits with the gutter — deepest-demoted first
-        // (the last group to collapse is the first to recover, the reverse staircase). The shallower tier's width is
-        // the frozen sample from the pass that last rendered it (Normal or Compact).
-        RibbonGroup? recover = null;
-        var recoverTier = RibbonGroupDensity.Normal;
-        var deepest = RibbonGroupDensity.Normal;
-        for (var i = 0; i < children.Count; i++)
-        {
-            if (children[i] is not RibbonGroup g || g.Visibility == Visibility.Collapsed || g.Density == RibbonGroupDensity.Normal)
-                continue;
-
-            var shallower = (RibbonGroupDensity) ((int) g.Density - 1);
-            var shallowerWidth = shallower == RibbonGroupDensity.Normal ? g.NaturalWidthNormal : g.NaturalWidthCompact;
-            var promotedTotal = LayoutMath.Add(total - g.DesiredSize.Columns, shallowerWidth);
-            if (promotedTotal + PromoteGutter <= available && (recover is null || g.Density > deepest))
-            {
-                recover = g;
-                recoverTier = shallower;
-                deepest = g.Density;
-            }
-        }
-
-        recover?.SetDensity(recoverTier);
+        for (var i = 0; i < _foldGroups.Count; i++)
+            _foldGroups[i].SetDensity(_foldTiers[i]); // guarded no-op when the tier is unchanged
     }
 
-    // The next tier DOWN a group may occupy: one step deeper (Normal→Compact), clamped to the band's FoldCap and the
-    // group's own Ribbon.MinDensity floor. Returns the group's CURRENT tier when it is already as deep as allowed
-    // (⇒ "not demotable").
-    private static RibbonGroupDensity DeeperTier(RibbonGroup group)
+    // The next tier DOWN from `current`: one step deeper (Normal→Compact→Collapsed), clamped to the band's FoldCap and
+    // the group's own Ribbon.MinDensity floor. Returns `current` when it is already as deep as allowed (not demotable).
+    private static RibbonGroupDensity DeeperTier(RibbonGroup group, RibbonGroupDensity current)
     {
         var floor = (RibbonGroupDensity) Math.Min((int) Ribbon.GetMinDensity(group), (int) FoldCap);
-        var next = (RibbonGroupDensity) ((int) group.Density + 1);
-        return (int) next <= (int) floor ? next : group.Density;
+        var next = (RibbonGroupDensity) ((int) current + 1);
+        return (int) next <= (int) floor ? next : current;
     }
 }

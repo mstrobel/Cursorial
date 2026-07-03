@@ -26,6 +26,10 @@ public sealed class RibbonGroupPanel : Panel, IItemsHostPanel
     private RibbonGroup? _group;
     private Panel? _popupHost; // the flyout band the containers move into while Collapsed (null ⇒ inline, on this panel)
 
+    /// <summary>The authoritative ordered container list (the group's live controls), for the band's analytic width
+    /// estimate — valid regardless of which band currently holds them.</summary>
+    internal IReadOnlyList<UIElement> Containers => _containers;
+
     // ───────────────────────────── IItemsHostPanel (adoption) ─────────────────────────────
 
     bool IItemsHostPanel.ManagesContainerAdoption => true;

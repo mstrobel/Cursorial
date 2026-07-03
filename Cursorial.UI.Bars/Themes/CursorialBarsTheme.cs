@@ -837,15 +837,32 @@ internal static class CursorialBarsTheme
             {
                 Orientation = Orientation.Vertical, Margin = new Margins(1, 0), VerticalAlignment = VerticalAlignment.Bottom,
             };
+            ctx.RegisterName("PART_InlineColumn", column);
             column.Children.Add(host);
             column.Children.Add(footer);
+
+            // The COLLAPSED face (shown under :density-collapsed): a single [group-name ▾] dropdown whose flyout hosts
+            // the group's controls at authored size. RibbonGroup.ApplyCollapsedHosting moves the LIVE PART_ItemsHost
+            // into PART_CollapsedPopupHost when the tier crosses to/from Collapsed, so the SAME control instances render
+            // in the flyout (commands/bindings/state intact) and return inline on widen — the toolbar re-host model, one
+            // element (the presenter) at a time.
+            var collapsedPopupHost = new RibbonGroupPanel(); // the flyout container band (RibbonGroup moves the LIVE controls here)
+            ctx.RegisterName("PART_CollapsedPopupHost", collapsedPopupHost);
+            var collapsedPopupSurface = new Border { Child = collapsedPopupHost, Padding = new Margins(1, 0) };
+            collapsedPopupSurface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+            collapsedPopupSurface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+
+            var collapsedButton = new BarPopupButton { DropDownContent = collapsedPopupSurface };
+            collapsedButton.SetBinding(ContentControl.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+            ctx.RegisterName("PART_CollapsedButton", collapsedButton);
 
             var separator = new TextBlock { Text = "│", VerticalAlignment = VerticalAlignment.Center };
             separator.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.FaintBrush);
             ctx.RegisterName("PART_GroupSeparator", separator);
 
             var outer = new StackPanel { Orientation = Orientation.Horizontal };
-            outer.Children.Add(column);
+            outer.Children.Add(column);          // PART_InlineColumn — the Normal/Compact presentation
+            outer.Children.Add(collapsedButton); // PART_CollapsedButton — shown only under :density-collapsed
             outer.Children.Add(separator);
 
             // The ⋰ launcher is hidden unless the group opts in (HasDialogLauncher ⇒ :has-launcher). Part-targeting
@@ -858,6 +875,15 @@ internal static class CursorialBarsTheme
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":has-launcher").Template().Name("PART_Launcher"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    // Collapsed tier: swap the inline column for the [name ▾] dropdown. The button is hidden by default
+                    // (a Style rule, NOT a local set, so the :density-collapsed rule can flip it — a LocalValue would
+                    // out-rank the style); the inline column hides under the same class.
+                    new Style(Selectors.Nesting().Template().Name("PART_CollapsedButton"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":density-collapsed").Template().Name("PART_CollapsedButton"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    new Style(Selectors.Nesting().PseudoClass(":density-collapsed").Template().Name("PART_InlineColumn"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                 },
             });
             return outer;

@@ -13,10 +13,18 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 [TemplatePart(PartLauncher, typeof(ButtonBase))]
 [TemplatePart(PartSeparator, typeof(UIElement))]
+[TemplatePart(PartItemsHost, typeof(UIElement))]
+[TemplatePart(PartInlineColumn, typeof(Panel))]
+[TemplatePart(PartCollapsedButton, typeof(BarPopupButton))]
+[TemplatePart(PartCollapsedPopupHost, typeof(RibbonGroupPanel))]
 public class RibbonGroup : HeaderedItemsControl
 {
     private const string PartLauncher = "PART_Launcher";
     private const string PartSeparator = "PART_GroupSeparator";
+    private const string PartItemsHost = "PART_ItemsHost";
+    private const string PartInlineColumn = "PART_InlineColumn";
+    private const string PartCollapsedButton = "PART_CollapsedButton";
+    private const string PartCollapsedPopupHost = "PART_CollapsedPopupHost";
 
     /// <summary>Raised (bubbling) when the <c>⋰</c> dialog-launcher is invoked — the app opens the group's full dialog.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> DialogLauncherRequestedEvent =
@@ -31,9 +39,16 @@ public class RibbonGroup : HeaderedItemsControl
     private bool _isLastInBand;
 
     private RibbonGroupDensity _density;
-    private int _naturalWidthNormal; // frozen last-known Normal width (the band's fold input; see MeasureOverride)
+    private int _naturalWidthNormal;  // frozen last-known Normal width (the band's fold input; see MeasureOverride)
+    private int _naturalWidthCompact; // frozen last-known Compact width (for the Collapsed→Compact promote step)
+
+    private RibbonGroupPanel? _groupPanel;    // the inline items-host panel (adoption owner; set by RegisterGroupPanel)
+    private BarPopupButton? _collapsedButton;
+    private Panel? _collapsedPopupHost;       // PART_CollapsedPopupHost — the flyout band the LIVE controls move into
 
     internal ButtonBase? DialogLauncherForTests => _launcher;
+    internal BarPopupButton? CollapsedButtonForTests => _collapsedButton;
+    internal Panel? CollapsedPopupHostForTests => _collapsedPopupHost;
 
     /// <summary>The band-assigned density tier (never author-set — the <see cref="RibbonBand"/> owns the width budget).</summary>
     internal RibbonGroupDensity Density => _density;
@@ -43,17 +58,52 @@ public class RibbonGroup : HeaderedItemsControl
     /// the band can decide whether promoting the group back to Normal fits even while it is demoted.</summary>
     internal int NaturalWidthNormal => _naturalWidthNormal;
 
+    /// <summary>The group's last-known Compact width, frozen while at <see cref="RibbonGroupDensity.Compact"/> (the
+    /// Collapsed→Compact promote step's fit input).</summary>
+    internal int NaturalWidthCompact => _naturalWidthCompact;
+
     // Called by RibbonBand's fold to assign the group's density tier. Guarded no-op on a stable value (SetIsLastInBand
-    // precedent). Fans the inherited COMPACT signal to every hosted control (Compact AND Collapsed force the small
-    // inline face) and self-stamps :density-collapsed (the Collapsed group-dropdown swap lands with the tier).
+    // precedent). Compact fans the inherited :density-compact signal to every hosted control (icon-only faces);
+    // Collapsed instead self-stamps :density-collapsed (swap the inline column for the [name ▾] dropdown) and moves the
+    // live items presenter into the flyout — where the controls render at AUTHORED size, so :density-compact is FALSE.
     internal void SetDensity(RibbonGroupDensity value)
     {
         if (_density == value)
             return;
+        var wasCollapsed = _density == RibbonGroupDensity.Collapsed;
         _density = value;
-        Ribbon.SetIsDensityCompact(this, value != RibbonGroupDensity.Normal);
+        Ribbon.SetIsDensityCompact(this, value == RibbonGroupDensity.Compact);
         PseudoClasses.Set(":density-collapsed", value == RibbonGroupDensity.Collapsed);
+
+        var isCollapsed = value == RibbonGroupDensity.Collapsed;
+        if (wasCollapsed != isCollapsed)
+        {
+            // Focus repair: if focus is inside the group's controls, hand it to the collapsed opener BEFORE they leave
+            // the inline surface — never strand focus in a closed, unlaid-out popup.
+            if (isCollapsed && IsKeyboardFocusWithin)
+                _collapsedButton?.Focus(FocusNavigationMethod.Programmatic);
+            ReconcileCollapsedHosting();
+        }
         InvalidateMeasure();
+    }
+
+    // Called by the inline RibbonGroupPanel (the adoption owner) when it connects/disconnects as the items host. The
+    // group holds the reference so it can drive the Collapsed control-move; on connect it catches up to the current
+    // tier (a group already Collapsed when its panel connects re-hosts into the flyout at once).
+    internal void RegisterGroupPanel(RibbonGroupPanel? panel)
+    {
+        _groupPanel = panel;
+        ReconcileCollapsedHosting();
+    }
+
+    // Point the inline panel at the flyout band (Collapsed) or back inline — the LIVE controls move all-or-nothing, no
+    // presenter re-parent (moving the presenter unrealizes its containers). No-op until BOTH the panel and the flyout
+    // part are known (they connect in either order — panel via RegisterGroupPanel, part via OnApplyTemplate).
+    private void ReconcileCollapsedHosting()
+    {
+        if (_groupPanel is null || _collapsedPopupHost is null)
+            return;
+        _groupPanel.SetPopupHost(_density == RibbonGroupDensity.Collapsed ? _collapsedPopupHost : null);
     }
 
     static RibbonGroup()
@@ -102,9 +152,12 @@ public class RibbonGroup : HeaderedItemsControl
     {
         ApplySeparatorVisibility(); // idempotent; the separator is this group's own template part
         var size = base.MeasureOverride(availableSize);
+        // Freeze each tier's full width from the pass that actually renders it (a demoted group reports a shrunk width,
+        // so only the matching-tier pass is a trustworthy sample). The band promotes off these frozen widths.
         if (_density == RibbonGroupDensity.Normal)
-            _naturalWidthNormal = size.Columns; // freeze the last-known Normal width (a demoted group reports a shrunk
-                                                // width, so only the Normal pass is a trustworthy full-width sample)
+            _naturalWidthNormal = size.Columns;
+        else if (_density == RibbonGroupDensity.Compact)
+            _naturalWidthCompact = size.Columns;
         return size;
     }
 
@@ -121,6 +174,12 @@ public class RibbonGroup : HeaderedItemsControl
 
         _separator = GetTemplatePart<UIElement>(PartSeparator);
         ApplySeparatorVisibility();
+
+        _collapsedButton = GetTemplatePart<BarPopupButton>(PartCollapsedButton);
+        _collapsedPopupHost = GetTemplatePart<RibbonGroupPanel>(PartCollapsedPopupHost);
+        // Reconcile the current tier against the fresh flyout part: a group re-templated while Collapsed re-hosts the
+        // live controls into the new flyout band (the Ribbon.OnApplyTemplate reconcile precedent).
+        ReconcileCollapsedHosting();
     }
 
     /// <inheritdoc/>
@@ -128,8 +187,12 @@ public class RibbonGroup : HeaderedItemsControl
     {
         if (_launcher is not null)
             _launcher.Click -= OnLauncherClick;
+        if (_collapsedButton is not null)
+            _collapsedButton.IsDropDownOpen = false; // release the flyout surface
         _launcher = null;
         _separator = null;
+        _collapsedButton = null;
+        _collapsedPopupHost = null;
         base.OnTemplateDetaching(old);
     }
 

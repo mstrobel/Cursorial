@@ -56,9 +56,9 @@ public sealed class RibbonBand : Panel
         return new Size(width, height);
     }
 
-    // The deepest tier the fold demotes to. Checkpoint 1 caps at Compact (the Collapsed group-dropdown lands next);
-    // a group's own Ribbon.MinDensity may cap it shallower still.
-    private const RibbonGroupDensity FoldCap = RibbonGroupDensity.Compact;
+    // The deepest tier the fold demotes to (Collapsed = the group-dropdown); a group's own Ribbon.MinDensity may cap it
+    // shallower still.
+    private const RibbonGroupDensity FoldCap = RibbonGroupDensity.Collapsed;
 
     // Hysteresis: promote a demoted group back only when the fuller tier fits with this gutter, so a width parked at a
     // tier boundary can't demote/promote flip every frame (the RibbonStripPanel.MinGutter precedent).
@@ -124,23 +124,29 @@ public sealed class RibbonBand : Panel
             return;
         }
 
-        // PROMOTE a demoted group back toward Normal when its fuller tier fits with the gutter (deepest-demoted first,
-        // so the last group to collapse is the first to recover — the reverse staircase). Checkpoint 1: one step
-        // Compact→Normal (Normal width is frozen while the group was last at Normal).
+        // PROMOTE a demoted group ONE tier back when its shallower tier fits with the gutter — deepest-demoted first
+        // (the last group to collapse is the first to recover, the reverse staircase). The shallower tier's width is
+        // the frozen sample from the pass that last rendered it (Normal or Compact).
         RibbonGroup? recover = null;
+        var recoverTier = RibbonGroupDensity.Normal;
+        var deepest = RibbonGroupDensity.Normal;
         for (var i = 0; i < children.Count; i++)
         {
             if (children[i] is not RibbonGroup g || g.Visibility == Visibility.Collapsed || g.Density == RibbonGroupDensity.Normal)
                 continue;
-            var promotedTotal = LayoutMath.Add(total - g.DesiredSize.Columns, g.NaturalWidthNormal);
-            if (promotedTotal + PromoteGutter <= available)
+
+            var shallower = (RibbonGroupDensity) ((int) g.Density - 1);
+            var shallowerWidth = shallower == RibbonGroupDensity.Normal ? g.NaturalWidthNormal : g.NaturalWidthCompact;
+            var promotedTotal = LayoutMath.Add(total - g.DesiredSize.Columns, shallowerWidth);
+            if (promotedTotal + PromoteGutter <= available && (recover is null || g.Density > deepest))
             {
                 recover = g;
-                break;
+                recoverTier = shallower;
+                deepest = g.Density;
             }
         }
 
-        recover?.SetDensity(RibbonGroupDensity.Normal);
+        recover?.SetDensity(recoverTier);
     }
 
     // The next tier DOWN a group may occupy: one step deeper (Normal→Compact), clamped to the band's FoldCap and the

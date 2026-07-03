@@ -87,12 +87,13 @@ public sealed class RibbonDensityTests
         Assert.Contains("Paste", AllRows(host)); // the large face (label) restored byte-identically
     }
 
-    [Fact] // the fold + inheritance + face together: at a tight width the group demotes and its ICON-bearing large
-           // button actually renders compact (icon-only) — the band's inherited signal reaches the hosted control
+    [Fact] // the fold + inheritance + face together: at a tight width a Compact-capped group demotes and its ICON-
+           // bearing large button actually renders compact (icon-only) — the band's inherited signal reaches the control
     public void Density_Compact_TightWidth_DemotesAndRendersIconOnly()
     {
         var iconBtn = LargeIcon("Paste", "▪");
         var group = Group("Clip", iconBtn, LargeIcon("Copy", "▪"), LargeIcon("Format", "▪"));
+        Ribbon.SetMinDensity(group, RibbonGroupDensity.Compact); // cap at Compact so the fold stops there (no collapse)
         var ribbon = new Ribbon();
         ribbon.Items.Add(Tab("Home", group));
         using var host = NewHost(w: 90);
@@ -107,11 +108,43 @@ public sealed class RibbonDensityTests
         Assert.DoesNotContain("Paste", AllRows(host)); // …and the button actually renders icon-only
     }
 
+    [Fact] // the Collapsed tier: at a very tight width the group becomes a single [name ▾] dropdown; its controls move
+           // into the flyout (still logical children), render at AUTHORED size when opened, and return inline on widen
+    public void Density_Collapsed_BecomesDropdown_HostsControlsInFlyout()
+    {
+        var paste = LargeIcon("Paste", "▪");
+        var group = Group("Clip", paste, LargeIcon("Copy", "▪"), LargeIcon("Format", "▪"));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", group));
+        using var host = NewHost(w: 90);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        host.SendResize(14, H); // very tight ⇒ the group collapses to a dropdown
+        host.RunUntilIdle();
+        Assert.Equal(RibbonGroupDensity.Collapsed, group.DensityForTests);
+        Assert.True(group.CollapsedButtonForTests!.IsEffectivelyVisible);       // the [name ▾] dropdown shows
+        Assert.Same(group, paste.LogicalParent);                                // controls stay LOGICAL children of the group
+        Assert.True(group.CollapsedPopupHostForTests!.IsAncestorOf(paste));     // …but VISUALLY moved into the flyout host
+
+        group.CollapsedButtonForTests!.IsDropDownOpen = true; // open the flyout
+        host.RunUntilIdle();
+        Assert.False(Ribbon.GetIsDensityCompact(paste)); // flyout controls render at AUTHORED size (not compacted)
+        Assert.Contains("Paste", AllRows(host));          // …the full label shows in the open flyout
+
+        host.SendResize(90, H); // widen ⇒ the group restores inline
+        host.RunUntilIdle();
+        Assert.Equal(RibbonGroupDensity.Normal, group.DensityForTests);
+        Assert.False(group.CollapsedButtonForTests!.IsEffectivelyVisible);
+    }
+
     [Fact] // the band fold: wide ⇒ all Normal; tight ⇒ the WIDEST group demotes to Compact first; widen ⇒ restores
     public void Density_Band_DemotesWidestFirst_ThenRestoresOnWiden()
     {
         var wide = Group("Alpha", LargeIcon("Paste", "▪"), LargeIcon("Copy", "▪"), LargeIcon("Format", "▪"));
         var narrow = Group("Beta", LargeIcon("Cut", "▪"));
+        Ribbon.SetMinDensity(wide, RibbonGroupDensity.Compact);   // cap at Compact so the fold stops there (no collapse)
+        Ribbon.SetMinDensity(narrow, RibbonGroupDensity.Compact);
         var ribbon = new Ribbon();
         ribbon.Items.Add(Tab("Home", wide, narrow));
         using var host = NewHost(w: 90);

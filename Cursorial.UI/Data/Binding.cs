@@ -10,9 +10,6 @@ namespace Cursorial.UI.Data;
 /// </summary>
 public sealed class Binding : AnchoredBinding
 {
-    private BindingPath? _parsedPath;
-    private IPathTypeResolver? _parsedWithResolver;
-
     /// <summary>Creates a binding with an empty path (the source object itself).</summary>
     public Binding()
     {
@@ -21,8 +18,11 @@ public sealed class Binding : AnchoredBinding
     /// <summary>Creates a binding with the given path text.</summary>
     public Binding(string path) => Path = path;
 
-    /// <summary>The path text. <c>""</c> or <c>"."</c> = the source object itself.</summary>
-    public string Path { get; init; } = "";
+    /// <summary>The binding path (design doc §6.3). A bare string implicitly converts to a lazily-resolved
+    /// <see cref="PropertyPath"/>; the XAML loader supplies the xmlns-preprocessed form so a prefixed
+    /// attached-property qualification (<c>(prefix:Type.Member)</c>) binds the document's namespaces.
+    /// <c>""</c> or <c>"."</c> = the source object itself.</summary>
+    public PropertyPath Path { get; init; } = PropertyPath.Empty;
 
     /// <summary>An optional forward/back value converter.</summary>
     public IValueConverter? Converter { get; init; }
@@ -47,17 +47,10 @@ public sealed class Binding : AnchoredBinding
         return CompiledBindingFactory.Analyze(path);
     }
 
-    /// <summary>The parsed path (cached per descriptor; matrix B16).</summary>
-    internal BindingPath GetPath()
-    {
-        var resolver = TypeResolver ?? DefaultPathTypeResolver.Instance;
-        if (_parsedPath is { } cached && ReferenceEquals(_parsedWithResolver, resolver))
-            return cached;
-
-        _parsedPath = BindingPath.Parse(Path, resolver);
-        _parsedWithResolver = resolver;
-        return _parsedPath;
-    }
+    /// <summary>The parsed path (the <see cref="PropertyPath"/> caches per resolver; matrix B16). A path
+    /// preprocessed at load carries its resolved owners already; a bare-string path parses lazily against
+    /// <see cref="TypeResolver"/> (or the registry default).</summary>
+    internal BindingPath GetPath() => Path.ToBindingPath(TypeResolver);
 
     internal override BindingExpressionBase CreateExpression(in BindingActivationContext context)
     {

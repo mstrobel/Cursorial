@@ -237,17 +237,20 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         string path = FirstPositional(node) ?? Named(node, "Path") ?? string.Empty;
         object? fallback = Named(node, "FallbackValue");
 
-        return new Binding(path)
+        return new Binding
         {
+            // Preprocess the path NOW against the xmlns-aware resolver (design doc §6.3 — the load-time
+            // "preprocessor"): a `(prefix:Type.Member)` type-qualified segment resolves its owner against the
+            // document's root xmlns table, baked in once. A bare `(Grid.Row)` still resolves via the registry
+            // default. Type qualification is not assumed to be attached — it may be a regular property qualified
+            // for disambiguation/clarity; only the OWNER TYPE resolves here, the member stays runtime-resolved.
+            Path = new PropertyPath(path, builder.PathTypeResolver),
             Source = namedElementSource ?? ParseSourceValue(builder, node, line, column),
             RelativeSource = ParseRelativeSource(builder, node, line, column),
             Mode = ParseEnum<BindingMode>(builder, node, "Mode", line, column) ?? BindingMode.Default,
             Converter = ResolveConverter(builder, node, line, column),
             StringFormat = Named(node, "StringFormat"),
             FallbackValue = fallback ?? UIProperty.UnsetValue,
-            // The xmlns-aware resolver so a `(prefix:Type.Member)` attached-property path resolves its owner against
-            // the document's root xmlns table (a bare `(Grid.Row)` still resolves via the registry default).
-            TypeResolver = builder.PathTypeResolver,
         };
     }
 

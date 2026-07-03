@@ -4,10 +4,11 @@ using Cursorial.UI.Xaml;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
-// #3 (stage 1) — a binding path's attached-property TYPE QUALIFICATION may be namespace-prefixed, `(prefix:Type.Member)`.
-// Previously BindingPath.ParseAttached threw "source casts unsupported" on the ':' (conflating a prefixed owner with a
+// #3 (stage 1) — a binding path's TYPE-QUALIFIED segment owner may be namespace-prefixed, `(prefix:Type.Member)`.
+// Previously the type-qualified parse threw "source casts unsupported" on the ':' (conflating a prefixed owner with a
 // (local:T)x cast). Now the ':' is part of the type token, resolved via the xmlns-aware XamlPathTypeResolver (the
-// document root's prefix→uri table + the loader metadata); a bare token still resolves via the registry default.
+// document root's prefix→uri table + the loader metadata); a bare token still resolves via the registry default. The
+// qualification is not assumed attached — it resolves the OWNER type only (member stays runtime-resolved).
 public sealed class PrefixedBindingPathTests
 {
     private const string Ui = "https://cursorial.dev/ui";

@@ -135,7 +135,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         _anchorKind = DetermineAnchorKind();
         BindingRegistry.GetOrCreate(_target).Register(this);
 
-        BindingLeakTracker.Track(this, _target, _binding is Binding b ? b.Path : DescribePath(),
+        BindingLeakTracker.Track(this, _target, _binding is Binding b ? b.Path.Path : DescribePath(),
                                  BindingRegistry.DescribeTarget(_target, _targetProperty));
 
         // A non-UIElement target (an InputBinding/KeyBinding whose Command="{Binding}") has no DataContext

@@ -20,11 +20,11 @@ internal static class AccessorCache
     /// <summary>Diagnostics probe: the number of cold accessor resolutions (matrix B18).</summary>
     internal static int ResolveCount => Volatile.Read(ref _resolveCount);
 
-    /// <summary>Resolves a property/attached segment accessor for <paramref name="instance"/>'s runtime type.</summary>
+    /// <summary>Resolves a property / type-qualified segment accessor for <paramref name="instance"/>'s runtime type.</summary>
     public static PropertyAccessor ResolveProperty(object instance, in PathSegment segment)
     {
         var instanceType = instance.GetType();
-        var memberName = segment.Kind == PathSegmentKind.Attached ? $"({segment.AttachedOwner!.Name}.{segment.Name})" : segment.Name!;
+        var memberName = segment.Kind == PathSegmentKind.TypeQualified ? $"({segment.QualifierType!.Name}.{segment.Name})" : segment.Name!;
         var key = new CacheKey(instanceType, memberName);
 
         var snapshot = _propertyAccessors;
@@ -144,16 +144,16 @@ internal static class AccessorCache
 
     private static PropertyAccessor ResolvePropertyCore(object instance, Type instanceType, in PathSegment segment)
     {
-        // Attached segment: resolve the registered UIProperty (rule 1) when present.
-        if (segment.Kind == PathSegmentKind.Attached)
+        // Type-qualified segment (Owner.Member): a registered UIProperty on the owner (attached OR a regular
+        // property qualified for disambiguation/clarity) when present on a UIObject; else the member is a plain
+        // CLR property qualified for clarity, resolved by name on the runtime source.
+        if (segment.Kind == PathSegmentKind.TypeQualified)
         {
-            if (segment.AttachedProperty is { } attachedProperty && instance is UIObject)
-                return new UIPropertyAccessor(attachedProperty);
-            // Fall through: reflective access on a CLR member named identically is not supported for
-            // attached segments; surface as a CLR property lookup by the member name.
-            var attachedClr = instanceType.GetProperty(segment.Name!, BindingFlags.Public | BindingFlags.Instance);
-            if (attachedClr is not null)
-                return BuildClrAccessor(instanceType, attachedClr);
+            if (segment.QualifiedProperty is { } qualifiedProperty && instance is UIObject)
+                return new UIPropertyAccessor(qualifiedProperty);
+            var qualifiedClr = instanceType.GetProperty(segment.Name!, BindingFlags.Public | BindingFlags.Instance);
+            if (qualifiedClr is not null)
+                return BuildClrAccessor(instanceType, qualifiedClr);
             return new UnresolvableAccessor(segment.Name!);
         }
 

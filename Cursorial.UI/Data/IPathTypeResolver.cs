@@ -1,7 +1,8 @@
 namespace Cursorial.UI.Data;
 
 /// <summary>
-/// Resolves a type token in an attached-property path segment (<c>(Grid.Row)</c>) to a CLR type
+/// Resolves the owner type token of a type-qualified path segment (<c>(Owner.Member)</c> — an attached property
+/// like <c>(Grid.Row)</c>, OR a regular property qualified by owner type for disambiguation/clarity) to a CLR type
 /// (design doc §6.3). The XAML loader supplies an xmlns-aware resolver; the code-first default
 /// (<see cref="DefaultPathTypeResolver"/>) resolves registered <c>UIProperty</c> owner short names
 /// via the Fork A registry, surfacing ambiguity.

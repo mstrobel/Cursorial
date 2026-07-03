@@ -14,35 +14,38 @@ internal enum PathSegmentKind : byte
     /// <summary>A string indexer (<c>[key]</c> / <c>['key']</c>).</summary>
     StringIndexer,
 
-    /// <summary>An attached/styled-property segment (<c>(Grid.Row)</c>).</summary>
-    Attached
+    /// <summary>A type-qualified property segment (<c>(Owner.Member)</c>) — the owner type resolves at parse time
+    /// (attached property like <c>(Grid.Row)</c>, OR a regular property qualified by owner type for
+    /// disambiguation/clarity); the member itself is resolved on the source at runtime.</summary>
+    TypeQualified
 }
 
 /// <summary>One parsed hop of a <see cref="BindingPath"/> (design doc §6.3 / spec §3.2).</summary>
 internal readonly struct PathSegment
 {
-    private PathSegment(PathSegmentKind kind, string? name, int intIndex, Type? attachedOwner, UIProperty? attachedProperty)
+    private PathSegment(PathSegmentKind kind, string? name, int intIndex, Type? qualifierType, UIProperty? qualifiedProperty)
     {
         Kind = kind;
         Name = name;
         IntIndex = intIndex;
-        AttachedOwner = attachedOwner;
-        AttachedProperty = attachedProperty;
+        QualifierType = qualifierType;
+        QualifiedProperty = qualifiedProperty;
     }
 
     public PathSegmentKind Kind { get; }
 
-    /// <summary>The property/member name (<see cref="PathSegmentKind.Property"/>) or string key (<see cref="PathSegmentKind.StringIndexer"/>); the member name for <see cref="PathSegmentKind.Attached"/>.</summary>
+    /// <summary>The property/member name (<see cref="PathSegmentKind.Property"/>) or string key (<see cref="PathSegmentKind.StringIndexer"/>); the member name for <see cref="PathSegmentKind.TypeQualified"/>.</summary>
     public string? Name { get; }
 
     /// <summary>The integer index (<see cref="PathSegmentKind.IntIndexer"/>).</summary>
     public int IntIndex { get; }
 
-    /// <summary>The resolved declaring type of an attached segment.</summary>
-    public Type? AttachedOwner { get; }
+    /// <summary>The resolved owner type of a type-qualified segment (the <c>Owner</c> in <c>(Owner.Member)</c>).</summary>
+    public Type? QualifierType { get; }
 
-    /// <summary>The resolved <c>UIProperty</c> of an attached segment.</summary>
-    public UIProperty? AttachedProperty { get; }
+    /// <summary>The <c>UIProperty</c> registered on <see cref="QualifierType"/> under <see cref="Name"/> (attached OR
+    /// regular), when one exists; <see langword="null"/> when the member is a plain CLR property qualified for clarity.</summary>
+    public UIProperty? QualifiedProperty { get; }
 
     public static PathSegment Property(string name) => new(PathSegmentKind.Property, name, 0, null, null);
 
@@ -50,19 +53,23 @@ internal readonly struct PathSegment
 
     public static PathSegment StringIndexer(string key) => new(PathSegmentKind.StringIndexer, key, 0, null, null);
 
-    public static PathSegment Attached(Type owner, string member, UIProperty? property)
-        => new(PathSegmentKind.Attached, member, 0, owner, property);
+    public static PathSegment TypeQualified(Type owner, string member, UIProperty? property)
+        => new(PathSegmentKind.TypeQualified, member, 0, owner, property);
 }
 
 /// <summary>
 /// A parsed binding path (design doc §6.3) — property chains, single-argument int/string indexers,
-/// and attached/styled-property segments. Construction-immutable; parsed once per descriptor and
+/// and type-qualified property segments. Construction-immutable; parsed once per descriptor and
 /// cached on it (matrix B16). Grammar v1:
 /// <code>
 /// path     := '' | '.' | step ( '.' step | indexer )*
 /// step     := identifier | '(' Type '.' identifier ')'
 /// indexer  := '[' ( integer | string ) ']'
 /// </code>
+/// The parenthesized <c>(Type.Member)</c> form is a TYPE-QUALIFIED property: only the owner type resolves at
+/// parse time (via the resolver / xmlns). It is NOT assumed to be an attached property — it may be a regular
+/// property qualified by owner type for disambiguation or clarity (WPF <c>PropertyPath</c> semantics); the
+/// member is resolved on the runtime source (a registered <c>UIProperty</c>, or a CLR property by name).
 /// A non-integer indexer token is a string key, but at resolution time it also coerces to an
 /// <c>Item[SomeEnum]</c> parameter when the source exposes one: <c>[Active]</c> or the qualified
 /// <c>[Status.Active]</c> binds an enum-keyed dictionary / indexer (case-insensitive; see
@@ -90,7 +97,7 @@ public sealed class BindingPath
     internal ReadOnlySpan<PathSegment> Segments => _segments;
 
     /// <summary>
-    /// Parses <paramref name="text"/>. Attached segments (<c>(Grid.Row)</c>) require a resolver;
+    /// Parses <paramref name="text"/>. Type-qualified segments (<c>(Grid.Row)</c>) require a resolver;
     /// <paramref name="resolver"/> <see langword="null"/> uses <see cref="DefaultPathTypeResolver"/>.
     /// Throws <see cref="FormatException"/> (carrying the offending <c>Position</c> in its message)
     /// on a malformed path; <see cref="ArgumentNullException"/> on null text.
@@ -104,6 +111,29 @@ public sealed class BindingPath
 
         var parser = new Parser(text, resolver ?? DefaultPathTypeResolver.Instance);
         var segments = parser.ParseAll();
+        return new BindingPath(segments);
+    }
+
+    /// <summary>
+    /// Builds a path directly from resolved <see cref="UIProperty"/> steps — the compile-time-checked form
+    /// (<c>PropertyPath(ContentProperty, BackgroundProperty)</c>): each property is a fully-resolved
+    /// type-qualified hop (its exact <c>UIProperty</c> baked in, read via <c>UIPropertyAccessor</c> at runtime),
+    /// so nothing parses or resolves lazily. Zero properties ⇒ <see cref="Empty"/>.
+    /// </summary>
+    internal static BindingPath FromProperties(UIProperty[] properties)
+    {
+        ArgumentNullException.ThrowIfNull(properties);
+        if (properties.Length == 0)
+            return Empty;
+
+        var segments = new PathSegment[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i]
+                           ?? throw new ArgumentException("A binding-path property step may not be null.", nameof(properties));
+            segments[i] = PathSegment.TypeQualified(property.OwnerType, property.Name, property);
+        }
+
         return new BindingPath(segments);
     }
 
@@ -132,10 +162,10 @@ public sealed class BindingPath
                         sb.Append('.');
                     sb.Append(seg.Name);
                     break;
-                case PathSegmentKind.Attached:
+                case PathSegmentKind.TypeQualified:
                     if (i > 0)
                         sb.Append('.');
-                    sb.Append('(').Append(seg.AttachedOwner!.Name).Append('.').Append(seg.Name).Append(')');
+                    sb.Append('(').Append(seg.QualifierType!.Name).Append('.').Append(seg.Name).Append(')');
                     break;
                 case PathSegmentKind.IntIndexer:
                     sb.Append('[').Append(seg.IntIndex).Append(']');
@@ -205,7 +235,7 @@ public sealed class BindingPath
             var c = _text[_pos];
             if (c == '(')
             {
-                segments.Add(ParseAttached());
+                segments.Add(ParseTypeQualified());
                 return;
             }
 
@@ -222,7 +252,7 @@ public sealed class BindingPath
             segments.Add(PathSegment.Property(_text[start.._pos]));
         }
 
-        private PathSegment ParseAttached()
+        private PathSegment ParseTypeQualified()
         {
             var open = _pos;
             _pos++; // consume '('
@@ -236,14 +266,14 @@ public sealed class BindingPath
                 _pos++;
 
             if (_pos < _text.Length && _text[_pos] == ')')
-                throw Fail(open, "source casts ((local:T)x) are unsupported by design; an attached segment is '(Type.Member)'.");
+                throw Fail(open, "source casts ((local:T)x) are unsupported by design; a type-qualified segment is '(Type.Member)'.");
 
             if (_pos >= _text.Length || _text[_pos] != '.')
-                throw Fail(open, "malformed attached segment; expected '(Type.Member)'.");
+                throw Fail(open, "malformed type-qualified segment; expected '(Type.Member)'.");
 
             var typeToken = _text[typeStart.._pos];
             if (typeToken.Length == 0)
-                throw Fail(open, "empty type token in attached segment.");
+                throw Fail(open, "empty type token in type-qualified segment.");
 
             _pos++; // consume '.'
             var memberStart = _pos;
@@ -251,19 +281,21 @@ public sealed class BindingPath
                 _pos++;
 
             if (_pos >= _text.Length)
-                throw Fail(open, "unterminated attached segment; missing ')'.");
+                throw Fail(open, "unterminated type-qualified segment; missing ')'.");
 
             var member = _text[memberStart.._pos];
             if (member.Length == 0)
-                throw Fail(memberStart, "empty member in attached segment.");
+                throw Fail(memberStart, "empty member in type-qualified segment.");
 
             _pos++; // consume ')'
 
             var ownerType = _resolver.Resolve(typeToken)
                             ?? throw Fail(typeStart, $"the type token '{typeToken}' could not be resolved.");
 
+            // A registered UIProperty on the owner (attached OR regular) if one exists; else null and the member
+            // resolves as a plain CLR property at runtime (the disambiguation/clarity case — not necessarily attached).
             var property = UIPropertyRegistry.Find(ownerType, member);
-            return PathSegment.Attached(ownerType, member, property);
+            return PathSegment.TypeQualified(ownerType, member, property);
         }
 
         private PathSegment ParseIndexer()

@@ -356,6 +356,22 @@ internal sealed class XamlObjectGraphBuilder
     internal Cursorial.UI.Data.IPathTypeResolver PathTypeResolver
         => _pathResolver ??= new XamlPathTypeResolver(_doc.Namespaces, _options.MetadataProvider);
 
+    /// <summary>The service provider handed to a context-dependent <see cref="ITypeConverter"/> at load
+    /// (<see cref="XamlValueContext.Services"/>) — exposes the xmlns-aware <see cref="PathTypeResolver"/> so a
+    /// <c>PropertyPath</c>-typed member value resolves its type qualifications against the document's namespaces.
+    /// Cached: one instance per document build.</summary>
+    private IServiceProvider ConversionServices
+        => _conversionServices ??= new ConversionServiceProvider(PathTypeResolver);
+
+    private ConversionServiceProvider? _conversionServices;
+
+    // The minimal load-time IServiceProvider for converters — resolves the binding-path type resolver only.
+    private sealed class ConversionServiceProvider(Cursorial.UI.Data.IPathTypeResolver pathResolver) : IServiceProvider
+    {
+        public object? GetService(Type serviceType)
+            => serviceType == typeof(Cursorial.UI.Data.IPathTypeResolver) ? pathResolver : null;
+    }
+
     /// <summary>
     /// Builds a Style's selector from its <c>TargetType</c> as an EXACT-type selector (the resolved CLR type),
     /// namespace-aware via the document xmlns table + metadata. A <c>prefix:</c>-qualified name MUST bind a
@@ -829,7 +845,7 @@ internal sealed class XamlObjectGraphBuilder
         if (converter is null)
             return text; // no converter — pass the raw string (CLR setter may accept it)
 
-        var ctx = new XamlValueContext(_options.ConverterCulture, member, memberType, _source, line, column);
+        var ctx = new XamlValueContext(_options.ConverterCulture, member, memberType, _source, line, column, ConversionServices);
         return converter.ConvertFromString(text, in ctx);
     }
 

@@ -28,6 +28,7 @@ what you intend to use.
 | **`Cursorial.Animation`** | ⏳ In-repo | A time-free animation engine — easings, keyframes, and value interpolators (the consumer owns the clock). |
 | **`Cursorial.UI`** | ⏳ In-repo | A WPF/Avalonia-style UI framework: dependency-property system, element tree, layout, render zones, routed input & focus, styling with CSS-like selectors, data binding, resources & theming, windowing, storyboards & transitions, and a full control catalog. |
 | **`Cursorial.UI.Xaml`** | ⏳ In-repo | A runtime XAML loader **and** a Roslyn source generator — declarative markup, `{Binding}`/`{StaticResource}`/`ControlTemplate`, typed code-behind, compiled bindings, and an AOT-clean metadata provider. |
+| **`Cursorial.UI.Bars`** | ⏳ In-repo | Command surfaces over one shared `BarCommand` set: a `Toolbar` with discrete overflow, a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips (Alt-overlay accelerators), and SuperTips. |
 
 ```bash
 dotnet add package Cursorial.Core
@@ -228,6 +229,10 @@ return await app.RunAsync(() =>
   `Popup`s, drop shadows, and a window manager that composites a surface stack — all without OS windows.
 - **Animation** — storyboards and implicit `Transition`s over the property system (e.g. fade `Opacity` on
   `:pointerover`), on a frame-aligned scheduler with reduced-motion support.
+- **Command surfaces** (`Cursorial.UI.Bars`) — a `Toolbar` with discrete overflow and a `Ribbon` (tabs, groups with
+  a density-collapse tier, contextual tabs, Backstage, a Quick Access Toolbar, and a minimizable band), plus KeyTips
+  (Alt-overlay accelerator badges) and SuperTips — all bound to one shared `BarCommand` set (define once, surface
+  anywhere).
 
 `Cursorial.UI.Testing` provides a headless `UITestHost` (a synthetic terminal on a fake clock) so the whole
 framework — layout, input, rendering — is unit-testable without a TTY.
@@ -275,16 +280,18 @@ root.DataContext = viewModel;
 | `Cursorial.UI.Xaml.Frontend` | The shared **netstandard2.0** XAML parser, node model, and type-system seams. |
 | `Cursorial.UI.Xaml` | The net10.0 runtime XAML loader (markup extensions, resources, templates). |
 | `Cursorial.UI.Xaml.Generator` | The Roslyn source generator (compiled bindings, code-behind, AOT-clean provider). |
-| `Cursorial.UI.Themes` | Bundled UI themes. |
+| `Cursorial.UI.Bars` | Command surfaces: `Toolbar` with overflow, `Ribbon` (density collapse, contextual tabs, Backstage, QAT, minimize), KeyTips, SuperTips. |
+| `Cursorial.UI.Themes` | Bundled UI themes (data-shipped XAML overlay over the code-first built-in theme). |
 | `Cursorial.UI.Testing` | Headless `UITestHost` + synthetic terminal for testing UI without a TTY. |
 | `Cursorial.Shared` | Markup attributes shared by the loader and generator. |
 | `Cursorial.Demo` | Interactive REPL that drives every layer end-to-end (see below). |
+| `Cursorial.Demo.XamlAot` / `.XamlAotStrict` | NativeAOT publish demos — the reflection loader, and the reflection-free build on the generated metadata provider (the AOT-clean exit gate). |
 | `Cursorial.Gallery` | A standalone XAML-first MVVM control gallery — a full app, not a demo command. |
 | `*.Tests` | xUnit suites per project. |
 
 ## Requirements
 
-- .NET SDK **10.0.0** or later (pinned in `global.json` with `rollForward: latestMinor`).
+- .NET SDK **10.0.100** or later (pinned in `global.json` with `rollForward: latestMinor`).
 - A terminal. The suite has been exercised against kitty, Ghostty, iTerm2, WezTerm, Rio, Apple Terminal, Alacritty,
   GNOME Terminal, ConEmu/Cmder, and Windows Terminal / Console Host.
 
@@ -312,9 +319,12 @@ The demo opens an interactive prompt. Useful commands:
 | `draw` / `charts` / `brushtext` | `Cursorial.Drawing` scenes, charts, and brush-aware text. |
 | `imagescene` / `imageclip` / `sizing` | Image compositing, clipping, and Kitty OSC 66 sized text. |
 | `animate` | `Cursorial.Animation` showcase. |
-| `ui` / `uipanels` | `Cursorial.UI` controls and the panel tree on the real frame loop. |
+| `ui` | `Cursorial.Drawing` UI primitives — gradient FIGlet, titled panels + shadows, an occluding opaque modal. |
+| `uipanels` / `uicontrols` / `gallery` | The `Cursorial.UI` panel tree, control set, and full control gallery on the real frame loop. |
 | `uixaml` | A control tree loaded at runtime from an embedded `.xaml` resource. |
+| `motion` | The `Cursorial.UI` animation showcase — storyboards, implicit transitions, edge-action pulse. |
 | `windows` | The S4 windowing showcase — draggable/resizable windows, modal dialogs, light-dismiss popups. |
+| `inspect` | A live XAML / element-tree inspector. |
 | `probe` / `accesskeys` / `rasterbench` | Protocol probes, the access-key capability gate, and a raster benchmark. |
 | `help` / `quit` | Self-explanatory. |
 

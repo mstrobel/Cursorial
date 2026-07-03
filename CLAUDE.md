@@ -16,7 +16,7 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Fourteen projects:
+Twenty-four projects:
 
 - `Cursorial.Core` — input parsing, capability negotiation, terminal session orchestration, byte-level output writers.
 - `Cursorial.Rendering` — cell buffer + diff frame renderer that sits on top of `Cursorial.Core`'s output writers.
@@ -24,10 +24,11 @@ Fourteen projects:
   doc at `docs/drawing-layer-design.md`.
 - `Cursorial.Animation` — pure, time-free animation primitives (`IAnimation<T>`: elapsed → value; the consumer owns
   the clock).
-- `Cursorial.UI` — the WPF/Avalonia-style UI framework layer (in progress; design doc at `docs/ui-layer-design.md`,
-  phase plan in its §14). Phases 0–7 complete (property system → element tree/layout/render/app spine → input/focus
-  → styling → data binding → resources/theming + first controls → XAML loader → S4 windowing); see "UI module
-  status" below.
+- `Cursorial.UI` — the WPF/Avalonia-style UI framework layer (design doc at `docs/ui-layer-design.md`, phase plan in
+  its §14). Phases 0–10 complete (property system → element tree/layout/render/app spine → input/focus → styling →
+  data binding → resources/theming + first controls → XAML loader → S4 windowing → S5 animation → S8 control gallery
+  → Fork C X4 generator + compiled bindings), plus the post-P9 control set; the `Cursorial.UI.Bars` command surfaces
+  build on it. See "UI module status" below.
 - `Cursorial.UI.Xaml.Frontend` — the **netstandard2.0** XAML parser frontend shared with the future X4/X5
   generator: the structure-of-arrays node model (`XamlDocument`), the `XmlReader` parser, the markup-extension
   grammar, diagnostics (`XamlDiagnostic`/`XamlParseException`, line+col everywhere), and the type-system seams
@@ -35,10 +36,19 @@ Fourteen projects:
 - `Cursorial.UI.Xaml` — the net10.0 runtime loader (Fork C): `XamlLoader` (`Parse`/`Load`/`Load<T>`/`LoadComponent`),
   `ReflectionXamlMetadata`, the converter ladder, `XamlSchemaContext`, markup-extension handlers + resource
   dictionaries + deferred content/templates. References the frontend + `Cursorial.UI`. See "UI module status".
+- `Cursorial.UI.Bars` — the command-surface suite over one shared `BarCommand`: a `Toolbar` with discrete overflow,
+  a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips
+  (Alt-overlay accelerators), and SuperTips. See "Cursorial.UI.Bars status" below.
+- `Cursorial.UI.Xaml.Generator` — the Fork C X4 Roslyn `IIncrementalGenerator` (symbol-backed parse, CUR1/CUR2 build
+  diagnostics, the AOT-clean emitted metadata provider, typed code-behind, compiled-binding lowering + `x:DataType`).
+- `Cursorial.UI.Themes` — the data-shipped XAML theme overlay (`Default`/`IndigoDusk`) layered over the code-first
+  `CursorialTheme.BuiltIn` backstop.
+- `Cursorial.Shared` — netstandard2.0 markup-metadata attributes (`[ContentProperty]`, `[XmlnsDefinition]`, …) shared
+  by the loader and the generator.
 - `Cursorial.UI.Testing` — the headless test harness (`UITestHost` + `SyntheticTerminalHost` + capability presets);
   the integration substrate for every UI subsystem — no test needs a TTY.
 - `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests`, `Cursorial.Drawing.Tests`, `Cursorial.Animation.Tests`,
-  `Cursorial.UI.Tests`, `Cursorial.UI.Xaml.Tests` — xUnit.
+  `Cursorial.UI.Tests`, `Cursorial.UI.Xaml.Tests`, `Cursorial.UI.Xaml.Generator.Tests`, `Cursorial.UI.Bars.Tests` — xUnit.
 - `Cursorial.Demo` — interactive REPL for hands-on verification. `dotnet run --project Cursorial.Demo` opens a prompt
   with commands: `negotiate` (dump realized capabilities), `read` (stream input events to stdout), `raw` (dump
   stdin bytes verbatim with no parsing), `trace` (live raw bytes + decoded events side-by-side for protocol
@@ -54,8 +64,13 @@ Fourteen projects:
   shrink the terminal while a window overhangs for the WM fit badge — the live P7 proof),
   `rasterbench` (headless-capable scene-raster/compositor/diff benchmark — UI design-doc probe 1), `accesskeys`
   (live access-key gate probe: Alt down/up tracking, negotiated Kitty flags, the requirement-6 gate verdict — UI
-  design-doc probe 3), `help`, `quit`. Each command opens its own raw-mode `TerminalSession` and restores cooked
-  mode before the next prompt.
+  design-doc probe 3), `motion` (Cursorial.UI S5 animation showcase — storyboard/transition/edge-action), `gallery`
+  (the standalone control-gallery showcase), `inspect` (live XAML / element-tree inspector), `help`, `quit`. Each
+  command opens its own raw-mode `TerminalSession` and restores cooked mode before the next prompt.
+- `Cursorial.Gallery` — the standalone XAML-first MVVM control-gallery app (runtime-loaded views, page view-models
+  via implicit DataTemplates); a full app, not a demo command.
+- `Cursorial.Demo.XamlAot` / `Cursorial.Demo.XamlAotStrict` — the NativeAOT publish demos: the reflection loader, and
+  the reflection-free build on the generated metadata provider (the AOT-clean exit gate).
 
 ## UI module status (`Cursorial.UI`)
 
@@ -548,7 +563,8 @@ on a real Kitty terminal (the `(DistinguishesKeyUpDown && ReportsRepeats) || Win
 
 **Post-P9 controls** (the S8 gallery extended; normative spec at `docs/ui-layer-design/control-matrix-p9.md`
 §C10–§C15, tests in `Cursorial.UI.Tests/ControlMatrix/Section23…Section28`; code-first `CursorialTheme.BuiltIn`
-themes — the XAML overlay twins are deferred to the code-first backstop): an **animated indeterminate
+themes, with the XAML overlay twins now shipped in `Cursorial.UI.Themes` (`Default`/`IndigoDusk`) over that
+backstop): an **animated indeterminate
 `ProgressBar`** (the marquee rides a perpetual S5 animation on a normalized `IndeterminatePhase`, §C10);
 **`ComboBox`/`ComboBoxItem`** (the ListBox-in-Popup single-select drop-down, §C12 — introduced
 `Popup.KeepOpenOnAnchorPress` so the anchor owns the open/close toggle, reused by `DatePicker`);
@@ -560,7 +576,7 @@ adversarially audited (each finding refutation-verified through `UITestHost`): t
 + 7 (Calendar) + 3 (DatePicker)** real bugs the green tests missed — see the matrix `CD-P2C-1`/`CD-P2D-1`/`CD-P2E-1`
 audit notes. The control-gallery demo gained `T_ree` and `_Date` tabs.
 
-**Phase 10 in progress** (doc §14 — Fork C X4 generator + S2 compiled bindings; normative specs amended in
+**Phase 10 complete** (doc §14 — Fork C X4 generator + S2 compiled bindings; normative specs amended in
 `binding-matrix.md` BD17/B146–B186 and `xaml-matrix.md` §15). Two halves were planned B2 → X4 → B3:
 
 - **S2 B2 — the compiled-binding runtime: ✅ complete.** `BindingExpressionCore` was extracted from
@@ -613,17 +629,59 @@ audit notes. The control-gallery demo gained `T_ree` and `_Date` tabs.
     the document name scope. An end-to-end test compiles a real `MyView : StackPanel` code-behind against the
     generated partial, instantiates it, and asserts the typed fields are populated. Generator suite 36 green;
     `Cursorial.UI.Xaml.Generator.Tests` is serialized (module-inits mutate the process-global default provider).
-  - **Remaining X4/B3 tail** (not yet built): the `CursorialXaml` MSBuild `.props`/`.targets` + the AOT-publish
-    demo (X4.2/X4.7 — the AOT-clean exit also wants the loader's default-provider path to drop its static
-    `ReflectionXamlMetadata` reference, and AOT publish needs a native toolchain to verify); broader emitter
-    coverage (`x:Static` baking, deferred-content/templates); and **S2 B3** (generator-emitted `CompiledBinding`
-    descriptors + `x:DataType` build-time path diagnostics).
+  - **X4.2/X4.7 + broader coverage + S2 B3 — complete:** the `CursorialXaml` MSBuild `.props`/`.targets`
+    (`Cursorial.UI.Xaml.Generator/build/` — a first-class `.xaml` item → `AdditionalFiles` + `EmbeddedResource`, with
+    `CursorialXamlStrictAot` auto-set under `PublishAot` so the loader's static `ReflectionXamlMetadata` reference is
+    trimmed out); the `Cursorial.Demo.XamlAot` / `Cursorial.Demo.XamlAotStrict` NativeAOT-publish demos (the latter is
+    the reflection-free exit gate on the generated provider); broader emitter coverage (straight-line lowering incl.
+    `x:Static`/`x:Null`, deferred content/templates, Style/ResourceDictionary); and **S2 B3** (generator-lowered
+    typed `CompiledBinding` descriptors + `x:DataType` build-time path diagnostics via `XamlDataTypeScope`).
 
 Recorded P1 gaps: the `BindingOperations.TearDown` leg of `UIElement.TearDown()` **landed at P4** (the S2 sweep half:
 `ValueStore.TearDown()` then `BindingOperations.TearDown(element)`, bottom-up — binding-matrix B108/B166); palette
 theming + capability rewrite and the S7 surface merge into `UIApplication` (P5);
 `TerminalSessionOptions.EmergencyRestoreBytes` Core seam for signal-path alt-screen restore (doc §10.7 — until it
 lands, a signal-killed app restores cooked mode but may leave the shell on the alt screen).
+
+## Cursorial.UI.Bars status (`Cursorial.UI.Bars`)
+
+The command-surface suite (Actipro-*Bars*-style): a **Ribbon, a Toolbar, and menus are three surfaces over one shared
+set of `ICommand`-driven bar controls** — build the controls once, bind the same commands to each surface. Design
+guides at `docs/ui-layer-design/tokyo-night-bars-design-guide.html` (+ `…-terminal-toolbar.html`,
+`…-terminal-ribbon.html`); the eventual showcase is a WYSIWYG Markdown editor (still pending — task #133). Everything
+is whole-cell and dark/light-themed from one dictionary.
+
+- **`Icon` (prerequisite, in `Cursorial.UI.Controls`)** — a capability-tiered icon (`Glyph` Nerd Font → `Image` inline
+  protocol → `Text` emoji/Unicode floor), resolving the highest provided-and-supported tier; `{Icon …}` markup form.
+- **`BarCommand`** — the define-once model (`ICommand` + display metadata: `Text`/`Icon`/`InputGestureText`/
+  `IsCheckable`). Bar controls auto-fill their unset `Content`/`Icon`/gesture from the bound `BarCommand`
+  (`BarCommandSync`), so one declaration drives a toolbar button, a ribbon toggle, and a menu row identically.
+- **Shared bar controls** (`ButtonBase`-derived where it applies) — `BarButton`, `BarToggleButton`, `BarSplitButton`
+  (primary zone + tinted `▾` zone) / `BarPopupButton` (whole-control opener) over the shared `BarDropDownButton`,
+  `BarComboBox`, `BarGallery`, `BarSeparator`, `BarLabel` (access-key caption). Drop-openers carry a per-placement nav
+  model (`DropDownPlacement`: Bottom = ComboBox model — open parks on the face, a 2nd Down enters; Left/Right = MenuItem
+  submenu model — open AND enter; `FocusContentOnOpen` opts a Bottom opener into enter-on-open). Openers are retaining
+  focus scopes so a non-retaining `Toolbar`'s auto-return can't yank focus out of an open dropdown.
+- **`Toolbar`** (`ItemsControl`) — a single row with **discrete overflow**: `ToolbarOverflowPanel` (the items host)
+  re-parents the trailing LIVE controls into a `»` chevron `Popup` band and back as the bar resizes (per-item
+  `OverflowMode`); overflowed drop-openers flip to side placement in the vertical menu. `MiniToolbar` — the
+  right-click floating strip.
+- **`Ribbon`** (`ItemsControl` of `RibbonTab`) — tab strip + `RibbonGroup`s (large/small button sizes, `⋰` dialog
+  launcher); **density collapse** (a too-narrow group demotes to a `[name ▾]` flyout), **contextual tabs** (purple
+  tint, visibility-bound), **Backstage** (full-window File view or a compact File-anchored menu), **Quick Access
+  Toolbar** (an embedded `Toolbar` + customize checklist + trailing collapse), and a **minimizable** band
+  (double-click / pin, float-on-activate). Vertical nav crosses the tab-strip ↔ body boundary (`Ribbon.OnKeyDown`:
+  Down off a header enters the body; Up at body-top climbs to the strip; a collapsed opener is treated as body-top).
+- **KeyTips** (`KeyTip`/`KeyTipExtensions`) — an Alt-overlay accelerator-badge layer with multi-level drill-in
+  (parallel to `AccessKeyManager`, gated on the same negotiated capability), armed via `UIApplication.EnableKeyTips()`.
+  **SuperTips** (`SuperTip`) — rich titled hover tooltips (title + shortcut + KeyTip hops + description + footer) over
+  `ToolTipService`; a described `BarCommand` auto-provisions one.
+- **Theming** — `CursorialBarsTheme` (code-first `ResourceDictionary`) + `BarsThemeKeys` mapping the guide tokens to
+  the Tokyo Night palette, registered into the theme chain via a `[ModuleInitializer]`.
+- **`Cursorial.Gallery`** — the standalone XAML-first MVVM control-gallery app; `GalleryRibbon` self-populates the QAT
+  from its view-model and is the live canary for the Bars surfaces (Bars/Ribbon pages). Tests in
+  `Cursorial.UI.Bars.Tests/` (Toolbar overflow/focus, Ribbon density/minimize/QAT, KeyTips, SuperTips, drop-down focus
+  return) + the `Cursorial.UI.Tests/Gallery` smoke tests.
 
 Modules landed:
 
@@ -749,13 +807,14 @@ with `device.Transform(transformer)` / `device.WithClickSynthesis(options?)` ext
 
 Resize events: `PosixResizeMonitor` (in `Cursorial.Core.Terminal.Stdio`) registers a SIGWINCH handler and pushes a
 `ResizeEvent` into the input device's stream on each signal (plus one at startup with the initial size, via
-`stty size`). Wired into the happy-path `TerminalSession.OpenAsync()`. Windows-side console buffer-size events are
-not yet plumbed — TODO when needed.
+`stty size`). Wired into the happy-path `TerminalSession.OpenAsync()`. Windows console resizes are delivered by
+`WindowsResizeMonitor` (console-API polling, with an XTWINOPS `CSI 18 t` wire-probe fallback for non-console stdout);
+the OS-appropriate `IResizeMonitor` is chosen by a `ResizeMonitor.Create` factory wired into the happy-path session.
 
 `Cursorial.Rendering` (the cell-buffer + diff frame renderer) is described in "Rendering conventions" below.
-Higher-level concerns (widget tree, layout, focus, input routing) are not started; if/when they land they live in
-a separate `Cursorial.UI` library on top of `Cursorial.Rendering` rather than in `Cursorial.Rendering` itself,
-which is meant to be the lowest layer with a TUI abstraction (everything above byte writing).
+Higher-level concerns (widget tree, layout, focus, input routing) live in the `Cursorial.UI` framework (and its
+companions `Cursorial.UI.Xaml` and `Cursorial.UI.Bars`) built on top of `Cursorial.Rendering`, which remains the
+lowest layer with a TUI abstraction (everything above byte writing).
 
 ## Input module conventions (`Cursorial.Core.Input`)
 
@@ -878,9 +937,9 @@ without correct width accounting, any rendering layer above misaligns the moment
 ## Rendering conventions (`Cursorial.Rendering`)
 
 The cell-buffer + diff frame renderer layer. Sits on top of the byte-emitting writers in
-`Cursorial.Core.Output`; assumes nothing about widgets, layout, or focus — those are an explicit
-follow-up library if/when they land. The intent is for `Cursorial.Rendering` to be the lowest layer above the
-byte writers with a TUI abstraction, and for higher-level frameworks to build on it.
+`Cursorial.Core.Output`; assumes nothing about widgets, layout, or focus — those live in the `Cursorial.UI`
+framework built on top of it. `Cursorial.Rendering` is the lowest layer above the byte writers with a TUI
+abstraction, and higher-level frameworks build on it.
 
 - **`Cell`** — readonly record struct carrying `Grapheme` (string? — null/empty means a blank cell rendered as a
   space), `CellKind` (`Single` / `WideLeft` / `WideContinuation`), and `Style`. `default(Cell)` is the canonical
@@ -968,7 +1027,7 @@ Run from the repository root:
 ```bash
 dotnet build              # build the whole solution
 dotnet build -c Release   # release build
-dotnet test               # run all tests (xUnit, across Cursorial.Core.Tests and Cursorial.Rendering.Tests)
+dotnet test               # run all xUnit tests across the solution's eight test projects (Core/Rendering/Drawing/Animation/UI/UI.Bars/UI.Xaml/UI.Xaml.Generator)
 dotnet test --filter "FullyQualifiedName~VtSequenceClassifierTests"   # filter by class
 dotnet test --filter "DisplayName~OscTerminatedByBel"                 # filter by single test
 dotnet test Cursorial.Rendering.Tests                                 # run a single test project

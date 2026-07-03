@@ -51,6 +51,17 @@ public class RibbonGroup : HeaderedItemsControl
     internal BarPopupButton? CollapsedButtonForTests => _collapsedButton;
     internal Panel? CollapsedPopupHostForTests => _collapsedPopupHost;
 
+    /// <summary>The group's hosted bar controls, in document order — the KeyTip L2 targets (keytips-design §6). Valid
+    /// whether they sit inline or in the collapsed flyout (the panel owns the authoritative adopted list).</summary>
+    internal IReadOnlyList<UIElement> KeyTipContainers => _groupPanel?.Containers ?? [];
+
+    /// <summary>The group's ⋰ dialog launcher (a KeyTip L2 Activate target), or null when the group has none.</summary>
+    internal ButtonBase? KeyTipDialogLauncher => _launcher;
+
+    /// <summary>The collapsed-group dropdown opener (a KeyTip L2 DrillPopup when <see cref="Density"/> is
+    /// <see cref="RibbonGroupDensity.Collapsed"/>), or null.</summary>
+    internal BarPopupButton? KeyTipCollapsedButton => _collapsedButton;
+
     /// <summary>The band-assigned density tier (never author-set — the <see cref="RibbonBand"/> owns the width budget).</summary>
     internal RibbonGroupDensity Density => _density;
     internal RibbonGroupDensity DensityForTests => _density;

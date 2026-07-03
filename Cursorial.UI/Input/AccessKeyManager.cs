@@ -171,7 +171,8 @@ public sealed class AccessKeyManager
     {
         _cueSuppressed = false;
         if (_cueActive)
-            ActivateCue(); // re-stamp for the still-held cue (a fresh batch; the roots list is empty after suspend)
+            StampCues(); // re-stamp the still-held cue WITHOUT re-firing CueActivated (which would re-arm the KeyTip
+                         // overlay after a leaf-activation Exit while Alt is still physically held — the Risk-1 re-entry)
     }
 
     /// <summary>The cue behavior derived from the last capability snapshot (the pinned gate formula).</summary>
@@ -390,6 +391,20 @@ public sealed class AccessKeyManager
     /// <returns>Whether the event was consumed (sticky Esc) — the dispatcher returns handled without routing.</returns>
     internal bool OnPreStageKeyDown(KeyEvent key)
     {
+        // KeyTip Esc first-refusal (before stale-Alt inference / sticky-consume). While the overlay is up: back out
+        // ONE level (cue/sticky/Alt untouched), or — at the top level — dismiss the overlay AND its cue. This runs
+        // for physical-Alt-hold too: the real Esc wire carries the Alt bit (ND26), so the stale-Alt inference below
+        // never fires and would otherwise leave the overlay stuck until Alt is released (the audit finding).
+        if (key.Key == Key.Escape && _keyTipController is { IsActive: true } keyTips)
+        {
+            if (keyTips.TryPopLevel())
+                return true;
+
+            _stickyCue = false;
+            ClearCueForAltHeld(); // → DeactivateCue → CueDeactivated → controller.Exit()
+            return true;
+        }
+
         if (_leftAltDown || _rightAltDown)
         {
             if ((key.Modifiers & KeyModifiers.Alt) != 0)

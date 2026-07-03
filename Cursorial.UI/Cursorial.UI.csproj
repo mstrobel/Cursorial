@@ -18,6 +18,9 @@
         <InternalsVisibleTo Include="Cursorial.UI.Testing" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
+        <!-- The first-party Bars library rides privileged engine seams (the KeyTip overlay's Alt-cue hooks +
+             WM surface stack), mirroring the Xaml assembly's grant. Third-party bar libraries stay public-only. -->
+        <InternalsVisibleTo Include="Cursorial.UI.Bars" />
         <InternalsVisibleTo Include="Cursorial.Demo" />
         <InternalsVisibleTo Include="Cursorial.Gallery" />
         <InternalsVisibleTo Include="cursorial-demo" />

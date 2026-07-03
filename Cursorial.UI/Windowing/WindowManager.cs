@@ -289,7 +289,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         {
             // The root never occludes; the KeyTip overlay never occludes either — it is a sparse, screen-sized
             // badge layer, so marking its full footprint an occluder would wrongly crop every inline image beneath
-            // it (occlusion is image-fragment-only; keytips-design §8). Every window/popup/badge does occlude.
+            // it (occlusion is image-fragment-only; keytips-design §8). The accepted tradeoff: an inline image
+            // directly under a badge shows through the amber chip (rare — bar-control images are out of v1 scope).
+            // Every window/popup/badge does occlude.
             var isOccluder = !ReferenceEquals(_surfaces[i], _rootSurface) && !ReferenceEquals(_surfaces[i], _keyTipSurface);
             _surfaces[i].CollectLayers(_layers, surfaceZ: i, isOccluder: isOccluder);
         }
@@ -369,6 +371,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         }
 
         _rootSurface?.Size = newSize;
+        _keyTipSurface?.Size = newSize; // the KeyTip overlay tracks the screen too, or a GROW clips its badges
 
         ReclampWindowsForViewport();
 
@@ -1112,6 +1115,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         ResetCompositor(); // the layer set changed wholesale
         SurfacesChanged?.Invoke();
     }
+
+    /// <summary>Re-arranges the KeyTip overlay surface within the current frame (a no-op when none is showing). The
+    /// controller calls this right after re-anchoring badges in the post-layout hook so a scroll/move that shifts a
+    /// target's screen cell repositions its badge THIS frame — the main layout pass already ran, so without this the
+    /// badge would trail its target by one frame (keytips-design §9). Cheap: a clean overlay re-arranges nothing.</summary>
+    internal void RunKeyTipOverlayLayout() => _keyTipSurface?.RunLayoutPass();
 
     /// <summary>Tears the KeyTip overlay down (idempotent — a no-op when none is showing). Called by the controller's
     /// <c>Exit()</c>.</summary>

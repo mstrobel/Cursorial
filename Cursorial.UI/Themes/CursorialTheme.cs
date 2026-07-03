@@ -149,6 +149,8 @@ public static class CursorialTheme
         // Ribbon: no fill under monochrome — the active tab is marked by the ASCII-heavy underline (TabUnderlinePen).
         noColor[ThemeKeys.RibbonTabStripBrush] = defaultBrush;
         noColor[ThemeKeys.RibbonTabActiveBrush] = defaultBrush;
+        noColor[ThemeKeys.KeyTipBrush] = defaultBrush;
+        noColor[ThemeKeys.KeyTipMatchedBrush] = defaultBrush;
         // A contextual tab has no purple to lean on under mono; its only cue is the underline — authored ASCII-heavy
         // (visually identical to the accent one here) since RibbonTabActiveBrush = defaultBrush leaves nothing else.
         noColor[ThemeKeys.RibbonContextualFillBrush] = defaultBrush;
@@ -373,6 +375,8 @@ public static class CursorialTheme
         rgb[ThemeKeys.RibbonBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#dedee3"));
         rgb[ThemeKeys.RibbonTabStripBrush] = new SolidColorBrush(dark ? Color.FromHex("#1b1e2e") : Color.FromHex("#d2d3da"));
         rgb[ThemeKeys.RibbonTabActiveBrush] = new SolidColorBrush(dark ? Color.FromHex("#15161e") : Color.FromHex("#fdfdfe"));
+        rgb[ThemeKeys.KeyTipBrush] = new SolidColorBrush(dark ? Color.FromHex("#e0af68") : Color.FromHex("#8f5e15")); // --keytip amber
+        rgb[ThemeKeys.KeyTipMatchedBrush] = new SolidColorBrush(dark ? Color.FromHex("#9d7b3f") : Color.FromHex("#b8935a")); // dimmed matched ink
         rgb[ThemeKeys.RibbonContextualFillBrush] = new SolidColorBrush(dark ? Color.FromHex("#2a2440") : Color.FromHex("#e0d8ef"));
         rgb[ThemeKeys.RibbonContextualUnderlinePen] = new Pen(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e")) { Weight = StrokeWeight.Heavy };
 
@@ -430,6 +434,8 @@ public static class CursorialTheme
         // Ansi16 indices or they collapse to the NoColor floor (no fill) on 16-color terminals.
         ansi16[ThemeKeys.RibbonTabStripBrush] = Palette(dark ? 0 : 7);   // recess, tracks Surface/Panel
         ansi16[ThemeKeys.RibbonTabActiveBrush] = Palette(dark ? 0 : 15); // dropped active fill, tracks the band
+        ansi16[ThemeKeys.KeyTipBrush] = Palette(3);                      // amber → yellow
+        ansi16[ThemeKeys.KeyTipMatchedBrush] = Palette(8);              // dimmed matched → bright-black
         ansi16[ThemeKeys.RibbonContextualFillBrush] = Palette(dark ? 0 : 7);          // tinted well, tracks the recess
         ansi16[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)13 : (byte)5)); // purple
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;

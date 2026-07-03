@@ -96,6 +96,12 @@ public sealed partial class UIApplication : IAsyncDisposable
     internal IStyleFrameHooks? StyleHooks;
     internal IAnimationFrameDriver? AnimationDriver;
 
+    // The Cursorial.UI.Bars KeyTip overlay's post-layout hook (keytips-design §9) — null unless a bars app called
+    // UIApplication.EnableKeyTips(). The frame loop calls CompletePendingLayout() after layout so badges re-anchor
+    // and any parked next level builds. Kept as the narrow IKeyTipLayoutHook interface so Cursorial.UI needn't
+    // reference Bars.
+    internal IKeyTipLayoutHook? _keyTipController;
+
     /// <summary>Fork B's matcher + activation engine (P3) — the production styling instance.</summary>
     internal StyleEngine StyleEngineInternal { get; }
 

@@ -376,6 +376,10 @@ public static class ThemeKeys
     public const string RibbonTabStripBrush = "Theme.RibbonTabStripBrush";
     /// <summary>The active ribbon tab's dropped fill (--tab-active).</summary>
     public const string RibbonTabActiveBrush = "Theme.RibbonTabActiveBrush";
+    /// <summary>The KeyTip badge fill (--keytip — the amber Alt-overlay accelerator badge background).</summary>
+    public const string KeyTipBrush = "Theme.KeyTipBrush";
+    /// <summary>The dimmed ink for a KeyTip badge's already-matched leading letters (multi-letter prefix highlight).</summary>
+    public const string KeyTipMatchedBrush = "Theme.KeyTipMatchedBrush";
     /// <summary>A contextual ribbon tab's tinted resting well (--ctx-fill — the purple recess an inactive contextual
     /// tab sits in; the active one drops into <see cref="RibbonTabActiveBrush"/> but keeps its purple ink).</summary>
     public const string RibbonContextualFillBrush = "Theme.RibbonContextualFillBrush";

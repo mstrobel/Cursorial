@@ -125,11 +125,53 @@ public sealed class AccessKeyManager
     private bool _bracketUnobserved;
     private IMainMenu? _mainMenu;
 
+    // The KeyTip overlay seam (Cursorial.UI.Bars). While it is active, the inline access-key underline is SUPPRESSED
+    // (_cueSuppressed) so badges are the sole cue — the KeyTip controller calls SuspendCue()/ResumeCue(). CueActivated /
+    // CueDeactivated arm/disarm the controller off every cue-on/cue-off path (physical Alt-hold, Alt-tap, F10, and all
+    // the exits — pointer, terminal focus-out, second tap, renegotiate — since they all route through Activate/Deactivate).
+    private IKeyTipController? _keyTipController;
+    private bool _cueSuppressed;
+
     internal AccessKeyManager(UIDispatcher dispatcher, FocusManager focus, InteractionStateService interactions)
     {
         _dispatcher = dispatcher;
         _focus = focus;
         _interactions = interactions;
+    }
+
+    /// <summary>The KeyTip overlay controller (Cursorial.UI.Bars) — null unless a bars app called
+    /// <c>UIApplication.EnableKeyTips()</c>. Arm/disarm ride <see cref="CueActivated"/>/<see cref="CueDeactivated"/>.</summary>
+    internal IKeyTipController? KeyTipController { get => _keyTipController; set => _keyTipController = value; }
+
+    /// <summary>Fired when the access-key cue turns on (any path). The KeyTip controller enters on this (gated on
+    /// <see cref="AccessKeyMode.AltHeld"/> + a registered surface).</summary>
+    internal event Action? CueActivated;
+
+    /// <summary>Fired when the cue turns off (any path — chorded Alt release, second tap, Esc, pointer, terminal
+    /// focus-out, renegotiate). The KeyTip controller exits on this — one subscription covers every exit condition.</summary>
+    internal event Action? CueDeactivated;
+
+    /// <summary>Suspend the inline underline cue (the KeyTip controller calls this on enter): tears down any stamped
+    /// cue roots and blocks further stamps, so amber badges are the sole cue while KeyTips is active.</summary>
+    internal void SuspendCue()
+    {
+        _cueSuppressed = true;
+        if (_cueRoots.Count == 0)
+            return;
+
+        using var batch = _interactions.BeginUpdate();
+        for (var i = 0; i < _cueRoots.Count; i++)
+            _cueRoots[i].SetInteractionStateInternal(InteractionState.AccessKeyCue, false);
+        _cueRoots.Clear();
+    }
+
+    /// <summary>Resume the inline underline cue (the KeyTip controller calls this on exit): re-stamps if the cue is
+    /// still logically on (Alt still held). In practice KeyTip exit coincides with cue-off, so this is usually a no-op.</summary>
+    internal void ResumeCue()
+    {
+        _cueSuppressed = false;
+        if (_cueActive)
+            ActivateCue(); // re-stamp for the still-held cue (a fresh batch; the roots list is empty after suspend)
     }
 
     /// <summary>The cue behavior derived from the last capability snapshot (the pinned gate formula).</summary>
@@ -682,7 +724,14 @@ public sealed class AccessKeyManager
     private void ActivateCue()
     {
         _cueActive = true;
+        StampCues();
+        CueActivated?.Invoke(); // arm the KeyTip controller (no-op when none installed / not in AltHeld mode)
+    }
 
+    // The stamp leg, shared by ActivateCue and ResumeCue — ResumeCue re-stamps for a still-held cue WITHOUT re-firing
+    // CueActivated (which would wrongly re-arm the KeyTip overlay after an Esc-at-top exit while Alt is still held).
+    private void StampCues()
+    {
         using var batch = _interactions.BeginUpdate();
 
         if (_focus.ActiveRoot is {} windowRoot)
@@ -704,15 +753,15 @@ public sealed class AccessKeyManager
     {
         _cueActive = false;
 
-        if (_cueRoots.Count == 0)
-            return;
+        if (_cueRoots.Count > 0)
+        {
+            using var batch = _interactions.BeginUpdate();
+            for (var i = 0; i < _cueRoots.Count; i++)
+                _cueRoots[i].SetInteractionStateInternal(InteractionState.AccessKeyCue, false);
+            _cueRoots.Clear();
+        }
 
-        using var batch = _interactions.BeginUpdate();
-
-        for (var i = 0; i < _cueRoots.Count; i++)
-            _cueRoots[i].SetInteractionStateInternal(InteractionState.AccessKeyCue, false);
-
-        _cueRoots.Clear();
+        CueDeactivated?.Invoke(); // exit the KeyTip controller — fires even when suppression left _cueRoots empty
     }
 
     private void ClearCueForAltHeld()
@@ -723,7 +772,7 @@ public sealed class AccessKeyManager
 
     private void StampCueRoot(UIElement root)
     {
-        if (_cueRoots.Contains(root))
+        if (_cueSuppressed || _cueRoots.Contains(root)) // KeyTips owns the cue while suppressed — no inline underline
             return;
 
         _cueRoots.Add(root);

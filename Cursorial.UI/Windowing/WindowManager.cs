@@ -62,6 +62,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private string? _lastEmittedTitle;                    // the last title mirrored to the terminal (OSC 2 change detector)
     private TopLevelSurface? _fitBadgeSurface;            // the WM-owned fit-to-viewport badge (top-right; §8.7)
     private bool _fitBadgeVisible;
+    private TopLevelSurface? _keyTipSurface;              // the Bars KeyTip badge overlay (topmost; keytips-design §8)
 
     /// <summary>
     /// Creates the window manager. <paramref name="guard"/> is the user-code funnel routed to every
@@ -285,7 +286,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         _layers.Clear();
 
         for (var i = 0; i < _surfaces.Count; i++)
-            _surfaces[i].CollectLayers(_layers, surfaceZ: i, isOccluder: !ReferenceEquals(_surfaces[i], _rootSurface));
+        {
+            // The root never occludes; the KeyTip overlay never occludes either — it is a sparse, screen-sized
+            // badge layer, so marking its full footprint an occluder would wrongly crop every inline image beneath
+            // it (occlusion is image-fragment-only; keytips-design §8). Every window/popup/badge does occlude.
+            var isOccluder = !ReferenceEquals(_surfaces[i], _rootSurface) && !ReferenceEquals(_surfaces[i], _keyTipSurface);
+            _surfaces[i].CollectLayers(_layers, surfaceZ: i, isOccluder: isOccluder);
+        }
 
         // Composite unconditionally — even with zero surfaces. An empty layer set is the signal that the surface
         // stack just emptied (null root / last surface closed): the compositor's full-reset path then erases any
@@ -830,6 +837,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         if (_fitBadgeSurface is {} badge) // the fit badge sits above everything (§8.7)
             _surfaces.Add(badge);
+
+        if (_keyTipSurface is {} keyTips) // the KeyTip overlay is topmost — badges paint over any open dropdown (keytips-design §8)
+            _surfaces.Add(keyTips);
     }
 
     // ── Popup hosting (P7-W4: light-dismiss surfaces in the band above every window) ──────────────────
@@ -1079,6 +1089,43 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         root.SetResourceReference(Border.BackgroundProperty, ThemeKeys.InfoBrush);
 
         return root;
+    }
+
+    // ── KeyTip overlay (Cursorial.UI.Bars; keytips-design §8: a dedicated topmost hit-transparent surface) ──────
+
+    /// <summary>Shows <paramref name="badgeRoot"/> (the Bars <c>KeyTipLayer</c>) on a dedicated surface at the top of
+    /// the stack, above windows AND popups so badges paint over an open dropdown (keytips-design §8). The surface is
+    /// hit-test transparent (mouse never routes to it) and screen-sized; the layer places each badge by absolute
+    /// screen coordinates. Replaces any existing overlay. Called by the KeyTip controller's <c>Enter()</c>.</summary>
+    internal void ShowKeyTipOverlay(UIElement badgeRoot)
+    {
+        ArgumentNullException.ThrowIfNull(badgeRoot);
+
+        _keyTipSurface?.Detach();
+        _keyTipSurface = new TopLevelSurface(badgeRoot, _scenePool, _capabilities, _guard)
+                         {
+                             IsHitTestTransparent = true,
+                             Size = _viewport
+                         };
+
+        RebuildSurfaceStack();
+        ResetCompositor(); // the layer set changed wholesale
+        SurfacesChanged?.Invoke();
+    }
+
+    /// <summary>Tears the KeyTip overlay down (idempotent — a no-op when none is showing). Called by the controller's
+    /// <c>Exit()</c>.</summary>
+    internal void HideKeyTipOverlay()
+    {
+        if (_keyTipSurface is not {} surface)
+            return;
+
+        surface.Detach();
+        _keyTipSurface = null;
+
+        RebuildSurfaceStack();
+        ResetCompositor();
+        SurfacesChanged?.Invoke();
     }
 
     // ── Renegotiation leg (UIApplication calls; mirrors the single-root render system) ───────────────

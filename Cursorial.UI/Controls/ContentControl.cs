@@ -126,6 +126,10 @@ public class ContentControl : Control
     protected virtual AccessText GetAccessText()
         => Content is string s && ContentParsesAccessKeyLiterals() ? AccessText.Parse(s) : default;
 
+    /// <summary>Internal reach to <see cref="GetAccessText"/> for the KeyTip derivation ladder (Cursorial.UI.Bars) —
+    /// a control's KeyTip badge letter defaults to its access-key mnemonic.</summary>
+    internal AccessText GetAccessTextInternal() => GetAccessText();
+
     /// <summary>Whether <see cref="ContentProperty"/> folds access-key literals for this control's runtime type.</summary>
     protected bool ContentParsesAccessKeyLiterals()
         => ContentProperty.GetMetadata(GetType()).ParsesAccessKeyLiterals == true;

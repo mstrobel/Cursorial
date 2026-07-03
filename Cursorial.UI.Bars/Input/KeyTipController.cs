@@ -338,14 +338,19 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             if (entry.Badge is not { } badge)
                 continue;
 
-            var onLiveSurface = entry.Target.IsEffectivelyVisible
-                                && (_app.WindowManager is not { } wm || wm.SurfaceForElement(entry.Target) is not null);
+            // The target must be visible AND on a live, NON-popup surface. v1 badges only the root/window bar
+            // surfaces (a ribbon/toolbar/menu bar); it does not drill INTO popups, so a target that has moved into a
+            // popup — an OPEN overflow menu / dropdown / submenu — is not badged. (The single overlay sits just above
+            // the root, so a popup-surface badge would render BENEATH its own translucent menu and bleed through; the
+            // proper fix for v2 popup-drilling is a per-surface badge layer positioned above each target's surface.)
+            var onBadgeableSurface = entry.Target.IsEffectivelyVisible
+                                     && (_app.WindowManager is not { } wm || wm.SurfaceForElement(entry.Target) is { IsPopup: false });
 
             var (anchorColumn, anchorRow) = AnchorCell(entry);
             var (column, row) = entry.Target.TranslateToScreen(anchorColumn, anchorRow);
             var onScreen = column >= 0 && row >= 0 && column < viewport.Columns && row < viewport.Rows;
 
-            var show = !entry.Hidden && onLiveSurface && onScreen;
+            var show = !entry.Hidden && onBadgeableSurface && onScreen;
             badge.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             if (!show)
                 continue;

@@ -29,6 +29,14 @@ public class BarButton : ButtonBase
     static BarButton()
     {
         Control.ThemeProperty.OverrideDefaultValue<BarButton>(CursorialBarsTheme.BarButtonStyle());
+
+        // :has-icon marks a bar control carrying an Icon (the shared IconProperty — AddOwner'd by the toggle/dropdown
+        // buttons, so this one registration covers them all). The ribbon density Compact cascade drops the label to
+        // icon-only ONLY for :has-icon controls (a label-only button keeps its label). Registered HERE, in the bar-
+        // button static ctor, so it is live before any Icon is set — the PseudoClassMapping is change-only, and a
+        // control's Icon is often set (initializer / BarCommand auto-fill) before a Ribbon is ever constructed.
+        PseudoClassMapping.Register<UIElement, object?>(
+            IconProperty, static icon => icon is not null ? ":has-icon" : null, ":has-icon");
     }
 
     /// <inheritdoc cref="IconProperty"/>

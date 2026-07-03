@@ -30,7 +30,31 @@ public class RibbonGroup : HeaderedItemsControl
     private UIElement? _separator;
     private bool _isLastInBand;
 
+    private RibbonGroupDensity _density;
+    private int _naturalWidthNormal; // frozen last-known Normal width (the band's fold input; see MeasureOverride)
+
     internal ButtonBase? DialogLauncherForTests => _launcher;
+
+    /// <summary>The band-assigned density tier (never author-set — the <see cref="RibbonBand"/> owns the width budget).</summary>
+    internal RibbonGroupDensity Density => _density;
+    internal RibbonGroupDensity DensityForTests => _density;
+
+    /// <summary>The group's last-known Normal (full) width, frozen while at <see cref="RibbonGroupDensity.Normal"/> so
+    /// the band can decide whether promoting the group back to Normal fits even while it is demoted.</summary>
+    internal int NaturalWidthNormal => _naturalWidthNormal;
+
+    // Called by RibbonBand's fold to assign the group's density tier. Guarded no-op on a stable value (SetIsLastInBand
+    // precedent). Fans the inherited COMPACT signal to every hosted control (Compact AND Collapsed force the small
+    // inline face) and self-stamps :density-collapsed (the Collapsed group-dropdown swap lands with the tier).
+    internal void SetDensity(RibbonGroupDensity value)
+    {
+        if (_density == value)
+            return;
+        _density = value;
+        Ribbon.SetIsDensityCompact(this, value != RibbonGroupDensity.Normal);
+        PseudoClasses.Set(":density-collapsed", value == RibbonGroupDensity.Collapsed);
+        InvalidateMeasure();
+    }
 
     static RibbonGroup()
     {
@@ -77,7 +101,11 @@ public class RibbonGroup : HeaderedItemsControl
     protected override Size MeasureOverride(Size availableSize)
     {
         ApplySeparatorVisibility(); // idempotent; the separator is this group's own template part
-        return base.MeasureOverride(availableSize);
+        var size = base.MeasureOverride(availableSize);
+        if (_density == RibbonGroupDensity.Normal)
+            _naturalWidthNormal = size.Columns; // freeze the last-known Normal width (a demoted group reports a shrunk
+                                                // width, so only the Normal pass is a trustworthy full-width sample)
+        return size;
     }
 
     /// <inheritdoc/>

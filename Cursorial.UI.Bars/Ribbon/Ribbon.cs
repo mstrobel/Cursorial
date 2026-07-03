@@ -23,6 +23,22 @@ public class Ribbon : TabControl
         UIProperty.RegisterAttached<Ribbon, UIElement, RibbonButtonSize>(
             "ButtonSize", defaultValue: RibbonButtonSize.Medium, inherits: true);
 
+    /// <summary>The inherited COMPACT-density signal a group fans to its hosted controls under the band's fold. A group
+    /// at <see cref="RibbonGroupDensity.Compact"/> writes <c>true</c>; it inherits to every child bar control and stamps
+    /// <c>:density-compact</c> — a per-control pseudo-class ORTHOGONAL to <c>:size-large</c> (it never writes
+    /// <see cref="ButtonSizeProperty"/>, so an authored <c>Large</c> face restores byte-identically when the band
+    /// widens). Framework-set only (the band drives it); not for app authors.</summary>
+    public static readonly AttachedProperty<bool> IsDensityCompactProperty =
+        UIProperty.RegisterAttached<Ribbon, UIElement, bool>("IsDensityCompact", defaultValue: false, inherits: true);
+
+    /// <summary>The DEEPEST density tier a group may be demoted to under the band's fold (a per-group author cap — the
+    /// ribbon analog of <c>ToolbarOverflowMode.Never</c>). Default <see cref="RibbonGroupDensity.Collapsed"/> (fully
+    /// collapsible); set <see cref="RibbonGroupDensity.Compact"/> to forbid the dropdown, or
+    /// <see cref="RibbonGroupDensity.Normal"/> to pin a signature group at full size (never demotes). NOT inherited.</summary>
+    public static readonly AttachedProperty<RibbonGroupDensity> MinDensityProperty =
+        UIProperty.RegisterAttached<Ribbon, RibbonGroup, RibbonGroupDensity>(
+            "MinDensity", defaultValue: RibbonGroupDensity.Collapsed);
+
     /// <summary>Raised (bubbling) when the special File tab is invoked — the app opens its Backstage/File view. In P2
     /// the ribbon leaves the caption row and Backstage to the app; this is the hook.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> BackstageRequestedEvent =
@@ -110,6 +126,15 @@ public class Ribbon : TabControl
         PseudoClassMapping.Register<UIElement, RibbonButtonSize>(
             ButtonSizeProperty, ClassifySize, ":size-large", ":size-small");
 
+        // :density-compact fans the band's Compact demotion out to every hosted control (inherited signal → per-control
+        // pseudo-class). Orthogonal to :size-large — the BarItemTemplate demotes the large face under it by document
+        // order WITHOUT touching ButtonSize, so an authored Large face restores exactly when the band widens (false ⇒ no
+        // class ⇒ no change-only seeding needed, the Medium precedent).
+        PseudoClassMapping.Register<UIElement, bool>(
+            IsDensityCompactProperty, static c => c ? ":density-compact" : null);
+        // (:has-icon — consumed by the Compact cascade — is registered in BarButton's static ctor so it is live before
+        //  any Icon is set, since the mapping is change-only and buttons are often built before a Ribbon exists.)
+
         // :qat-below flips which QAT host the template shows (AboveRibbon ⇒ no class); the generator re-points to the
         // now-visible toolbar in OnQuickAccessPlacementChanged.
         PseudoClassMapping.Register<Ribbon, RibbonQuickAccessPlacement>(
@@ -190,6 +215,37 @@ public class Ribbon : TabControl
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(ButtonSizeProperty, value);
+    }
+
+    /// <summary>Reads the inherited compact-density signal on <paramref name="element"/> (<see cref="IsDensityCompactProperty"/>).</summary>
+    public static bool GetIsDensityCompact(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(IsDensityCompactProperty);
+    }
+
+    /// <summary>Sets the inherited compact-density signal on <paramref name="element"/> (framework-set by the band's fold).</summary>
+    public static void SetIsDensityCompact(UIElement element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(IsDensityCompactProperty, value);
+    }
+
+    /// <summary>Reads the per-group density floor (<see cref="MinDensityProperty"/>) — the deepest tier the band may
+    /// demote the group to.</summary>
+    public static RibbonGroupDensity GetMinDensity(RibbonGroup group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        return group.GetValue(MinDensityProperty);
+    }
+
+    /// <summary>Sets the per-group density floor: <see cref="RibbonGroupDensity.Normal"/> pins it full-size,
+    /// <see cref="RibbonGroupDensity.Compact"/> forbids the dropdown, <see cref="RibbonGroupDensity.Collapsed"/>
+    /// (default) allows full collapse.</summary>
+    public static void SetMinDensity(RibbonGroup group, RibbonGroupDensity value)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        group.SetValue(MinDensityProperty, value);
     }
 
     /// <inheritdoc/>

@@ -81,6 +81,20 @@ internal static class CursorialBarsTheme
                     .Set(UIElement.VisibilityProperty, Visibility.Visible),
                 new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartSmallMediumFace))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+
+                // Density Compact (the band's inherited :density-compact signal): demote EVERY control to the compact
+                // inline row, overriding :size-large. These two rules are equal-specificity to the :size-large rules
+                // above (1 pseudo + 1 /template/ name), so they win by DOCUMENT ORDER (declared later) — ButtonSize is
+                // never touched, so an authored Large face restores byte-identically when the band widens.
+                new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name(PartLargeFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name(PartSmallMediumFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                // …and drop the label to icon-only ONLY for controls that HAVE an icon (:has-icon, 2 pseudo-classes ⇒
+                // higher specificity, always wins). A label-only button keeps its label under Compact instead of
+                // blanking out — the design's "don't collapse label-only buttons" smarts.
+                new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartMediumLabel))
+                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
             },
         });
         return border;

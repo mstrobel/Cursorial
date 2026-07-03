@@ -34,21 +34,22 @@ internal sealed class XamlSymbolResolver
 
     private readonly Compilation _compilation;
     private readonly Dictionary<(string, string), INamedTypeSymbol?> _cache = new();
-    private string[]? _defaultUiNamespaces;
+    private Dictionary<string, List<string>>? _namespaceMap;
 
     public XamlSymbolResolver(Compilation compilation) => _compilation = compilation;
 
     /// <summary>
-    /// The CLR namespaces the default UI xmlns probes — DISCOVERED from <c>[assembly: XmlnsDefinition]</c>
-    /// declarations on the compilation's own + referenced assemblies (the build-time analog of the loader's
-    /// <c>XamlSchemaContext</c> discovery; the dual-run gate catches any drift). Matched on the attribute's simple
-    /// name, purely from symbols — <c>Cursorial.UI</c> is never loaded into the compiler.
+    /// The xmlns URI → CLR namespaces map, DISCOVERED from <c>[assembly: XmlnsDefinition]</c> declarations on the
+    /// compilation's own + referenced assemblies (the build-time analog of the loader's <c>XamlSchemaContext</c>
+    /// discovery; the dual-run gate catches any drift) — keyed by ANY URI, so a library that ships its own xmlns URI
+    /// resolves the same as the default one. Matched on the attribute's simple name, purely from symbols —
+    /// <c>Cursorial.UI</c> is never loaded into the compiler.
     /// </summary>
-    private string[] DefaultUiNamespaces => _defaultUiNamespaces ??= DiscoverDefaultUiNamespaces();
+    private Dictionary<string, List<string>> NamespaceMap => _namespaceMap ??= DiscoverNamespaceMap();
 
-    private string[] DiscoverDefaultUiNamespaces()
+    private Dictionary<string, List<string>> DiscoverNamespaceMap()
     {
-        var namespaces = new List<string>();
+        var map = new Dictionary<string, List<string>>(System.StringComparer.Ordinal);
 
         void Scan(IAssemblySymbol assembly)
         {
@@ -56,10 +57,15 @@ internal sealed class XamlSymbolResolver
             {
                 if (attribute.AttributeClass?.Name != "XmlnsDefinitionAttribute" || attribute.ConstructorArguments.Length < 2)
                     continue;
-                if (attribute.ConstructorArguments[0].Value as string != CursorialUiNamespace)
+                if (attribute.ConstructorArguments[0].Value is not string uri || uri.Length == 0)
                     continue;
-                if (attribute.ConstructorArguments[1].Value is string clrNamespace && clrNamespace.Length > 0 && !namespaces.Contains(clrNamespace))
-                    namespaces.Add(clrNamespace);
+                if (attribute.ConstructorArguments[1].Value is string clrNamespace && clrNamespace.Length > 0)
+                {
+                    if (!map.TryGetValue(uri, out var list))
+                        map[uri] = list = new List<string>();
+                    if (!list.Contains(clrNamespace))
+                        list.Add(clrNamespace);
+                }
             }
         }
 
@@ -67,7 +73,7 @@ internal sealed class XamlSymbolResolver
         foreach (var referenced in _compilation.SourceModule.ReferencedAssemblySymbols)
             Scan(referenced);
 
-        return namespaces.ToArray();
+        return map;
     }
 
     /// <summary>
@@ -126,8 +132,9 @@ internal sealed class XamlSymbolResolver
     /// <summary>The CLR namespaces an xmlns probes, most-specific first.</summary>
     public IEnumerable<string> CandidateNamespaces(string xmlNamespace)
     {
-        if (string.Equals(xmlNamespace, CursorialUiNamespace, System.StringComparison.Ordinal))
-            return DefaultUiNamespaces;
+        // Any URI declared via [assembly: XmlnsDefinition] (the default Cursorial URI is just one such key).
+        if (NamespaceMap.TryGetValue(xmlNamespace, out var mapped))
+            return mapped;
 
         if (xmlNamespace.StartsWith(UsingPrefix, System.StringComparison.Ordinal))
             return [xmlNamespace.Substring(UsingPrefix.Length).Trim()];

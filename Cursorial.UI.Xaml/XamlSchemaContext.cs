@@ -24,7 +24,11 @@ public sealed class XamlSchemaContext
     // so a List<T>.Add concurrent with an in-flight enumeration would corrupt resolution. The critical
     // sections are tiny and registration is rare, so a single monitor is the right tool.
     private readonly object _gate = new();
-    private readonly List<string> _defaultClrNamespaces;
+    // xmlns URI → the CLR namespaces mapped to it by [assembly: XmlnsDefinition] across the seed + registered
+    // assemblies. The default https://cursorial.dev/ui URI is just one key; a library (or app) that declares its own
+    // URI (e.g. https://myapp.dev/controls) resolves the same way (WPF/Avalonia xmlns-definition parity), not only
+    // via clr-namespace:/using:.
+    private readonly Dictionary<string, List<string>> _namespaceMap = new(StringComparer.Ordinal);
     private readonly List<Assembly> _defaultAssemblies;
     private readonly List<Assembly> _additionalAssemblies = [];
 
@@ -46,28 +50,36 @@ public sealed class XamlSchemaContext
             typeof(MarkupExtension).Assembly                // Cursorial.UI.Xaml — only its Markup namespace ({Icon …})
         ];
 
-        _defaultClrNamespaces = [];
         foreach (var assembly in _defaultAssemblies)
-            DiscoverDefaultNamespaces(assembly, _defaultClrNamespaces);
+            DiscoverNamespaces(assembly, _namespaceMap);
     }
 
     /// <summary>
-    /// Adds to <paramref name="into"/> every CLR namespace the assembly maps to the default Cursorial UI xmlns via
-    /// <c>[assembly: XmlnsDefinition]</c>. Matched on the attribute's SIMPLE NAME (the <c>Cursorial.Shared</c>
-    /// markup-attribute pattern — an app may use this attribute or any equivalently named one), read through
-    /// <see cref="CustomAttributeData"/> so no compile-time reference to the attribute type is needed.
+    /// Adds to <paramref name="map"/> every <c>(xmlns URI → CLR namespace)</c> pair the assembly declares via
+    /// <c>[assembly: XmlnsDefinition]</c> — for ANY URI, not just the default Cursorial one. Matched on the
+    /// attribute's SIMPLE NAME (the <c>Cursorial.Shared</c> markup-attribute pattern — an app may use this attribute
+    /// or any equivalently named one), read through <see cref="CustomAttributeData"/> so no compile-time reference to
+    /// the attribute type is needed.
     /// </summary>
-    private static void DiscoverDefaultNamespaces(Assembly assembly, List<string> into)
+    private static void DiscoverNamespaces(Assembly assembly, Dictionary<string, List<string>> map)
     {
         foreach (var data in SafeGetCustomAttributesData(assembly))
         {
             if (data.AttributeType.Name != "XmlnsDefinitionAttribute" || data.ConstructorArguments.Count < 2)
                 continue;
-            if (data.ConstructorArguments[0].Value as string != CursorialUiNamespace)
+            if (data.ConstructorArguments[0].Value is not string uri || uri.Length == 0)
                 continue;
-            if (data.ConstructorArguments[1].Value is string clrNs && clrNs.Length > 0 && !into.Contains(clrNs))
-                into.Add(clrNs);
+            if (data.ConstructorArguments[1].Value is string clrNs && clrNs.Length > 0)
+                AddNamespace(map, uri, clrNs);
         }
+    }
+
+    private static void AddNamespace(Dictionary<string, List<string>> map, string xmlNamespace, string clrNamespace)
+    {
+        if (!map.TryGetValue(xmlNamespace, out var list))
+            map[xmlNamespace] = list = [];
+        if (!list.Contains(clrNamespace))
+            list.Add(clrNamespace);
     }
 
     private static IList<CustomAttributeData> SafeGetCustomAttributesData(Assembly assembly)
@@ -95,9 +107,10 @@ public sealed class XamlSchemaContext
             if (!_additionalAssemblies.Contains(assembly))
                 _additionalAssemblies.Add(assembly);
 
-            // Auto-extend the default map from the assembly's own [assembly: XmlnsDefinition] declarations, so an app
-            // assembly's unprefixed types resolve without a separate RegisterDefaultNamespace call (#108).
-            DiscoverDefaultNamespaces(assembly, _defaultClrNamespaces);
+            // Auto-extend the map from the assembly's own [assembly: XmlnsDefinition] declarations (every URI it
+            // declares), so an app assembly's unprefixed types resolve without a separate RegisterDefaultNamespace
+            // call (#108), and a library that ships its own xmlns URI becomes resolvable once its assembly is registered.
+            DiscoverNamespaces(assembly, _namespaceMap);
         }
     }
 
@@ -121,17 +134,14 @@ public sealed class XamlSchemaContext
     {
         ArgumentException.ThrowIfNullOrEmpty(clrNamespace);
         lock (_gate)
-        {
-            if (!_defaultClrNamespaces.Contains(clrNamespace))
-                _defaultClrNamespaces.Add(clrNamespace);
-        }
+            AddNamespace(_namespaceMap, CursorialUiNamespace, clrNamespace);
     }
 
     /// <summary>The CLR namespaces mapped to an xmlns URI (for did-you-mean enumeration).</summary>
     public IReadOnlyList<string> GetClrNamespaces(string xmlNamespace)
     {
-        if (string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
-            return SnapshotClrNamespaces();
+        if (SnapshotNamespaces(xmlNamespace) is { Count: > 0 } mapped)
+            return mapped;
         if (TryDecodeClrNamespace(xmlNamespace, out var clrNs, out _))
             return [clrNs];
         return [];
@@ -155,8 +165,9 @@ public sealed class XamlSchemaContext
         if (string.Equals(xmlNamespace, IntrinsicsNamespace, StringComparison.Ordinal) && BuiltInType(localName) is { } builtin)
             return builtin;
 
-        if (string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
-            return ResolveInNamespaces(localName, SnapshotClrNamespaces(), AllAssemblies(), out ambiguous);
+        // Any URI declared via [assembly: XmlnsDefinition] (the default Cursorial URI is just one such key).
+        if (SnapshotNamespaces(xmlNamespace) is { Count: > 0 } mapped)
+            return ResolveInNamespaces(localName, mapped, AllAssemblies(), out ambiguous);
 
         return null;
     }
@@ -198,10 +209,10 @@ public sealed class XamlSchemaContext
     /// <summary>The known XAML-visible type names in an xmlns URI (Levenshtein did-you-mean source).</summary>
     public string[] GetKnownTypeNames(string xmlNamespace)
     {
-        if (!string.Equals(xmlNamespace, CursorialUiNamespace, StringComparison.Ordinal))
+        var clrNamespaces = SnapshotNamespaces(xmlNamespace);
+        if (clrNamespaces.Count == 0)
             return [];
 
-        var clrNamespaces = SnapshotClrNamespaces();
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var asm in AllAssemblies())
         {
@@ -243,10 +254,10 @@ public sealed class XamlSchemaContext
     // Snapshots the registration lists under the gate so callers iterate a stable copy after the
     // monitor is released — registration mutates these lists and reflection (the slow part) must not
     // hold the lock.
-    private List<string> SnapshotClrNamespaces()
+    private List<string> SnapshotNamespaces(string xmlNamespace)
     {
         lock (_gate)
-            return [.._defaultClrNamespaces];
+            return _namespaceMap.TryGetValue(xmlNamespace, out var list) ? [..list] : [];
     }
 
     private IReadOnlyList<Assembly> AllAssemblies()

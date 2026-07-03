@@ -1,5 +1,7 @@
 using Cursorial.UI.Xaml.Generator;
 
+using Microsoft.CodeAnalysis.CSharp;
+
 namespace Cursorial.Tests.UI.Xaml.Generator;
 
 /// <summary>
@@ -59,5 +61,26 @@ public class XamlSymbolResolverTests
         var resolver = Resolver();
         var button = resolver.Resolve("using:Cursorial.UI.Controls", "Button", out _);
         Assert.NotNull(button);
+    }
+
+    [Fact] // #2 — a CUSTOM xmlns URI declared via [assembly: XmlnsDefinition] on a compilation assembly resolves the
+           // same as the default one (the URI-keyed map is discovered from any [XmlnsDefinition], not just the ui URI).
+    public void Resolves_CustomUri_FromAssemblyDefinition()
+    {
+        const string source = """
+            using Cursorial.Markup;
+            [assembly: XmlnsDefinition("https://cursorial.test/gen-widgets", "GenWidgets")]
+            namespace GenWidgets { public sealed class GenWidget; }
+            """;
+        var compilation = GeneratorHarness.ReferencedCompilation().AddSyntaxTrees(CSharpSyntaxTree.ParseText(source));
+        var resolver = new XamlSymbolResolver(compilation);
+
+        var widget = resolver.Resolve("https://cursorial.test/gen-widgets", "GenWidget", out var ambiguous);
+        Assert.Null(ambiguous);
+        Assert.NotNull(widget);
+        Assert.Equal("GenWidgets.GenWidget", widget!.ToDisplayString());
+
+        // The default ui URI keeps resolving alongside the custom one.
+        Assert.Equal("Cursorial.UI.Controls.Button", resolver.Resolve(Ui, "Button", out _)!.ToDisplayString());
     }
 }

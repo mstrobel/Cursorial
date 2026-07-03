@@ -6,6 +6,17 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <!-- NuGet packaging. A shippable TEST-HARNESS library (the Mvc.Testing analog), not a unit-test suite —
+         consumers use it to test their own Cursorial.UI apps headlessly. Shared metadata lives in
+         ../Directory.Build.props; this carries per-package fields only. -->
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>Cursorial.UI.Testing</PackageId>
+        <Version>0.1.0</Version>
+        <Description>The headless test harness for Cursorial.UI — a UITestHost over a synthetic terminal on a fake clock, with capability presets and direct input injection, so the whole UI framework (layout, input, rendering) is unit-testable without a TTY.</Description>
+        <PackageTags>terminal;tui;ui;testing;headless;xunit;crossplatform</PackageTags>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
     </ItemGroup>

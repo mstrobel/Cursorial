@@ -6,6 +6,15 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <!-- NuGet packaging. Shared metadata lives in ../Directory.Build.props; this carries per-package fields only. -->
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>Cursorial.Animation</PackageId>
+        <Version>0.1.0</Version>
+        <Description>A time-free animation engine for Cursorial — IAnimation&lt;T&gt; maps elapsed time to a value (the consumer owns the clock, so the layer stays deterministic and testable), with easings (cubic/quad/elastic/bounce/cubic-bezier), a process-global value-interpolator registry, and combinators.</Description>
+        <PackageTags>terminal;tui;animation;easing;interpolation;timeline;crossplatform</PackageTags>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
     </ItemGroup>

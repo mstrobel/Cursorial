@@ -6,6 +6,16 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <!-- NuGet packaging. Shared metadata (license, authors, repo URL, Source Link, README, icon,
+         deterministic-build flags) lives in ../Directory.Build.props; this only carries per-package fields. -->
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>Cursorial.Rendering</PackageId>
+        <Version>0.1.0</Version>
+        <Description>The cell-buffer + diffing frame renderer for Cursorial — a stateful renderer that emits the minimal byte delta between frames (grapheme-aware, wide-cell consistent, capability-quantized, with scroll detection), plus the content types you draw into it: rich text, images, and sized text. Built on Cursorial.Core.</Description>
+        <PackageTags>terminal;tui;rendering;cellbuffer;diff;richtext;images;blending;crossplatform</PackageTags>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
     </ItemGroup>

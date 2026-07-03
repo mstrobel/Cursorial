@@ -24,6 +24,11 @@
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <IsPackable>true</IsPackable>
+        <!-- Per-package NuGet metadata (shared fields — license/authors/repo/SourceLink — are in ../Directory.Build.props). -->
+        <PackageId>Cursorial.UI.Xaml.Generator</PackageId>
+        <Version>0.1.0</Version>
+        <Description>The Roslyn source generator for Cursorial.UI XAML — build-time XAML validation surfaced as compiler diagnostics at the .xaml line/col, typed x:Name backing fields + InitializeComponent code-behind, compiled bindings with x:DataType path checking, straight-line lowering, and an AOT/trim-clean IXamlTypeMetadataProvider that replaces reflection at runtime. Ships as an analyzer; add alongside Cursorial.UI.Xaml.</Description>
+        <PackageTags>terminal;tui;xaml;roslyn;sourcegenerator;analyzer;aot;crossplatform</PackageTags>
         <!-- NU5128: analyzers ship no runtime assets. RS2008: the diagnostic IDs are the frontend's
              dynamic CUR codes, not a fixed analyzer-release-tracked set. -->
         <NoWarn>$(NoWarn);NU5128;RS2008</NoWarn>
@@ -40,8 +45,11 @@
 
     <ItemGroup>
         <!-- Reference the netstandard2.0 parser frontend as ONE assembly (no source-link duplication).
-             InternalsVisibleTo on the frontend grants the node-graph internals; the frontend.dll +
-             its System.Memory dep ship as analyzer assets for real consumers (the X4.2 packaging step). -->
+             InternalsVisibleTo on the frontend grants the node-graph internals. The frontend plays TWO roles, so it
+             is (a) BUNDLED as an analyzer asset (the packing target below) so the analyzer can use it in the compiler,
+             AND (b) left as a normal package DEPENDENCY (NOT PrivateAssets) because the generator's OUTPUT — the
+             emitted IXamlTypeMetadataProvider / code-behind — references frontend types (IXamlTypeMetadataProvider,
+             XamlType, …) at the CONSUMER's runtime, so the consumer legitimately needs the frontend package. -->
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
     </ItemGroup>
 

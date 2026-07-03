@@ -465,6 +465,64 @@ public sealed class KeyTipTests
         Assert.True(windowPos >= 0 && keyTipPos < windowPos); // KeyTip overlay is below the window
     }
 
+    [Fact] // An OVERFLOWED toolbar control (in the closed overflow popup — off any live surface) gets NO visible badge,
+           // rather than a stranded badge at the ribbon origin (the reported 'S'-for-Settings in the top-left corner).
+    public void OverflowedControl_HasNoVisibleBadge()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+
+        var visible = new BarButton { Content = "Xut" };       // 'X' — stays in the row
+        var overflowed = new BarButton { Content = "Zettings" }; // 'Z' — forced into the overflow popup
+        Toolbar.SetOverflowMode(overflowed, ToolbarOverflowMode.Always);
+        var toolbar = new Toolbar();
+        toolbar.Items.Add(visible);
+        toolbar.Items.Add(overflowed);
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        Assert.True(toolbar.HasOverflow); // 'Zettings' is in the (closed) overflow popup
+
+        AltDown(host);
+        host.RunFrame();
+
+        Assert.Equal(Visibility.Visible, controller.BadgeForTargetForTests(visible)!.Visibility);
+        var overflowBadge = controller.BadgeForTargetForTests(overflowed);
+        Assert.True(overflowBadge is null || overflowBadge.Visibility == Visibility.Collapsed); // never shown at the origin
+    }
+
+    [Fact] // After a KeyTip leaf activation in STICKY mode (Alt-tap), the Alt cue is fully DISMISSED — so the first Esc
+           // is not eaten by the sticky-cue consume (otherwise it takes two Escs to close a just-opened Backstage).
+    public void ActivationInStickyMode_DoesNotEatNextEscape()
+    {
+        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+
+        var cut = new BarButton { Content = "Xut" };
+        var toolbar = new Toolbar();
+        toolbar.Items.Add(cut);
+        var escFired = false;
+        toolbar.InputBindings.Add(new KeyBinding(new KeyGesture(Key.Escape), new BarCommand(() => escFired = true)));
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        host.Application.FocusManager.SetFocus(toolbar);
+
+        // Sticky mode: an Alt tap (down then chordless up) arms KeyTips AND sets the sticky cue.
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.Alt));
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.None, kind: KeyEventKind.Up));
+        host.RunFrame();
+        Assert.True(controller.IsActive);
+
+        // Activate the leaf (unmodified letter in sticky mode) → KeyTips exits and DismissCue clears the sticky cue.
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Character, KeyModifiers.None, "X"));
+        host.RunUntilIdle();
+        Assert.False(controller.IsActive);
+
+        // The FIRST Esc now reaches the InputBinding (a lingering sticky cue would have consumed it).
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.Escape));
+        host.RunUntilIdle();
+        Assert.True(escFired);
+    }
+
     [Fact] // Multi-char keytips: typing the shared prefix dims the matched letters + keeps only the viable badges.
     public void MatchedPrefix_MultiChar_FiltersToViable()
     {

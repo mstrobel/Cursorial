@@ -151,7 +151,13 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         _layer.Children.Clear();
         _stack.Clear();
 
-        _accessKeys.ResumeCue();
+        // A leaf activation ENDS Alt/menu mode (dismiss the cue entirely — no lingering inline underlines, and no
+        // sticky-cue Esc-consume eating the first Escape a just-opened surface like Backstage should get); any other
+        // exit (cue-off, Esc-at-top, window change) just un-suppresses (the cue is already off).
+        if (_exitViaActivation)
+            _accessKeys.DismissCue();
+        else
+            _accessKeys.ResumeCue();
 
         if (!_exitViaActivation)
             RestoreFocus();
@@ -318,10 +324,11 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         PlaceBadges(level);
     }
 
-    // Positions each visible badge at its target's screen cell. A target that has scrolled OFF the viewport (its
-    // anchor cell is outside the screen — e.g. a ribbon tab scrolled above a ScrollViewer's top) has its badge
-    // HIDDEN rather than clamped to the edge, so a badge is never stranded away from its target. A prefix-filtered
-    // (entry.Hidden) badge stays collapsed regardless.
+    // Positions each visible badge at its target's screen cell. A badge is HIDDEN (not stranded at some bogus cell)
+    // when: the prefix filter dropped it (entry.Hidden); its target is no longer on a live rendered surface — it
+    // detached (a page navigation) or moved into a closed popup (a toolbar-overflowed control), so it has no real
+    // position and would otherwise land at the ribbon origin; or its anchor scrolled OFF the viewport (a tab scrolled
+    // above a ScrollViewer's top).
     private void PlaceBadges(KeyTipLevel level)
     {
         var viewport = _app.WindowManager?.ScreenSize ?? default;
@@ -331,13 +338,16 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             if (entry.Badge is not { } badge)
                 continue;
 
+            var onLiveSurface = entry.Target.IsEffectivelyVisible
+                                && (_app.WindowManager is not { } wm || wm.SurfaceForElement(entry.Target) is not null);
+
             var (anchorColumn, anchorRow) = AnchorCell(entry);
             var (column, row) = entry.Target.TranslateToScreen(anchorColumn, anchorRow);
             var onScreen = column >= 0 && row >= 0 && column < viewport.Columns && row < viewport.Rows;
 
-            // The prefix filter (entry.Hidden) and the off-screen test both collapse the badge; either one hides it.
-            badge.Visibility = entry.Hidden || !onScreen ? Visibility.Collapsed : Visibility.Visible;
-            if (entry.Hidden || !onScreen)
+            var show = !entry.Hidden && onLiveSurface && onScreen;
+            badge.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (!show)
                 continue;
 
             // Keep a wide (multi-letter) badge from overflowing the right edge; the anchor itself is on-screen.

@@ -175,6 +175,18 @@ public sealed class AccessKeyManager
                          // overlay after a leaf-activation Exit while Alt is still physically held — the Risk-1 re-entry)
     }
 
+    /// <summary>Fully dismiss the cue after a KeyTip leaf ACTIVATION (the controller calls this instead of
+    /// <see cref="ResumeCue"/>): un-suppress, clear sticky, and turn the cue off — so invoking a command ends Alt/menu
+    /// mode cleanly. Without this, the inline underline cue lingers after activation AND the sticky-cue Esc-consume
+    /// eats the first Escape a just-opened surface (e.g. Backstage) should receive.</summary>
+    internal void DismissCue()
+    {
+        _cueSuppressed = false;
+        _stickyCue = false;
+        if (_cueActive)
+            DeactivateCue(); // → CueDeactivated (the controller's Exit is already in flight and idempotent)
+    }
+
     /// <summary>The cue behavior derived from the last capability snapshot (the pinned gate formula).</summary>
     public AccessKeyMode Mode => _mode;
 

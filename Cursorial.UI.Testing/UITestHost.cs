@@ -40,11 +40,12 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
         options ??= new UITestHostOptions();
         var time = new FakeTimeProvider();
         var terminal = new SyntheticTerminalHost(options.Capabilities, options.InitialSize, time);
-        var application = UIApplication.CreateBuilder()
+        var builder = UIApplication.CreateBuilder()
             .WithTerminalHost(terminal, disposeWithApp: true)
             .WithTimeProvider(time)
-            .UseAlternateScreen(options.UseAlternateScreen)
-            .Build();
+            .UseAlternateScreen(options.UseAlternateScreen);
+        options.ConfigureBuilder?.Invoke(builder);
+        var application = builder.Build();
         var host = new UITestHost(options, terminal, time, application);
         application.StartHeadless();
         terminal.DrainOutput(); // discard the UI-mode entry bytes — LastFrameBytes is per-frame

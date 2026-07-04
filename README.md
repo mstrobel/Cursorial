@@ -23,20 +23,21 @@ what you intend to use.
 | Layer | Package | Role |
 | --- | --- | --- |
 | **`Cursorial.Core`** | ✅ On NuGet | Input parsing & delivery, output sequence emission, capability negotiation, session orchestration, text utilities. |
-| **`Cursorial.Rendering`** | ⏳ In-repo | Cell buffer, diffing frame renderer, rich-text formatting, images, blending & alpha compositing. |
-| **`Cursorial.Drawing`** | ⏳ In-repo | Scenes & cached-raster compositor, brushes & gradients, a pen/box engine with automatic junctions, charts, and UI drawing primitives (clip/translate, occluding & image fills, titled panels, shadows). |
-| **`Cursorial.Animation`** | ⏳ In-repo | A time-free animation engine — easings, keyframes, and value interpolators (the consumer owns the clock). |
-| **`Cursorial.UI`** | ⏳ In-repo | A WPF/Avalonia-style UI framework: dependency-property system, element tree, layout, render zones, routed input & focus, styling with CSS-like selectors, data binding, resources & theming, windowing, storyboards & transitions, and a full control catalog. |
-| **`Cursorial.UI.Xaml`** | ⏳ In-repo | A runtime XAML loader **and** a Roslyn source generator — declarative markup, `{Binding}`/`{StaticResource}`/`ControlTemplate`, typed code-behind, compiled bindings, and an AOT-clean metadata provider. |
-| **`Cursorial.UI.Bars`** | ⏳ In-repo | Command surfaces over one shared `BarCommand` set: a `Toolbar` with discrete overflow, a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips (Alt-overlay accelerators), and SuperTips. |
+| **`Cursorial.Rendering`** | ✅ On NuGet | Cell buffer, diffing frame renderer, rich-text formatting, images, blending & alpha compositing. |
+| **`Cursorial.Drawing`** | ✅ On NuGet | Scenes & cached-raster compositor, brushes & gradients, a pen/box engine with automatic junctions, charts, and UI drawing primitives (clip/translate, occluding & image fills, titled panels, shadows). |
+| **`Cursorial.Animation`** | ✅ On NuGet | A time-free animation engine — easings, keyframes, and value interpolators (the consumer owns the clock). |
+| **`Cursorial.UI`** | ✅ On NuGet | A WPF/Avalonia-style UI framework: dependency-property system, element tree, layout, render zones, routed input & focus, styling with CSS-like selectors, data binding, resources & theming, windowing, storyboards & transitions, and a full control catalog. |
+| **`Cursorial.UI.Xaml`** | ✅ On NuGet | A runtime XAML loader **and** a Roslyn source generator — declarative markup, `{Binding}`/`{StaticResource}`/`ControlTemplate`, typed code-behind, compiled bindings, and an AOT-clean metadata provider. |
+| **`Cursorial.UI.Bars`** | ✅ On NuGet | Command surfaces over one shared `BarCommand` set: a `Toolbar` with discrete overflow, a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips (Alt-overlay accelerators), and SuperTips. |
 
 ```bash
 dotnet add package Cursorial.Core
 ```
 
-> Only `Cursorial.Core` is published today, and its surface is approaching stable. The layers above it are built
-> and exercised in-repo (the `Cursorial.Demo` REPL and `Cursorial.Gallery` app drive them end-to-end) but are
-> pre-release and not yet packaged — clone the repo to use them, and expect breaking changes. Feedback very welcome.
+> Every layer above is published on NuGet. `Cursorial.Core` is approaching stable; the layers on top of it are
+> **pre-release** — usable today (the `Cursorial.Demo` REPL and `Cursorial.Gallery` app drive them end-to-end), but
+> expect breaking changes as their surfaces settle. `Cursorial.UI.Testing` is a test-only harness and is not
+> published. Feedback very welcome.
 
 ## A taste
 
@@ -72,7 +73,7 @@ pipeline inside a tool that already owns terminal state, or drives it from a rec
 
 # `Cursorial.Core` — the foundation
 
-Everything you need to read input, negotiate capabilities, and emit correct escape sequences. **The published,
+Everything you need to read input, negotiate capabilities, and emit correct escape sequences. **The most stable,
 integration-ready layer.** &nbsp;→ Wiki: [Input](https://github.com/mstrobel/Cursorial/wiki/Core-Input) ·
 [Capabilities](https://github.com/mstrobel/Cursorial/wiki/Core-Capability-Negotiation) ·
 [Output](https://github.com/mstrobel/Cursorial/wiki/Core-Output) ·
@@ -281,8 +282,7 @@ root.DataContext = viewModel;
 | `Cursorial.UI.Xaml` | The net10.0 runtime XAML loader (markup extensions, resources, templates). |
 | `Cursorial.UI.Xaml.Generator` | The Roslyn source generator (compiled bindings, code-behind, AOT-clean provider). |
 | `Cursorial.UI.Bars` | Command surfaces: `Toolbar` with overflow, `Ribbon` (density collapse, contextual tabs, Backstage, QAT, minimize), KeyTips, SuperTips. |
-| `Cursorial.UI.Themes` | Bundled UI themes (data-shipped XAML overlay over the code-first built-in theme). |
-| `Cursorial.UI.Testing` | Headless `UITestHost` + synthetic terminal for testing UI without a TTY. |
+| `Cursorial.UI.Testing` | Headless `UITestHost` + synthetic terminal for testing UI without a TTY. *Not published — test-only.* |
 | `Cursorial.Shared` | Markup attributes shared by the loader and generator. |
 | `Cursorial.Demo` | Interactive REPL that drives every layer end-to-end (see below). |
 | `Cursorial.Demo.XamlAot` / `.XamlAotStrict` | NativeAOT publish demos — the reflection loader, and the reflection-free build on the generated metadata provider (the AOT-clean exit gate). |

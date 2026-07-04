@@ -1,9 +1,15 @@
-# Release workflow — fires on a `v*` tag push and publishes Cursorial.Core to nuget.org.
+# Release workflow — fires on a `v*` tag push and publishes every packable Cursorial project to
+# nuget.org (all <IsPackable>true</IsPackable> projects: Cursorial.Core, .Rendering, .Drawing,
+# .Animation, .Shared, .UI, .UI.Xaml, .UI.Xaml.Frontend, .UI.Xaml.Generator, .UI.Bars). Tests,
+# demos, and the deliberately-unpackaged projects (Cursorial.UI.Testing, Cursorial.UI.Themes) are
+# skipped. Every package shares the tag-derived version.
 #
 # Auth: NuGet.org Trusted Publishing (OIDC). No long-lived API key is stored in the repo.
 # The workflow exchanges a GitHub-issued OIDC token for a short-lived NuGet API key via the
 # `NuGet/login` action. The token is matched against the Trusted Publisher entry configured
-# on nuget.org under the package owner's account.
+# on nuget.org under the package owner's account. NOTE: the Trusted Publisher policy on nuget.org
+# must authorize EVERY package ID published here — verify all ten IDs are covered before the first
+# multi-package release, or an unauthorized package's push is rejected (the others still succeed).
 #
 # GitHub Environment: `nuget`. Must exist in repo Settings → Environments. Use the environment
 # to gate releases on manual approval, restrict the eligible tag patterns, or pin to specific
@@ -11,12 +17,12 @@
 # Publisher entry — changing one without the other breaks the OIDC exchange.
 #
 # To cut a release locally:
-#   1. Update the <Version> in Cursorial.Core/Cursorial.Core.csproj (optional — the tag drives
-#      the published version; the csproj value is only for local `dotnet pack` runs).
+#   1. Update the shared <Version> in the packable csprojs (optional — the tag drives the
+#      published version; the csproj value is only for local `dotnet pack` runs).
 #   2. git tag v0.1.0 && git push origin v0.1.0
 #   3. Watch the Actions tab (approve the `nuget` environment if you've set required reviewers).
 #
-# The version baked into the .nupkg is derived from the tag (`v0.1.0` → `0.1.0`), so the tag
+# The version baked into every .nupkg is derived from the tag (`v0.1.0` → `0.1.0`), so the tag
 # is the source of truth. Pre-release tags work too: `v0.2.0-preview.1` → `0.2.0-preview.1`.
 
 name: Release
@@ -85,9 +91,14 @@ jobs:
           --verbosity normal
 
       - name: Pack
+        # Packs the whole solution: every project that opts in with <IsPackable>true</IsPackable>
+        # (Cursorial.Core / .Rendering / .Drawing / .Animation / .Shared / .UI / .UI.Xaml /
+        # .UI.Xaml.Frontend / .UI.Xaml.Generator / .UI.Bars). Tests, demos, and the deliberately
+        # unpackaged projects (Cursorial.UI.Testing, Cursorial.UI.Themes) default IsPackable=false
+        # and are skipped. All packages share the tag-derived version.
         run: >-
           dotnet pack
-          Cursorial.Core/Cursorial.Core.csproj
+          Cursorial.slnx
           --configuration Release
           --no-build
           --no-restore

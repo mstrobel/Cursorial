@@ -24,6 +24,12 @@
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <IsPackable>true</IsPackable>
+        <!-- Analyzer package: with IncludeBuildOutput=false there is no lib/ assembly, so the .snupkg the shared
+             Directory.Build.props would emit is EMPTY and NuGet's symbol endpoint rejects it (400 "does not contain
+             any symbol (.pdb) files"). Suppress the symbol package and embed the PDB into the analyzer DLL instead
+             (shipped in analyzers/dotnet/cs/) so it stays debuggable + Source Link-navigable. -->
+        <IncludeSymbols>false</IncludeSymbols>
+        <DebugType>embedded</DebugType>
         <!-- Per-package NuGet metadata (shared fields — license/authors/repo/SourceLink — are in ../Directory.Build.props). -->
         <PackageId>Cursorial.UI.Xaml.Generator</PackageId>
         <Version>0.3.1</Version>

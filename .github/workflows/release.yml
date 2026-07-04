@@ -96,6 +96,11 @@ jobs:
         # .UI.Xaml.Frontend / .UI.Xaml.Generator / .UI.Bars). Tests, demos, and the deliberately
         # unpackaged projects (Cursorial.UI.Testing, Cursorial.UI.Themes) default IsPackable=false
         # and are skipped. All packages share the tag-derived version.
+        #
+        # BuildProjectReferences=false: the Generator packs the Frontend DLL as a bundled analyzer asset via a
+        # target that resolves its ProjectReference (DependsOnTargets=ResolveReferences). Under `--no-build`
+        # (NoBuild=true) that reference resolution would otherwise re-invoke the Frontend's Build target and fail
+        # with NETSDK1085 — the Build step already built everything, so pack must not build project references.
         run: >-
           dotnet pack
           Cursorial.slnx
@@ -104,6 +109,7 @@ jobs:
           --no-restore
           --output nupkgs
           /p:Version=${{ steps.version.outputs.version }}
+          /p:BuildProjectReferences=false
 
       - name: Upload package artifact
         # Keeps the .nupkg + .snupkg around on the workflow run for 90 days, useful when

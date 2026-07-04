@@ -1460,12 +1460,18 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// <b>effective</b> tier (<see cref="UIApplication.ActualThemeVariant"/>.Tier, honoring
     /// <c>RequestedColorTier</c> — the P5 re-point of the P3 scaffolding); <c>caps-motion</c>,
     /// <c>caps-kitty-keyboard</c>, and the unconditional <c>caps-unicode</c> from the
-    /// <b>negotiated</b> snapshot.
+    /// <b>effective</b> snapshot — the negotiated record with
+    /// <see cref="UIApplication.CapabilityOverrides"/> folded per axis (FB-5), the same fold
+    /// <see cref="UIApplication.EffectiveCapabilities"/> exposes, so classes and the app-visible
+    /// snapshot can never desync. Folding at stamp time (rather than caching a rewritten record)
+    /// is what makes overrides survive renegotiation for free.
     /// </summary>
     private void StampCapabilityClasses(UIElement root)
     {
-        if (_capabilities is not {} capabilities)
+        if (_capabilities is not {} negotiated)
             return; // nothing negotiated yet — the startup pre-Show call records only (B2)
+
+        var capabilities = _app.CapabilityOverrides.Apply(negotiated); // the FB-5 per-axis fold
 
         var replacement = new List<string>();
 
@@ -1512,6 +1518,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // user-options flag (CD-P2J-1) — app state, so it survives renegotiation.
         if (_app.NerdFontAvailable)
             replacement.Add("caps-nerdfont");
+
+        // caps-emoji is the same posture (FB-15): a user-declared opt-in — no probe exists for emoji glyph
+        // coverage or double-width honesty — default absent; app state, so it survives renegotiation.
+        if (_app.EmojiAvailable)
+            replacement.Add("caps-emoji");
 
         // caps-unicode is unconditional; caps-ascii is RESERVED and never stamped at P5 — no
         // negotiated glyph-capability source exists (SD14 recorded deferral).

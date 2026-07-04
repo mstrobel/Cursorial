@@ -6,21 +6,29 @@ using Cursorial.UI.Data;
 namespace Cursorial.UI.Controls;
 
 /// <summary>
-/// A capability-tiered icon (design doc §12 / the command-bars guide). An author declares up to three
+/// A capability-tiered icon (design doc §12 / the command-bars guide). An author declares up to four
 /// representations and the icon renders the highest-preference one that is both <b>provided</b> and
 /// <b>supported</b> by the terminal:
 /// <list type="number">
 /// <item><see cref="Glyph"/> — a Nerd Font codepoint, shown only when <see cref="UIApplication.NerdFontAvailable"/>
 /// is set (there is no probe for Nerd Font coverage, so it is an explicit app opt-in — CD-P2J-1).</item>
-/// <item><see cref="Image"/>/<see cref="ImageUri"/> — a graphics-protocol image, shown when the negotiated protocols
-/// can carry it (Kitty/iTerm2/Sixel — the <see cref="ImagePresenter"/> gate); otherwise it falls through to the
+/// <item><see cref="Image"/>/<see cref="ImageUri"/> — a graphics-protocol image, shown when the effective protocols
+/// can carry it (Kitty/iTerm2/Sixel — the <see cref="ImagePresenter"/> gate, honoring
+/// <see cref="UIApplication.CapabilityOverrides"/>); otherwise it falls through to the
 /// <see cref="Text"/> tier (the image hosts <see cref="Text"/> as its placeholder).</item>
-/// <item><see cref="Text"/> — an emoji / Unicode glyph, always renderable (the guaranteed floor).</item>
+/// <item><see cref="Emoji"/> — a color-emoji glyph, shown unless <see cref="UIApplication.EmojiAvailable"/>
+/// is disabled (FB-15: a user opt-OUT, default present — deliberately the opposite posture from Nerd Font,
+/// because emoji coverage in modern terminals is near-universal where Nerd Font PUA coverage is not). Emoji are
+/// <b>double-width</b> in the cell grid; the icon measures at its resolved tier's width, so an emoji-tier
+/// icon budgets 2 cells where the other glyph tiers typically budget 1 — that measurement, not tier hiding,
+/// owns grid safety.</item>
+/// <item><see cref="Text"/> — a single-width Unicode glyph, always renderable (the guaranteed floor).</item>
 /// </list>
-/// Usable standalone (<c>&lt;Icon Glyph="…" Text="📁"/&gt;</c>), as a control's content
+/// Usable standalone (<c>&lt;Icon Glyph="…" Emoji="📁" Text="F"/&gt;</c>), as a control's content
 /// (<c>&lt;Button&gt;&lt;Icon …/&gt;&lt;/Button&gt;</c>), or — concisely — via the <c>{Icon …}</c> markup extension.
-/// It re-resolves its tier live when the terminal renegotiates graphics or <see cref="UIApplication.NerdFontAvailable"/>
-/// flips. <see cref="Control.Foreground"/> (inherited) tints the glyph/text tiers.
+/// It re-resolves its tier live when the terminal renegotiates graphics, capability overrides change, or the
+/// <see cref="UIApplication.NerdFontAvailable"/>/<see cref="UIApplication.EmojiAvailable"/> flags
+/// flip. <see cref="Control.Foreground"/> (inherited) tints the glyph/emoji/text tiers.
 /// </summary>
 [ContentProperty(nameof(Text))]
 public class Icon : Control
@@ -50,7 +58,12 @@ public class Icon : Control
     public static readonly StyledProperty<Uri?> ImageUriProperty =
         UIProperty.Register<Icon, Uri?>(nameof(ImageUri), changed: OnTierInputChanged);
 
-    /// <summary>The emoji / Unicode fallback glyph — always renderable (the guaranteed floor).</summary>
+    /// <summary>The color-emoji glyph — the tier between Image and Text, shown unless
+    /// <see cref="UIApplication.EmojiAvailable"/> is disabled (FB-15 opt-out; measures double-width).</summary>
+    public static readonly StyledProperty<string?> EmojiProperty =
+        UIProperty.Register<Icon, string?>(nameof(Emoji), changed: OnTierInputChanged);
+
+    /// <summary>The single-width Unicode fallback glyph — always renderable (the guaranteed floor).</summary>
     public static readonly StyledProperty<string?> TextProperty =
         UIProperty.Register<Icon, string?>(nameof(Text), changed: OnTierInputChanged);
 
@@ -73,6 +86,9 @@ public class Icon : Control
     /// <inheritdoc cref="ImageUriProperty"/>
     public Uri? ImageUri { get => GetValue(ImageUriProperty); set => SetValue(ImageUriProperty, value); }
 
+    /// <inheritdoc cref="EmojiProperty"/>
+    public string? Emoji { get => GetValue(EmojiProperty); set => SetValue(EmojiProperty, value); }
+
     /// <inheritdoc cref="TextProperty"/>
     public string? Text { get => GetValue(TextProperty); set => SetValue(TextProperty, value); }
 
@@ -89,7 +105,9 @@ public class Icon : Control
         if (UIApplication.Current is { } app)
         {
             app.CapabilitiesChanged += OnCapabilitiesChanged; // graphics (image tier) renegotiation
+            app.CapabilityOverridesChanged += OnCapabilityOverridesChanged; // FB-5 override flip (image tier gate)
             app.NerdFontAvailableChanged += OnNerdFontChanged; // nerd-font (glyph tier) opt-in flip
+            app.EmojiAvailableChanged += OnEmojiChanged; // emoji tier availability flip (FB-15, opt-out)
             _subscribedApp = app;
         }
 
@@ -102,7 +120,9 @@ public class Icon : Control
         if (_subscribedApp is { } app)
         {
             app.CapabilitiesChanged -= OnCapabilitiesChanged;
+            app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             app.NerdFontAvailableChanged -= OnNerdFontChanged;
+            app.EmojiAvailableChanged -= OnEmojiChanged;
             _subscribedApp = null;
         }
 
@@ -110,7 +130,9 @@ public class Icon : Control
     }
 
     private void OnCapabilitiesChanged(object? sender, CapabilitiesChangedEventArgs e) => ResolveTier();
+    private void OnCapabilityOverridesChanged(object? sender, EventArgs e) => ResolveTier();
     private void OnNerdFontChanged(object? sender, EventArgs e) => ResolveTier();
+    private void OnEmojiChanged(object? sender, EventArgs e) => ResolveTier();
 
     private static void OnTierInputChanged(UIObject sender, object? oldValue, object? newValue)
         => (sender as Icon)?.ResolveTier();
@@ -135,6 +157,13 @@ public class Icon : Control
             Tier = IconTier.Image;
             ResolvedContent = new ImagePresenter { Source = Image, SourceUri = ImageUri, PlaceholderContent = Text };
         }
+        else if (!string.IsNullOrEmpty(Emoji) && (UIApplication.Current?.EmojiAvailable ?? false))
+        {
+            // The emoji tier (FB-15) — between Image and Text: richer than single-width Unicode, wins on
+            // emoji-capable image-less terminals. Measures at its natural (double-cell) grapheme width.
+            Tier = IconTier.Emoji;
+            ResolvedContent = Emoji;
+        }
         else
         {
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
@@ -143,17 +172,18 @@ public class Icon : Control
         }
     }
 
-    // Whether the terminal negotiated a graphics protocol that can carry an inline image (mirrors the protocol gate
-    // in ImagePresenter.IsImageVisible; the per-image format check lives there, behind the placeholder).
+    // Whether the EFFECTIVE capabilities (negotiated ∘ user overrides — FB-5) include a graphics protocol that can
+    // carry an inline image (mirrors the protocol gate in ImagePresenter.IsImageVisible; the per-image format check
+    // lives there, behind the placeholder).
     private static bool GraphicsSupported
-        => UIApplication.Current?.Capabilities.Output.Graphics is { } g
+        => UIApplication.Current?.EffectiveCapabilities.Output.Graphics is { } g
            && (g.ITerm2InlineImages || g.KittyGraphics || g.Sixel);
 }
 
 /// <summary>The representation an <see cref="Icon"/> resolved to (test observability).</summary>
 public enum IconTier
 {
-    /// <summary>The emoji / Unicode <see cref="Icon.Text"/> floor.</summary>
+    /// <summary>The single-width Unicode <see cref="Icon.Text"/> floor.</summary>
     Text,
 
     /// <summary>The Nerd Font <see cref="Icon.Glyph"/> tier.</summary>
@@ -161,4 +191,9 @@ public enum IconTier
 
     /// <summary>The graphics-protocol <see cref="Icon.Image"/> tier (falls back to Text when unsupported).</summary>
     Image,
+
+    /// <summary>The double-width color-emoji <see cref="Icon.Emoji"/> tier (FB-15) — shown unless
+    /// <see cref="UIApplication.EmojiAvailable"/> is disabled (opt-out, default present); sits between
+    /// Image and Text in preference.</summary>
+    Emoji,
 }

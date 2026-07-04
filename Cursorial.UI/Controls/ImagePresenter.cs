@@ -65,7 +65,9 @@ public class ImagePresenter : DrawnContentPresenter
             // content's own "[image]" text instead (CD-P2K-1 audit).
             if (EffectiveSource is not { } s || s.Bytes.IsEmpty)
                 return false;
-            if (UIApplication.Current?.Capabilities.Output.Graphics is not { } g)
+            // The EFFECTIVE view (negotiated ∘ CapabilityOverrides — FB-5): a user forcing images off
+            // degrades to the placeholder exactly as a terminal without graphics would.
+            if (UIApplication.Current?.EffectiveCapabilities.Output.Graphics is not { } g)
                 return false;
             return g.ITerm2InlineImages || (s.Format == ImageFormat.Png && (g.KittyGraphics || g.Sixel));
         }
@@ -83,6 +85,7 @@ public class ImagePresenter : DrawnContentPresenter
         if (UIApplication.Current is { } app)
         {
             app.CapabilitiesChanged += OnCapabilitiesChanged;
+            app.CapabilityOverridesChanged += OnCapabilityOverridesChanged; // FB-5: forced-off images collapse to the placeholder live
             _subscribedApp = app;
         }
     }
@@ -93,6 +96,7 @@ public class ImagePresenter : DrawnContentPresenter
         if (_subscribedApp is { } app)
         {
             app.CapabilitiesChanged -= OnCapabilitiesChanged;
+            app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             _subscribedApp = null;
         }
 
@@ -102,6 +106,12 @@ public class ImagePresenter : DrawnContentPresenter
     private void OnCapabilitiesChanged(object? sender, CapabilitiesChangedEventArgs e)
     {
         InvalidateMeasure(); // defeats the measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState
+        InvalidateVisual();
+    }
+
+    private void OnCapabilityOverridesChanged(object? sender, EventArgs e)
+    {
+        InvalidateMeasure();
         InvalidateVisual();
     }
 

@@ -81,6 +81,11 @@ public sealed partial class UIApplication
 
                 ComposeSystems();
 
+                // User configuration (FB-17 Stage A) loads and applies BEFORE the capability
+                // fan-out, so theme preference / opt-ins / overrides are in force for the first
+                // caps-* stamp — the app never flashes its unconfigured look.
+                ApplyUserConfiguration();
+
                 // Capability fan-out (design doc §10.5 preamble), explicit and ordered. The S7
                 // application theme leg runs FIRST so the effective ActualThemeVariant is current
                 // before styling stamps the effective-tier capability class (inversion 6). The
@@ -886,6 +891,9 @@ public sealed partial class UIApplication
         var size = host.QuerySizeAsync().AsTask().GetAwaiter().GetResult() ?? (80, 24);
         InitializeFromHost(size);
         ComposeSystems();
+
+        // User configuration applies before the fan-out — parity with the production preamble.
+        ApplyUserConfiguration();
 
         // Fan-out parity with the production preamble (S7 theme leg first — inversion 6).
         OnCapabilitiesChanged(_capabilities);

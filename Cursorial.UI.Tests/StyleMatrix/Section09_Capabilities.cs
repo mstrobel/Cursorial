@@ -33,11 +33,12 @@ public class Section09_Capabilities
     }
 
     [Fact]
-    public void S141_Ansi16Host_ExactlyTierAndUnicode()
+    public void S141_Ansi16Host_ExactlyTierEmojiAndUnicode()
     {
         using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
 
-        Assert.Equal(["caps-ansi16", "caps-unicode"], tree.Root.Classes.ToArray()); // exact set
+        // Exact set: caps-emoji is default-present since the FB-15 opt-out flip (2026-07-04).
+        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode"], tree.Root.Classes.ToArray());
     }
 
     [Theory]

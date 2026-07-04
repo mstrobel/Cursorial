@@ -27,4 +27,12 @@ public sealed record UITestHostOptions
     /// from exiting successfully (default true)."/>
     /// </summary>
     public bool DisableInactiveWindowTransitions { get; init; } = true;
+
+    /// <summary>
+    /// An optional hook over the application builder before <see cref="UIApplicationBuilder.Build"/> —
+    /// for builder-level features the host does not model directly (e.g.
+    /// <see cref="UIApplicationBuilder.WithUserConfiguration"/>). Runs after the host's own builder
+    /// calls, so it may also override them deliberately.
+    /// </summary>
+    public Action<UIApplicationBuilder>? ConfigureBuilder { get; init; }
 }

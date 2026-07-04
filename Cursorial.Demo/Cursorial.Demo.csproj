@@ -6,6 +6,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>Cursorial.Demo</RootNamespace>
+        <CursorialXamlEmbedResources>true</CursorialXamlEmbedResources>
+        <!-- This is a LIBRARY: don't auto-install the generated provider as the consuming app's process-wide
+             default. (With full lowering the provider isn't used at runtime anyway; the .xaml stays embedded
+             only as the dual-run drift oracle.) -->
+        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
         <!-- The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
              metadata provider available rather than fail-fast. The warnings it produces are expected. -->
         <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
@@ -26,19 +31,39 @@
         <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <ItemGroup>
         <EmbeddedResource Include="**/*.png">
             <LogicalName>$([System.String]::new('%(RelativeDir)').Replace('\','/'))%(FileName)%(Extension)</LogicalName>
         </EmbeddedResource>
-        <!-- The uixaml demo loads its UI from this embedded .xaml at runtime. No LogicalName override, so
-             the manifest name is the default <RootNamespace>.<dotted path>:
-             Cursorial.Demo.Resources.uixaml-demo.xaml. -->
-        <EmbeddedResource Include="Resources/*.xaml" />
     </ItemGroup>
 
-    <ItemGroup>
+  <!-- Generator consumer props: the CompilerVisibleItemMetadata + the CursorialXamlEmbedResources default
+     (a ProjectReference doesn't auto-import an analyzer's build/ assets, so import them explicitly). -->
+  <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+    <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    <!-- The X4 generator as an analyzer (validates the theme XAML; deps flow via its analyzer-deps target). -->
+    <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build-time validated by the generator; embedded for runtime by the consumer .targets. Manifest
+         name stays <RootNamespace>.<dotted path>, e.g. Cursorial.UI.Themes.Xaml.Themes.Controls.xaml. -->
+    <CursorialXaml Include="Resources/*.xaml" />
+  </ItemGroup>
+
+  <!-- Generator consumer targets: maps <CursorialXaml> → AdditionalFiles (generator input) + EmbeddedResource
+       (runtime load). Imported after the items above so @(CursorialXaml) is populated. -->
+  <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
+
+  <ItemGroup>
         <RuntimeHostConfigurationOption Include="Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported"
                                         Value="$(CursorialXamlReflectionProvider)" Trim="true" />
     </ItemGroup>

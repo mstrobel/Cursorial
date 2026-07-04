@@ -40,6 +40,7 @@
         <!-- CursorialXamlStrictAot defaults to true under PublishAot (generator .props) → the .targets emit the
              ReflectionMetadataProvider.IsSupported=false RuntimeHostConfigurationOption automatically. -->
         <InvariantGlobalization>true</InvariantGlobalization>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
@@ -61,6 +62,12 @@
 
     <ItemGroup>
         <CursorialXaml Include="StrictView.xaml" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Update="StrictView.xaml.cs">
+        <DependentUpon>StrictView.xaml</DependentUpon>
+      </Compile>
     </ItemGroup>
 
     <!-- Generator consumer targets (CursorialXaml → AdditionalFiles + EmbeddedResource; the StrictAot switch). -->

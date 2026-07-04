@@ -48,6 +48,7 @@
         <!-- CursorialXamlStrictAot defaults to true under PublishAot (generator .props) → the .targets emit the
              ReflectionMetadataProvider.IsSupported=false RuntimeHostConfigurationOption automatically. -->
         <InvariantGlobalization>true</InvariantGlobalization>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
@@ -67,6 +68,8 @@
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <!-- Link the real demo's sources (so there is one source of truth — Cursorial.Demo). -->
@@ -83,7 +86,7 @@
         <EmbeddedResource Include="..\Cursorial.Demo\**\*.png"
                           Exclude="..\Cursorial.Demo\obj\**\*.png;..\Cursorial.Demo\bin\**\*.png"
                           LogicalName="$([System.String]::new('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)" />
-        <EmbeddedResource Include="..\Cursorial.Demo\Resources\*.xaml"
+        <CursorialXaml    Include="..\Cursorial.Demo\Resources\*.xaml"
                           LogicalName="Cursorial.Demo.Resources.%(Filename)%(Extension)" />
     </ItemGroup>
 

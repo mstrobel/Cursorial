@@ -1709,8 +1709,8 @@ internal static class ControlThemes
         var overlayHost = new Border
                           {
                               Name = "PART_ObscuredOverlay",
-                              Visibility = Visibility.Collapsed/*,
-                              IsRenderBoundary = true*/
+                              Visibility = Visibility.Collapsed,
+                              IsRenderBoundary = true
                           };
 
         overlayHost.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);

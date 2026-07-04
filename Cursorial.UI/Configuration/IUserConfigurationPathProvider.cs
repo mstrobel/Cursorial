@@ -2,9 +2,9 @@ namespace Cursorial.UI.Configuration;
 
 /// <summary>
 /// Supplies the root directory user configuration persists under. The default is
-/// <c>~/.cursorial</c> (<see cref="DefaultUserConfigurationPathProvider"/>); tests and embedders
+/// <c>~/.cursorial</c> (<see cref="DefaultUserConfigurationPathProvider" />); tests and embedders
 /// substitute their own root through
-/// <see cref="UserConfigurationOptions.PathProvider"/> or <see cref="UserOptionsStore.Load"/>.
+/// <see cref="UserConfigurationOptions.PathProvider" /> or <see cref="UserOptionsStore.Load" />.
 /// </summary>
 public interface IUserConfigurationPathProvider
 {
@@ -18,7 +18,7 @@ public sealed class DefaultUserConfigurationPathProvider : IUserConfigurationPat
     /// <summary>The shared instance (the provider is stateless).</summary>
     public static DefaultUserConfigurationPathProvider Instance { get; } = new();
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public string ConfigurationRoot
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile,
                                                   Environment.SpecialFolderOption.DoNotVerify),

@@ -611,14 +611,19 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (_icon is null)
             return;
 
-        if (Icon is ImageData image)
+        if (Icon is Icon icon)
+        {
+            _icon.Content = icon;
+            _icon.Visibility = Visibility.Visible;
+        }
+        else if (Icon is ImageData image)
         {
             _icon.Content = new ImagePresenter { Source = image };
             _icon.Visibility = Visibility.Visible;
         }
-        else if (Icon is {} icon)
+        else if (Icon is {} other)
         {
-            _icon.Content = icon.ToString();
+            _icon.Content = other.ToString();
             _icon.Visibility = Visibility.Visible;
         }
         else

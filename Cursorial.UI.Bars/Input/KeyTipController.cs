@@ -79,11 +79,8 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         // Consume drill letters + digits while active; Ctrl/Super/… chords fall through so global gestures (Ctrl+S)
         // still fire. Escape is handled EARLIER by AccessKeyManager's Alt pre-stage via TryPopLevel (it runs before
         // this seam), so there is no Escape branch here.
-        if (TryGetDrillChar(k, out var c))
-        {
-            TypeChar(c);
+        if (TryGetDrillChar(k, out var c) && TypeChar(c))
             e.Handled = true;
-        }
     }
 
     // The character a key contributes to the prefix, or false to let it fall through. A plain character key (a letter,
@@ -167,10 +164,10 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
     }
 
     // Typing a badge letter: filter the current level by the case-folded prefix.
-    private void TypeChar(char c)
+    private bool TypeChar(char c)
     {
         if (_stack.Count == 0)
-            return;
+            return false;
 
         var level = _stack[^1];
         level.Typed.Append(char.ToUpperInvariant(c));
@@ -191,13 +188,13 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
         if (viableCount == 0)
         {
             Bonk(level);                          // no match: revert the char (never leaks — already consumed)
-            return;
+            return false;
         }
 
         if (viableCount == 1 && complete is not null)
         {
             Commit(complete);
-            return;
+            return true;
         }
 
         // Still ambiguous (multi-char keytips): dim the matched prefix on the viable badges, hide the rest.
@@ -212,6 +209,8 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
             if (isViable)
                 badge.MatchedPrefixLength = prefix.Length;
         }
+        
+        return false;
     }
 
     private static void Bonk(KeyTipLevel level)

@@ -87,6 +87,9 @@ public static class ThemeKeys
     /// <summary>Darkened action color.</summary>
     public const string AccentDarkBrush = "Theme.AccentDarkBrush";
 
+    /// <summary>Darkened action color.</summary>
+    public const string AccentInverseBrush = "Theme.AccentInverseBrush";
+
     /// <summary>Primary navigation color.</summary>
     public const string CoolBrush = "Theme.CoolBrush";
 
@@ -96,6 +99,9 @@ public static class ThemeKeys
     /// <summary>Navigation darkened color.</summary>
     public const string CoolDarkBrush = "Theme.CoolDarkBrush";
 
+    /// <summary>Navigation darkened color.</summary>
+    public const string CoolInverseBrush = "Theme.CoolInverseBrush";
+
     /// <summary>First-degree warnings.</summary>
     public const string DangerBrush = "Theme.DangerBrush";
 
@@ -104,6 +110,9 @@ public static class ThemeKeys
 
     /// <summary>Darkened danger brush..</summary>
     public const string DangerDarkBrush = "Theme.DangerDarkBrush";
+
+    /// <summary>Darkened danger brush..</summary>
+    public const string DangerInverseBrush = "Theme.DangerInverseBrush";
 
     /// <summary>Text drawn on an accent/colored fill (pressed-button text, badge text).</summary>
     public const string OnAccentBrush = "Theme.OnAccentBrush";
@@ -117,8 +126,26 @@ public static class ThemeKeys
     /// <summary>Warning / paused / indeterminate mark.</summary>
     public const string WarningBrush = "Theme.WarningBrush";
 
+    /// <summary>Warning / paused / indeterminate mark.</summary>
+    public const string Warning2Brush = "Theme.Warning2Brush";
+
+    /// <summary>Warning / paused / indeterminate mark.</summary>
+    public const string WarningDarkBrush = "Theme.WarningDarkBrush";
+
+    /// <summary>Warning / paused / indeterminate mark.</summary>
+    public const string WarningInverseBrush = "Theme.WarningInverseBrush";
+
     /// <summary>Informational color.</summary>
     public const string InfoBrush = "Theme.InfoBrush";
+
+    /// <summary>Informational color.</summary>
+    public const string Info2Brush = "Theme.Info2Brush";
+
+    /// <summary>Informational color.</summary>
+    public const string InfoDarkBrush = "Theme.InfoDarkBrush";
+
+    /// <summary>Informational color.</summary>
+    public const string InfoInverseBrush = "Theme.InfoInverseBrush";
 
     /// <summary>Success / on.</summary>
     public const string SuccessBrush = "Theme.SuccessBrush";
@@ -128,6 +155,9 @@ public static class ThemeKeys
 
     /// <summary>Darkened success color.</summary>
     public const string SuccessDarkBrush = "Theme.SuccessDarkBrush";
+
+    /// <summary>Darkened success color.</summary>
+    public const string SuccessInverseBrush = "Theme.SuccessInverseBrush";
 
     /// <summary>Color for special purposes.</summary>
     public const string SpecialBrush = "Theme.SpecialBrush";
@@ -248,8 +278,10 @@ public static class ThemeKeys
     public const string ButtonForegroundNormal = "Theme.ButtonForegroundNormal";
     /// <summary>Resting button fill (--surface).</summary>
     public const string ButtonBackgroundNormal = "Theme.ButtonBackgroundNormal";
-    /// <summary>Hovered button fill (--hover).</summary>
+    /// <summary>Hovered button ink (--hover).</summary>
     public const string ButtonBackgroundHover = "Theme.ButtonBackgroundHover";
+    /// <summary>Hovered button fill (--hover).</summary>
+    public const string ButtonForegroundHover = "Theme.ButtonForegroundHover";
     /// <summary>Focused button ink — reverse-video (--bg).</summary>
     public const string ButtonForegroundFocus = "Theme.ButtonForegroundFocus";
     /// <summary>Focused button fill — reverse-video (--text).</summary>
@@ -262,6 +294,8 @@ public static class ThemeKeys
     public const string ButtonForegroundDisabled = "Theme.ButtonForegroundDisabled";
     /// <summary>Disabled button fill (--disabled-bg).</summary>
     public const string ButtonBackgroundDisabled = "Theme.ButtonBackgroundDisabled";
+    /// <summary>SplitButton dropdown indicator zone fill (--dd-zone).</summary>
+    public const string SplitButtonDropZoneBrush = "Theme.SplitButtonDropZoneBrush";
 
     /// <summary>A per-tier <see cref="Cursorial.Output.TextAttributes"/> value carrying the caps-nocolor interactive
     /// cue: <see cref="Cursorial.Output.TextAttributes.None"/> on a color tier (the palette fill IS the cue, so no

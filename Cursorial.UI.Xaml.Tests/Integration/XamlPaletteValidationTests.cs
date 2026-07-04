@@ -10,6 +10,9 @@ using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Default;
 
+using Xunit.Abstractions;
+using Xunit.Sdk;
+
 using UIControls = Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
@@ -59,6 +62,11 @@ public sealed class XamlPaletteValidationTests
 
             Assert.True(gotXaml, $"XAML palette missing '{key}' at {@base}+{tier}");
             Assert.True(gotBuiltIn, $"BuiltIn missing '{key}' at {@base}+{tier}");
+
+            if (!Equals(Normalize(builtInVal), Normalize(xamlVal)))
+            {
+                throw EqualException.ForMismatchedValues(Normalize(builtInVal), Normalize(xamlVal), $"'{key}' at {@base}+{tier}");
+            }
             Assert.Equal(Normalize(builtInVal), Normalize(xamlVal));
         }
     }

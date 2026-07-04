@@ -59,7 +59,7 @@ public class BarButton : ButtonBase
 /// identical everywhere. It remembers which properties IT filled, so a runtime <see cref="ButtonBase.Command"/> swap
 /// refreshes or clears the auto-filled values instead of leaving the old command's label stranded — while never
 /// clobbering an explicit author/style value (which it never recorded as its own).</summary>
-internal sealed class BarCommandSync
+public sealed class BarCommandSync
 {
     private bool _filledContent, _filledIcon, _filledGesture, _filledTip;
 
@@ -69,7 +69,7 @@ internal sealed class BarCommandSync
     public void AutoFill(ContentControl control, ICommand? command, StyledProperty<object?> iconProperty, StyledProperty<string?> gestureProperty)
     {
         var bar = command as BarCommand;
-        Apply(control, ContentControl.ContentProperty, (object?) bar?.Text, ref _filledContent);
+        Apply(control, ContentControl.ContentProperty, bar?.Text, ref _filledContent);
         Apply(control, iconProperty, bar?.Icon, ref _filledIcon);
         Apply(control, gestureProperty, bar?.InputGestureText, ref _filledGesture);
         ApplyTip(control, bar);

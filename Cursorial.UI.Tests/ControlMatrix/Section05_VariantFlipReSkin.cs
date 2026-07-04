@@ -36,7 +36,7 @@ public sealed class Section05_VariantFlipReSkin
     private static readonly Color LightText = Color.FromRgb(0x34, 0x3B, 0x58);    // (Light,Ansi256) TextBrush
     private static readonly Color DarkFill = Color.FromRgb(0x24, 0x28, 0x3B);     // (Dark,Ansi256)  SurfaceBrush
     private static readonly Color LightFill = Color.FromRgb(0x9E, 0xA0, 0xA8);    // (Light,Ansi256) SurfaceBrush
-    private static readonly Color DarkWindowBg = Color.FromRgb(0x0D, 0x0F, 0x19); // (Dark,Ansi256)  WindowBackground (focus ink)
+    private static readonly Color DarkWindowBg = Color.FromRgb(0x1f, 0x23, 0x35); // (Dark,Ansi256)  WindowBackground (focus ink)
 
     // ───────────────────────────── C113 — the dark/light flip changes a default-themed control's cells ─────────────────────────────
 

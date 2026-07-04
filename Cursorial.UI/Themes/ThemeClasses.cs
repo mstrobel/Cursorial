@@ -18,17 +18,18 @@ public static class ThemeClasses
     /// The <c>.info</c> class indicates an element is presenting informational content.
     /// </summary>
     public const string Info = "ThemeClasses.Info";
-    
-    /// <summary>
-    /// The <c>.warning</c> class indicates an element is presenting warning information.
-    /// </summary>
-    public const string Warn = "ThemeClasses.Warn";
-    
+
     /// <summary>
     /// The <c>.success</c> class indicates an element is indicating a successful action
     /// or an "OK" state.
     /// </summary>
     public const string Success = "ThemeClasses.Success";
+    
+    /// <summary>
+    /// The <c>.warning</c> class indicates an element is indicating a warningful action
+    /// or an "OK" state.
+    /// </summary>
+    public const string Warning = "ThemeClasses.Warning";
     
     /// <summary>
     /// The <c>.danger</c> class indicates an element should be shown in a danger color.

@@ -56,7 +56,7 @@ public sealed class TemplateBinding : BindingBase
         // OneWay }`. The descriptor validation above keeps the typed-fast-path forfeit rules (BD15);
         // the underlying expression rides the reflection binding over the relative-source anchor that
         // already resolves `TemplatedParent`. A converter/parameter forfeits the typed path but works.
-        var binding = new Binding(Property.Name)
+        var binding = new Binding(Property)
                       {
                           RelativeSource = RelativeSource.TemplatedParent,
                           Mode = BindingMode.OneWay,

@@ -75,9 +75,9 @@ internal static class CursorialThemeStyles
     internal static Style CapsNoColorInteractiveInverse()
     {
         var style = new Style(
-            ".caps-nocolor Button:focus, .caps-nocolor Button:pressed, .caps-nocolor Button:default, " +
-            ".caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pressed, " +
-            ".caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pressed")
+            ".caps-nocolor Button:focus, .caps-nocolor Button:pointerover, .caps-nocolor Button:default, " +
+            ".caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pointerover, " +
+            ".caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pointerover")
         { Key = "Theme.CapsNoColor.Inverse" };
         style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Inverse));
         return style;
@@ -126,13 +126,41 @@ internal static class CursorialThemeStyles
                    Key = ThemeClasses.Accent,
                    Children =
                    {
-                       new Style("^:pointerover, ^:focus").SetResource(Panel.BackgroundProperty, ThemeKeys.Accent2Brush),
-                       new Style("^:pressed").SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)/*,
-                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                       new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.Accent2Brush),
+                       new Style("^:is(ButtonBase):focus-visible")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush),
+                       new Style("^:is(ButtonBase):pressed")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                    }
                }
               .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
               .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush);
+    }
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements.
+    /// </summary>
+    internal static Style InfoStyle()
+    {
+        return new Style(".info")
+               {
+                   Key = ThemeClasses.Info,
+                   Children =
+                   {
+                       new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.Info2Brush),
+                       new Style("^:is(ButtonBase):focus-visible")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoInverseBrush),
+                       new Style("^:is(ButtonBase):pressed")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoDarkBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                   }
+               }
+              .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+              .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoBrush);
     }
 
     /// <summary>
@@ -145,9 +173,14 @@ internal static class CursorialThemeStyles
                    Key = ThemeClasses.Cool,
                    Children =
                    {
-                       new Style("^:pointerover, ^:focus").SetResource(Panel.BackgroundProperty, ThemeKeys.Cool2Brush),
-                       new Style("^:pressed").SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)/*,
-                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                       new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.Cool2Brush),
+                       new Style("^:is(ButtonBase):focus-visible")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolInverseBrush),
+                       new Style("^:is(ButtonBase):pressed")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                    }
                }
               .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -165,12 +198,14 @@ internal static class CursorialThemeStyles
                    Children =
                    {
                        new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ElevationRaised)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Danger2Brush),
+                       new Style("^:is(ButtonBase):focus-visible")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerInverseBrush),
                        new Style("^:is(ButtonBase):pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ElevationRaised)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)/*,
-                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                    }
                }
               .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush)
@@ -178,7 +213,7 @@ internal static class CursorialThemeStyles
     }
 
     /// <summary>
-    /// The interaction style for primary action buttons and other elements.
+    /// The interaction style for safe or successful action buttons and other elements.
     /// </summary>
     internal static Style SuccessStyle()
     {
@@ -189,13 +224,40 @@ internal static class CursorialThemeStyles
                    {
                        new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Success2Brush),
+                       new Style("^:is(ButtonBase):focus-visible")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessInverseBrush),
                        new Style("^:is(ButtonBase):pressed")
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)/*,
-                       new Style("^:focus-visible").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)*/
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                    }
                }
               .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
               .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessBrush);
+    }
+
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements that need to convey warning.
+    /// </summary>
+    internal static Style WarningStyle()
+    {
+        return new Style(".warning")
+               {
+                   Key = ThemeClasses.Warning,
+                   Children =
+                   {
+                       new Style("^:is(ButtonBase):pointerover, ^:is(ButtonBase):focus")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.Warning2Brush),
+                       new Style("^:is(ButtonBase):focus-visible")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningInverseBrush),
+                       new Style("^:is(ButtonBase):pressed")
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningDarkBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                   }
+               }
+              .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+              .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningBrush);
     }
 
     /// <summary>

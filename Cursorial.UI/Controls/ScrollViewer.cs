@@ -47,8 +47,9 @@ public class ScrollViewer : ContentControl
 
     /// <summary>The vertical scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.</summary>
     public static readonly StyledProperty<ScrollBarVisibility> VerticalScrollBarVisibilityProperty =
-        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(VerticalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto,
-                                                               changed: OnVisibilityChanged);
+        UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(nameof(VerticalScrollBarVisibility),
+                                                                                  defaultValue: ScrollBarVisibility.Auto,
+                                                                                  changed: OnVisibilityChanged);
 
     /// <summary>
     /// The horizontal scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.
@@ -63,8 +64,8 @@ public class ScrollViewer : ContentControl
     /// </para>
     /// </summary>
     public static readonly StyledProperty<ScrollBarVisibility> HorizontalScrollBarVisibilityProperty =
-        UIProperty.Register<ScrollViewer, ScrollBarVisibility>(nameof(HorizontalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto,
-                                                               changed: OnVisibilityChanged);
+        UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(nameof(HorizontalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto,
+                                                                                  changed: OnVisibilityChanged);
 
     /// <summary>The horizontal scroll offset in cells — a two-way mirror of the SCP's styled <c>ScrollOffsetColumn</c> (CD28).</summary>
     public static readonly DirectProperty<ScrollViewer, int> HorizontalOffsetProperty =
@@ -81,6 +82,24 @@ public class ScrollViewer : ContentControl
     /// <summary>The visible content size (read-only mirror of the SCP's <c>Viewport</c>).</summary>
     public static readonly DirectProperty<ScrollViewer, Size> ViewportProperty =
         UIProperty.RegisterDirect<ScrollViewer, Size>(nameof(Viewport), static s => s._viewport);
+
+    /// <summary>
+    /// Helper for setting VerticalScrollBarVisibility property.
+    /// </summary>
+    public static void SetVerticalScrollBarVisibility(UIElement element, ScrollBarVisibility verticalScrollBarVisibility)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(VerticalScrollBarVisibilityProperty, verticalScrollBarVisibility);
+    }
+
+    /// <summary>
+    /// Helper for reading VerticalScrollBarVisibility property.
+    /// </summary>
+    public static ScrollBarVisibility GetVerticalScrollBarVisibility(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(VerticalScrollBarVisibilityProperty);
+    }
 
     /// <inheritdoc cref="VerticalScrollBarVisibilityProperty"/>
     public ScrollBarVisibility VerticalScrollBarVisibility

@@ -18,6 +18,13 @@ public sealed class Binding : AnchoredBinding
     /// <summary>Creates a binding with the given path text.</summary>
     public Binding(string path) => Path = path;
 
+    /// <summary>
+    /// Creates a binding with a property path based on (<paramref name="property"/>).(<paramref
+    /// name="additionalProperties"/>[0])[.(<paramref name="additionalProperties"/>[<em>...n</em>])
+    /// </summary>
+    public Binding(UIProperty property, params UIProperty[] additionalProperties) 
+        => Path = new PropertyPath(property, additionalProperties);
+
     /// <summary>The binding path (design doc §6.3). A bare string implicitly converts to a lazily-resolved
     /// <see cref="PropertyPath"/>; the XAML loader supplies the xmlns-preprocessed form so a prefixed
     /// attached-property qualification (<c>(prefix:Type.Member)</c>) binds the document's namespaces.

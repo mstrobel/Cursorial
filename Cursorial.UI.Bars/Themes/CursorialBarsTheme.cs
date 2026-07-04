@@ -110,19 +110,28 @@ internal static class CursorialBarsTheme
     public static Style BarButtonStyle()
     {
         var theme = new Style { Key = "Bars.BarButton" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
-            .Set(Control.PaddingProperty, new Margins(1, 0))
-            .Set(Control.TemplateProperty, BarItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
+                   .Set(Control.PaddingProperty, new Margins(1, 0))
+                   .Set(Control.TemplateProperty, BarItemTemplate());
+
+        theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
+
         theme.Children.Add(new Style("^:focus")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-            .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
+                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
+
         theme.Children.Add(new Style("^:pressed")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
-            .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
+                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
+
+        theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+
         return theme;
     }
 
@@ -141,6 +150,10 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:checked")
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+        theme.Children.Add(new Style("^:checked:focus")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
+            .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
@@ -334,15 +347,18 @@ internal static class CursorialBarsTheme
                 grid.Children.Add(BuildDropDownPopup(ctx));
                 return grid;
             }));
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+        theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
         theme.Children.Add(new Style("^:focus")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
-        theme.Children.Add(new Style("^:pressed")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
-        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)); // active while its dropdown is open
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+        theme.Children.Add(new Style("^:pressed, ^:open")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
 
@@ -400,14 +416,18 @@ internal static class CursorialBarsTheme
                 grid.Children.Add(BuildDropDownPopup(ctx));
                 return grid;
             }));
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+        theme.Children.Add(new Style("^:pointerover")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
         theme.Children.Add(new Style("^:focus")
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         theme.Children.Add(new Style("^:pressed")
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+        theme.Children.Add(new Style("^:disabled")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
 
@@ -415,8 +435,8 @@ internal static class CursorialBarsTheme
     private static Style DropZoneStyle()
     {
         var theme = new Style { Key = "Bars.SplitDropZone" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SplitButtonDropZoneBrush)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
@@ -428,8 +448,18 @@ internal static class CursorialBarsTheme
                 border.Child = caret;
                 return border;
             }));
-        theme.Children.Add(new Style("^Button:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed));
-        theme.Children.Add(new Style("^Button:pressed").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed));
+        theme.Children.Add(new Style("^Button:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
+        theme.Children.Add(new Style("^Button:focus")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
+        theme.Children.Add(new Style("^Button:pressed")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^Button:disabled")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
 
@@ -636,7 +666,7 @@ internal static class CursorialBarsTheme
             content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
             var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
             ctx.RegisterName("PART_Body", body);
-            body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
+            body.SetResourceReference(Border.BackgroundProperty, ThemeKeys.RibbonBrush);
             DockPanel.SetDock(body, Dock.Bottom);
 
             var panel = new DockPanel();

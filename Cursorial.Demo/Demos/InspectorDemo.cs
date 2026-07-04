@@ -66,6 +66,88 @@ internal sealed class InspectorDemo : IDemo
     // inspector has rich provenance to show. The default xmlns maps the UI/Controls/Drawing.Media types.
     private static readonly (string Label, string Xaml)[] Samples =
     [
+        ("Buttons Demo", """
+                      <DockPanel xmlns="https://cursorial.dev/ui"
+                                 xmlns:x="https://cursorial.dev/xaml">
+                        <Expander DockPanel.Dock="Bottom">
+                          <Border Height="5" />
+                        </Expander>
+                        <Grid Margin="2,1">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="2" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="2" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                          </Grid.ColumnDefinitions>
+                          <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                          </Grid.RowDefinitions>
+                          
+                          <Button        Grid.Column="0" Grid.Row="0" Content="_Cancel" MinWidth="10"
+                                         Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock     Grid.Column="2" Grid.Row="0" Text="normal" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button        Grid.Column="0" Grid.Row="2" Content="_Accept" MinWidth="10" IsDefault="true"
+                                         Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock     Grid.Column="2" Grid.Row="2" Text=":default" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button        Grid.Column="0" Grid.Row="4" Content="Disabled" MinWidth="10" IsEnabled="false"
+                                         Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock     Grid.Column="2" Grid.Row="4" Text=":disabled" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <ToggleButton Grid.Column="0" Grid.Row="6" Content="To_ggle" MinWidth="10"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="2" Grid.Row="6" Text="toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <ToggleButton Grid.Column="0" Grid.Row="8" Content="To_ggle 2" MinWidth="10" IsThreeState="True"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="2" Grid.Row="8" Text="3-state toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <RepeatButton Grid.Column="0" Grid.Row="10" Content="_Repeat" MinWidth="10"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="2" Grid.Row="10" Text="repeat (hold)" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button       Grid.Column="4" Grid.Row="0" Content="_Engage" MinWidth="10" Classes="accent"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="6" Grid.Row="0" Text=".accent" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button       Grid.Column="4" Grid.Row="2" Content="_Sync" MinWidth="10" Classes="cool"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="6" Grid.Row="2" Text=".cool" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button       Grid.Column="4" Grid.Row="4" Content="_Delete" MinWidth="10" Classes="danger"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="6" Grid.Row="4" Text=".danger" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button       Grid.Column="4" Grid.Row="6" Content="Den_y" MinWidth="10" Classes="warning"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="6" Grid.Row="6" Text=".warning" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button       Grid.Column="4" Grid.Row="8" Content="In_fo" MinWidth="10" Classes="info"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="6" Grid.Row="8" Text=".info" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                          
+                          <Button       Grid.Column="4" Grid.Row="10" Content="Fi_nish" MinWidth="10" Classes="success"
+                                        Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+                          <TextBlock    Grid.Column="6" Grid.Row="10" Text=".success" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                        </Grid>
+                      </DockPanel>
+                      """),
         ("Tabs Demo", """
                       <TabControl xmlns="https://cursorial.dev/ui"
                                   xmlns:x="https://cursorial.dev/xaml"
@@ -811,8 +893,10 @@ internal sealed class InspectorDemo : IDemo
 
             var seen = new HashSet<UIElement>();
             var tree = new TreeView();
+
+            ScrollViewer.SetVerticalScrollBarVisibility(tree, ScrollBarVisibility.Visible); // avoid items shifting with (dis)appearance of scrollbar 
             
-            // ScrollViewer.SetVerticalScrollBarVisibility(tree, ScrollBarVisibility.Visible); // avoid items shifting with (dis)appearance of scrollbar 
+            tree.Items.Add(InspectNode(current));
 
             tree.Items.Add(InspectNode(current, seen: seen));
 

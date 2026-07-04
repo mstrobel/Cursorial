@@ -25,12 +25,13 @@ public class TreeView : ItemsControl
     public TreeView()
     {
         IsTabStop = false;
+
         ItemsPanel = new ItemsPanelTemplate(static _ =>
-        {
-            var panel = new StackPanel();
-            KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the whole tree is one tab stop
-            return panel;
-        });
+                                            {
+                                                var panel = new StackPanel();
+                                                KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the whole tree is one tab stop
+                                                return panel;
+                                            });
     }
 
     /// <inheritdoc/>

@@ -73,9 +73,28 @@
         <Style Selector="^:is(Button):pressed">
           <Setter Property="Panel.Background" Value="#512A46"/>
         </Style>
+        <!--
         <Style Selector="^:is(Button):focus-visible">
           <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
         </Style>
+      -->
+      </Style.Children>
+    </Style>
+
+    <Style x:Key="{x:Static ThemeClasses.Info}" Selector=".info">
+      <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.InfoBrush}}"/>
+      <Style.Children>
+        <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.Info2Brush}}"/>
+        </Style>
+        <Style Selector="^:is(Button):pressed">
+          <Setter Property="Panel.Background" Value="#381ec7"/>
+        </Style>
+        <!--
+        <Style Selector="^:is(Button):focus-visible">
+          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+        </Style>
+      -->
       </Style.Children>
     </Style>
 
@@ -88,9 +107,28 @@
         <Style Selector="^:is(Button):pressed">
           <Setter Property="Panel.Background" Value="#381ec7"/>
         </Style>
+        <!--
         <Style Selector="^:is(Button):focus-visible">
           <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
         </Style>
+      -->
+      </Style.Children>
+    </Style>
+
+    <Style x:Key="{x:Static ThemeClasses.Warning}" Selector=".warning">
+      <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.WarningBrush}}"/>
+      <Style.Children>
+        <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.Warning2Brush}}"/>
+        </Style>
+        <Style Selector="^:is(Button):pressed">
+          <Setter Property="Panel.Background" Value="#381ec7"/>
+        </Style>
+        <!--
+        <Style Selector="^:is(Button):focus-visible">
+          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+        </Style>
+      -->
       </Style.Children>
     </Style>
 
@@ -106,9 +144,11 @@
           <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
           <Setter Property="Panel.Background" Value="#d11f5e"/>
         </Style>
+        <!--
         <Style Selector="^:is(Button):focus-visible">
           <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
         </Style>
+      -->
       </Style.Children>
     </Style>
 

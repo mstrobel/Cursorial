@@ -95,15 +95,10 @@
             <TextBox Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left"
                      x:Name="NameEditor" Width="28" Text="{Binding Name, Mode=TwoWay}" />
 
-            <Label Grid.Column="0" Grid.Row="1"
+            <Label Grid.Column="0" Grid.Row="1" Margin="0,1,0,0"
                    Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <PasswordBox Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left"
+            <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0" HorizontalAlignment="Left"
                          x:Name="PasswordEditor" Width="28" Text="{Binding Password, Mode=TwoWay}" RevealPassword="{Binding ShowPassword}" />
-
-            <Label Grid.Column="0" Grid.Row="2"
-                   Target="{x:Reference PermissionsEditor}" Content="User Pe_rmissions" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <TextBox Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left"
-                     x:Name="PermissionsEditor" Width="28" Text="Read Schema, Read Data" IsReadOnly="True" />
 
             <Label Grid.Column="4" Grid.Row="0"
                    Target="{x:Reference ColorSelector}" Content="Favorite _Color"
@@ -464,30 +459,74 @@
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="2" />
               <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="4" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="2" />
+              <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="2" />
+              <RowDefinition Height="1" />
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="2" />
+              <RowDefinition Height="1" />
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="2" />
+              <RowDefinition Height="1" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="1" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="1" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Button    Grid.Column="0" Grid.Row="0" Content="_Cancel" MinWidth="10" />
-            <TextBlock Grid.Column="2" Grid.Row="0" Text="normal button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            <Button        Grid.Column="0" Grid.Row="0" Content="_Cancel" MinWidth="10"
+                           Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock     Grid.Column="2" Grid.Row="0" Text="normal" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
 
-            <Button    Grid.Column="0" Grid.Row="2" Content="_Engage" MinWidth="10" Classes="accent" />
-            <TextBlock Grid.Column="2" Grid.Row="2" Text="accent button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            <Button        Grid.Column="0" Grid.Row="2" Content="_Accept" MinWidth="10" IsDefault="true"
+                           Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock     Grid.Column="2" Grid.Row="2" Text=":default" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
 
-            <Button    Grid.Column="0" Grid.Row="4" Content="_Sync" MinWidth="10" Classes="cool" />
-            <TextBlock Grid.Column="2" Grid.Row="4" Text="cool button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            <Button        Grid.Column="0" Grid.Row="4" Content="Disabled" MinWidth="10" IsEnabled="false"
+                           Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock     Grid.Column="2" Grid.Row="4" Text=":disabled" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
 
-            <Button    Grid.Column="0" Grid.Row="6" Content="_Delete" MinWidth="10" Classes="danger" />
-            <TextBlock Grid.Column="2" Grid.Row="6" Text="danger button" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            <ToggleButton Grid.Column="0" Grid.Row="6" Content="To_ggle" MinWidth="10"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="2" Grid.Row="6" Text="toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <ToggleButton Grid.Column="0" Grid.Row="8" Content="To_ggle 2" MinWidth="10" IsThreeState="True"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="2" Grid.Row="8" Text="3-state toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <RepeatButton Grid.Column="0" Grid.Row="10" Content="_Repeat" MinWidth="10"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="2" Grid.Row="10" Text="repeat (hold)" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button       Grid.Column="4" Grid.Row="0" Content="_Engage" MinWidth="10" Classes="accent"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="6" Grid.Row="0" Text=".accent" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button       Grid.Column="4" Grid.Row="2" Content="_Sync" MinWidth="10" Classes="cool"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="6" Grid.Row="2" Text=".cool" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button       Grid.Column="4" Grid.Row="4" Content="_Delete" MinWidth="10" Classes="danger"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="6" Grid.Row="4" Text=".danger" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button       Grid.Column="4" Grid.Row="6" Content="Den_y" MinWidth="10" Classes="warning"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="6" Grid.Row="6" Text=".warning" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button       Grid.Column="4" Grid.Row="8" Content="In_fo" MinWidth="10" Classes="info"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="6" Grid.Row="8" Text=".info" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <Button       Grid.Column="4" Grid.Row="10" Content="Fi_nish" MinWidth="10" Classes="success"
+                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
+            <TextBlock    Grid.Column="6" Grid.Row="10" Text=".success" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
           </Grid>
 
         </DockPanel>
@@ -497,7 +536,7 @@
 
     <!-- Title bar -->
     <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}" Padding="1,0">
-        <TextBlock Text=" Cursorial — Control Gallery  —  ^t color tier · ^d light/dark · q / esc to quit)"
+        <TextBlock Text=" Cursorial — Control Gallery  —  ⌥ shortcuts · ⌥+t color tier · ⌥+d light/dark · q / esc to quit)"
                    Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
     </Border>
     
@@ -508,22 +547,29 @@
     </Expander>
 
     <!-- Nav: a real ListBox so arrow-key / click navigation is itself part of the showcase -->
-    <ListBox x:Name="PageList"
-             DockPanel.Dock="Left"
-             Width="22"
-             ItemsSource="{Binding Pages}"
-             SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
-      <ListBox.ItemTemplate>
+    <Border DockPanel.Dock="Left"> 
+      <DockPanel LastChildFill="True">
+        <Label DockPanel.Dock="Top"
+               Content="Select a _Page:"
+               Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"
+               Padding="1,0"
+               Target="{x:Reference PageList}" />
+        <ListBox x:Name="PageList"
+                 Width="22"
+                 ItemsSource="{Binding Pages}"
+                 SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
+          <ListBox.ItemTemplate>
             <DataTemplate>
-                <TextBlock Text="{Binding Title}"/>
+              <TextBlock Text="{Binding Title}"/>
             </DataTemplate>
-        </ListBox.ItemTemplate>
-    </ListBox>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
     
     <StatusBar DockPanel.Dock="Bottom">
       <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
       <StatusBarItem Classes="alternate" Content="{Binding ThemeDescription}" />
-      <StatusBarItem Classes="alternate" Content="{Binding Focus}" />
       <StatusBarItem Content="{Binding Path=SelectedPage.Status, TargetNullValue=''}" />
     </StatusBar>
 

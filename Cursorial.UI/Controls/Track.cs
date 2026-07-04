@@ -63,6 +63,9 @@ public sealed class Track : UIElement
             return (0, 0);
 
         var range = Owner.Maximum - Owner.Minimum;
+        if (range == 0)
+            return (0, 0);
+
         var viewport = Math.Max(0, Owner.ViewportSize);
         var extent = range + viewport;
 

@@ -32,8 +32,10 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
             return;
 
         _generator = owner.ItemContainerGenerator;
+
         EnsurePanel(owner);
         _generator.ContainersChanged += OnContainersChanged;
+
         SyncAll(); // adopt whatever is already realized (the generator may have run before this part existed)
     }
 
@@ -48,8 +50,10 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
             return templatedOwner;
 
         for (var node = UIParent; node is not null; node = node.UIParent)
+        {
             if (node is ItemsControl owner)
                 return owner;
+        }
 
         return null;
     }
@@ -247,7 +251,8 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
         set
         {
             _scrollOwner = value;
-            if (PanelHost is { } host)
+
+            if (PanelHost is {} host)
                 host.ScrollOwner = value;
         }
     }

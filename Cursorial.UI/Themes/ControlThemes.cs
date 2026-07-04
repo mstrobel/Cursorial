@@ -12,6 +12,8 @@ using Cursorial.UI.Input;
 using Calendar = Cursorial.UI.Controls.Calendar;
 using CellStyle = Cursorial.Output.Style;
 
+// ReSharper disable AccessToStaticMemberViaDerivedType
+
 namespace Cursorial.UI.Themes;
 
 /// <summary>
@@ -93,6 +95,7 @@ internal static class ControlThemes
         var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        border.SetBinding(TextElement.TextAttributesProperty, new TemplateBinding(TextElement.TextAttributesProperty));
         // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
         // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
         // the negotiated tier. No resting pen ⇒ no frame ⇒ a 1-row button (content at row 0).
@@ -105,7 +108,7 @@ internal static class ControlThemes
 
     private static Style ButtonTheme()
     {
-        var theme = AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.Button" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
+        var theme = AddButtonStates<Button>(ApplyPaletteSpine(new Style { Key = "Theme.Button" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center)
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
@@ -128,7 +131,12 @@ internal static class ControlThemes
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-        return presenter;
+        
+        var border = new Border { Child = presenter };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+        return border;
     });
 
     private static Style LabelTheme()
@@ -232,6 +240,8 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
+        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
         ctx.RegisterName("PART_ScrollViewer", scroll);
         var border = new Border { Child = scroll };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -383,6 +393,8 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
+        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
         ctx.RegisterName("PART_ScrollViewer", scroll);
         var border = new Border { Child = scroll };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -968,46 +980,80 @@ internal static class ControlThemes
                return root;
            });
 
-        var headerStyle = AddButtonStates(new Style(Selectors.Nesting().Template().OfType<ToggleButton>().Name("PART_Header")))
-            .Set(
-                Control.TemplateProperty,
-                new ControlTemplate(
-                    build: tbCtx =>
+        //                                v-- Use ButtonBase as the type argument so we don't get state coloring.
+        var ht = new ControlTemplate(
+            build: tbCtx =>
+                   {
+                       var border = new Border();
+
+                       border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                       border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                       border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+                       var glyph = new TextBlock { Margin = new(0, 0, 1, 0) }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
+
+                       var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
+                       var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
+
+                       glyph.SetBinding(TextBlock.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+                       glyph.SetBinding(
+                           TextBlock.TextProperty,
+                           new Binding
                            {
-                               var border = new Border();
+                               Path = nameof(ToggleButton.IsChecked),
+                               Converter = new ExpandedToGlyphConverter(),
+                               Mode = BindingMode.OneWay,
+                               RelativeSource = RelativeSource.TemplatedParent
+                           }
+                       );
 
-                               border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-                               border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                               border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                       tbCtx.RegisterName("PART_Glyph", glyph);
 
-                               var glyph = new TextBlock { Margin = new(0, 0, 1, 0) }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
+                       headerRow.Children.Add(glyph);
+                       headerRow.Children.Add(headerPresenter);
 
-                               var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
-                               var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
+                       border.Child = headerRow;
+                       return border;
+                   });
+        
+        var headerStyle = AddButtonStates<ButtonBase>(
+                new Style(Selectors.Nesting().Template().OfType<ToggleButton>().Name("PART_Header"))
+            )
+           .Set(Control.TemplateProperty, ht);
 
-                               glyph.SetBinding(TextBlock.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-
-                               glyph.SetBinding(
-                                   TextBlock.TextProperty,
-                                   new Binding
-                                   {
-                                       Path = nameof(ToggleButton.IsChecked),
-                                       Converter = new ExpandedToGlyphConverter(),
-                                       Mode = BindingMode.OneWay,
-                                       RelativeSource = RelativeSource.TemplatedParent
-                                   }
-                               );
-
-                               tbCtx.RegisterName("PART_Glyph", glyph);
-
-                               headerRow.Children.Add(glyph);
-                               headerRow.Children.Add(headerPresenter);
-
-                               border.Child = headerRow;
-                               return border;
-                           }));
-
-        t.Styles.Add(new Style(Selectors.OfType<Expander>()) { Children = { headerStyle } });
+        t.Styles.Add(
+            new Style(Selectors.OfType<Expander>())
+            {
+                Children =
+                {
+                    headerStyle,
+                    new Style(Selectors.Nesting().Template().OfType<ToggleButton>().Name("PART_Header"))
+                    {
+                        Children =
+                        {
+                            new Style("^:checked, ^:indeterminate")
+                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
+                               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
+                            new Style("^:checked:default, ^:indeterminate:default")
+                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
+                               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
+                            new Style("^:checked:pointerover, ^:indeterminate:pointerover")
+                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover),
+                            new Style("^:checked:focus, ^:indeterminate:focus")
+                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus),
+                            new Style("^:checked:pressed, ^:indeterminate:pressed")
+                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed),
+                            new Style("^:checked:disabled, ^:indeterminate:disabled")
+                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled)
+                        }
+                    }
+                }
+            });
 
         return t;
     }
@@ -1054,10 +1100,12 @@ internal static class ControlThemes
     {
         var theme = ApplyPaletteSpine(new Style { Key = "Theme.TextBox" }, ThemeKeys.InputForegroundNormal, ThemeKeys.InputBackgroundNormal)
             .Set(UIElement.MinWidthProperty, 12)
-            .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionActive)
+            .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionInactive)
             .Set(Control.TemplateProperty, TextBoxTemplate());
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover));
-        theme.Children.Add(new Style("^:focus").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
+        theme.Children.Add(new Style("^:focus")
+                              .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionActive)
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
         theme.Children.Add(new Style("^:disabled")
             .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundDisabled)
             .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundDisabled));
@@ -1193,11 +1241,15 @@ internal static class ControlThemes
     }
 
     private static Style RepeatButtonTheme()
-        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
+        => AddButtonStates<RepeatButton>(ApplyPaletteSpine(new Style { Key = "Theme.RepeatButton" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center)
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
 
     private static Style ToggleButtonTheme()
-        => AddButtonStates(ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
+        => AddButtonStates<ToggleButton>(ApplyPaletteSpine(new Style { Key = "Theme.ToggleButton" }, ThemeKeys.ButtonForegroundNormal, ThemeKeys.ButtonBackgroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center)
             .Set(Control.TemplateProperty, ButtonContentTemplate()));
 
     // The cell-faithful interactive states shared by the button family (design doc §11.8a): hover = a
@@ -1206,7 +1258,7 @@ internal static class ControlThemes
     // palette spine (color tiers); the NoColor interactive-state distinction rides the caps-nocolor
     // theme-styles rules (inherited TextElement.TextAttributes — Inverse / Faint; see CursorialThemeStyles).
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
-    private static Style AddButtonStates(Style theme)
+    private static Style AddButtonStates<TButton>(Style theme) where TButton : ButtonBase
     {
         theme.Children.Add(
             new Style("^:default")
@@ -1215,7 +1267,8 @@ internal static class ControlThemes
 
         theme.Children.Add(
             new Style("^:pointerover")
-               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
 
         theme.Children.Add(
             new Style("^:focus")
@@ -1231,6 +1284,55 @@ internal static class ControlThemes
             new Style("^:disabled")
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+ 
+        if (typeof(ToggleButton).IsAssignableFrom(typeof(TButton)))
+        {
+            theme.Children.Add(
+                new Style("^:checked")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessBrush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+            
+            theme.Children.Add(
+                new Style("^:checked:pointerover")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.Success2Brush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+
+            theme.Children.Add(
+                new Style("^:checked:focus")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.SuccessInverseBrush));
+
+            theme.Children.Add(
+                new Style("^:checked:pressed")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+
+            theme.Children.Add(
+                new Style("^:indeterminate")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.WarningBrush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+            
+            theme.Children.Add(
+                new Style("^:indeterminate:pointerover")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.Warning2Brush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+            
+            theme.Children.Add(
+                new Style("^:indeterminate:focus")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.WarningInverseBrush));
+
+            theme.Children.Add(
+                new Style("^:indeterminate:pressed")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.WarningDarkBrush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
+        }
+        
+        theme.Children.Add(
+            new Style("^:disabled")
+               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+
         return theme;
     }
 
@@ -1343,33 +1445,53 @@ internal static class ControlThemes
     // PART_Track (required) + optional PART_LineUpButton/PART_LineDownButton arrow RepeatButtons
     // (CD19/C231/C236). The arrows are borderless RepeatButtons with arrow-glyph content; the track is
     // the internal Track primitive. A DockPanel docks the arrows to the ends, the track filling the rest.
-    private static ControlTemplate ScrollBarTemplate(bool horizontal) => new(ctx =>
+    private static ControlTemplate ScrollBarTemplate(bool horizontal)
     {
-        var dock = new DockPanel();
-        var bareTemplate = BareGlyphButtonTemplate();
+        var t = new ControlTemplate(
+            ctx =>
+            {
+               var dock = new DockPanel();
+               var bareTemplate = BareGlyphButtonTemplate();
 
-        // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
-        // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
-        // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
-        // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
-        var lineUp = new RepeatButton { Content = horizontal ? "◀" : "▲", Template = bareTemplate, Padding = Margins.Zero, Focusable = false, IsTabStop = false };
-        ctx.RegisterName("PART_LineUpButton", lineUp);
-        DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
+               // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
+               // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
+               // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
+               // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
+               var lineUp = new RepeatButton
+                            {
+                                Content = horizontal ? "◀" : "▲",
+                                Template = bareTemplate, 
+                                Padding = Margins.Zero, 
+                                Focusable = false,
+                                IsTabStop = false
+                            };
 
-        var lineDown = new RepeatButton { Content = horizontal ? "▶" : "▼", Template = bareTemplate, Padding = Margins.Zero, Focusable = false, IsTabStop = false };
-        ctx.RegisterName("PART_LineDownButton", lineDown);
-        DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
+               ctx.RegisterName("PART_LineUpButton", lineUp);
+               DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
 
-        var owner = (ScrollBar)(ctx.TemplatedParent
-                                ?? throw new InvalidOperationException("The ScrollBar theme template requires a templated parent."));
-        var track = new Track(owner);
-        ctx.RegisterName("PART_Track", track);
+               var lineDown = new RepeatButton
+                              {
+                                  Content = horizontal ? "▶" : "▼", Template = bareTemplate, Padding = Margins.Zero, Focusable = false,
+                                  IsTabStop = false
+                              };
 
-        dock.Children.Add(lineUp);
-        dock.Children.Add(lineDown);
-        dock.Children.Add(track); // last child fills the remaining space (DockPanel default)
-        return dock;
-    });
+               ctx.RegisterName("PART_LineDownButton", lineDown);
+               DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
+
+               var owner = (ScrollBar) (ctx.TemplatedParent ??
+                                        throw new InvalidOperationException("The ScrollBar theme template requires a templated parent."));
+
+               var track = new Track(owner);
+               ctx.RegisterName("PART_Track", track);
+
+               dock.Children.Add(lineUp);
+               dock.Children.Add(lineDown);
+               dock.Children.Add(track); // last child fills the remaining space (DockPanel default)
+               return dock;
+            });
+
+        t.Styles.Add(new Style(Selectors.OfType<ScrollBar>().Template().OfType<RepeatButton>()).Set(Control.PaddingProperty, Margins.Zero)); return t;
+    }
 
     private static Style ScrollBarTheme()
     {
@@ -1639,14 +1761,18 @@ internal static class ControlThemes
     
     private sealed class WindowStateToGlyphConverter : IValueConverter
     {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
-            return value is WindowState state ? state switch { WindowState.Maximized => "⧈", _ => "⛶" } : null;
+            return (value as WindowState?) switch { WindowState.Maximized => "⧈", _ => "⛶" };
         }
 
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
-            throw new NotSupportedException();
+            return value switch
+                   {
+                       "⧈" => WindowState.Maximized,
+                       _   => WindowState.Normal
+                   };
         }
     }
 }

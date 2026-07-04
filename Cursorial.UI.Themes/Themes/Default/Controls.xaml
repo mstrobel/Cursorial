@@ -92,6 +92,8 @@
   <Style x:Key="{x:Type RepeatButton}" TargetType="RepeatButton">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundNormal}}"/>
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="RepeatButton">
@@ -115,10 +117,13 @@
   <Style x:Key="{x:Type ToggleButton}" TargetType="ToggleButton">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundNormal}}"/>
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ButtonTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ToggleButton">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundHover}}"/>
       </Style>
       <Style Selector="^:focus" TargetType="ToggleButton">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundFocus}}"/>
@@ -239,6 +244,11 @@
       <RepeatButton x:Name="PART_LineDownButton" Content="▼" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
       <Track x:Name="PART_Track"/>
     </DockPanel>
+    <ControlTemplate.Styles>
+      <Style Selector="ScrollBar /template/ RepeatButton">
+        <Setter Property="Control.Padding" Value="0"/>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollBarTemplateHorizontal">
@@ -247,6 +257,11 @@
       <RepeatButton x:Name="PART_LineDownButton" Content="▶" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
       <Track x:Name="PART_Track"/>
     </DockPanel>
+    <ControlTemplate.Styles>
+      <Style Selector="ScrollBar /template/ RepeatButton">
+        <Setter Property="Control.Padding" Value="0"/>
+      </Style>
+    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollViewerTemplate">

@@ -10,23 +10,26 @@ namespace Cursorial.UI;
 /// <summary>
 /// The user-configuration surface (FB-17 Stage A) folded onto the merged <see cref="UIApplication"/>:
 /// the loaded <see cref="UserOptions"/> store, the <see cref="CapabilityOverrides"/> seam (FB-5),
-/// the <see cref="EmojiAvailable"/> opt-in (FB-15, the <c>caps-emoji</c> class), and the startup
+/// the <see cref="EmojiAvailable"/> opt-out (FB-15, the <c>caps-emoji</c> class), and the startup
 /// application of the resolved options — before the first capability-class stamp.
 /// </summary>
 public sealed partial class UIApplication
 {
-    private bool _emojiAvailable;
+    private bool _emojiAvailable = true; // FB-15: opt-OUT — default present (maintainer decision, 2026-07-04)
     private CapabilityOverrides _capabilityOverrides = CapabilityOverrides.None;
     private UserOptionsStore? _userOptions;
 
     /// <summary>
     /// Whether the terminal font renders color emoji at the expected double-cell width (the
     /// <c>caps-emoji</c> root class — FB-15). Like <see cref="NerdFontAvailable"/> there is no
-    /// probe (no terminal advertises emoji glyph coverage or width honesty), so this is an explicit
-    /// user opt-in — default <see langword="false"/>, persisted through
-    /// <see cref="Configuration.UserOptionKeys.Emoji"/>. Setting it re-stamps the capability
-    /// classes on every surface root live, and — being application state, not a negotiated
-    /// capability — it survives renegotiation.
+    /// probe (no terminal advertises emoji glyph coverage or width honesty), but unlike Nerd Font
+    /// this is a user <b>opt-out</b> — default <see langword="true"/>, disabled through
+    /// <see cref="Configuration.UserOptionKeys.Emoji"/>. The asymmetry is deliberate (maintainer
+    /// decision, 2026-07-04): emoji coverage in modern terminals is near-universal — unlike Nerd
+    /// Font PUA coverage, where the default-absent no-tofu posture rightly stays — and grid safety
+    /// is owned by <see cref="Controls.Icon"/>'s 2-cell emoji measurement, not by hiding the tier.
+    /// Setting it re-stamps the capability classes on every surface root live, and — being
+    /// application state, not a negotiated capability — it survives renegotiation.
     /// </summary>
     public bool EmojiAvailable
     {

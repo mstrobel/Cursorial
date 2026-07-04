@@ -37,7 +37,7 @@ public sealed class UserConfigurationBuilderTests
                 "theme.base": "light",
                 "theme.colorTier": "ansi16",
                 "capabilities.nerdFont": "true",
-                "capabilities.emoji": "true",
+                "capabilities.emoji": "false",
                 "capabilities.kittyGraphics": "on",
                 "appearance.animations": "false"
             }
@@ -55,11 +55,11 @@ public sealed class UserConfigurationBuilderTests
         Assert.Contains("caps-ansi16", tree.Root.Classes);
         Assert.DoesNotContain("caps-truecolor", tree.Root.Classes);
         Assert.Contains("caps-nerdfont", tree.Root.Classes);
-        Assert.Contains("caps-emoji", tree.Root.Classes);
+        Assert.DoesNotContain("caps-emoji", tree.Root.Classes); // disabled via the opt-OUT key (FB-15) — no default-present flash
         Assert.Contains("caps-images", tree.Root.Classes); // forced on through the FB-5 seam
 
         Assert.True(tree.App.NerdFontAvailable);
-        Assert.True(tree.App.EmojiAvailable);
+        Assert.False(tree.App.EmojiAvailable);
         Assert.False(tree.App.AnimationScheduler.AnimationsEnabled);
         Assert.NotNull(tree.App.UserOptions);
         Assert.Empty(tree.App.UserOptions!.LoadDiagnostics);
@@ -115,6 +115,8 @@ public sealed class UserConfigurationBuilderTests
         Assert.Null(tree.App.RequestedThemeBase);
         Assert.Null(tree.App.RequestedColorTier);
         Assert.True(tree.App.CapabilityOverrides.IsNone);
+        Assert.True(tree.App.EmojiAvailable); // FB-15 opt-out: present without any configuration
+        Assert.Contains("caps-emoji", tree.Root.Classes);
     }
 
     [Fact]

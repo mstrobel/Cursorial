@@ -49,10 +49,11 @@ public enum CapabilityOverride
 /// forced-on graphics protocol does not make the renderer emit images).
 /// </para>
 /// <para>
-/// The color tier and the glyph opt-ins are deliberately <b>not</b> axes here: the color tier
+/// The color tier and the glyph flags are deliberately <b>not</b> axes here: the color tier
 /// already overrides through <see cref="UIApplication.RequestedColorTier"/>, and Nerd Font /
-/// emoji availability are user-declared opt-ins (<see cref="UIApplication.NerdFontAvailable"/> /
-/// <see cref="UIApplication.EmojiAvailable"/>) with no negotiated signal to override.
+/// emoji availability are probe-less user-declared flags (<see cref="UIApplication.NerdFontAvailable"/>,
+/// an opt-in / <see cref="UIApplication.EmojiAvailable"/>, an opt-out — see each for the deliberate
+/// asymmetry) with no negotiated signal to override.
 /// </para>
 /// </remarks>
 public sealed record CapabilityOverrides

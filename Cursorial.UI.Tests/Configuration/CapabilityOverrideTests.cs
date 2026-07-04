@@ -14,7 +14,8 @@ namespace Cursorial.Tests.UI.Configuration;
 // restamps caps-* on every surface root and re-resolves dependent styles in the same tick (no
 // restart), EffectiveCapabilities exposes the SAME fold (classes and snapshot can never desync,
 // while Capabilities keeps reporting the negotiated truth), and overrides survive RenegotiateAsync
-// by design. caps-emoji (FB-15) rides the same restamp as a user opt-in, default absent.
+// by design. caps-emoji (FB-15) rides the same restamp as a user opt-OUT — default present
+// (maintainer decision, 2026-07-04).
 public sealed class CapabilityOverrideTests
 {
     // ───────────────────────────── the per-axis override matrix ─────────────────────────────
@@ -216,34 +217,34 @@ public sealed class CapabilityOverrideTests
     // ───────────────────────────── caps-emoji (FB-15) ─────────────────────────────
 
     [Fact]
-    public void CapsEmoji_DefaultAbsent_StampsOnlyWhenOptedIn_LiveAndPersistent()
+    public void CapsEmoji_DefaultPresent_UnstampedWhenDisabled_LiveAndPersistent()
     {
         using var tree = ShowTree();
 
-        Assert.DoesNotContain("caps-emoji", tree.Root.Classes); // default absent — user opt-in only
+        Assert.Contains("caps-emoji", tree.Root.Classes); // default present — opt-OUT (FB-15, 2026-07-04)
 
         var raised = 0;
         tree.App.EmojiAvailableChanged += (_, _) => raised++;
 
-        tree.App.EmojiAvailable = true;
-        Assert.Contains("caps-emoji", tree.Root.Classes); // restamped live, same tick
+        tree.App.EmojiAvailable = false;
+        Assert.DoesNotContain("caps-emoji", tree.Root.Classes); // restamped live, same tick
         Assert.Equal(1, raised);
 
-        tree.App.EmojiAvailable = false;
-        Assert.DoesNotContain("caps-emoji", tree.Root.Classes);
+        tree.App.EmojiAvailable = true; // re-enable live
+        Assert.Contains("caps-emoji", tree.Root.Classes);
         Assert.Equal(2, raised);
     }
 
     [Fact]
-    public async Task CapsEmoji_SurvivesRenegotiation()
+    public async Task CapsEmoji_DisableSurvivesRenegotiation()
     {
         using var tree = ShowTree();
-        tree.App.EmojiAvailable = true;
+        tree.App.EmojiAvailable = false; // the non-default state is now the opt-out
 
         tree.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.Ansi16Legacy);
         await tree.App.RenegotiateAsync();
 
-        Assert.Contains("caps-emoji", tree.Root.Classes); // app state, not a negotiated capability
+        Assert.DoesNotContain("caps-emoji", tree.Root.Classes); // app state, not a negotiated capability
     }
 
     [Fact]
@@ -252,10 +253,10 @@ public sealed class CapabilityOverrideTests
         using var tree = ShowTree(show: false);
         tree.App.Styles.Add(R(".caps-emoji Widget", (Widget.P, 7)));
         tree.Host.ShowRoot(tree.Root);
-        Assert.Equal(0, tree.A.GetValue(Widget.P));
+        Assert.Equal(7, tree.A.GetValue(Widget.P)); // matches out of the box — default present
 
-        tree.App.EmojiAvailable = true;
-        Assert.Equal(7, tree.A.GetValue(Widget.P));
+        tree.App.EmojiAvailable = false;
+        Assert.Equal(0, tree.A.GetValue(Widget.P));
     }
 
     // ───────────────────────────── downstream consumers honor the fold ─────────────────────────────

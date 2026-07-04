@@ -30,8 +30,11 @@ public static class UserOptionKeys
 
     /// <summary>
     /// Whether the terminal font renders color emoji at the expected double-cell width:
-    /// <c>"true"</c>/<c>"false"</c> (default absent = false — user-declared opt-in, no probe
-    /// exists). Applied to <see cref="UIApplication.EmojiAvailable"/> (the <c>caps-emoji</c> class).
+    /// <c>"true"</c>/<c>"false"</c> (default absent = <b>true</b> — an opt-OUT, set <c>"false"</c>
+    /// to disable; no probe exists). Deliberately the opposite default from <see cref="NerdFont"/>:
+    /// emoji coverage in modern terminals is near-universal, Nerd Font PUA coverage is not
+    /// (maintainer decision, 2026-07-04). Applied to <see cref="UIApplication.EmojiAvailable"/>
+    /// (the <c>caps-emoji</c> class).
     /// </summary>
     public const string Emoji = "capabilities.emoji";
 

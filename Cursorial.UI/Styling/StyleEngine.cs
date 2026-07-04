@@ -1519,8 +1519,10 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (_app.NerdFontAvailable)
             replacement.Add("caps-nerdfont");
 
-        // caps-emoji is the same posture (FB-15): a user-declared opt-in — no probe exists for emoji glyph
-        // coverage or double-width honesty — default absent; app state, so it survives renegotiation.
+        // caps-emoji is probe-less like caps-nerdfont but the OPPOSITE default (FB-15, maintainer decision
+        // 2026-07-04): stamped unless the user disables it. Emoji coverage in modern terminals is near-universal
+        // (unlike Nerd Font PUA coverage, where default-absent rightly stays), and grid safety is owned by the
+        // Icon element's 2-cell emoji measurement, not by hiding the tier. App state — survives renegotiation.
         if (_app.EmojiAvailable)
             replacement.Add("caps-emoji");
 

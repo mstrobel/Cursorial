@@ -15,8 +15,4 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public class BackstageItem : TabItem
 {
-    static BackstageItem()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<BackstageItem>(CursorialBarsTheme.BackstageItemStyle());
-    }
 }

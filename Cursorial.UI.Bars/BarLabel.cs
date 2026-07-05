@@ -19,7 +19,6 @@ public class BarLabel : ContentControl, IAccessKeyTarget
 
         FocusableProperty.OverrideDefaultValue<BarLabel>(false);
         IsTabStopProperty.OverrideDefaultValue<BarLabel>(false); // never a tab stop (metadata parity with Label)
-        ThemeProperty.OverrideDefaultValue<BarLabel>(CursorialBarsTheme.BarLabelStyle());
     }
 
     bool IAccessKeyTarget.IsAccessKeyEligible => IsEffectivelyEnabled && IsEffectivelyVisible;

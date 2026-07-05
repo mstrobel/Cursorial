@@ -676,8 +676,15 @@ is whole-cell and dark/light-themed from one dictionary.
   (parallel to `AccessKeyManager`, gated on the same negotiated capability), armed via `UIApplication.EnableKeyTips()`.
   **SuperTips** (`SuperTip`) — rich titled hover tooltips (title + shortcut + KeyTip hops + description + footer) over
   `ToolTipService`; a described `BarCommand` auto-provisions one.
-- **Theming** — `CursorialBarsTheme` (code-first `ResourceDictionary`) + `BarsThemeKeys` mapping the guide tokens to
-  the Tokyo Night palette, registered into the theme chain via a `[ModuleInitializer]`.
+- **Theming** — `CursorialBarsTheme` builds a code-first `ResourceDictionary` of every bar control theme keyed by
+  control `Type`, reusing the **core `ThemeKeys` spine** (no separate `BarsThemeKeys` — the bars track the active
+  palette + dark/light flips). `BarsThemeModule`'s `[ModuleInitializer]` registers it into the framework's
+  **assembly theme-contribution tier** (`ThemeContributions`, design doc §11.3a) — a chain hop between
+  `UIApplication.Theme` and `CursorialTheme.BuiltIn`, so the suite renders self-contained (no consumer merge) AND a
+  bars control template's `{DynamicResource}` references resolve (the former per-control
+  `Control.ThemeProperty.OverrideDefaultValue<T>` install delivered the theme `Style` but was not a chain node, so it
+  could not carry brushes). Control themes resolve **exact-key**; a subclass (e.g. `GalleryRibbon : Ribbon`) opts into
+  the base theme by overriding `Control.ControlThemeKey` to return the base type (WPF `DefaultStyleKey` parity).
 - **`Cursorial.Gallery`** — the standalone XAML-first MVVM control-gallery app; `GalleryRibbon` self-populates the QAT
   from its view-model and is the live canary for the Bars surfaces (Bars/Ribbon pages). Tests in
   `Cursorial.UI.Bars.Tests/` (Toolbar overflow/focus, Ribbon density/minimize/QAT, KeyTips, SuperTips, drop-down focus

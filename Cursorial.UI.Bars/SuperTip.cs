@@ -39,11 +39,6 @@ public class SuperTip : Control
     private const string PartKeyTips = "PART_KeyTips";
     private TextBlock? _hops;
 
-    static SuperTip()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<SuperTip>(CursorialBarsTheme.SuperTipStyle());
-    }
-
     /// <summary>The control this tip describes — the anchor the auto-computed <see cref="KeyTipSequence"/> walks from
     /// to find its ribbon tab/group. Set by the bar control when it provisions the tip.</summary>
     internal UIElement? Anchor { get; set; }

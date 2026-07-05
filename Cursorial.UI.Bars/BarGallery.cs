@@ -11,10 +11,6 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public class BarGallery : ComboBox
 {
-    static BarGallery()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<BarGallery>(CursorialBarsTheme.BarComboBoxStyle()); // same flat bar face
-    }
 
     /// <summary>Creates a gallery (its drop-down items wrap into a grid rather than stacking).</summary>
     public BarGallery()

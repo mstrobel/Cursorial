@@ -107,8 +107,6 @@ public class Ribbon : TabControl
 
     static Ribbon()
     {
-        Control.ThemeProperty.OverrideDefaultValue<Ribbon>(CursorialBarsTheme.RibbonStyle());
-
         // The WHOLE ribbon (tab strip + the selected tab's content) is ONE returning focus scope, exactly like a
         // Toolbar: entering it (Tab onto the strip, or into a group control) captures the pre-entry element, and Escape
         // from anywhere in the ribbon returns focus there (see OnKeyDown). A pointer/access-key invoke of a ribbon

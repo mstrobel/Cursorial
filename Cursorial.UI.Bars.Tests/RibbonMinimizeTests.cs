@@ -101,11 +101,16 @@ public sealed class RibbonMinimizeTests
         Assert.False(ribbon.IsMinimized);
     }
 
-    // An app Ribbon subclass (mirrors the gallery's GalleryRibbon) — the theme's part rules must still apply to it.
-    private sealed class DerivedRibbon : Ribbon { }
+    // An app Ribbon subclass (mirrors the gallery's GalleryRibbon). It opts into the base Ribbon control theme
+    // the idiomatic way — overriding ControlThemeKey to return typeof(Ribbon) — since control themes resolve
+    // exact-key through the theme-contribution tier (WPF DefaultStyleKey parity).
+    private sealed class DerivedRibbon : Ribbon
+    {
+        protected override object ControlThemeKey => typeof(Ribbon);
+    }
 
-    [Fact] // a Ribbon SUBCLASS minimizes too: the theme's :minimized body-collapse rule must match subclasses
-           // (Is<Ribbon>, not exact OfType<Ribbon>) — otherwise IsMinimized flips but the body never collapses
+    [Fact] // a Ribbon SUBCLASS minimizes too: with ControlThemeKey => typeof(Ribbon) the base theme resolves,
+           // and its :minimized body-collapse rule (Is<Ribbon>) matches the subclass element
     public void Minimize_OnRibbonSubclass_CollapsesBody()
     {
         using var host = NewHost();

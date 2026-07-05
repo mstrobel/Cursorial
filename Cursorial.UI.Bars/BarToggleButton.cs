@@ -28,11 +28,6 @@ public class BarToggleButton : ToggleButton
     public static readonly StyledProperty<string?> InputGestureTextProperty =
         BarButton.InputGestureTextProperty.AddOwner<BarToggleButton>();
 
-    static BarToggleButton()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<BarToggleButton>(CursorialBarsTheme.BarToggleButtonStyle());
-    }
-
     /// <inheritdoc cref="IconProperty"/>
     public object? Icon { get => GetValue(IconProperty); set => SetValue(IconProperty, value); }
 

@@ -8,9 +8,10 @@ namespace Cursorial.UI;
 /// The resource lookup chain (design doc §11.4, CD11) plus the DynamicResource producer install
 /// (<see cref="SetResourceReference{T}"/>). The walk is:
 /// <c>element → logical ancestors (with the template-root resource hop) → visual root →
-/// UIApplication.Resources → UIApplication.Theme → CursorialTheme.BuiltIn</c>; probing each
-/// resourceful node at <c>ActualThemeVariant</c>. <see cref="IResourceHost.HasResources"/>
-/// short-circuits a node with no resources.
+/// UIApplication.Resources → UIApplication.Theme → ThemeContributions → CursorialTheme.BuiltIn</c>; probing
+/// each resourceful node at <c>ActualThemeVariant</c>. <see cref="IResourceHost.HasResources"/>
+/// short-circuits a node with no resources; <see cref="ThemeContributions"/> is the library-registered tier
+/// (design doc §11.3a), probed only when non-empty.
 /// </summary>
 public static class ResourceExtensions
 {
@@ -170,6 +171,21 @@ public static class ResourceExtensions
             if (app.Theme is { } theme && theme.TryGetResource(key, variant, out value))
             {
                 searched?.Add("  → HIT in UIApplication.Theme");
+                return true;
+            }
+        }
+
+        // The assembly theme-contribution tier (design doc §11.3a): library-registered dictionaries, above
+        // BuiltIn so a contribution overrides the built-in default and may reference core ThemeKeys (resolved
+        // onward in BuiltIn); below App so an app overrides any contributed key. Short-circuited (no hop, no
+        // diagnostic text) when nothing is registered — the common case for an app that uses no bar/control
+        // library.
+        if (ThemeContributions.HasContributions)
+        {
+            searched?.Add("ThemeContributions");
+            if (ThemeContributions.TryGetResource(key, variant, out value))
+            {
+                searched?.Add("  → HIT in ThemeContributions");
                 return true;
             }
         }

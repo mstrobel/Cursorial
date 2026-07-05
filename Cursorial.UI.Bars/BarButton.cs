@@ -28,8 +28,6 @@ public class BarButton : ButtonBase
 
     static BarButton()
     {
-        Control.ThemeProperty.OverrideDefaultValue<BarButton>(CursorialBarsTheme.BarButtonStyle());
-
         // :has-icon marks a bar control carrying an Icon (the shared IconProperty — AddOwner'd by the toggle/dropdown
         // buttons, so this one registration covers them all). The ribbon density Compact cascade drops the label to
         // icon-only ONLY for :has-icon controls (a label-only button keeps its label). Registered HERE, in the bar-

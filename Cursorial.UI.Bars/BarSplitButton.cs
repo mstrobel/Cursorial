@@ -20,11 +20,6 @@ public class BarSplitButton : BarDropDownButton
 
     internal ButtonBase? DropZoneForTests => _dropZone;
 
-    static BarSplitButton()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<BarSplitButton>(CursorialBarsTheme.BarSplitButtonStyle());
-    }
-
     /// <inheritdoc/>
     protected override void OnApplyTemplate()
     {

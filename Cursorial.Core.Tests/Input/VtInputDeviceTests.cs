@@ -1,3 +1,5 @@
+using System.IO.Pipelines;
+
 using Cursorial.Input;
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
@@ -333,5 +335,133 @@ public class VtInputDeviceTests
         var m = Assert.IsType<MouseEvent>(Assert.Single(events));
         Assert.Equal(MouseEventKind.ButtonDown, m.Kind);
         Assert.Equal(MouseButton.Left, m.Button);
+    }
+
+    // ---- Idle pump does not wake on the ambiguity window ----
+
+    /// <summary>
+    /// Delegates everything to system time but counts <see cref="TimeProvider.CreateTimer"/>
+    /// calls. The pump's only timer use is the bare-ESC ambiguity <c>Task.Delay</c>, so the
+    /// count is a direct observation of how often the timer is armed.
+    /// </summary>
+    private sealed class TimerCountingTimeProvider : TimeProvider
+    {
+        private int _timersCreated;
+
+        public int TimersCreated => Volatile.Read(ref _timersCreated);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Interlocked.Increment(ref _timersCreated);
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
+    [Fact]
+    public async Task GroundStateIdle_ArmsNoAmbiguityTimer()
+    {
+        var time = new TimerCountingTimeProvider();
+        await using var device = new VtInputDevice(
+            _source,
+            InputCapabilities.None,
+            mode: null,
+            time,
+            escapeAmbiguityTimeout: TimeSpan.FromMilliseconds(20));
+
+        // Plain printables — the classifier returns to Ground within the batch, so the pump
+        // must park on the pipe read alone without ever arming the ambiguity timer.
+        _source.Enqueue("abc");
+        var events = await CollectAsync(device, count: 3, timeout: TimeSpan.FromSeconds(2));
+        Assert.Equal(3, events.Count);
+
+        // Idle well past several ambiguity windows; a timeout-polling pump would arm repeatedly.
+        await Task.Delay(150);
+        Assert.Equal(0, time.TimersCreated);
+    }
+
+    [Fact]
+    public async Task LoneEsc_ArmsTimerOnlyWhileSequencePending()
+    {
+        var time = new TimerCountingTimeProvider();
+        await using var device = new VtInputDevice(
+            _source,
+            InputCapabilities.None,
+            mode: null,
+            time,
+            escapeAmbiguityTimeout: TimeSpan.FromMilliseconds(20));
+
+        _source.Enqueue([0x1B]);
+        var events = await CollectAsync(device, count: 1, timeout: TimeSpan.FromSeconds(2));
+
+        var k = Assert.IsType<KeyEvent>(Assert.Single(events));
+        Assert.Equal(Key.Escape, k.Key);
+
+        // The pending lone ESC armed the timer (the flush that produced the Escape event
+        // happens before the event is written, so the count is settled by now).
+        var armedWhilePending = time.TimersCreated;
+        Assert.True(armedWhilePending >= 1);
+
+        // After the flush the classifier is back at Ground; further idle time must not re-arm.
+        await Task.Delay(150);
+        Assert.Equal(armedWhilePending, time.TimersCreated);
+    }
+
+    // ---- Disposal liveness against a cancellation-deaf reader ----
+
+    /// <summary>
+    /// A worst-case BYO reader: <c>ReadAsync</c> never completes and honors neither the
+    /// cancellation token nor <see cref="PipeReader.CancelPendingRead"/>. The idle pump parks
+    /// on this read with no ambiguity timer armed, so disposal liveness rests entirely on the
+    /// device's bounded pump-abandon path.
+    /// </summary>
+    private sealed class DeafByteSource : IInputByteSource
+    {
+        private sealed class DeafPipeReader : PipeReader
+        {
+            private readonly TaskCompletionSource<ReadResult> _never =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+                => new(_never.Task);
+
+            public override bool TryRead(out ReadResult result)
+            {
+                result = default;
+                return false;
+            }
+
+            public override void AdvanceTo(SequencePosition consumed) { }
+            public override void AdvanceTo(SequencePosition consumed, SequencePosition examined) { }
+            public override void CancelPendingRead() { }
+            public override void Complete(Exception? exception = null) { }
+        }
+
+        public PipeReader Reader { get; } = new DeafPipeReader();
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CancellationDeafReader_DoesNotHang()
+    {
+        var device = new VtInputDevice(new DeafByteSource(), InputCapabilities.None);
+
+        var consumer = Task.Run(async () =>
+        {
+            var events = new List<InputEvent>();
+            await foreach (var ev in device.ReadAllAsync())
+                events.Add(ev);
+            return events;
+        });
+
+        // Let the pump start and park on the never-completing read.
+        await Task.Delay(50);
+
+        // Disposal must abandon the deaf pump within its bound rather than waiting for a byte
+        // that never arrives; the completed channel still terminates the consumer.
+        await device.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+
+        var events = await consumer.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Empty(events);
     }
 }

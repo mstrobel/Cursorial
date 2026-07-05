@@ -137,6 +137,15 @@ public sealed class VtSequenceClassifier
     }
 
     /// <summary>
+    /// <see langword="true"/> while the state machine holds a partially-received sequence — a
+    /// lone ESC awaiting disambiguation, an unterminated CSI/OSC/DCS, a partial X10 mouse
+    /// report. This is exactly the condition under which <see cref="Flush"/> has work to do;
+    /// when <see langword="false"/> (ground state) <see cref="Flush"/> is a no-op, so a device
+    /// can skip arming its idle-timeout timer entirely instead of waking on every quiet window.
+    /// </summary>
+    public bool HasPendingSequence => _state != State.Ground;
+
+    /// <summary>
     /// Commit any pending state that is waiting on more input — most importantly, a lone ESC
     /// held in <see cref="State.Escape"/>. Call from the device after the bare-ESC ambiguity
     /// timeout elapses (xterm convention: 50 ms with no further input).

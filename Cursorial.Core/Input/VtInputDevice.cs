@@ -28,7 +28,9 @@ namespace Cursorial.Input;
 /// it's the start of a sequence (CSI / SS3 / Alt+key) or an Escape keypress. This device
 /// owns the resolution: if no further bytes arrive within <em>escapeAmbiguityTimeout</em>
 /// (default 50&#xa0;ms — the xterm convention), it calls <see cref="VtSequenceClassifier.Flush"/>
-/// to commit the bare ESC as an Escape event.
+/// to commit the bare ESC as an Escape event. The ambiguity timer is armed only while the
+/// classifier actually holds a partial sequence (<see cref="VtSequenceClassifier.HasPendingSequence"/>);
+/// an idle pump parks on the pipe read alone and never wakes on the quiet window.
 /// </para>
 /// <para>
 /// <b>Single-shot.</b> The device is single-shot: <see cref="ReadAllAsync"/> may be called
@@ -40,6 +42,14 @@ public sealed class VtInputDevice : IAsyncInputDevice
 {
     /// <summary>The xterm convention for resolving bare-ESC vs. CSI/SS3/Alt+key ambiguity.</summary>
     public static TimeSpan DefaultEscapeAmbiguityTimeout { get; } = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// How long <see cref="DisposeAsync"/> waits for the pump to exit before abandoning it.
+    /// Only engages for a reader that honors neither the cancellation token nor
+    /// <see cref="System.IO.Pipelines.PipeReader.CancelPendingRead"/>; matches the 2-second
+    /// bound the <c>TerminalSession</c> signal path applies to full disposal.
+    /// </summary>
+    private static readonly TimeSpan PumpAbandonTimeout = TimeSpan.FromSeconds(2);
 
     private readonly IInputByteSource _source;
     private readonly VtInputMode _mode;
@@ -274,6 +284,18 @@ public sealed class VtInputDevice : IAsyncInputDevice
             // Already disposed via another path.
         }
 
+        // An idle (Ground-state) pump parks directly on ReadAsync with no ambiguity timer
+        // armed, so token cancellation is the primary wake and CancelPendingRead the second
+        // lever for readers whose in-flight read observes it independently of the token.
+        try
+        {
+            _source.Reader.CancelPendingRead();
+        }
+        catch
+        {
+            // The source may already be torn down by the owner; waking the pump is best-effort.
+        }
+
         // Make sure consumer iterations terminate even if no pump ever ran.
         _channel.Writer.TryComplete();
 
@@ -281,7 +303,13 @@ public sealed class VtInputDevice : IAsyncInputDevice
         {
             try
             {
-                await pumpTask.ConfigureAwait(false);
+                // Bounded: the previously always-armed ambiguity timer doubled as a liveness
+                // backstop for readers that honor neither cancellation lever; with the timer
+                // now conditional, such a reader would otherwise park this await until its
+                // next byte. Mainline Pipe-backed sources exit promptly — on timeout the pump
+                // is abandoned (the channel is already completed, so consumers terminate, and
+                // the parked read dies when the owner closes the transport).
+                await pumpTask.WaitAsync(PumpAbandonTimeout).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -359,15 +387,22 @@ public sealed class VtInputDevice : IAsyncInputDevice
 
                 pendingRead ??= _source.Reader.ReadAsync(cancellationToken).AsTask();
 
-                var timeoutTask = Task.Delay(_escapeAmbiguityTimeout, _time, cancellationToken);
-                var completed = await Task.WhenAny(pendingRead, timeoutTask).ConfigureAwait(false);
-
-                if (completed != pendingRead)
+                // Arm the ambiguity timer only while the classifier holds a partial sequence —
+                // Flush on a ground-state classifier is a no-op, so an idle pump parks on the
+                // pipe read alone instead of waking every quiet window for nothing.
+                if (_classifier.HasPendingSequence)
                 {
-                    // Idle window elapsed — commit any pending bare-ESC. The pendingRead task
-                    // remains in flight; we'll await it on the next iteration.
-                    _classifier.Flush(_interpreter);
-                    continue;
+                    var timeoutTask = Task.Delay(_escapeAmbiguityTimeout, _time, cancellationToken);
+                    var completed = await Task.WhenAny(pendingRead, timeoutTask).ConfigureAwait(false);
+
+                    if (completed != pendingRead)
+                    {
+                        // Idle window elapsed — commit the pending sequence (bare ESC → Escape
+                        // key, truncated sequence → recover-or-drop). The pendingRead task
+                        // remains in flight; we'll await it on the next iteration.
+                        _classifier.Flush(_interpreter);
+                        continue;
+                    }
                 }
 
                 System.IO.Pipelines.ReadResult result;

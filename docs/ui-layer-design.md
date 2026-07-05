@@ -1348,6 +1348,7 @@ S4 turns one terminal screen into a desktop: it owns `Window`, `WindowManager`, 
 ```csharp
 public enum WindowState : byte { Normal, Maximized }            // Minimized: deferred
 public enum SizeToContent : byte { Manual, Width, Height, WidthAndHeight }
+public enum SizeToContentMode : byte { Once, Always }           // when SizeToContent drives: first show only, or live
 public enum WindowStyle : byte { TitleBar, None }
 public enum WindowStartupLocation : byte { Manual, CenterScreen, CenterOwner }
 public enum WindowCloseReason : byte { Programmatic, ChromeAction, OwnerClosed, ManagerShutdown }
@@ -1368,6 +1369,16 @@ public class Window : ContentControl
     public static readonly StyledProperty<WindowShadow> ShadowProperty;       // surface-geometry handler
     public static readonly StyledProperty<int>  LeftProperty, TopProperty;    // SIGNED cells; AffectsComposite
     public static readonly StyledProperty<SizeToContent> SizeToContentProperty;  // default WidthAndHeight
+    public static readonly StyledProperty<SizeToContentMode> SizeToContentModeProperty; // default Once; Always = live re-fit,
+                                                  // converged INSIDE the layout phase (measure-only probe of the window at the
+                                                  // open constraint → surface resize → same-frame final pass — never a
+                                                  // post-layout resize, so no transitional flicker). The unclamped fit is
+                                                  // remembered per axis; a transient viewport shrink caps the surface without
+                                                  // losing it. Window.FitToContent() is the Once-mode on-demand re-fit lever
+                                                  // (restore-from-maximize requests one implicitly).
+    public static readonly StyledProperty<bool> AutoFitToViewportProperty;    // default false (§8.7 badge policy); opt-in:
+                                                  // a content-driven grow past the viewport shifts the window back into view
+                                                  // (dialogs with expandable regions — never drags/terminal resizes)
     public static readonly StyledProperty<WindowState>   WindowStateProperty;
     public static readonly StyledProperty<WindowStartupLocation> WindowStartupLocationProperty;
     public static readonly StyledProperty<bool> CanMoveProperty, CanResizeProperty, CanCloseProperty; // default true

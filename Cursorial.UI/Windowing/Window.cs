@@ -45,6 +45,22 @@ public partial class Window : ContentControl
     public static readonly StyledProperty<SizeToContent> SizeToContentProperty =
         UIProperty.Register<Window, SizeToContent>(nameof(SizeToContent), defaultValue: SizeToContent.WidthAndHeight);
 
+    /// <summary>When <see cref="SizeToContent"/> drives the size: at first show only (<see cref="SizeToContentMode.Once"/>,
+    /// the default) or continuously as content changes (<see cref="SizeToContentMode.Always"/>).</summary>
+    public static readonly StyledProperty<SizeToContentMode> SizeToContentModeProperty =
+        UIProperty.Register<Window, SizeToContentMode>(nameof(SizeToContentMode));
+
+    /// <summary>
+    /// When a content-driven re-fit (<see cref="SizeToContentMode.Always"/>) grows the window past a
+    /// viewport edge, shift it back into view — converged inside the same layout phase, so the shifted
+    /// frame is the first one rendered. Default <see langword="false"/>: the framework's normal policy
+    /// is user intervention via the fit affordance (§8.7 — the badge invoking <see cref="FitToViewport"/>),
+    /// not auto-movement. Dialogs with expandable regions are the intended opt-in. User drags and
+    /// terminal resizes are never affected by this property.
+    /// </summary>
+    public static readonly StyledProperty<bool> AutoFitToViewportProperty =
+        UIProperty.Register<Window, bool>(nameof(AutoFitToViewport));
+
     /// <summary>Normal vs maximized.</summary>
     public static readonly StyledProperty<WindowState> WindowStateProperty =
         UIProperty.Register<Window, WindowState>(nameof(WindowState), changed: OnWindowStateChanged);
@@ -153,6 +169,20 @@ public partial class Window : ContentControl
         set => SetValue(SizeToContentProperty, value);
     }
 
+    /// <inheritdoc cref="SizeToContentModeProperty"/>
+    public SizeToContentMode SizeToContentMode
+    {
+        get => GetValue(SizeToContentModeProperty);
+        set => SetValue(SizeToContentModeProperty, value);
+    }
+
+    /// <inheritdoc cref="AutoFitToViewportProperty"/>
+    public bool AutoFitToViewport
+    {
+        get => GetValue(AutoFitToViewportProperty);
+        set => SetValue(AutoFitToViewportProperty, value);
+    }
+
     /// <inheritdoc cref="WindowStateProperty"/>
     public WindowState WindowState
     {
@@ -219,6 +249,39 @@ public partial class Window : ContentControl
 
     /// <summary>The surface the manager hosts this window on while shown (WM-owned).</summary>
     internal TopLevelSurface? HostSurface { get; set; }
+
+    /// <summary>
+    /// Requests one layout-phase content re-fit (<c>WindowManager.FitWindowToContent</c>) regardless of
+    /// <see cref="SizeToContentMode"/> — the restore-from-maximize path (whose tracked axes must shrink
+    /// back from the viewport), the WM's viewport-resize re-probe, and the public
+    /// <see cref="FitToContent"/> set it; the fit consumes it.
+    /// </summary>
+    internal bool FitToContentPending { get; set; }
+
+    /// <summary>
+    /// The content-fit extent of a tracked axis, remembered <b>unclamped</b> — the WM's viewport cap is
+    /// applied per frame at surface-sync time, never baked in, so a transient terminal shrink caps the
+    /// surface without losing the fit and a re-grow recovers it (§8.7 no-auto-shrink). Written by the
+    /// first-show fit and every layout-phase re-fit; <see langword="null"/> on an axis that never tracked.
+    /// </summary>
+    internal int? FittedWidth { get; set; }
+
+    /// <inheritdoc cref="FittedWidth"/>
+    internal int? FittedHeight { get; set; }
+
+    /// <summary>
+    /// Re-fits the window's <see cref="SizeToContent"/>-tracked axes to the current content on the next
+    /// frame, converged inside its layout phase (no transitional flicker) — the on-demand lever for
+    /// <see cref="SizeToContentMode.Once"/> windows, whose fit otherwise happens only at first show and
+    /// on restore-from-maximize. Axes pinned by an explicit <c>Width</c>/<c>Height</c> (including one
+    /// written by a resize drag) are unaffected; clear them first to re-enable tracking. A no-op while
+    /// not shown (the first show fits anyway) or maximized.
+    /// </summary>
+    public void FitToContent()
+    {
+        if (IsShown)
+            FitToContentPending = true;
+    }
 
     /// <summary>Whether the window is currently shown.</summary>
     public bool IsShown => Manager is not null;
@@ -427,6 +490,25 @@ public partial class Window : ContentControl
     }
 
     // ── chrome active-look (relocated out of the template closure so re-template never leaks) ───────
+
+    /// <inheritdoc/>
+    protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnPropertyChanged(in args);
+
+        // A window revealed after being Collapsed has no meaningful fit on record — a collapsed
+        // measure is empty, and the fit memory is deliberately never stamped from one — so request
+        // the layout-phase re-fit; its tracked axes size to the now-visible content (converged
+        // before the reveal frame renders). No-op churn is impossible: the fit consumes the flag
+        // and FitWindowToContent exits early when nothing tracks.
+        if (ReferenceEquals(args.Property, VisibilityProperty)
+            && IsShown
+            && args.GetOldValue<Visibility>() == Visibility.Collapsed
+            && args.GetNewValue<Visibility>() != Visibility.Collapsed)
+        {
+            FitToContentPending = true;
+        }
+    }
 
     /// <inheritdoc/>
     protected override void OnApplyTemplate()

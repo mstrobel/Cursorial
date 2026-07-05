@@ -44,8 +44,10 @@ internal static class ContentRealization
     /// <param name="content">The content object.</param>
     /// <param name="template">The resolved template, or null.</param>
     /// <param name="recognizesAccessKey">Whether a plain string is parsed for an access-key mnemonic (chain ④ extension).</param>
+    /// <param name="recognizesMarkup"></param>
     /// <param name="stringFormat">A composite format applied to the text fallbacks (chains ④-string/⑤); ignored when a template handles the content (WPF parity).</param>
-    internal static UIElement? Realize(ContentPresenter host, object? content, DataTemplate? template, bool recognizesAccessKey, string? stringFormat = null)
+    internal static UIElement? Realize(ContentPresenter host, object? content, DataTemplate? template,
+                                       bool recognizesAccessKey, bool recognizesMarkup, string? stringFormat = null)
     {
         // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
         // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
@@ -79,7 +81,9 @@ internal static class ContentRealization
             // ⑤ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
             // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22), through the string format.
             case string s:
-                var stb = new TextBlock(SafeFormat(host, stringFormat, s));
+                var stb = recognizesMarkup
+                              ? new TextBlock { Markup = SafeFormat(host, stringFormat, s) }
+                              : new TextBlock { Text = SafeFormat(host, stringFormat, s) };
                 stb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
                 return stb;
 

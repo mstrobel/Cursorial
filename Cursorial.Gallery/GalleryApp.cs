@@ -22,12 +22,12 @@ public static class GalleryApp
     private static int _registered;
 
     /// <summary>Loads + binds the shell. The caller owns app-level wiring (e.g., the quit keys).</summary>
-    public static UIElement BuildRoot()
+    public static UIElement BuildRoot(UIApplication app)
     {
         EnsureRegistered();
 
         var root = (DockPanel)XamlLoader.Shared.Load(LoadEmbedded(ShellResource));
-        var vm = new ShellViewModel();
+        var vm = new ShellViewModel(app);
 
         root.DataContext = vm;
 

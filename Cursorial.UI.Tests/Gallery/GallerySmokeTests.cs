@@ -57,7 +57,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         UIElement root = null!;
         var ex = Record.Exception(() =>
         {
-            root = GalleryApp.BuildRoot();
+            root = GalleryApp.BuildRoot(host.Application);
             host.ShowRoot(root);
 
             if (root.DataContext is ShellViewModel shell)
@@ -81,7 +81,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     public void Shell_Navigation_SwapsPageViaImplicitDataTemplate()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 
@@ -106,7 +106,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     public void BarsPage_RendersToolbar_WithOverflowChevron()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 
@@ -151,7 +151,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     public void RibbonPage_RendersRibbon_AndSwitchesTabs()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 
@@ -181,7 +181,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     public void RibbonPage_QuickAccessAndSuperTips_AreWired()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 
@@ -209,7 +209,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         });
         var controller = host.Application.EnableKeyTips(); // the same call Program.cs makes
 
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 
@@ -254,7 +254,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     public void InputsPage_TwoWayBinding_RoundTrips()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 
@@ -278,7 +278,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     public void InputsPage_Journal_UndoRedo()
     {
         using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
-        var root = GalleryApp.BuildRoot();
+        var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
 

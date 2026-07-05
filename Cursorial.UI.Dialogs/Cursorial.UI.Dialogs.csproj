@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The promotable dialog suite (implementation-plan §2.1, FB-12): MessageBox (M1),
+    ITaskDialogService (M1), TaskDialog (M6), file dialogs (M6). Cursorial references ONLY —
+    never Markdig, never the app or Document projects — so post-v1 promotion to a
+    Cursorial extensions package stays a mechanical move. Enforced by ArchitectureTests.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Cursorial.UI.Dialogs</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+  </ItemGroup>
+
+</Project>

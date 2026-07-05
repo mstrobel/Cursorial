@@ -436,6 +436,7 @@ public static class CursorialTheme
         ansi16[ThemeKeys.DisabledBackgroundBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.DisabledForegroundBrush] = Palette(8);
         ansi16[ThemeKeys.AccentBrush] = Palette(dark ? 12 : 4);
+        ansi16[ThemeKeys.AccentDarkBrush] = Palette(dark ? 4 : 12);
         ansi16[ThemeKeys.Accent2Brush] = Palette(dark ? 14 : 6);
         ansi16[ThemeKeys.StatusBarBackground] = Palette(dark ? 7 : 15);
         ansi16[ThemeKeys.StatusBarAltBackground] = Palette(dark ? 8 : 7);

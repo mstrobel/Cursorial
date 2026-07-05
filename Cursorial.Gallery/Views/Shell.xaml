@@ -16,6 +16,22 @@
     <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
     <DockPanel.Resources>
 
+        <DataTemplate DataType="vm:DialogsViewModel">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="{Binding Title}" />
+                        <TextBlock Text="{Binding Summary}" />
+                    </StackPanel>
+                </Border>
+              
+              <StackPanel Spacing="1" Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Button Command="{Binding ShowTaskDialogCommand}" Content="Show Tas_k Dialog" />
+                <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" />
+              </StackPanel>
+            </DockPanel>
+        </DataTemplate>
+
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">

@@ -1,4 +1,5 @@
 using Cursorial.UI.Controls;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Xaml.Markup;
 
@@ -21,10 +22,40 @@ public sealed class IconExtension : MarkupExtension
     /// <summary>The image tier as a URI — see <see cref="Icon.ImageUri"/>.</summary>
     public Uri? ImageUri { get; set; }
 
-    /// <summary>The emoji / Unicode floor — see <see cref="Icon.Text"/>.</summary>
+    /// <summary>The emoji tier — see <see cref="Icon.Emoji"/>.</summary>
+    public string? Emoji { get; set; }
+
+    /// <summary>The Unicode floor — see <see cref="Icon.Text"/>.</summary>
     public string? Text { get; set; }
 
     /// <inheritdoc/>
     public override object ProvideValue(IServiceProvider serviceProvider)
-        => new Icon { Glyph = Glyph, GlyphWidth = GlyphWidth, ImageUri = ImageUri, Text = Text };
+    {
+        if (serviceProvider.GetService(typeof(IProvideValueTarget)) is IProvideValueTarget { TargetObject: {} o})
+        {
+            if (o is IXamlDeferredContentFactory)
+                return this;
+
+            if (o is IDeferredResourceEntry or ResourceDictionary)
+            {
+                return new IconCarrier
+                       {
+                           Glyph = Glyph,
+                           GlyphWidth = GlyphWidth,
+                           ImageUri = ImageUri,
+                           Emoji = Emoji,
+                           Text = Text
+                       };
+            }
+        }
+
+        return new Icon
+               {
+                   Glyph = Glyph,
+                   GlyphWidth = GlyphWidth,
+                   ImageUri = ImageUri,
+                   Emoji = Emoji,
+                   Text = Text
+               };
+    }
 }

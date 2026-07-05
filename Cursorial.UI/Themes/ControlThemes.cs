@@ -78,6 +78,7 @@ internal static class ControlThemes
         dict[typeof(Icon)] = IconTheme();
         dict[typeof(Chart)] = ChartTheme();
         dict[typeof(Window)] = WindowTheme();
+        dict[new DataTemplateKey(typeof(IconCarrier))] = IconCarrierTemplate();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -1530,6 +1531,25 @@ internal static class ControlThemes
     private static Style ScrollViewerTheme()
         => new Style { Key = "Theme.ScrollViewer" }.Set(Control.TemplateProperty, ScrollViewerTemplate());
 
+    // DataTemplate for instantiating an Icon element from an IconCarrier.
+    private static DataTemplate IconCarrierTemplate()
+        => new()
+           {
+               DataType = typeof(IconCarrier),
+               Content = new FuncTemplateContent(
+                   ctx =>
+                   {
+                       var icon = new Icon();
+                       
+                       icon.SetBinding(Icon.GlyphProperty, new Binding(nameof(IconCarrier.Glyph)));
+                       icon.SetBinding(Icon.GlyphWidthProperty, new Binding(nameof(IconCarrier.GlyphWidth)));
+                       icon.SetBinding(Icon.ImageUriProperty, new Binding(nameof(IconCarrier.ImageUri)));
+                       icon.SetBinding(Icon.EmojiProperty, new Binding(nameof(IconCarrier.Emoji)));
+                       icon.SetBinding(Icon.TextProperty, new Binding(nameof(IconCarrier.Text)));
+                       
+                       return icon;
+                   })
+           };
     // ───────────────────────────── Window (S4 chrome — C4, punch 36) ─────────────────────────────
 
     // The themed window chrome (design doc §8.3) — the C4 replacement for S4's interim default template,
@@ -1577,8 +1597,14 @@ internal static class ControlThemes
         // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
         // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
         // intentionally leaves Close off).
-        var closeButton = new Button { Focusable = false, IsTabStop = false };
-        closeButton.SetBinding(ContentControl.ContentProperty, new Binding(nameof(Window.WindowState)) { Converter = new WindowStateToGlyphConverter() });
+        var closeButton = new Button { Focusable = false, IsTabStop = false, Content = "✕"};
+
+        closeButton.SetBinding(UIElement.VisibilityProperty,
+                               new TemplateBinding(Window.CanCloseProperty)
+                               {
+                                   Converter = BooleanToVisibilityConverter.Instance
+                               });
+
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
         closeButton.Click += (_, _) =>
                              {
@@ -1594,7 +1620,14 @@ internal static class ControlThemes
         Button? maximizeButton = null;
         if (window.CanResize)
         {
-            maximizeButton = new Button { Content = "⛶", Focusable = false, IsTabStop = false };
+            maximizeButton = new Button { Focusable = false, IsTabStop = false };
+
+            maximizeButton.SetBinding(ContentControl.ContentProperty,
+                                      new TemplateBinding(Window.WindowStateProperty)
+                                      {
+                                          Converter = new WindowStateToGlyphConverter()
+                                      });
+
             // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
             DockPanel.SetDock(maximizeButton, Dock.Right);
             titleBarContent.Children.Add(maximizeButton); // docked right → left of the close glyph

@@ -132,7 +132,7 @@ public static class CursorialDialogThemes
                {
                    Glyph = "\uf061",
                    GlyphWidth = 2,
-                   Emoji = "➡️",
+                   Emoji = "\u27A1",
                    Text = "➡"
                };
     }

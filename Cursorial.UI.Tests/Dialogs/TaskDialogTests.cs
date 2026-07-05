@@ -256,4 +256,64 @@ public sealed class TaskDialogTests
         Assert.False(result.IsDismissed);
         Assert.Equal(keepBoth, result.Button); // the chosen link (Explanation and all) is the result
     }
+
+    // ── Expandable details (SizeToContentMode.Always — the framework re-fit replaced the manual re-layout) ──
+
+    [Fact]
+    public void ExpandedInformation_Toggle_GrowsAndShrinksDialog()
+    {
+        using var host = CreateHostWithRoot(nameof(TestCapabilities.KittyTruecolor));
+
+        var task = TaskDialog.ShowAsync(host.Application,
+                                        new TaskDialogRequest("Something happened.")
+                                        {
+                                            ExpandedInformation = "Recovery journal:\nline two\nline three",
+                                            Buttons = [TaskDialogButton.Ok]
+                                        });
+
+        Assert.True(host.RunUntilIdle());
+
+        var wm = host.Application.WindowManager!;
+        var dialog = Assert.Single(wm.Windows);
+        var collapsed = dialog.ActualSize;
+        Assert.DoesNotContain("Recovery journal:", ScreenText(host));
+
+        var toggle = FindDescendant<Cursorial.UI.Controls.ToggleButton>(dialog)
+                     ?? throw new InvalidOperationException("expander toggle not found");
+
+        // Expand: the dialog grows to include the details — the framework Always-mode re-fit, no dialog-side layout code.
+        toggle.IsChecked = true;
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(dialog.ActualSize.Rows > collapsed.Rows);
+        Assert.Contains("Recovery journal:", ScreenText(host));
+        Assert.Contains("line three", ScreenText(host));
+        Assert.False(dialog.IsClippedByViewport); // AutoFitToViewport keeps the grown dialog on-screen
+
+        // Collapse: it shrinks back to the original fit.
+        toggle.IsChecked = false;
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(collapsed.Rows, dialog.ActualSize.Rows);
+        Assert.DoesNotContain("Recovery journal:", ScreenText(host));
+
+        host.SendKey(Key.Enter); // dismiss via Ok so the dialog task completes
+        Complete(host, task);
+    }
+
+    private static T? FindDescendant<T>(Cursorial.UI.UIElement element) where T : Cursorial.UI.UIElement
+    {
+        for (var i = 0; i < element.VisualChildrenCount; i++)
+        {
+            var child = element.GetVisualChild(i);
+
+            if (child is T match)
+                return match;
+
+            if (FindDescendant<T>(child) is {} nested)
+                return nested;
+        }
+
+        return null;
+    }
 }

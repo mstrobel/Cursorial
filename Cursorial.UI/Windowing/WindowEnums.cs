@@ -29,6 +29,29 @@ public enum SizeToContent : byte
     WidthAndHeight
 }
 
+/// <summary>
+/// When <see cref="SizeToContent"/> drives a window's size (design doc §8.2). Default <see cref="Once"/>.
+/// </summary>
+public enum SizeToContentMode : byte
+{
+    /// <summary>
+    /// The tracked axes fit the content once, when the window is first shown; thereafter the window
+    /// holds its size like a fixed-size window (an explicit <c>Width</c>/<c>Height</c>, a resize drag,
+    /// and maximize still apply).
+    /// </summary>
+    Once,
+
+    /// <summary>
+    /// The tracked axes keep following the content: whenever the window's layout is invalidated, the
+    /// window re-fits — grow and shrink — converging <b>inside</b> the layout phase so the resized
+    /// frame is the first one rendered (no transitional flicker). An explicit <c>Width</c>/<c>Height</c>
+    /// (including one written by the user's resize drag) pins that axis. A grow that pushes the window
+    /// past the viewport raises the fit affordance per the §8.7 badge policy, unless the window opts
+    /// into <c>Window.AutoFitToViewport</c>.
+    /// </summary>
+    Always
+}
+
 /// <summary>Window chrome selection (design doc §8.2).</summary>
 public enum WindowStyle : byte
 {

@@ -130,6 +130,15 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                     return true;
             }
 
+            // A parked one-shot re-fit (restore-from-maximize / viewport re-probe) must arm the layout
+            // phase even when nothing else invalidated — the flag is only consumed inside RunLayoutPass,
+            // and e.g. a chrome-less window's restore may otherwise leave every surface clean.
+            foreach (var window in _windows)
+            {
+                if (window.FitToContentPending)
+                    return true;
+            }
+
             return false;
         }
     }
@@ -144,12 +153,109 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         try
         {
             foreach (var surface in _surfaces)
+            {
+                // The SizeToContentMode.Always frame-converged re-fit: a window whose content changed
+                // re-derives its size BEFORE this frame renders, so the resized frame is the first one
+                // emitted (no transitional flicker). Gated on pending layout — an idle surface pays
+                // nothing — except when a one-shot re-fit was requested (restore-from-maximize /
+                // viewport-resize re-probe), which must run even on an otherwise-clean surface.
+                if (surface.HostWindow is {} window && (surface.HasPendingLayout || window.FitToContentPending))
+                    FitWindowToContent(window, surface);
+
                 surface.RunLayoutPass();
+            }
         }
         finally
         {
             _topologyLocked = false;
         }
+    }
+
+    /// <summary>
+    /// The <see cref="SizeToContentMode.Always"/> re-fit (§8.5): a <b>measure-only probe</b> of the
+    /// window element at the open constraint — the full viewport on each tracked axis, the same
+    /// constraint the first-show fit measures at — re-derives the surface size from the resulting
+    /// <see cref="UIElement.DesiredSize"/>. The window element is what gets measured, chrome template
+    /// included, so chrome insets participate like any other template part and no inset arithmetic
+    /// exists anywhere. Nothing is arranged at the probe size: when the fit is unchanged (the common
+    /// dirty-frame case — a keystroke in a dialog TextBox) the caller's pass right after re-measures at
+    /// the real constraint and arranges at unchanged bounds, so no zone re-rasters from the probe
+    /// (invariant 3 holds inside Always windows). When the fit changed, the surface resize drives a
+    /// normal full pass at the new constraint — still inside this frame's layout phase (no flicker).
+    /// The unclamped fit is remembered per axis (<see cref="Window.FittedWidth"/>/<c>…Height</c>) so a
+    /// transient viewport shrink caps the surface without losing it. A content-driven <b>grow</b> that
+    /// pushes the window past the viewport follows the §8.7 badge policy by default; a window that
+    /// opted into <see cref="Window.AutoFitToViewport"/> is instead shifted back into view (never past
+    /// the origin), and only by the grown extent — a user-dragged overhang is respected.
+    /// </summary>
+    private void FitWindowToContent(Window window, TopLevelSurface surface)
+    {
+        var requested = window.FitToContentPending;
+        window.FitToContentPending = false; // one-shot: consumed even when nothing tracks below
+
+        if (window.WindowState == WindowState.Maximized)
+            return;
+
+        if (!requested && window.SizeToContentMode != SizeToContentMode.Always)
+            return; // Once-mode windows re-fit only on request (restore-from-maximize / FitToContent())
+
+        var stc = window.SizeToContent;
+        var tracksWidth = window.Width is null && stc is SizeToContent.Width or SizeToContent.WidthAndHeight;
+        var tracksHeight = window.Height is null && stc is SizeToContent.Height or SizeToContent.WidthAndHeight;
+
+        if (!tracksWidth && !tracksHeight)
+            return; // every axis is explicit (e.g. pinned by a resize drag) — nothing tracks
+
+        var current = surface.Size;
+
+        var probe = new Size(
+            tracksWidth ? _viewport.Columns : Math.Clamp(window.Width ?? current.Columns, 0, _viewport.Columns),
+            tracksHeight ? _viewport.Rows : Math.Clamp(window.Height ?? current.Rows, 0, _viewport.Rows));
+
+        window.Measure(probe);
+
+        var desired = window.DesiredSize;
+
+        // A Collapsed window measures empty — a real fit, never zero, is what the memory must hold
+        // (the reveal path re-fits via FitToContentPending, stamping the true fit then).
+        if (window.Visibility != Visibility.Collapsed)
+        {
+            if (tracksWidth)
+                window.FittedWidth = desired.Columns;
+
+            if (tracksHeight)
+                window.FittedHeight = desired.Rows;
+        }
+
+        var target = new Size(
+            tracksWidth ? Math.Clamp(desired.Columns, 0, _viewport.Columns) : probe.Columns,
+            tracksHeight ? Math.Clamp(desired.Rows, 0, _viewport.Rows) : probe.Rows);
+
+        if (target == current)
+        {
+            // The fit held — but the tree is now measure-stamped at the probe constraint, and the
+            // caller's queued-work drain re-measures non-root elements at their LAST constraint. Force
+            // the root back through the real constraint so the pass re-stamps the tree at the arranged
+            // size; unchanged bounds arrange without visual invalidation.
+            surface.Root.InvalidateMeasure();
+            surface.Root.InvalidateArrange();
+        }
+        else
+        {
+            surface.Size = target; // constraint change ⇒ the caller's pass right after re-lays-out fully
+            window.ActualSize = target;
+        }
+
+        if (!window.AutoFitToViewport)
+            return; // §8.7 default policy: an overhanging grow raises the fit affordance instead
+
+        // Opt-in keep-visible: only a grow beyond the PREVIOUS size may shift, and only enough to fit —
+        // a user-dragged overhang on an axis the content did not grow is respected.
+        if (target.Columns > current.Columns && window.Left + target.Columns > _viewport.Columns)
+            window.SetCurrentValue(Window.LeftProperty, Math.Max(0, _viewport.Columns - target.Columns));
+
+        if (target.Rows > current.Rows && window.Top + target.Rows > _viewport.Rows)
+            window.SetCurrentValue(Window.TopProperty, Math.Max(0, _viewport.Rows - target.Rows));
     }
 
     // ── IWindowSystem ──────────────────────────────────────────────────────────────────────────────
@@ -426,6 +532,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
             surface.Left = left;
             surface.Top = top;
+
+            // An Always window re-probes at the new viewport: a grow releases a viewport-capped tracked
+            // axis back toward its content size (no ratchet), a shrink re-caps it. Once windows keep the
+            // no-auto-shrink policy — their size is the user's (or the first fit's) to keep.
+            if (window.SizeToContentMode == SizeToContentMode.Always)
+                window.FitToContentPending = true;
         }
     }
 
@@ -743,8 +855,23 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         var desired = window.DesiredSize;
         var stc = window.SizeToContent;
-        var width = window.Width ?? (stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? desired.Columns : _viewport.Columns);
-        var height = window.Height ?? (stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? desired.Rows : _viewport.Rows);
+        var tracksWidth = stc is SizeToContent.Width or SizeToContent.WidthAndHeight;
+        var tracksHeight = stc is SizeToContent.Height or SizeToContent.WidthAndHeight;
+
+        // Remember the unclamped fit (§8.5): SyncSurfaceSize re-derives held axes from it every frame,
+        // so a transient viewport shrink caps the surface without losing the fit. A Collapsed window
+        // measures empty — never stamp zero; the reveal path re-fits via FitToContentPending.
+        if (window.Visibility != Visibility.Collapsed)
+        {
+            if (tracksWidth && window.Width is null)
+                window.FittedWidth = desired.Columns;
+
+            if (tracksHeight && window.Height is null)
+                window.FittedHeight = desired.Rows;
+        }
+
+        var width = window.Width ?? (tracksWidth ? desired.Columns : _viewport.Columns);
+        var height = window.Height ?? (tracksHeight ? desired.Rows : _viewport.Rows);
 
         var size = new Size(Math.Clamp(width, 0, _viewport.Columns), Math.Clamp(height, 0, _viewport.Rows));
         surface.Size = size;
@@ -772,35 +899,35 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     }
 
     /// <summary>
-    /// Re-derives a window's surface size from its current state, read off the layout pass that just
-    /// completed (§8.5/§8.7): <see cref="WindowState.Maximized"/> ⇒ the full viewport; else, per axis, an
-    /// explicit <c>Width</c>/<c>Height</c> wins, a tracked <see cref="SizeToContent"/> axis follows the
-    /// content desired, and an untracked axis holds. This is the single place a resize-drag, a maximize
-    /// toggle, and a content change all land. Compare-and-skip keeps a stable window idle (no thrash): at
-    /// steady state the derived size equals the surface size, so it is a no-op every frame.
+    /// Re-derives a window's surface size from its current state (§8.5/§8.7):
+    /// <see cref="WindowState.Maximized"/> ⇒ the full viewport; else, per axis, an explicit
+    /// <c>Width</c>/<c>Height</c> wins, a remembered content fit (<see cref="Window.FittedWidth"/>/<c>…Height</c>,
+    /// kept unclamped so a transient viewport shrink only caps the surface and a re-grow recovers the
+    /// fit) comes next, and an axis with neither holds the surface size — each viewport-capped. This is
+    /// where a resize-drag and a maximize toggle land. Content tracking deliberately does <b>not</b> happen
+    /// here: a post-layout resize could only render one mismatched frame (the pass already ran) —
+    /// <see cref="SizeToContentMode.Always"/> windows converge INSIDE the layout phase
+    /// (<see cref="FitWindowToContent"/>) and <see cref="SizeToContentMode.Once"/> windows keep their
+    /// first-show fit. Compare-and-skip keeps a stable window idle (no thrash): at steady state the
+    /// derived size equals the surface size, so it is a no-op every frame.
     /// </summary>
     private void SyncSurfaceSize(Window window, TopLevelSurface surface)
     {
         var size = surface.Size;
-        Size target;
 
-        if (window.WindowState == WindowState.Maximized)
-        {
-            target = _viewport;
-        }
-        else
-        {
-            var stc = window.SizeToContent;
-            var desired = window.DesiredSize; // content-driven, from the pass just completed
+        // The fitted memory only speaks for an axis that CURRENTLY tracks content — stale memory from
+        // a previous incarnation (re-shown after a SizeToContent change to Manual) must not override
+        // Manual/hold semantics.
+        var stc = window.SizeToContent;
+        var fittedWidth = stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? window.FittedWidth : null;
+        var fittedHeight = stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? window.FittedHeight : null;
 
-            int width = window.Width ??
-                        (stc is SizeToContent.Width or SizeToContent.WidthAndHeight ? desired.Columns : size.Columns);
-
-            int height = window.Height ??
-                         (stc is SizeToContent.Height or SizeToContent.WidthAndHeight ? desired.Rows : size.Rows);
-
-            target = new Size(Math.Clamp(width, 0, _viewport.Columns), Math.Clamp(height, 0, _viewport.Rows));
-        }
+        var target =
+            window.WindowState == WindowState.Maximized
+                ? _viewport
+                : new Size(
+                    Math.Clamp(window.Width ?? fittedWidth ?? size.Columns, 0, _viewport.Columns),
+                    Math.Clamp(window.Height ?? fittedHeight ?? size.Rows, 0, _viewport.Rows));
 
         if (target == size)
             return; // steady state — idle holds

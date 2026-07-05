@@ -155,87 +155,34 @@ public static class TaskDialog
                          CanResize = false,
                          Padding = Margins.Zero,
                          SizeToContent = SizeToContent.WidthAndHeight,
+                         SizeToContentMode = SizeToContentMode.Always,
+                         AutoFitToViewport = true, // an expanded dialog stays on-screen (dialog-specific; the framework default is the fit badge)
                          WindowStartupLocation = WindowStartupLocation.CenterScreen,
                          Shadow = WindowShadow.Default,
                          Resources = { MergedDictionaries = { CursorialDialogThemes.BuiltIn } }
                      };
 
         window.SetResourceReference(Control.BackgroundProperty, ThemeKeys.ElevationDialog);
-        
-        var windowActivated = false;
-        var isLayoutPending = false;
 
         Button? focusTarget = null;
         ProgressBar? progressBar = null;
-        
+
         window.ContentRendered += OnWindowContentRendered;
-
-        // TODO: Remove this once persistent SizeToContent behavior is implemented.
-        void RunWindowLayout()
-        {
-            if (windowActivated is false)
-            {
-                isLayoutPending = true;
-                return;
-            }
-
-            isLayoutPending = false;
-
-            var remeasureConstraint = new Size(root.MaxWidth, root.MaxHeight);
-            var windowBounds = window.Bounds;
-            var rootBounds = root.Bounds;
-                
-            var insets = new Margins((windowBounds.Columns - rootBounds.Columns + 1) / 2,
-                                     (windowBounds.Rows - rootBounds.Rows + 1) / 2,
-                                     (windowBounds.Columns - rootBounds.Columns) / 2,
-                                     (windowBounds.Rows - rootBounds.Rows) / 2);
-                
-            var (left, top) = window.TranslateToScreen(0, 0);
-                
-            root.Measure(remeasureConstraint);
-            root.Arrange(new Rect(root.DesiredSize));
-                
-            while (root.IsMeasureValid is false)
-                root.Measure(remeasureConstraint);
-                
-            var newWindowSize = LayoutMath.Add(root.DesiredSize, insets);
-                
-            (window.Left, window.Top) = (left, top);
-                
-            window.Width = newWindowSize.Columns;
-            window.Height = newWindowSize.Rows;
-
-            // Force update of `window.IsClippedByViewport`.
-            window.Manager?.OnLayoutCompleted();
-
-            // Expansion may have pushed the dialog contents off-screen. Try to compensate.
-            if (window.IsClippedByViewport)
-                window.FitToViewport();
-
-            if (window.IsMeasureValid is false)
-                window.Measure(newWindowSize);
-                
-            if (window.IsArrangeValid is false)
-                window.Arrange(new Rect(newWindowSize));
-        }
 
         [SuppressMessage("ReSharper", "AccessToModifiedClosure")]
         void OnWindowContentRendered(object? sender, EventArgs e)
         {
-            windowActivated = true;
             window.ContentRendered -= OnWindowContentRendered;
 
+            // SizeToContentMode.Always picks the added bar up: the dialog re-fits (and stays on-screen)
+            // inside the next frame's layout phase — no manual re-measure, no chrome-inset arithmetic.
             if (progressBar is {} pb)
             {
                 Grid.SetRow(pb, progressRow);
                 root.Children.Add(pb);
-                isLayoutPending = true;
             }
 
             focusTarget?.Focus();
-            
-            if (isLayoutPending)
-                RunWindowLayout();
         }
 
         var buttons = request.Buttons;
@@ -359,8 +306,6 @@ public static class TaskDialog
                                                      : Visibility.Collapsed;
 
                 toggle.Content = toggle.IsChecked is true ? "⌃" : "⌄";
-                
-                RunWindowLayout();
             }
 
             toggle.IsCheckedChanged += OnToggleIsCheckedChanged;

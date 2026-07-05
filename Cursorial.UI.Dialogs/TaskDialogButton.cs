@@ -46,6 +46,9 @@ public sealed record TaskDialogButton(string Id, string Label)
     /// <summary>The well-known Cancel button (Esc-activated).</summary>
     public static TaskDialogButton Cancel { get; } = new("cancel", "_Cancel") { IsCancel = true };
 
+    /// <summary>The well-known Close button (Esc-activated).</summary>
+    public static TaskDialogButton Close { get; } = new("close", "C_lose");
+
     /// <summary>The well-known Yes button.</summary>
     public static TaskDialogButton Yes { get; } = new("yes", "_Yes");
 

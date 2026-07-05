@@ -39,8 +39,8 @@ public sealed record TaskDialogRequest(string MainInstruction)
     /// </summary>
     public string? VerificationText { get; init; }
 
-    /// <summary>The verification checkbox's initial state.</summary>
-    public bool VerificationChecked { get; init; }
+    /// <summary>The verification checkbox's state.</summary>
+    public bool VerificationChecked { get; set; }
 
     /// <summary>
     /// Expandable details (e.g. a recovery journal's timestamp block); null hides the expander.

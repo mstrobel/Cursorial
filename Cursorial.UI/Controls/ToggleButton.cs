@@ -43,6 +43,8 @@ public class ToggleButton : ButtonBase
             IsCheckedProperty,
             static value => value switch { true => ":checked", null => ":indeterminate", _ => null },
             ":checked", ":indeterminate");
+        
+        AddGlobalEffects(PropertyEffects.BindsTwoWayByDefault, IsCheckedProperty);
     }
 
     /// <inheritdoc cref="IsCheckedProperty"/>

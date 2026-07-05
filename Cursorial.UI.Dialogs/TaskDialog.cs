@@ -35,7 +35,7 @@ public static class TaskDialog
         ArgumentNullException.ThrowIfNull(request);
 
         IReadOnlyList<TaskDialogButton> buttons =
-            request.Buttons is { Count: > 0 } ? request.Buttons : [TaskDialogButton.Ok];
+            request.Buttons is { Count: > 0 } ? request.Buttons : [TaskDialogButton.Close];
 
         var chosen = await ShowCoreAsync(application, request, cancellationToken).ConfigureAwait(false);
 
@@ -173,19 +173,13 @@ public static class TaskDialog
         void OnWindowContentRendered(object? sender, EventArgs e)
         {
             window.ContentRendered -= OnWindowContentRendered;
-
-            // SizeToContentMode.Always picks the added bar up: the dialog re-fits (and stays on-screen)
-            // inside the next frame's layout phase — no manual re-measure, no chrome-inset arithmetic.
-            if (progressBar is {} pb)
-            {
-                Grid.SetRow(pb, progressRow);
-                root.Children.Add(pb);
-            }
-
             focusTarget?.Focus();
         }
 
         var buttons = request.Buttons;
+
+        if (buttons.Count == 0)
+            buttons = [TaskDialogButton.Close with { IsDefault = true, IsCancel = true}];
         
         List<Button>? commandLinkButtons = null;
         List<Button>? standardButtons = null;
@@ -199,6 +193,7 @@ public static class TaskDialog
             if (definition.Explanation is { Length: > 0 })
             {
                 button = new CommandLink{ ButtonDefinition = definition };
+
                 commandLinkButtons ??= new List<Button>();
                 commandLinkButtons.Add(button);
             }
@@ -210,8 +205,19 @@ public static class TaskDialog
                              IsDefault = definition.IsDefault,
                              IsCancel = definition.IsCancel
                          };
+                
                 standardButtons ??= new List<Button>();
                 standardButtons.Add(button);
+            }
+
+            if (buttons.Count == 1)
+            {
+                // If there's only one button, make it the default.
+                button.IsDefault = true;
+
+                // If it happens to be 'Close', make it the cancel button too.
+                if (definition == TaskDialogButton.Close)
+                    button.IsCancel = true;
             }
 
             var index = i;
@@ -231,43 +237,21 @@ public static class TaskDialog
 
         if (request.VerificationText is {} verificationText)
         {
-
             verificationBox = new CheckBox
                               {
                                   Content = verificationText,
-                                  Margin = new Margins(0, 0, 1, 0)
+                                  Margin = new Margins(0, 0, 1, 0),
+                                  IsChecked = request.VerificationChecked
                               };
-            
+
             verificationBox.SetBinding(ToggleButton.IsCheckedProperty,
-                                       new Binding(nameof(TaskDialogRequest.VerificationChecked))
-                                       {
-                                           Source = request,
-                                           Mode = BindingMode.TwoWay
-                                       });
+                                       new Binding(nameof(TaskDialogRequest.VerificationChecked)) { Source = request });
 
             DockPanel.SetDock(verificationBox, Dock.Left);
 
             footerPanel ??= new DockPanel();
             footerPanel.Children.Add(verificationBox);
 
-        }
-
-        if (standardButtons is { Count: > 0 })
-        {
-            var buttonsPanel = new StackPanel
-                               {
-                                   Orientation = Orientation.Horizontal,
-                                   HorizontalAlignment = HorizontalAlignment.Right,
-                                   Spacing = 1
-                               };
-
-            foreach (var button in standardButtons)
-                buttonsPanel.Children.Add(button);
-
-            DockPanel.SetDock(buttonsPanel, Dock.Right);
-            
-            footerPanel ??= new DockPanel();
-            footerPanel.Children.Add(buttonsPanel);
         }
 
         if (request.ExpandedInformation is {} expandedContent)
@@ -277,14 +261,23 @@ public static class TaskDialog
                              Content = "⌄",
                              Width = 3,
                              Height = 1,
-                             Margin = new Margins(2, 0, 1, 1),
                              Padding = new Margins(1, 0),
                              HorizontalAlignment = HorizontalAlignment.Left
                          };
 
-            Grid.SetRow(toggle, expanderToggleRow);
 
-            children.Add(toggle);
+            if (verificationBox is not null)
+            {
+                toggle.Margin = new Margins(2, 0, 1, 1);
+                Grid.SetRow(toggle, expanderToggleRow);
+                children.Add(toggle);
+            }
+            else
+            {
+                DockPanel.SetDock(toggle, Dock.Left);
+                footerPanel ??= new DockPanel();
+                footerPanel.Children.Add(toggle);
+            }
 
             var expandedContentHost = new Border
                                       {
@@ -312,6 +305,24 @@ public static class TaskDialog
 
             Grid.SetRow(expandedContentHost, expandedContentRow);
             children.Add(expandedContentHost);
+        }
+
+        if (standardButtons is { Count: > 0 })
+        {
+            var buttonsPanel = new StackPanel
+                               {
+                                   Orientation = Orientation.Horizontal,
+                                   HorizontalAlignment = HorizontalAlignment.Right,
+                                   Spacing = 1
+                               };
+
+            foreach (var button in standardButtons)
+                buttonsPanel.Children.Add(button);
+
+            DockPanel.SetDock(buttonsPanel, Dock.Right);
+            
+            footerPanel ??= new DockPanel();
+            footerPanel.Children.Add(buttonsPanel);
         }
 
         if (footerPanel is not null || verificationBox is not null)
@@ -385,6 +396,9 @@ public static class TaskDialog
                                        Maximum = 100d,
                                        Margin = new Margins(2, 0, 2, 1)
                                    };
+                Grid.SetRow(pb, progressRow);
+                root.Children.Add(pb);
+
             }
 
             if (progress is {} current)

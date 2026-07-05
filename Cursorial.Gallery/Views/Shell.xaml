@@ -17,19 +17,38 @@
     <DockPanel.Resources>
 
         <DataTemplate DataType="vm:DialogsViewModel">
-            <DockPanel>
-                <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="{Binding Title}" />
-                        <TextBlock Text="{Binding Summary}" />
-                    </StackPanel>
-                </Border>
-              
-              <StackPanel Spacing="1" Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <Button Command="{Binding ShowTaskDialogCommand}" Content="Show Tas_k Dialog" />
-                <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" />
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+              <StackPanel Orientation="Vertical">
+                <TextBlock Text="{Binding Title}" />
+                <TextBlock Text="{Binding Summary}" />
               </StackPanel>
-            </DockPanel>
+            </Border>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Padding="2,1" Title="Task Dialogs">
+                <StackPanel Spacing="1" Orientation="Vertical">
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include _Secondary Message" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeProgressBar}"     Content="Include _Progress Bar" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeCommandLinks}"    Content="Include Command _Links" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeButtons}"         Content="Include _Buttons" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeVerification}"    Content="Include _Verification" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeExpandedContent}" Content="Include E_xpanded Content" />
+                  <Button   Command="{Binding ShowTaskDialogCommand}"              Content="Show Tas_k Dialog" MaxWidth="24" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Padding="2,1" Title="Message Boxes">
+                <StackPanel Spacing="1" Orientation="Vertical">
+                  <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
+                </StackPanel>
+              </Border>
+            </Grid>
+          </DockPanel>
+            
         </DataTemplate>
 
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">

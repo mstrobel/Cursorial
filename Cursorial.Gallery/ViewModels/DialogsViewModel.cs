@@ -35,6 +35,13 @@ public class DialogsViewModel : PageViewModel
         get;
         set => Set(ref field, value);
     }
+    
+    public bool TaskDialogIncludeContent { get; set => Set(ref field, value); } = false;
+    public bool TaskDialogIncludeCommandLinks { get; set => Set(ref field, value); } = false;
+    public bool TaskDialogIncludeButtons { get; set => Set(ref field, value); } = false;
+    public bool TaskDialogIncludeExpandedContent { get; set => Set(ref field, value); } = false;
+    public bool TaskDialogIncludeVerification { get; set => Set(ref field, value); } = false;
+    public bool TaskDialogIncludeProgressBar { get; set => Set(ref field, value); } = false;
 
     private async void ShowMessageDialog()
     {
@@ -72,44 +79,65 @@ public class DialogsViewModel : PageViewModel
             if (_isDialogShowing) return;
 
             _isDialogShowing = true;
-            
+
+            List<TaskDialogButton> buttons = [];
+
+            if (TaskDialogIncludeCommandLinks)
+            {
+                buttons.AddRange(
+                    [
+                        new TaskDialogButton("Drink", "_Drink It")
+                        {
+                            Explanation = "Drink the purple vial. You know you want to. It's [i]purple[/i].",
+                            ExplanationContainsMarkup = true,
+                            IsDefault = true
+                        },
+                        new TaskDialogButton("Smash", "_Smash It")
+                        {
+                            Explanation = "Smash the yellow vial. It had it coming."
+                        },
+                        new TaskDialogButton("Toss", "_Toss It")
+                        {
+                            Explanation = "Hurl the red vial at the annoying guy. He should know better."
+                        }
+                    ]);
+            }
+
+            if (TaskDialogIncludeButtons)
+            {
+                buttons.AddRange(
+                    [
+                        new TaskDialogButton("Wat", "_Wat"),
+                        new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
+                    ]);
+            }
+
             var r = new TaskDialogRequest("Make a Choice")
                     {
                         Title = "Very Serious",
-                        Content = "You come across a collection of vials. " +
-                                  "There are no descriptions to be found. " +
-                                  "What do you do?",
-                        Buttons =
-                        [
-                            new TaskDialogButton("Drink", "_Drink It")
-                            {
-                                Explanation = "Drink the purple vial. You know you want to. It's [i]purple[/i].",
-                                ExplanationContainsMarkup = true,
-                                IsDefault = true
-                            },
-                            new TaskDialogButton("Smash", "_Smash It")
-                            {
-                                Explanation = "Smash the yellow vial. It had it coming."
-                            },
-                            new TaskDialogButton("Toss", "_Toss It")
-                            {
-                                Explanation = "Hurl the red vial at the annoying guy. He should know better."
-                            },
-                            new TaskDialogButton("Wat", "_Wat"),
-                            new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
-                        ],
-                        VerificationText = "I am a meat _popsicle",
-                        ExpandedInformation = "Curiosity is a virtue. 🩷",
+                        Content = TaskDialogIncludeContent
+                                      ? "You come across a collection of vials. " +
+                                        "There are no descriptions to be found. " +
+                                        "What do you do?"
+                                      : null,
+                        Buttons = buttons,
+                        VerificationText = TaskDialogIncludeVerification ? "I am a meat _popsicle" : null,
+                        ExpandedInformation = TaskDialogIncludeExpandedContent ? "Curiosity is a virtue. 🩷" : null,
                         ExpandedInformationContainsMarkup = true,
                         Severity = TaskDialogSeverity.Question
                     };
 
             int progress = 0;
             
-            r.Progress.Report(null);
+            IAsyncDisposable? timer = null;
 
-            var elapsed = Stopwatch.StartNew();
-            var timer = Application.TimeProviderInternal.CreateTimer(_ =>
+            if (TaskDialogIncludeProgressBar)
+            {
+                r.Progress.Report(null);
+
+                var elapsed = Stopwatch.StartNew();
+
+                timer = Application.TimeProviderInternal.CreateTimer(_ =>
                                                                      {
                                                                          if (elapsed.Elapsed < TimeSpan.FromSeconds(3))
                                                                              return;
@@ -119,10 +147,12 @@ public class DialogsViewModel : PageViewModel
                                                                      null,
                                                                      TimeSpan.FromMilliseconds(30d),
                                                                      TimeSpan.FromMilliseconds(30d));
+            }
 
             var result = await TaskDialog.ShowAsync(Application, r);
 
-            await timer.DisposeAsync();
+            if (timer is not null)
+                await timer.DisposeAsync();
             
             Status = $"You chose: {result.Button?.Id ?? "Wimp Out"}";
             

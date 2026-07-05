@@ -101,7 +101,9 @@ public class DialogsViewModel : PageViewModel
                             new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
                         ],
                         VerificationText = "I am a meat popsicle",
-                        ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. You're a meat popsicle.",
+                        // ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. " +
+                        //                       "[i]You're a meat popsicle.[/i]",
+                        // ExpandedInformationContainsMarkup = true,
                         Severity = TaskDialogSeverity.Question
                     };
             

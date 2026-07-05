@@ -1,3 +1,4 @@
+using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 
@@ -16,6 +17,11 @@ internal class CommandLink : Button
 
     public static readonly StyledProperty<bool> ExplanationContainsMarkupProperty =
         UIProperty.Register<CommandLink, bool>(nameof(ExplanationContainsMarkup));
+
+    static CommandLink()
+    {
+        PaddingProperty.OverrideDefaultValue<CommandLink>(new Margins(1, 0));
+    }
 
     public TaskDialogButton? ButtonDefinition
     {

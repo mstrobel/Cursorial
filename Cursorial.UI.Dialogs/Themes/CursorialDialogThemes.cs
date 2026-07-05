@@ -90,7 +90,11 @@ public static class CursorialDialogThemes
 
     private static UIElement BuildCommandLinkTemplate(TemplateBuildContext ctx)
     {
-        var icon = new ContentPresenter { VerticalAlignment = VerticalAlignment.Top, Margin = new Margins(1, 0) };
+        var icon = new ContentPresenter
+                   {
+                       VerticalAlignment = VerticalAlignment.Top,
+                       Margin = new Margins(0, 0, 1, 0)
+                   };
 
         icon.SetResourceReference(ContentPresenter.ContentProperty, CursorialDialogThemeKeys.CommandLinkIcon);
 
@@ -100,6 +104,7 @@ public static class CursorialDialogThemes
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
 
         var label = new ContentPresenter { RecognizesAccessKey = true };
         var explanation = new ContentPresenter();

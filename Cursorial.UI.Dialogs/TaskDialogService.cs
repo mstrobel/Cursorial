@@ -7,6 +7,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.Dialogs.Themes;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
@@ -81,14 +82,20 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
         if (viaMarshal && wm is null)
             return -1;
 
-        var root = new Grid { MaxWidth = (wm?.ScreenSize.Columns + 1) / 2 ?? 40 };
+        var root = new Grid
+                   {
+                       MaxWidth = (wm?.ScreenSize.Columns + 1) / 2 ?? 40,
+                       MaxHeight = wm?.ScreenSize.Rows ?? LayoutMath.Unbounded
+                   };
+
         var children = new List<UIElement>();
         
         const int mainInstructionRow = 0;
         const int messageRow = 1;
         const int commandLinksRow = 2;
         const int footerRow = 3;
-        const int expandedContentRow = 4;
+        const int expanderToggleRow = 4;
+        const int expandedContentRow = 5;
         
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star(), MaxWidth = root.MaxWidth});
 
@@ -96,6 +103,7 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Message
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Command Links
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Footer
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Expander Toggle
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Expanded Content
         
         KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Cycle);
@@ -182,49 +190,29 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
 
         
         DockPanel? footerPanel = null;
+        CheckBox? verificationBox = null;
 
-        if (request.ExpandedInformation is {} expandedContent)
+        if (request.VerificationText is {} verificationText)
         {
-            var toggle = new ToggleButton
-                         {
-                             Content = "⌄",
-                             Width = 3,
-                             Height = 1,
-                             Margin = new Margins(0, 0, 1, 0),
-                             Padding = new Margins(1, 0)
-                         };
 
-            DockPanel.SetDock(toggle, Dock.Left);
+            verificationBox = new CheckBox
+                              {
+                                  Content = new TextBlock(verificationText) { TextWrapping = WrapMode.WordWrap },
+                                  Margin = new Margins(0, 0, 1, 0)
+                              };
+
+            verificationBox.SetBinding(ToggleButton.IsCheckedProperty,
+                                       new Binding(nameof(TaskDialogRequest.VerificationChecked))
+                                       {
+                                           Source = request,
+                                           Mode = BindingMode.TwoWay
+                                       });
+
+            DockPanel.SetDock(verificationBox, Dock.Left);
 
             footerPanel ??= new DockPanel();
-            footerPanel.Children.Add(toggle);
+            footerPanel.Children.Add(verificationBox);
 
-            var expandedContentHost = new Border
-                                      {
-                                          Child = new ContentPresenter
-                                                  {
-                                                      Content = expandedContent,
-                                                      RecognizesMarkup = request.ExpandedInformationContainsMarkup
-                                                  },
-                                          Padding = new Margins(2, 1),
-                                          Visibility = toggle.IsChecked is true 
-                                                           ? Visibility.Visible 
-                                                           : Visibility.Collapsed
-                                      };
-
-            void OnToggleIsCheckedChanged(object? o, RoutedEventArgs routedEventArgs)
-            {
-                expandedContentHost.Visibility = toggle.IsChecked is true
-                                                     ? Visibility.Visible
-                                                     : Visibility.Collapsed;
-
-                toggle.Content = toggle.IsChecked is true ? "⌃" : "⌄";
-            }
-
-            toggle.IsCheckedChanged += OnToggleIsCheckedChanged;
-
-            Grid.SetRow(expandedContentHost, expandedContentRow);
-            children.Add(expandedContentHost);
         }
 
         if (standardButtons is { Count: > 0 })
@@ -245,12 +233,113 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
             footerPanel.Children.Add(buttonsPanel);
         }
 
-        if (footerPanel is not null)
+        if (request.ExpandedInformation is {} expandedContent)
         {
-            var footer = new Border { Child = footerPanel, Padding = new(2, 1) };
+            var toggle = new ToggleButton
+                         {
+                             Content = "⌄",
+                             Width = 3,
+                             Height = 1,
+                             Margin = new Margins(2, 0, 1, 1),
+                             Padding = new Margins(1, 0),
+                             HorizontalAlignment = HorizontalAlignment.Left
+                         };
+
+            Grid.SetRow(toggle, expanderToggleRow);
+
+            children.Add(toggle);
+
+            var expandedContentHost = new Border
+                                      {
+                                          Child = new ContentPresenter
+                                                  {
+                                                      Content = expandedContent,
+                                                      RecognizesMarkup = request.ExpandedInformationContainsMarkup
+                                                  },
+                                          Padding = new Margins(2, 1),
+                                          Visibility = toggle.IsChecked is true 
+                                                           ? Visibility.Visible 
+                                                           : Visibility.Collapsed
+                                      };
+
+            // TODO: Remove this once persistent SizeToContent behavior is implemented.
+            void RunWindowLayout()
+            {
+                var remeasureConstraint = new Size(root.MaxWidth, root.MaxHeight);
+                var windowBounds = window.Bounds;
+                var rootBounds = root.Bounds;
+                
+                var insets = new Margins((windowBounds.Columns - rootBounds.Columns + 1) / 2,
+                                         (windowBounds.Rows - rootBounds.Rows + 1) / 2,
+                                         (windowBounds.Columns - rootBounds.Columns) / 2,
+                                         (windowBounds.Rows - rootBounds.Rows) / 2);
+                
+                var (left, top) = window.TranslateToScreen(0, 0);
+                
+                root.Measure(remeasureConstraint);
+                root.Arrange(new Rect(root.DesiredSize));
+                
+                while (root.IsMeasureValid is false)
+                    root.Measure(remeasureConstraint);
+                
+                var newWindowSize = LayoutMath.Add(root.DesiredSize, insets);
+                
+                (window.Left, window.Top) = (left, top);
+                
+                window.Width = newWindowSize.Columns;
+                window.Height = newWindowSize.Rows;
+
+                if (toggle.IsChecked is true)
+                {
+                    // Force update of `window.IsClippedByViewport`.
+                    window.Manager?.OnLayoutCompleted();
+
+                    // Expansion may have pushed the dialog contents off-screen. Try to compensate.
+                    if (window.IsClippedByViewport)
+                        window.FitToViewport();
+                }
+
+                if (window.IsMeasureValid is false)
+                    window.Measure(newWindowSize);
+                
+                if (window.IsArrangeValid is false)
+                    window.Arrange(new Rect(newWindowSize));
+            }
+
+            void OnToggleIsCheckedChanged(object? o, RoutedEventArgs routedEventArgs)
+            {
+                expandedContentHost.Visibility = toggle.IsChecked is true
+                                                     ? Visibility.Visible
+                                                     : Visibility.Collapsed;
+
+                toggle.Content = toggle.IsChecked is true ? "⌃" : "⌄";
+                
+                RunWindowLayout();
+            }
+
+            toggle.IsCheckedChanged += OnToggleIsCheckedChanged;
+
+            Grid.SetRow(expandedContentHost, expandedContentRow);
+            children.Add(expandedContentHost);
+        }
+
+        if (footerPanel is not null || verificationBox is not null)
+        {
+            var footer = new Border();
+
             footer.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.ElevationWell);
+
             Grid.SetRow(footer, footerRow);
-            children.Add(footer);
+            Grid.SetRowSpan(footer, 2);
+
+            root.Children.Add(footer); // add first, before `children`.
+
+            if (footerPanel is not null)
+            {
+                footerPanel.Margin = new Margins(2, 1);
+                Grid.SetRow(footerPanel, footerRow);
+                children.Add(footerPanel);
+            }
         }
 
         if (commandLinkButtons is { Count: > 0 })
@@ -283,6 +372,7 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
             // initial focus rides the first activation — raised synchronously while the manager shows
             // the dialog, after its content is attached and provisionally measured.
             window.Activated += OnActivated;
+            FocusManager.SetFocusedElement(window, focusTarget);
 
             void OnActivated(object? sender, EventArgs e)
             {

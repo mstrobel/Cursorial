@@ -101,15 +101,18 @@ public class DialogsViewModel : PageViewModel
                             new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
                         ],
                         VerificationText = "I am a meat popsicle",
-                        // ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. " +
-                        //                       "[i]You're a meat popsicle.[/i]",
-                        // ExpandedInformationContainsMarkup = true,
+                        ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. " +
+                                              "[i]You're a meat popsicle.[/i]",
+                        ExpandedInformationContainsMarkup = true,
                         Severity = TaskDialogSeverity.Question
                     };
             
             var result = await DialogService.ShowAsync(r);
 
             Status = $"You chose: {result.Button?.Id ?? "Wimp Out"}";
+            
+            if (r.VerificationChecked)
+                Status += ", and you verified it.";
         }
         catch (Exception e)
         {

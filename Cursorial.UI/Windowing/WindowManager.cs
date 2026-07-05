@@ -1082,7 +1082,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     {
         var fit = new Button { Content = "Fit windows", Focusable = false, IsTabStop = false };
 
-        fit.Classes.Add("accent");
+        fit.Classes.Add("info");
         fit.Click += (_, _) => FitAllWindowsToViewport();
 
         var dismiss = new Button { Content = "✕", Focusable = false, IsTabStop = false };
@@ -1095,9 +1095,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                       Children = { fit, dismiss }
                   };
 
-        var root = new Border { Occludes = true, Child = row, Padding = new(2, 1) };
+        var root = new Border { Occludes = false, Child = row, Padding = new Margins(1, 0) };
 
-        root.SetResourceReference(Border.BackgroundProperty, ThemeKeys.InfoBrush);
+        root.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+        root.SetResourceReference(Border.BorderPenProperty, ThemeKeys.MenuBorderPen);
 
         return root;
     }

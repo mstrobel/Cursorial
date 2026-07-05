@@ -3,8 +3,8 @@ using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
 using Cursorial.Output;
-using Cursorial.Output.Capabilities;
 using Cursorial.UI;
+using Cursorial.UI.Dialogs;
 
 namespace Cursorial.Gallery.ViewModels;
 
@@ -13,10 +13,13 @@ namespace Cursorial.Gallery.ViewModels;
 /// <see cref="SelectedPage"/>, which an implicit <c>DataTemplate</c> resolves to the matching page view.</summary>
 public sealed class ShellViewModel : ViewModelBase
 {
+    private readonly UIApplication _app;
     private PageViewModel? _selectedPage;
 
     public ShellViewModel(UIApplication app)
     {
+        _app = app;
+
         // The ScrollViewer page is first — scrolling is the framework's biggest bug surface (project memory).
         Pages =
         [
@@ -116,14 +119,15 @@ public sealed class ShellViewModel : ViewModelBase
             if (bool.TryParse(confirm, out var confirmValue) && confirmValue)
             {
 
-                MessageBoxButton? result = await MessageBox.ShowAsync(confirmMessage,
+                MessageBoxResult? result = await MessageBox.ShowAsync(_app,
+                                                                      message: confirmMessage,
                                                                       title: confirmTitle,
                                                                       buttons: confirmButtons,
                                                                       defaultButton: MessageBoxButton.Yes,
                                                                       cancelButton: MessageBoxButton.No,
-                                                                      focusedButton: MessageBoxButton.No);
+                                                                      focusedButton: MessageBoxButton.Yes);
 
-                if (result is not MessageBoxButton.Yes)
+                if (result is not MessageBoxResult.Yes)
                     return;
             }
         }

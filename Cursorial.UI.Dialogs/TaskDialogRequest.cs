@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 using Cursorial.Rendering.Text;
@@ -53,4 +54,15 @@ public sealed record TaskDialogRequest(string MainInstruction)
     /// Uses of open brackets outside of tag names must be escaped as <c>\[</c>.
     /// </summary>
     public bool ExpandedInformationContainsMarkup { get; init; }
+
+    /// <summary>
+    /// Provides a mechanism for reporting the progress of a task, represented as a percentage (0-100),
+    /// with notifications invoked when the progress value changes.
+    /// </summary>
+    public IProgress<int?> Progress => field ??= new Progress<int?>(p => ProgressChanged?.Invoke(p));
+
+    /// <summary>
+    /// An event that is triggered when the task dialog's progress value changes.
+    /// </summary>
+    public event Action<int?>? ProgressChanged;
 }

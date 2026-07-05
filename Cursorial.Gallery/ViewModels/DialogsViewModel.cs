@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
@@ -21,13 +22,10 @@ public class DialogsViewModel : PageViewModel
         Application = application;
         ShowTaskDialogCommand = new RelayCommand(ShowTaskDialog, () => !_isDialogShowing);
         ShowMessageDialogCommand = new RelayCommand(ShowMessageDialog, () => !_isDialogShowing);
-        DialogService = new TaskDialogService(application);
     }
 
     private UIApplication Application { get; }
     
-    private ITaskDialogService DialogService { get; }
-
     public ICommand ShowTaskDialogCommand { get; }
 
     public ICommand ShowMessageDialogCommand { get; }
@@ -74,7 +72,7 @@ public class DialogsViewModel : PageViewModel
             if (_isDialogShowing) return;
 
             _isDialogShowing = true;
-
+            
             var r = new TaskDialogRequest("Make a Choice")
                     {
                         Title = "Very Serious",
@@ -100,15 +98,32 @@ public class DialogsViewModel : PageViewModel
                             new TaskDialogButton("Wat", "_Wat"),
                             new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
                         ],
-                        VerificationText = "I am a meat popsicle",
-                        ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. " +
-                                              "[i]You're a meat popsicle.[/i]",
+                        VerificationText = "I am a meat _popsicle",
+                        ExpandedInformation = "Curiosity is a virtue. 🩷",
                         ExpandedInformationContainsMarkup = true,
                         Severity = TaskDialogSeverity.Question
                     };
-            
-            var result = await DialogService.ShowAsync(r);
 
+            int progress = 0;
+            
+            r.Progress.Report(null);
+
+            var elapsed = Stopwatch.StartNew();
+            var timer = Application.TimeProviderInternal.CreateTimer(_ =>
+                                                                     {
+                                                                         if (elapsed.Elapsed < TimeSpan.FromSeconds(3))
+                                                                             return;
+                                                                         if (progress < 100)
+                                                                             r.Progress.Report(++progress);
+                                                                     },
+                                                                     null,
+                                                                     TimeSpan.FromMilliseconds(30d),
+                                                                     TimeSpan.FromMilliseconds(30d));
+
+            var result = await TaskDialog.ShowAsync(Application, r);
+
+            await timer.DisposeAsync();
+            
             Status = $"You chose: {result.Button?.Id ?? "Wimp Out"}";
             
             if (r.VerificationChecked)

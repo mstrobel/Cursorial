@@ -30,6 +30,7 @@ public sealed class TopLevelSurface
     private readonly LayoutManager _layout;
     private readonly ScenePool _scenePool;
     private Size _size;
+    private bool _mightNeedRaiseContentRendered = true;
     private bool _needsLayout = true;
     private bool _detached;
 
@@ -120,6 +121,20 @@ public sealed class TopLevelSurface
     {
         RenderTree.RunRenderPass();
         UpdateShadowScene();
+        MaybeRaiseContentRendered();
+    }
+
+    private void MaybeRaiseContentRendered()
+    {
+        if (_mightNeedRaiseContentRendered is false)
+            return;
+
+        _mightNeedRaiseContentRendered = false;
+
+        if (Root is Window window)
+            window.RaiseContentRendered();
+        else if (Root is { UIParent: Popup popup })
+            popup.RaiseContentRendered();
     }
 
     /// <summary>Appends this surface's layers — translated to its screen offset, scaled by its opacity — to <paramref name="target"/>.</summary>

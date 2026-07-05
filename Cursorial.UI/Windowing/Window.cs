@@ -475,4 +475,14 @@ public partial class Window : ContentControl
         base.OnTemplateDetaching(old);
     }
 
+    /// <summary>
+    /// Event raised the first time the content of the window is fully rendered and ready for interaction.
+    /// </summary>
+    public event EventHandler<EventArgs>? ContentRendered; 
+    
+    /// <summary>Raises the <see cref="ContentRendered"/> event.</summary>
+    internal void RaiseContentRendered()
+    {
+        ContentRendered?.Invoke(this, EventArgs.Empty);
+    }
 }

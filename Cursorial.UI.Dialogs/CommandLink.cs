@@ -1,10 +1,9 @@
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Dialogs.Themes;
 
 namespace Cursorial.UI.Dialogs;
 
-public class CommandLink : Button
+internal class CommandLink : Button
 {
     private TaskDialogButton? _boundDefinition;
 
@@ -17,11 +16,6 @@ public class CommandLink : Button
 
     public static readonly StyledProperty<bool> ExplanationContainsMarkupProperty =
         UIProperty.Register<CommandLink, bool>(nameof(ExplanationContainsMarkup));
-
-    static CommandLink()
-    {
-        ThemeProperty.OverrideDefaultValue<CommandLink>(CursorialDialogThemes.CommandLinkStyle());
-    }
 
     public TaskDialogButton? ButtonDefinition
     {

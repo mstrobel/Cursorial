@@ -32,6 +32,10 @@ public class ToggleButton : ButtonBase
     public static readonly RoutedEvent<RoutedEventArgs> IndeterminateEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(Indeterminate), RoutingStrategy.Bubble, typeof(ToggleButton));
 
+    /// <summary>The direct event raised whenever the value of <see cref="IsChecked"/> changes.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> IsCheckedChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Direct, typeof(ToggleButton));
+
     static ToggleButton()
     {
         // bool? → :checked (true) / :indeterminate (null) / none (false), one-pass multi-class (CD26).
@@ -55,6 +59,9 @@ public class ToggleButton : ButtonBase
 
     /// <summary>CLR sugar over <see cref="IndeterminateEvent"/>.</summary>
     public event EventHandler<RoutedEventArgs>? Indeterminate { add => AddHandler(IndeterminateEvent, value!); remove => RemoveHandler(IndeterminateEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="IsCheckedChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? IsCheckedChanged { add => AddHandler(IsCheckedChangedEvent, value!); remove => RemoveHandler(IsCheckedChangedEvent, value!); }
 
     /// <summary>
     /// The activation cycle (CD26, WPF order): <c>false → true → false</c> (two-state) or
@@ -93,17 +100,19 @@ public class ToggleButton : ButtonBase
             return;
 
         var routedEvent = newValue switch
-        {
-            true => CheckedEvent,
-            false => UncheckedEvent,
-            null => IndeterminateEvent
-        };
+                          {
+                              true  => CheckedEvent,
+                              false => UncheckedEvent,
+                              null  => IndeterminateEvent
+                          };
 
         toggle.OnIsCheckedChangedCore(oldValue, newValue);
 
         if (toggle.IsAttachedToTree)
         {
             var args = toggle.RentEvent(routedEvent);
+            toggle.RaiseEvent(args);
+            args = toggle.RentEvent(IsCheckedChangedEvent);
             toggle.RaiseEvent(args);
         }
     }

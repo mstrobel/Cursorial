@@ -110,11 +110,11 @@ internal sealed class InspectorDemo : IDemo
                                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
                           <TextBlock     Grid.Column="2" Grid.Row="4" Text=":disabled" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
                           
-                          <ToggleButton Grid.Column="0" Grid.Row="6" Content="To_ggle" MinWidth="10"
+                          <ToggleButton Grid.Column="0" Grid.Row="6" Content="To_ggle" MinWidth="10" Classes="toggle-colors"
                                         Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
                           <TextBlock    Grid.Column="2" Grid.Row="6" Text="toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
                           
-                          <ToggleButton Grid.Column="0" Grid.Row="8" Content="To_ggle 2" MinWidth="10" IsThreeState="True"
+                          <ToggleButton Grid.Column="0" Grid.Row="8" Content="To_ggle 2" MinWidth="10" IsThreeState="True" Classes="toggle-colors"
                                         Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
                           <TextBlock    Grid.Column="2" Grid.Row="8" Text="3-state toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
                           

@@ -81,9 +81,26 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
         if (viaMarshal && wm is null)
             return -1;
 
-        var root = new DockPanel { LastChildFill = true, MaxWidth = (wm?.ScreenSize.Columns + 1) / 2 ?? 40 };
+        var root = new Grid { MaxWidth = (wm?.ScreenSize.Columns + 1) / 2 ?? 40 };
+        var children = new List<UIElement>();
+        
+        const int mainInstructionRow = 0;
+        const int messageRow = 1;
+        const int commandLinksRow = 2;
+        const int footerRow = 3;
+        const int expandedContentRow = 4;
+        
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star(), MaxWidth = root.MaxWidth});
+
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Main Instruction
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Message
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Command Links
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Footer
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Expanded Content
         
         KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Cycle);
+        // Up/Down/Left/Right cycle the buttons (Tab order falls out of the window root's Cycle trap).
+        KeyboardNavigation.SetDirectionalNavigation(root, DirectionalNavigationMode.Cycle);
 
         var mainInstruction = new TextBlock
                               {
@@ -95,14 +112,15 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
         mainInstruction.SetValue(TextElement.TextAttributesProperty, TextAttributes.Bold);
         mainInstruction.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         
-        UIElement mainChild = mainInstruction;
+        Grid.SetRow(mainInstruction, mainInstructionRow);
+        children.Add(mainInstruction);
         
         if (request.Content is {} message)
         {
             var content = new ContentPresenter { Content = message, Margin = new Margins(2, 0, 2, 1)};
-            DockPanel.SetDock(mainInstruction, Dock.Top);
-            root.Children.Add(mainInstruction);
-            mainChild = content;
+            Grid.SetRow(content, messageRow);
+            root.RowDefinitions[messageRow].Height = GridLength.Star();
+            children.Add(content);
         }
 
         var window = new Window
@@ -122,7 +140,6 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
         
         var buttons = request.Buttons;
         
-        Panel? allButtons = null;
         List<Button>? commandLinkButtons = null;
         List<Button>? standardButtons = null;
 
@@ -163,6 +180,79 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
                 window.CanClose = true;
         }
 
+        
+        DockPanel? footerPanel = null;
+
+        if (request.ExpandedInformation is {} expandedContent)
+        {
+            var toggle = new ToggleButton
+                         {
+                             Content = "⌄",
+                             Width = 3,
+                             Height = 1,
+                             Margin = new Margins(0, 0, 1, 0),
+                             Padding = new Margins(1, 0)
+                         };
+
+            DockPanel.SetDock(toggle, Dock.Left);
+
+            footerPanel ??= new DockPanel();
+            footerPanel.Children.Add(toggle);
+
+            var expandedContentHost = new Border
+                                      {
+                                          Child = new ContentPresenter
+                                                  {
+                                                      Content = expandedContent,
+                                                      RecognizesMarkup = request.ExpandedInformationContainsMarkup
+                                                  },
+                                          Padding = new Margins(2, 1),
+                                          Visibility = toggle.IsChecked is true 
+                                                           ? Visibility.Visible 
+                                                           : Visibility.Collapsed
+                                      };
+
+            void OnToggleIsCheckedChanged(object? o, RoutedEventArgs routedEventArgs)
+            {
+                expandedContentHost.Visibility = toggle.IsChecked is true
+                                                     ? Visibility.Visible
+                                                     : Visibility.Collapsed;
+
+                toggle.Content = toggle.IsChecked is true ? "⌃" : "⌄";
+            }
+
+            toggle.IsCheckedChanged += OnToggleIsCheckedChanged;
+
+            Grid.SetRow(expandedContentHost, expandedContentRow);
+            children.Add(expandedContentHost);
+        }
+
+        if (standardButtons is { Count: > 0 })
+        {
+            var buttonsPanel = new StackPanel
+                               {
+                                   Orientation = Orientation.Horizontal,
+                                   HorizontalAlignment = HorizontalAlignment.Right,
+                                   Spacing = 1
+                               };
+
+            foreach (var button in standardButtons)
+                buttonsPanel.Children.Add(button);
+
+            DockPanel.SetDock(buttonsPanel, Dock.Right);
+            
+            footerPanel ??= new DockPanel();
+            footerPanel.Children.Add(buttonsPanel);
+        }
+
+        if (footerPanel is not null)
+        {
+            var footer = new Border { Child = footerPanel, Padding = new(2, 1) };
+            footer.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.ElevationWell);
+            Grid.SetRow(footer, footerRow);
+            children.Add(footer);
+        }
+
         if (commandLinkButtons is { Count: > 0 })
         {
             var commandLinks = new StackPanel
@@ -176,44 +266,17 @@ public sealed class TaskDialogService(UIApplication application) : ITaskDialogSe
                 commandLinks.Children.Add(button);
             
             var border = new Border { Child = commandLinks, Padding = new(2, 0, 2, 1) };
-            
-            allButtons ??= new StackPanel { Orientation = Orientation.Vertical };
-            allButtons.Children.Add(border);
-        }
 
-        if (standardButtons is { Count: > 0 })
-        {
-            var buttonsPanel = new StackPanel
-                               {
-                                   Orientation = Orientation.Horizontal,
-                                   HorizontalAlignment = HorizontalAlignment.Right,
-                                   Spacing = 1
-                               };
+            Grid.SetRow(border, commandLinksRow);
 
-            var border = new Border { Child = buttonsPanel, Padding = new(2, 1) };
-            
-            border.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.ElevationWell);
-            
-            foreach (var button in standardButtons)
-                buttonsPanel.Children.Add(button);
-
-            allButtons ??= new StackPanel { Orientation = Orientation.Vertical };
-            allButtons.Children.Add(border);
-        }
-
-        if (allButtons is not null)
-        {
-            // Up/Down/Left/Right cycle the buttons (Tab order falls out of the window root's Cycle trap).
-            KeyboardNavigation.SetDirectionalNavigation(allButtons, DirectionalNavigationMode.Cycle);
-            // KeyboardNavigation.SetTabNavigation(allButtons, KeyboardNavigationMode.Once);
-
-            DockPanel.SetDock(allButtons, Dock.Bottom);
-
-            root.Children.Add(allButtons);
+            children.Add(border);
         }
         
-        root.Children.Add(mainChild);
+        children.Sort((e1, e2) => Grid.GetRow(e1).CompareTo(Grid.GetRow(e2)));
 
+        foreach (var child in children)
+            root.Children.Add(child);
+        
         if (focusTarget is not null)
         {
             // Window.Shown is only raised on the modeless Show() path (never by ShowDialogAsync), so

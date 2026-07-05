@@ -1023,38 +1023,7 @@ internal static class ControlThemes
             )
            .Set(Control.TemplateProperty, ht);
 
-        t.Styles.Add(
-            new Style(Selectors.OfType<Expander>())
-            {
-                Children =
-                {
-                    headerStyle,
-                    new Style(Selectors.Nesting().Template().OfType<ToggleButton>().Name("PART_Header"))
-                    {
-                        Children =
-                        {
-                            new Style("^:checked, ^:indeterminate")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
-                            new Style("^:checked:default, ^:indeterminate:default")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
-                            new Style("^:checked:pointerover, ^:indeterminate:pointerover")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover),
-                            new Style("^:checked:focus, ^:indeterminate:focus")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus),
-                            new Style("^:checked:pressed, ^:indeterminate:pressed")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed),
-                            new Style("^:checked:disabled, ^:indeterminate:disabled")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled)
-                        }
-                    }
-                }
-            });
+        t.Styles.Add(new Style(Selectors.OfType<Expander>()) { Children = { headerStyle } });
 
         return t;
     }
@@ -1289,42 +1258,42 @@ internal static class ControlThemes
         if (typeof(ToggleButton).IsAssignableFrom(typeof(TButton)))
         {
             theme.Children.Add(
-                new Style("^:checked")
+                new Style("^.toggle-colors:checked")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
             
             theme.Children.Add(
-                new Style("^:checked:pointerover")
+                new Style("^.toggle-colors:checked:pointerover")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.Success2Brush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
 
             theme.Children.Add(
-                new Style("^:checked:focus")
+                new Style("^.toggle-colors:checked:focus")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.SuccessInverseBrush));
 
             theme.Children.Add(
-                new Style("^:checked:pressed")
+                new Style("^.toggle-colors:checked:pressed")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
 
             theme.Children.Add(
-                new Style("^:indeterminate")
+                new Style("^.toggle-colors:indeterminate")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.WarningBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
             
             theme.Children.Add(
-                new Style("^:indeterminate:pointerover")
+                new Style("^.toggle-colors:indeterminate:pointerover")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.Warning2Brush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
             
             theme.Children.Add(
-                new Style("^:indeterminate:focus")
+                new Style("^.toggle-colors:indeterminate:focus")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.WarningInverseBrush));
 
             theme.Children.Add(
-                new Style("^:indeterminate:pressed")
+                new Style("^.toggle-colors:indeterminate:pressed")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.WarningDarkBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         }
@@ -1540,7 +1509,7 @@ internal static class ControlThemes
                    ctx =>
                    {
                        var icon = new Icon();
-                       
+
                        icon.SetBinding(Icon.GlyphProperty, new Binding(nameof(IconCarrier.Glyph)));
                        icon.SetBinding(Icon.GlyphWidthProperty, new Binding(nameof(IconCarrier.GlyphWidth)));
                        icon.SetBinding(Icon.ImageUriProperty, new Binding(nameof(IconCarrier.ImageUri)));

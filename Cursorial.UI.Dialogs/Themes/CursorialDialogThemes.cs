@@ -14,16 +14,13 @@ public static class CursorialDialogThemes
 {
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
 
-    private static readonly IconCarrier CommandLinkIcon = new()
-                                                          {
-                                                              Glyph = "\uf061",
-                                                              GlyphWidth = 2,
-                                                              Emoji = "\u27A1",
-                                                              Text = "➡"
-                                                          };
-
     /// <summary>The sealed, process-shared default dictionary — always the final lookup hop (design doc §11.8).</summary>
     public static ResourceDictionary BuiltIn => BuiltInDictionary;
+
+    public static ResourceDictionary BuildContribution()
+    {
+        return BuiltIn;
+    }
 
     private static ResourceDictionary CreateSealed()
     {
@@ -35,17 +32,18 @@ public static class CursorialDialogThemes
 
     internal static void Populate(ResourceDictionary dict)
     {
-        dict[CursorialDialogThemeKeys.CommandLinkIcon] = CommandLinkIcon;
-
+        dict[CursorialDialogThemeKeys.CommandLinkIcon] = CommandLinkIconResource();
         dict[typeof(CommandLink)] = CommandLinkStyle();
     }
+
+    #region CommandLink Theme
 
     public static Style CommandLinkStyle()
     {
         var theme = new Style { Key = "Dialogs.CommandLink" }
-           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-           .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush)
-           .Set(Control.TemplateProperty, CommandLinkTemplate());
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush)
+                   .Set(Control.TemplateProperty, CommandLinkTemplate());
 
         theme.Children.Add(new Style("^:pointerover")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
@@ -70,47 +68,7 @@ public static class CursorialDialogThemes
 
     private static ControlTemplate CommandLinkTemplate()
     {
-        ControlTemplate t = new ControlTemplate(
-            ctx =>
-                 {
-                     var icon = new ContentPresenter
-                                {
-                                    Content = CommandLinkIcon,
-                                    VerticalAlignment = VerticalAlignment.Top,
-                                    Margin = new Margins(1, 0)
-                                };
-
-                     var panel = new DockPanel { LastChildFill = true };
-                     var border = new Border { Child = panel };
-
-                     border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                     border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-                     border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-
-                     var label = new ContentPresenter { RecognizesAccessKey = true };
-                     var explanation = new ContentPresenter();
-
-                     ctx.RegisterName("PART_Icon", icon);
-                     ctx.RegisterName("PART_Label", label);
-                     ctx.RegisterName("PART_Explanation", explanation);
-                     
-                     explanation.SetBinding(ContentPresenter.ContentProperty,
-                                            new TemplateBinding(CommandLink.ExplanationProperty));
-
-                     explanation.SetBinding(ContentPresenter.RecognizesMarkupProperty,
-                                            new TemplateBinding(CommandLink.ExplanationContainsMarkupProperty));
-
-                     explanation.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
-        
-                     DockPanel.SetDock(icon, Dock.Left);
-                     DockPanel.SetDock(label, Dock.Top);
-        
-                     panel.Children.Add(icon);
-                     panel.Children.Add(label);
-                     panel.Children.Add(explanation);
-                     
-                     return border;
-                 });
+        ControlTemplate t = new ControlTemplate(BuildCommandLinkTemplate);
         
         t.Styles.Add(
             new Style(Selectors.OfType<CommandLink>())
@@ -129,4 +87,55 @@ public static class CursorialDialogThemes
         
         return t;
     }
+
+    private static UIElement BuildCommandLinkTemplate(TemplateBuildContext ctx)
+    {
+        var icon = new ContentPresenter { VerticalAlignment = VerticalAlignment.Top, Margin = new Margins(1, 0) };
+
+        icon.SetResourceReference(ContentPresenter.ContentProperty, CursorialDialogThemeKeys.CommandLinkIcon);
+
+        var panel = new DockPanel { LastChildFill = true };
+        var border = new Border { Child = panel };
+
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+
+        var label = new ContentPresenter { RecognizesAccessKey = true };
+        var explanation = new ContentPresenter();
+
+        ctx.RegisterName("PART_Icon", icon);
+        ctx.RegisterName("PART_Label", label);
+        ctx.RegisterName("PART_Explanation", explanation);
+
+        explanation.SetBinding(ContentPresenter.ContentProperty,
+                               new TemplateBinding(CommandLink.ExplanationProperty));
+
+        explanation.SetBinding(ContentPresenter.RecognizesMarkupProperty,
+                               new TemplateBinding(CommandLink.ExplanationContainsMarkupProperty));
+
+        explanation.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
+
+        DockPanel.SetDock(icon, Dock.Left);
+        DockPanel.SetDock(label, Dock.Top);
+
+        panel.Children.Add(icon);
+        panel.Children.Add(label);
+        panel.Children.Add(explanation);
+
+        return border;
+    }
+
+    private static IconCarrier CommandLinkIconResource()
+    {
+        return new IconCarrier
+               {
+                   Glyph = "\uf061",
+                   GlyphWidth = 2,
+                   Emoji = "➡️",
+                   Text = "➡"
+               };
+    }
+
+    #endregion
 }

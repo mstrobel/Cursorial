@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using Cursorial.Rendering.Text;
+
 namespace Cursorial.UI.Dialogs;
 
 /// <summary>
@@ -44,4 +46,11 @@ public sealed record TaskDialogRequest(string MainInstruction)
     /// Ignored by the M1 implementation — see <see cref="MessageBoxTaskDialogService"/>.
     /// </summary>
     public string? ExpandedInformation { get; init; }
+
+    /// <summary>
+    /// Indicates whether the <see cref="ExpandedInformation"/> contains markup. If true, the content of
+    /// the expanded information is assumed to include <see cref="TextMarkup">formatting</see> tags.
+    /// Uses of open brackets outside of tag names must be escaped as <c>\[</c>.
+    /// </summary>
+    public bool ExpandedInformationContainsMarkup { get; init; }
 }

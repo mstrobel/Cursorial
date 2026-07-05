@@ -64,6 +64,12 @@
       <Compile Update="Hosting\UIApplication.FrameLoop.cs">
         <DependentUpon>UIApplication.cs</DependentUpon>
       </Compile>
+      <Compile Update="Windowing\Window.Interactions.cs">
+        <DependentUpon>Window.cs</DependentUpon>
+      </Compile>
+      <Compile Update="Windowing\Window.Layout.cs">
+        <DependentUpon>Window.cs</DependentUpon>
+      </Compile>
     </ItemGroup>
 
 </Project>

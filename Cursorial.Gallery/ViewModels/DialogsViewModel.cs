@@ -91,17 +91,19 @@ public class DialogsViewModel : PageViewModel
                             },
                             new TaskDialogButton("Smash", "_Smash It")
                             {
-                                Explanation = "Smash the red vial. It had it coming."
+                                Explanation = "Smash the yellow vial. It had it coming."
                             },
                             new TaskDialogButton("Toss", "_Toss It")
                             {
-                                Explanation = "Hurl the red vial at the butler. Screw that guy."
+                                Explanation = "Hurl the red vial at the annoying guy. He should know better."
                             },
                             new TaskDialogButton("Wat", "_Wat"),
                             new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
                         ],
                         VerificationText = "I am a meat popsicle",
-                        ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. You're a meat popsicle.",
+                        // ExpandedInformation = "You're a meat popsicle. You're a meat popsicle. " +
+                        //                       "[i]You're a meat popsicle.[/i]",
+                        // ExpandedInformationContainsMarkup = true,
                         Severity = TaskDialogSeverity.Question
                     };
             

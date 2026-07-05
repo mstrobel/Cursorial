@@ -129,8 +129,16 @@ public static class MessageBox
         // there is programmer error (show before RunAsync composed it) and must fail loudly with
         // ShowDialogAsync's InvalidOperationException, never be silently dismissed.
         if (application.Dispatcher.CheckAccess())
-            return await ShowOnUIThreadAsync(message, title, buttons, focusedIndex, viaMarshal: false, cancellationToken)
-                .ConfigureAwait(false);
+        {
+            return await ShowOnUIThreadAsync(message,
+                                             title,
+                                             buttons,
+                                             focusedIndex,
+                                             viaMarshal: false,
+                                             cancellationToken)
+                      .ConfigureAwait(false);
+
+        }
 
         try
         {

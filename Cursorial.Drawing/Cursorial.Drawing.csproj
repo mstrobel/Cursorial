@@ -10,9 +10,9 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.Drawing</PackageId>
-        <Version>0.3.1</Version>
-        <Description>The retained-scene drawing layer for Cursorial — cached-raster scenes and a compositor that only repaints what changed, brushes and gradients, a pen/box engine with automatic box-drawing junctions, charts, and UI drawing primitives (clip/translate, occluding fills, titled panels, drop/inner shadows). Built on Cursorial.Rendering + Cursorial.Animation.</Description>
-        <PackageTags>terminal;tui;drawing;scene;compositor;brush;gradient;charts;crossplatform</PackageTags>
+        <Version>0.3.2</Version>
+        <Description>Standard dialog windows for Cursorial.UI — the familiar MessageBox and Windows-style TaskDialog.</Description>
+        <PackageTags>terminal;tui;ui;framework;wpf;avalonia;mvvm;controls;databinding;crossplatform;dialogs</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>

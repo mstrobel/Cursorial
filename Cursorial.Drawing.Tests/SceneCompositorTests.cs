@@ -394,4 +394,154 @@ public class SceneCompositorTests
         Assert.Equal(Blue, buffer[0, 0].Style.Background);
         Assert.Equal(Blue, buffer[3, 0].Style.Background);
     }
+
+    // ---- Wide-pair integrity at region seams ----
+    // The target must NEVER hold half a wide glyph: a split pair makes the frame renderer emit
+    // into a wide glyph's right half — terminal-side corruption the front buffer can't see (the
+    // "artifacts when scrolling near wide glyphs" class).
+
+    private static void AssertNoSplitPairs(CellBuffer buffer)
+    {
+        for (int r = 0; r < buffer.Rows; r++)
+        {
+            for (int c = 0; c < buffer.Columns; c++)
+            {
+                var cell = buffer[c, r];
+
+                if (cell.Kind == CellKind.WideLeft)
+                {
+                    Assert.True(c + 1 < buffer.Columns && buffer[c + 1, r].Kind == CellKind.WideContinuation,
+                                $"orphaned WideLeft at ({c},{r})");
+                }
+                else if (cell.Kind == CellKind.WideContinuation)
+                {
+                    Assert.True(c > 0 && buffer[c - 1, r].Kind == CellKind.WideLeft,
+                                $"orphaned WideContinuation at ({c},{r})");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void OverlappingLayer_StartingOnContinuationColumn_DoesNotOrphanLowerWideLeft()
+    {
+        // Layer A paints 中 at (4,5); layer B's GLYPH content starts at column 5 — B's first
+        // glyph lands on A's continuation through the raw single-cell write. The composited
+        // target must degrade A's left half, never keep an orphaned WideLeft beside B's glyph.
+        // (A background-only B would instead tint the surviving pair — the intended overlay
+        // semantics — so B carries glyphs here.)
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var a = Scene.Create(12, 2);
+        a.Draw(ctx => ctx.DrawText(4, 0, "中", Red));
+
+        var b = Scene.Create(4, 2);
+        b.Draw(ctx =>
+        {
+            ctx.DrawText(0, 0, "xxxx", Red);
+            ctx.DrawText(0, 1, "xxxx", Red);
+        });
+
+        Assert.True(compositor.Composite(
+            [new SceneLayer(a), new SceneLayer(b, new CompositeParameters(offsetColumn: 5))], view));
+
+        AssertNoSplitPairs(buffer);
+        Assert.NotEqual(CellKind.WideLeft, buffer[4, 0].Kind); // the half-covered glyph degraded
+        Assert.Equal("x", buffer[5, 0].Grapheme);              // B's glyph won the cell
+    }
+
+    [Fact]
+    public void UnionEdge_CuttingUnderlyingPair_HealsSplitOnRecomposite()
+    {
+        // Frame 1 composites A (with 中 at (4,5)) and B side by side. Frame 2 changes ONLY B,
+        // whose footprint starts at column 5 — the recomposite union's left edge lands on A's
+        // continuation. The pass-1 reset overwrites the in-union half; the maintaining indexer
+        // must blank the out-of-union WideLeft at column 4 rather than stranding it.
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var a = Scene.Create(12, 2);
+        a.Draw(ctx => ctx.DrawText(4, 0, "中", Red));
+
+        var b = Scene.Create(4, 2);
+        Fill(b, new SolidColorBrush(Red));
+
+        var layers = new[] { new SceneLayer(a), new SceneLayer(b, new CompositeParameters(offsetColumn: 5)) };
+        Assert.True(compositor.Composite(layers, view));
+
+        // Frame 2: B re-rasters (its own footprint is the union; A's pair straddles its left edge).
+        b.Invalidate();
+        Fill(b, new SolidColorBrush(Blue));
+        Assert.True(compositor.Composite(layers, view));
+
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void ClippedLayer_WideLeftAtClipEdge_DegradesInsteadOfBleedingPastClip()
+    {
+        // A horizontally-scrolled layer (negative offset) under a clip whose right edge lands
+        // one column after a WideLeft, while a SECOND changed layer widens the union past the
+        // clip: the continuation must NOT be written outside the clip (half a glyph bleeding
+        // onto the neighbor's cells — the scrollbar/border column during scrolling).
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        // Scene content: 中 at scene columns (7,8). Offset -2 puts it at target (5,6); the clip
+        // [0,6) makes the WideLeft the last visible cell — its continuation column belongs to
+        // the neighbor layer.
+        var scrolled = Scene.Create(10, 2);
+        scrolled.Draw(ctx => ctx.DrawText(7, 0, "中", Red));
+
+        var neighbor = Scene.Create(3, 2);
+        Fill(neighbor, new SolidColorBrush(Red));
+
+        var layers = new[]
+        {
+            new SceneLayer(scrolled, new CompositeParameters(offsetColumn: -2, clip: new Rect(0, 0, 6, 2))),
+            new SceneLayer(neighbor, new CompositeParameters(offsetColumn: 6))
+        };
+
+        Assert.True(compositor.Composite(layers, view));
+
+        // The union spans both layers (0..9); the scrolled layer's clip ends at 6. Its WideLeft
+        // at target column 5 must degrade — column 6 belongs to the neighbor.
+        Assert.NotEqual(CellKind.WideContinuation, buffer[6, 0].Kind); // no bleed past the clip
+        Assert.Equal(Red, buffer[6, 0].Style.Background);              // the neighbor's cell is intact
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void VerticalSlide_WithWideGlyphs_KeepsPairsIntact()
+    {
+        // The scroll case proper: a taller-than-viewport scene slides vertically under a fixed
+        // clip (the ScrollContentPresenter band pattern). Wide pairs are column-aligned, so every
+        // slide must recomposite them whole.
+        var buffer = new CellBuffer(10, 3);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var band = Scene.Create(10, 6);
+        band.Draw(ctx =>
+        {
+            for (int r = 0; r < 6; r++)
+                ctx.DrawText(2, r, "中文", Red);
+        });
+
+        var layers = new[] { new SceneLayer(band, new CompositeParameters(offsetRow: 0, clip: new Rect(0, 0, 10, 3))) };
+        Assert.True(compositor.Composite(layers, view));
+        AssertNoSplitPairs(buffer);
+
+        for (int offset = 1; offset <= 3; offset++)
+        {
+            layers[0] = new SceneLayer(band, new CompositeParameters(offsetRow: -offset, clip: new Rect(0, 0, 10, 3)));
+            Assert.True(compositor.Composite(layers, view));
+            AssertNoSplitPairs(buffer);
+            Assert.Equal("中", buffer[2, 0].Grapheme); // content actually slid, pairs whole
+        }
+    }
 }

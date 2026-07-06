@@ -175,9 +175,18 @@ public sealed class CellBuffer : ICellSurface
     }
 
     /// <summary>
-    /// Direct access to a cell. Setting via the indexer bypasses wide-cell consistency handling
-    /// AND the active blending mode — use <see cref="Set(int, int, string, in Style)"/> for
-    /// normal text content.
+    /// Direct access to a cell. Setting via the indexer bypasses the active blending mode — use
+    /// <see cref="Set(int, int, string, in Style)"/> for normal text content — but it does
+    /// maintain the wide-pair invariant: overwriting either half of an existing pair blanks the
+    /// orphaned partner (unless the write replaces that half in kind, which keeps the pair
+    /// whole — the cell-by-cell pair-copy pattern region blits use), storing a
+    /// <see cref="CellKind.WideLeft"/> writes its continuation (degrading to a blank single at
+    /// the right edge, as <see cref="Set(int, int, string, in Style)"/> does), and storing a
+    /// continuation with no <see cref="CellKind.WideLeft"/> to pair with stores a blank single
+    /// instead. The buffer therefore never holds half a wide glyph — the invariant the
+    /// <see cref="FrameRenderer"/>'s wide-cell emission contract depends on (a split pair makes
+    /// the diff emit into a wide glyph's right half, which corrupts the glyph on the terminal
+    /// while the front buffer believes it intact).
     /// </summary>
     public Cell this[int column, int row]
     {
@@ -189,8 +198,69 @@ public sealed class CellBuffer : ICellSurface
         set
         {
             ValidateCoordinates(column, row);
-            _cells[row * _columns + column] = value;
+
+            int index = row * _columns + column;
+            var previous = _cells[index];
+
+            // Pair hygiene on overwrite (the kind guards make this safe even on a buffer that is
+            // ALREADY inconsistent — never blank an innocent neighbor).
+            if (previous.Kind == CellKind.WideContinuation && value.Kind != CellKind.WideContinuation &&
+                column > 0 && _cells[index - 1].Kind == CellKind.WideLeft)
+            {
+                _cells[index - 1] = Cell.Blank;
+            }
+
+            if (previous.Kind == CellKind.WideLeft && value.Kind != CellKind.WideLeft &&
+                column + 1 < _columns && _cells[index + 1].Kind == CellKind.WideContinuation)
+            {
+                _cells[index + 1] = Cell.Blank;
+            }
+
+            if (value.Kind == CellKind.WideLeft)
+            {
+                if (column + 1 >= _columns)
+                {
+                    // No room for the right half — degrade to a blank single, mirroring Set.
+                    _cells[index] = new Cell(null, CellKind.Single, value.Style);
+                    return;
+                }
+
+                WriteWidePair(index, column, value.Grapheme, value.Style);
+                return;
+            }
+
+            if (value.Kind == CellKind.WideContinuation &&
+                (column == 0 || _cells[index - 1].Kind != CellKind.WideLeft))
+            {
+                // A bare continuation with nothing to pair with (a region copy whose left edge
+                // split a pair) — store a blank single so no half-glyph ever exists.
+                _cells[index] = new Cell(null, CellKind.Single, value.Style);
+                return;
+            }
+
+            _cells[index] = value;
         }
+    }
+
+    /// <summary>
+    /// Store a <see cref="CellKind.WideLeft"/> + continuation pair at <c>(column, column + 1)</c>
+    /// (caller guarantees the right half is in-row). If the continuation column currently holds the
+    /// <b>next</b> pair's <see cref="CellKind.WideLeft"/>, that pair's own continuation is blanked
+    /// first — overwriting a WideLeft with a continuation would otherwise orphan the cell two
+    /// columns over.
+    /// </summary>
+    private void WriteWidePair(int index, int column, string? grapheme, in Style style)
+    {
+        if (_cells[index + 1].Kind == CellKind.WideLeft && column + 2 < _columns &&
+            _cells[index + 2].Kind == CellKind.WideContinuation)
+        {
+            _cells[index + 2] = Cell.Blank;
+        }
+
+        _cells[index] = new Cell(grapheme, CellKind.WideLeft, style);
+        // The right-half continuation carries the style too so background paints continuously
+        // across the wide glyph.
+        _cells[index + 1] = Cell.WideContinuation with { Style = style };
     }
 
     /// <summary>
@@ -239,10 +309,7 @@ public sealed class CellBuffer : ICellSurface
 
         if (width == 2)
         {
-            _cells[index] = new Cell(grapheme, CellKind.WideLeft, blended);
-            // The right-half continuation carries the style too so background paints continuously
-            // across the wide glyph.
-            _cells[index + 1] = Cell.WideContinuation with { Style = blended };
+            WriteWidePair(index, column, grapheme, blended);
             return 2;
         }
 

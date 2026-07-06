@@ -54,6 +54,60 @@ public class GraphemeWidthTests
         Assert.Throws<ArgumentOutOfRangeException>(() => GraphemeWidth.CodepointWidth(0x110000));
     }
 
+    // The UTS #51 Emoji_Presentation=Yes codepoints in the legacy symbol blocks: default-emoji
+    // glyphs modern terminals render 2 cells wide. Measuring them 1 stored them as Single cells
+    // and desynced the renderer's cursor model per glyph — the wide-emoji scroll-smear root cause
+    // (✅ measured 1, rendered 2 on Kitty/Ghostty).
+    [Theory]
+    [InlineData(0x231A)]  // ⌚
+    [InlineData(0x23F0)]  // ⏰
+    [InlineData(0x2615)]  // ☕
+    [InlineData(0x2648)]  // ♈
+    [InlineData(0x267F)]  // ♿
+    [InlineData(0x26A1)]  // ⚡
+    [InlineData(0x26D4)]  // ⛔
+    [InlineData(0x2705)]  // ✅ — the reported glyph
+    [InlineData(0x270A)]  // ✊
+    [InlineData(0x2728)]  // ✨
+    [InlineData(0x274C)]  // ❌ — the reported glyph
+    [InlineData(0x2757)]  // ❗
+    [InlineData(0x2795)]  // ➕
+    [InlineData(0x2B1B)]  // ⬛
+    [InlineData(0x2B50)]  // ⭐
+    [InlineData(0x2B55)]  // ⭕
+    [InlineData(0x1F004)] // 🀄
+    [InlineData(0x1F1E6)] // regional indicator (flag half)
+    [InlineData(0x1F21A)] // 🈚
+    public void CodepointWidth_EmojiPresentationDefaults_AreTwo(int cp)
+    {
+        Assert.Equal(2, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    // Text-presentation-default neighbors of the emoji-presentation set must STAY narrow — the
+    // fix is the UTS #51 set, not a blanket widening of the legacy symbol blocks.
+    [Theory]
+    [InlineData(0x2192)] // → (arrow — EP=No)
+    [InlineData(0x2600)] // ☀ (EP=No; needs VS16 for emoji presentation)
+    [InlineData(0x260E)] // ☎ (EP=No)
+    [InlineData(0x2611)] // ☑ (EP=No — the BuiltIn checkbox glyph)
+    [InlineData(0x2713)] // ✓ (EP=No)
+    [InlineData(0x2714)] // ✔ (EP=No)
+    [InlineData(0x2716)] // ✖ (EP=No)
+    [InlineData(0x2744)] // ❄ (EP=No)
+    [InlineData(0x2764)] // ❤ (EP=No)
+    [InlineData(0x27A1)] // ➡ (EP=No)
+    public void CodepointWidth_TextPresentationDefaults_StayOne(int cp)
+    {
+        Assert.Equal(1, GraphemeWidth.CodepointWidth(cp));
+    }
+
+    [Fact]
+    public void ClusterWidth_EmojiPresentationDefault_WithVs15_PinsToOne()
+    {
+        // VS15 (text presentation) still narrows an emoji-presentation-default glyph.
+        Assert.Equal(1, GraphemeWidth.ClusterWidth("✅︎")); // ✅ + VS15
+    }
+
     // ---- ClusterWidth ----
 
     [Fact]

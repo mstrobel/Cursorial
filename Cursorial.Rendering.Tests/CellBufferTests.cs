@@ -115,6 +115,119 @@ public class CellBufferTests
         Assert.Equal(cell, buf[0, 0]);
     }
 
+    // ---- Indexer wide-pair invariant maintenance ----
+    // The raw indexer bypasses blending but NOT pair consistency: the buffer must never hold half
+    // a wide glyph, or the frame renderer's wide-cell emission contract corrupts the terminal
+    // (the SceneCompositor writes through this indexer at every region seam).
+
+    [Fact]
+    public void Indexer_SingleOverContinuation_ClearsOrphanWideLeft()
+    {
+        var buf = new CellBuffer(5, 1);
+        buf.Set(0, 0, "中", Style.Default);
+
+        buf[1, 0] = new Cell("x", CellKind.Single, Style.Default); // raw write over the right half
+
+        Assert.Equal(default, buf[0, 0]); // the orphaned WideLeft was blanked
+        Assert.Equal("x", buf[1, 0].Grapheme);
+    }
+
+    [Fact]
+    public void Indexer_SingleOverWideLeft_ClearsOrphanContinuation()
+    {
+        var buf = new CellBuffer(5, 1);
+        buf.Set(0, 0, "中", Style.Default);
+
+        buf[0, 0] = new Cell("x", CellKind.Single, Style.Default); // raw write over the left half
+
+        Assert.Equal("x", buf[0, 0].Grapheme);
+        Assert.Equal(default, buf[1, 0]); // the orphaned continuation was blanked
+    }
+
+    [Fact]
+    public void Indexer_WideLeft_WritesContinuation()
+    {
+        var buf = new CellBuffer(5, 1);
+        var style = Style.Default.WithAttributes(TextAttributes.Bold);
+
+        buf[0, 0] = new Cell("中", CellKind.WideLeft, style);
+
+        Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
+        Assert.Equal(style, buf[1, 0].Style); // style carried across the pair, as Set does
+    }
+
+    [Fact]
+    public void Indexer_WideLeftAtRightEdge_DegradesToBlankSingle()
+    {
+        var buf = new CellBuffer(3, 1);
+
+        buf[2, 0] = new Cell("中", CellKind.WideLeft, Style.Default); // last column — no room for the right half
+
+        Assert.Equal(CellKind.Single, buf[2, 0].Kind);
+        Assert.Null(buf[2, 0].Grapheme);
+    }
+
+    [Fact]
+    public void Indexer_BareContinuation_DegradesToBlankSingle()
+    {
+        // A region copy whose left edge split a pair stores a continuation with no WideLeft to
+        // pair with — it must not survive as half a glyph.
+        var buf = new CellBuffer(5, 1);
+
+        buf[2, 0] = Cell.WideContinuation with { Style = Style.Default };
+
+        Assert.Equal(CellKind.Single, buf[2, 0].Kind);
+        Assert.Null(buf[2, 0].Grapheme);
+    }
+
+    [Fact]
+    public void Indexer_PairCopyCellByCell_PreservesPair()
+    {
+        // The blit pattern: copy a consistent pair left-to-right through the raw indexer. The
+        // WideLeft write auto-writes a continuation; the explicit continuation write replaces it
+        // in kind and must NOT trigger the orphan cleanup (which would blank the just-written left).
+        var source = new CellBuffer(5, 1);
+        source.Set(0, 0, "中", Style.Default);
+
+        var buf = new CellBuffer(5, 1);
+        buf[0, 0] = source[0, 0];
+        buf[1, 0] = source[1, 0];
+
+        Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
+        Assert.Equal("中", buf[0, 0].Grapheme);
+        Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
+    }
+
+    [Fact]
+    public void Indexer_WideLeftOverNextPairsWideLeft_ClearsCascadedOrphan()
+    {
+        // Writing a pair whose continuation lands on the NEXT pair's WideLeft must blank that
+        // pair's own continuation two columns over — otherwise it survives as half a glyph.
+        var buf = new CellBuffer(6, 1);
+        buf.Set(1, 0, "中", Style.Default); // pair at (1,2)
+
+        buf[0, 0] = new Cell("全", CellKind.WideLeft, Style.Default); // pair at (0,1) — overwrites 中's left
+
+        Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
+        Assert.Equal(default, buf[2, 0]); // 中's orphaned continuation was blanked
+    }
+
+    [Fact]
+    public void Set_WidePairOverNextPairsWideLeft_ClearsCascadedOrphan()
+    {
+        // The same cascade through Set (the pre-existing gap the indexer work surfaced).
+        var buf = new CellBuffer(6, 1);
+        buf.Set(1, 0, "中", Style.Default); // pair at (1,2)
+
+        buf.Set(0, 0, "全", Style.Default); // pair at (0,1) — its continuation overwrites 中's left
+
+        Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
+        Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
+        Assert.Equal(default, buf[2, 0]); // 中's orphaned continuation was blanked
+    }
+
     // ---- Clear / Fill ----
 
     [Fact]

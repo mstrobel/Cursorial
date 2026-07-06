@@ -66,6 +66,13 @@ public sealed class Scene : IDisposable
     internal CellBuffer Buffer => _buffer;
 
     /// <summary>
+    /// Reads the composited cell at (<paramref name="column"/>, <paramref name="row"/>) in this scene's own
+    /// local space — for inspection/diagnostics (e.g. sampling what a layer contributes at a screen cell).
+    /// Bounds are the caller's responsibility (see <see cref="Columns"/> / <see cref="Rows"/>).
+    /// </summary>
+    public Cell GetCell(int column, int row) => _buffer[column, row];
+
+    /// <summary>
     /// Monotonic counter bumped each time <see cref="Draw"/> actually re-rasters (never on a
     /// clean-scene no-op). Snapshot it before a compositing pass and compare after: a stable
     /// version means the raster content is unchanged and prior composite output remains valid —

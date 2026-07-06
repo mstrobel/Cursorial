@@ -78,6 +78,7 @@ internal static class ControlThemes
         dict[typeof(Icon)] = IconTheme();
         dict[typeof(Chart)] = ChartTheme();
         dict[typeof(Window)] = WindowTheme();
+        dict[new DataTemplateKey(typeof(IconCarrier))] = IconCarrierTemplate();
     }
 
     // ───────────────────────────── Button / RepeatButton / ToggleButton ─────────────────────────────
@@ -1022,38 +1023,7 @@ internal static class ControlThemes
             )
            .Set(Control.TemplateProperty, ht);
 
-        t.Styles.Add(
-            new Style(Selectors.OfType<Expander>())
-            {
-                Children =
-                {
-                    headerStyle,
-                    new Style(Selectors.Nesting().Template().OfType<ToggleButton>().Name("PART_Header"))
-                    {
-                        Children =
-                        {
-                            new Style("^:checked, ^:indeterminate")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
-                            new Style("^:checked:default, ^:indeterminate:default")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
-                            new Style("^:checked:pointerover, ^:indeterminate:pointerover")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover),
-                            new Style("^:checked:focus, ^:indeterminate:focus")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus),
-                            new Style("^:checked:pressed, ^:indeterminate:pressed")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed),
-                            new Style("^:checked:disabled, ^:indeterminate:disabled")
-                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
-                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled)
-                        }
-                    }
-                }
-            });
+        t.Styles.Add(new Style(Selectors.OfType<Expander>()) { Children = { headerStyle } });
 
         return t;
     }
@@ -1288,42 +1258,42 @@ internal static class ControlThemes
         if (typeof(ToggleButton).IsAssignableFrom(typeof(TButton)))
         {
             theme.Children.Add(
-                new Style("^:checked")
+                new Style("^.toggle-colors:checked")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
             
             theme.Children.Add(
-                new Style("^:checked:pointerover")
+                new Style("^.toggle-colors:checked:pointerover")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.Success2Brush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
 
             theme.Children.Add(
-                new Style("^:checked:focus")
+                new Style("^.toggle-colors:checked:focus")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.SuccessInverseBrush));
 
             theme.Children.Add(
-                new Style("^:checked:pressed")
+                new Style("^.toggle-colors:checked:pressed")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
 
             theme.Children.Add(
-                new Style("^:indeterminate")
+                new Style("^.toggle-colors:indeterminate")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.WarningBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
             
             theme.Children.Add(
-                new Style("^:indeterminate:pointerover")
+                new Style("^.toggle-colors:indeterminate:pointerover")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.Warning2Brush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
             
             theme.Children.Add(
-                new Style("^:indeterminate:focus")
+                new Style("^.toggle-colors:indeterminate:focus")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.WarningInverseBrush));
 
             theme.Children.Add(
-                new Style("^:indeterminate:pressed")
+                new Style("^.toggle-colors:indeterminate:pressed")
                    .SetResource(Control.BackgroundProperty, ThemeKeys.WarningDarkBrush)
                    .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         }
@@ -1530,6 +1500,25 @@ internal static class ControlThemes
     private static Style ScrollViewerTheme()
         => new Style { Key = "Theme.ScrollViewer" }.Set(Control.TemplateProperty, ScrollViewerTemplate());
 
+    // DataTemplate for instantiating an Icon element from an IconCarrier.
+    private static DataTemplate IconCarrierTemplate()
+        => new()
+           {
+               DataType = typeof(IconCarrier),
+               Content = new FuncTemplateContent(
+                   ctx =>
+                   {
+                       var icon = new Icon();
+
+                       icon.SetBinding(Icon.GlyphProperty, new Binding(nameof(IconCarrier.Glyph)));
+                       icon.SetBinding(Icon.GlyphWidthProperty, new Binding(nameof(IconCarrier.GlyphWidth)));
+                       icon.SetBinding(Icon.ImageUriProperty, new Binding(nameof(IconCarrier.ImageUri)));
+                       icon.SetBinding(Icon.EmojiProperty, new Binding(nameof(IconCarrier.Emoji)));
+                       icon.SetBinding(Icon.TextProperty, new Binding(nameof(IconCarrier.Text)));
+                       
+                       return icon;
+                   })
+           };
     // ───────────────────────────── Window (S4 chrome — C4, punch 36) ─────────────────────────────
 
     // The themed window chrome (design doc §8.3) — the C4 replacement for S4's interim default template,
@@ -1577,8 +1566,14 @@ internal static class ControlThemes
         // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
         // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
         // intentionally leaves Close off).
-        var closeButton = new Button { Focusable = false, IsTabStop = false };
-        closeButton.SetBinding(ContentControl.ContentProperty, new Binding(nameof(Window.WindowState)) { Converter = new WindowStateToGlyphConverter() });
+        var closeButton = new Button { Focusable = false, IsTabStop = false, Content = "✕"};
+
+        closeButton.SetBinding(UIElement.VisibilityProperty,
+                               new TemplateBinding(Window.CanCloseProperty)
+                               {
+                                   Converter = BooleanToVisibilityConverter.Instance
+                               });
+
         WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
         closeButton.Click += (_, _) =>
                              {
@@ -1594,7 +1589,14 @@ internal static class ControlThemes
         Button? maximizeButton = null;
         if (window.CanResize)
         {
-            maximizeButton = new Button { Content = "⛶", Focusable = false, IsTabStop = false };
+            maximizeButton = new Button { Focusable = false, IsTabStop = false };
+
+            maximizeButton.SetBinding(ContentControl.ContentProperty,
+                                      new TemplateBinding(Window.WindowStateProperty)
+                                      {
+                                          Converter = new WindowStateToGlyphConverter()
+                                      });
+
             // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
             DockPanel.SetDock(maximizeButton, Dock.Right);
             titleBarContent.Children.Add(maximizeButton); // docked right → left of the close glyph

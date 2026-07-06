@@ -51,8 +51,6 @@ public class Backstage : TabControl
 
     static Backstage()
     {
-        Control.ThemeProperty.OverrideDefaultValue<Backstage>(CursorialBarsTheme.BackstageStyle());
-
         // The Menu display mode re-skins the ONE template into the compact File-anchored panel (FullScreen ⇒ no class).
         PseudoClassMapping.Register<Backstage, BackstageDisplayMode>(
             DisplayModeProperty, static m => m == BackstageDisplayMode.Menu ? ":backstage-menu" : null);

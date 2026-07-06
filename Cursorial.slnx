@@ -105,5 +105,6 @@
   <Project Path="Cursorial.Shared/Cursorial.Shared.csproj" />
   <Project Path="Cursorial.UI/Cursorial.UI.csproj" />
   <Project Path="Cursorial.UI.Bars/Cursorial.UI.Bars.csproj" />
+  <Project Path="Cursorial.UI.Dialogs/Cursorial.UI.Dialogs.csproj" />
   <Project Path="Cursorial.UI.Themes/Cursorial.UI.Themes.csproj" />
 </Solution>

@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
@@ -41,6 +42,10 @@ public sealed class ContentPresenter : UIElement
     public static readonly StyledProperty<bool> RecognizesAccessKeyProperty =
         UIProperty.Register<ContentPresenter, bool>(nameof(RecognizesAccessKey), changed: OnRecognizesAccessKeyChanged);
 
+    /// <summary>Whether a plain-string content is parsed as <see cref="TextMarkup">text markup.</see></summary>
+    public static readonly StyledProperty<bool> RecognizesMarkupProperty =
+        UIProperty.Register<ContentPresenter, bool>(nameof(RecognizesMarkup), changed: OnRecognizesMarkupChanged);
+
     static ContentPresenter()
     {
         AffectsMeasure<ContentPresenter>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty, RecognizesAccessKeyProperty);
@@ -61,6 +66,9 @@ public sealed class ContentPresenter : UIElement
     /// <inheritdoc cref="RecognizesAccessKeyProperty"/>
     public bool RecognizesAccessKey { get => GetValue(RecognizesAccessKeyProperty); set => SetValue(RecognizesAccessKeyProperty, value); }
 
+    /// <inheritdoc cref="RecognizesMarkupProperty"/>
+    public bool RecognizesMarkup { get => GetValue(RecognizesMarkupProperty); set => SetValue(RecognizesMarkupProperty, value); }
+
     /// <summary>The realized visual child (diagnostic; null before first measure / empty content).</summary>
     public UIElement? Child => _child;
 
@@ -73,6 +81,7 @@ public sealed class ContentPresenter : UIElement
     protected override Size MeasureOverride(Size availableSize)
     {
         EnsureChild();
+
         if (_child is null)
             return Size.Empty;
 
@@ -209,9 +218,11 @@ public sealed class ContentPresenter : UIElement
 
     // The effective content/template after the read-through fallback (CD21).
     private object? EffectiveContent
-        => IsSet(ContentProperty) ? Content
-           : AliasActive && TemplatedParent is ContentControl parent ? parent.Content
-           : Content;
+        => IsSet(ContentProperty) || ResourceDiagnostics.GetResourceKey(this, ContentProperty) is {}
+               ? Content
+               : AliasActive && TemplatedParent is ContentControl parent
+                   ? parent.Content
+                   : Content;
 
     private DataTemplate? EffectiveContentTemplate
         => IsSet(ContentTemplateProperty) ? ContentTemplate
@@ -261,6 +272,7 @@ public sealed class ContentPresenter : UIElement
         }
 
         _realizing = true;
+        
         try
         {
             RebuildChild(content, resolvedTemplate, stringFormat);
@@ -293,7 +305,7 @@ public sealed class ContentPresenter : UIElement
             _childLogicallyOwned = false;
         }
 
-        var built = ContentRealization.Realize(this, content, template, RecognizesAccessKey, stringFormat);
+        var built = ContentRealization.Realize(this, content, template, RecognizesAccessKey, RecognizesMarkup, stringFormat);
 
         _realizedContent = content;
         _realizedTemplate = template;
@@ -357,6 +369,15 @@ public sealed class ContentPresenter : UIElement
     }
 
     private static void OnRecognizesAccessKeyChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is ContentPresenter presenter)
+        {
+            presenter._realizedContent = NoContentSentinel; // force a rebuild (the realization branch changes)
+            presenter.InvalidateMeasure();
+        }
+    }
+
+    private static void OnRecognizesMarkupChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is ContentPresenter presenter)
         {

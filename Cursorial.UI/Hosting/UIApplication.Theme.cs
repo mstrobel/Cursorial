@@ -260,6 +260,28 @@ public sealed partial class UIApplication : IResourceHost
         ResourcesChanged?.Invoke(this, e);
     }
 
+    /// <summary>
+    /// A late theme-contribution registration (<see cref="Themes.ThemeContributions.Register"/>) invalidates
+    /// resolved DynamicResource lookups app-wide via an app-scope catch-all (which also re-pulses the
+    /// per-root registries a control-theme subscription rides). Contributions normally register at module init
+    /// (before any app exists), so this is a rarely-hit best-effort safety net.
+    /// </summary>
+    /// <remarks>
+    /// This runs from a library's <c>[ModuleInitializer]</c>, on whatever thread first touches that assembly —
+    /// which need NOT be the UI thread. <see cref="UIApplication.Current"/> is <c>[ThreadStatic]</c> and stays
+    /// set on the build thread even after the loop moves dispatcher ownership to the UI thread, so a straight
+    /// <c>VerifyAccess()</c> could throw off-thread and poison the assembly load. So it is best-effort and
+    /// never-throwing: pulse inline when on the dispatcher thread, else marshal via <see cref="UIDispatcher.Post(Action)"/>
+    /// (which drops cleanly after shutdown).
+    /// </remarks>
+    internal void OnThemeContributionsChanged()
+    {
+        if (Dispatcher.CheckAccess())
+            RaiseApplicationCatchAll();
+        else
+            Dispatcher.Post(RaiseApplicationCatchAll);
+    }
+
     private void RaiseApplicationCatchAll()
     {
         foreach (var registry in _registries.Values.ToArray()) // snapshot — a pulse may mutate _registries

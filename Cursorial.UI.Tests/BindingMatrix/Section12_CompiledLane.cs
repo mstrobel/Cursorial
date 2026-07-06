@@ -131,6 +131,34 @@ public class Section12_CompiledLane
         Assert.Equal(BindingMode.OneWay, expr.EffectiveMode); // degraded
     }
 
+    [Fact] // B92c — the §7 write-back comparand clear reaches the TYPED comparand (_lastTyped/_hasLastTyped)
+    public void B092c_CompiledTypedLane_WriteBack_ClearsTypedEchoComparand()
+    {
+        // The compiled typed path keeps its async-echo comparand typed (no boxing) and overrides
+        // HasPushedValue/LastPushedForEcho to read it — so ClearEchoComparand must clear the TYPED
+        // state, not just the base boxed field (the B92b twin, through the zero-box push lane).
+        // TextProperty is StyledProperty<string?> with no converter ⇒ the typed path commits.
+        var poco = new PlainHolder { Note = "orig" };
+        var root = new BindWidget { DataContext = poco };
+        var a = new BindWidget();
+        root.AddChild(a);
+
+        a.SetBinding(BindWidget.TextProperty,
+            new CompiledBinding<PlainHolder, string?>(
+                static p => p.Note,
+                static (p, v) => p.Note = v,
+                steps: default, // a non-notifying source has nothing to subscribe (ladder rung 3)
+                "Note") { Mode = BindingMode.TwoWay });
+
+        Assert.Equal("orig", a.Text); // the typed forward push arms _lastTyped with "orig"
+
+        a.Text = "edited";
+        Assert.Equal("edited", poco.Note); // a genuine edit writes back (and disarms the typed comparand)
+
+        a.Text = "orig"; // returns to the initially pushed value — a GENUINE edit, not an echo
+        Assert.Equal("orig", poco.Note); // a stale _lastTyped would have suppressed this write
+    }
+
     [Fact] // B153 — the anchor resolves to a non-TSource object ⇒ SourceTypeMismatch + Unset
     public void B153_CompiledLane_AnchorTypeMismatch_Unset()
     {

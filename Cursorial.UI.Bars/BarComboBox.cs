@@ -11,8 +11,4 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 public class BarComboBox : ComboBox
 {
-    static BarComboBox()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<BarComboBox>(CursorialBarsTheme.BarComboBoxStyle());
-    }
 }

@@ -60,8 +60,6 @@ public class Toolbar : ItemsControl
 
     static Toolbar()
     {
-        Control.ThemeProperty.OverrideDefaultValue<Toolbar>(CursorialBarsTheme.ToolbarStyle());
-
         // The toolbar is a single Tab stop with arrow navigation WITHIN (the discoverable entry — Tab lands on the
         // bar, arrows move between its controls and wrap; no obscure focus-the-toolbar shortcut). It does NOT retain
         // focus (RetainsFocus = false): tabbing in remembers where focus came from, a pointer/access-key invoke

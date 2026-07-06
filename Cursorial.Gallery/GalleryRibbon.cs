@@ -15,6 +15,11 @@ public sealed class GalleryRibbon : Ribbon
 {
     private bool _quickAccessPopulated;
 
+    // Opt into the base Ribbon control theme (the idiomatic way a subclass inherits a library control's look):
+    // control themes resolve exact-key through the theme-contribution tier, so without this a GalleryRibbon
+    // would render unthemed. WPF DefaultStyleKey parity.
+    protected override object ControlThemeKey => typeof(Ribbon);
+
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {

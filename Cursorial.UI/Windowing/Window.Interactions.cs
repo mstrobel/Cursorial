@@ -178,6 +178,11 @@ public partial class Window
             SetCurrentValue(TopProperty, restore.Top);
             SetCurrentValue(WidthProperty, restore.Width);
             SetCurrentValue(HeightProperty, restore.Height);
+
+            // A restored SizeToContent axis (null Width/Height) has no explicit size to return to — its
+            // pre-maximize extent was content-derived. Request one layout-phase re-fit so the tracked
+            // axes shrink back from the viewport, converged before the restore frame renders.
+            FitToContentPending = true;
         }
     }
 

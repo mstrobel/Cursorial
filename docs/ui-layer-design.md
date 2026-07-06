@@ -1348,6 +1348,7 @@ S4 turns one terminal screen into a desktop: it owns `Window`, `WindowManager`, 
 ```csharp
 public enum WindowState : byte { Normal, Maximized }            // Minimized: deferred
 public enum SizeToContent : byte { Manual, Width, Height, WidthAndHeight }
+public enum SizeToContentMode : byte { Once, Always }           // when SizeToContent drives: first show only, or live
 public enum WindowStyle : byte { TitleBar, None }
 public enum WindowStartupLocation : byte { Manual, CenterScreen, CenterOwner }
 public enum WindowCloseReason : byte { Programmatic, ChromeAction, OwnerClosed, ManagerShutdown }
@@ -1368,6 +1369,16 @@ public class Window : ContentControl
     public static readonly StyledProperty<WindowShadow> ShadowProperty;       // surface-geometry handler
     public static readonly StyledProperty<int>  LeftProperty, TopProperty;    // SIGNED cells; AffectsComposite
     public static readonly StyledProperty<SizeToContent> SizeToContentProperty;  // default WidthAndHeight
+    public static readonly StyledProperty<SizeToContentMode> SizeToContentModeProperty; // default Once; Always = live re-fit,
+                                                  // converged INSIDE the layout phase (measure-only probe of the window at the
+                                                  // open constraint → surface resize → same-frame final pass — never a
+                                                  // post-layout resize, so no transitional flicker). The unclamped fit is
+                                                  // remembered per axis; a transient viewport shrink caps the surface without
+                                                  // losing it. Window.FitToContent() is the Once-mode on-demand re-fit lever
+                                                  // (restore-from-maximize requests one implicitly).
+    public static readonly StyledProperty<bool> AutoFitToViewportProperty;    // default false (§8.7 badge policy); opt-in:
+                                                  // a content-driven grow past the viewport shifts the window back into view
+                                                  // (dialogs with expandable regions — never drags/terminal resizes)
     public static readonly StyledProperty<WindowState>   WindowStateProperty;
     public static readonly StyledProperty<WindowStartupLocation> WindowStartupLocationProperty;
     public static readonly StyledProperty<bool> CanMoveProperty, CanResizeProperty, CanCloseProperty; // default true
@@ -2180,7 +2191,11 @@ public partial class Control
 
 ### §11.4 The lookup chain
 
-`ResourceParent(node) = node.LogicalParent ?? node.TemplatedParent` (null only at a true root). Walk from the element: at each node with `HasResources`, probe at `ActualThemeVariant`; at a template root (`LogicalParent == null`, `TemplatedParent != null`) the **owning template's resources slot in** — read `tp.TemplateInstance?.Template` then `Template.Resources` (`ControlTemplate.Resources` and `TemplateInstance.Template` are S8 members, sealed/populated at template seal) — then continue at the templated parent. `Window` is the last logical ancestor; then `UIApplication.Resources` → `UIApplication.Theme` → `CursorialTheme.BuiltIn` (always the final hop).
+`ResourceParent(node) = node.LogicalParent ?? node.TemplatedParent` (null only at a true root). Walk from the element: at each node with `HasResources`, probe at `ActualThemeVariant`; at a template root (`LogicalParent == null`, `TemplatedParent != null`) the **owning template's resources slot in** — read `tp.TemplateInstance?.Template` then `Template.Resources` (`ControlTemplate.Resources` and `TemplateInstance.Template` are S8 members, sealed/populated at template seal) — then continue at the templated parent. `Window` is the last logical ancestor; then `UIApplication.Resources` → `UIApplication.Theme` → `ThemeContributions` → `CursorialTheme.BuiltIn` (always the final hop).
+
+#### §11.3a Assembly theme-contribution tier
+
+`ThemeContributions` (static, `Cursorial.UI.Themes`) is a process-shared, ordered set of **sealed** `ResourceDictionary` instances a control library registers — from a `[ModuleInitializer]` — to ship its default control themes **and the brushes/resources those themes reference** through `{DynamicResource}`/`SetResource`. It sits in the chain **between `UIApplication.Theme` and `CursorialTheme.BuiltIn`**, so an app overrides any contributed key, a contribution overrides the BuiltIn default, and a contribution's control theme may reference core `ThemeKeys` (resolved onward in BuiltIn) as well as its own keys (resolved in the same contributed dictionary). Resolution is **last-registered-wins** and **exact-key** (the §11.3 contract — a subclass opts into a base library control's theme by overriding `ControlThemeKey`, WPF `DefaultStyleKey` parity). A contribution may carry `ThemeDictionaries` for per-(base × tier) variants. Its `Styles` selector channel is **not** consumed (only `UIApplication.Theme.Styles` is, §11.8) — a library ships `Type`-keyed control themes + resources, not app-level selector styles. Registration is idempotent (by reference) and lock-free to read (COW snapshot); a late registration (after an app is live — unusual) re-pulses the current thread's app. **Why this and not a per-type `Control.Theme` default:** `OverrideDefaultValue<T>(style)` delivers the theme `Style` but is not a chain node, so a contributed control template's DynamicResource references have nowhere to resolve — the tier fixes exactly that. `Cursorial.UI.Bars` is the reference consumer (`BarsThemeModule` + `CursorialBarsTheme.BuildContribution`).
 
 - **Named S1 REQUIRES:** template parts chain part → … → template root; the root has `LogicalParent == null`, `TemplatedParent ==` the templated control; DataTemplate-generated content has a normal logical parent and null `TemplatedParent` (no template hop; DataTemplate-own `Resources` excluded from the chain in v1).
 - **Template resources are sealed** at Fork B's template seal (arming an unsealed template throws) — the hop is static and pulse-free; theme-reactive template brushes are authored `{DynamicResource}` in the body.

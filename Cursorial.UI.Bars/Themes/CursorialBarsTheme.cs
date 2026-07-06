@@ -1101,4 +1101,36 @@ internal static class CursorialBarsTheme
                 stack.Children.Add(footer);
                 return stack;
             }));
+
+    // ───────────────────────────── contribution dictionary (design doc §11.3a) ─────────────────────────────
+
+    /// <summary>
+    /// Builds the bars <see cref="ResourceDictionary"/> for the framework's assembly theme-contribution tier
+    /// (<see cref="ThemeContributions"/>): every bar control theme keyed by its control <see cref="Type"/>.
+    /// <see cref="BarsThemeModule"/> registers it at module load so the suite renders self-contained (no
+    /// consumer dictionary merge) over <c>CursorialTheme.BuiltIn</c>, and — because a contribution is a real
+    /// chain node, unlike the former per-type <c>Control.Theme</c> default — any bars-owned brush a theme
+    /// references through <c>{DynamicResource}</c> would resolve in this same dictionary. (Bars currently
+    /// reuses only the core <see cref="ThemeKeys"/> spine, so no bars-owned brushes ship yet; the tier now
+    /// supports them.) Each entry is a fresh <see cref="Style"/> instance, matching the prior per-control install.
+    /// </summary>
+    internal static ResourceDictionary BuildContribution() => new()
+    {
+        [typeof(BarButton)]      = BarButtonStyle(),
+        [typeof(BarToggleButton)] = BarToggleButtonStyle(),
+        [typeof(BarComboBox)]    = BarComboBoxStyle(),
+        [typeof(BarGallery)]     = BarComboBoxStyle(), // same flat bar face
+        [typeof(BarLabel)]       = BarLabelStyle(),
+        [typeof(BarSplitButton)] = BarSplitButtonStyle(),
+        [typeof(BarPopupButton)] = BarPopupButtonStyle(),
+        [typeof(BarSeparator)]   = SeparatorStyle(),
+        [typeof(MiniToolbar)]    = MiniToolbarStyle(),
+        [typeof(Toolbar)]        = ToolbarStyle(),
+        [typeof(SuperTip)]       = SuperTipStyle(),
+        [typeof(RibbonTab)]      = RibbonTabStyle(),
+        [typeof(RibbonGroup)]    = RibbonGroupStyle(),
+        [typeof(Ribbon)]         = RibbonStyle(),
+        [typeof(Backstage)]      = BackstageStyle(),
+        [typeof(BackstageItem)]  = BackstageItemStyle(),
+    };
 }

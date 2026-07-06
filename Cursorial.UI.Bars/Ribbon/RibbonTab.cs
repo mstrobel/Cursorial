@@ -38,11 +38,6 @@ public class RibbonTab : TabItem
     private readonly RibbonBand _band = new();
     private Separator? _underline;
 
-    static RibbonTab()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<RibbonTab>(CursorialBarsTheme.RibbonTabStyle());
-    }
-
     /// <summary>Creates a ribbon tab; its content is the internally-owned band that hosts <see cref="Groups"/>.</summary>
     public RibbonTab() => Content = _band;
 

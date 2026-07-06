@@ -17,7 +17,6 @@ public class BarSeparator : Separator
 {
     static BarSeparator()
     {
-        Control.ThemeProperty.OverrideDefaultValue<BarSeparator>(CursorialBarsTheme.SeparatorStyle());
         // Upright on the horizontal bar; the panel flips it to Horizontal when it lands in the vertical popup band.
         OrientationProperty.OverrideDefaultValue<BarSeparator>(Orientation.Vertical);
     }

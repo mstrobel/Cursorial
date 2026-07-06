@@ -45,15 +45,23 @@ public static class ResourceScopes
 
         public bool TryGetResource(object key, out object? value)
         {
+            var variant = UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor);
+
             if (UIApplication.Current is { } app)
             {
-                if (app.ResourcesOrNull is { } resources && resources.TryGetResource(key, app.ActualThemeVariant, out value))
+                if (app.ResourcesOrNull is { } resources && resources.TryGetResource(key, variant, out value))
                     return true;
-                if (app.Theme is { } theme && theme.TryGetResource(key, app.ActualThemeVariant, out value))
+                if (app.Theme is { } theme && theme.TryGetResource(key, variant, out value))
                     return true;
             }
 
-            return CursorialTheme.BuiltIn.TryGetResource(key, UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor), out value);
+            // The assembly theme-contribution tier — between App.Theme and BuiltIn, matching the runtime chain
+            // (ResourceExtensions.WalkApplicationTailOnce) so {StaticResource} and {DynamicResource} resolve
+            // identically (and a contribution overrides BuiltIn for both).
+            if (ThemeContributions.HasContributions && ThemeContributions.TryGetResource(key, variant, out value))
+                return true;
+
+            return CursorialTheme.BuiltIn.TryGetResource(key, variant, out value);
         }
     }
 }

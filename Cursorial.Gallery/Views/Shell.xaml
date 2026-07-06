@@ -16,6 +16,41 @@
     <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
     <DockPanel.Resources>
 
+        <DataTemplate DataType="vm:DialogsViewModel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+              <StackPanel Orientation="Vertical">
+                <TextBlock Text="{Binding Title}" />
+                <TextBlock Text="{Binding Summary}" />
+              </StackPanel>
+            </Border>
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Padding="2,1" Title="Task Dialogs">
+                <StackPanel Spacing="1" Orientation="Vertical">
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include _Secondary Message" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeProgressBar}"     Content="Include _Progress Bar" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeCommandLinks}"    Content="Include Command _Links" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeButtons}"         Content="Include _Buttons" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeVerification}"    Content="Include _Verification" />
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeExpandedContent}" Content="Include E_xpanded Content" />
+                  <Button   Command="{Binding ShowTaskDialogCommand}"              Content="Show Tas_k Dialog" MaxWidth="24" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Padding="2,1" Title="Message Boxes">
+                <StackPanel Spacing="1" Orientation="Vertical">
+                  <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
+                </StackPanel>
+              </Border>
+            </Grid>
+          </DockPanel>
+            
+        </DataTemplate>
+
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
@@ -492,11 +527,11 @@
                            Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
             <TextBlock     Grid.Column="2" Grid.Row="4" Text=":disabled" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
 
-            <ToggleButton Grid.Column="0" Grid.Row="6" Content="To_ggle" MinWidth="10"
+            <ToggleButton Grid.Column="0" Grid.Row="6" Classes="toggle-colors" Content="To_ggle" MinWidth="10"
                           Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
             <TextBlock    Grid.Column="2" Grid.Row="6" Text="toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
 
-            <ToggleButton Grid.Column="0" Grid.Row="8" Content="To_ggle 2" MinWidth="10" IsThreeState="True"
+            <ToggleButton Grid.Column="0" Grid.Row="8" Classes="toggle-colors" Content="To_ggle 2" MinWidth="10" IsThreeState="True"
                           Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
             <TextBlock    Grid.Column="2" Grid.Row="8" Text="3-state toggle" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
 

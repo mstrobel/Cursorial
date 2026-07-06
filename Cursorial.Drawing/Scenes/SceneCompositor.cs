@@ -169,9 +169,14 @@ public sealed class SceneCompositor
             var mode = p.Mode ?? BlendingModes.Default;
             var buffer = layers[li].Scene.Buffer;
 
+            // A WideLeft's continuation may not extend past EITHER edge: the union's (a cell outside
+            // the reset+dirty range) or the layer's own visible footprint's (the clip — writing there
+            // would bleed half a glyph outside a scroll viewport / window clip onto a neighbor's cells).
+            int wideColumnEnd = Math.Min(colEnd, fp.ColumnEnd);
+
             for (int tr = frS; tr < frE; tr++)
             for (int tc = fcS; tc < fcE; tc++)
-                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, colEnd);
+                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, wideColumnEnd);
         }
 
         PassThroughFragments(layers, target, layerSetChanged);
@@ -381,7 +386,7 @@ public sealed class SceneCompositor
                                   : new Cell(null, CellKind.Single, _baseStyle);
 
     private static void CompositeCell(in CellBufferView target, int column, int row,
-                                      in Cell source, byte opacity, IBlendingMode mode, int unionColEnd)
+                                      in Cell source, byte opacity, IBlendingMode mode, int wideColumnEnd)
     {
         if (source.Kind == CellKind.WideContinuation) return;   // the WideLeft paints both columns
 
@@ -408,9 +413,12 @@ public sealed class SceneCompositor
         {
             // A WideLeft at the composite union's right edge would write its WideContinuation one column
             // past the reset + MarkDirty range, stranding a stale continuation a RestrictToDirtyRegions
-            // renderer never revisits (a dirty-region hole, not just a glitch). Degrade to a blank single
-            // cell at the edge — the same trick CellBuffer.Set uses at the buffer edge.
-            if (column + 1 >= unionColEnd)
+            // renderer never revisits (a dirty-region hole, not just a glitch); one at the layer's own
+            // clip edge would bleed the continuation outside the clip onto a neighbor's cells. Degrade to
+            // a blank single cell at either edge — the same trick CellBuffer.Set uses at the buffer edge.
+            // (The maintaining indexer blanks a previously-paired continuation next door, so the degrade
+            // never strands the old right half.)
+            if (column + 1 >= wideColumnEnd)
                 target[column, row] = new Cell(null, CellKind.Single, style);
             else
                 target.Set(column, row, source.Grapheme, in style);   // Set cleans up the orphaned neighbor

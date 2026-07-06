@@ -91,6 +91,17 @@ public class TextBlock : UIElement
         return formatted.Size;
     }
 
+    /*
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var formatted = GetFormatted(Math.Max(1, finalSize.Columns));
+        if (formatted.Size.Columns < finalSize.Columns || formatted.Size.Rows < finalSize.Rows)
+            InvalidateMeasure();
+        
+        return base.ArrangeOverride(finalSize);
+    }
+    */
+
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {

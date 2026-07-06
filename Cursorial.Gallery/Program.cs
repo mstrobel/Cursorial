@@ -13,6 +13,7 @@ using Cursorial.UI.Input;
 UIApplication app = UIApplication.CreateBuilder()
                                  .WithFrameRate(60)
                                  .UseAlternateScreen()
+                                 .WithUserConfiguration()
                                  .Build();
 
 // app.NerdFontAvailable = true;
@@ -33,7 +34,7 @@ static string FormatElement(UIObject? element)
 
 try
 {
-    var root = GalleryApp.BuildRoot();
+    var root = GalleryApp.BuildRoot(app);
     var vm = root.DataContext as ShellViewModel;
     
     void OnStyleDebugDiagnosticsDiagnosticEmitted(string c, string m) => vm?.AddDiagnostic($"[Style    ] {c}: {m}");

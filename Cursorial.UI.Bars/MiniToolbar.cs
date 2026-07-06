@@ -25,11 +25,6 @@ public sealed class MiniToolbar : ItemsControl
 
     internal UIElement? WatchedTargetForTests => _watchedTarget;
 
-    static MiniToolbar()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<MiniToolbar>(CursorialBarsTheme.MiniToolbarStyle());
-    }
-
     /// <summary>Creates a mini toolbar (its items lay out horizontally; the host itself is not a focus stop).</summary>
     public MiniToolbar()
     {

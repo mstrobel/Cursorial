@@ -1,3 +1,5 @@
+using Cursorial.Rendering.Text;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>

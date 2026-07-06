@@ -15,8 +15,6 @@ public class BarPopupButton : BarDropDownButton
 {
     static BarPopupButton()
     {
-        Control.ThemeProperty.OverrideDefaultValue<BarPopupButton>(CursorialBarsTheme.BarPopupButtonStyle());
-
         // The whole control is the drop-opener → a retaining focus scope (a FindReturningScope barrier), so a
         // pointer-click-open never trips an enclosing non-retaining Toolbar's auto-return (mirrors the overflow chevron).
         FocusManager.IsFocusScopeProperty.OverrideDefaultValue<BarPopupButton>(true);

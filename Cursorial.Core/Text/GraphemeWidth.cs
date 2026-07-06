@@ -17,10 +17,13 @@ namespace Cursorial.Text;
 /// </para>
 /// <para>
 /// <b>Accuracy.</b> The wide-character ranges below are hand-coded to cover the common majority:
-/// Hangul, CJK Unified Ideographs (Plane 0 + Plane 2), Compatibility Ideographs, Fullwidth Forms,
-/// the major emoji blocks, and a few smaller blocks. Recently added codepoints outside these
-/// ranges will report width 1 instead of 2. A full <c>EastAsianWidth.txt</c>-backed table can
-/// drop in later without breaking the public surface — the API is just <c>int</c> in / <c>int</c> out.
+/// Hangul, CJK Unified Ideographs (Planes 0–3), Compatibility Ideographs, Fullwidth Forms, the
+/// major emoji blocks, <b>and the UTS #51 <c>Emoji_Presentation=Yes</c> codepoints scattered
+/// through the legacy symbol blocks</b> (⌚ ⏰ ☕ ⚡ ⛔ ✅ ❌ ❗ ⭐ ⭕ …) — default-emoji glyphs that
+/// modern terminals render two cells wide even though wcwidth-era tables call them narrow.
+/// Recently added codepoints outside these ranges will report width 1 instead of 2. A full
+/// <c>EastAsianWidth.txt</c>-backed table can drop in later without breaking the public
+/// surface — the API is just <c>int</c> in / <c>int</c> out.
 /// </para>
 /// <para>
 /// <b>Variation selectors.</b> <c>U+FE0F</c> (VS16) forces emoji presentation and is treated as
@@ -218,6 +221,47 @@ public static class GraphemeWidth
                    {
                        >= 0x1100 and <= 0x115F => true, // Hangul Jamo
                        0x2329 or 0x232A        => true, // Left/right-pointing angle bracket
+
+                       // Emoji_Presentation=Yes codepoints in the legacy symbol blocks (UTS #51
+                       // emoji-data.txt) — default-emoji glyphs modern terminals (Kitty, Ghostty,
+                       // WezTerm, …) render two cells wide even though they predate the emoji
+                       // blocks: ⌚⏩⏰⏳◽☔♈♿⚓⚡⚪⚽⛄⛎⛔⛪⛲⛵⛺⛽✅✊✨❌❎❓❗➕➰➿⬛⭐⭕.
+                       // These are ALSO EAW=W in modern Unicode. Their absence measured ✅/❌ as
+                       // width 1 → Single cells → per-glyph cursor drift in the incremental diff
+                       // (uniform, invisible in a full redraw; interleaved smearing when scrolling).
+                       0x231A or 0x231B          => true, // ⌚ ⌛
+                       >= 0x23E9 and <= 0x23EC   => true, // ⏩..⏬
+                       0x23F0 or 0x23F3          => true, // ⏰ ⏳
+                       0x25FD or 0x25FE          => true, // ◽ ◾
+                       0x2614 or 0x2615          => true, // ☔ ☕
+                       >= 0x2648 and <= 0x2653   => true, // ♈..♓ (zodiac)
+                       0x267F                    => true, // ♿
+                       0x2693                    => true, // ⚓
+                       0x26A1                    => true, // ⚡
+                       0x26AA or 0x26AB          => true, // ⚪ ⚫
+                       0x26BD or 0x26BE          => true, // ⚽ ⚾
+                       0x26C4 or 0x26C5          => true, // ⛄ ⛅
+                       0x26CE                    => true, // ⛎
+                       0x26D4                    => true, // ⛔
+                       0x26EA                    => true, // ⛪
+                       0x26F2 or 0x26F3          => true, // ⛲ ⛳
+                       0x26F5                    => true, // ⛵
+                       0x26FA                    => true, // ⛺
+                       0x26FD                    => true, // ⛽
+                       0x2705                    => true, // ✅
+                       0x270A or 0x270B          => true, // ✊ ✋
+                       0x2728                    => true, // ✨
+                       0x274C                    => true, // ❌
+                       0x274E                    => true, // ❎
+                       >= 0x2753 and <= 0x2755   => true, // ❓ ❔ ❕
+                       0x2757                    => true, // ❗
+                       >= 0x2795 and <= 0x2797   => true, // ➕ ➖ ➗
+                       0x27B0                    => true, // ➰
+                       0x27BF                    => true, // ➿
+                       0x2B1B or 0x2B1C          => true, // ⬛ ⬜
+                       0x2B50                    => true, // ⭐
+                       0x2B55                    => true, // ⭕
+
                        >= 0x2E80 and <= 0x303E => true, // CJK Radicals, Kangxi Radicals, Ideographic Description, CJK Symbols and Punctuation (subset)
                        >= 0x3041 and <= 0x33FF => true, // Hiragana / Katakana / Bopomofo / Hangul Compatibility Jamo / Enclosed CJK / CJK Compatibility
                        >= 0x3400 and <= 0x4DBF => true, // CJK Extension A
@@ -238,6 +282,17 @@ public static class GraphemeWidth
         // Supplementary planes.
         return cp switch
                {
+                   >= 0x16FE0 and <= 0x16FFF => true,  // Tangut/Kana supplement marks (EAW=W)
+                   >= 0x17000 and <= 0x187FF => true,  // Tangut
+                   >= 0x18800 and <= 0x18D0F => true,  // Tangut Components / Khitan Small Script / Tangut Supplement
+                   >= 0x1AFF0 and <= 0x1AFFF => true,  // Kana Extended-B
+                   >= 0x1B000 and <= 0x1B2FF => true,  // Kana Supplement / Extended-A / Small Kana / Nüshu
+                   0x1F004                   => true,  // 🀄 (Emoji_Presentation)
+                   0x1F0CF                   => true,  // 🃏 (Emoji_Presentation)
+                   0x1F18E                   => true,  // 🆎 (Emoji_Presentation)
+                   >= 0x1F191 and <= 0x1F19A => true,  // 🆑..🆚 (Emoji_Presentation)
+                   >= 0x1F1E6 and <= 0x1F1FF => true,  // Regional indicators (flag halves; EP=Yes — a pair composes one 2-cell flag)
+                   >= 0x1F200 and <= 0x1F265 => true,  // Enclosed Ideographic Supplement (🈁🈚🈯…; EAW=W)
                    >= 0x1F300 and <= 0x1F64F => true,  // Misc Symbols and Pictographs, Emoticons
                    >= 0x1F680 and <= 0x1F6FF => true,  // Transport and Map Symbols
                    >= 0x1F700 and <= 0x1F77F => true,  // Alchemical Symbols
@@ -284,6 +339,13 @@ public static class GraphemeWidth
     public static bool IsAmbiguousWidth(int codepoint)
     {
         if ((uint) codepoint < 0x80) return false; // ASCII is unambiguously narrow.
+
+        // A codepoint the width table already treats as WIDE is by definition not width-
+        // UNCERTAIN — the block ranges below over-approximate, and the Emoji_Presentation
+        // codepoints folded into the wide table (☔ ♈ ⚡ ✅ ❌ ◽ …) live inside them. This guard
+        // keeps the wide and ambiguous sets disjoint by construction (the renderer must never
+        // apply the ambiguous defense to a glyph it already emits as two cells).
+        if (IsWide(codepoint)) return false;
 
         return codepoint switch
                {

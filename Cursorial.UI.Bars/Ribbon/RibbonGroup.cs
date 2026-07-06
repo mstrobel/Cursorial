@@ -176,11 +176,6 @@ public class RibbonGroup : HeaderedItemsControl
         _groupPanel.SetPopupHost(_density == RibbonGroupDensity.Collapsed ? _collapsedPopupHost : null);
     }
 
-    static RibbonGroup()
-    {
-        Control.ThemeProperty.OverrideDefaultValue<RibbonGroup>(CursorialBarsTheme.RibbonGroupStyle());
-    }
-
     /// <summary>Creates a ribbon group hosting bar controls.</summary>
     public RibbonGroup()
     {

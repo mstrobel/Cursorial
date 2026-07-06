@@ -21,7 +21,7 @@ public static class KeyTipExtensions
 
         var controller = new KeyTipController(app);
         app.AccessKeys.KeyTipController = controller; // arm/disarm off CueActivated/CueDeactivated
-        app._keyTipController = controller;           // the post-layout re-anchor/park hook (IKeyTipLayoutHook)
+        app.KeyTipController = controller;           // the post-layout re-anchor/park hook (IKeyTipLayoutHook)
         return controller;
     }
 }

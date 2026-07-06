@@ -526,7 +526,7 @@ public sealed partial class UIApplication
             // screen cells and build any parked next level whose reveal (a floated band, an opened dropdown) only
             // realized this pass — the CompletePendingActivationFocus / …TransitionGoLive mirror. No-op when no
             // controller is installed. Runs after OnLayoutCompleted so surface offsets are final for the frame.
-            _keyTipController?.CompletePendingLayout();
+            KeyTipController?.CompletePendingLayout();
 
             // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
             if (!_renegotiating)

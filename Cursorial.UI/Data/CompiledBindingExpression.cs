@@ -67,6 +67,15 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
 
     private protected override object? LastPushedForEcho => _typedPath ? _lastTyped : base.LastPushedForEcho;
 
+    private protected override void ClearEchoComparand()
+    {
+        // The typed path keeps its comparand in _lastTyped/_hasLastTyped (no boxing) — the base field
+        // clear alone would leave the typed discriminator armed with a stale value (B92c). Both are
+        // cleared unconditionally, mirroring ProduceUnsetOrFallback's dual clear.
+        _hasLastTyped = false;
+        base.ClearEchoComparand();
+    }
+
     // ───────────────────────────── value graph (whole-chain Getter + Steps subscription) ─────────────────────────────
 
     /// <summary>
@@ -157,6 +166,13 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         {
             _typedEntry ??= MaterializeTypedEntry();
             _entry = _typedEntry; // the core owns eviction/disposal via _entry
+
+            // The typed-entry analog of EnsureEntry's wiring (early-outs once subscribed, and for
+            // OneWay): without this a typed-path TwoWay binding has no target observer and its
+            // write-back lane is dead (B92c). Wired before the push so the push's own change is
+            // absorbed by the step-1 self-echo guard, exactly like the boxed pipeline.
+            WireTargetObserver();
+
             _isPushingToTarget = true;
             try
             {

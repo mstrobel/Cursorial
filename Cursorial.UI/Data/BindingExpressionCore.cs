@@ -124,6 +124,16 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     /// overrides to box its typed value on demand (the echo check runs on external target writes, not the hot push).</summary>
     private protected virtual object? LastPushedForEcho => _lastPushedValue;
 
+    /// <summary>
+    /// Disarms the async-echo discriminator (BD8 step 2) — called on every target → source write-back.
+    /// After a write-back the comparand no longer describes anything the SOURCE produced (its newest
+    /// value came from the target), and a non-notifying source has no post-write re-read to re-stamp
+    /// it — a stale comparand would swallow the next target edit that returns to the source's original
+    /// value (the checkbox toggle-on/toggle-off case, B92b). Re-armed by the next forward push. The
+    /// compiled typed lane overrides to clear its typed comparand too.
+    /// </summary>
+    private protected virtual void ClearEchoComparand() => _lastPushedValue = NoPushSentinel;
+
     /// <summary>Pushes the unset / fallback result; the compiled typed lane overrides to push through its typed entry.</summary>
     private protected virtual void ProduceUnsetOrFallback() => PushToTarget(UIProperty.UnsetValue);
 
@@ -835,6 +845,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return;
 
         _isWritingToSource = true;
+        ClearEchoComparand(); // BD8 step 2: the comparand only ever describes source-produced values
         _sourceDirtyDuringWrite = false;
 
         try

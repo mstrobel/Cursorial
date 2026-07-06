@@ -6,7 +6,8 @@ using Cursorial.UI.Data;
 
 namespace Cursorial.Tests.UI.BindingMatrix;
 
-/// <summary>Binding matrix §7 — modes, triggers, and target → source write-back (B71–B92).</summary>
+/// <summary>Binding matrix §7 — modes, triggers, and target → source write-back (B71–B92b; the
+/// compiled-lane twin B92c lives in <c>Section12_CompiledLane</c>).</summary>
 public class Section07_ModesTriggers
 {
     public Section07_ModesTriggers()
@@ -216,6 +217,25 @@ public class Section07_ModesTriggers
 
         Assert.Equal(0, sourceWrites);   // the case-only resurfaced echo was NOT written back
         Assert.Equal("ABC", vm.Name);    // the VM is untouched
+    }
+
+    [Fact]
+    public void B092b_WriteBack_ClearsEchoComparand_NonNotifyingSource()
+    {
+        // BD8 step 2 amendment: the echo comparand is cleared on every target → source write-back and
+        // re-armed by the next forward push. A NON-notifying source (ladder rung 3, one-time read) has
+        // no post-write re-read to re-stamp it, so a stale comparand would swallow any target edit that
+        // RETURNS to the source's original value — the checkbox toggle-on/toggle-off case.
+        var poco = new PlainHolder { Note = "orig" };
+        var w = new BindWidget { DataContext = poco };
+        w.SetBinding(BindWidget.TextProperty, new Binding("Note") { Mode = BindingMode.TwoWay });
+        Assert.Equal("orig", w.Text); // the initial forward push arms the comparand with "orig"
+
+        w.Text = "edited";
+        Assert.Equal("edited", poco.Note); // a genuine edit writes back (and disarms the comparand)
+
+        w.Text = "orig"; // returns to the initially pushed value — a GENUINE edit, not an echo
+        Assert.Equal("orig", poco.Note); // stale-comparand suppression would have left "edited"
     }
 
     [Fact]

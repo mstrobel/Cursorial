@@ -1,5 +1,6 @@
 using System.Windows.Input;
 
+using Cursorial.UI;
 using Cursorial.UI.Bars;
 
 namespace Cursorial.Gallery.ViewModels;

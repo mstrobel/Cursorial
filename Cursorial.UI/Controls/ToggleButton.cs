@@ -12,9 +12,9 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class ToggleButton : ButtonBase
 {
-    /// <summary>The checked state: <see langword="false"/> / <see langword="true"/> / <see langword="null"/> (indeterminate). Two-way bindable; <c>:checked</c>/<c>:indeterminate</c> mirror it (CD26).</summary>
+    /// <summary>The checked state: <see langword="false"/> / <see langword="true"/> / <see langword="null"/> (indeterminate). Two-way bindable; <c>:checked</c>/<c>:indeterminate</c> mirror it (CD26). A command-owned <see cref="ICheckableCommandParameter"/> can coerce the effective value (FB-27, see <see cref="CoerceIsChecked"/>).</summary>
     public static readonly StyledProperty<bool?> IsCheckedProperty =
-        UIProperty.Register<ToggleButton, bool?>(nameof(IsChecked), defaultValue: false, changed: OnIsCheckedChanged);
+        UIProperty.Register<ToggleButton, bool?>(nameof(IsChecked), defaultValue: false, coerce: CoerceIsChecked, changed: OnIsCheckedChanged);
 
     /// <summary>Whether the toggle includes the indeterminate (<see langword="null"/>) state in its cycle (default false — WPF).</summary>
     public static readonly StyledProperty<bool> IsThreeStateProperty =
@@ -122,6 +122,63 @@ public class ToggleButton : ButtonBase
     /// <summary>The control-author hook called after <see cref="IsChecked"/> changes, before the routed event (RadioButton group uncheck rides this).</summary>
     private protected virtual void OnIsCheckedChangedCore(bool? oldValue, bool? newValue)
     {
+    }
+
+    // ───────────────────────────── command-owned checked state (coercion, FB-27) ─────────────────────────────
+
+    // The per-control default checkable parameter — allocated lazily (see OnCommandStateChanged) so a standalone
+    // toggle works and stays command-agnostic. Superseded by an app/command/Bars-supplied ICheckableCommandParameter
+    // on CommandParameter, which is what EffectiveCheckableParameter prefers.
+    private CheckableCommandParameter? _defaultCheckableParameter;
+
+    // The checkable command parameter this toggle's checked state answers to, or null. A checkable parameter on
+    // CommandParameter (a Bars surface points every control bound to one command at the same instance, so the command
+    // drives them all) wins; otherwise the per-control default. The IsChecked coercion below reads it.
+    private ICheckableCommandParameter? EffectiveCheckableParameter
+        => CommandParameter as ICheckableCommandParameter ?? _defaultCheckableParameter;
+
+    // IsChecked coercion (FB-27): while a checkable command parameter is Handled, the effective checked state is the
+    // parameter's forced override — an override at EITHER polarity (greyed+unchecked or on-but-locked), pair it with a
+    // false CanExecute to grey/lock. Otherwise the base value passes through UNCHANGED, so an unhandled parameter and
+    // every non-checkable toggle behave exactly as before (zero-cost backward-compat). The base value is never
+    // mutated, so the control's own preference reappears automatically when Handled clears — the store re-coerces the
+    // raw base value (no restore bookkeeping).
+    private static bool? CoerceIsChecked(UIObject sender, bool? baseValue)
+        => sender is ToggleButton { EffectiveCheckableParameter: { Handled: true } handled }
+               ? handled.IsCheckedOverride
+               : baseValue;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The checkable family assigns a command parameter here (see <see cref="ButtonBase.OnCommandStateChanged"/>'s
+    /// remarks): a per-control default is installed only when nothing has provided a checked source yet, and the same
+    /// hook re-coerces <see cref="IsChecked"/> so a <see cref="ICheckableCommandParameter.Handled"/> override (which is
+    /// not a dependency property, so it does not self-invalidate) snaps in on the command's re-query.
+    /// </remarks>
+    protected override void OnCommandStateChanged()
+    {
+        base.OnCommandStateChanged();
+
+        var checkedSourceIsDefault = GetValueSource(IsCheckedProperty).Kind == ValueSourceKind.Default;
+
+        // Per-control default (FB-27 point 4): allocate ONLY when nothing has provided a checked source yet — the
+        // IsChecked base value is still at its Default source. A Bars-layer override reflects a command-SHARED
+        // parameter into the base value BEFORE calling base (its sync-before-base inversion), which makes the source
+        // non-Default, so this skips the default and the shared parameter (on CommandParameter) governs.
+        if (_defaultCheckableParameter is null && checkedSourceIsDefault)
+            _defaultCheckableParameter = new CheckableCommandParameter();
+
+        // A Handled parameter must be able to force a value even onto a toggle that has never carried one. CoerceValue
+        // (below) no-ops on the Default lane — the store never coerces the metadata default (PD8) — so when a Handled
+        // override needs to apply and nothing has set IsChecked yet, graft a current-value base first: SetCurrentValue
+        // coerces inline (applying the override), and the grafted RAW value (the control's own current value) is the
+        // preference that reappears the instant Handled clears (the store re-coerces that raw value — no bookkeeping).
+        if (checkedSourceIsDefault && EffectiveCheckableParameter is { Handled: true })
+            SetCurrentValue(IsCheckedProperty, GetValue(IsCheckedProperty));
+
+        // Re-coercion trigger (FB-27 point 3): the parameter is not a DP, so a Handled/override change does not
+        // auto-invalidate IsChecked — re-coerce on the same command-state hook that re-queries CanExecute.
+        CoerceValue(IsCheckedProperty);
     }
 
     // ───────────────────────────── focus caret (the box indicator, design doc §5.9) ─────────────────────────────

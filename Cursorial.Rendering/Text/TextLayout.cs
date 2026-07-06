@@ -1,15 +1,14 @@
-using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
-namespace Cursorial.UI.Controls;
+namespace Cursorial.Rendering.Text;
 
 /// <summary>
-/// A multi-line, optionally word-wrapped grapheme layout of a <see cref="TextBox"/>'s text (the multi-line
-/// generalization of <see cref="GraphemeLayout"/>, design doc §12.7). It splits the model text into <b>visual
-/// lines</b> — first on hard breaks (<c>\n</c>, <c>\r\n</c>, <c>\r</c>), then, when wrapping is on, further at
-/// the wrap width on grapheme-aware word boundaries — and maps a flat model char offset to its
-/// visual <c>(line, column)</c> and back. Each visual line carries its own single-line <see cref="GraphemeLayout"/>
-/// over its slice, so per-line column math reuses the tested single-line code.
+/// A multi-line, optionally word-wrapped grapheme layout of a text box's text (the multi-line generalization of
+/// <see cref="GraphemeLayout"/>, design doc §12.7). It splits the model text into <b>visual lines</b> —
+/// first on hard breaks (<c>\n</c>, <c>\r\n</c>, <c>\r</c>), then, when wrapping is on, further at the wrap width
+/// on grapheme-aware word boundaries — and maps a flat model char offset to its visual <c>(line, column)</c>
+/// and back. Each visual line carries its own single-line <see cref="GraphemeLayout"/> over its slice, so per-line
+/// column math reuses the tested single-line code.
 /// </summary>
 /// <remarks>
 /// A single logical line that ends the text with a trailing hard break yields an extra empty visual line (so the
@@ -19,7 +18,7 @@ namespace Cursorial.UI.Controls;
 /// Boundary / word navigation (Left / Right / Ctrl+Arrow) stays on the flat <see cref="GraphemeLayout"/> — a hard
 /// break is just a cluster boundary there — so this type owns only the line-structure operations.
 /// </remarks>
-internal readonly struct TextLayout
+public readonly struct TextLayout
 {
     private readonly Line[] _lines;
     private readonly int _maxWidth;
@@ -120,9 +119,13 @@ internal readonly struct TextLayout
         // Soft-wrap affinity: if the offset is the start of `best` AND the previous line is a soft wrap whose
         // content end coincides with it, a caret with end-affinity belongs to that earlier line's visual end
         // (a hard break leaves a gap, so its predecessor never coincides — only soft wraps alias here).
-        if (preferLineEnd && best > 0 && !_lines[best - 1].HardBreak
-            && _lines[best - 1].Start + _lines[best - 1].Length == offset && _lines[best].Start == offset)
+        if (preferLineEnd && best > 0 &&
+            !_lines[best - 1].HardBreak &&
+            _lines[best - 1].Start + _lines[best - 1].Length == offset && 
+            _lines[best].Start == offset)
+        {
             best--;
+        }
 
         return best;
     }
@@ -135,9 +138,11 @@ internal readonly struct TextLayout
     public bool IsLineEndBoundary(int line, int offset)
     {
         line = ClampLine(line);
-        return line < _lines.Length - 1 && !_lines[line].HardBreak
-            && offset == LineContentEnd(line) && offset > LineContentStart(line)
-            && _lines[line + 1].Start == offset;
+        return line < _lines.Length - 1 && 
+               !_lines[line].HardBreak &&
+               offset == LineContentEnd(line) &&
+               offset > LineContentStart(line) &&
+               _lines[line + 1].Start == offset;
     }
 
     /// <summary>The model char length of the text (the trailing sentinel of the last line's slice).</summary>
@@ -190,8 +195,8 @@ internal readonly struct TextLayout
 
     // Adds the visual line(s) for one logical line [start, contentEnd). With wrapping off it is a single visual
     // line; with wrapping on it is split at the wrap width per the WrapMode (grapheme-aware throughout).
-    private static void AppendLogicalLine(
-        List<Line> lines, ref int maxWidth, string text, int start, int contentEnd, bool hard, int wrapWidth, WrapMode wrap)
+    private static void AppendLogicalLine(List<Line> lines, ref int maxWidth, string text, int start, int contentEnd,
+                                          bool hard, int wrapWidth, WrapMode wrap)
     {
         var slice = text[start..contentEnd];
         var glyphs = GraphemeLayout.Build(slice);
@@ -240,10 +245,13 @@ internal readonly struct TextLayout
                 // CharacterWrap ignores word boundaries; the word modes prefer the last whitespace. With no word
                 // boundary available, WordWrap hard-breaks at the overflow while WordWrapOverflow lets the word
                 // run on (breakAt < 0 ⇒ no break this cluster — the segment overflows until the next boundary).
-                var breakAt = wrap == WrapMode.CharacterWrap ? pos
-                    : lastBreak > segStart ? lastBreak
-                    : wrap == WrapMode.WordWrapOverflow ? -1
-                    : pos;
+                var breakAt = wrap == WrapMode.CharacterWrap
+                                  ? pos
+                                  : lastBreak > segStart
+                                      ? lastBreak
+                                      : wrap == WrapMode.WordWrapOverflow
+                                          ? -1
+                                          : pos;
 
                 if (breakAt >= 0)
                 {

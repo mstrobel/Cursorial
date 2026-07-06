@@ -1,6 +1,6 @@
 using Cursorial.Text;
 
-namespace Cursorial.UI.Controls;
+namespace Cursorial.Rendering.Text;
 
 /// <summary>
 /// A grapheme-cluster layout of one line of text (design doc §12.7 / spec-controls "TextBox" model): maps
@@ -9,7 +9,7 @@ namespace Cursorial.UI.Controls;
 /// over the current text — a single-line field is short, so the O(length) build is negligible and the
 /// edit/render paths already re-raster (a caret move or keystroke is not the zero-allocation steady state).
 /// </summary>
-internal readonly struct GraphemeLayout
+public readonly struct GraphemeLayout
 {
     // Parallel arrays of cluster-start boundaries, length Count+1 with a trailing sentinel:
     // _charIndex[^1] == text length, _column[^1] == total display width.
@@ -71,8 +71,11 @@ internal readonly struct GraphemeLayout
     public int NextBoundary(int charIndex)
     {
         foreach (var boundary in _charIndex)
+        {
             if (boundary > charIndex)
                 return boundary;
+        }
+
         return Length;
     }
 
@@ -80,8 +83,11 @@ internal readonly struct GraphemeLayout
     public int PrevBoundary(int charIndex)
     {
         for (var i = _charIndex.Length - 1; i >= 0; i--)
+        {
             if (_charIndex[i] < charIndex)
                 return _charIndex[i];
+        }
+
         return 0;
     }
 
@@ -89,8 +95,11 @@ internal readonly struct GraphemeLayout
     public int CharIndexAtOrAfterColumn(int column)
     {
         for (var i = 0; i < _column.Length; i++)
+        {
             if (_column[i] >= column)
                 return _charIndex[i];
+        }
+
         return Length;
     }
 
@@ -113,7 +122,7 @@ internal readonly struct GraphemeLayout
 }
 
 /// <summary>Whitespace-delimited word navigation for single-line editing (Ctrl+Arrow / Ctrl+Backspace/Delete).</summary>
-internal static class TextNavigation
+public static class TextNavigation
 {
     /// <summary>The offset after the next word: skip a leading whitespace run, then the word run (clamped to length).</summary>
     public static int NextWord(string text, int index)

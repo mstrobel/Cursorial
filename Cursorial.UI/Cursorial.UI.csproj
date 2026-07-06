@@ -72,4 +72,8 @@
       </Compile>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Controls\Internal\" />
+    </ItemGroup>
+
 </Project>

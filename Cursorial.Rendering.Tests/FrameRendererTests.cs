@@ -201,6 +201,25 @@ public class FrameRendererTests
         Assert.Contains("\x1b[2J", output);
     }
 
+    [Fact]
+    public void NeedsFullRedraw_TracksResetAndRenderLifecycle()
+    {
+        // The frame-loop coupling: a loop that skips emission on clean frames consults this to
+        // force one while a reset is pending (UIApplication.RequestFullRedraw on an idle app).
+        var r = new FrameRenderer();
+        Assert.True(r.NeedsFullRedraw); // construction: the first render is always full
+
+        var buf = new CellBuffer(3, 1);
+        Render(r, buf);
+        Assert.False(r.NeedsFullRedraw); // satisfied by the render
+
+        r.Reset();
+        Assert.True(r.NeedsFullRedraw); // re-armed by the reset …
+
+        Render(r, buf);
+        Assert.False(r.NeedsFullRedraw); // … and consumed again
+    }
+
     // ---- Cursor state ----
 
     [Fact]

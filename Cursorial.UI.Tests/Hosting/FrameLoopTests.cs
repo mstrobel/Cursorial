@@ -9,6 +9,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
+using Cursorial.UI.Input;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Hosting;
@@ -154,6 +155,136 @@ public sealed class FrameLoopTests
 
         Assert.Equal(renders, probe.RenderCount);   // no re-raster — the tree was clean
         Assert.Equal(0, host.LastFrameBytes.Length); // diff renderer found nothing to emit
+    }
+
+    [Fact]
+    public void RequestFullRedraw_IdleApp_ReEmitsEverything_WithoutReRaster()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        var probe = new Probe(4, 1) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        Assert.True(host.RunUntilIdle());
+        host.RunFrame();
+        Assert.Equal(0, host.LastFrameBytes.Length); // quiescent baseline: no spurious renders
+
+        var renders = probe.RenderCount;
+        var rowBefore = host.GetRowText(0);
+
+        // The method must ARM a render itself: the external-corruption scenario it serves has
+        // nothing framework-side dirty, so without the arm this frame would emit nothing.
+        host.Application.RequestFullRedraw();
+        host.RunFrame();
+
+        var bytes = System.Text.Encoding.ASCII.GetString(host.LastFrameBytes.ToArray());
+        Assert.Contains("[2J", bytes);         // clear screen — the full-resync signature
+        Assert.Contains("XXXX", bytes);              // every non-blank cell re-emitted …
+        Assert.Equal(renders, probe.RenderCount);    // … WITHOUT re-rastering any zone (renderer-level reset only)
+        Assert.Equal(rowBefore, host.GetRowText(0)); // the frame buffer itself is undisturbed
+
+        host.RunFrame();
+        Assert.Equal(0, host.LastFrameBytes.Length); // one-shot: the next frame is a clean diff again
+    }
+
+    [Fact]
+    public void RequestFullRedraw_CrossThread_MarshalsToUiThread_AndRedraws()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
+        Assert.True(host.RunUntilIdle());
+        host.RunFrame();
+        Assert.Equal(0, host.LastFrameBytes.Length);
+
+        WorkerThread.Run(() =>
+        {
+            host.Application.RequestFullRedraw(); // off-thread: must post, never touch the renderer here
+            return 0;
+        });
+
+        host.RunFrame(); // the posted job runs in Phase 2; the SAME frame's Phase 6 emits the full resync
+
+        var bytes = System.Text.Encoding.ASCII.GetString(host.LastFrameBytes.ToArray());
+        Assert.Contains("[2J", bytes);
+        Assert.Contains("XXXX", bytes);
+    }
+
+    [Fact]
+    public void CtrlL_OnAppRoot_TriggersFullRedraw()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
+        Assert.True(host.RunUntilIdle());
+        host.RunFrame();
+        Assert.Equal(0, host.LastFrameBytes.Length);
+
+        host.SendKey(Key.Character, KeyModifiers.Control, "l"); // the conventional terminal redraw chord
+        host.RunFrame();
+
+        var bytes = System.Text.Encoding.ASCII.GetString(host.LastFrameBytes.ToArray());
+        Assert.Contains("[2J", bytes);
+        Assert.Contains("XXXX", bytes);
+    }
+
+    [Fact]
+    public void CtrlL_WhileWindowFocused_TriggersFullRedraw()
+    {
+        // A focused window's key route ends at ITS surface root — the chord must be installed
+        // per active root, or Ctrl+L dies the moment a dialog opens.
+        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
+        Assert.True(host.RunUntilIdle());
+
+        var window = host.NewWindow(content: new Probe(4, 1) { FillGlyph = "W" }, left: 10, top: 5);
+        window.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+        host.RunFrame();
+        Assert.Equal(0, host.LastFrameBytes.Length); // quiescent with the window active + focused
+
+        host.SendKey(Key.Character, KeyModifiers.Control, "l");
+        host.RunFrame();
+
+        var bytes = System.Text.Encoding.ASCII.GetString(host.LastFrameBytes.ToArray());
+        Assert.Contains("[2J", bytes);
+    }
+
+    [Fact]
+    public void CtrlL_Binding_IsIdempotentAcrossActivations()
+    {
+        // Window switching re-activates the same roots repeatedly; the redraw binding must not
+        // accumulate (EnsureRedrawBinding adds exactly one per root, ever).
+        using var host = UITestHost.Create();
+        host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
+        Assert.True(host.RunUntilIdle());
+
+        var wm = host.Application.WindowManager!;
+        var w1 = host.NewWindow(content: new Probe(2, 1) { FillGlyph = "A" }, left: 2, top: 2);
+        var w2 = host.NewWindow(content: new Probe(2, 1) { FillGlyph = "B" }, left: 20, top: 2);
+        w1.Show(wm);
+        Assert.True(host.RunUntilIdle());
+        w2.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        // Bounce activation between the two windows — each re-activation runs the ensure path.
+        for (int i = 0; i < 3; i++)
+        {
+            w1.Activate();
+            Assert.True(host.RunUntilIdle());
+            w2.Activate();
+            Assert.True(host.RunUntilIdle());
+        }
+
+        Assert.Equal(1, CountRedrawBindings(w1));
+        Assert.Equal(1, CountRedrawBindings(w2));
+
+        static int CountRedrawBindings(UIElement root)
+        {
+            int count = 0;
+            foreach (var binding in root.InputBindings)
+            {
+                if (binding is KeyBinding { Gesture: KeyGesture { Key: Key.Character, Modifiers: KeyModifiers.Control } })
+                    count++;
+            }
+            return count;
+        }
     }
 
     [Fact]

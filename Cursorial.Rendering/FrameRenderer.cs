@@ -119,6 +119,14 @@ public sealed class FrameRenderer
     }
 
     /// <summary>
+    /// True when the next <see cref="Render"/> emits a full redraw rather than a delta — after
+    /// construction or <see cref="Reset"/>. Lets a frame loop that normally skips emission on a
+    /// clean frame (nothing composited, no resize) force one when a reset is pending: a reset on
+    /// an otherwise-idle screen would never reach the terminal by diffing alone.
+    /// </summary>
+    public bool NeedsFullRedraw => _firstFrame;
+
+    /// <summary>
     /// Emit the byte sequence that brings the terminal to match <paramref name="back"/>.
     /// Stateful across calls — subsequent renders emit only the differences.
     /// </summary>

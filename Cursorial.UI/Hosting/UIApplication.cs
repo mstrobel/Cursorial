@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Windows.Input;
 
 using Cursorial.Input;
 using Cursorial.Input.Capabilities;
@@ -360,6 +361,27 @@ public sealed partial class UIApplication : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Requests a full redraw of the user interface. The next frame emitted will be a full re-rendering
+    /// rather than a differential emission. Callable from any thread, but posts to the UI thread.
+    /// </summary>
+    public void RequestFullRedraw()
+    {
+        if (Dispatcher.CheckAccess() is false)
+        {
+            Dispatcher.Post(RequestFullRedraw);
+            return;
+        }
+
+        if (_renderer?.NeedsFullRedraw is false)
+            _renderer.Reset();
+        
+        // Reset alone only marks the renderer — Phase 6 is gated on dirty visuals / a requested
+        // render, and the very scenario this method serves (external terminal corruption) has
+        // NOTHING framework-side dirty. Arm the render flag + wake so the repaint happens now.
+        RequestRender();
+    }
+
     private void RaiseBeginShutdown()
     {
         if (Dispatcher.CheckAccess() is false)
@@ -476,6 +498,28 @@ public sealed partial class UIApplication : IAsyncDisposable
         _focusManager.OnWindowActivated(root);
         _accessKeys.OnWindowActivated(root); // cue stamping (permanent in AlwaysVisible mode — doc §7.8)
         _lastActiveFocusRoot = root;
+
+        EnsureRedrawBinding(root);
+    }
+
+    /// <summary>
+    /// Installs the conventional terminal redraw chord (Ctrl+L → <see cref="RequestFullRedraw"/>)
+    /// on an active root — the app root at wire-up AND each window root at activation, since a
+    /// focused window's key route ends at its own surface root and never reaches the app root's
+    /// bindings. Idempotent: window switching re-activates the same roots repeatedly, and the
+    /// sweep must find exactly one framework binding per root. Apps override naturally — bindings
+    /// on elements closer to the focus run first in the bubble, and a handled Ctrl+L never
+    /// reaches this one.
+    /// </summary>
+    private void EnsureRedrawBinding(UIElement root)
+    {
+        foreach (var binding in root.InputBindings)
+        {
+            if (binding is KeyBinding { Command: RequestFullRedrawCommand })
+                return;
+        }
+
+        root.InputBindings.Add(new KeyBinding(KeyGesture.Parse("Ctrl+L"), new RequestFullRedrawCommand(this)));
     }
 
     /// <summary>
@@ -499,6 +543,7 @@ public sealed partial class UIApplication : IAsyncDisposable
         FocusManager.SetIsFocusScope(newRoot, true);
         _focusManager.OnWindowActivated(newRoot);
         _accessKeys.OnWindowActivated(newRoot);
+        EnsureRedrawBinding(newRoot); // a focused window's key route never reaches the app root's Ctrl+L
     }
 
     /// <summary>
@@ -689,6 +734,30 @@ public sealed partial class UIApplication : IAsyncDisposable
             var handled = _handled;
             _handled = false;
             return handled;
+        }
+    }
+
+    private sealed class RequestFullRedrawCommand(UIApplication application) : ICommand
+    {
+        private readonly UIApplication _application = application ??
+                                                      throw new ArgumentNullException(nameof(application));
+
+        public bool CanExecute(object? parameter)
+        {
+            return _application._runCalled is not 0 &&
+                   _application._shutdownRequested is false &&
+                   _application.Dispatcher.CheckAccess();
+        }
+        public void Execute(object? parameter)
+        {
+            if (CanExecute(parameter))
+                _application.RequestFullRedraw();
+        }
+
+        event EventHandler? ICommand.CanExecuteChanged
+        {
+            add {}
+            remove {}
         }
     }
 }

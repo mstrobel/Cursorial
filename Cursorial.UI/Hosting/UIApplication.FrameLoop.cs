@@ -574,7 +574,10 @@ public sealed partial class UIApplication
                             return default;
                     }
 
-                    if (changed || resized)
+                    // NeedsFullRedraw: a pending renderer reset (UIApplication.RequestFullRedraw)
+                    // must emit even when the composite found nothing changed — the reset's whole
+                    // point is that the TERMINAL diverged while the framework state is clean.
+                    if (changed || resized || _renderer!.NeedsFullRedraw)
                     {
                         _scratch.ResetWrittenCount(); // pooled ArrayBufferWriter<byte>, reset per frame
                         _renderer!.Render(_buffer!, _scratch);

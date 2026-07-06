@@ -165,4 +165,59 @@ public class TextLayoutTests
             rebuilt.Append(LineText(t, l, i));
         Assert.Equal(t, rebuilt.ToString()); // lossless
     }
+
+    // ── Span-friendly Build / word-motion overloads: the allocation-free entry point for a caller holding a
+    //    slice (a substring, a cell span) that would otherwise ToString() just to project boundaries. The
+    //    string overload delegates to the span one, so the two can never diverge. ──
+
+    private static void AssertSameLayout(GraphemeLayout expected, GraphemeLayout actual)
+    {
+        Assert.Equal(expected.ClusterCount, actual.ClusterCount);
+        Assert.Equal(expected.TotalColumns, actual.TotalColumns);
+        for (var c = 0; c <= expected.ClusterCount; c++)
+            Assert.Equal(expected.CharIndexOfCluster(c), actual.CharIndexOfCluster(c));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("hello world")]
+    [InlineData("café")]           // precomposed
+    [InlineData("ȩ́x")]      // a multi-combining-mark cluster (e + acute + cedilla)
+    [InlineData("中文字")]  // wide (CJK)
+    [InlineData("a\U0001F44Bb")]        // emoji (surrogate pair) between ASCII
+    public void GraphemeLayout_SpanBuild_MatchesStringBuild(string text)
+        => AssertSameLayout(GraphemeLayout.Build(text), GraphemeLayout.Build(text.AsSpan()));
+
+    [Fact]
+    public void GraphemeLayout_SpanBuild_OnASlice_EqualsBuildingTheSubstring()
+    {
+        // The reason the overload exists: project a slice's boundaries with no ToString() of the slice.
+        const string whole = "xx中文zz";
+        AssertSameLayout(GraphemeLayout.Build("中文"), GraphemeLayout.Build(whole.AsSpan(2, 2)));
+    }
+
+    [Fact]
+    public void GraphemeLayout_NullString_IsEmpty_LikeAnEmptySpan()
+        => AssertSameLayout(GraphemeLayout.Build((string?)null), GraphemeLayout.Build(ReadOnlySpan<char>.Empty));
+
+    [Theory]
+    [InlineData("the quick brown", 0)]
+    [InlineData("the quick brown", 4)]
+    [InlineData("the quick brown", 15)]
+    [InlineData("  lead", 0)]
+    [InlineData("trail  ", 5)]
+    [InlineData("", 0)]
+    public void TextNavigation_SpanOverloads_MatchStringOverloads(string text, int index)
+    {
+        Assert.Equal(TextNavigation.NextWord(text, index), TextNavigation.NextWord(text.AsSpan(), index));
+        Assert.Equal(TextNavigation.PrevWord(text, index), TextNavigation.PrevWord(text.AsSpan(), index));
+    }
+
+    [Fact]
+    public void TextNavigation_SpanOverload_OnASlice_IsRelativeToTheSlice()
+    {
+        var slice = "the quick brown".AsSpan(4); // "quick brown"
+        Assert.Equal(5, TextNavigation.NextWord(slice, 0)); // after "quick"
+        Assert.Equal(0, TextNavigation.PrevWord(slice, 5)); // back to the slice's word start
+    }
 }

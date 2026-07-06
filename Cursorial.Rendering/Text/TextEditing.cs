@@ -40,9 +40,16 @@ public readonly struct GraphemeLayout
     public int CharIndexOfCluster(int clusterIndex) => _charIndex[Math.Clamp(clusterIndex, 0, _charIndex.Length - 1)];
 
     /// <summary>Builds the layout for <paramref name="text"/> (null/empty ⇒ a single zero boundary).</summary>
-    public static GraphemeLayout Build(string? text)
+    public static GraphemeLayout Build(string? text) => Build(text.AsSpan());
+
+    /// <summary>
+    /// Builds the cluster-boundary layout of <paramref name="text"/> — the allocation-free entry point for a
+    /// caller holding a slice (a substring, a cell span) that would otherwise pay a <c>ToString()</c> just to
+    /// project boundaries. The <see cref="string"/> overload delegates here, so the two never diverge.
+    /// </summary>
+    public static GraphemeLayout Build(ReadOnlySpan<char> text)
     {
-        if (string.IsNullOrEmpty(text))
+        if (text.IsEmpty)
             return new GraphemeLayout([0], [0]);
 
         var charIndex = new List<int>(text.Length + 1) { 0 };
@@ -125,7 +132,10 @@ public readonly struct GraphemeLayout
 public static class TextNavigation
 {
     /// <summary>The offset after the next word: skip a leading whitespace run, then the word run (clamped to length).</summary>
-    public static int NextWord(string text, int index)
+    public static int NextWord(string text, int index) => NextWord(text.AsSpan(), index);
+
+    /// <summary>The offset after the next word over a <paramref name="text"/> slice (the allocation-free entry point; the string overload delegates here).</summary>
+    public static int NextWord(ReadOnlySpan<char> text, int index)
     {
         var i = Math.Clamp(index, 0, text.Length);
         while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
@@ -134,7 +144,10 @@ public static class TextNavigation
     }
 
     /// <summary>The offset at the start of the previous word: skip a trailing whitespace run, then the word run (clamped to 0).</summary>
-    public static int PrevWord(string text, int index)
+    public static int PrevWord(string text, int index) => PrevWord(text.AsSpan(), index);
+
+    /// <summary>The offset at the start of the previous word over a <paramref name="text"/> slice (the allocation-free entry point; the string overload delegates here).</summary>
+    public static int PrevWord(ReadOnlySpan<char> text, int index)
     {
         var i = Math.Clamp(index, 0, text.Length);
         while (i > 0 && char.IsWhiteSpace(text[i - 1])) i--;

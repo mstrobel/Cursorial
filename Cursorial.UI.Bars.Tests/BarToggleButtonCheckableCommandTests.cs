@@ -2,7 +2,6 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
@@ -33,12 +32,18 @@ public sealed class BarToggleButtonCheckableCommandTests
         return control;
     }
 
-    [Fact] // BACKWARD-COMPAT: an existing-style checkable command (parameter toggled from Execute, Handled=false) drives the button
-    public void UnhandledParameter_DrivesCheckedFromExecute()
+    [Theory] // BACKWARD-COMPAT: an existing-style checkable command (parameter toggled from Execute, Handled=false) drives the button
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UnhandledParameter_DrivesCheckedFromExecute(bool registerParameterFirst)
     {
         var param = new CheckableCommandParameter(isChecked: false);
         var command = new BarCommand(p => ((CheckableCommandParameter)p!).Toggle());
-        var (host, toggle) = Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
+        var (host, toggle) = registerParameterFirst
+                                 ? Show(() => TopLeft(new BarToggleButton { Content = "B", CommandParameter = param, Command = command }))
+                                 : Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
         using var _h = host;
 
         Assert.NotEqual(true, toggle.IsChecked);
@@ -56,12 +61,18 @@ public sealed class BarToggleButtonCheckableCommandTests
         Assert.NotEqual(true, toggle.IsChecked);
     }
 
-    [Fact] // Handled + forced false → the bound toggle is greyed+unchecked (context-gated OFF), even with a checked preference
-    public void Handled_ForcedFalse_GreysAndUnchecks()
+    [Theory] // Handled + forced false → the bound toggle is greyed+unchecked (context-gated OFF), even with a checked preference
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Handled_ForcedFalse_GreysAndUnchecks(bool registerParameterFirst)
     {
         var param = new CheckableCommandParameter(isChecked: true); // preference: checked
         var command = new BarCommand(_ => { }, canExecute: p => p is not ICheckableCommandParameter cp || !cp.Handled);
-        var (host, toggle) = Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
+        var (host, toggle) = registerParameterFirst
+                                 ? Show(() => TopLeft(new BarToggleButton { Content = "B", CommandParameter = param, Command = command }))
+                                 : Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
         using var _h = host;
 
         Assert.Equal(true, toggle.IsChecked);     // reflects the checked preference on bind
@@ -75,12 +86,45 @@ public sealed class BarToggleButtonCheckableCommandTests
         Assert.False(toggle.IsEffectivelyEnabled);
     }
 
-    [Fact] // Handled + forced true → the bound toggle is greyed+CHECKED ("on but locked")
-    public void Handled_ForcedTrue_GreysAndChecks()
+    [Theory] // Handled + forced indeterminate → the bound toggle is indeterminate, even when marked IsThreeState=false
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Handled_ForcedIndeterminate_OverridesIsThreeState(bool registerParameterFirst)
+    {
+        var param = new CheckableCommandParameter(isChecked: true); // preference: checked
+        var command = new BarCommand(_ => {});
+
+        var (host, toggle) = registerParameterFirst
+                                 ? Show(() => TopLeft(new BarToggleButton { Content = "B", CommandParameter = param, Command = command }))
+                                 : Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
+        using var _h = host;
+        
+        Assert.False(toggle.IsThreeState);
+        Assert.Equal(true, toggle.IsChecked);     // reflects the checked preference on bind
+        Assert.True(toggle.IsEffectivelyEnabled);
+
+        param.Override(isChecked: null);          // command takes over: force unchecked + (via CanExecute) grey it
+        command.RaiseCanExecuteChanged();
+        host.RunUntilIdle();
+
+        Assert.False(toggle.IsThreeState);        // still not explicitly three-state
+        Assert.Null(toggle.IsChecked);            // indeterminate
+        Assert.True(toggle.IsEffectivelyEnabled);
+    }
+
+    [Theory] // Handled + forced true → the bound toggle is greyed+CHECKED ("on but locked")
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Handled_ForcedTrue_GreysAndChecks(bool registerParameterFirst)
     {
         var param = new CheckableCommandParameter(isChecked: false); // preference: unchecked
         var command = new BarCommand(_ => { }, canExecute: p => p is not ICheckableCommandParameter cp || !cp.Handled);
-        var (host, toggle) = Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
+        var (host, toggle) = registerParameterFirst
+                                 ? Show(() => TopLeft(new BarToggleButton { Content = "B", CommandParameter = param, Command = command }))
+                                 : Show(() => TopLeft(new BarToggleButton { Content = "B", Command = command, CommandParameter = param }));
+
         using var _h = host;
 
         Assert.NotEqual(true, toggle.IsChecked);
@@ -111,7 +155,7 @@ public sealed class BarToggleButtonCheckableCommandTests
         {
             var toolbar = TopLeft(new Toolbar());
             a = new BarToggleButton { Content = "B", Command = command, CommandParameter = param };
-            b = new BarToggleButton { Content = "B", Command = command, CommandParameter = param };
+            b = new BarToggleButton { Content = "B", CommandParameter = param, Command = command };
             toolbar.Items.Add(a);
             toolbar.Items.Add(b);
             return toolbar;

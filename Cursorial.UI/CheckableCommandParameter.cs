@@ -25,7 +25,7 @@ namespace Cursorial.UI;
 public interface ICheckableCommandParameter
 {
     /// <summary>The current reflected checked state the bound checkable control mirrors as its <c>IsChecked</c> base value.</summary>
-    bool IsChecked { get; }
+    bool? IsChecked { get; }
 
     /// <summary>
     /// Whether the command has <b>taken over</b> the checked state: while <see langword="true"/> the bound control's
@@ -40,7 +40,7 @@ public interface ICheckableCommandParameter
     /// greyed+unchecked (<see langword="false"/>) and greyed+checked / "on but locked" (<see langword="true"/>) are
     /// expressible. Ignored while <see cref="Handled"/> is <see langword="false"/>. Default <see langword="false"/>.
     /// </summary>
-    bool IsCheckedOverride => false;
+    bool? IsCheckedOverride => false;
 }
 
 /// <summary>
@@ -50,32 +50,16 @@ public interface ICheckableCommandParameter
 /// with <see cref="Override"/> to grey/lock a bound control (and <see cref="Release"/> to give the control back its
 /// own preference) — after either, raise the command's <c>CanExecuteChanged</c> so bound controls re-coerce.
 /// </summary>
-public class CheckableCommandParameter(bool isChecked = false) : ICheckableCommandParameter, INotifyPropertyChanged
+public class CheckableCommandParameter(bool? isChecked = false) : ICheckableCommandParameter, INotifyPropertyChanged
 {
-    private bool _isChecked = isChecked;
-    private bool _handled;
-    private bool _isCheckedOverride;
-
     /// <inheritdoc cref="ICheckableCommandParameter.IsChecked"/>
-    public bool IsChecked
-    {
-        get => _isChecked;
-        set => Set(ref _isChecked, value, IsCheckedChangedArgs);
-    }
+    public bool? IsChecked { get; set => Set(ref field, value, IsCheckedChangedArgs); } = isChecked;
 
     /// <inheritdoc cref="ICheckableCommandParameter.Handled"/>
-    public bool Handled
-    {
-        get => _handled;
-        set => Set(ref _handled, value, HandledChangedArgs);
-    }
+    public bool Handled { get; set => Set(ref field, value, HandledChangedArgs); }
 
     /// <inheritdoc cref="ICheckableCommandParameter.IsCheckedOverride"/>
-    public bool IsCheckedOverride
-    {
-        get => _isCheckedOverride;
-        set => Set(ref _isCheckedOverride, value, IsCheckedOverrideChangedArgs);
-    }
+    public bool? IsCheckedOverride { get; set => Set(ref field, value, IsCheckedOverrideChangedArgs); }
 
     /// <inheritdoc/>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -89,7 +73,7 @@ public class CheckableCommandParameter(bool isChecked = false) : ICheckableComma
     /// command's <c>CanExecuteChanged</c> afterward (and gate its <c>CanExecute</c> to <see langword="false"/> to
     /// grey+lock) so bound controls re-coerce.
     /// </summary>
-    public void Override(bool isChecked)
+    public void Override(bool? isChecked)
     {
         IsCheckedOverride = isChecked;
         Handled = true;
@@ -98,9 +82,9 @@ public class CheckableCommandParameter(bool isChecked = false) : ICheckableComma
     /// <summary>Releases the override (clears <see cref="Handled"/>) so the control's own base preference reappears.</summary>
     public void Release() => Handled = false;
 
-    private void Set(ref bool field, bool value, PropertyChangedEventArgs args)
+    private void Set<T>(ref T field, T value, PropertyChangedEventArgs args)
     {
-        if (field == value)
+        if (EqualityComparer<T>.Default.Equals(field, value))
             return;
         field = value;
         PropertyChanged?.Invoke(this, args);

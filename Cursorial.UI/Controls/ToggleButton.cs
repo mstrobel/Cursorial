@@ -139,7 +139,7 @@ public class ToggleButton : ButtonBase
 
     // IsChecked coercion (FB-27): while a checkable command parameter is Handled, the effective checked state is the
     // parameter's forced override — an override at EITHER polarity (greyed+unchecked or on-but-locked), pair it with a
-    // false CanExecute to grey/lock. Otherwise the base value passes through UNCHANGED, so an unhandled parameter and
+    // false CanExecute to gray/lock. Otherwise, the base value passes through UNCHANGED, so an unhandled parameter and
     // every non-checkable toggle behave exactly as before (zero-cost backward-compat). The base value is never
     // mutated, so the control's own preference reappears automatically when Handled clears — the store re-coerces the
     // raw base value (no restore bookkeeping).

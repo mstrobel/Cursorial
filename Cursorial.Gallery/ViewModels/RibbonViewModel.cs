@@ -110,7 +110,7 @@ public sealed class RibbonViewModel : PageViewModel
     private void Toggle(CheckableCommandParameter state, string label)
     {
         state.Toggle();
-        Report($"{label} {(state.IsChecked ? "on" : "off")}");
+        Report($"{label} {(state.IsChecked is true ? "on" : state.IsChecked is false ? "off" : "indeterminate")}");
     }
 
     /// <summary>Echoes a Backstage event (open / destination selected / closed) into the page status. The gallery view

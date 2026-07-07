@@ -92,7 +92,7 @@ public sealed class BarsViewModel : PageViewModel
     private void Toggle(CheckableCommandParameter state, string label)
     {
         state.Toggle(); // the command owns the checked state; the toggle button re-syncs on the re-query
-        Report($"{label} {(state.IsChecked ? "on" : "off")}");
+        Report($"{label} {(state.IsChecked is true ? "on" : state.IsChecked is false ? "off" : "indeterminate")}");
     }
 
     private void Report(string what) => Status = $"{what} invoked.";

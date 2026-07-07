@@ -3,7 +3,7 @@ using Cursorial.UI.Controls;
 namespace Cursorial.UI.Bars;
 
 /// <summary>
-/// A toggleable command button for a bar surface (the bars guide's <c>BarToggleButton</c> — checked = accent
+/// A toggleable command button for a bar surface (the Bars guide's <c>BarToggleButton</c> — checked = accent
 /// whole-cell fill). Derives from <see cref="ToggleButton"/>, so it inherits the <see cref="ToggleButton.IsChecked"/>
 /// state, the <c>:checked</c> pseudo-class, and the command coupling. Like <see cref="BarButton"/> it adds an
 /// <see cref="Icon"/> + <see cref="InputGestureText"/> and auto-fills them from a <see cref="BarCommand"/>.
@@ -51,9 +51,9 @@ public class BarToggleButton : ToggleButton
     {
         // Sync BEFORE base — the base-last inversion (FB-27 point 5; the ordering contract on
         // ButtonBase.OnCommandStateChanged). SyncCheckedFromCommand reflects the command-SHARED
-        // ICheckableCommandParameter into the IsChecked BASE value, and because SetCurrentValue runs the coercer inline
+        // ICheckableCommandParameter into the IsChecked BASE value, and because SetCurrentValue runs the coercer inline,
         // it snaps a Handled override in immediately at bind time. Running it first makes IsChecked's source non-Default
-        // BEFORE the base reads its per-control-default gate, so the base skips that default and the shared parameter
+        // BEFORE the base reads its per-control-default gate, so the base skips that default, and the shared parameter
         // stays the authoritative source; the base then re-coerces. Keep this order — do not "tidy" it to call base
         // first (which would defer the snap to the base's re-coerce and let the base shadow-allocate its default).
         SyncCheckedFromCommand();
@@ -76,6 +76,6 @@ public class BarToggleButton : ToggleButton
     private void SyncCheckedFromCommand()
     {
         if (CommandParameter is ICheckableCommandParameter checkable)
-            SetCurrentValue(IsCheckedProperty, (bool?)checkable.IsChecked);
+            SetCurrentValue(IsCheckedProperty, checkable.IsChecked);
     }
 }

@@ -46,8 +46,14 @@ public class BarButton : ButtonBase
     /// <inheritdoc/>
     protected override void OnCommandStateChanged()
     {
-        base.OnCommandStateChanged();
+        // Sync BEFORE base — the base-last inversion, kept uniform across the bar-button family (FB-27 point 5). The
+        // checkable base (ToggleButton, under BarToggleButton) installs a default command parameter here when none is
+        // present, so a bar control that assigns command-derived state runs its sync FIRST to stay authoritative; see
+        // ButtonBase.OnCommandStateChanged's remarks. Here the base is a plain ButtonBase no-op, so the order is
+        // uniform-convention only — but do NOT re-tidy it to call base first, which would break the rule if the base
+        // ever gains the checkable behavior.
         _commandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
+        base.OnCommandStateChanged();
     }
 }
 

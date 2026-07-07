@@ -299,6 +299,14 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     /// it to reflect command-owned state that rides the same re-query (e.g. a toggle pulling its checked state from
     /// an <c>ICheckableCommandParameter</c>), so a single <c>CanExecuteChanged</c> updates both enabled and checked.
     /// </summary>
+    /// <remarks>
+    /// Ordering contract (FB-27): derived controls may auto-assign a command parameter in this method. An override
+    /// that does so should assign <b>before</b> invoking the base implementation, which installs its own default
+    /// parameter when none is present — so the derived assignment takes precedence. (<c>ToggleButton</c> installs a
+    /// per-control default here only while nothing has provided a checked source; a bar surface therefore reflects its
+    /// command-shared parameter first, which makes the checked source non-default and keeps that shared parameter
+    /// authoritative.)
+    /// </remarks>
     protected virtual void OnCommandStateChanged() {}
 
     private static void OnCommandChanged(UIObject sender, ICommand? oldValue, ICommand? newValue)

@@ -26,7 +26,11 @@ public class BarPopupButton : BarDropDownButton
     /// <inheritdoc/>
     protected override void OnCommandStateChanged()
     {
-        base.OnCommandStateChanged();
+        // Sync BEFORE base — the base-last inversion, kept uniform across the bar-button family (FB-27 point 5): a bar
+        // control that assigns command-derived state runs its sync first so the checkable base (ToggleButton) can't
+        // clobber it with its default command parameter. See ButtonBase.OnCommandStateChanged's remarks. Do NOT re-tidy
+        // to call base first.
         CommandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
+        base.OnCommandStateChanged();
     }
 }

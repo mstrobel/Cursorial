@@ -238,8 +238,15 @@ public class ComboBox : SelectingItemsControl
             ItemContainerGenerator.ContainerFromIndex(containerIndex)?.Focus(FocusNavigationMethod.Directional);
     }
 
-    // Picking an item (click) commits + closes (ComboBoxItem calls this after selecting through the base).
-    internal void CommitAndClose() => SetDropDownOpen(false);
+    // Picking an item (click) commits + closes (ComboBoxItem calls this after selecting through the base). Enter and
+    // (non-editable) Space on an open list route here too — the COMMIT closes, vs. every other close (Escape,
+    // light-dismiss, focus-out, a face/drop-button toggle, detach), which is a dismissal. OnDropDownClosed receives
+    // the distinction.
+    internal void CommitAndClose()
+    {
+        _closeIsCommit = true;
+        SetDropDownOpen(false);
+    }
 
     private void OnDropDownClick(object? sender, ClickEventArgs e)
     {
@@ -249,8 +256,13 @@ public class ComboBox : SelectingItemsControl
 
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e) => SetDropDownOpen(false); // light-dismiss / Esc
 
+    private bool _closeIsCommit; // set by CommitAndClose just before its close; consumed (and always reset) below
+
     private void SetDropDownOpen(bool value)
     {
+        var committed = _closeIsCommit;
+        _closeIsCommit = false; // consume unconditionally — a stale flag must never leak into a later close
+
         if (!SetAndRaise(IsDropDownOpenProperty, ref _isDropDownOpen, value))
             return;
 
@@ -258,7 +270,36 @@ public class ComboBox : SelectingItemsControl
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value);
 
         if (!value)
+        {
             RestoreFaceFocus(); // restore focus to the face / text box when the drop-down closes
+            OnDropDownClosed(committed);
+        }
+        else
+        {
+            OnDropDownOpened();
+        }
+    }
+
+    /// <summary>
+    /// Called after the drop-down opens (the <see cref="IsDropDownOpen"/> transition to <see langword="true"/>, any
+    /// path — keyboard, face click, programmatic). A derived control snapshots per-session state here (a
+    /// <c>BarComboBox</c> captures the pre-open selection so a dismissal can restore it).
+    /// </summary>
+    protected virtual void OnDropDownOpened()
+    {
+    }
+
+    /// <summary>
+    /// Called after the drop-down closes. <paramref name="committed"/> distinguishes the commit gestures — Enter or
+    /// (non-editable) Space on the open list, or a click on a <see cref="ComboBoxItem"/> — from every dismissal
+    /// (Escape, light-dismiss, focus-out, a face / drop-button toggle, detach). Selection-follows-highlight means the
+    /// selection ALREADY reflects the last highlight either way; a derived control that must treat highlighting as
+    /// tentative (a <c>BarComboBox</c> driving a live preview through an <see cref="IValueCommandParameter"/>)
+    /// commits or rolls back here.
+    /// </summary>
+    /// <param name="committed">Whether the close was a commit gesture (Enter / Space / item click) rather than a dismissal.</param>
+    protected virtual void OnDropDownClosed(bool committed)
+    {
     }
 
     private void RestoreFaceFocus()
@@ -494,7 +535,7 @@ public class ComboBox : SelectingItemsControl
             case Key.Enter:
                 if (editable)
                     CommitText();
-                SetDropDownOpen(false); // Enter commits the highlighted selection (or the typed text); Escape just closes
+                CommitAndClose(); // Enter commits the highlighted selection (or the typed text); Escape just closes
                 break;
             case Key.Escape:
                 if (editable)
@@ -504,7 +545,7 @@ public class ComboBox : SelectingItemsControl
             default:
                 if (editable || !IsSpace(e))
                     return;
-                SetDropDownOpen(false);
+                CommitAndClose(); // non-editable Space accepts the highlighted item, like Enter (WPF parity)
                 break;
         }
 

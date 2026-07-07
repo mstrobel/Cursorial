@@ -400,19 +400,19 @@ public sealed class SceneCompositor
         {
             var blendedForeground = Color.Composite(sourceStyle.Background, targetStyle.Foreground, mode);
 
-            // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge bg —
-            // the overlay-tint contract (a translucent selection highlight over text keeps the
-            // text). Under an OPAQUE SourceOver cover a kept TEXT glyph is invisible (fg == bg) —
-            // but COLOR EMOJI ignore the SGR foreground entirely: the terminal draws the bitmap
-            // regardless, straight through the covering layer (observed live on macOS color-emoji
-            // terminals). STOMP emoji under such covers. The gate is the cover's actual opacity —
-            // never an fg==bg comparison, which also fires for a transparent-foreground emoji
-            // under a genuinely translucent highlight (a real tint that must keep the glyph).
-            // Non-SourceOver modes are backdrop-dependent filters: content is SUPPOSED to show
-            // through them, so emoji keep rendering there by design.
-            var opaqueCover = ReferenceEquals(mode, BlendingModes.SourceOver) && sourceStyle.Background.IsOpaque;
-
-            if (opaqueCover)
+            // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge
+            // bg — the cross-layer tint contract that lets TEXT ghost through translucent chrome
+            // (menus/popups) dimmed, or hide under an opaque cover (fg == bg). COLOR EMOJI break
+            // both: the terminal draws the bitmap regardless of the SGR foreground — full-bright
+            // through an opaque dialog AND through a translucent menu's dimming veil (both
+            // observed live on macOS; a menu row reverting from its opaque selection highlight
+            // to the translucent normal background resurfaced the emoji beneath it). A bitmap
+            // cannot be tinted — only removed — so emoji are STOMPED under ANY cover whose
+            // background contributes at all (not fully transparent; Palette/Default replace
+            // outright, and a layer-opacity fade scales to transparent and correctly keeps).
+            // Text-selection highlights are unaffected: they draw within their own scene at
+            // raster time (background first, glyphs after) and never reach this cross-layer path.
+            if (!sourceStyle.Background.IsTransparent)
             {
                 var tinted = dst.Style with { Foreground = blendedForeground, Background = mergedBackground };
 

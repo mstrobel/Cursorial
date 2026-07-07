@@ -361,7 +361,7 @@ internal sealed class InspectorDemo : IDemo
                            </Menu>
                            <TextBlock Text="Sign in"/>
                            <Label Content="User _name:"/>
-                           <TextBox Placeholder="username" Width="24"/>
+                           <TextBox Placeholder="ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️ℹ️" Width="24"/>
                            <Label Content="_Password:"/>
                            <TextBox Placeholder="••••••••" Width="24"/>
                            <CheckBox Content="_Remember me"/>

@@ -1,10 +1,7 @@
-using System.Collections.Specialized;
 using System.Windows.Input;
 
 using Cursorial.Input;
-using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Imaging;
-using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -23,9 +20,9 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartGestureText, typeof(TextBlock))]  // optional: a leaf item's template may omit the submenu surface
 public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 {
-    internal const string PartPopup = "PART_Popup";
-    internal const string PartIcon = "PART_Icon";
-    internal const string PartGestureText = "PART_GestureText";
+    private const string PartPopup = "PART_Popup";
+    private const string PartIcon = "PART_Icon";
+    private const string PartGestureText = "PART_GestureText";
 
     /// <inheritdoc cref="IsWithinMenuProperty"/>
     internal static readonly UIPropertyKey<bool> IsWithinMenuPropertyKey =
@@ -160,7 +157,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     {
         get
         {
-            if (OwnerItemsControl is not { } owner)
+            if (OwnerItemsControl is not {} owner)
                 return HasValidIcon(Icon); // standalone (no popup): its own icon decides
 
             return owner is not Menu && AnyContainerHasIcon(owner);

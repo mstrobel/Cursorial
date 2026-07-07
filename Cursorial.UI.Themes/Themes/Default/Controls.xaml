@@ -419,7 +419,10 @@
     <Grid>
       <Border x:Name="PART_Face" Padding="1,0" Background="{TemplateBinding Background}">
         <DockPanel>
-          <ContentPresenter x:Name="PART_Icon" Width="2" Height="1" Visibility="Collapsed" Margin="0,0,1,0" />
+          <Border x:Name="PART_IconTray" DockPanel.Dock="Left" Width="2" Height="1" Margin="0,0,1,0"
+                  Visibility="{Binding Path=IsIconTrayVisible, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BooleanToVisibilityConverter.Instance}}">
+            <ContentPresenter x:Name="PART_Icon" Visibility="Collapsed" />
+          </Border>
           <TextBlock x:Name="PART_SubmenuIndicator"
                      DockPanel.Dock="Right"
                      RenderOffsetColumn="1"

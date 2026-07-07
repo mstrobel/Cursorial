@@ -348,9 +348,9 @@ internal sealed class InspectorDemo : IDemo
                                <MenuItem Header="E_xit" InputGestureText="Alt+Q" Icon="❌" />
                              </MenuItem>
                              <MenuItem Header="_Edit">
-                               <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" />
-                               <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" />
-                               <MenuItem Header="_Paste" InputGestureText="Ctrl+V" />
+                               <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" Icon="{Icon Emoji='✂️'}" />
+                               <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" Icon="{Icon Emoji='📑'}" />
+                               <MenuItem Header="_Paste" InputGestureText="Ctrl+V" Icon="{Icon Emoji='📋'}" />
                                <Separator/>
                                <MenuItem Header="F_ind">
                                  <MenuItem Header="Find _Next"     InputGestureText="F3" />
@@ -358,7 +358,7 @@ internal sealed class InspectorDemo : IDemo
                                </MenuItem>
                              </MenuItem>
                              <MenuItem Header="_View">
-                               <MenuItem Header="F_ull Screen"      InputGestureText="Alt+Enter" />
+                               <MenuItem Header="F_ull Screen"      InputGestureText="Alt+Enter" Icon="🖥️" />
                                <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" />
                                <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" />
                              </MenuItem>

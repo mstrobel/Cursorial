@@ -101,6 +101,35 @@ public class GraphemeWidthTests
         Assert.Equal(1, GraphemeWidth.CodepointWidth(cp));
     }
 
+    // ── the emoji-presentation classifier (the compositor's stomp predicate) ──
+
+    [Theory]
+    [InlineData("✅", true)]   // BMP Emoji_Presentation=Yes
+    [InlineData("❌", true)]
+    [InlineData("😀", true)]   // Emoticons block
+    [InlineData("🇺🇸", true)]   // regional-indicator flag pair
+    [InlineData("👍🏽", true)]   // skin-tone modifier sequence
+    [InlineData("☀️", true)]   // text-default base FORCED emoji by VS16
+    [InlineData("✅︎", false)]  // emoji-default base forced TEXT by VS15 — renders in fg color
+    [InlineData("☀", false)]   // text-default, no VS — monochrome, tintable
+    [InlineData("中", false)]   // CJK: wide but foreground-colored — must never be stomped
+    [InlineData("→", false)]
+    [InlineData("A", false)]
+    public void IsEmojiPresentation_ClassifiesClusters(string cluster, bool expected)
+        => Assert.Equal(expected, GraphemeWidth.IsEmojiPresentation(cluster));
+
+    [Fact]
+    public void IsEmojiPresentationScalar_AgreesWithTheWidthTable_OnTheBmpEpSet()
+    {
+        // The shared-source contract: every BMP EP scalar the classifier claims must measure
+        // width 2 (they route through the same helper — this pins against a future split).
+        foreach (var cp in new[] { 0x231A, 0x23F0, 0x2615, 0x26A1, 0x2705, 0x274C, 0x2B50, 0x2B55 })
+        {
+            Assert.True(GraphemeWidth.IsEmojiPresentationScalar(cp));
+            Assert.Equal(2, GraphemeWidth.CodepointWidth(cp));
+        }
+    }
+
     [Fact]
     public void ClusterWidth_EmojiPresentationDefault_WithVs15_PinsToOne()
     {

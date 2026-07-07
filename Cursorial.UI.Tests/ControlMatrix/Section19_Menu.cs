@@ -921,4 +921,100 @@ public sealed class Section19_Menu
         Assert.Contains("Popup", ex.Message);
         Assert.Contains("Border", ex.Message);
     }
+    // ── MenuItem.IsIconTrayVisible — the per-popup icon-gutter fact ──
+
+    [Fact] // any sibling icon flips the whole popup's tray; top-level bar items never show one
+    public void C6_IconTray_GroupSemantics()
+    {
+        using var host = Host();
+        var menu = new Menu();
+        var file = new MenuItem { Header = "File", Icon = "F" }; // icon on a BAR item: still no tray
+        var newItem = new MenuItem { Header = "New" };
+        var openItem = new MenuItem { Header = "Open" };
+        file.Items.Add(newItem);
+        file.Items.Add(openItem);
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        host.RunUntilIdle();
+
+        Assert.False(file.IsIconTrayVisible); // top-level: never
+
+        file.IsSubmenuOpen = true;
+        host.RunUntilIdle();
+        Assert.False(newItem.IsIconTrayVisible);  // iconless popup: no tray
+        Assert.False(openItem.IsIconTrayVisible);
+
+        newItem.Icon = "★"; // ONE icon flips the whole popup
+        Assert.True(newItem.IsIconTrayVisible);
+        Assert.True(openItem.IsIconTrayVisible);  // the iconless sibling aligns too
+
+        newItem.Icon = null; // last icon leaves → tray collapses group-wide
+        Assert.False(newItem.IsIconTrayVisible);
+        Assert.False(openItem.IsIconTrayVisible);
+    }
+
+    [Fact] // the property is a live BINDING SOURCE: a sibling's icon change re-delivers through a Binding
+    public void C6_IconTray_IsABindingSource()
+    {
+        using var host = Host();
+        var menu = new Menu();
+        var file = new MenuItem { Header = "File" };
+        var newItem = new MenuItem { Header = "New" };
+        var openItem = new MenuItem { Header = "Open" };
+        file.Items.Add(newItem);
+        file.Items.Add(openItem);
+        menu.Items.Add(file);
+
+        var probe = new TextBlock();
+        var root = new DockPanel { Children = { menu, probe } };
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Cursorial.UI.Data.BindingOperations.SetBinding(
+            probe, TextBlock.TextProperty,
+            new Cursorial.UI.Data.Binding(nameof(MenuItem.IsIconTrayVisible)) { Source = openItem });
+        file.IsSubmenuOpen = true;
+        host.RunUntilIdle();
+        Assert.Equal("False", probe.Text);
+
+        newItem.Icon = "★"; // the SIBLING's icon — openItem's own property re-delivers
+        host.RunUntilIdle();
+        Assert.Equal("True", probe.Text);
+    }
+
+    [Fact] // items entering/leaving the popup re-evaluate the group (the icon may arrive or leave with them)
+    public void C6_IconTray_TracksItemMembership()
+    {
+        using var host = Host();
+        var menu = new Menu();
+        var file = new MenuItem { Header = "File" };
+        var openItem = new MenuItem { Header = "Open" };
+        file.Items.Add(openItem);
+        menu.Items.Add(file);
+        host.ShowRoot(menu);
+        file.IsSubmenuOpen = true;
+        host.RunUntilIdle();
+
+        Assert.False(openItem.IsIconTrayVisible);
+
+        var iconed = new MenuItem { Header = "Save", Icon = "S" };
+        file.Items.Add(iconed); // an iconed item ARRIVES
+        host.RunUntilIdle();
+        Assert.True(openItem.IsIconTrayVisible);
+
+        file.Items.Remove(iconed); // …and LEAVES
+        host.RunUntilIdle();
+        Assert.False(openItem.IsIconTrayVisible);
+    }
+
+    [Fact] // standalone (no owning menu): the item's own icon decides — the tray must not hide a lone icon
+    public void C6_IconTray_StandaloneFallsBackToOwnIcon()
+    {
+        var lone = new MenuItem { Header = "Lone" };
+        Assert.False(lone.IsIconTrayVisible);
+
+        lone.Icon = "★";
+        Assert.True(lone.IsIconTrayVisible);
+    }
+
 }

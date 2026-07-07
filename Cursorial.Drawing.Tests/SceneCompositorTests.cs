@@ -515,6 +515,198 @@ public class SceneCompositorTests
         AssertNoSplitPairs(buffer);
     }
 
+    // ── emoji stomping under higher layers ──
+    // Color emoji ignore the SGR foreground: a kept-and-tinted glyph renders as a full-color
+    // bitmap straight through the covering layer — through opaque dialogs AND translucent menu
+    // chrome (both observed live on macOS). A bitmap cannot be tinted, only removed: ANY cover
+    // whose background contributes (not fully transparent) stomps emoji. Text glyphs keep the
+    // tint contract (ghost-through/dim); same-scene selection highlights draw bg-under-glyphs at
+    // raster time and never reach the cross-layer path at all.
+
+    [Fact]
+    public void OpaqueCover_StompsEmojiPair_ButKeepsTextGlyphs()
+    {
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 2);
+        content.Draw(ctx =>
+        {
+            ctx.DrawText(1, 0, "✅", Red);   // emoji pair at (1,2)
+            ctx.DrawText(5, 0, "中", Red);   // CJK pair at (5,6)
+            ctx.DrawText(8, 0, "x", Red);    // plain text at 8
+        });
+
+        var cover = Scene.Create(12, 2);
+        Fill(cover, new SolidColorBrush(Red)); // OPAQUE background-only layer over everything
+
+        Assert.True(compositor.Composite([new SceneLayer(content), new SceneLayer(cover)], view));
+
+        // The emoji is STOMPED (no bitmap can render through the cover)…
+        Assert.True(string.IsNullOrEmpty(buffer[1, 0].Grapheme), $"emoji survived: '{buffer[1, 0].Grapheme}'");
+        Assert.Equal(CellKind.Single, buffer[1, 0].Kind);
+        Assert.Equal(CellKind.Single, buffer[2, 0].Kind);
+
+        // …while text glyphs keep the tint contract (kept, foreground == background ⇒ invisible).
+        Assert.Equal("中", buffer[5, 0].Grapheme);
+        Assert.Equal(buffer[5, 0].Style.Background, buffer[5, 0].Style.Foreground);
+        Assert.Equal("x", buffer[8, 0].Grapheme);
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void TranslucentCover_StompsEmoji_TextGhostsThrough()
+    {
+        // Translucent chrome (fancy menus/popups) dims the text beneath it — but a bitmap cannot
+        // be dimmed, only removed. Any contributing background stomps emoji; text keeps ghosting.
+        var buffer = new CellBuffer(10, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(10, 1);
+        content.Draw(ctx =>
+        {
+            ctx.DrawText(2, 0, "✅", Red);
+            ctx.DrawText(6, 0, "ab", Red);
+        });
+
+        var chrome = Scene.Create(10, 1);
+        Fill(chrome, new SolidColorBrush(RedHalf)); // translucent
+
+        Assert.True(compositor.Composite([new SceneLayer(content), new SceneLayer(chrome)], view));
+
+        Assert.True(string.IsNullOrEmpty(buffer[2, 0].Grapheme), $"emoji survived: '{buffer[2, 0].Grapheme}'");
+        Assert.Equal("a", buffer[6, 0].Grapheme); // text keeps the dimmed ghost-through look
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void FullyTransparentCover_KeepsEmoji()
+    {
+        // A pass-through cell (bg alpha 0 — contributes nothing) leaves everything untouched,
+        // emoji included. Layer-opacity fades scale toward transparent and land here too.
+        var buffer = new CellBuffer(8, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(8, 1);
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Red));
+
+        var passThrough = Scene.Create(8, 1);
+        Fill(passThrough, new SolidColorBrush(Color.FromRgba(255, 0, 0, 0))); // fully transparent
+
+        compositor.Composite([new SceneLayer(content), new SceneLayer(passThrough)], view);
+
+        Assert.Equal("✅", buffer[2, 0].Grapheme);
+        Assert.Equal(CellKind.WideLeft, buffer[2, 0].Kind);
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void TranslucentOccluderLayer_StompsEmoji_TextStillTintsThrough()
+    {
+        // The live repro shape (fancy translucent menu, an occluder surface): a menu row
+        // reverting from its opaque selection highlight to the translucent normal background
+        // resurfaced the emoji beneath it. Any contributing background stomps — the occluder
+        // flag is not load-bearing, but this pins the exact scenario from the field.
+        var buffer = new CellBuffer(12, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 1);
+        content.Draw(ctx =>
+        {
+            ctx.DrawText(1, 0, "✅", Red);
+            ctx.DrawText(5, 0, "ab", Red);
+        });
+
+        var menu = Scene.Create(12, 1);
+        Fill(menu, new SolidColorBrush(RedHalf)); // translucent chrome
+
+        Assert.True(compositor.Composite(
+            [new SceneLayer(content), new SceneLayer(menu) { IsOccluder = true }], view));
+
+        Assert.True(string.IsNullOrEmpty(buffer[1, 0].Grapheme), $"emoji survived the occluder: '{buffer[1, 0].Grapheme}'");
+        Assert.Equal("a", buffer[5, 0].Grapheme); // text keeps the dimmed ghost-through look
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void OpaqueCover_OverOnlyTheRightHalf_StompsTheWholeEmoji()
+    {
+        // A layer edge landing mid-pair: covering just the continuation must stomp the whole
+        // glyph — the terminal cannot render half an emoji bitmap, and leaving the WideLeft
+        // would paint the bitmap over the covering layer's first column.
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 2);
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+
+        var cover = Scene.Create(4, 2);
+        Fill(cover, new SolidColorBrush(Red)); // opaque, footprint starts at the continuation column
+
+        Assert.True(compositor.Composite(
+            [new SceneLayer(content), new SceneLayer(cover, new CompositeParameters(offsetColumn: 5))], view));
+
+        Assert.True(string.IsNullOrEmpty(buffer[4, 0].Grapheme), $"left half survived: '{buffer[4, 0].Grapheme}'");
+        Assert.NotEqual(CellKind.WideLeft, buffer[4, 0].Kind);
+
+        // Audit F1: the UNCOVERED half must keep a composited style — never the indexer
+        // hygiene's default(Style), which would punch a terminal-default hole at the cover edge.
+        Assert.NotEqual(default, buffer[4, 0].Style);
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void OpaqueCover_OverOnlyTheLeftHalf_StompsWholePair_NoDefaultStyleHole()
+    {
+        // The mirror edge: the cover ENDS mid-pair (clipped to cover only the WideLeft). The
+        // whole emoji stomps and the uncovered continuation column keeps a real style.
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 2);
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+
+        var cover = Scene.Create(5, 2);
+        Fill(cover, new SolidColorBrush(Red)); // opaque, footprint columns 0..4 — covers ONLY the WideLeft
+
+        Assert.True(compositor.Composite(
+            [new SceneLayer(content), new SceneLayer(cover)], view));
+
+        Assert.True(string.IsNullOrEmpty(buffer[4, 0].Grapheme));
+        Assert.True(string.IsNullOrEmpty(buffer[5, 0].Grapheme), $"right half survived: '{buffer[5, 0].Grapheme}'");
+        Assert.Equal(CellKind.Single, buffer[5, 0].Kind);
+        Assert.NotEqual(default, buffer[5, 0].Style); // audit F1: no default-style hole outside the cover
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void TransparentForegroundEmoji_UnderFullyTransparentCover_Keeps()
+    {
+        // An emoji authored with a transparent foreground ("fg doesn't matter for emoji") is
+        // still an emoji: it keeps under a pure pass-through cover and stomps under any
+        // contributing one — the gate reads the COVER's background, never the target's colors.
+        var buffer = new CellBuffer(8, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(8, 1);
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Color.FromRgba(0, 0, 0, 0))); // transparent fg
+
+        var passThrough = Scene.Create(8, 1);
+        Fill(passThrough, new SolidColorBrush(Color.FromRgba(255, 0, 0, 0)));
+
+        compositor.Composite([new SceneLayer(content), new SceneLayer(passThrough)], view);
+
+        Assert.Equal("✅", buffer[2, 0].Grapheme);
+        AssertNoSplitPairs(buffer);
+    }
+
     [Fact]
     public void VerticalSlide_WithWideGlyphs_KeepsPairsIntact()
     {

@@ -1098,6 +1098,17 @@ internal static class ControlThemes
                      header.SetBinding(ContentPresenter.ContentProperty,
                                        new TemplateBinding(HeaderedItemsControl.HeaderProperty));
 
+                     var icon = new ContentPresenter { Visibility = Visibility.Collapsed };
+                     var iconTray = new Border { Width = 2, Height = 1, Child = icon, Margin = new Margins(0, 0, 1, 0) };
+                     
+                     ctx.RegisterName("PART_IconTray", iconTray);
+                     ctx.RegisterName("PART_Icon", icon);
+                     
+                     DockPanel.SetDock(iconTray, Dock.Left);
+
+                     iconTray.SetBinding(UIElement.VisibilityProperty,
+                                         new TemplateBinding(MenuItem.IsIconTrayVisibleProperty) { Converter = BooleanToVisibilityConverter.Instance });
+                     
                      var submenuIndicator = new TextBlock { RenderOffsetColumn = 1, Text = "▸" };
                      ctx.RegisterName("PART_SubmenuIndicator", submenuIndicator);
 
@@ -1121,6 +1132,7 @@ internal static class ControlThemes
                      DockPanel.SetDock(gesture, Dock.Right);
 
                      var row = new DockPanel();
+                     row.Children.Add(iconTray);         // docked far-right
                      row.Children.Add(submenuIndicator); // docked far-right
                      row.Children.Add(gesture);          // docked right (faint gesture hint)
                      row.Children.Add(header);           // fills the remaining width
@@ -1164,6 +1176,16 @@ internal static class ControlThemes
             new Style(Selectors.OfType<MenuItem>().PseudoClass(":top-level").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
                .Set(UIElement.VisibilityProperty, Visibility.Collapsed)
         );
+
+        // t.Styles.Add(
+        //     new Style(Selectors.OfType<MenuItem>().PseudoClass(":highlighted").Template().OfType<Border>().Name("PART_IconTray"))
+        //        .SetResource(Border.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted)
+        // );
+        //
+        // t.Styles.Add(
+        //     new Style(Selectors.OfType<MenuItem>().PseudoClass(":pointerover").Template().OfType<Border>().Name("PART_IconTray"))
+        //        .SetResource(Border.BackgroundProperty, ThemeKeys.MenuBackgroundHover)
+        // );
         
         return t;
     }

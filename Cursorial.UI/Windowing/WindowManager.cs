@@ -81,6 +81,54 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <summary>The z-ordered surface stack (bottom→top); the root surface, when present, is the bottom.</summary>
     public IReadOnlyList<TopLevelSurface> Surfaces => _surfaces;
 
+    /// <summary>
+    /// Inspector/diagnostic helper: samples what every composited layer contributes at screen cell
+    /// (<paramref name="column"/>, <paramref name="row"/>), ordered bottom→top. Each entry translates the
+    /// screen coordinate into the layer's local space (its composite offset) and returns the cell there, or a
+    /// null <see cref="LayerCellSample.Cell"/> when the coordinate falls outside that layer's footprint. Useful
+    /// for diagnosing overlay compositing — e.g. a wide glyph on a lower layer whose continuation a higher layer
+    /// covers, the mechanism behind an overlay bleed. Reflects the surfaces' last-rendered scenes (it re-collects
+    /// their layers) and does not run a fresh render pass, so call it after a settled frame.
+    /// </summary>
+    internal IReadOnlyList<LayerCellSample> SampleCell(int column, int row)
+    {
+        var scratch = new List<SceneLayer>();
+        var samples = new List<LayerCellSample>();
+        var descriptions = new List<string>();
+
+        for (var i = 0; i < _surfaces.Count; i++)
+        {
+            scratch.Clear();
+            descriptions.Clear();
+
+            var surface = _surfaces[i];
+            var isOccluder = !ReferenceEquals(surface, _rootSurface) && !ReferenceEquals(surface, _keyTipSurface);
+
+            surface.CollectLayers(scratch, surfaceZ: i, isOccluder: isOccluder, descriptions);
+
+            for (var j = 0; j < scratch.Count; j++)
+            {
+                var layer = scratch[j];
+                int localColumn = column - layer.Parameters.OffsetColumn;
+                int localRow = row - layer.Parameters.OffsetRow;
+
+                bool inside = localColumn >= 0 && localColumn < layer.Scene.Columns
+                                               && localRow >= 0 && localRow < layer.Scene.Rows;
+
+                samples.Add(
+                    new LayerCellSample(j,
+                                        layer.Parameters,
+                                        inside
+                                            ? layer.Scene.GetCell(localColumn, localRow)
+                                            : null,
+                                        descriptions[j])
+                );
+            }
+        }
+
+        return samples;
+    }
+
     /// <summary>The chrome-less application-root surface, or <see langword="null"/> until a root is set.</summary>
     public TopLevelSurface? RootSurface => _rootSurface;
 
@@ -1443,3 +1491,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                                              });
     }
 }
+
+/// <summary>
+/// One composited layer's contribution at a sampled screen cell (see <see cref="WindowManager.SampleCell"/>),
+/// carrying the layer's z-order (bottom→top) and its composite <see cref="Parameters"/>. <see cref="Cell"/> is
+/// <see langword="null"/> when the sampled screen coordinate falls outside this layer's footprint.
+/// </summary>
+internal readonly record struct LayerCellSample(int SurfaceZ, CompositeParameters Parameters, Cell? Cell, string? ElementDescription = null);

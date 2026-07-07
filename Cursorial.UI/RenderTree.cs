@@ -203,7 +203,7 @@ public sealed class RenderTree
     /// beyond the caller's list growth.
     /// </summary>
     public void CollectLayers(List<SceneLayer> target, int windowOffsetColumn = 0, int windowOffsetRow = 0, double windowOpacity = 1.0,
-                              int surfaceZ = 0, bool isOccluder = false)
+                              int surfaceZ = 0, bool isOccluder = false, List<string>? boundaryDescriptions = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         _root.VerifyAccess();
@@ -241,6 +241,16 @@ public sealed class RenderTree
             }
 
             target.Add(new SceneLayer(zone.Scene, parameters) { SurfaceZ = surfaceZ, IsOccluder = isOccluder });
+            
+            if (boundaryDescriptions is not null)
+            {
+                var description = zone.Boundary.GetType().Name;
+
+                if (zone.Boundary.Name is { Length: > 0 } name)
+                    description += $"#{name}";
+
+                boundaryDescriptions.Add(description);
+            }
         }
     }
 

@@ -561,13 +561,14 @@ internal static class CursorialBarsTheme
     public static Style MiniToolbarStyle()
         => new Style { Key = "Bars.MiniToolbar" }
             .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationPopup)
+            .Set(Control.BorderPenProperty, null)
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var host = new ItemsPresenter();
                 ctx.RegisterName("PART_ItemsHost", host);
                 var border = new Border { Child = host };
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+                border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
                 return border;
             }));
 

@@ -56,6 +56,7 @@ public sealed class MiniToolbar : ItemsControl
         _pendingTarget = target;
         _popup.PlacementTarget = target;
         _popup.Placement = PlacementMode.Pointer; // land at the right-click cell
+        _popup.VerticalOffset = 1;
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
     }
 

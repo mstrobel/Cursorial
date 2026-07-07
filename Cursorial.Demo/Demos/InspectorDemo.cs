@@ -102,7 +102,7 @@ internal sealed class InspectorDemo : IDemo
                             <RowDefinition Height="*" />
                           </Grid.RowDefinitions>
                           
-                          <Button        Grid.Column="0" Grid.Ro"0" Content="_Cancel" MinWidth="10"
+                          <Button        Grid.Column="0" Grid.Row="0" Content="_Cancel" MinWidth="10"
                                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
                           <TextBlock     Grid.Column="2" Grid.Row="0" Text="normal" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
                           

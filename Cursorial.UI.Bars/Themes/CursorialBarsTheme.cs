@@ -83,6 +83,15 @@ internal static class CursorialBarsTheme
                 new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartSmallMediumFace))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
 
+                // LayoutMode Simplified/Compact (the ribbon-wide inherited :layout-simplified signal): demote the
+                // Large face to the [icon][label] medium row, labels kept — the Office simplified-ribbon look. Same
+                // never-touch-ButtonSize contract as the density rules below; equal specificity, later declaration
+                // wins over :size-large.
+                new Style(Selectors.Nesting().PseudoClass(":layout-simplified").Template().Name(PartLargeFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":layout-simplified").Template().Name(PartSmallMediumFace))
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+
                 // Density Compact (the band's inherited :density-compact signal): demote EVERY control to the compact
                 // inline row, overriding :size-large. These two rules are equal-specificity to the :size-large rules
                 // above (1 pseudo + 1 /template/ name), so they win by DOCUMENT ORDER (declared later) — ButtonSize is
@@ -861,6 +870,7 @@ internal static class CursorialBarsTheme
             ctx.RegisterName("PART_Launcher", launcher);
 
             var footer = new DockPanel();
+            ctx.RegisterName("PART_GroupFooter", footer);
             DockPanel.SetDock(launcher, Dock.Right);
             footer.Children.Add(launcher);
             footer.Children.Add(name);
@@ -915,6 +925,11 @@ internal static class CursorialBarsTheme
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":has-launcher").Template().Name("PART_Launcher"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    // Simplified/Compact layout modes drop the group-name footer row (the collapsed dropdown and
+                    // flyout keep showing the name) — the band becomes a single toolbar-like row. Declared after the
+                    // :has-launcher rule so it also hides the launcher riding in the footer.
+                    new Style(Selectors.Nesting().PseudoClass(":layout-simplified").Template().Name("PART_GroupFooter"))
+                        .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     // Collapsed tier: swap the inline column for the [name ▾] dropdown. The button is hidden by default
                     // (a Style rule, NOT a local set, so the :density-collapsed rule can flip it — a LocalValue would
                     // out-rank the style); the inline column hides under the same class.

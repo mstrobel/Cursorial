@@ -93,7 +93,7 @@ internal sealed class NegotiateDemo : IDemo
         Header("Output — Text Sizing (Kitty OSC 66)");
         Row("Width (w=)",            caps.Output.TextSizing.Width);
         Row("Scale (s=, n=/d=)",     caps.Output.TextSizing.Scale);
-        Row("Reliable Wide Glyphs",  caps.Output.TextSizing.WideGlyphs);
+        Row("Reliable Wide Glyphs",  caps.Output.TextSizing.ReliableWideGlyphs);
 
         Header("Output — Graphics");
         Row("Sixel",                 caps.Output.Graphics.Sixel);

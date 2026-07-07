@@ -44,6 +44,7 @@ internal static class CursorialBarsTheme
 
         row.Children.Add(icon);
         row.Children.Add(label);
+        ctx.RegisterName(PartIcon, icon);
         ctx.RegisterName(PartMediumLabel, label);
         ctx.RegisterName(PartSmallMediumFace, row);
 
@@ -104,6 +105,9 @@ internal static class CursorialBarsTheme
                 // blanking out — the design's "don't collapse label-only buttons" smarts.
                 new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartMediumLabel))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                // Add a 1-cell left margin to the label for Medium buttons that have an icon.
+                new Style(Selectors.Nesting().PseudoClass(":has-icon").Template().Name(PartMediumLabel))
+                    .Set(UIElement.MarginProperty, new Margins(1, 0, 0, 0)),
             },
         });
         return border;
@@ -112,6 +116,7 @@ internal static class CursorialBarsTheme
     private const string PartSmallMediumFace = "PART_SmallMediumFace";
     private const string PartMediumLabel = "PART_MediumLabel";
     private const string PartLargeFace = "PART_LargeFace";
+    private const string PartIcon = "PART_Icon";
 
     // A bar button is flat on the toolbar at rest (no resting Background — the surface shows through); only the
     // interactive states fill, using the Button-specific brush keys (style-guide KEYS) so the bars re-skin in step

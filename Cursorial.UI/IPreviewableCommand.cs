@@ -29,10 +29,20 @@ namespace Cursorial.UI;
 /// active dry-run — so a command gated mid-session nets out to "dry-run unwound, execution refused".</item>
 /// </list>
 /// </para>
-/// See <see cref="Bars.BarCommand"/> for the delegate-based implementation.
+/// See <c>BarCommand</c> for the delegate-based implementation.
 /// </summary>
 public interface IPreviewableCommand : ICommand
 {
+    /// <summary>
+    /// Whether this command supports dry-runs <em>at all</em> — the <b>structural</b> gate, as opposed to
+    /// <see cref="ICommand.CanExecute"/>'s <b>runtime</b> gate ("may I run right now"). A previewing control probes
+    /// this before starting a preview session, so a wrapper command (a <c>BarCommand</c> whose bindable
+    /// inner command may or may not be previewable) can answer honestly instead of advertising verbs that would
+    /// no-op — the probe never lies. (A deliberate departure from Actipro's Avalonia interface, which has no such
+    /// member: it never wraps, so implementing the interface IS the capability there.)
+    /// </summary>
+    bool CanPreview { get; }
+
     /// <summary>The dry-run <c>Execute</c>: produce the effect for <paramref name="parameter"/> so the user can see
     /// the outcome, committing nothing — and keep enough state to restore exactly on <see cref="CancelPreview"/>.
     /// Must refuse (no-op) while <see cref="ICommand.CanExecute"/> is <see langword="false"/>; a repeat preview

@@ -141,7 +141,10 @@ public class BarComboBox : ComboBox
         if (!IsDropDownOpen || !_valueSession || SelectedIndex < 0 || ValueParameter is not { } parameter)
             return;
 
-        if (Command is not IPreviewableCommand previewable)
+        // The probe is the STRUCTURAL gate (CanPreview — "do you support dry-runs at all"): a wrapper command
+        // (BarCommand) forwards it honestly from its inner command, so a session never starts on advertised verbs
+        // the inner cannot honor.
+        if (Command is not IPreviewableCommand { CanPreview: true } previewable)
             return;
 
         // The dispatch — payload write included — is gated: a gated command acquires no NEW tentative state and
@@ -181,7 +184,7 @@ public class BarComboBox : ComboBox
         // exact pre-preview state, so Execute later runs on clean state (zero preview awareness) and a dismissal
         // leaves no residue. CancelPreview is a command-side cleanup verb structurally outside the Execute gate
         // (the atomicity contract) — a command that gated itself mid-session still receives the unwind.
-        if (hadPreview && parameter is not null && Command is IPreviewableCommand previewable)
+        if (hadPreview && parameter is not null && Command is IPreviewableCommand { CanPreview: true } previewable)
             previewable.CancelPreview(CommandParameter);
 
         // The commit stays gated (payload write included): a gated command refuses the commit outright. Anything

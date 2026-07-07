@@ -23,9 +23,9 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartGestureText, typeof(TextBlock))]  // optional: a leaf item's template may omit the submenu surface
 public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 {
-    private const string PartPopup = "PART_Popup";
-    private const string PartIcon = "PART_Icon";
-    private const string PartGestureText = "PART_GestureText";
+    internal const string PartPopup = "PART_Popup";
+    internal const string PartIcon = "PART_Icon";
+    internal const string PartGestureText = "PART_GestureText";
 
     /// <inheritdoc cref="IsWithinMenuProperty"/>
     internal static readonly UIPropertyKey<bool> IsWithinMenuPropertyKey =
@@ -74,6 +74,17 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public static readonly DirectProperty<MenuItem, bool> IsTopLevelProperty =
         UIProperty.RegisterDirect<MenuItem, bool>(nameof(IsTopLevel), getter: o => o.IsTopLevel);
 
+    /// <summary>
+    /// Whether this item's template should reserve the icon-tray gutter: <see langword="true"/> for a
+    /// non-top-level item that has an <see cref="Icon"/> or any sibling in the same menu popup that
+    /// does — the whole popup answers identically, so labels stay column-aligned whether or not each
+    /// individual row carries an icon. Top-level bar items never show a tray. A read-only binding
+    /// source (the tray visibility in a control template binds it); re-evaluated when any sibling's
+    /// icon changes or items enter/leave the popup.
+    /// </summary>
+    public static readonly DirectProperty<MenuItem, bool> IsIconTrayVisibleProperty =
+        UIProperty.RegisterDirect<MenuItem, bool>(nameof(IsIconTrayVisible), getter: o => o.IsIconTrayVisible);
+
     /// <summary>The bubbling event raised when a leaf item is invoked.</summary>
     public static readonly RoutedEvent<ClickEventArgs> ClickEvent =
         RoutedEvent<ClickEventArgs>.Register(nameof(Click), RoutingStrategy.Bubble, typeof(MenuItem));
@@ -85,6 +96,8 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     // private bool _isPointerOver;
     private bool _hasItemsCached;
     private bool _isTopLevelCached;
+    private bool _isIconTrayVisibleCached;
+    private ItemsControl? _iconTrayOwner; // the owner at attach — detach must refresh the group it LEFT
     private char _registeredAccessKey;
     private Popup? _popup;
     private ContentPresenter? _icon;
@@ -142,6 +155,34 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     /// <inheritdoc cref="IsTopLevelProperty"/>
     public bool IsTopLevel => OwnerItemsControl is Menu;
 
+    /// <inheritdoc cref="IsIconTrayVisibleProperty"/>
+    public bool IsIconTrayVisible
+    {
+        get
+        {
+            if (OwnerItemsControl is not { } owner)
+                return HasValidIcon(Icon); // standalone (no popup): its own icon decides
+
+            return owner is not Menu && AnyContainerHasIcon(owner);
+        }
+    }
+
+    // 'Valid' is simply non-null for now — one place to tighten if that ever changes.
+    private static bool HasValidIcon(object? icon) => icon is not null;
+
+    private static bool AnyContainerHasIcon(ItemsControl owner)
+    {
+        var generator = owner.ItemContainerGenerator;
+
+        for (var i = 0; i < generator.ContainerCount; i++)
+        {
+            if (generator.ContainerFromIndex(i) is MenuItem sibling && HasValidIcon(sibling.Icon))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>CLR sugar over <see cref="ClickEvent"/>.</summary>
     public event EventHandler<ClickEventArgs>? Click
     {
@@ -167,6 +208,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         RegisterAccessKey();   // register the Header mnemonic with the AccessKeyManager (doc §12.5)
         UpdateHasItems();
         UpdateIsTopLevel();
+
+        // This item may bring the popup's first icon (or join an iconed group) — refresh the group,
+        // and remember the owner: detach must refresh the group this item LEAVES.
+        _iconTrayOwner = OwnerItemsControl;
+        RefreshIconTrayGroup(_iconTrayOwner);
     }
 
     /// <inheritdoc/>
@@ -178,6 +224,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         UnsubscribeCanExecute();
         UnregisterAccessKey();
         UpdateHasItems();
+
+        // Refresh the group this item is LEAVING (it may have carried the popup's last icon) via
+        // the owner captured at attach — the logical link may already be severed here.
+        var leftGroup = _iconTrayOwner;
+        _iconTrayOwner = null;
+        RefreshIconTrayGroup(leftGroup);
+
         base.OnDetachedFromTree(in e);
     }
 
@@ -606,6 +659,41 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         }
     }
 
+    private void UpdateIsIconTrayVisible()
+    {
+        var was = _isIconTrayVisibleCached;
+        var now = IsIconTrayVisible;
+
+        if (was != now)
+        {
+            _isIconTrayVisibleCached = now;
+            DispatchPropertyChanged(IsIconTrayVisibleProperty, null, was, now, BindingPriority.LocalValue);
+        }
+    }
+
+    /// <summary>
+    /// Re-evaluates <see cref="IsIconTrayVisible"/> for this item AND every sibling in the same
+    /// popup — the tray is a per-popup fact, so one item's icon (or arrival/departure) flips the
+    /// whole group. <paramref name="owner"/> overrides the live owner walk for the detach path,
+    /// where the logical link is already severed and only the captured owner knows the group.
+    /// </summary>
+    private void RefreshIconTrayGroup(ItemsControl? owner = null)
+    {
+        owner ??= OwnerItemsControl;
+        UpdateIsIconTrayVisible();
+
+        if (owner is null)
+            return;
+
+        var generator = owner.ItemContainerGenerator;
+
+        for (var i = 0; i < generator.ContainerCount; i++)
+        {
+            if (generator.ContainerFromIndex(i) is MenuItem sibling && !ReferenceEquals(sibling, this))
+                sibling.UpdateIsIconTrayVisible();
+        }
+    }
+
     private void UpdateIconSite()
     {
         if (_icon is null)
@@ -705,6 +793,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             return;
 
         item.UpdateIconSite();
+
+        // An icon appearing on (or leaving) ANY item flips the whole popup's tray — refresh the group.
+        item.RefreshIconTrayGroup();
     }
 
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)

@@ -431,8 +431,8 @@ public static class GraphemeWidth
     /// right margin. This predicate lets the renderer detect width-uncertain glyphs and defend
     /// the cursor position (re-anchor with an explicit move after each one) so the drift can't
     /// compound — see <c>FrameRenderer.EmitDiff</c>, gated on
-    /// <c>TextSizingCapabilities.WideGlyphs == false</c> just like the wide-glyph neighbor-fill
-    /// defense.
+    /// <c>TextSizingCapabilities.ReliableWideGlyphs == false</c> just like the wide-glyph
+    /// neighbor-fill defense.
     /// </para>
     /// <para>
     /// The table covers the contiguous BMP blocks that are wholly or predominantly EAW=A and

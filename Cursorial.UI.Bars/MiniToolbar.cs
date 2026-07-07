@@ -30,6 +30,7 @@ public sealed class MiniToolbar : ItemsControl
     {
         ItemsPanel = new ItemsPanelTemplate(static _ => new StackPanel { Orientation = Orientation.Horizontal });
         Focusable = false;
+        Ribbon.SetButtonSize(this, RibbonButtonSize.Small);
     }
 
     /// <summary>Reads <see cref="BarProperty"/> — the mini toolbar attached to <paramref name="element"/>.</summary>

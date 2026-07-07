@@ -578,7 +578,7 @@ public sealed class FrameRenderer
                 // intact. Either way we mark the cursor dirty afterward, so the next emit
                 // issues an explicit CUP rather than trusting the actual advance count.
                 bool wideDefense = cell.Kind == CellKind.WideLeft &&
-                                   _capabilities?.TextSizing.WideGlyphs is false &&
+                                   _capabilities?.TextSizing.ReliableWideGlyphs is false &&
                                    c + 1 < back.Columns;
 
                 // Ambiguous-width defense: a glyph we count as a single cell (CellKind.Single,
@@ -591,7 +591,7 @@ public sealed class FrameRenderer
                 // the "horizontal rules vanish on GNOME Terminal with ambiguous=wide" symptom).
                 // Painting the neighbor first means a narrow-rendering terminal keeps c+1's
                 // content, while a wide-rendering one has it covered by the glyph. Gated on the
-                // same WideGlyphs capability as the wide-glyph defense.
+                // same ReliableWideGlyphs capability as the wide-glyph defense.
                 //
                 // KNOWN LIMITATION — distinct ambiguous neighbors on an ambiguous-wide terminal.
                 // This is correct when the neighbor is identical to or coverable by the glyph (a
@@ -612,7 +612,7 @@ public sealed class FrameRenderer
                                         cell.Kind == CellKind.Single &&
                                         cell.Width == 1 &&
                                         c + 1 < back.Columns &&
-                                        _capabilities?.TextSizing.WideGlyphs is false &&
+                                        _capabilities?.TextSizing.ReliableWideGlyphs is false &&
                                         IsAmbiguousWidthGrapheme(cell.Grapheme);
 
                 if (ambiguousDefense)

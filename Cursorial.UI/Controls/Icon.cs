@@ -140,35 +140,67 @@ public class Icon : Control
     // Picks the highest-preference tier that is both provided and supported; the unicode Text tier is the floor.
     private void ResolveTier()
     {
+        var oldTier = Tier;
         var nerdFont = UIApplication.Current?.NerdFontAvailable ?? false;
 
         if (nerdFont && !string.IsNullOrEmpty(Glyph))
         {
             Tier = IconTier.Glyph;
-            var text = new TextBlock { TextAlignment = TextAlignment.Center };
-            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
-            text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
-            ResolvedContent = text;
         }
         else if ((Image is not null || ImageUri is not null) && GraphicsSupported)
         {
             // The image tier; the ImagePresenter shows the Text tier as its placeholder when a graphics protocol is
             // present but cannot carry this image's specific format (e.g. a JPEG on a Kitty-only terminal).
             Tier = IconTier.Image;
-            ResolvedContent = new ImagePresenter { Source = Image, SourceUri = ImageUri, PlaceholderContent = Text };
         }
         else if (!string.IsNullOrEmpty(Emoji) && (UIApplication.Current?.EmojiAvailable ?? false))
         {
             // The emoji tier (FB-15) — between Image and Text: richer than single-width Unicode, wins on
             // emoji-capable image-less terminals. Measures at its natural (double-cell) grapheme width.
             Tier = IconTier.Emoji;
-            ResolvedContent = Emoji;
         }
         else
         {
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
             Tier = IconTier.Text;
-            ResolvedContent = Text;
+        }
+
+        // Content hosts for all four tiers use bindings to ensure up-to-date content.
+        // No need to regenerate the content hosts if they already exist, *and* the tier hasn't changed.
+        if (oldTier != Tier || ResolvedContent is null)
+            EnsureContent();
+    }
+
+    private void EnsureContent()
+    {
+        var tier = Tier;
+
+        if (tier is IconTier.Glyph)
+        {
+            var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = GlyphWidth };
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
+            text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
+            ResolvedContent = text;
+        }
+        else if (tier is IconTier.Image)
+        {
+            var presenter = new ImagePresenter { Source = Image, SourceUri = ImageUri, PlaceholderContent = Text };
+            presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(nameof(Image)) { Source = this });
+            presenter.SetBinding(ImagePresenter.SourceUriProperty, new Binding(nameof(ImageUri)) { Source = this });
+            ResolvedContent = presenter;
+        }
+        else if (tier is IconTier.Emoji)
+        {
+            var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = 2 };
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this  });
+            ResolvedContent = text;
+        }
+        else
+        {
+            // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
+            var text = new TextBlock { TextAlignment = TextAlignment.Center };
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this  });
+            ResolvedContent = text;
         }
     }
 
@@ -195,5 +227,5 @@ public enum IconTier
     /// <summary>The double-width color-emoji <see cref="Icon.Emoji"/> tier (FB-15) — shown unless
     /// <see cref="UIApplication.EmojiAvailable"/> is disabled (opt-out, default present); sits between
     /// Image and Text in preference.</summary>
-    Emoji,
+    Emoji
 }

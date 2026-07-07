@@ -78,6 +78,7 @@ public class GraphemeWidthTests
     [InlineData(0x1F004)] // 🀄
     [InlineData(0x1F1E6)] // regional indicator (flag half)
     [InlineData(0x1F21A)] // 🈚
+    [InlineData(0x1F171)] // 🅱
     public void CodepointWidth_EmojiPresentationDefaults_AreTwo(int cp)
     {
         Assert.Equal(2, GraphemeWidth.CodepointWidth(cp));

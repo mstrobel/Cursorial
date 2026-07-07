@@ -115,5 +115,113 @@ public sealed partial class UIApplication
 
         _userOptions = UserOptionsStore.Load(applicationId, configuration.PathProvider);
         UserConfigurationApplier.Apply(_userOptions, this);
+
+        // First-run wizard (Stage B): the GLOBAL marker gates it — first-run onboarding is a
+        // per-system experience, not per-app (an app re-shows via ForceFirstRunWizard). Posted:
+        // the wizard is a modal window and must open from a frame's dispatcher phase, after the
+        // root has a chance to show — never synchronously mid-startup.
+        if (configuration.ForceFirstRunWizard ||
+            (configuration.ShowFirstRunWizard &&
+             _userOptions.GetBoolean(UserOptionKeys.FirstRunCompleted) is not true))
+        {
+            Dispatcher.Post(() => _ = RunFirstRunWizardAsync());
+        }
+    }
+
+    private async Task RunFirstRunWizardAsync()
+    {
+        try
+        {
+            await FirstRunWizard.ShowAsync(this); // resumes on the UI thread (frame-coherent sync context)
+        }
+        catch (Exception ex)
+        {
+            RaiseUnhandled(ex);
+            return; // the wizard never (fully) showed — do NOT mark the first run completed
+        }
+
+        // Completing OR skipping counts — the wizard must never nag. A failed marker save is a
+        // diagnostic, not a crash (it will re-offer next run, which is the honest behavior when
+        // the config directory is unwritable anyway).
+        try
+        {
+            _userOptions!.SetGlobal(UserOptionKeys.FirstRunCompleted, true);
+            _userOptions.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _userOptions!.AddDiagnostic($"Could not persist the first-run marker: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Opens the settings dialog (<see cref="Configuration.UserOptionsDialog"/>) modally —
+    /// the programmatic twin of the configured chord (default Ctrl+Shift+O). At most one
+    /// instance: while it is open, callers get the SAME task. UI thread only. Requires the app
+    /// to have opted into user configuration
+    /// (<see cref="UIApplicationBuilder.WithUserConfiguration"/>).
+    /// </summary>
+    public Task ShowUserOptionsDialogAsync()
+    {
+        Dispatcher.VerifyAccess();
+
+        if (_userOptions is null)
+        {
+            throw new InvalidOperationException(
+                "The application has no user-options store — opt in via UIApplicationBuilder.WithUserConfiguration.");
+        }
+
+        return _optionsDialogTask ??= ShowCoreAsync();
+
+        async Task ShowCoreAsync()
+        {
+            try
+            {
+                await UserOptionsDialog.ShowAsync(this); // resumes on the UI thread
+            }
+            finally
+            {
+                _optionsDialogTask = null;
+            }
+        }
+    }
+
+    private Task? _optionsDialogTask;
+
+    /// <summary>The user-configuration options the app was built with (the wizard reads the configured chord).</summary>
+    internal UserConfigurationOptions? UserConfigurationInternal => _options.UserConfiguration;
+
+    /// <summary>
+    /// The framework binding behind the options-dialog chord: opens the dialog, single-instance
+    /// (a second chord while open is a no-op — the existing task is returned, not a new dialog).
+    /// </summary>
+    private sealed class ShowUserOptionsCommand(UIApplication application) : System.Windows.Input.ICommand
+    {
+        private readonly UIApplication _application =
+            application ?? throw new ArgumentNullException(nameof(application));
+
+        public bool CanExecute(object? parameter)
+            => _application._userOptions is not null &&
+               _application._shutdownRequested is false &&
+               _application.Dispatcher.CheckAccess() &&
+               // Never over the modal first-run wizard (two concurrent sessions corrupt the store;
+               // the wizard root carries no chord, but a binding on an inner app element might).
+               _application._windowManager?.Windows.Any(static w => w is FirstRunWizard) is not true;
+
+        public void Execute(object? parameter)
+        {
+            if (!CanExecute(parameter))
+                return;
+
+            // Fire-and-forget by design: the dialog's own faults surface through the exception
+            // funnel; completion is "the user closed it".
+            _ = _application.ShowUserOptionsDialogAsync();
+        }
+
+        event EventHandler? System.Windows.Input.ICommand.CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
     }
 }

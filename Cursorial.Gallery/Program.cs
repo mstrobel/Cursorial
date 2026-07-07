@@ -2,6 +2,7 @@ using Cursorial.Gallery;
 using Cursorial.Gallery.ViewModels;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
+using Cursorial.UI.Configuration;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
@@ -13,7 +14,7 @@ using Cursorial.UI.Input;
 UIApplication app = UIApplication.CreateBuilder()
                                  .WithFrameRate(60)
                                  .UseAlternateScreen()
-                                 .WithUserConfiguration()
+                                 .WithUserConfiguration(/*new UserConfigurationOptions { ShowFirstRunWizard = true }*/)
                                  .Build();
 
 // app.NerdFontAvailable = true;

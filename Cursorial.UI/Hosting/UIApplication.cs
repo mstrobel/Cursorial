@@ -499,27 +499,44 @@ public sealed partial class UIApplication : IAsyncDisposable
         _accessKeys.OnWindowActivated(root); // cue stamping (permanent in AlwaysVisible mode — doc §7.8)
         _lastActiveFocusRoot = root;
 
-        EnsureRedrawBinding(root);
+        EnsureFrameworkBindings(root);
     }
 
     /// <summary>
-    /// Installs the conventional terminal redraw chord (Ctrl+L → <see cref="RequestFullRedraw"/>)
-    /// on an active root — the app root at wire-up AND each window root at activation, since a
-    /// focused window's key route ends at its own surface root and never reaches the app root's
-    /// bindings. Idempotent: window switching re-activates the same roots repeatedly, and the
-    /// sweep must find exactly one framework binding per root. Apps override naturally — bindings
-    /// on elements closer to the focus run first in the bubble, and a handled Ctrl+L never
-    /// reaches this one.
+    /// Installs the framework-wide chords on an active root — the app root at wire-up AND each
+    /// window root at activation, since a focused window's key route ends at its own surface root
+    /// and never reaches the app root's bindings: Ctrl+L → <see cref="RequestFullRedraw"/>, and
+    /// (when the app opted into user configuration) the options-dialog gesture (default
+    /// Ctrl+Shift+O, <see cref="Configuration.UserConfigurationOptions.OptionsDialogGesture"/>).
+    /// Idempotent: window switching re-activates the same roots repeatedly, and the sweep must
+    /// find exactly one framework binding of each kind per root. Apps override naturally —
+    /// bindings on elements closer to the focus run first in the bubble, and a handled chord
+    /// never reaches these.
     /// </summary>
-    private void EnsureRedrawBinding(UIElement root)
+    private void EnsureFrameworkBindings(UIElement root)
     {
+        var hasRedraw = false;
+        var hasOptions = false;
+
         foreach (var binding in root.InputBindings)
         {
-            if (binding is KeyBinding { Command: RequestFullRedrawCommand })
-                return;
+            hasRedraw |= binding is KeyBinding { Command: RequestFullRedrawCommand };
+            hasOptions |= binding is KeyBinding { Command: ShowUserOptionsCommand };
         }
 
-        root.InputBindings.Add(new KeyBinding(KeyGesture.Parse("Ctrl+L"), new RequestFullRedrawCommand(this)));
+        if (!hasRedraw)
+            root.InputBindings.Add(new KeyBinding(KeyGesture.Parse("Ctrl+L"), new RequestFullRedrawCommand(this)));
+
+        // Never install the options chord on the options surfaces themselves: on the DIALOG it is
+        // a no-op at best, and on the modal WIZARD it would open the dialog OVER the wizard — two
+        // concurrent sessions whose snapshot/save interleaving can silently destroy saved values.
+        var isOptionsSurface = root is Configuration.UserOptionsDialog or Configuration.FirstRunWizard;
+
+        if (!hasOptions && !isOptionsSurface && _userOptions is not null &&
+            _options.UserConfiguration is { OptionsDialogGesture: {} gesture })
+        {
+            root.InputBindings.Add(new KeyBinding(gesture, new ShowUserOptionsCommand(this)));
+        }
     }
 
     /// <summary>
@@ -543,7 +560,7 @@ public sealed partial class UIApplication : IAsyncDisposable
         FocusManager.SetIsFocusScope(newRoot, true);
         _focusManager.OnWindowActivated(newRoot);
         _accessKeys.OnWindowActivated(newRoot);
-        EnsureRedrawBinding(newRoot); // a focused window's key route never reaches the app root's Ctrl+L
+        EnsureFrameworkBindings(newRoot); // a focused window's key route never reaches the app root's chords
     }
 
     /// <summary>

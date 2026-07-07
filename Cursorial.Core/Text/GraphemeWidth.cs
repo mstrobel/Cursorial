@@ -370,6 +370,10 @@ public static class GraphemeWidth
                    >= 0x25A0 and <= 0x25FF => true, // Geometric Shapes (■ ● ▲ ▼ …)
                    >= 0x2600 and <= 0x26FF => true, // Miscellaneous Symbols (predominantly EAW=A)
                    >= 0x2700 and <= 0x27BF => true, // Dingbats (predominantly EAW=A)
+                   >= 0xE000 and <= 0xF8FF => true, // Private Use Area (EAW=A) — Nerd Font icons live here;
+                                                    // terminals routinely render PUA glyphs double-wide, so
+                                                    // the re-CUP defense must cover them (the options UI's
+                                                    // Nerd Font probe row is exactly such a run)
                    _ => false
                };
     }

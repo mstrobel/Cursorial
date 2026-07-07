@@ -252,6 +252,61 @@ public sealed class WindowSizeToContentTests
         Assert.False(w.IsClippedByViewport);
     }
 
+    [Fact] // wrap feedback at FIRST SHOW: multi-line wrapping text must not clip when the fit narrows the window
+    public void FirstShow_WrappingText_FitsFullHeight()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        // MaxWidth forces the fit narrower than the 60-col viewport; the paragraph wraps to many
+        // more lines at ~26 columns than at 60 — the probe-width height was several rows short
+        // (a two-line wrap slipped through on tolerance; this one cannot).
+        var w = new Window
+        {
+            MaxWidth = 30,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 2,
+            Top = 1,
+            Content = new UIControls.TextBlock
+            {
+                TextWrapping = Cursorial.Rendering.Text.WrapMode.WordWrap,
+                Text = "This is a long descriptive paragraph that wraps onto many lines at a "
+                     + "narrow width and must remain fully visible ENDMARK"
+            }
+        };
+
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(FrameContains(host, "ENDMARK"), // the LAST wrapped line renders — nothing clipped
+                    $"window fitted {w.ActualSize} — last line clipped");
+    }
+
+    [Fact] // wrap feedback on the Always re-fit: growing into wrapping content must account the re-wrapped height
+    public void Always_ContentGrowWithWrappingText_FitsFullHeight()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var content = new UIControls.StackPanel { Children = { Block(20, 2) } };
+        var w = TrackedWindow(content, SizeToContentMode.Always);
+        w.MaxWidth = 30;
+        w.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        content.Children.Add(new UIControls.TextBlock
+        {
+            TextWrapping = Cursorial.Rendering.Text.WrapMode.WordWrap,
+            Text = "A late-added description that wraps to several lines at this narrow "
+                 + "window width and ends with WRAPEND"
+        });
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(FrameContains(host, "WRAPEND"),
+                    $"window fitted {w.ActualSize} — re-wrapped text clipped");
+    }
+
     [Fact] // Once windows must ALSO survive a transient terminal shrink — the fitted size is remembered, not ratcheted away
     public void Once_ViewportShrinkThenGrow_RecoversFittedSize()
     {

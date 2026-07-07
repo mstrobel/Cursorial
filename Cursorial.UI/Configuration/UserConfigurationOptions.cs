@@ -19,4 +19,25 @@ public sealed class UserConfigurationOptions
     /// <see cref="DefaultUserConfigurationPathProvider" />). Tests point it at a scratch directory.
     /// </summary>
     public IUserConfigurationPathProvider? PathProvider { get; set; }
+
+    /// <summary>
+    /// The chord that opens the options dialog on any active root (default
+    /// <c>Ctrl+Shift+O</c>). Set <see langword="null"/> to install no chord — the app can still
+    /// open the dialog via <see cref="UIApplication.ShowUserOptionsDialogAsync"/>.
+    /// </summary>
+    public Input.KeyGesture? OptionsDialogGesture { get; set; } = Input.KeyGesture.Parse("Ctrl+Alt+O");
+
+    /// <summary>
+    /// Whether the first-run wizard shows when no Cursorial app has ever completed it on this
+    /// system (the <c>meta.firstRunCompleted</c> marker in the GLOBAL store). Opt-in per the
+    /// design notes ("on first run, <i>if configured</i>") — default <see langword="false"/>:
+    /// enabling an onboarding modal is an app decision, never a surprise.
+    /// </summary>
+    public bool ShowFirstRunWizard { get; set; }
+
+    /// <summary>
+    /// Shows the wizard on THIS run regardless of the marker — an app-owned re-onboarding lever
+    /// (the marker is still written afterwards). Default <see langword="false"/>.
+    /// </summary>
+    public bool ForceFirstRunWizard { get; set; }
 }

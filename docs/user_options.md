@@ -45,3 +45,34 @@ Global options and application-specific options, stored separately.
     1. Framework-wide key bindings (most critically, the key binding to open the
        user options dialog).
     2. Location of configuration files, so power users can edit them by hand.
+
+## Stage B design (implemented 2026-07-06)
+
+One shared MVVM core drives BOTH surfaces (the code-reuse contract):
+
+- `UserOptionCatalog` — the descriptor table (key, label, description, category, kind,
+  choices, default, `RequiresTest`, `ReservedForFuture`) both UIs generate rows from.
+- `UserOptionsSession` — the editing lifecycle over the loaded `UserOptionsStore`:
+  live preview with explicit absent-means-default semantics (clearing a key live-reverts),
+  open-time snapshot for **Reset** (restore without closing) and Cancel, `Save`, and the
+  tri-state write surface (`SetValue(scope, key, null)` = inherit). Dangerous keys
+  (capability overrides, color tier) never live-apply: they **stage**, are exercised via the
+  timed `BeginTest` scope (auto-revert — the "will my screen survive?" probe), and commit at Save.
+- `UserOptionsViewModel` / `OptionViewModel`s — categories of tri-state rows
+  (`IsSetInCurrentScope`, inheritance badge, `ClearToInherited`), the dialog-level
+  `EditScope` switch (Global | This application), and the 5-second test countdown
+  (`UITimer` on the frame clock).
+- `FirstRunWizardViewModel` — a pager over the SAME options view-model pinned to the
+  global layer: Welcome (framework key bindings) → Terminal → Appearance → file locations.
+
+Shells (code-first in Cursorial.UI — XAML would be circular through Cursorial.UI.Xaml):
+`UserOptionsDialog` (tabs per category, scope switch, OK/Cancel/**Reset**, Advanced tab
+warning + timed test) and `FirstRunWizard` (modal pager; Skip = complete). Both are
+`SizeToContentMode.Always` windows (they re-fit as pages/options change) and opt into the
+base `Window` chrome via `ControlThemeKey`.
+
+Hooks: `UserConfigurationOptions.OptionsDialogGesture` (default Ctrl+Shift+O, per-root
+framework binding beside Ctrl+L), `ShowFirstRunWizard` (**opt-in** per the notes' "if
+configured"), `ForceFirstRunWizard`, `UIApplication.ShowUserOptionsDialogAsync()`
+(single-instance). First-run marker: `meta.firstRunCompleted` in the GLOBAL store —
+once ever per system; skipping counts as completion.

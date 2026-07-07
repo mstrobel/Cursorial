@@ -188,8 +188,32 @@ public sealed record KeyGesture : InputGesture
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Canonical display form: modifiers in the fixed order Ctrl, Alt, Shift, Super, Meta, Hyper,
+    /// joined with <c>+</c> — <c>"Ctrl+Shift+O"</c>, never the flags-enum's <c>"Shift, Control+O"</c>.
+    /// Case variants of the same gesture keep producing the same string (the Section11 pin).
+    /// </remarks>
     public override string ToString()
-        => $"{(Modifiers == KeyModifiers.None ? "" : $"{Modifiers}+")}{(Key == Key.Character ? Character : Key.ToString())}";
+    {
+        var builder = new System.Text.StringBuilder(24);
+
+        if ((Modifiers & KeyModifiers.Control) != 0) builder.Append("Ctrl+");
+        if ((Modifiers & KeyModifiers.Alt) != 0) builder.Append("Alt+");
+        if ((Modifiers & KeyModifiers.Shift) != 0) builder.Append("Shift+");
+        if ((Modifiers & KeyModifiers.Super) != 0) builder.Append(SuperKeyPrefix);
+        if ((Modifiers & KeyModifiers.Meta) != 0) builder.Append("Meta+");
+        if ((Modifiers & KeyModifiers.Hyper) != 0) builder.Append("Hyper+");
+
+        builder.Append(Key == Key.Character ? Character : Key.ToString());
+        return builder.ToString();
+    }
+
+    private static string SuperKeyPrefix
+        => OperatingSystem.IsMacOS()
+               ? "Cmd+"
+               : OperatingSystem.IsWindows()
+                   ? "Win+"
+                   : "Super+";
 
     private static KeyModifiers ParseModifier(ReadOnlySpan<char> token, string gesture)
     {

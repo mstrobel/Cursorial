@@ -214,7 +214,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         window.Measure(probe);
 
-        var desired = window.DesiredSize;
+        var desired = SettleWrapFeedback(window, probe, tracksWidth, tracksHeight);
 
         // A Collapsed window measures empty — a real fit, never zero, is what the memory must hold
         // (the reveal path re-fits via FitToContentPending, stamping the true fit then).
@@ -256,6 +256,47 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         if (target.Rows > current.Rows && window.Top + target.Rows > _viewport.Rows)
             window.SetCurrentValue(Window.TopProperty, Math.Max(0, _viewport.Rows - target.Rows));
+    }
+
+    /// <summary>
+    /// The wrap-feedback settle: a fit derived straight from the open-constraint probe is honest
+    /// only when the granted width equals the probe width. When the fit NARROWS the window (the
+    /// desired width is the widest wrapped line, not the constraint), wrapping text re-flows
+    /// TALLER at the granted width than the probe measured — a two-line wrap slips through on
+    /// tolerance, a many-line wrap clips the window bottom (observed live in the first-run
+    /// wizard). Re-measure at the width actually granted until the fit stabilizes (bounded: the
+    /// width is monotonically non-increasing, and two iterations settle every practical case).
+    /// </summary>
+    private Size SettleWrapFeedback(Window window, Size probe, bool tracksWidth, bool tracksHeight)
+    {
+        var desired = window.DesiredSize; // from the probe measure the caller just ran
+
+        if (!tracksHeight)
+            return desired; // a fixed height cannot be re-wrapped wrong — the probe is honest
+
+        var measuredWidth = probe.Columns;
+
+        for (var i = 0; i < 3; i++)
+        {
+            var grantWidth = tracksWidth
+                                 ? Math.Min(Math.Clamp(desired.Columns, 1, _viewport.Columns), measuredWidth)
+                                 : measuredWidth;
+
+            if (grantWidth >= measuredWidth)
+                break; // no narrowing since the last measure — the height is already honest
+
+            window.Measure(new Size(grantWidth, probe.Rows));
+            measuredWidth = grantWidth;
+
+            var settled = window.DesiredSize;
+
+            if (settled == desired)
+                break;
+
+            desired = settled;
+        }
+
+        return desired;
     }
 
     // ── IWindowSystem ──────────────────────────────────────────────────────────────────────────────
@@ -853,10 +894,25 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.Size = _viewport;
         surface.RunLayoutPass();
 
-        var desired = window.DesiredSize;
         var stc = window.SizeToContent;
         var tracksWidth = stc is SizeToContent.Width or SizeToContent.WidthAndHeight;
         var tracksHeight = stc is SizeToContent.Height or SizeToContent.WidthAndHeight;
+
+        // The same wrap-feedback settle as the Always-mode re-fit: the first show OTHERWISE fits
+        // the height from the viewport-width wrap, and multi-line text clips the moment the fit
+        // narrows the window (the wizard's welcome page, observed live). An explicit Width pins
+        // the probe width first — its wrap is just as different from the viewport's.
+        var effectiveProbe = new Size(
+            window.Width is {} explicitWidth ? Math.Clamp(explicitWidth, 1, _viewport.Columns) : _viewport.Columns,
+            window.Height is {} explicitHeight ? Math.Clamp(explicitHeight, 1, _viewport.Rows) : _viewport.Rows);
+
+        if (effectiveProbe != _viewport)
+            window.Measure(effectiveProbe);
+
+        var desired = SettleWrapFeedback(
+            window, effectiveProbe,
+            tracksWidth && window.Width is null,
+            tracksHeight && window.Height is null);
 
         // Remember the unclamped fit (§8.5): SyncSurfaceSize re-derives held axes from it every frame,
         // so a transient viewport shrink caps the surface without losing the fit. A Collapsed window

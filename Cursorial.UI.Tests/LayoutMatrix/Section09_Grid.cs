@@ -322,6 +322,74 @@ public class Section09_Grid
     }
 
     [Fact]
+    public void L152a_StarContentContribution_ReflectsPostReflowMeasure()
+    {
+        // The wrapping-text shape: 60 cells of content that lays out as ONE row when measured wide
+        // (the interim Unbounded pass) but reflows TALLER under the final bounded star width.
+        // LD8's min(resolved, content) must read the POST-reflow content (step 4b), or a
+        // single-star-cell grid under-reports its height — the window-chrome content cell that
+        // clipped every fit-to-content window (L152a, observed live in the first-run wizard).
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Star() });
+
+        var reflowing = new Probe
+        {
+            MeasureResult = constraint =>
+            {
+                const int contentCells = 60;
+
+                if (LayoutMath.IsUnbounded(constraint.Columns) || constraint.Columns >= contentCells)
+                    return new Size(contentCells, 1);
+
+                var width = Math.Max(1, constraint.Columns);
+                return new Size(width, (contentCells + width - 1) / width); // ceil — the wrap reflow
+            }
+        };
+
+        grid.Children.Add(reflowing);
+        grid.Measure(new Size(20, 40)); // bounded: star width resolves to 20 → content reflows to 3 rows
+
+        Assert.Equal(3, grid.DesiredSize.Rows);    // post-reflow height, NOT the stale interim 1
+        Assert.Equal(20, grid.DesiredSize.Columns);
+    }
+
+    [Fact]
+    public void L152b_AutoRowContent_ReflectsCrossAxisStarReflow()
+    {
+        // The wizard's key-binding grid shape: columns [Auto, Star], rows Auto. The bounded star
+        // COLUMN re-wraps the description child taller in step 4 — the AUTO ROW's height must
+        // come from the post-reflow desired, not the interim one-line measurement (L152a's
+        // cross-axis leg: the step-4b refresh re-resolves EVERY non-Cell track).
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star() });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var gesture = new Probe(10, 1);
+        grid.Children.Add(gesture);
+
+        var description = new Probe
+        {
+            MeasureResult = constraint =>
+            {
+                const int contentCells = 40;
+
+                if (LayoutMath.IsUnbounded(constraint.Columns) || constraint.Columns >= contentCells)
+                    return new Size(contentCells, 1);
+
+                var width = Math.Max(1, constraint.Columns);
+                return new Size(width, (contentCells + width - 1) / width);
+            }
+        };
+        Grid.SetColumn(description, 1);
+        grid.Children.Add(description);
+
+        grid.Measure(new Size(30, 40)); // star column resolves to 20 → description reflows to 2 rows
+
+        Assert.Equal(2, grid.DesiredSize.Rows); // the Auto row grew with the reflow — not stale 1
+    }
+
+    [Fact]
     public void L153_ColumnSpan_SlotIsSumOfSpannedColumns()
     {
         var grid = GridWithColumns(4, 6);

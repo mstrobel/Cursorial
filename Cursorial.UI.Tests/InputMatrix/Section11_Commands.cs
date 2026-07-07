@@ -95,6 +95,21 @@ public class Section11_Commands
     public void N151_Parse_Invalid_FormatException(string text)
         => Assert.Throws<FormatException>(() => KeyGesture.Parse(text));
 
+    [Theory] // ToString is the canonical DISPLAY form (the wizard/menus show it) — never the flags-enum dump
+    [InlineData("Ctrl+Shift+O", "Ctrl+Shift+O")]
+    [InlineData("shift+ctrl+o", "Ctrl+Shift+O")] // modifier order canonicalizes: Ctrl, Alt, Shift, Super, Meta, Hyper
+    [InlineData("Ctrl+L", "Ctrl+L")]
+    [InlineData("F10", "F10")]
+    public void N151a_ToString_CanonicalDisplayForm(string text, string expected)
+        => Assert.Equal(expected, KeyGesture.Parse(text).ToString());
+
+    [Fact] // Super renders platform-natively (Cmd on macOS, Win on Windows, Super elsewhere)
+    public void N151b_ToString_SuperIsPlatformNative()
+    {
+        var super = OperatingSystem.IsMacOS() ? "Cmd" : OperatingSystem.IsWindows() ? "Win" : "Super";
+        Assert.Equal($"Alt+{super}+K", KeyGesture.Parse("Win+Alt+K").ToString());
+    }
+
     [Fact]
     public void N152_Constructor_CharacterRules_ArgumentException()
     {

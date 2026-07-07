@@ -740,7 +740,8 @@ internal static class ControlThemes
                 content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
                 content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
                 content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
-                var body = new Border { Padding = new Margins(2, 1), Child = content };
+                var body = new Border { Child = content };
+                body.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
                 // body.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
                 var panel = new DockPanel { /*ZIndex = 1*/ };
@@ -759,6 +760,7 @@ internal static class ControlThemes
         => new Style { Key = "Theme.TabControl" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .SetResource(Control.BorderPenProperty, ThemeKeys.TabControlBorderPen)
+            .Set(Control.PaddingProperty, new Margins(2, 1))
             .Set(Control.TemplateProperty, TabControlTemplate());
 
     // A tab header (gallery §TabControl): inactive tabs are --text-dim ink; the active tab is a --surface fill +

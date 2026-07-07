@@ -177,6 +177,30 @@ public sealed class UserOptionsStore
             map[key] = value;
     }
 
+    // ───────────────────────────── snapshots (the options-UI revert contract) ─────────────────────────────
+
+    /// <summary>
+    /// Captures both layers verbatim — the options UI takes one at open so Reset/Cancel can
+    /// restore the exact open-time state (including keys the UI doesn't know about).
+    /// </summary>
+    public UserOptionsSnapshot CreateSnapshot()
+        => new(new Dictionary<string, string>(_global, StringComparer.Ordinal),
+               new Dictionary<string, string>(_application, StringComparer.Ordinal));
+
+    /// <summary>Restores both layers to <paramref name="snapshot"/>'s state (a full replace, not a merge).</summary>
+    public void RestoreSnapshot(UserOptionsSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        _global.Clear();
+        foreach (var (key, value) in snapshot.Global)
+            _global[key] = value;
+
+        _application.Clear();
+        foreach (var (key, value) in snapshot.Application)
+            _application[key] = value;
+    }
+
     // ───────────────────────────── persistence ─────────────────────────────
 
     /// <summary>

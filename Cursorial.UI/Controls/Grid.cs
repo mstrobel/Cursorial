@@ -193,9 +193,37 @@ public class Grid : Panel
                 FinalConstraint(_rowScratch, placement.Row, placement.RowSpan, rowsBounded)));
         }
 
+        // 4b. The step-4 re-measure can REFLOW content: a wrapping child measured against an
+        //     interim Unbounded axis reported one long line, and at the final bounded star width
+        //     it wraps TALLER — changing not just its star track's content (LD8's min(resolved,
+        //     content) would read the stale step-2 value) but ALSO any AUTO track on the CROSS
+        //     axis (a bounded star column re-wraps text, growing the Auto row hosting it — the
+        //     wizard's key-binding grid). Reset every non-Cell track's content and re-resolve
+        //     from the post-step-4 desired sizes — the exact fresh accounting ArrangeOverride
+        //     performs, so measure desired and arrange outcome cannot disagree (L152a; the
+        //     fit-to-content clipping bug, observed live in the first-run wizard).
+        ResetContentAccounting(_columnScratch, columnCount);
+        ResetContentAccounting(_rowScratch, rowCount);
+        ResolveContentSizes(_columnScratch, columnCount, columnsBounded, columns: true);
+        ResolveContentSizes(_rowScratch, rowCount, rowsBounded, columns: false);
+
         return new Size(
             ComputeDesiredAxis(_columnScratch, columnCount, columnsBounded),
             ComputeDesiredAxis(_rowScratch, rowCount, rowsBounded));
+    }
+
+    /// <summary>Step 4b (L152a): zeroes the non-Cell tracks' content so the re-resolution
+    /// accumulates fresh maxima from the final-constraint desired sizes (Content only ever
+    /// Max-accumulates; without the reset, stale step-2 maxima would survive).</summary>
+    private static void ResetContentAccounting(TrackScratch[] axis, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            ref var track = ref axis[i];
+
+            if (track.Unit != GridUnitType.Cell)
+                track.Content = 0;
+        }
     }
 
     // ───────────────────────────── arrange ─────────────────────────────

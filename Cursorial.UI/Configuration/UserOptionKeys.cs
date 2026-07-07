@@ -100,4 +100,12 @@ public static class UserOptionKeys
     /// <c>"true"</c>/<c>"false"</c>. <b>Key reserved — not yet consumed by the framework.</b>
     /// </summary>
     public const string HorizontalScrollDeadZone = "input.horizontalScrollDeadZone";
+
+    /// <summary>
+    /// Whether ANY Cursorial application has completed (or skipped) the first-run wizard on this
+    /// system: <c>"true"</c> once it has. Lives in the GLOBAL store only — first-run onboarding
+    /// is a per-system experience (an app can re-show via
+    /// <see cref="UserConfigurationOptions.ForceFirstRunWizard"/>).
+    /// </summary>
+    public const string FirstRunCompleted = "meta.firstRunCompleted";
 }

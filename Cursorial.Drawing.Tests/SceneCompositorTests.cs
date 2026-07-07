@@ -515,6 +515,142 @@ public class SceneCompositorTests
         AssertNoSplitPairs(buffer);
     }
 
+    // ── emoji stomping under higher layers ──
+    // Color emoji ignore the SGR foreground: a kept-and-tinted glyph under an OPAQUE cover is
+    // invisible as text but renders as a full-color bitmap straight through the covering layer
+    // (observed live on macOS). Opaque covers stomp emoji; translucent covers keep them (the
+    // selection-highlight contract); CJK/text glyphs keep the original tint contract.
+
+    [Fact]
+    public void OpaqueCover_StompsEmojiPair_ButKeepsTextGlyphs()
+    {
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 2);
+        content.Draw(ctx =>
+        {
+            ctx.DrawText(1, 0, "✅", Red);   // emoji pair at (1,2)
+            ctx.DrawText(5, 0, "中", Red);   // CJK pair at (5,6)
+            ctx.DrawText(8, 0, "x", Red);    // plain text at 8
+        });
+
+        var cover = Scene.Create(12, 2);
+        Fill(cover, new SolidColorBrush(Red)); // OPAQUE background-only layer over everything
+
+        Assert.True(compositor.Composite([new SceneLayer(content), new SceneLayer(cover)], view));
+
+        // The emoji is STOMPED (no bitmap can render through the cover)…
+        Assert.True(string.IsNullOrEmpty(buffer[1, 0].Grapheme), $"emoji survived: '{buffer[1, 0].Grapheme}'");
+        Assert.Equal(CellKind.Single, buffer[1, 0].Kind);
+        Assert.Equal(CellKind.Single, buffer[2, 0].Kind);
+
+        // …while text glyphs keep the tint contract (kept, foreground == background ⇒ invisible).
+        Assert.Equal("中", buffer[5, 0].Grapheme);
+        Assert.Equal(buffer[5, 0].Style.Background, buffer[5, 0].Style.Foreground);
+        Assert.Equal("x", buffer[8, 0].Grapheme);
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void TranslucentCover_KeepsEmojiVisible()
+    {
+        // The selection-highlight contract: a translucent overlay tints, never hides — the emoji
+        // must survive (it is genuinely visible under the highlight, exactly as intended).
+        var buffer = new CellBuffer(8, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(8, 1);
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Red));
+
+        var highlight = Scene.Create(8, 1);
+        Fill(highlight, new SolidColorBrush(RedHalf)); // translucent
+
+        Assert.True(compositor.Composite([new SceneLayer(content), new SceneLayer(highlight)], view));
+
+        Assert.Equal("✅", buffer[2, 0].Grapheme); // still there
+        Assert.Equal(CellKind.WideLeft, buffer[2, 0].Kind);
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void OpaqueCover_OverOnlyTheRightHalf_StompsTheWholeEmoji()
+    {
+        // A layer edge landing mid-pair: covering just the continuation must stomp the whole
+        // glyph — the terminal cannot render half an emoji bitmap, and leaving the WideLeft
+        // would paint the bitmap over the covering layer's first column.
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 2);
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+
+        var cover = Scene.Create(4, 2);
+        Fill(cover, new SolidColorBrush(Red)); // opaque, footprint starts at the continuation column
+
+        Assert.True(compositor.Composite(
+            [new SceneLayer(content), new SceneLayer(cover, new CompositeParameters(offsetColumn: 5))], view));
+
+        Assert.True(string.IsNullOrEmpty(buffer[4, 0].Grapheme), $"left half survived: '{buffer[4, 0].Grapheme}'");
+        Assert.NotEqual(CellKind.WideLeft, buffer[4, 0].Kind);
+
+        // Audit F1: the UNCOVERED half must keep a composited style — never the indexer
+        // hygiene's default(Style), which would punch a terminal-default hole at the cover edge.
+        Assert.NotEqual(default, buffer[4, 0].Style);
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void OpaqueCover_OverOnlyTheLeftHalf_StompsWholePair_NoDefaultStyleHole()
+    {
+        // The mirror edge: the cover ENDS mid-pair (clipped to cover only the WideLeft). The
+        // whole emoji stomps and the uncovered continuation column keeps a real style.
+        var buffer = new CellBuffer(12, 2);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(12, 2);
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+
+        var cover = Scene.Create(5, 2);
+        Fill(cover, new SolidColorBrush(Red)); // opaque, footprint columns 0..4 — covers ONLY the WideLeft
+
+        Assert.True(compositor.Composite(
+            [new SceneLayer(content), new SceneLayer(cover)], view));
+
+        Assert.True(string.IsNullOrEmpty(buffer[4, 0].Grapheme));
+        Assert.True(string.IsNullOrEmpty(buffer[5, 0].Grapheme), $"right half survived: '{buffer[5, 0].Grapheme}'");
+        Assert.Equal(CellKind.Single, buffer[5, 0].Kind);
+        Assert.NotEqual(default, buffer[5, 0].Style); // audit F1: no default-style hole outside the cover
+        AssertNoSplitPairs(buffer);
+    }
+
+    [Fact]
+    public void TranslucentHighlight_OverTransparentForegroundEmoji_KeepsIt()
+    {
+        // Audit F2: an emoji authored with a transparent foreground ("fg doesn't matter for
+        // emoji") composites to fg == bg on its own — an equality-based stomp gate would fire
+        // under a GENUINE translucent highlight and destroy a glyph the user can see. The gate
+        // keys on the cover's actual opacity, so the tint keeps the glyph.
+        var buffer = new CellBuffer(8, 1);
+        var view = buffer.AsView();
+        var compositor = OverBlueBase();
+
+        var content = Scene.Create(8, 1);
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Color.FromRgba(0, 0, 0, 0))); // transparent fg
+
+        var highlight = Scene.Create(8, 1);
+        Fill(highlight, new SolidColorBrush(RedHalf)); // genuinely translucent
+
+        Assert.True(compositor.Composite([new SceneLayer(content), new SceneLayer(highlight)], view));
+
+        Assert.Equal("✅", buffer[2, 0].Grapheme); // the highlight tints — it never hides
+        AssertNoSplitPairs(buffer);
+    }
+
     [Fact]
     public void VerticalSlide_WithWideGlyphs_KeepsPairsIntact()
     {

@@ -1,5 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Text;
 using Cursorial.Rendering.Fragments;
 
 // ReSharper disable CheckNamespace
@@ -398,7 +399,57 @@ public sealed class SceneCompositor
         if (string.IsNullOrEmpty(source.Grapheme))
         {
             var blendedForeground = Color.Composite(sourceStyle.Background, targetStyle.Foreground, mode);
-            // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge bg.
+
+            // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge bg —
+            // the overlay-tint contract (a translucent selection highlight over text keeps the
+            // text). Under an OPAQUE SourceOver cover a kept TEXT glyph is invisible (fg == bg) —
+            // but COLOR EMOJI ignore the SGR foreground entirely: the terminal draws the bitmap
+            // regardless, straight through the covering layer (observed live on macOS color-emoji
+            // terminals). STOMP emoji under such covers. The gate is the cover's actual opacity —
+            // never an fg==bg comparison, which also fires for a transparent-foreground emoji
+            // under a genuinely translucent highlight (a real tint that must keep the glyph).
+            // Non-SourceOver modes are backdrop-dependent filters: content is SUPPOSED to show
+            // through them, so emoji keep rendering there by design.
+            var opaqueCover = ReferenceEquals(mode, BlendingModes.SourceOver) && sourceStyle.Background.IsOpaque;
+
+            if (opaqueCover)
+            {
+                var tinted = dst.Style with { Foreground = blendedForeground, Background = mergedBackground };
+
+                if (dst.Grapheme is { Length: > 0 } glyph && GraphemeWidth.IsEmojiPresentation(glyph))
+                {
+                    // Stomp, then repair the pair partner EXPLICITLY: the maintaining indexer's
+                    // hygiene blanks it with default(Style), which would punch a terminal-default
+                    // hole where a cover edge lands mid-pair (the partner may lie OUTSIDE this
+                    // layer's footprint and never be recomposited this pass).
+                    var partnerStyle = dst.Kind == CellKind.WideLeft && column + 1 < target.Columns
+                                           ? target[column + 1, row].Style
+                                           : default;
+
+                    target[column, row] = new Cell(null, CellKind.Single, tinted);
+
+                    if (dst.Kind == CellKind.WideLeft && column + 1 < target.Columns)
+                        target[column + 1, row] = new Cell(null, CellKind.Single, partnerStyle);
+
+                    return;
+                }
+
+                // Covering only the RIGHT half of an emoji (a layer edge landing mid-pair) must
+                // stomp the whole glyph too — the terminal cannot render half a bitmap, and the
+                // surviving WideLeft would paint it over this layer's first column.
+                if (dst.Kind == CellKind.WideContinuation && column > 0 &&
+                    target[column - 1, row] is { Kind: CellKind.WideLeft, Grapheme: { Length: > 0 } leftGlyph } &&
+                    GraphemeWidth.IsEmojiPresentation(leftGlyph))
+                {
+                    var leftStyle = target[column - 1, row].Style;
+                    target[column, row] = new Cell(null, CellKind.Single, tinted);
+                    // The uncovered left half keeps its own composited style — a blank in the
+                    // emoji's colors, not a default-styled hole at the cover's edge.
+                    target[column - 1, row] = new Cell(null, CellKind.Single, leftStyle);
+                    return;
+                }
+            }
+
             // Raw indexer — the compositor already ran Color.Composite, so routing through Set
             // (which composites again) would double-composite.
             target[column, row] = dst with { Style = dst.Style with { Foreground = blendedForeground, Background = mergedBackground } };

@@ -222,45 +222,12 @@ public static class GraphemeWidth
                        >= 0x1100 and <= 0x115F => true, // Hangul Jamo
                        0x2329 or 0x232A        => true, // Left/right-pointing angle bracket
 
-                       // Emoji_Presentation=Yes codepoints in the legacy symbol blocks (UTS #51
-                       // emoji-data.txt) — default-emoji glyphs modern terminals (Kitty, Ghostty,
-                       // WezTerm, …) render two cells wide even though they predate the emoji
-                       // blocks: ⌚⏩⏰⏳◽☔♈♿⚓⚡⚪⚽⛄⛎⛔⛪⛲⛵⛺⛽✅✊✨❌❎❓❗➕➰➿⬛⭐⭕.
-                       // These are ALSO EAW=W in modern Unicode. Their absence measured ✅/❌ as
-                       // width 1 → Single cells → per-glyph cursor drift in the incremental diff
-                       // (uniform, invisible in a full redraw; interleaved smearing when scrolling).
-                       0x231A or 0x231B          => true, // ⌚ ⌛
-                       >= 0x23E9 and <= 0x23EC   => true, // ⏩..⏬
-                       0x23F0 or 0x23F3          => true, // ⏰ ⏳
-                       0x25FD or 0x25FE          => true, // ◽ ◾
-                       0x2614 or 0x2615          => true, // ☔ ☕
-                       >= 0x2648 and <= 0x2653   => true, // ♈..♓ (zodiac)
-                       0x267F                    => true, // ♿
-                       0x2693                    => true, // ⚓
-                       0x26A1                    => true, // ⚡
-                       0x26AA or 0x26AB          => true, // ⚪ ⚫
-                       0x26BD or 0x26BE          => true, // ⚽ ⚾
-                       0x26C4 or 0x26C5          => true, // ⛄ ⛅
-                       0x26CE                    => true, // ⛎
-                       0x26D4                    => true, // ⛔
-                       0x26EA                    => true, // ⛪
-                       0x26F2 or 0x26F3          => true, // ⛲ ⛳
-                       0x26F5                    => true, // ⛵
-                       0x26FA                    => true, // ⛺
-                       0x26FD                    => true, // ⛽
-                       0x2705                    => true, // ✅
-                       0x270A or 0x270B          => true, // ✊ ✋
-                       0x2728                    => true, // ✨
-                       0x274C                    => true, // ❌
-                       0x274E                    => true, // ❎
-                       >= 0x2753 and <= 0x2755   => true, // ❓ ❔ ❕
-                       0x2757                    => true, // ❗
-                       >= 0x2795 and <= 0x2797   => true, // ➕ ➖ ➗
-                       0x27B0                    => true, // ➰
-                       0x27BF                    => true, // ➿
-                       0x2B1B or 0x2B1C          => true, // ⬛ ⬜
-                       0x2B50                    => true, // ⭐
-                       0x2B55                    => true, // ⭕
+                       // Emoji_Presentation=Yes codepoints in the legacy symbol blocks (UTS #51):
+                       // default-emoji glyphs modern terminals render two cells wide even though
+                       // they predate the emoji blocks (⌚⏰☔✅❌⭐⭕ …). Shared with the
+                       // compositor's emoji-stomp classifier — one source, no drift. Their absence
+                       // measured ✅/❌ as width 1 → per-glyph cursor drift in the incremental diff.
+                       _ when IsEmojiPresentationScalar(cp) => true,
 
                        >= 0x2E80 and <= 0x303E => true, // CJK Radicals, Kangxi Radicals, Ideographic Description, CJK Symbols and Punctuation (subset)
                        >= 0x3041 and <= 0x33FF => true, // Hiragana / Katakana / Bopomofo / Hangul Compatibility Jamo / Enclosed CJK / CJK Compatibility
@@ -306,6 +273,95 @@ public static class GraphemeWidth
                    >= 0x30000 and <= 0x3FFFD => true,  // CJK Extension G, H (Plane 3)
                    _                         => false
                };
+    }
+
+    /// <summary>
+    /// True when <paramref name="codepoint"/> is a <b>default-emoji-presentation</b> scalar —
+    /// the UTS #51 <c>Emoji_Presentation=Yes</c> set in the legacy BMP symbol blocks plus the
+    /// supplementary emoji blocks (generously: all of U+1F000–U+1FAFF). These glyphs render as
+    /// COLOR BITMAPS on emoji-font terminals and therefore ignore the SGR foreground — the
+    /// property both consumers care about: the width table measures them 2 cells, and the
+    /// compositor stomps them under an opaque cover (a foreground-tinted "hidden" emoji still
+    /// renders in full color, straight through the covering layer). Generous supplementary
+    /// bounds are deliberate: a false positive only stomps a glyph that was already invisible
+    /// as text.
+    /// </summary>
+    public static bool IsEmojiPresentationScalar(int codepoint) => codepoint switch
+    {
+        0x231A or 0x231B => true,          // ⌚ ⌛
+        >= 0x23E9 and <= 0x23EC => true,   // ⏩..⏬
+        0x23F0 or 0x23F3 => true,          // ⏰ ⏳
+        0x25FD or 0x25FE => true,          // ◽ ◾
+        0x2614 or 0x2615 => true,          // ☔ ☕
+        >= 0x2648 and <= 0x2653 => true,   // ♈..♓ (zodiac)
+        0x267F => true,                    // ♿
+        0x2693 => true,                    // ⚓
+        0x26A1 => true,                    // ⚡
+        0x26AA or 0x26AB => true,          // ⚪ ⚫
+        0x26BD or 0x26BE => true,          // ⚽ ⚾
+        0x26C4 or 0x26C5 => true,          // ⛄ ⛅
+        0x26CE => true,                    // ⛎
+        0x26D4 => true,                    // ⛔
+        0x26EA => true,                    // ⛪
+        0x26F2 or 0x26F3 => true,          // ⛲ ⛳
+        0x26F5 => true,                    // ⛵
+        0x26FA => true,                    // ⛺
+        0x26FD => true,                    // ⛽
+        0x2705 => true,                    // ✅
+        0x270A or 0x270B => true,          // ✊ ✋
+        0x2728 => true,                    // ✨
+        0x274C => true,                    // ❌
+        0x274E => true,                    // ❎
+        >= 0x2753 and <= 0x2755 => true,   // ❓ ❔ ❕
+        0x2757 => true,                    // ❗
+        >= 0x2795 and <= 0x2797 => true,   // ➕ ➖ ➗
+        0x27B0 => true,                    // ➰
+        0x27BF => true,                    // ➿
+        0x2B1B or 0x2B1C => true,          // ⬛ ⬜
+        0x2B50 => true,                    // ⭐
+        0x2B55 => true,                    // ⭕
+        >= 0x1F000 and <= 0x1FAFF => true, // the supplementary emoji blocks (generous by design)
+        _ => false
+    };
+
+    /// <summary>
+    /// True when <paramref name="cluster"/> renders with <b>emoji presentation</b> — a color
+    /// bitmap immune to the SGR foreground: a default-emoji base
+    /// (<see cref="IsEmojiPresentationScalar"/>) or any base forced to emoji by VS16 (U+FE0F);
+    /// VS15 (U+FE0E) forces text presentation and wins. ZWJ sequences, skin tones, and
+    /// regional-indicator flag pairs classify through their member scalars.
+    /// </summary>
+    public static bool IsEmojiPresentation(ReadOnlySpan<char> cluster)
+    {
+        var sawEmoji = false;
+        var i = 0;
+
+        while (i < cluster.Length)
+        {
+            if (Rune.DecodeFromUtf16(cluster[i..], out var rune, out var consumed) != System.Buffers.OperationStatus.Done)
+            {
+                i++;
+                continue;
+            }
+
+            i += consumed;
+
+            switch (rune.Value)
+            {
+                case 0xFE0E:
+                    return false; // explicit text presentation — renders in the foreground color
+
+                case 0xFE0F:
+                    sawEmoji = true;
+                    break;
+
+                default:
+                    sawEmoji |= IsEmojiPresentationScalar(rune.Value);
+                    break;
+            }
+        }
+
+        return sawEmoji;
     }
 
     /// <summary>

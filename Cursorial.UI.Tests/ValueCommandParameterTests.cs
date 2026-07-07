@@ -5,24 +5,23 @@ using Cursorial.UI;
 namespace Cursorial.Tests.UI;
 
 // ValueCommandParameter<T> — the value-carrying CheckableCommandParameter (the Actipro pattern): the carrier's own
-// contract, independent of any control. Value/PreviewValue/Action raise INotifyPropertyChanged exactly like the
-// base's members (raise on change, silent on same-value), the non-generic IValueCommandParameter surface round-trips
+// contract, independent of any control. Value/PreviewValue raise INotifyPropertyChanged exactly like the base's
+// members (raise on change, silent on same-value), the non-generic IValueCommandParameter surface round-trips
 // through the typed properties, and the inherited FB-27 checkable state (IsChecked / Override / Release) is intact.
 public sealed class ValueCommandParameterTests
 {
-    [Fact] // the ctor seeds Value (+ the inherited IsChecked); Action defaults to Commit; PreviewValue to default(T)
-    public void Ctor_SeedsValue_DefaultsToCommit()
+    [Fact] // the ctor seeds Value (+ the inherited IsChecked); PreviewValue starts at default(T) (no candidate)
+    public void Ctor_SeedsValue()
     {
         var param = new ValueCommandParameter<string>("Center", isChecked: true);
 
         Assert.Equal("Center", param.Value);
         Assert.Equal(true, param.IsChecked);
-        Assert.Equal(ValueCommandParameterAction.Commit, param.Action);
         Assert.Null(param.PreviewValue);
         Assert.False(param.Handled); // the FB-27 gate starts released (backward-compatible default)
     }
 
-    [Fact] // Value / PreviewValue / Action raise PropertyChanged on change and stay silent on a same-value write
+    [Fact] // Value / PreviewValue raise PropertyChanged on change and stay silent on a same-value write
     public void PropertyChanged_RaisesOnChange_SilentOnSame()
     {
         var param = new ValueCommandParameter<int>(1);
@@ -31,13 +30,11 @@ public sealed class ValueCommandParameterTests
 
         param.Value = 2;
         param.PreviewValue = 3;
-        param.Action = ValueCommandParameterAction.Preview;
-        Assert.Equal(new[] { nameof(param.Value), nameof(param.PreviewValue), nameof(param.Action) }, raised);
+        Assert.Equal(new[] { nameof(param.Value), nameof(param.PreviewValue) }, raised);
 
         raised.Clear();
-        param.Value = 2;                                    // same value — silent
-        param.PreviewValue = 3;                             // same value — silent
-        param.Action = ValueCommandParameterAction.Preview; // same value — silent
+        param.Value = 2;        // same value — silent
+        param.PreviewValue = 3; // same value — silent
         Assert.Empty(raised);
     }
 
@@ -51,11 +48,9 @@ public sealed class ValueCommandParameterTests
 
         untyped.Value = 20;          // the framework-control write path (a control never knows T)
         untyped.PreviewValue = 30;
-        untyped.Action = ValueCommandParameterAction.Preview;
 
         Assert.Equal(20, param.Value);
         Assert.Equal(30, param.PreviewValue);
-        Assert.Equal(ValueCommandParameterAction.Preview, param.Action);
 
         untyped.PreviewValue = null; // clearing the candidate is expressible untyped (T? on the typed surface)
         Assert.Equal(0, param.PreviewValue);

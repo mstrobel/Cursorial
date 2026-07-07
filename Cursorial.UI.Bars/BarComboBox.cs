@@ -14,21 +14,26 @@ namespace Cursorial.UI.Bars;
 /// <para>
 /// <b>Value command + live preview.</b> Give it a <see cref="Command"/> whose <see cref="CommandParameter"/> is an
 /// <see cref="IValueCommandParameter"/> (a <see cref="ValueCommandParameter{T}"/>) and the drop-down becomes a
-/// previewing value picker: moving the highlight (selection-follows-highlight) writes the highlighted value into
-/// <see cref="IValueCommandParameter.PreviewValue"/> and executes the command with
-/// <see cref="ValueCommandParameterAction.Preview"/> — the consumer shows the outcome live <em>without committing</em>;
-/// a commit (Enter / Space / item click) first executes <see cref="ValueCommandParameterAction.CancelPreview"/> when a
-/// preview ran (restore exactly), then sets <see cref="IValueCommandParameter.Value"/> and executes
-/// <see cref="ValueCommandParameterAction.Commit"/> — one real operation; a dismissal (Escape / light-dismiss /
-/// focus-out / toggle-close) executes <c>CancelPreview</c> (again, only when a preview ran) and restores the pre-open
-/// selection, so neither the model nor the face keeps an unchosen value. <see cref="IValueCommandParameter.Action"/>
-/// is always reset to <see cref="ValueCommandParameterAction.Commit"/> after each of these executes, so other
-/// surfaces sharing the parameter are never misrouted. The preview is <b>atomic</b> — either committed or entirely
-/// rolled back: <c>Preview</c>/<c>Commit</c> executes (and the parameter mutations that feed them) are gated by
-/// <c>CanExecute</c>, and the combo greys while <c>CanExecute</c> is false (the CD25 coupling every command source
-/// has), but <c>CancelPreview</c> is a cleanup obligation dispatched <em>without</em> a gate check (and exempted from
-/// <see cref="BarCommand"/>'s self-gate) — so a command gated mid-session has its active preview rolled back, any
-/// commit refused, and the pre-open selection restored to the face.
+/// value picker: a commit gesture (Enter / Space / item click) writes the chosen value into
+/// <see cref="IValueCommandParameter.Value"/> and executes the command — one real operation — while a dismissal
+/// (Escape / light-dismiss / focus-out / toggle-close) restores the pre-open selection, so neither the model nor the
+/// face keeps an unchosen value. This value channel works with <em>any</em> <see cref="System.Windows.Input.ICommand"/>.
+/// </para>
+/// <para>
+/// When the command is additionally an <see cref="IPreviewableCommand"/> (a <see cref="BarCommand"/> with preview
+/// delegates), the session dry-runs the effect live: moving the highlight (selection-follows-highlight) writes the
+/// highlighted value into <see cref="IValueCommandParameter.PreviewValue"/> and calls
+/// <see cref="IPreviewableCommand.Preview"/> — a dry-run <c>Execute</c>: the consumer produces the outcome,
+/// <em>committing nothing</em>; the close then first calls <see cref="IPreviewableCommand.CancelPreview"/> when a
+/// dry-run ran (unwind, byte-exact), and only then does a commit gesture let <c>Execute</c> do the thing for real on
+/// clean state — <c>Execute</c> needs zero preview awareness. The dry-run is <b>atomic</b> — it either becomes the
+/// real execution or is entirely unwound (the <see cref="IPreviewableCommand"/> contract): <c>Preview</c> and
+/// <c>Execute</c> (and the parameter mutations that feed them) are gated by <c>CanExecute</c>, and the combo greys
+/// while <c>CanExecute</c> is false (the CD25 coupling every command source has), but <c>CancelPreview</c> is a
+/// command-side cleanup verb structurally outside the <c>Execute</c> gate — always delivered — so a command gated
+/// mid-session has its dry-run unwound, its execution refused, and the pre-open selection restored to the face. A
+/// command that is NOT previewable never receives a preview verb: nothing tentative is ever shown, and a dry-run can
+/// never be mis-executed as the real thing.
 /// </para>
 /// <para>
 /// Unlike a checkable toggle (FB-27's lazy per-control default), NO default parameter is auto-provisioned — the value
@@ -128,15 +133,27 @@ public class BarComboBox : ComboBox
     }
 
     // Selection-follows-highlight makes a selection change while open the "highlight moved" signal: preview the
-    // newly highlighted value. Closed-state selection changes (programmatic, type-ahead on the face) never preview.
+    // newly highlighted value. Closed-state selection changes (programmatic, type-ahead on the face) never preview,
+    // and a command that is not an IPreviewableCommand never receives a preview verb (nothing tentative is shown —
+    // the value channel still commits on close through Execute).
     private void OnSelectionChangedPreview(object? sender, SelectionChangedEventArgs e)
     {
         if (!IsDropDownOpen || !_valueSession || SelectedIndex < 0 || ValueParameter is not { } parameter)
             return;
 
-        // A gated Preview does not execute — and then no CancelPreview is owed at close (the |= keeps any earlier
-        // successful preview's debt).
-        _previewActive |= ExecuteValueAction(parameter, ValueCommandParameterAction.Preview, ValueOf(SelectedItem));
+        if (Command is not IPreviewableCommand previewable)
+            return;
+
+        // The dispatch — payload write included — is gated: a gated command acquires no NEW tentative state and
+        // never observes its parameter mutated (the atomicity contract; Preview also self-gates, e.g. BarCommand's).
+        // A refused Preview owes no CancelPreview at close (the |= keeps any earlier successful preview's debt).
+        var raw = CommandParameter;
+        if (!previewable.CanExecute(raw))
+            return;
+
+        parameter.PreviewValue = ValueOf(SelectedItem);
+        previewable.Preview(raw);
+        _previewActive = true;
     }
 
     /// <inheritdoc/>
@@ -160,17 +177,17 @@ public class BarComboBox : ComboBox
 
         var parameter = ValueParameter; // may be null when the command/parameter was torn down mid-session
 
-        // An active preview is ALWAYS withdrawn before anything else, commit or not: cancel restores the exact
-        // pre-preview state, so a commit is one real operation on clean state and a dismissal leaves no residue.
-        // The dispatch is deliberately NOT CanExecute-gated (the preview-atomicity contract) — a command that gated
-        // itself mid-session must still receive the rollback (BarCommand exempts CancelPreview from its self-gate).
-        if (hadPreview && parameter is not null)
-            ExecuteValueAction(parameter, ValueCommandParameterAction.CancelPreview);
+        // An active dry-run is ALWAYS unwound before anything else, commit gesture or not: cancel restores the
+        // exact pre-preview state, so Execute later runs on clean state (zero preview awareness) and a dismissal
+        // leaves no residue. CancelPreview is a command-side cleanup verb structurally outside the Execute gate
+        // (the atomicity contract) — a command that gated itself mid-session still receives the unwind.
+        if (hadPreview && parameter is not null && Command is IPreviewableCommand previewable)
+            previewable.CancelPreview(CommandParameter);
 
         // The commit stays gated (payload write included): a gated command refuses the commit outright. Anything
         // short of a delivered commit — dismissal, refused commit, torn-down parameter — is a full rollback.
         var commitDelivered = committed && parameter is not null && commitIndex >= 0
-                              && ExecuteValueAction(parameter, ValueCommandParameterAction.Commit, commitValue);
+                              && TryExecuteCommit(parameter, commitValue);
 
         if (!commitDelivered && !IsDropDownOpen) // an execute above may have REOPENED the drop-down — never yank a live session
         {
@@ -181,41 +198,23 @@ public class BarComboBox : ComboBox
         }
     }
 
-    // One Execute with the parameter's Action set for its duration, then reset to Commit — a shared parameter must
-    // never carry a lingering Preview/CancelPreview into another surface's Execute (a toggle click routing the same
-    // command). Preview/Commit are gated by CanExecute like every command source (ButtonBase.OnClick parity) —
-    // including the payload write: a gated command must never observe its parameter mutated (no half-applied Value
-    // on a refused commit). CancelPreview is EXEMPT from the gate (the preview-atomicity contract: an applied
-    // preview must remain rollback-able after a mid-session gate flip). Returns whether the command was dispatched.
-    private bool ExecuteValueAction(IValueCommandParameter parameter, ValueCommandParameterAction action, object? payload = null)
+    // A commit gesture's delivery: Value lands on the parameter, then Execute — the command's ordinary execution,
+    // with any active dry-run already unwound (a preview rides the IPreviewableCommand verbs, never Execute). Gated
+    // by CanExecute like every command source (ButtonBase.OnClick parity), payload write included: a gated command
+    // must never observe its parameter mutated (no half-applied Value on a refused commit). Returns whether the
+    // execution was delivered.
+    private bool TryExecuteCommit(IValueCommandParameter parameter, object? value)
     {
         if (Command is not { } command)
             return false;
 
         var raw = CommandParameter;
-        parameter.Action = action;
-        try
-        {
-            if (action != ValueCommandParameterAction.CancelPreview && !command.CanExecute(raw))
-                return false;
+        if (!command.CanExecute(raw))
+            return false;
 
-            switch (action)
-            {
-                case ValueCommandParameterAction.Preview:
-                    parameter.PreviewValue = payload;
-                    break;
-                case ValueCommandParameterAction.Commit:
-                    parameter.Value = payload;
-                    break;
-            }
-
-            command.Execute(raw);
-            return true;
-        }
-        finally
-        {
-            parameter.Action = ValueCommandParameterAction.Commit;
-        }
+        parameter.Value = value;
+        command.Execute(raw);
+        return true;
     }
 
     // The value an item contributes: a ComboBoxItem container is unwrapped to its content (the item IS the value

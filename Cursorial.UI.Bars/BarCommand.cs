@@ -11,11 +11,21 @@ namespace Cursorial.UI.Bars;
 /// set explicitly on the control, so the command's text, gesture, and enabled/checked state are shared with no
 /// per-surface duplication. A raw BCL <see cref="ICommand"/> still works on any bar control; the control then needs
 /// its own display properties set.
+/// <para>
+/// It is also the delegate-based <see cref="IPreviewableCommand"/>: supply the optional
+/// <c>previewExecute</c>/<c>cancelPreviewExecute</c> delegates and a previewing control (a
+/// <c>BarComboBox</c>/<c>BarGallery</c> drop-down) dry-runs the command's effect live while the user decides — see
+/// the atomicity contract on <see cref="IPreviewableCommand"/>. Without them the command simply is not
+/// preview-capable: the verbs no-op (nothing tentative is ever shown), while <see cref="Execute"/> still does the
+/// thing for real as usual.
+/// </para>
 /// </summary>
-public class BarCommand : ICommand
+public class BarCommand : IPreviewableCommand
 {
     private readonly Action<object?> _execute;
     private readonly Func<object?, bool>? _canExecute;
+    private readonly Action<object?>? _previewExecute;
+    private readonly Action<object?>? _cancelPreviewExecute;
 
     /// <summary>Creates a parameterless command.</summary>
     public BarCommand(Action execute, Func<bool>? canExecute = null)
@@ -23,11 +33,19 @@ public class BarCommand : ICommand
     {
     }
 
-    /// <summary>Creates a command whose delegates receive the control's <c>CommandParameter</c>.</summary>
-    public BarCommand(Action<object?> execute, Func<object?, bool>? canExecute = null)
+    /// <summary>Creates a command whose delegates receive the control's <c>CommandParameter</c>. The optional
+    /// <paramref name="previewExecute"/>/<paramref name="cancelPreviewExecute"/> pair makes it preview-capable
+    /// (see <see cref="IPreviewableCommand"/>): <paramref name="previewExecute"/> is the dry-run — produce the
+    /// effect, commit nothing, keep enough state to restore exactly — and <paramref name="cancelPreviewExecute"/>
+    /// unwinds it. <paramref name="execute"/> stays the ordinary execution, written with zero preview awareness
+    /// (any active dry-run is always cancelled before it runs).</summary>
+    public BarCommand(Action<object?> execute, Func<object?, bool>? canExecute = null,
+                      Action<object?>? previewExecute = null, Action<object?>? cancelPreviewExecute = null)
     {
         _execute = execute ?? throw new ArgumentNullException(nameof(execute));
         _canExecute = canExecute;
+        _previewExecute = previewExecute;
+        _cancelPreviewExecute = cancelPreviewExecute;
     }
 
     /// <summary>The display label (a bar control auto-fills its content from this when its own is unset).</summary>
@@ -58,16 +76,13 @@ public class BarCommand : ICommand
     public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
 
     /// <inheritdoc/>
-    /// <remarks>Self-gated by <see cref="CanExecute"/> — except for a parameter carrying
-    /// <see cref="ValueCommandParameterAction.CancelPreview"/>, which always executes. That is the preview-atomicity
-    /// contract (see <see cref="IValueCommandParameter"/>): a live preview is either committed or entirely rolled
-    /// back, so the rollback must stay deliverable even after the command gates itself mid-session — while a gated
-    /// command still refuses NEW tentative state (<see cref="ValueCommandParameterAction.Preview"/>) and refuses
-    /// commits. A custom <see cref="ICommand"/> with its own internal gate should honor the same exemption.</remarks>
+    /// <remarks>Does the thing for real — the ordinary execution, needing zero preview awareness: a previewing
+    /// control cancels any active dry-run BEFORE executing (see <see cref="IPreviewableCommand"/>), so nothing is
+    /// ever pending here and a dry-run can never be mis-executed as the real thing. Self-gated by
+    /// <see cref="CanExecute"/>.</remarks>
     public void Execute(object? parameter)
     {
-        if (!CanExecute(parameter) &&
-            parameter is not IValueCommandParameter { Action: ValueCommandParameterAction.CancelPreview })
+        if (!CanExecute(parameter))
             return;
 
         _execute(parameter);
@@ -76,4 +91,25 @@ public class BarCommand : ICommand
         // Execute — re-syncs every bound control's checked/enabled visual without the author raising it by hand.
         RaiseCanExecuteChanged();
     }
+
+    /// <inheritdoc/>
+    /// <remarks>The dry-run: self-gated by <see cref="CanExecute"/> — a gated command acquires no NEW tentative
+    /// state (the <see cref="IPreviewableCommand"/> atomicity contract). A no-op without a <c>previewExecute</c>
+    /// delegate. Deliberately does not auto-raise <c>CanExecuteChanged</c>: a dry-run is transient — the definitive
+    /// re-query rides the real <see cref="Execute"/>, and a cancel restores the state bound controls already
+    /// reflect.</remarks>
+    public void Preview(object? parameter)
+    {
+        if (_previewExecute is null || !CanExecute(parameter))
+            return;
+
+        _previewExecute(parameter);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>NEVER gated (the <see cref="IPreviewableCommand"/> atomicity contract: unwinding an applied dry-run
+    /// is a cleanup obligation that must stay deliverable even after the command gates itself mid-session) — and
+    /// structurally separate from <see cref="Execute"/>, so the self-gate cannot swallow it. A no-op without a
+    /// <c>cancelPreviewExecute</c> delegate.</remarks>
+    public void CancelPreview(object? parameter) => _cancelPreviewExecute?.Invoke(parameter);
 }

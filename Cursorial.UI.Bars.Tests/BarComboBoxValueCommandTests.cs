@@ -1,3 +1,5 @@
+using System.Windows.Input;
+
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -6,17 +8,18 @@ using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
-// BarComboBox/BarGallery + ValueCommandParameter<T> — the live-preview flow (the Actipro
-// ValueCommandParameterAction semantics): while the drop-down is open, moving the highlight executes the shared
-// command with Action=Preview and the highlighted value in PreviewValue (the consumer shows the outcome WITHOUT
-// committing); a commit (Enter / Space / item click) executes CancelPreview (restore exactly) then Commit with Value
-// set — one real operation; a dismissal (Escape / light-dismiss) executes CancelPreview and restores the pre-open
-// selection. Invariants pinned here: preview never dirties the model permanently (cancel restores byte-exact), the
-// preview is ATOMIC — either committed or entirely rolled back, so CancelPreview is delivered even through a
-// mid-session CanExecute gate flip while the gated commit is refused un-applied — the parameter's Action always
-// rests at Commit between executes (a shared surface must never be misrouted), the combo greys while CanExecute is
-// false (CD25), and with NO value parameter — or no command — the controls behave exactly as before (no default
-// parameter is provisioned — T isn't inferrable, and the parameter is never touched).
+// BarComboBox/BarGallery + ValueCommandParameter<T> + IPreviewableCommand — the live-preview flow (the Actipro
+// Avalonia command-side verbs over the WPF-style value parameter): while the drop-down is open, moving the highlight
+// writes the highlighted value into PreviewValue and calls Preview(parameter) on the shared command (the consumer
+// shows the outcome WITHOUT committing); a commit (Enter / Space / item click) calls CancelPreview (restore exactly)
+// then Execute with Value set — Execute is always and only the commit, one real operation; a dismissal (Escape /
+// light-dismiss) calls CancelPreview and restores the pre-open selection. Invariants pinned here: preview never
+// dirties the model permanently (cancel restores byte-exact), the preview is ATOMIC — either committed or entirely
+// rolled back, structurally: CancelPreview is a separate command verb outside the Execute self-gate, so it is
+// delivered even through a mid-session CanExecute gate flip while the gated commit is refused un-applied — an
+// UNAWARE command (not IPreviewableCommand) never receives a preview verb yet still commits through Execute, the
+// combo greys while CanExecute is false (CD25), and with NO value parameter — or no command — the controls behave
+// exactly as before (no default parameter is provisioned — T isn't inferrable, and the parameter is never touched).
 public sealed class BarComboBoxValueCommandTests
 {
     private static UITestHost NewHost(int w = 30, int h = 12) =>
@@ -45,30 +48,29 @@ public sealed class BarComboBoxValueCommandTests
         public bool Gated;
         public readonly List<string> Log = [];
 
-        public BarCommand CreateCommand() => new(canExecute: _ => !Gated, execute: p =>
-        {
-            var vp = (IValueCommandParameter)p!;
-            switch (vp.Action)
+        public BarCommand CreateCommand() => new(
+            canExecute: _ => !Gated,
+            execute: p =>
             {
-                case ValueCommandParameterAction.Preview:
-                    Snapshot ??= Applied;                  // first preview of the session snapshots the real state
-                    Applied = (string)vp.PreviewValue!;    // apply WITHOUT committing (a later preview re-previews)
-                    Log.Add($"preview:{Applied}");
-                    break;
-                case ValueCommandParameterAction.CancelPreview:
-                    if (Snapshot is not null)
-                    {
-                        Applied = Snapshot;                // restore the exact pre-preview state
-                        Snapshot = null;
-                    }
-                    Log.Add("cancel");
-                    break;
-                default:
-                    Applied = (string)vp.Value!;           // the one real operation (one undo group at the consumer)
-                    Log.Add($"commit:{Applied}");
-                    break;
-            }
-        });
+                // Execute is always and only the COMMIT (one real operation — one undo group at the consumer).
+                Applied = (string)((IValueCommandParameter)p!).Value!;
+                Log.Add($"commit:{Applied}");
+            },
+            previewExecute: p =>
+            {
+                Snapshot ??= Applied;                                         // first preview snapshots the real state
+                Applied = (string)((IValueCommandParameter)p!).PreviewValue!; // apply WITHOUT committing (a re-preview replaces)
+                Log.Add($"preview:{Applied}");
+            },
+            cancelPreviewExecute: _ =>
+            {
+                if (Snapshot is not null)
+                {
+                    Applied = Snapshot; // restore the exact pre-preview state
+                    Snapshot = null;
+                }
+                Log.Add("cancel");
+            });
     }
 
     private static (UITestHost Host, SizeModel Model, ValueCommandParameter<string> Parameter, BarGallery Gallery) ShowGallery()
@@ -118,7 +120,6 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Null(model.Snapshot);
         Assert.Equal(0, gallery.SelectedIndex); // the tentative highlight did not stick to the face either
         Assert.Equal("Sm", parameter.Value);    // nothing was committed
-        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action); // the parameter rests at Commit
         Assert.Equal(new[] { "preview:Md", "preview:Lg", "cancel" }, model.Log);
     }
 
@@ -138,7 +139,6 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Null(model.Snapshot);              // the preview was unwound BEFORE the commit applied
         Assert.Equal("Md", parameter.Value);      // the committed value landed on the parameter
         Assert.Equal(1, gallery.SelectedIndex);   // a commit keeps the chosen selection on the face
-        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
         Assert.Equal(new[] { "preview:Md", "cancel", "commit:Md" }, model.Log);
         Assert.Equal(1, model.Log.Count(entry => entry.StartsWith("commit", StringComparison.Ordinal)));
     }
@@ -182,7 +182,6 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Null(model.Snapshot);
         Assert.Equal(0, gallery.SelectedIndex); // the face rolled back too
         Assert.Equal("Sm", parameter.Value);
-        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
         Assert.Equal(new[] { "preview:Md", "cancel" }, model.Log);
     }
 
@@ -205,7 +204,6 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Null(model.Snapshot);
         Assert.Equal("Sm", parameter.Value);    // the refused commit never mutated the parameter
         Assert.Equal(0, gallery.SelectedIndex); // and the face never diverges from the unchanged model
-        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
         Assert.Equal(new[] { "preview:Md", "cancel" }, model.Log); // no commit entry — nothing was half-applied
     }
 
@@ -241,7 +239,6 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Equal("Lg", model.Applied);
         Assert.Equal("Lg", parameter.Value);
         Assert.Null(model.Snapshot);
-        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
         Assert.Equal(new[] { "preview:Lg", "cancel", "commit:Lg" }, model.Log); // the click's selection previews, then commits
     }
 
@@ -293,6 +290,61 @@ public sealed class BarComboBoxValueCommandTests
         Assert.True(combo.IsEffectivelyEnabled);
     }
 
+    // An ICommand that knows NOTHING about previewing (not IPreviewableCommand): the session must never send it a
+    // preview verb — structurally it cannot mis-execute a preview as a commit — yet the value channel still commits
+    // through Execute.
+    private sealed class PlainCommand : ICommand
+    {
+        public readonly List<string> Log = [];
+        public event EventHandler? CanExecuteChanged { add { } remove { } } // never raised — satisfies ICommand
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => Log.Add($"execute:{((IValueCommandParameter)parameter!).Value}");
+    }
+
+    [Fact] // an UNAWARE command gets NO preview verbs: highlighting shows nothing tentative, the commit still lands
+           // through Execute (the value channel works with any ICommand), and a dismissal still restores the face
+    public void UnawareCommand_NoPreview_CommitStillLands()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var command = new PlainCommand();
+        var parameter = new ValueCommandParameter<string>("Sm");
+        var gallery = new BarGallery
+        {
+            ItemsSource = new[] { "Sm", "Md", "Lg" },
+            Command = command,
+            CommandParameter = parameter,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        gallery.SelectedIndex = 0;
+        host.ShowRoot(gallery);
+        host.RunUntilIdle();
+        gallery.Focus();
+        gallery.IsDropDownOpen = true;
+        host.RunUntilIdle();
+
+        host.SendKey(Key.RightArrow);        // highlight "Md" — nothing tentative may be shown
+        host.RunUntilIdle();
+        Assert.Empty(command.Log);           // no preview verb reached the unaware command
+        Assert.Null(parameter.PreviewValue); // and its parameter carries no candidate
+
+        host.SendKey(Key.Enter);             // the commit still lands, through plain Execute
+        host.RunUntilIdle();
+        Assert.Equal(new[] { "execute:Md" }, command.Log);
+        Assert.Equal("Md", parameter.Value);
+        Assert.Equal(1, gallery.SelectedIndex);
+
+        gallery.IsDropDownOpen = true;       // … and a dismissal still restores the face (the value session applies)
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);        // highlight "Lg"
+        host.RunUntilIdle();
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.Equal(1, gallery.SelectedIndex);           // back to the committed "Md"
+        Assert.Equal(new[] { "execute:Md" }, command.Log); // no further executes
+    }
+
     [Fact] // a value parameter WITHOUT a command is inert: no session, no restore, and the parameter is never touched
     public void ValueParameterWithoutCommand_IsInert()
     {
@@ -322,7 +374,6 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Equal(1, combo.SelectedIndex);   // Escape does NOT restore — exactly the no-parameter behavior
         Assert.Equal("Sm", parameter.Value);    // untouched
         Assert.Null(parameter.PreviewValue);    // never previewed
-        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
     }
 
     [Fact] // NO value parameter ⇒ exactly today's behavior: no executes, and Escape keeps the navigated selection

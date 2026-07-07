@@ -82,7 +82,10 @@ public class CheckableCommandParameter(bool? isChecked = false) : ICheckableComm
     /// <summary>Releases the override (clears <see cref="Handled"/>) so the control's own base preference reappears.</summary>
     public void Release() => Handled = false;
 
-    private void Set<T>(ref T field, T value, PropertyChangedEventArgs args)
+    /// <summary>Sets <paramref name="field"/> and raises <see cref="PropertyChanged"/> when the value actually
+    /// changed. Protected so a derived parameter (<see cref="ValueCommandParameter{T}"/>) can raise its own
+    /// properties through the base event (a field-like event is not invokable from a subclass).</summary>
+    protected void Set<T>(ref T field, T value, PropertyChangedEventArgs args)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
             return;

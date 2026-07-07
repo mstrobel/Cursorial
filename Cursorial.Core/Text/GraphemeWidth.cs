@@ -246,7 +246,12 @@ public static class GraphemeWidth
                    };
         }
 
-        // Supplementary planes.
+        // Supplementary planes. Scripts and the Enclosed Ideographic block are EAW=W; everything
+        // emoji-shaped delegates to the UTS #51 Emoji=Yes table (one source with the compositor's
+        // emoji-stomp classifier). That union — never a whole-block blanket — is what fixed both
+        // directions of drift: 🅱/🛠-class pictographs (Emoji=Yes, EAW=N/A) render two cells on
+        // emoji-font terminals and were MISSING; alchemical/chess/Arrows-C symbols (EAW=N,
+        // Emoji=No) render one cell and were wrongly claimed wide.
         return cp switch
                {
                    >= 0x16FE0 and <= 0x16FFF => true,  // Tangut/Kana supplement marks (EAW=W)
@@ -254,37 +259,24 @@ public static class GraphemeWidth
                    >= 0x18800 and <= 0x18D0F => true,  // Tangut Components / Khitan Small Script / Tangut Supplement
                    >= 0x1AFF0 and <= 0x1AFFF => true,  // Kana Extended-B
                    >= 0x1B000 and <= 0x1B2FF => true,  // Kana Supplement / Extended-A / Small Kana / Nüshu
-                   0x1F004                   => true,  // 🀄 (Emoji_Presentation)
-                   0x1F0CF                   => true,  // 🃏 (Emoji_Presentation)
-                   0x1F18E                   => true,  // 🆎 (Emoji_Presentation)
-                   >= 0x1F191 and <= 0x1F19A => true,  // 🆑..🆚 (Emoji_Presentation)
-                   >= 0x1F1E6 and <= 0x1F1FF => true,  // Regional indicators (flag halves; EP=Yes — a pair composes one 2-cell flag)
-                   >= 0x1F200 and <= 0x1F265 => true,  // Enclosed Ideographic Supplement (🈁🈚🈯…; EAW=W)
-                   >= 0x1F300 and <= 0x1F64F => true,  // Misc Symbols and Pictographs, Emoticons
-                   >= 0x1F680 and <= 0x1F6FF => true,  // Transport and Map Symbols
-                   >= 0x1F700 and <= 0x1F77F => true,  // Alchemical Symbols
-                   >= 0x1F780 and <= 0x1F7FF => true,  // Geometric Shapes Extended
-                   >= 0x1F800 and <= 0x1F8FF => true,  // Supplemental Arrows-C
-                   >= 0x1F900 and <= 0x1F9FF => true,  // Supplemental Symbols and Pictographs
-                   >= 0x1FA00 and <= 0x1FA6F => true,  // Chess Symbols
-                   >= 0x1FA70 and <= 0x1FAFF => true,  // Symbols and Pictographs Extended-A
-                   >= 0x1FB00 and <= 0x1FBFF => false, // Symbols for Legacy Computing
+                   >= 0x1F200 and <= 0x1F265 => true,  // Enclosed Ideographic Supplement (🈁🈚🈯…; EAW=W incl. the non-emoji squared CJK)
                    >= 0x20000 and <= 0x2FFFD => true,  // CJK Extension B, C, D, E, F, I (Plane 2)
                    >= 0x30000 and <= 0x3FFFD => true,  // CJK Extension G, H (Plane 3)
-                   _                         => false
+                   _                         => IsEmojiPresentationScalar(cp)
                };
     }
 
     /// <summary>
-    /// True when <paramref name="codepoint"/> is a <b>default-emoji-presentation</b> scalar —
-    /// the UTS #51 <c>Emoji_Presentation=Yes</c> set in the legacy BMP symbol blocks plus the
-    /// supplementary emoji blocks (generously: all of U+1F000–U+1FAFF). These glyphs render as
-    /// COLOR BITMAPS on emoji-font terminals and therefore ignore the SGR foreground — the
-    /// property both consumers care about: the width table measures them 2 cells, and the
-    /// compositor stomps them under an opaque cover (a foreground-tinted "hidden" emoji still
-    /// renders in full color, straight through the covering layer). Generous supplementary
-    /// bounds are deliberate: a false positive only stomps a glyph that was already invisible
-    /// as text.
+    /// True when <paramref name="codepoint"/> is an <b>emoji-presentation</b> scalar: the
+    /// UTS #51 <c>Emoji_Presentation=Yes</c> set in the legacy BMP symbol blocks, plus the full
+    /// <c>Emoji=Yes</c> ranges in the supplementary plane (emoji-data.txt, Unicode 16 — precise
+    /// ranges, not block blankets). These glyphs render as COLOR BITMAPS on emoji-font terminals
+    /// and therefore ignore the SGR foreground — the property both consumers care about: the
+    /// width table measures them 2 cells (an emoji font draws even the EAW=N/A members like
+    /// 🅱 and 🛠 two cells wide), and the compositor stomps them under a covering layer (a
+    /// foreground-tinted "hidden" emoji still renders in full color, straight through). BMP
+    /// <c>Emoji=Yes</c>-but-text-default glyphs (bare ❤, ☺) stay out: they measure 1 cell and
+    /// tint like text on most terminals, and widening them would change BMP width behavior.
     /// </summary>
     public static bool IsEmojiPresentationScalar(int codepoint) => codepoint switch
     {
@@ -320,7 +312,66 @@ public static class GraphemeWidth
         0x2B1B or 0x2B1C => true,          // ⬛ ⬜
         0x2B50 => true,                    // ⭐
         0x2B55 => true,                    // ⭕
-        >= 0x1F000 and <= 0x1FAFF => true, // the supplementary emoji blocks (generous by design)
+
+        // ── the supplementary plane: the UTS #51 Emoji=Yes ranges (emoji-data.txt, Unicode 16) ──
+        // Precise, not a block blanket: the width table consumes this too, and a blanket claimed
+        // 2 cells for EAW=N non-emoji neighbors (alchemical, chess, playing cards, Arrows-C).
+        0x1F004 => true,                   // 🀄
+        0x1F0CF => true,                   // 🃏
+        0x1F170 or 0x1F171 => true,        // 🅰 🅱
+        0x1F17E or 0x1F17F => true,        // 🅾 🅿
+        0x1F18E => true,                   // 🆎
+        >= 0x1F191 and <= 0x1F19A => true, // 🆑..🆚
+        >= 0x1F1E6 and <= 0x1F1FF => true, // regional indicators (a pair composes one 2-cell flag)
+        0x1F201 or 0x1F202 => true,        // 🈁 🈂
+        0x1F21A => true,                   // 🈚
+        0x1F22F => true,                   // 🈯
+        >= 0x1F232 and <= 0x1F23A => true, // 🈲..🈺
+        0x1F250 or 0x1F251 => true,        // 🉐 🉑
+        >= 0x1F300 and <= 0x1F321 => true, // Misc Symbols and Pictographs …
+        >= 0x1F324 and <= 0x1F393 => true,
+        0x1F396 or 0x1F397 => true,
+        >= 0x1F399 and <= 0x1F39B => true,
+        >= 0x1F39E and <= 0x1F3F0 => true,
+        >= 0x1F3F3 and <= 0x1F3F5 => true,
+        >= 0x1F3F7 and <= 0x1F4FD => true,
+        >= 0x1F4FF and <= 0x1F53D => true,
+        >= 0x1F549 and <= 0x1F54E => true,
+        >= 0x1F550 and <= 0x1F567 => true,
+        0x1F56F or 0x1F570 => true,
+        >= 0x1F573 and <= 0x1F57A => true,
+        0x1F587 => true,
+        >= 0x1F58A and <= 0x1F58D => true,
+        0x1F590 => true,
+        0x1F595 or 0x1F596 => true,
+        0x1F5A4 or 0x1F5A5 => true,
+        0x1F5A8 => true,
+        0x1F5B1 or 0x1F5B2 => true,
+        0x1F5BC => true,
+        >= 0x1F5C2 and <= 0x1F5C4 => true,
+        >= 0x1F5D1 and <= 0x1F5D3 => true,
+        >= 0x1F5DC and <= 0x1F5DE => true,
+        0x1F5E1 or 0x1F5E3 or 0x1F5E8 or 0x1F5EF or 0x1F5F3 => true,
+        >= 0x1F5FA and <= 0x1F64F => true, // … through the Emoticons
+        >= 0x1F680 and <= 0x1F6C5 => true, // Transport and Map Symbols …
+        >= 0x1F6CB and <= 0x1F6D2 => true,
+        >= 0x1F6D5 and <= 0x1F6D7 => true,
+        >= 0x1F6DC and <= 0x1F6E5 => true,
+        0x1F6E9 => true,
+        0x1F6EB or 0x1F6EC => true,
+        0x1F6F0 => true,
+        >= 0x1F6F3 and <= 0x1F6FC => true,
+        >= 0x1F7E0 and <= 0x1F7EB => true, // 🟠..🟫 colored circles/squares
+        0x1F7F0 => true,                   // 🟰
+        >= 0x1F90C and <= 0x1F93A => true, // Supplemental Symbols and Pictographs …
+        >= 0x1F93C and <= 0x1F945 => true,
+        >= 0x1F947 and <= 0x1F9FF => true,
+        >= 0x1FA70 and <= 0x1FA7C => true, // Symbols and Pictographs Extended-A …
+        >= 0x1FA80 and <= 0x1FA89 => true,
+        >= 0x1FA8F and <= 0x1FAC6 => true,
+        >= 0x1FACE and <= 0x1FADC => true,
+        >= 0x1FADF and <= 0x1FAE9 => true,
+        >= 0x1FAF0 and <= 0x1FAF8 => true,
         _ => false
     };
 
@@ -380,8 +431,8 @@ public static class GraphemeWidth
     /// right margin. This predicate lets the renderer detect width-uncertain glyphs and defend
     /// the cursor position (re-anchor with an explicit move after each one) so the drift can't
     /// compound — see <c>FrameRenderer.EmitDiff</c>, gated on
-    /// <c>TextSizingCapabilities.WideGlyphs == false</c> just like the wide-glyph neighbor-fill
-    /// defense.
+    /// <c>TextSizingCapabilities.ReliableWideGlyphs == false</c> just like the wide-glyph
+    /// neighbor-fill defense.
     /// </para>
     /// <para>
     /// The table covers the contiguous BMP blocks that are wholly or predominantly EAW=A and

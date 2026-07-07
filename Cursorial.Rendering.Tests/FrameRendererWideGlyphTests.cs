@@ -18,7 +18,7 @@ public class FrameRendererWideGlyphTests
     private static OutputCapabilities CapsWithWideGlyphs(bool wide)
         => OutputCapabilities.None with
            {
-               TextSizing = new TextSizingCapabilities(Width: false, Scale: false, WideGlyphs: wide),
+               TextSizing = new TextSizingCapabilities(Width: false, Scale: false, ReliableWideGlyphs: wide),
            };
 
     [Fact]
@@ -106,7 +106,7 @@ public class FrameRendererWideGlyphTests
 
     // ---- Ambiguous-width defense (box-drawing rules, geometric shapes, …) ----
     //
-    // On a terminal flagged WideGlyphs=false, a single-width East-Asian-Ambiguous glyph is
+    // On a terminal flagged ReliableWideGlyphs=false, a single-width East-Asian-Ambiguous glyph is
     // treated like a wide glyph: its right neighbor is painted FIRST, the glyph is emitted at c,
     // then c+1 is SKIPPED so we never write into the glyph's (potential) second half — a write
     // there blanks the whole glyph on a terminal rendering ambiguous-as-wide.

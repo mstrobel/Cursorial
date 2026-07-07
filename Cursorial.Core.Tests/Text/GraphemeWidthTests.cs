@@ -78,6 +78,7 @@ public class GraphemeWidthTests
     [InlineData(0x1F004)] // 🀄
     [InlineData(0x1F1E6)] // regional indicator (flag half)
     [InlineData(0x1F21A)] // 🈚
+    [InlineData(0x1F171)] // 🅱
     public void CodepointWidth_EmojiPresentationDefaults_AreTwo(int cp)
     {
         Assert.Equal(2, GraphemeWidth.CodepointWidth(cp));
@@ -117,6 +118,31 @@ public class GraphemeWidthTests
     [InlineData("A", false)]
     public void IsEmojiPresentation_ClassifiesClusters(string cluster, bool expected)
         => Assert.Equal(expected, GraphemeWidth.IsEmojiPresentation(cluster));
+
+    [Theory] // the supplementary pass (2026-07-07): Emoji=Yes pictographs are wide even when EAW says N/A…
+    [InlineData(0x1F171, 2)] // 🅱 negative squared B (Emoji=Yes, EAW=A) — the reported miss
+    [InlineData(0x1F170, 2)] // 🅰
+    [InlineData(0x1F6E0, 2)] // 🛠 hammer and wrench (Emoji=Yes, EAW=N)
+    [InlineData(0x1F321, 2)] // 🌡 thermometer (Emoji=Yes, EAW=N)
+    [InlineData(0x1F7E0, 2)] // 🟠 colored circle
+    [InlineData(0x1FAF0, 2)] // 🫰 hand with index finger and thumb crossed
+    // …and EAW=N NON-emoji symbol blocks are narrow (the old block blankets over-claimed these):
+    [InlineData(0x1F700, 1)] // alchemical symbol for quintessence
+    [InlineData(0x1FA00, 1)] // neutral chess king
+    [InlineData(0x1F800, 1)] // leftwards arrow with small triangle arrowhead (Arrows-C)
+    [InlineData(0x1F0A1, 1)] // playing card ace of spades (only 🃏 1F0CF is emoji)
+    [InlineData(0x1F210, 2)] // 🈐 squared CJK (Emoji=No but EAW=W — the Enclosed Ideographic arm)
+    public void CodepointWidth_SupplementaryEmojiPass(int codepoint, int expected)
+        => Assert.Equal(expected, GraphemeWidth.CodepointWidth(codepoint));
+
+    [Theory] // the classifier tracks the same table: emoji stomp/width can never disagree
+    [InlineData(0x1F171, true)]
+    [InlineData(0x1F6E0, true)]
+    [InlineData(0x1F700, false)]
+    [InlineData(0x1FA00, false)]
+    [InlineData(0x1F0A1, false)]
+    public void IsEmojiPresentationScalar_SupplementaryRanges(int codepoint, bool expected)
+        => Assert.Equal(expected, GraphemeWidth.IsEmojiPresentationScalar(codepoint));
 
     [Fact]
     public void IsEmojiPresentationScalar_AgreesWithTheWidthTable_OnTheBmpEpSet()

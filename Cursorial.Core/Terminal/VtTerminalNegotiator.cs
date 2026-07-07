@@ -1448,24 +1448,27 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // stays false, so the renderer falls back to its pre-paint-then-CUP-back defense.
         bool wideGlyphs = identification.Family switch
                           {
-                              TerminalFamily.Kitty           => true,
-                              TerminalFamily.Ghostty         => true,
-                              TerminalFamily.Rio             => true,
-                              TerminalFamily.ITerm2          => false,
-                              TerminalFamily.WezTerm         => false,
-                              TerminalFamily.Alacritty       => false,
-                              TerminalFamily.Konsole         => true,
-                              TerminalFamily.GnomeTerminal   => false,
-                              TerminalFamily.Terminus        => false,
-                              TerminalFamily.Foot            => true,
-                              TerminalFamily.WindowsTerminal => true,
-                              TerminalFamily.GenericWsl      => true,
-                              TerminalFamily.MobaXTerm       => false,
-                              // Multiplexers pass wide-glyph rendering through to the host terminal; trust them
-                              // when the user is running one (the worst case is the host itself is unreliable,
-                              // which is the same as not running through a multiplexer at all).
-                              TerminalFamily.Tmux      => true,
-                              TerminalFamily.GnuScreen => true,
+                              // TerminalFamily.Kitty           => true,
+                              // TerminalFamily.Ghostty         => true,
+                              // TerminalFamily.Rio             => true,
+                              // TerminalFamily.ITerm2          => false,
+                              // TerminalFamily.WezTerm         => false,
+                              // TerminalFamily.Alacritty       => false,
+                              // TerminalFamily.Konsole         => true,
+                              // TerminalFamily.GnomeTerminal   => false,
+                              // TerminalFamily.Terminus        => false,
+                              // TerminalFamily.Foot            => true,
+                              // TerminalFamily.WindowsTerminal => true,
+                              // TerminalFamily.GenericWsl      => true,
+                              // TerminalFamily.MobaXTerm       => false,
+                              // // Multiplexers pass wide-glyph rendering through to the host terminal; trust them
+                              // // when the user is running one (the worst case is the host itself is unreliable,
+                              // // which is the same as not running through a multiplexer at all).
+                              // TerminalFamily.Tmux      => true,
+                              // TerminalFamily.GnuScreen => true,
+                              
+                              // At this point, I'm not sure any of these can be trusted.
+                              // Forcing to 'false' to ensure wide glyph mishandling defense is always deployed.
                               _                        => false
                           };
 
@@ -1473,8 +1476,8 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                           TextSizingSupportedVersion(identification.Version);
 
         return textSizing
-            ? new TextSizingCapabilities(Width: true, Scale: true, WideGlyphs: wideGlyphs)
-            : TextSizingCapabilities.None with { WideGlyphs = wideGlyphs };
+            ? new TextSizingCapabilities(Width: true, Scale: true, ReliableWideGlyphs: wideGlyphs)
+            : TextSizingCapabilities.None with { ReliableWideGlyphs = wideGlyphs };
     }
 
     /// <summary>

@@ -24,7 +24,11 @@ public enum ValueCommandParameterAction
 
     /// <summary>Withdraw the active preview and restore the exact pre-preview state. A previewing control always
     /// sends this before a <see cref="Commit"/> too, so the commit handler never has to unwind preview state itself —
-    /// cancel restores, then commit applies once.</summary>
+    /// cancel restores, then commit applies once. This is a <b>cleanup obligation</b>, not a user action: the preview
+    /// is atomic (either committed or entirely rolled back), so a cancel is always dispatched without a
+    /// <c>CanExecute</c> check and — for a <c>BarCommand</c> — executed regardless of its self-gate; a custom
+    /// <c>ICommand</c> with its own internal gate should honor the same exemption. A command that gates itself while
+    /// a preview is active therefore has that preview rolled back and any commit refused.</summary>
     CancelPreview,
 }
 
@@ -95,7 +99,10 @@ public interface IValueCommandParameter
 /// <see cref="ValueCommandParameterAction.Preview"/>; a dismissal executes
 /// <see cref="ValueCommandParameterAction.CancelPreview"/> when a preview ran (restore exactly); a commit executes
 /// <c>CancelPreview</c> (again, only when a preview ran) then <see cref="ValueCommandParameterAction.Commit"/> with
-/// <see cref="Value"/> set — so the consumer's commit is always one real operation on unpreviewed state.
+/// <see cref="Value"/> set — so the consumer's commit is always one real operation on unpreviewed state. The preview
+/// is <b>atomic</b>: either committed or entirely rolled back — <c>CancelPreview</c> is always deliverable (exempt
+/// from the <c>CanExecute</c> gate; see <see cref="ValueCommandParameterAction.CancelPreview"/>), while a gated
+/// command refuses new previews and commits.
 /// </para>
 /// Raises <see cref="INotifyPropertyChanged"/> for <see cref="Value"/>/<see cref="PreviewValue"/>/<see cref="Action"/>
 /// (as the base does for its members) so the parameter can be data-bound directly. The FB-27 context-gate composes

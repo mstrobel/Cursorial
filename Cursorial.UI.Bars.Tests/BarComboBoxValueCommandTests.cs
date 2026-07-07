@@ -12,9 +12,11 @@ namespace Cursorial.Tests.UI.Bars;
 // committing); a commit (Enter / Space / item click) executes CancelPreview (restore exactly) then Commit with Value
 // set — one real operation; a dismissal (Escape / light-dismiss) executes CancelPreview and restores the pre-open
 // selection. Invariants pinned here: preview never dirties the model permanently (cancel restores byte-exact), the
-// parameter's Action always rests at Commit between executes (a shared surface must never be misrouted), the combo
-// greys while CanExecute is false (CD25), and with NO value parameter — or no command — the controls behave exactly
-// as before (no default parameter is provisioned — T isn't inferrable, and the parameter is never touched).
+// preview is ATOMIC — either committed or entirely rolled back, so CancelPreview is delivered even through a
+// mid-session CanExecute gate flip while the gated commit is refused un-applied — the parameter's Action always
+// rests at Commit between executes (a shared surface must never be misrouted), the combo greys while CanExecute is
+// false (CD25), and with NO value parameter — or no command — the controls behave exactly as before (no default
+// parameter is provisioned — T isn't inferrable, and the parameter is never touched).
 public sealed class BarComboBoxValueCommandTests
 {
     private static UITestHost NewHost(int w = 30, int h = 12) =>
@@ -34,14 +36,16 @@ public sealed class BarComboBoxValueCommandTests
     }
 
     // The consumer of the preview contract: Applied is the document state; Snapshot is the pre-preview state an
-    // active preview must restore (byte-exact); Log records every Execute routed through the parameter.
+    // active preview must restore (byte-exact); Log records every Execute routed through the parameter; Gated is the
+    // command's own CanExecute gate (false by default — the stable-gate case every other test runs under).
     private sealed class SizeModel
     {
         public string Applied = "Sm";
         public string? Snapshot;
+        public bool Gated;
         public readonly List<string> Log = [];
 
-        public BarCommand CreateCommand() => new(p =>
+        public BarCommand CreateCommand() => new(canExecute: _ => !Gated, execute: p =>
         {
             var vp = (IValueCommandParameter)p!;
             switch (vp.Action)
@@ -157,6 +161,52 @@ public sealed class BarComboBoxValueCommandTests
         Assert.Equal(0, gallery.SelectedIndex);
         Assert.Equal("Sm", parameter.Value);
         Assert.DoesNotContain(model.Log, entry => entry.StartsWith("commit", StringComparison.Ordinal));
+    }
+
+    [Fact] // ATOMICITY: the gate flips false mid-preview — a dismissal still delivers CancelPreview THROUGH the gate
+    public void Gallery_GateFlipsMidPreview_DismissalStillRollsBack()
+    {
+        var (host, model, parameter, gallery) = ShowGallery();
+        using var _ = host;
+
+        host.SendKey(Key.RightArrow); // preview "Md" while the gate is open
+        host.RunUntilIdle();
+        Assert.Equal("Md", model.Applied);
+
+        model.Gated = true;           // the command gates itself mid-session (no re-query reaches before the gesture)
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+
+        Assert.False(gallery.IsDropDownOpen);
+        Assert.Equal("Sm", model.Applied);      // byte-exact rollback — the cancel was DELIVERED despite the gate
+        Assert.Null(model.Snapshot);
+        Assert.Equal(0, gallery.SelectedIndex); // the face rolled back too
+        Assert.Equal("Sm", parameter.Value);
+        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
+        Assert.Equal(new[] { "preview:Md", "cancel" }, model.Log);
+    }
+
+    [Fact] // ATOMICITY: the gate flips false mid-preview — a COMMIT gesture nets a FULL rollback (cancel runs, commit refused)
+    public void Gallery_GateFlipsMidPreview_CommitGestureRollsBack()
+    {
+        var (host, model, parameter, gallery) = ShowGallery();
+        using var _ = host;
+
+        host.SendKey(Key.RightArrow); // preview "Md" while the gate is open
+        host.RunUntilIdle();
+        Assert.Equal("Md", model.Applied);
+
+        model.Gated = true;
+        host.SendKey(Key.Enter);      // the commit gesture — the gate refuses it; the preview must still unwind
+        host.RunUntilIdle();
+
+        Assert.False(gallery.IsDropDownOpen);
+        Assert.Equal("Sm", model.Applied);      // model back to the pre-session state
+        Assert.Null(model.Snapshot);
+        Assert.Equal("Sm", parameter.Value);    // the refused commit never mutated the parameter
+        Assert.Equal(0, gallery.SelectedIndex); // and the face never diverges from the unchanged model
+        Assert.Equal(ValueCommandParameterAction.Commit, parameter.Action);
+        Assert.Equal(new[] { "preview:Md", "cancel" }, model.Log); // no commit entry — nothing was half-applied
     }
 
     [Fact] // clicking an item commits it (the click's own selection change previews first — then cancel + one commit)

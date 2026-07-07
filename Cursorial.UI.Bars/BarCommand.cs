@@ -58,9 +58,16 @@ public class BarCommand : ICommand
     public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
 
     /// <inheritdoc/>
+    /// <remarks>Self-gated by <see cref="CanExecute"/> — except for a parameter carrying
+    /// <see cref="ValueCommandParameterAction.CancelPreview"/>, which always executes. That is the preview-atomicity
+    /// contract (see <see cref="IValueCommandParameter"/>): a live preview is either committed or entirely rolled
+    /// back, so the rollback must stay deliverable even after the command gates itself mid-session — while a gated
+    /// command still refuses NEW tentative state (<see cref="ValueCommandParameterAction.Preview"/>) and refuses
+    /// commits. A custom <see cref="ICommand"/> with its own internal gate should honor the same exemption.</remarks>
     public void Execute(object? parameter)
     {
-        if (!CanExecute(parameter))
+        if (!CanExecute(parameter) &&
+            parameter is not IValueCommandParameter { Action: ValueCommandParameterAction.CancelPreview })
             return;
 
         _execute(parameter);

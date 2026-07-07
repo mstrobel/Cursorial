@@ -27,6 +27,57 @@ public sealed class RibbonBand : Panel
         FocusManager.SetRetainsFocus(this, false);
     }
 
+    /// <summary>
+    /// Recomputes and stamps the band's AUTHORED content height (<see cref="Ribbon.BandContentRowsProperty"/>): 2 when
+    /// any hosted control authors a <see cref="RibbonButtonSize.Large"/> face or any <see cref="RibbonControlGroup"/>
+    /// pins <see cref="RibbonControlGroupRowBehavior.TwoRow"/>; else 1. Authored facts only — density-demoted faces
+    /// and fold-collapsed groups never change the answer, so the width fold re-inks faces without re-flowing rows
+    /// (a stack is already the narrowest form; flattening would trade height for MORE width). Runs every band
+    /// measure, so a runtime ButtonSize/RowBehavior change self-heals through the ordinary invalidation chain.
+    /// </summary>
+    private bool StampAuthoredContentRows()
+    {
+        var rows = 1;
+        var children = Children;
+
+        // A Simplified/Compact LayoutMode pins the band to one row — read via the INHERITED signal (not a walk to
+        // the Ribbon) so the mode flip re-measures this band through its registered AffectsMeasure even when no
+        // face visibly changes (a stacks-only tab flattening).
+        var simplified = GetValue(Ribbon.IsLayoutSimplifiedProperty);
+
+        for (var i = 0; i < children.Count && !simplified && rows < 2; i++)
+        {
+            if (children[i] is not RibbonGroup group || group.Visibility == Visibility.Collapsed)
+                continue;
+
+            foreach (var container in group.Containers)
+            {
+                if (container is RibbonControlGroup controlGroup)
+                {
+                    if (controlGroup.RowBehavior == RibbonControlGroupRowBehavior.TwoRow)
+                    {
+                        rows = 2;
+                        break;
+                    }
+
+                    continue; // stacked children wear 1-row faces (a nested authored Large is unsupported and clamps)
+                }
+
+                if (container.GetValue(Ribbon.ButtonSizeProperty) == RibbonButtonSize.Large)
+                {
+                    rows = 2;
+                    break;
+                }
+            }
+        }
+
+        if (GetValue(Ribbon.BandContentRowsProperty) == rows)
+            return false;
+
+        SetValue(Ribbon.BandContentRowsProperty, rows);
+        return true;
+    }
+
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -51,6 +102,16 @@ public sealed class RibbonBand : Panel
 
             width = LayoutMath.Add(width, child.DesiredSize.Columns);
             height = Math.Max(height, child.DesiredSize.Rows);
+        }
+
+        // AFTER the child measure: the first pass realizes the groups' containers inside the recursive child
+        // Measure calls above, so stamping first would always read empty groups. A changed stamp fans the
+        // inherited value to every control-group panel (AffectsMeasure re-packs them) and re-measures this band —
+        // the pass converges on the second iteration and is a no-op every pass after (authored inputs are stable).
+        if (StampAuthoredContentRows())
+        {
+            InvalidateMeasure();
+            return new Size(width, height); // stale by one pass; the immediate re-measure recomputes
         }
 
         return new Size(width, height);

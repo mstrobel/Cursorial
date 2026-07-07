@@ -39,6 +39,30 @@ public class Ribbon : TabControl
         UIProperty.RegisterAttached<Ribbon, RibbonGroup, RibbonGroupDensity>(
             "MinDensity", defaultValue: RibbonGroupDensity.Collapsed);
 
+    /// <summary>The band's AUTHORED content height in rows (1 or 2), stamped by <see cref="RibbonBand"/> from authored
+    /// facts only — a control authoring a <see cref="RibbonButtonSize.Large"/> face, a <see cref="RibbonControlGroup"/>
+    /// pinning <see cref="RibbonControlGroupRowBehavior.TwoRow"/> — never from density-demoted faces, so the width
+    /// fold re-inks faces without re-flowing rows. Inherited so an <c>Auto</c> control group reads it wherever it
+    /// sits (inline or relocated into the collapsed flyout). Framework-set only.</summary>
+    internal static readonly AttachedProperty<int> BandContentRowsProperty =
+        UIProperty.RegisterAttached<Ribbon, UIElement, int>("BandContentRows", defaultValue: 1, inherits: true);
+
+    /// <summary>The ribbon's overall layout density — the USER-directED axis (bind to a command or an options key):
+    /// <see cref="RibbonLayoutMode.Classic"/> full presentation, <see cref="RibbonLayoutMode.Simplified"/> one labeled
+    /// row (no group footers), <see cref="RibbonLayoutMode.Compact"/> one icon-only row. Authored faces are never
+    /// touched — flipping back to Classic restores them exactly. The width-driven density fold stays active WITHIN
+    /// whatever mode is selected.</summary>
+    public static readonly StyledProperty<RibbonLayoutMode> LayoutModeProperty =
+        UIProperty.Register<Ribbon, RibbonLayoutMode>(
+            nameof(LayoutMode), defaultValue: RibbonLayoutMode.Classic, changed: OnLayoutModeChanged);
+
+    /// <summary>The inherited SIMPLIFIED-layout signal (<see cref="LayoutModeProperty"/> != Classic): stamps
+    /// <c>:layout-simplified</c> ribbon-wide — Large faces demote to their <c>[icon][label]</c> row, group footers
+    /// collapse, and <see cref="RibbonBand"/> pins its authored height to 1 (so control groups lay flat). The exact
+    /// <c>IsDensityCompact</c> mechanism, one axis over. Framework-set only.</summary>
+    internal static readonly AttachedProperty<bool> IsLayoutSimplifiedProperty =
+        UIProperty.RegisterAttached<Ribbon, UIElement, bool>("IsLayoutSimplified", defaultValue: false, inherits: true);
+
     /// <summary>Raised (bubbling) when the special File tab is invoked — the app opens its Backstage/File view. In P2
     /// the ribbon leaves the caption row and Backstage to the app; this is the hook.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> BackstageRequestedEvent =
@@ -116,6 +140,12 @@ public class Ribbon : TabControl
         FocusManager.IsFocusScopeProperty.OverrideDefaultValue<Ribbon>(true);
         FocusManager.RetainsFocusProperty.OverrideDefaultValue<Ribbon>(false);
 
+        // The band's authored-height stamp reaches Auto control-group panels as an INHERITED value change; their row
+        // count reads it in measure, so the change must re-measure them. Registered HERE (the property's declaring
+        // type, before any instance can touch it) — the global effects lane freezes on first resolution, so a
+        // consumer-type static ctor is too late when another test/app path touched the property first.
+        AffectsMeasure<RibbonControlGroupPanel>(BandContentRowsProperty);
+
         // The size context can't be TemplateBound into a bar control's template (TemplateBinding resolves a CLR
         // property name and an attached property reports SourceMissing), so the inherited value CHANGE stamps a
         // pseudo-class the size-aware BarItemTemplate keys off (Medium ⇒ no class). The stamp re-matches the
@@ -133,6 +163,17 @@ public class Ribbon : TabControl
         // (:has-icon — consumed by the Compact cascade — is registered in BarButton's static ctor so it is live before
         //  any Icon is set, since the mapping is change-only and buttons are often built before a Ribbon exists.)
 
+        // :layout-simplified fans the user's LayoutMode out to every hosted control AND the group/band chrome
+        // (inherited signal → pseudo-class): the BarItemTemplate demotes Large faces to the [icon][label] row by
+        // document order (after the :size-large rules, before the :density-compact ones, all equal specificity),
+        // the group template hides its name footer, and the band re-derives its authored height (the AffectsMeasure
+        // below — the band READS the inherited value rather than walking to the Ribbon, so the change re-measures it
+        // even when no face visibly flips, e.g. a stacks-only tab flattening).
+        PseudoClassMapping.Register<UIElement, bool>(
+            IsLayoutSimplifiedProperty, static v => v ? ":layout-simplified" : null);
+        AffectsMeasure<RibbonBand>(IsLayoutSimplifiedProperty);
+        AffectsMeasure<RibbonControlGroupPanel>(IsLayoutSimplifiedProperty); // TwoRow pins flatten under the mode directly
+
         // :qat-below flips which QAT host the template shows (AboveRibbon ⇒ no class); the generator re-points to the
         // now-visible toolbar in OnQuickAccessPlacementChanged.
         PseudoClassMapping.Register<Ribbon, RibbonQuickAccessPlacement>(
@@ -143,6 +184,24 @@ public class Ribbon : TabControl
         // unaffected — no change-only seeding needed).
         PseudoClassMapping.Register<Ribbon, bool>(
             IsMinimizedProperty, static m => m ? ":minimized" : null);
+    }
+
+    /// <inheritdoc cref="LayoutModeProperty"/>
+    public RibbonLayoutMode LayoutMode { get => GetValue(LayoutModeProperty); set => SetValue(LayoutModeProperty, value); }
+
+    private static void OnLayoutModeChanged(UIObject sender, RibbonLayoutMode oldValue, RibbonLayoutMode newValue)
+    {
+        if (sender is not Ribbon ribbon)
+            return;
+
+        ribbon.SetValue(IsLayoutSimplifiedProperty, newValue != RibbonLayoutMode.Classic);
+
+        // The Compact pin: icon-only ribbon-wide, stamped at the ROOT so it inherits everywhere. The fold's per-group
+        // un-compact CLEARS its local value (never writes false), so this pin is never shadowed by a Normal group.
+        if (newValue == RibbonLayoutMode.Compact)
+            ribbon.SetValue(IsDensityCompactProperty, true);
+        else
+            ribbon.ClearValue(IsDensityCompactProperty);
     }
 
     private static string? ClassifySize(RibbonButtonSize size) => size switch

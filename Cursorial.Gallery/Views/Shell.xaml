@@ -366,8 +366,10 @@
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
                 <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />
-                <bars:BarButton Command="{Binding Cut}" />
-                <bars:BarButton Command="{Binding Copy}" />
+                <bars:RibbonControlGroup>
+                  <bars:BarButton Command="{Binding Cut}" />
+                  <bars:BarButton Command="{Binding Copy}" />
+                </bars:RibbonControlGroup>
               </bars:RibbonGroup>
               <bars:RibbonGroup Header="Font">
                 <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />

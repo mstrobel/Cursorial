@@ -670,7 +670,12 @@ is whole-cell and dark/light-themed from one dictionary.
   launcher); **density collapse** (a too-narrow group demotes to a `[name ▾]` flyout), **contextual tabs** (purple
   tint, visibility-bound), **Backstage** (full-window File view or a compact File-anchored menu), **Quick Access
   Toolbar** (an embedded `Toolbar` + customize checklist + trailing collapse), and a **minimizable** band
-  (double-click / pin, float-on-activate). Vertical nav crosses the tab-strip ↔ body boundary (`Ribbon.OnKeyDown`:
+  (double-click / pin, float-on-activate). **`RibbonControlGroup`** stacks related small/medium controls into the
+  band's 2 rows beside `Large` heroes (contiguous min-width packer + `RowBreak` pins + `ItemSize` stamping; `Auto`
+  stacks only when the band's AUTHORED height is 2 — density folds re-ink faces but never re-flow rows), and
+  **`Ribbon.LayoutMode`** (`Classic`/`Simplified`/`Compact`) is the user-directed density axis: one labeled row (no
+  group footers) or one icon-only row (a root-stamped `IsDensityCompact` pin the fold's clear-not-write-false
+  un-compact respects), authored faces restored exactly on the way back. Vertical nav crosses the tab-strip ↔ body boundary (`Ribbon.OnKeyDown`:
   Down off a header enters the body; Up at body-top climbs to the strip; a collapsed opener is treated as body-top).
 - **KeyTips** (`KeyTip`/`KeyTipExtensions`) — an Alt-overlay accelerator-badge layer with multi-level drill-in
   (parallel to `AccessKeyManager`, gated on the same negotiated capability), armed via `UIApplication.EnableKeyTips()`.

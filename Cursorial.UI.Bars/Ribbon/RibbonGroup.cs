@@ -51,9 +51,46 @@ public class RibbonGroup : HeaderedItemsControl
     internal BarPopupButton? CollapsedButtonForTests => _collapsedButton;
     internal Panel? CollapsedPopupHostForTests => _collapsedPopupHost;
 
-    /// <summary>The group's hosted bar controls, in document order — the KeyTip L2 targets (keytips-design §6). Valid
-    /// whether they sit inline or in the collapsed flyout (the panel owns the authoritative adopted list).</summary>
-    internal IReadOnlyList<UIElement> KeyTipContainers => _groupPanel?.Containers ?? [];
+    /// <summary>The group's DIRECT containers in document order (a <see cref="RibbonControlGroup"/> appears as
+    /// itself) — the band's authored-height walk reads this un-flattened view. Valid whether the controls sit inline
+    /// or in the collapsed flyout (the panel owns the authoritative adopted list).</summary>
+    internal IReadOnlyList<UIElement> Containers => _groupPanel?.Containers ?? [];
+
+    /// <summary>The group's hosted bar controls, in document order — the KeyTip L2 targets (keytips-design §6). A
+    /// <see cref="RibbonControlGroup"/> container FLATTENS to its children: the grouping is pure layout, so every
+    /// command inside a stack keeps its own KeyTip. Valid inline or in the collapsed flyout.</summary>
+    internal IReadOnlyList<UIElement> KeyTipContainers
+    {
+        get
+        {
+            var containers = Containers;
+            List<UIElement>? flat = null;
+
+            for (var i = 0; i < containers.Count; i++)
+            {
+                if (containers[i] is RibbonControlGroup controlGroup)
+                {
+                    if (flat is null)
+                    {
+                        flat = new List<UIElement>(containers.Count + 4);
+                        for (var j = 0; j < i; j++)
+                            flat.Add(containers[j]);
+                    }
+
+                    var generator = controlGroup.ItemContainerGenerator;
+                    for (var j = 0; j < generator.ContainerCount; j++)
+                        if (generator.ContainerFromIndex(j) is { } child)
+                            flat.Add(child);
+                }
+                else
+                {
+                    flat?.Add(containers[i]);
+                }
+            }
+
+            return flat ?? containers;
+        }
+    }
 
     /// <summary>The group's ⋰ dialog launcher (a KeyTip L2 Activate target), or null when the group has none.</summary>
     internal ButtonBase? KeyTipDialogLauncher => _launcher;
@@ -87,6 +124,8 @@ public class RibbonGroup : HeaderedItemsControl
     // (a label-only button keeps its label — no saving). Analytic per-child (icon grapheme width + face padding),
     // computed from the children's NORMAL measurements while the group is at Normal, so it never depends on the
     // deferred restyle. Errs high (never over-promises savings) so the band under-collapses rather than clipping.
+    // A RibbonControlGroup container recurses: its saving is packed(normal) − packed(icon-only) through the SAME
+    // packer the live layout uses (both rows narrow together — a per-child sum would double-count the stack).
     private int ComputeCompactEstimate()
     {
         if (_groupPanel is null)
@@ -95,14 +134,39 @@ public class RibbonGroup : HeaderedItemsControl
         var savings = 0;
         foreach (var container in _groupPanel.Containers)
         {
-            if (container.GetValue(BarButton.IconProperty) is { } icon)
-            {
-                var iconOnly = GraphemeWidth.StringWidth(icon.ToString() ?? string.Empty) + 2; // border padding (1,0)
-                savings += Math.Max(0, container.DesiredSize.Columns - iconOnly);
-            }
+            if (container is RibbonControlGroup controlGroup)
+                savings += Math.Max(0, container.DesiredSize.Columns - controlGroup.EstimateCompactWidth());
+            else
+                savings += Math.Max(0, container.DesiredSize.Columns - CompactWidthOf(container));
         }
 
         return Math.Max(1, _naturalWidthNormal - savings);
+    }
+
+    // A single control's analytic :density-compact width: icon-bearing → the icon-only face (icon width + border
+    // padding (1,0)); label-only → unchanged (Compact never blanks a label-only button). Shared with
+    // RibbonControlGroup's stack-aware estimate so the two rules can't drift. An Icon CONTROL (the tiered
+    // Glyph/Image/Emoji/Text element — the common case) reports its measured width, falling back to the typical
+    // 2-cell face when unmeasured; a string icon measures its graphemes. Errs high (never over-promises savings).
+    internal static int CompactWidthOf(UIElement container)
+    {
+        // Only the BarItemTemplate carries the :density-compact label-drop rules — BarButton and BarToggleButton.
+        // Split/popup buttons, combos, and galleries keep their full faces under Compact, so claiming icon-only
+        // savings for them over-promises and the fold would keep a Compact tier that actually clips (audit F2).
+        if (container is not (BarButton or BarToggleButton) ||
+            container.GetValue(BarButton.IconProperty) is not { } icon)
+        {
+            return container.DesiredSize.Columns;
+        }
+
+        var iconWidth = icon switch
+        {
+            UIElement { DesiredSize.Columns: > 0 } measured => measured.DesiredSize.Columns,
+            UIElement => 2, // an unmeasured Icon control: the typical 2-cell face
+            _ => Math.Max(1, GraphemeWidth.StringWidth(icon.ToString() ?? string.Empty)),
+        };
+
+        return iconWidth + 2; // border padding (1,0)
     }
 
     // Called by RibbonBand's fold to assign the group's density tier. Guarded no-op on a stable value (SetIsLastInBand
@@ -115,7 +179,12 @@ public class RibbonGroup : HeaderedItemsControl
             return;
         var wasCollapsed = _density == RibbonGroupDensity.Collapsed;
         _density = value;
-        Ribbon.SetIsDensityCompact(this, value == RibbonGroupDensity.Compact);
+        // Compact writes the inherited signal locally; un-compact CLEARS it (never a local false, which would
+        // shadow a ribbon-root pin — RibbonLayoutMode.Compact stamps true at the root and it must flow through).
+        if (value == RibbonGroupDensity.Compact)
+            Ribbon.SetIsDensityCompact(this, true);
+        else
+            ClearValue(Ribbon.IsDensityCompactProperty);
         PseudoClasses.Set(":density-collapsed", value == RibbonGroupDensity.Collapsed);
 
         var isCollapsed = value == RibbonGroupDensity.Collapsed;

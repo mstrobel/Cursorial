@@ -94,18 +94,35 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     {
         var scratch = new List<SceneLayer>();
         var samples = new List<LayerCellSample>();
+        var descriptions = new List<string>();
+
         for (var i = 0; i < _surfaces.Count; i++)
         {
             scratch.Clear();
-            var isOccluder = !ReferenceEquals(_surfaces[i], _rootSurface) && !ReferenceEquals(_surfaces[i], _keyTipSurface);
-            _surfaces[i].CollectLayers(scratch, surfaceZ: i, isOccluder: isOccluder);
-            foreach (var layer in scratch)
+            descriptions.Clear();
+
+            var surface = _surfaces[i];
+            var isOccluder = !ReferenceEquals(surface, _rootSurface) && !ReferenceEquals(surface, _keyTipSurface);
+
+            surface.CollectLayers(scratch, surfaceZ: i, isOccluder: isOccluder, descriptions);
+
+            for (var j = 0; j < scratch.Count; j++)
             {
+                var layer = scratch[j];
                 int localColumn = column - layer.Parameters.OffsetColumn;
                 int localRow = row - layer.Parameters.OffsetRow;
+
                 bool inside = localColumn >= 0 && localColumn < layer.Scene.Columns
-                              && localRow >= 0 && localRow < layer.Scene.Rows;
-                samples.Add(new LayerCellSample(i, layer.Parameters, inside ? layer.Scene.GetCell(localColumn, localRow) : null));
+                                               && localRow >= 0 && localRow < layer.Scene.Rows;
+
+                samples.Add(
+                    new LayerCellSample(j,
+                                        layer.Parameters,
+                                        inside
+                                            ? layer.Scene.GetCell(localColumn, localRow)
+                                            : null,
+                                        descriptions[j])
+                );
             }
         }
 
@@ -1424,4 +1441,4 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 /// carrying the layer's z-order (bottom→top) and its composite <see cref="Parameters"/>. <see cref="Cell"/> is
 /// <see langword="null"/> when the sampled screen coordinate falls outside this layer's footprint.
 /// </summary>
-internal readonly record struct LayerCellSample(int SurfaceZ, CompositeParameters Parameters, Cell? Cell);
+internal readonly record struct LayerCellSample(int SurfaceZ, CompositeParameters Parameters, Cell? Cell, string? ElementDescription = null);

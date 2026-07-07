@@ -141,7 +141,8 @@ public sealed class TopLevelSurface
     /// <param name="target">The shared layer list the compositor concatenates across surfaces.</param>
     /// <param name="surfaceZ">This surface's z-index in the stack (stamped on every layer for the compositor's fragment-occlusion).</param>
     /// <param name="isOccluder">Whether this surface is an opaque occluder (a window/popup/badge — not the root).</param>
-    internal void CollectLayers(List<SceneLayer> target, int surfaceZ = 0, bool isOccluder = false)
+    /// <param name="boundaryDescriptions">An optional list into which descriptions of the surface's boundaries are written.</param>
+    internal void CollectLayers(List<SceneLayer> target, int surfaceZ = 0, bool isOccluder = false, List<string>? boundaryDescriptions = null)
     {
         // The shadow fringe is the LOWEST layer of the surface — emit it first (earlier == composited lower),
         // at the content offset pulled back by the cast margins so the fringe lands just outside the content
@@ -150,13 +151,25 @@ public sealed class TopLevelSurface
         if (_shadowScene is {} shadow)
         {
             var margins = Shadow.GetMargins();
+
             var parameters = new CompositeParameters(
                 Left - margins.Left, Top - margins.Top,
                 (byte) Math.Round(Math.Clamp(Opacity, 0.0, 1.0) * 255.0));
+
             target.Add(new SceneLayer(shadow, parameters) { SurfaceZ = surfaceZ, IsOccluder = false });
+
+            if (boundaryDescriptions is not null)
+            {
+                var description = Root.GetType().Name;
+
+                if (Root.Name is { Length: > 0 } name)
+                    description += $"#{name}";
+
+                boundaryDescriptions.Add(description);
+            }
         }
 
-        RenderTree.CollectLayers(target, Left, Top, Opacity, surfaceZ, isOccluder);
+        RenderTree.CollectLayers(target, Left, Top, Opacity, surfaceZ, isOccluder, boundaryDescriptions);
     }
 
     // Shadows read as a soft tint only through RGB-on-RGB alpha compositing — a non-RGB backdrop short-circuits

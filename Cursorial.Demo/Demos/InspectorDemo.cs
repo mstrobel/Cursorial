@@ -1,8 +1,10 @@
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
+using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
@@ -16,6 +18,8 @@ using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Xaml;
+
+using CS = Cursorial.Output.Style;
 
 // P9.8 — the XAML style-inspector (design doc §3.9 / proposal §2.8 "style inspector overlay"): load a .xaml
 // file, render it on the real frame loop, then inspect the element under the cursor — for it, the overlay
@@ -98,7 +102,7 @@ internal sealed class InspectorDemo : IDemo
                             <RowDefinition Height="*" />
                           </Grid.RowDefinitions>
                           
-                          <Button        Grid.Column="0" Grid.Row="0" Content="_Cancel" MinWidth="10"
+                          <Button        Grid.Column="0" Grid.Ro"0" Content="_Cancel" MinWidth="10"
                                          Command="{Binding ClickCommand}" CommandParameter="{Binding Content, RelativeSource={RelativeSource Self}}" />
                           <TextBlock     Grid.Column="2" Grid.Row="0" Text="normal" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
                           
@@ -361,7 +365,7 @@ internal sealed class InspectorDemo : IDemo
                            </Menu>
                            <TextBlock Text="Sign in"/>
                            <Label Content="User _name:"/>
-                           <TextBox Placeholder="username" Width="24"/>
+                           <TextBox Placeholder="文文文文文文文文" Width="24"/>
                            <Label Content="_Password:"/>
                            <TextBox Placeholder="••••••••" Width="24"/>
                            <CheckBox Content="_Remember me"/>
@@ -446,6 +450,8 @@ internal sealed class InspectorDemo : IDemo
 
     private sealed class Controller(UIApplication app)
     {
+        private const string NullDisplay = "(null)";
+
         private TextBlock _status = null!;
         private Border _canvas = null!; // hosts the loaded tree (or the placeholder / error)
         private Border _inspectorContent = null!;
@@ -947,6 +953,30 @@ internal sealed class InspectorDemo : IDemo
             root.Items.Add(Node(nameof(UIElement.DesiredSize), current.DesiredSize));
             root.Items.Add(Node(nameof(UIElement.Bounds), current.Bounds));
 
+            if (app.InputDispatcher.LastPointerPosition is {} position)
+            {
+                IReadOnlyList<LayerCellSample>? samples = app.WindowManager?.SampleCell(position.Column, position.Row);
+
+                if (samples is not null)
+                {
+                    var cellNode = Node("Layers",
+                                        NoValue,
+                                        inlineValue: $"{samples.Count} at ({position.Column}, {position.Row})",
+                                        expanded: false);
+
+                    for (var i = samples.Count - 1; i >= 0; i--)
+                    {
+                        var cs = samples[i];
+                        cellNode.Items.Add(Node($"[{i}]",
+                                                FormatCellSample(cs),
+                                                inlineValue: FormatCellSampleDescription(cs),
+                                                expanded: false));
+                    }
+
+                    root.Items.Add(cellNode);
+                }
+            }
+
             var properties = current.GetSetProperties().OrderBy(p => p.Name).ToArray();
 
             foreach (var property in properties)
@@ -954,7 +984,7 @@ internal sealed class InspectorDemo : IDemo
                 // The winning derivation line (StyleDiagnostics.Explain is one line per contributor, strongest
                 // first): "<prop> = <value> <- <Layer>(n) \"<selector>\" … -- winning" (or "<- LocalValue").
                 // Guarded: a diagnostic must never crash the thing it inspects — a pathological value ToString()
-                // in an arbitrarily-loaded tree degrades to an error line, not an unhandled hover-handler throw.
+                // in an arbitrarily loaded tree degrades to an error line, not an unhandled hover-handler throw.
                 StyleExplanation e;
                 object? resourceKey;
 
@@ -1005,6 +1035,7 @@ internal sealed class InspectorDemo : IDemo
                 root.Items.Add(item);
             }
 
+            /*
             if (current.VisualChildrenCount is var vcc and > 0)
             {
                 var vc = Node("VisualChildren", NoValue, expanded: false);
@@ -1023,7 +1054,9 @@ internal sealed class InspectorDemo : IDemo
 
                 root.Items.Add(vc);
             }
+            */
 
+            /*
             if (current.LogicalChildrenList is { Count: var lcc and >0 } logicalChildren)
             {
                 var lc = Node("LogicalChildren", NoValue, expanded: false);
@@ -1039,6 +1072,7 @@ internal sealed class InspectorDemo : IDemo
 
                 root.Items.Add(lc);
             }
+            */
 
             if (current.VisualParent is {} vp)
                 root.Items.Add(Node("VisualParent", InspectNode(vp, seen: seen, expanded: true), expanded: false));
@@ -1058,6 +1092,13 @@ internal sealed class InspectorDemo : IDemo
             }
 
             return root;
+        }
+
+        private static string? FormatCellSampleDescription(LayerCellSample cs)
+        {
+            if (cs.Cell is { Grapheme: var g } c)
+                return $"{QuoteValue(EscapeGraphemes(g))} [{FormatValue(c.Kind)}] {cs.ElementDescription}";
+            return cs.ElementDescription;
         }
 
         private static void AttachStyleExplanation(TreeViewItem item, StyleExplanation e)
@@ -1103,7 +1144,7 @@ internal sealed class InspectorDemo : IDemo
 
         private static readonly object NoValue = new();
 
-        private static TreeViewItem Node(string? name, object? value, string? brush = ThemeKeys.MutedBrush,
+        private static TreeViewItem Node(object? name, object? value, string? brush = ThemeKeys.MutedBrush,
                                          object? inlineValue = null, bool expanded = true)
         {
             var hasName = name is not null;
@@ -1130,19 +1171,25 @@ internal sealed class InspectorDemo : IDemo
                            Header = new TextBlock { Markup = header, TextWrapping = WrapMode.WordWrap }
                        };
 
+            // @formatter:off
             if (hasName && !isSimple && value != NoValue)
             {
                 if (value is TreeViewItem tv)
                     item.Items.Add(tv);
+                else if (value is IEnumerable<TreeViewItem> tvs)
+                    foreach (var tvi in tvs) item.Items.Add(tvi);
                 else
                     item.Items.Add(Node(null, value));
             }
+            // @formatter:on
 
             return item;
         }
 
         private static string QuoteValue(string? value)
         {
+            if (value == NullDisplay) return NullDisplay;
+
             return $"\"{value}\"" +
                    (value?.EnumerateRunes().Any(r => GraphemeWidth.CodepointWidth(r) > 1) is true 
                         ? $" (w={GraphemeWidth.StringWidth(value)})"
@@ -1153,8 +1200,18 @@ internal sealed class InspectorDemo : IDemo
         {
             var f = value switch
                     {
-                        null                       => "(null)",
-                        string s                   => QuoteValue(s),
+                        null                       => NullDisplay,
+                        Cell c                     => $"{{Cell({c.Kind}) Grapheme=\"{EscapeGraphemes(c.Grapheme)}\", " +
+                                                      $"Style=\"{FormatValue(c.Style)}\"}}",
+                        CS cs                      => $"{{CellStyle fg={FormatValue(cs.Foreground)}, " +
+                                                      $"bg={FormatValue(cs.Background)}, " +
+                                                      $"ul={FormatValue(cs.UnderlineStyle)}" +
+                                                      $"({FormatValue(cs.UnderlineColor)})" +
+                                                      (cs.Hyperlink is { Uri: {} l }
+                                                           ? $", link=\"{FormatValue(l)}\"" 
+                                                           : "") +
+                                                      $", attr={cs.Attributes}}}",
+                        // string s                   => QuoteValue(s),
                         UIElement e                => $"{{{value.GetType().Name}}} ({RuntimeHelpers.GetHashCode(e):x8})",
                         Array a                    => $"[{string.Join(", ", a.Cast<object>().Select(FormatValue))}]" + (a.Length > 0 ? " " : ""),
                         System.Collections.IList l => $"[{string.Join(", ", l.Cast<object>().Select(FormatValue))}]",
@@ -1179,10 +1236,74 @@ internal sealed class InspectorDemo : IDemo
                                                  $"{string.Join(", ", cb.Stops.Select(s => FormatValue(s.Color)))})",
                         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
                         GlyphSetCarrier gc       => gc.ToString(),
-                        _                        => HasToStringOverride(value) ? (value.ToString() ?? "(null)") : $"{{{value.GetType().Name}}}"
+                        _                        => HasToStringOverride(value) ? (value.ToString() ?? NullDisplay) : $"{{{value.GetType().Name}}}"
                     };
 
             return Sanitize(f);
+        }
+
+        private static TreeViewItem FormatCellSample(LayerCellSample sample)
+        {
+            var cell = sample.Cell;
+            var style = cell?.Style;
+
+            var children = new List<TreeViewItem>
+                           {
+                               Node("Element", sample.ElementDescription),
+                               Node(nameof(sample.SurfaceZ), FormatValue(sample.SurfaceZ)),
+                               Node(nameof(sample.Parameters),
+                                   new List<TreeViewItem>
+                                   {
+                                       Node(nameof(sample.Parameters.Clip), NoValue, inlineValue: FormatValue(sample.Parameters.Clip)),
+                                       Node(nameof(sample.Parameters.Mode), NoValue, inlineValue: FormatValue(sample.Parameters.Mode)),
+                                       Node(nameof(sample.Parameters.OffsetColumn), NoValue, inlineValue: FormatValue(sample.Parameters.OffsetColumn)),
+                                       Node(nameof(sample.Parameters.OffsetRow), NoValue, inlineValue: FormatValue(sample.Parameters.OffsetRow)),
+                                       Node(nameof(sample.Parameters.Opacity), NoValue, inlineValue: FormatValue(sample.Parameters.Opacity))
+                                   },
+                                   expanded: false)
+                           };
+
+            if (style is {} s)
+            {
+                children.Add(
+                    Node("Style",
+                         new[]
+                         {
+                             Node(nameof(CS.Foreground), NoValue, inlineValue: FormatValue(s.Foreground)),
+                             Node(nameof(CS.Background), NoValue, inlineValue: FormatValue(s.Background)),
+                             Node(nameof(CS.Attributes), NoValue, inlineValue: FormatValue(s.Attributes)),
+                             Node(nameof(CS.UnderlineStyle), NoValue, inlineValue: FormatValue(s.UnderlineStyle)),
+                             Node(nameof(CS.UnderlineColor), NoValue, inlineValue: FormatValue(s.UnderlineColor)),
+                             Node(nameof(CS.Hyperlink), NoValue, inlineValue: FormatValue(s.Hyperlink.Uri)),
+                             Node(nameof(CS.Background), NoValue, inlineValue: FormatValue(s.Background))
+                         },
+                         expanded: false));
+            }
+
+            return Node("Cell",
+                        children,
+                        inlineValue: cell is {} c ? $"{EscapeGraphemes(c.Grapheme)} [{FormatValue(c.Kind)}]" : null);
+        }
+
+        private static string EscapeGraphemes(string? grapheme)
+        {
+            if (grapheme is null) return NullDisplay;
+
+            var sb = new StringBuilder();
+            var enumerator = grapheme.GetGraphemeEnumerator();
+
+            while (enumerator.MoveNext())
+            {
+                var current = enumerator.Current;
+
+                while (Rune.DecodeFromUtf16(current, out Rune r, out var consumed) is OperationStatus.Done)
+                {
+                    sb.Append(Rune.IsLetterOrDigit(r) ? r.ToString() : $"\\u{r.Value:X}");
+                    current = current.Slice(consumed);
+                }
+            }
+            
+            return sb.ToString();
         }
 
         private static void AttachBindingExplanation(BindingExplanation bd, TreeViewItem item)
@@ -1232,7 +1353,7 @@ internal sealed class InspectorDemo : IDemo
 
         private static string Sanitize(object? value)
         {
-            if (value?.ToString() is not {} s) return "(null)";
+            if (value?.ToString() is not {} s) return NullDisplay;
             return Regex.Replace(s, @"(?<!\\)\[", "\\[");
         }
 

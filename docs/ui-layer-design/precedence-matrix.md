@@ -468,7 +468,7 @@ No store, no coercion, no styling, no inheritance, no animation lane, no `Proper
 
 ---
 
-## 18. Read surfaces — `GetValue(maxPriority)`, `GetBaseValue`, `GetValueSource` (M259–M264)
+## 18. Read surfaces — `GetValue(maxPriority)`, `GetBaseValue`, `GetValueSource`, `ReadLocalValue` (M259–M264e)
 
 | # | Setup | Operation | Expected | Oracle |
 |---|---|---|---|---|
@@ -478,6 +478,11 @@ No store, no coercion, no styling, no inheritance, no animation lane, no `Proper
 | M262 | any | `GetValue(P, Unset)` | throws `ArgumentException` (PD16) | PIN |
 | M263 | every scenario family | `GetValueSource` reports: fresh=`Default`; inherited=`Inherited`; frame=`Style`; local=`Local`; animated=`Animation`; `SCV`-overwritten adds `+cur`; never `Unset` | one consolidated `[Theory]` over the family table | PIN |
 | M264 | diagnostics enumeration | with M112's stack, the frame/local enumeration surface lists: animation entry, local raw, each frame entry (sort-keyed), inherited provenance | shape pinned loosely — names/types are P0 implementation freedom; the *content set* is the contract | PIN |
+| M264a *(added 2026-07-08)* | `Pc` (clamp [0,100]); `L(250)` | `ReadLocalValue((UIProperty)Pc)` / `TryReadLocalValue(Pc, out v)` | boxed **250** / `true`, v=250 — the **raw** pre-coercion value (PD6); `GetValue` stays 100. The typed/untyped raw-local read mouths, WPF `ReadLocalValue` parity | WPF (PD6) |
+| M264b | fresh; frame-only (`F(k1){P=5}`); inherited-only (`root.L(Pi,2)`, read at leaf) | `ReadLocalValue(P/Pi)` | `UIProperty.UnsetValue` in all three — only a LOCAL contribution surfaces (the sentinel is this mouth's contract; M14 governs the effective-value mouths only). `TryReadLocalValue` = `false` | WPF |
+| M264c | fresh; `SCV(4)` | `ReadLocalValue(P)` | boxed 4 — the no-contribution graft stores as local (M118) and reports here, consistent with `IsSet`/`GetValueSource` `Local+cur` | **DEV** from WPF (where `SetCurrentValue` is invisible to `ReadLocalValue`) — the M118 storage model pins it |
+| M264d | direct `Pd = 5` | `ReadLocalValue((UIProperty)Pd)` | boxed 5 — field semantics, always local (M220 parity) | PIN |
+| M264e | after M264a, `CV` | `ReadLocalValue(Pc)` | `UnsetValue` again; `TryReadLocalValue` = `false` (the raw slot dies with the local contribution) | WPF |
 
 ---
 

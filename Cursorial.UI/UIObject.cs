@@ -148,6 +148,49 @@ public abstract class UIObject : IInheritanceNode
     }
 
     /// <summary>
+    /// The raw (pre-coercion) local-lane value — WPF's <c>ReadLocalValue</c>: what local authorship
+    /// asked for before the coercer ran (PD6), or <see cref="UIProperty.UnsetValue"/> when no local
+    /// contribution exists. Style/Template/Inherited/Default contributions never surface here; the
+    /// effective-value mouths never return the sentinel (M14 governs those mouths only). A
+    /// <c>SetCurrentValue</c> graft stores as local (M118) and reports here — consistent with
+    /// <see cref="IsSet"/>/<see cref="GetValueSource"/>, a pinned DEV from WPF (where
+    /// <c>SetCurrentValue</c> is invisible to <c>ReadLocalValue</c>). Direct properties report their
+    /// current value (field semantics — always local, M220 parity). Boxed; cold path.
+    /// </summary>
+    public object? ReadLocalValue(UIProperty property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        VerifyAccess();
+
+        if (property.IsDirect)
+            return property.GetValueUntyped(this);
+
+        return _store?.TryGetEntry(property.Id) is { HasLocal: true } entry
+            ? entry.GetRawLocalBoxedValue()
+            : UIProperty.UnsetValue;
+    }
+
+    /// <summary>
+    /// The typed raw-local read — <see cref="ReadLocalValue"/> without the box or the sentinel:
+    /// <see langword="true"/> with the raw (pre-coercion) local value when a local contribution
+    /// exists, else <see langword="false"/> with <c>default</c>.
+    /// </summary>
+    public bool TryReadLocalValue<T>(StyledProperty<T> property, out T rawValue)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        VerifyAccess();
+
+        if (_store?.TryGetEntry(property.Id) is EffectiveValue<T> { HasLocal: true } entry)
+        {
+            rawValue = entry.RawLocalValue;
+            return true;
+        }
+
+        rawValue = default!;
+        return false;
+    }
+
+    /// <summary>
     /// Whether a value-bearing local contribution — local value or local entry with a value — a
     /// <see cref="BindingPriority.Template"/> contribution (§20/PD11 — auto-aliasing yields to
     /// template-provided values as it does to style/local ones), or a value-bearing entry in an

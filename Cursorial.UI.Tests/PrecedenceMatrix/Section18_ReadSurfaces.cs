@@ -95,4 +95,69 @@ public class Section18_ReadSurfaces
         Assert.Equal(new PropertyValueDiagnostic(BindingPriority.Style, 5, HasValue: true, frame.SortKey, IsActive: true), rows[2]);
         Assert.Equal(new PropertyValueDiagnostic(BindingPriority.Inherited, 2, HasValue: true, InheritedFrom: root), rows[3]);
     }
+
+    // ─────────────── M264a–M264e: the raw-local read mouths (ReadLocalValue / TryReadLocalValue) ───────────────
+
+    [Fact] // M264a — the raw (pre-coercion) value surfaces; the effective stays coerced (PD6)
+    public void M264a_ReadLocalValue_ReturnsTheRawPreCoercionValue()
+    {
+        var host = new Host();
+        host.SetValue(Pc, 250); // clamp [0,100] ⇒ effective 100
+
+        Assert.Equal(100, host.GetValue(Pc));
+        Assert.Equal(250, host.ReadLocalValue(Pc));
+
+        Assert.True(host.TryReadLocalValue(Pc, out var raw));
+        Assert.Equal(250, raw);
+    }
+
+    [Fact] // M264b — only a LOCAL contribution surfaces; everything else is the sentinel
+    public void M264b_ReadLocalValue_NonLocalContributions_ReturnUnsetValue()
+    {
+        var fresh = new Host();
+        Assert.Same(UIProperty.UnsetValue, fresh.ReadLocalValue(P));
+        Assert.False(fresh.TryReadLocalValue(P, out _));
+
+        var framed = new Host();
+        framed.AddFrame(new TestValueFrame(10).With(P, 5)); // style-only: effective 5, local unset
+        Assert.Equal(5, framed.GetValue(P));
+        Assert.Same(UIProperty.UnsetValue, framed.ReadLocalValue(P));
+
+        var (root, _, leaf) = Chain();
+        root.SetValue(Pi, 2); // inherited-only at the leaf
+        Assert.Equal(2, leaf.GetValue(Pi));
+        Assert.Same(UIProperty.UnsetValue, leaf.ReadLocalValue(Pi));
+        Assert.False(leaf.TryReadLocalValue(Pi, out _));
+    }
+
+    [Fact] // M264c — the SCV no-contribution graft stores as local (M118) and reports here (DEV from WPF)
+    public void M264c_ReadLocalValue_SeesTheSetCurrentValueGraft()
+    {
+        var host = new Host();
+        host.SetCurrentValue(P, 4);
+
+        Assert.Equal(4, host.ReadLocalValue(P)); // consistent with IsSet/GetValueSource Local+cur
+        Assert.True(host.TryReadLocalValue(P, out var raw));
+        Assert.Equal(4, raw);
+    }
+
+    [Fact] // M264d — direct properties report their current value (field semantics, M220 parity)
+    public void M264d_ReadLocalValue_DirectProperty_ReportsTheValue()
+    {
+        var host = new Host();
+        host.SetD(5);
+
+        Assert.Equal(5, host.ReadLocalValue(Pd));
+    }
+
+    [Fact] // M264e — the raw slot dies with the local contribution
+    public void M264e_ReadLocalValue_AfterClearValue_ReturnsUnsetValue()
+    {
+        var host = new Host();
+        host.SetValue(Pc, 250);
+        host.ClearValue(Pc);
+
+        Assert.Same(UIProperty.UnsetValue, host.ReadLocalValue(Pc));
+        Assert.False(host.TryReadLocalValue(Pc, out _));
+    }
 }

@@ -492,9 +492,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
                   TerminalFamily.WezTerm or
-                  TerminalFamily.Konsole or
+                  TerminalFamily.Konsole or  // UNVERIFIED — kept from the original list; no authoritative source either way.
                   TerminalFamily.Foot or
-                  TerminalFamily.ITerm2; // Partial support since iTerm2 3.5.
+                  TerminalFamily.ITerm2 or   // Partial support since iTerm2 3.5.
+                  TerminalFamily.Alacritty or // 0.13.0 (Dec 2023, PR #7125).
+                  TerminalFamily.Rio or       // Enabled by default (Rio docs).
+                  TerminalFamily.Warp or
+                  TerminalFamily.Contour;
 
     private static bool TerminalSupportsWin32InputMode(TerminalFamily family) =>
         family is TerminalFamily.WindowsTerminal or
@@ -505,10 +509,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     /// DEC private modes actually took effect. Allow-listed to the xterm-derived families known
     /// to implement it. Notably EXCLUDES <see cref="TerminalFamily.AppleTerminal"/>, which
     /// mis-parses the <c>$ p</c> form and prints the literal final byte, plus
-    /// <see cref="TerminalFamily.GenericVt"/> / <see cref="TerminalFamily.Unknown"/> where the
-    /// behavior is unproven — sending DECRQM there risks the same stray-output leak for no gain,
-    /// since verification is only a refinement (its absence falls back to trusting the opt-in's
-    /// own family gating).
+    /// <see cref="TerminalFamily.GnuScreen"/> (its CSI parser never tokenizes the <c>$</c>
+    /// intermediate — no DECRPM reply path) and <see cref="TerminalFamily.Konsole"/> (no DECRQM
+    /// handler in Vt102Emulation), and <see cref="TerminalFamily.GenericVt"/> /
+    /// <see cref="TerminalFamily.Unknown"/> where the behavior is unproven — sending DECRQM there
+    /// risks the same stray-output leak for no gain, since verification is only a refinement (its
+    /// absence falls back to trusting the opt-in's own family gating).
     /// </summary>
     private static bool TerminalSupportsDecRqm(TerminalFamily family) =>
         family is TerminalFamily.Xterm or
@@ -519,14 +525,20 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.Foot or
                   TerminalFamily.ITerm2 or
                   TerminalFamily.Alacritty or
-                  TerminalFamily.Konsole or
                   TerminalFamily.GnomeTerminal or
                   TerminalFamily.WindowsTerminal or
-                  TerminalFamily.WindowsConsoleHost or
+                  TerminalFamily.WindowsConsoleHost or  // Modern Windows only (~Win11 / 2024+).
                   TerminalFamily.GenericWsl or
-                  TerminalFamily.Tmux or
-                  TerminalFamily.GnuScreen;
+                  TerminalFamily.Tmux or                 // 3.6+, whitelist only.
+                  TerminalFamily.VisualStudioCode or
+                  TerminalFamily.Hyper or
+                  TerminalFamily.Contour or
+                  TerminalFamily.Termux or
+                  TerminalFamily.Mintty;
 
+    // Synchronized output (DEC mode 2026). Over-inclusion is self-correcting on families that answer
+    // DECRQM (VerifyAppliedOptInsAsync re-confirms 2026 at runtime); families NOT in the DECRQM list
+    // above are trusted on this gate alone.
     private static bool TerminalSupportsSynchronizedOutput(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
@@ -536,38 +548,50 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.WindowsTerminal or
                   TerminalFamily.GenericWsl or
                   TerminalFamily.Konsole or
-                  TerminalFamily.Foot;
+                  TerminalFamily.Foot or
+                  TerminalFamily.Rio or
+                  TerminalFamily.Contour or  // Originated the spec.
+                  TerminalFamily.Warp or
+                  TerminalFamily.Mintty or
+                  TerminalFamily.VisualStudioCode;
 
     /// <summary>
     /// Kitty's OSC 22 pointer-shape protocol. Not negotiated — terminals don't advertise it; we
-    /// gate on family identification. Per <see href="https://sw.kovidgoyal.net/kitty/pointer-shapes/"/>
-    /// the protocol is honored by Kitty, Ghostty, and Foot. (Contour and Wayst also implement
-    /// it but aren't in our <see cref="TerminalFamily"/> enum yet.)
+    /// gate on family identification. Honored by Kitty, Ghostty, Foot, iTerm2, Warp, and mintty.
+    /// (WezTerm's OSC 22 PR is still open; xterm honors OSC 22 but with X cursor-font resource
+    /// names rather than the CSS/kitty shape names we emit, so it is deliberately excluded.)
     /// </summary>
     private static bool TerminalSupportsMouseCursorShape(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
-                  TerminalFamily.Foot;
+                  TerminalFamily.Foot or
+                  TerminalFamily.ITerm2 or
+                  TerminalFamily.Warp or
+                  TerminalFamily.Mintty;
 
     /// <summary>
     /// DECSET 1016 (SGR-Pixels mouse) — terminals that report mouse coords in pixels rather
     /// than cells. Gated on family because non-supporting terminals often don't ignore the
     /// DECSET cleanly: some leave the previous mouse mode disabled instead. Honored by Kitty,
-    /// Ghostty, WezTerm, Foot, iTerm2, and modern xterm (358+).
+    /// Ghostty, WezTerm, Foot, iTerm2, modern xterm (358+), Contour, Warp, and the VS Code
+    /// terminal. (Rio maps only 1006 → SGR, not 1016.)
     /// </summary>
     private static bool TerminalSupportsSgrPixelsMouse(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
-                  TerminalFamily.Rio or
                   TerminalFamily.WezTerm or
                   TerminalFamily.Foot or
                   TerminalFamily.ITerm2 or
-                  TerminalFamily.Xterm;
+                  TerminalFamily.Xterm or
+                  TerminalFamily.Contour or
+                  TerminalFamily.Warp or
+                  TerminalFamily.VisualStudioCode;
 
     /// <summary>
     /// OSC 52 clipboard write. Most modern terminals honor this; some gate it behind a user
-    /// prompt or an allow-list. We claim support for the families known to implement it; older
-    /// terminals or those that strip OSCs we don't recognize silently fall through.
+    /// prompt or an allow-list (iTerm2 and xterm both default the write OFF). We claim support
+    /// for the families known to implement it; older terminals or those that strip OSCs we don't
+    /// recognize silently fall through.
     /// </summary>
     private static bool TerminalSupportsClipboardWrite(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
@@ -578,30 +602,37 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.ITerm2 or
                   TerminalFamily.Alacritty or
                   TerminalFamily.Xterm or
-                  TerminalFamily.Konsole or
+                  TerminalFamily.Konsole or       // KDE Gear 24.12 (Dec 2024), write-only.
                   TerminalFamily.WindowsTerminal or
                   TerminalFamily.GenericWsl or
-                  TerminalFamily.Tmux;
+                  TerminalFamily.Tmux or
+                  TerminalFamily.Warp or
+                  TerminalFamily.Mintty or
+                  TerminalFamily.Contour or
+                  TerminalFamily.SimpleTerminal or
+                  TerminalFamily.Termux or
+                  TerminalFamily.Zellij or
+                  TerminalFamily.VisualStudioCode; // Local only; stripped over Remote-SSH.
 
     /// <summary>
     /// OSC 52 clipboard read (the <c>?</c> query). A strictly smaller family set than
-    /// <see cref="TerminalSupportsClipboardWrite"/> — Konsole / Windows Terminal implement the set
-    /// side only. "Supports" here means the terminal IMPLEMENTS the query; most gate the actual
-    /// read behind a user prompt or a config allow-list (Kitty asks per read by default, Ghostty's
-    /// <c>clipboard-read</c> defaults to ask, xterm needs <c>allowWindowOps</c>), and a denied or
-    /// disabled read simply never replies. Consumers must pair the query with a timeout — the
-    /// capability claims "worth asking", not "will answer".
+    /// <see cref="TerminalSupportsClipboardWrite"/> — many terminals implement the set side only
+    /// (Rio has no <c>clipboard_load</c>; iTerm2 is documented write-only; tmux does not reflect an
+    /// inner app's query — tmux #1477). "Supports" here means the terminal IMPLEMENTS the query;
+    /// most gate the actual read behind a prompt or a config flag (Foot allows silently; Kitty and
+    /// Ghostty prompt; Alacritty, WezTerm, and xterm default it DENIED), and a denied or disabled
+    /// read simply never replies. Consumers must pair the query with a timeout — the capability
+    /// claims "worth asking", not "will answer".
     /// </summary>
     private static bool TerminalSupportsClipboardRead(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
-                  TerminalFamily.Rio or
-                  TerminalFamily.WezTerm or
                   TerminalFamily.Foot or
-                  TerminalFamily.ITerm2 or
+                  TerminalFamily.WezTerm or
                   TerminalFamily.Alacritty or
                   TerminalFamily.Xterm or
-                  TerminalFamily.Tmux;
+                  TerminalFamily.Mintty or  // Read since 3.8.2.
+                  TerminalFamily.Contour;
 
     // ---- Probe orchestration ----
 
@@ -1203,6 +1234,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         
         if (environment.GetVariable("TMUX") is { Length: > 0 }) return true;
         if (environment.GetVariable("STY") is { Length: > 0 }) return true; // GNU Screen
+        if (environment.GetVariable("ZELLIJ") is { Length: > 0 }) return true;
 
         if (rawTerm is null) return false;
 
@@ -1258,8 +1290,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (MatchIdentifier(name, "Konsole")) return TerminalFamily.Konsole;
         if (MatchIdentifier(name, "VTE\\(7600\\)")) return TerminalFamily.GnomeTerminal;
         if (MatchIdentifier(name, "Terminus.*")) return TerminalFamily.Terminus;
+
+        // Newer families (XTVERSION name token or TERM_PROGRAM value).
+        if (MatchIdentifier(name, "WarpTerminal") || MatchIdentifier(name, "Warp")) return TerminalFamily.Warp;
+        if (MatchIdentifier(name, "vscode")) return TerminalFamily.VisualStudioCode;
+        if (MatchIdentifier(name, "Hyper")) return TerminalFamily.Hyper;
+        if (MatchIdentifier(name, "waveterm")) return TerminalFamily.WaveTerminal;
+        if (MatchIdentifier(name, "mintty")) return TerminalFamily.Mintty;
+        if (MatchIdentifier(name, "contour")) return TerminalFamily.Contour;
+
         if (MatchIdentifier(name, "xterm")) return TerminalFamily.Xterm;
-        
+
         if (MatchIdentifier(name, "Apple_Terminal")) return TerminalFamily.AppleTerminal;
 
         if (MatchIdentifier(name, "WindowsTerminal") ||
@@ -1286,31 +1327,45 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // First chance rawTerm match (ignore common values like xterm, vt100, etc.)
         if (rawTerm is { Length: > 0 })
         {
-            // GNU screen tends t
+            // GNU screen tends to report TERM=screen or screen.<host>.
             if (MatchIdentifier(rawTerm, "screen\\[.].*")) return TerminalFamily.GnuScreen;
 
             if (MatchIdentifier(rawTerm, "kitty")) return TerminalFamily.Kitty;
             if (MatchIdentifier(rawTerm, "ghostty")) return TerminalFamily.Ghostty;
             if (MatchIdentifier(rawTerm, "rio")) return TerminalFamily.Rio;
-            if (MatchIdentifier(rawTerm, "iTerm[2]")) return TerminalFamily.Rio;
+            if (MatchIdentifier(rawTerm, "iTerm[2]")) return TerminalFamily.ITerm2;
             if (MatchIdentifier(rawTerm, "alacritty")) return TerminalFamily.Alacritty;
             if (MatchIdentifier(rawTerm, "tabby")) return TerminalFamily.Tabby;
             if (MatchIdentifier(rawTerm, "foot")) return TerminalFamily.Foot;
             if (MatchIdentifier(rawTerm, "tmux")) return TerminalFamily.Tmux;
+            if (MatchIdentifier(rawTerm, "contour")) return TerminalFamily.Contour;
+            if (MatchIdentifier(rawTerm, "st-256color") || MatchIdentifier(rawTerm, "st-16color")) return TerminalFamily.SimpleTerminal;
+            if (MatchIdentifier(rawTerm, "putty")) return TerminalFamily.PuTTY;
             if (MatchIdentifier(rawTerm, "VTE\\(7600\\)")) return TerminalFamily.GnomeTerminal;
             if (MatchIdentifier(rawTerm, "Terminus.*")) return TerminalFamily.Terminus;
             if (MatchIdentifier(rawTerm, "screen")) return TerminalFamily.GnuScreen;
             if (MatchIdentifier(rawTerm, "rxvt")) return TerminalFamily.Rxvt;
         }
 
+        // Distinctive per-terminal environment variables (more reliable than TERM, which most terminals
+        // set to xterm-256color regardless of identity). Ordered strongest-signal first.
         if (environment.GetVariable("MOBANOACL") is { Length: > 0 }) return TerminalFamily.MobaXTerm;
         if (environment.GetVariable("ConEmuPID") is { Length: > 0 }) return TerminalFamily.ConEmu;
 
         if (environment.GetVariable("KITTY_PID") is { Length: > 0 }) return TerminalFamily.Kitty;
         if (environment.GetVariable("WT_SESSION") is { Length: > 0 }) return TerminalFamily.WindowsTerminal;
         if (environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
+        if (environment.GetVariable("TERMUX_VERSION") is { Length: > 0 }) return TerminalFamily.Termux;
+        if (environment.GetVariable("ZELLIJ") is { Length: > 0 }) return TerminalFamily.Zellij;
+        if (environment.GetVariable("VSCODE_PID") is { Length: > 0 } ||
+            environment.GetVariable("VSCODE_INJECTION") is { Length: > 0 }) return TerminalFamily.VisualStudioCode;
+        if (environment.GetVariable("WAVETERM") is { Length: > 0 } ||
+            environment.GetVariable("WAVETERM_VERSION") is { Length: > 0 }) return TerminalFamily.WaveTerminal;
 
-        if (environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
+        // VTE_VERSION is the whole VTE family's fingerprint — no signal distinguishes gnome-terminal,
+        // GNOME Console (kgx), Black Box, Tilix, or xfce4-terminal from one another, so they all resolve to
+        // the VTE representative (GnomeTerminal). The version integer (e.g. 7803 = 0.78.3) gates VTE features.
+        if (environment.GetVariable("VTE_VERSION") is { Length: > 0 }) return TerminalFamily.GnomeTerminal;
 
         if (environment.IsWSL()) return TerminalFamily.GenericWsl;
         if (environment.IsCygwin() || environment.IsMinGW()) return TerminalFamily.GenericAnsi;
@@ -1407,10 +1462,12 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
         // Tmux is the only multiplexer we wrap for today — its DCS passthrough envelope has a
         // well-defined wire format. screen has a similar mechanism (DCS through screen's own
-        // multiplexer), but the syntax differs; deferred until someone needs it.
+        // multiplexer), but the syntax differs; deferred until someone needs it. Zellij is flagged
+        // InsideMultiplexer but is a full re-rendering emulator with NO generic escape passthrough,
+        // so it must be excluded here — a passthrough envelope through Zellij corrupts output.
         bool multiplexerPassthrough = identification.Family == TerminalFamily.Tmux ||
                                       (identification.InsideMultiplexer &&
-                                       identification.Family != TerminalFamily.GnuScreen);
+                                       identification.Family is not (TerminalFamily.GnuScreen or TerminalFamily.Zellij));
 
         var protocol = new OutputProtocolCapabilities(
             BracketedPasteEnable: applied.BracketedPaste,
@@ -1582,13 +1639,25 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                      TerminalFamily.Alacritty or
                                      TerminalFamily.WindowsTerminal or
                                      TerminalFamily.GenericWsl or
-                                     TerminalFamily.WindowsConsoleHost or
+                                     TerminalFamily.WindowsConsoleHost or  // Truecolor since Win10 1703 (2017).
                                      TerminalFamily.Foot or
                                      TerminalFamily.Konsole or
                                      TerminalFamily.GnomeTerminal or
                                      TerminalFamily.Terminus or
+                                     TerminalFamily.Tabby or
                                      TerminalFamily.ConEmu or
-                                     TerminalFamily.MobaXTerm)
+                                     TerminalFamily.MobaXTerm or
+                                     TerminalFamily.Rio or
+                                     TerminalFamily.Warp or
+                                     TerminalFamily.VisualStudioCode or
+                                     TerminalFamily.Hyper or
+                                     TerminalFamily.WaveTerminal or
+                                     TerminalFamily.Mintty or
+                                     TerminalFamily.Contour or
+                                     TerminalFamily.SimpleTerminal or  // Base st has truecolor since 0.7 (2016).
+                                     TerminalFamily.Termux or
+                                     TerminalFamily.Zellij or
+                                     TerminalFamily.PuTTY)               // 0.71+.
         {
             return ColorDepth.Truecolor;
         }
@@ -1610,27 +1679,55 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static TextStylingCapabilities ResolveStyling(TerminalIdentification identification)
     {
-        // The xterm baseline (italic, single underline, strikethrough) is supported by every
-        // family we recognize. Extended styling (curly underline, OSC 8 hyperlinks, colored
-        // underline, overline) is more recent.
-        bool extended = identification.Family is TerminalFamily.Kitty or
-                                                 TerminalFamily.Ghostty or
-                                                 TerminalFamily.ITerm2 or
-                                                 TerminalFamily.WezTerm or
-                                                 TerminalFamily.Alacritty or
-                                                 TerminalFamily.WindowsTerminal or
-                                                 TerminalFamily.GenericWsl or
-                                                 TerminalFamily.Foot or
-                                                 TerminalFamily.Konsole;
+        // The xterm baseline (italic, single underline, strikethrough) is supported by every family
+        // we recognize. The three "extended" features are tracked SEPARATELY because they did not
+        // co-land per terminal (e.g. Windows Terminal shipped OSC 8 in 1.4/2020 but styled underline
+        // only in 1.20/2024; VTE shipped OSC 8 in 0.50 and underline in 0.52) and overline is far
+        // rarer than the other two.
+        var family = identification.Family;
+
+        // OSC 8 hyperlinks.
+        bool hyperlinks = family is TerminalFamily.Kitty or
+                                    TerminalFamily.Ghostty or
+                                    TerminalFamily.ITerm2 or
+                                    TerminalFamily.WezTerm or
+                                    TerminalFamily.Alacritty or
+                                    TerminalFamily.WindowsTerminal or
+                                    TerminalFamily.GenericWsl or
+                                    TerminalFamily.Foot or
+                                    TerminalFamily.Konsole or       // OSC 8 present but off by default.
+                                    TerminalFamily.GnomeTerminal or // VTE 0.50+.
+                                    TerminalFamily.Rio or
+                                    TerminalFamily.Warp or
+                                    TerminalFamily.VisualStudioCode or
+                                    TerminalFamily.Hyper or
+                                    TerminalFamily.WaveTerminal or
+                                    TerminalFamily.Mintty or
+                                    TerminalFamily.Contour or
+                                    TerminalFamily.Termux or
+                                    TerminalFamily.Zellij or
+                                    TerminalFamily.Tabby or     // xterm.js.
+                                    TerminalFamily.Terminus;    // xterm.js (legacy name for Tabby).
+
+        // Curly (SGR 4:3) + colored (SGR 58) underline — these two always co-landed. Same set as
+        // hyperlinks minus Termux, whose styled-underline support is unconfirmed.
+        bool styledUnderline = hyperlinks && family is not TerminalFamily.Termux;
+
+        // Overline (SGR 53) — rare, tracked per terminal (the blanket "nobody" was wrong).
+        bool overline = family is TerminalFamily.Ghostty or
+                                  TerminalFamily.WezTerm or
+                                  TerminalFamily.WindowsTerminal or
+                                  TerminalFamily.Konsole or
+                                  TerminalFamily.GnomeTerminal; // VTE 0.52+.
 
         return new TextStylingCapabilities(
-            Italic: identification.Family != TerminalFamily.Unknown,
-            Underline: identification.Family != TerminalFamily.Unknown,
-            ExtendedUnderline: extended,
-            ColoredUnderline: extended,
-            Strikethrough: identification.Family is not (TerminalFamily.Unknown or TerminalFamily.Rxvt),
-            Overline: false, // Almost no terminal honors SGR 53.
-            Hyperlinks: extended);
+            Italic: family != TerminalFamily.Unknown,
+            Underline: family != TerminalFamily.Unknown,
+            ExtendedUnderline: styledUnderline,
+            ColoredUnderline: styledUnderline,
+            Strikethrough: family is not (TerminalFamily.Unknown or TerminalFamily.Rxvt),
+            Overline: overline,
+            Hyperlinks: hyperlinks);
     }
 
     // @formatter:off
@@ -1639,14 +1736,20 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         // Base capabilities from family knowledge — what we know each family ships.
         var fromFamily = identification.Family switch
                          {
-                             TerminalFamily.Kitty   => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
-                             TerminalFamily.Ghostty => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
-                             TerminalFamily.Rio     => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: true),
-                             TerminalFamily.ITerm2  => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
-                             TerminalFamily.WezTerm => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: true),
-                             TerminalFamily.Foot    => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
-                             TerminalFamily.Mlterm  => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
-                             _                      => GraphicsCapabilities.None,
+                             TerminalFamily.Kitty            => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+                             TerminalFamily.Ghostty          => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+                             TerminalFamily.Rio              => new GraphicsCapabilities(Sixel: true,  KittyGraphics: true,  ITerm2InlineImages: true),  // sixel per Rio docs.
+                             TerminalFamily.ITerm2           => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
+                             TerminalFamily.WezTerm          => new GraphicsCapabilities(Sixel: true,  KittyGraphics: true,  ITerm2InlineImages: true),  // ships kitty graphics too.
+                             TerminalFamily.Foot             => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+                             TerminalFamily.Mlterm           => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+                             TerminalFamily.Warp             => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
+                             TerminalFamily.Contour          => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),  // kitty graphics is experimental.
+                             TerminalFamily.Mintty           => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+                             TerminalFamily.WaveTerminal     => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
+                             TerminalFamily.VisualStudioCode => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),  // xterm image addon (on).
+                             TerminalFamily.Zellij           => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),  // reimplemented; blocks kitty graphics.
+                             _                               => GraphicsCapabilities.None,
                          };
 
         // OR in DA1 advertisement: parameter 4 is the spec signal for Sixel. Lets us detect
@@ -1661,31 +1764,37 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     private static CursorCapabilities ResolveCursor(TerminalIdentification identification)
     {
-        bool modern = identification.Family is not (TerminalFamily.Unknown or
-                                                    TerminalFamily.Rxvt or
-                                                    TerminalFamily.Mlterm);
+        // DECSCUSR (CSI Ps SP q) cursor-shape / blink control. Apple Terminal does NOT implement it
+        // (it mis-parses the space-intermediate form) — the original code excluded it in the comment
+        // but not in `modern`, a bug now fixed. Conversely rxvt-unicode (9.22+) and mlterm (3.8.2+)
+        // DO implement it, so they are no longer excluded.
+        var family = identification.Family;
+        bool shapeAndBlink = family is not (TerminalFamily.Unknown or TerminalFamily.AppleTerminal);
 
         return new CursorCapabilities(
-            // Apple Terminal does not implement DECSCUSR (CSI Ps SP q) — it mis-parses the
-            // space-intermediate form and prints the literal 'q' terminator. Exclude it so the
-            // renderer doesn't emit cursor-shape sequences there (same rationale as ColorControl).
-            ShapeControl: modern,
-            VisibilityControl: identification.Family != TerminalFamily.Unknown,
-            BlinkControl: modern,
-            ColorControl: modern && identification.Family is not TerminalFamily.AppleTerminal);
+            ShapeControl: shapeAndBlink,
+            VisibilityControl: family != TerminalFamily.Unknown, // DECTCEM (mode 25) — Apple Terminal supports this.
+            BlinkControl: shapeAndBlink,
+            // OSC 12 cursor color — Apple Terminal (via shapeAndBlink) and Termux both lack it.
+            ColorControl: shapeAndBlink && family is not TerminalFamily.Termux);
     }
 
     private WindowCapabilities ResolveWindow(TerminalIdentification identification)
     {
+        // Pixel-size reporting via XTWINOPS CSI 14 t / 16 t. Our cell-size probe uses CSI 16 t, so a
+        // terminal that answers only 14 t (Alacritty, Warp) won't populate cell pixel size — they are
+        // deliberately NOT listed. Windows Terminal answers neither (microsoft/terminal #8581).
         bool pixelSize = identification.Family is TerminalFamily.Kitty or
                                                   TerminalFamily.Ghostty or
                                                   TerminalFamily.ITerm2 or
                                                   TerminalFamily.WezTerm or
                                                   TerminalFamily.Foot or
-                                                  TerminalFamily.Alacritty or
-                                                  TerminalFamily.WindowsTerminal or
                                                   TerminalFamily.GenericWsl or
-                                                  TerminalFamily.Konsole;
+                                                  TerminalFamily.Konsole or
+                                                  TerminalFamily.Rio or
+                                                  TerminalFamily.Xterm or
+                                                  TerminalFamily.Termux or
+                                                  TerminalFamily.WaveTerminal;
 
         return new WindowCapabilities(
             TitleSet: identification.Family != TerminalFamily.Unknown,

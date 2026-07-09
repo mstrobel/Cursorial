@@ -288,5 +288,11 @@ public sealed partial class UIApplication : IResourceHost
             registry.PulseCatchAll(pulsingScope: null);
 
         ResourcesChanged?.Invoke(this, new ResourcesChangedEventArgs(ResourceChangeKind.CatchAll, null));
+
+        // A late contribution may also carry a Styles slot (the contributed selector-style leg). Re-match the
+        // Theme channel so those rules arm app-wide. Cheap when no contribution ships styles (the leg short-
+        // circuits at gather); this path is the rare late-registration net anyway — contributions normally
+        // register at module init, before any app exists.
+        StyleEngineInternal.OnThemeStylesInvalidated();
     }
 }

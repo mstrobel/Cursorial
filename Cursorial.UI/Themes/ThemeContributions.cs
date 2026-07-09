@@ -32,9 +32,17 @@ namespace Cursorial.UI.Themes;
 /// subclass deliberately choose its base's look (or its own) rather than inheriting one implicitly.
 /// </para>
 /// <para>
-/// A contribution's <see cref="ResourceDictionary.Styles"/> selector channel is NOT consumed (only
-/// <c>UIApplication.Theme.Styles</c> is, design doc §11.8) — a library ships <see cref="Type"/>-keyed control
-/// themes and resources, not app-level selector styles.
+/// A contribution's <see cref="ResourceDictionary.Styles"/> selector channel IS consumed (design doc §11.8,
+/// amended): the <see cref="StyleEngine"/> gathers each contribution's top-level <c>Styles</c> as a leg of
+/// the Theme layer, ordered <b>above</b> <see cref="CursorialTheme.BuiltIn"/> (a library refines the framework
+/// default) and <b>below</b> <c>UIApplication.Theme.Styles</c> and <c>UIApplication.Styles</c> (the app always
+/// wins). A later-registered contribution wins a same-target tie over an earlier one (the resource-tier
+/// "last wins", applied to styles). So a library ships <see cref="Type"/>-keyed control themes, the resources
+/// those themes reference, AND app-level selector styles — all in one dictionary. As with the app-theme leg,
+/// only the dictionary's own top-level <c>Styles</c> are consumed; <c>Styles</c> nested in a contribution's
+/// <see cref="ResourceDictionary.MergedDictionaries"/> are not flattened (v1). Contributed styles reference
+/// the library's own controls with TYPED selectors (<c>Selectors.OfType(typeof(BarButton))</c>) — no string
+/// parsing or type resolver needed.
 /// </para>
 /// </remarks>
 public static class ThemeContributions
@@ -76,6 +84,21 @@ public static class ThemeContributions
 
     /// <summary>Whether any contribution is registered — the chain-walk short-circuit (no hop, no diagnostic text, when empty).</summary>
     internal static bool HasContributions => _contributions.Length > 0;
+
+    /// <summary>The registered contributions, oldest-first (registration order) — the <see cref="StyleEngine"/>'s
+    /// contributed-styles leg enumeration. A lock-free volatile snapshot read; append-only registration keeps a
+    /// given contribution's index (and thus its style-order slot) stable across later registrations.</summary>
+    internal static ResourceDictionary[] Snapshot => _contributions;
+
+    /// <summary>Restores the registry to a prior <see cref="Snapshot"/> — the test-isolation hook for a
+    /// process-global additive registry (registration has no public removal). Tests save <see cref="Snapshot"/>,
+    /// register, and restore in a finally so a contribution never leaks into a later test.</summary>
+    internal static void RestoreForTests(ResourceDictionary[] snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        lock (Gate)
+            _contributions = snapshot;
+    }
 
     /// <summary>Resolves <paramref name="key"/> across the registered contributions at <paramref name="variant"/> (lock-free snapshot read).</summary>
     internal static bool TryGetResource(object key, ThemeVariant variant, out object? value)

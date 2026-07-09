@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Markup;
 using Cursorial.Rendering.Imaging;
 using Cursorial.Rendering.Text;
@@ -33,6 +34,10 @@ namespace Cursorial.UI.Controls;
 [ContentProperty(nameof(Text))]
 public class Icon : Control
 {
+    /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
+    public static readonly StyledProperty<IBrush?> IconBrushProperty =
+        UIProperty.Register<Icon, IBrush?>(nameof(IconBrush), inherits: true);
+
     /// <summary>The Nerd Font codepoint(s) — the preferred tier when <see cref="UIApplication.NerdFontAvailable"/>.</summary>
     public static readonly StyledProperty<string?> GlyphProperty =
         UIProperty.Register<Icon, string?>(nameof(Glyph), changed: OnTierInputChanged);
@@ -97,6 +102,9 @@ public class Icon : Control
 
     /// <summary>The tier currently rendered (test observability).</summary>
     public IconTier Tier { get => GetValue(IconTierProperty); protected set => SetValue(IconTierPropertyKey, value); }
+    
+    /// <inheritdoc cref="IconBrushProperty"/>
+    public IBrush? IconBrush { get => GetValue(IconBrushProperty); protected set => SetValue(IconBrushProperty, value); }
 
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
@@ -178,13 +186,20 @@ public class Icon : Control
         if (tier is IconTier.Glyph)
         {
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = GlyphWidth };
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(IconBrush)) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
             text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
             ResolvedContent = text;
         }
         else if (tier is IconTier.Image)
         {
-            var presenter = new ImagePresenter { Source = Image, SourceUri = ImageUri, PlaceholderContent = Text };
+            var presenter = new ImagePresenter
+                            {
+                                Source = Image,
+                                SourceUri = ImageUri,
+                                PlaceholderContent = Text,
+                                HorizontalAlignment = HorizontalAlignment.Center
+                            };
             presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(nameof(Image)) { Source = this });
             presenter.SetBinding(ImagePresenter.SourceUriProperty, new Binding(nameof(ImageUri)) { Source = this });
             ResolvedContent = presenter;
@@ -192,6 +207,7 @@ public class Icon : Control
         else if (tier is IconTier.Emoji)
         {
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = 2 };
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(IconBrush)) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this  });
             ResolvedContent = text;
         }
@@ -199,6 +215,7 @@ public class Icon : Control
         {
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
             var text = new TextBlock { TextAlignment = TextAlignment.Center };
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(IconBrush)) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this  });
             ResolvedContent = text;
         }

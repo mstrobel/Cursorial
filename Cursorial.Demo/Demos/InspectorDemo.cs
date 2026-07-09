@@ -911,8 +911,6 @@ internal sealed class InspectorDemo : IDemo
 
             ScrollViewer.SetVerticalScrollBarVisibility(tree, ScrollBarVisibility.Visible); // avoid items shifting with (dis)appearance of scrollbar 
             
-            tree.Items.Add(InspectNode(current));
-
             tree.Items.Add(InspectNode(current, seen: seen));
 
             // if (current is Control c)

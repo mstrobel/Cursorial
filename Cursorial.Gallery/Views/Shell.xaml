@@ -345,8 +345,13 @@
                 <bars:BarToggleButton Command="{Binding AlignRight}" />
               </bars:MiniToolbar>
             </bars:MiniToolbar.Bar>
-            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" HorizontalAlignment="Center"
-                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            
+            <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <TextBlock Text="Right-click in the open space to open a MiniToolbar." TextAlignment="Center"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+              <TextBlock Text="{Binding Status}" TextAlignment="Center"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
           </Border>
         </DockPanel>
       </DataTemplate>

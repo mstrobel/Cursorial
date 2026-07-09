@@ -1,3 +1,5 @@
+using System.Reflection.Metadata;
+
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
@@ -5,6 +7,8 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Bars;
 
@@ -17,6 +21,8 @@ namespace Cursorial.UI.Bars;
 /// </summary>
 internal static class CursorialBarsTheme
 {
+    private static readonly ISelectorTypeResolver TypeResolver = new BarsSelectorTypeResolver();
+
     // ───────────────────────────── BarButton / BarToggleButton ─────────────────────────────
 
     // The shared bar-button face: a Background-filled Border (padding 1,0) over [icon] [label]. The fill IS the
@@ -32,9 +38,11 @@ internal static class CursorialBarsTheme
         // Medium / Small (the default): the horizontal [icon][label] face — the Toolbar bar-button face verbatim.
         // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
         // Toolbar button renders byte-for-byte as before.
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var row = new DockPanel { LastChildFill = true };
+        var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
+        
+        DockPanel.SetDock(icon, Dock.Left);
 
-        var icon = new ContentPresenter();
         icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
         // icon.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         icon.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
@@ -45,87 +53,57 @@ internal static class CursorialBarsTheme
         row.Children.Add(icon);
         row.Children.Add(label);
         ctx.RegisterName(PartIcon, icon);
-        ctx.RegisterName(PartMediumLabel, label);
-        ctx.RegisterName(PartSmallMediumFace, row);
+        ctx.RegisterName(PartLabel, label);
 
-        // Large (the ribbon glyph-over-label form): a centered vertical [glyph][label], glyph re-inked --accent-2.
-        // Hidden until :size-large; a collapsed face contributes nothing so Medium is unaffected.
-        var largeGlyph = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
-        largeGlyph.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
-        // largeGlyph.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-        largeGlyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
-
-        var largeLabel = new ContentPresenter { RecognizesAccessKey = true, HorizontalAlignment = HorizontalAlignment.Center };
-        largeLabel.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-
-        var largeCol = new StackPanel { Orientation = Orientation.Vertical, HorizontalAlignment = HorizontalAlignment.Center };
-        largeCol.Children.Add(largeGlyph);
-        largeCol.Children.Add(largeLabel);
-        ctx.RegisterName(PartLargeFace, largeCol);
-        ctx.RegisterName(PartLargeIcon, largeGlyph);
-
-        border.Child = new Grid { Children = { row, largeCol } };
+        border.Child = row;
 
         // The size cascade lives in the TEMPLATE's own styles (part-targeting /template/ rules must — the TabItem /
         // obscured-overlay precedent). The LARGE face is hidden by default (Medium/Small show the [icon][label] row);
         // a :size-large control swaps to it. Because Medium collapses the large face, a Medium control renders
         // byte-identically to the plain Toolbar face.
-        border.Styles.Add(new Style(Selectors.Is<ButtonBase>())
+        border.Styles.Add(new Style(Selectors.Is<BarButton>()
+                                             .Or(Selectors.Is<BarToggleButton>()
+                                                          .Or(Selectors.Is<BarDropDownButton>())))
         {
             Children =
             {
-                new Style(Selectors.Nesting().Template().Name(PartLargeFace))
+                new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartLabel))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartMediumLabel))
-                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLargeFace))
-                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
-                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartSmallMediumFace))
-                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartIcon))
+                    .Set(UIElement.MarginProperty, Margins.Zero)
+                    .Set(DockPanel.DockProperty, Dock.Top),
+                new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLabel))
+                    .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center),
 
                 // LayoutMode Simplified/Compact (the ribbon-wide inherited :layout-simplified signal): demote the
                 // Large face to the [icon][label] medium row, labels kept — the Office simplified-ribbon look. Same
                 // never-touch-ButtonSize contract as the density rules below; equal specificity, later declaration
                 // wins over :size-large.
-                new Style(Selectors.Nesting().PseudoClass(":layout-simplified").Template().Name(PartLargeFace))
-                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                new Style(Selectors.Nesting().PseudoClass(":layout-simplified").Template().Name(PartSmallMediumFace))
-                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                new Style(Selectors.Nesting().PseudoClass(":size-large:layout-simplified").Template().Name(PartLabel))
+                    .Set(DockPanel.DockProperty, Dock.Left),
 
                 // Density Compact (the band's inherited :density-compact signal): demote EVERY control to the compact
                 // inline row, overriding :size-large. These two rules are equal-specificity to the :size-large rules
                 // above (1 pseudo + 1 /template/ name), so they win by DOCUMENT ORDER (declared later) — ButtonSize is
                 // never touched, so an authored Large face restores byte-identically when the band widens.
-                new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name(PartLargeFace))
-                    .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
-                new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name(PartSmallMediumFace))
-                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
                 // …and drop the label to icon-only ONLY for controls that HAVE an icon (:has-icon, 2 pseudo-classes ⇒
                 // higher specificity, always wins). A label-only button keeps its label under Compact instead of
-                // blanking out — the design's "don't collapse label-only buttons" smarts.
-                new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartMediumLabel))
+                // blanking out — the design's "don't collapse label-only buttons" smarts. An icon-only button loses
+                // its margins.
+                new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartLabel))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartIcon))
+                   .Set(UIElement.MarginProperty, Margins.Zero),
                 // Add a 1-cell left margin to the label for Medium buttons that have an icon.
-                new Style(Selectors.Nesting().PseudoClass(":has-icon").Template().Name(PartMediumLabel))
-                    .Set(UIElement.MarginProperty, new Margins(1, 0, 0, 0)),
-                
-                new Style($"^:focus /template/ #{PartIcon},       ^:focus /template/ #{PartLargeIcon}, " +
-                          $"^:pointerover /template/ #{PartIcon}, ^:pointerover /template/ #{PartLargeIcon}, " +
-                          $"^:pressed /template/ #{PartIcon},     ^:pressed /template/ #{PartLargeIcon}")
-                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush),
-                
-                new Style($"^:checked /template/ #{PartIcon},     ^:checked /template/ #{PartLargeIcon}")
-                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-            },
+                new Style(Selectors.Nesting().PseudoClass(":size-medium:has-icon").Template().Name(PartLabel))
+                    .Set(UIElement.MarginProperty, new Margins(1, 0, 0, 0))
+            }
         });
         return border;
     });
 
-    private const string PartSmallMediumFace = "PART_SmallMediumFace";
-    private const string PartMediumLabel = "PART_MediumLabel";
-    private const string PartLargeFace = "PART_LargeFace";
+    private const string PartLabel = "PART_Label";
     private const string PartIcon = "PART_Icon";
-    private const string PartLargeIcon = "PART_LargeIcon";
 
     // A bar button is flat on the toolbar at rest (no resting Background — the surface shows through); only the
     // interactive states fill, using the Button-specific brush keys (style-guide KEYS) so the bars re-skin in step
@@ -134,24 +112,29 @@ internal static class CursorialBarsTheme
     {
         var theme = new Style { Key = "Bars.BarButton" }
                    .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
+                   .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
                    .Set(Control.PaddingProperty, new Margins(1, 0))
                    .Set(Control.TemplateProperty, BarItemTemplate());
 
         theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
 
         theme.Children.Add(new Style("^:focus")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
                           .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
 
         theme.Children.Add(new Style("^:pressed")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
                           .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
 
         theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
 
@@ -161,25 +144,31 @@ internal static class CursorialBarsTheme
     public static Style BarToggleButtonStyle()
     {
         var theme = new Style { Key = "Bars.BarToggleButton" }
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, BarItemTemplate());
         theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
                               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
         theme.Children.Add(new Style("^:focus")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
                           .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
         // Checked = the accent whole-cell fill (the guide's toggle "on" look), text inverted to on-accent.
         theme.Children.Add(new Style("^:checked")
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush));
         theme.Children.Add(new Style("^:checked:focus")
+            .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
             .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
             .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
         theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
@@ -263,7 +252,7 @@ internal static class CursorialBarsTheme
                     Focusable = true,
                     HorizontalAlignment = HorizontalAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Stretch,
-                    Visibility = Visibility.Hidden,
+                    Visibility = Visibility.Hidden
                 };
                 // The chevron is a drop-OPENER, not a command: a retaining focus scope so the toolbar's return
                 // doesn't yank focus to the editor when it opens the popup (FindReturningScope barrier). Full
@@ -411,7 +400,7 @@ internal static class CursorialBarsTheme
                 {
                     Focusable = false, // a mouse target only — Down on the split button opens the dropdown by keyboard
                     Theme = DropZoneStyle(),
-                    VerticalAlignment = VerticalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Stretch
                 };
                 dropZone.SetBinding(ContentControl.ContentProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
                 ctx.RegisterName("PART_DropDown", dropZone);
@@ -527,13 +516,13 @@ internal static class CursorialBarsTheme
                     new Binding(nameof(ComboBox.DropDownPlacement))
                     {
                         RelativeSource = RelativeSource.TemplatedParent,
-                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? Dock.Left : Dock.Right),
+                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? Dock.Left : Dock.Right)
                     });
                 BindingOperations.SetBinding(caret, ContentControl.ContentProperty,
                     new Binding(nameof(ComboBox.DropDownPlacement))
                     {
                         RelativeSource = RelativeSource.TemplatedParent,
-                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? "◂" : "▾"),
+                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? "◂" : "▾")
                     });
 
                 var row = new DockPanel();
@@ -631,7 +620,7 @@ internal static class CursorialBarsTheme
             // dismiss-then-reopen race Toolbar/BarDropDownButton guard against; without it the ▾ can never close by mouse).
             var qatPopup = new Popup
             {
-                Child = checklistBorder, PlacementTarget = customize, Placement = PlacementMode.Bottom, KeepOpenOnAnchorPress = true,
+                Child = checklistBorder, PlacementTarget = customize, Placement = PlacementMode.Bottom, KeepOpenOnAnchorPress = true
             };
             ctx.RegisterName("PART_QatPopup", qatPopup);
 
@@ -753,8 +742,8 @@ internal static class CursorialBarsTheme
                     new Style(Selectors.Nesting().PseudoClass(":minimized").PseudoClass(":floating").Template().Name("PART_Body"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
                     new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name("PART_Body"))
-                        .Set(Border.PaddingProperty, Margins.Zero),
-                },
+                        .Set(Border.PaddingProperty, Margins.Zero)
+                }
             });
             return panel;
         });
@@ -819,18 +808,22 @@ internal static class CursorialBarsTheme
                 // declaration order (the ListBoxItem convention: identity first, interaction cues after). Without this
                 // order the File tab shows NO focus cue when reached by arrow keys, defeating "File is reachable".
                 new Style(Selectors.Nesting().PseudoClass(":ribbon-file").Template().Name("PART_HeaderSite"))
+                    .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
                 new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
+                    .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
                 new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
+                    .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
                 // Keyboard focus on the strip: the active tab reads as FOCUSED (a hover-strength fill over the dropped
                 // active look) so it is distinct from a selected-but-focus-elsewhere tab — the "which tab has keyboard
                 // focus" cue.
                 new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
+                    .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
 
@@ -858,8 +851,8 @@ internal static class CursorialBarsTheme
                 new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextDivider"))
                     .Set(UIElement.VisibilityProperty, Visibility.Visible),
                 new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextCaret"))
-                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
-            },
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible)
+            }
         });
 
         return new Style { Key = "Bars.RibbonTab" }
@@ -897,7 +890,7 @@ internal static class CursorialBarsTheme
             // controls just above), which reads as a common baseline across mixed sizes.
             var column = new StackPanel
             {
-                Orientation = Orientation.Vertical, Margin = new Margins(1, 0), VerticalAlignment = VerticalAlignment.Bottom,
+                Orientation = Orientation.Vertical, Margin = new Margins(1, 0), VerticalAlignment = VerticalAlignment.Bottom
             };
             ctx.RegisterName("PART_InlineColumn", column);
             column.Children.Add(host);
@@ -955,8 +948,8 @@ internal static class CursorialBarsTheme
                     new Style(Selectors.Nesting().PseudoClass(":density-collapsed").Template().Name("PART_InlineColumn"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name("PART_InlineColumn"))
-                        .Set(UIElement.MarginProperty, Margins.Zero),
-                },
+                        .Set(UIElement.MarginProperty, Margins.Zero)
+                }
             });
             return outer;
         });
@@ -1020,8 +1013,8 @@ internal static class CursorialBarsTheme
                     new Style(Selectors.Nesting().PseudoClass(":backstage-menu").Template().Name("PART_BackButton"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                     new Style(Selectors.Nesting().PseudoClass(":backstage-menu").Template().Name("PART_ContentHost"))
-                        .Set(TextBlock.TextWrappingProperty, WrapMode.WordWrap),
-                },
+                        .Set(TextBlock.TextWrappingProperty, WrapMode.WordWrap)
+                }
             });
             return root;
         });
@@ -1153,6 +1146,240 @@ internal static class CursorialBarsTheme
                 return stack;
             }));
 
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements.
+    /// </summary>
+    internal static Style AccentStyle()
+    {
+        return new Style(".accent")
+               {
+                   Key = "Bars" + ThemeClasses.Accent,
+                   Children =
+                   {
+                       new Style($"^:is(BarButton), " +
+                                 $"^:is(BarToggleButton), " +
+                                 $"^:is(BarDropDownButton)",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush),
+                       new Style($"^:is(BarButton):pointerover, " +
+                                 $"^:is(BarToggleButton):pointerover, " +
+                                 $"^:is(BarDropDownButton):pointerover, " +
+                                 $"^:is(BarButton):focus, " +
+                                 $"^:is(BarToggleButton):focus, " +
+                                 $"^:is(BarDropDownButton):focus, " +
+                                 $"^:is(BarButton):pressed, " +
+                                 $"^:is(BarToggleButton):pressed, " +
+                                 $"^:is(BarDropDownButton):pressed",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush),
+                       new Style($"^:is(BarToggleButton):checked, " +
+                                 $"^:is(BarDropDownButton):checked:focus",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush),
+                       new Style($"^:is(BarButton):disabled, " +
+                                 $"^:is(BarToggleButton):disabled, " +
+                                 $"^:is(BarDropDownButton):disabled",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
+                   }
+               };
+    }
+
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements.
+    /// </summary>
+    internal static Style InfoStyle()
+    {
+        return new Style(".info")
+               {
+                   Key = "Bars" + ThemeClasses.Info,
+                   Children =
+                   {
+                       new Style($"^:is(BarButton), " +
+                                 $"^:is(BarToggleButton), " +
+                                 $"^:is(BarDropDownButton)",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.InfoBrush),
+                       new Style($"^:is(BarButton):pointerover, " +
+                                 $"^:is(BarToggleButton):pointerover, " +
+                                 $"^:is(BarDropDownButton):pointerover, " +
+                                 $"^:is(BarButton):focus, " +
+                                 $"^:is(BarToggleButton):focus, " +
+                                 $"^:is(BarDropDownButton):focus, " +
+                                 $"^:is(BarButton):pressed, " +
+                                 $"^:is(BarToggleButton):pressed, " +
+                                 $"^:is(BarDropDownButton):pressed",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.InfoInverseBrush),
+                       new Style($"^:is(BarToggleButton):checked, " +
+                                 $"^:is(BarDropDownButton):checked:focus",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush),
+                       new Style($"^:is(BarButton):disabled, " +
+                                 $"^:is(BarToggleButton):disabled, " +
+                                 $"^:is(BarDropDownButton):disabled",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
+                   }
+               };
+    }
+
+    /// <summary>
+    /// The interaction style for primary navigation buttons and other elements.
+    /// </summary>
+    internal static Style CoolStyle()
+    {
+        return new Style(".cool")
+               {
+                   Key = "Bars" + ThemeClasses.Cool,
+                   Children =
+                   {
+                       new Style($"^:is(BarButton), " +
+                                 $"^:is(BarToggleButton), " +
+                                 $"^:is(BarDropDownButton)",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.CoolBrush),
+                       new Style($"^:is(BarButton):pointerover, " +
+                                 $"^:is(BarToggleButton):pointerover, " +
+                                 $"^:is(BarDropDownButton):pointerover, " +
+                                 $"^:is(BarButton):focus, " +
+                                 $"^:is(BarToggleButton):focus, " +
+                                 $"^:is(BarDropDownButton):focus, " +
+                                 $"^:is(BarButton):pressed, " +
+                                 $"^:is(BarToggleButton):pressed, " +
+                                 $"^:is(BarDropDownButton):pressed",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.CoolInverseBrush),
+                       new Style($"^:is(BarToggleButton):checked, " +
+                                 $"^:is(BarDropDownButton):checked:focus",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush),
+                       new Style($"^:is(BarButton):disabled, " +
+                                 $"^:is(BarToggleButton):disabled, " +
+                                 $"^:is(BarDropDownButton):disabled",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
+                   }
+               };
+    }
+
+    /// <summary>
+    /// The interaction style for potentially destructive action buttons and other elements.
+    /// </summary>
+    internal static Style DangerStyle()
+    {
+        return new Style(".danger")
+               {
+                   Key = "Bars" + ThemeClasses.Danger,
+                   Children =
+                   {
+                       new Style($"^:is(BarButton), " +
+                                 $"^:is(BarToggleButton), " +
+                                 $"^:is(BarDropDownButton)",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.DangerBrush),
+                       new Style($"^:is(BarButton):pointerover, " +
+                                 $"^:is(BarToggleButton):pointerover, " +
+                                 $"^:is(BarDropDownButton):pointerover, " +
+                                 $"^:is(BarButton):focus, " +
+                                 $"^:is(BarToggleButton):focus, " +
+                                 $"^:is(BarDropDownButton):focus, " +
+                                 $"^:is(BarButton):pressed, " +
+                                 $"^:is(BarToggleButton):pressed, " +
+                                 $"^:is(BarDropDownButton):pressed",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.DangerInverseBrush),
+                       new Style($"^:is(BarToggleButton):checked, " +
+                                 $"^:is(BarDropDownButton):checked:focus",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.DangerInverseBrush),
+                       new Style($"^:is(BarButton):disabled, " +
+                                 $"^:is(BarToggleButton):disabled, " +
+                                 $"^:is(BarDropDownButton):disabled",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
+                   }
+               };
+    }
+
+    /// <summary>
+    /// The interaction style for safe or successful action buttons and other elements.
+    /// </summary>
+    internal static Style SuccessStyle()
+    {
+        return new Style(".success")
+               {
+                   Key = "Bars" + ThemeClasses.Success,
+                   Children =
+                   {
+                       new Style($"^:is(BarButton), " +
+                                 $"^:is(BarToggleButton), " +
+                                 $"^:is(BarDropDownButton)",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.SuccessBrush),
+                       new Style($"^:is(BarButton):pointerover, " +
+                                 $"^:is(BarToggleButton):pointerover, " +
+                                 $"^:is(BarDropDownButton):pointerover, " +
+                                 $"^:is(BarButton):focus, " +
+                                 $"^:is(BarToggleButton):focus, " +
+                                 $"^:is(BarDropDownButton):focus, " +
+                                 $"^:is(BarButton):pressed, " +
+                                 $"^:is(BarToggleButton):pressed, " +
+                                 $"^:is(BarDropDownButton):pressed",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.SuccessInverseBrush),
+                       new Style($"^:is(BarToggleButton):checked, " +
+                                 $"^:is(BarDropDownButton):checked:focus",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush),
+                       new Style($"^:is(BarButton):disabled, " +
+                                 $"^:is(BarToggleButton):disabled, " +
+                                 $"^:is(BarDropDownButton):disabled",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
+                   }
+               };
+    }
+
+    /// <summary>
+    /// The interaction style for primary action buttons and other elements that need to convey warning.
+    /// </summary>
+    internal static Style WarningStyle()
+    {
+        return new Style(".warning")
+               {
+                   Key = "Bars" + ThemeClasses.Warning,
+                   Children =
+                   {
+                       new Style($"^:is(BarButton), " +
+                                 $"^:is(BarToggleButton), " +
+                                 $"^:is(BarDropDownButton)",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.WarningBrush),
+                       new Style($"^:is(BarButton):pointerover, " +
+                                 $"^:is(BarToggleButton):pointerover, " +
+                                 $"^:is(BarDropDownButton):pointerover, " +
+                                 $"^:is(BarButton):focus, " +
+                                 $"^:is(BarToggleButton):focus, " +
+                                 $"^:is(BarDropDownButton):focus, " +
+                                 $"^:is(BarButton):pressed, " +
+                                 $"^:is(BarToggleButton):pressed, " +
+                                 $"^:is(BarDropDownButton):pressed",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.WarningInverseBrush),
+                       new Style($"^:is(BarToggleButton):checked, " +
+                                 $"^:is(BarDropDownButton):checked:focus",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush),
+                       new Style($"^:is(BarButton):disabled, " +
+                                 $"^:is(BarToggleButton):disabled, " +
+                                 $"^:is(BarDropDownButton):disabled",
+                                 TypeResolver)
+                          .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
+                   }
+               };
+    }
+
     // ───────────────────────────── contribution dictionary (design doc §11.3a) ─────────────────────────────
 
     /// <summary>
@@ -1183,5 +1410,15 @@ internal static class CursorialBarsTheme
         [typeof(Ribbon)]         = RibbonStyle(),
         [typeof(Backstage)]      = BackstageStyle(),
         [typeof(BackstageItem)]  = BackstageItemStyle(),
+
+        Styles =
+        [
+            AccentStyle(),
+            CoolStyle(),
+            DangerStyle(),
+            InfoStyle(),
+            WarningStyle(),
+            SuccessStyle()
+        ]
     };
 }

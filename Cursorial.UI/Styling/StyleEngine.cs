@@ -44,6 +44,17 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     // ≪ the 27-bit order field, so it never saturates.
     private const int AppThemeOrderBase = 1 << 16;
 
+    // Library-contributed selector styles (the ThemeContributions tier) sort WITHIN the Theme layer above the
+    // BuiltIn leg (order base 0 — a library refines the framework default) and below the app-theme leg
+    // (AppThemeOrderBase — the app always wins). Each contribution gets a distinct 4096-wide order slot in
+    // registration order, so a later-registered library wins a same-target tie (the resource-tier "last wins",
+    // applied to styles). The slot is clamped one stride below AppThemeOrderBase so a contribution can never
+    // reach the app-theme leg no matter how many register; past ~15 contributions the overflow shares the top
+    // slot (inter-contribution order degrades to gather order — a non-issue at realistic library counts, and the
+    // above-BuiltIn / below-app invariants still hold). Both are ≪ the 27-bit order field.
+    private const int ContributionThemeOrderBase = 1 << 12; // 4096 — the first contribution's DFS start index.
+    private const int ContributionThemeStride = 1 << 12;    // 4096 — per-contribution order-slot width.
+
     // The pending-reconcile queue (retained lists, swap-drained — zero steady-state allocation).
     private List<UIElement> _pending = [];
     private List<UIElement> _drainScratch = [];
@@ -738,6 +749,30 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             // access-key cue, the caps-* layers) survive even under a partial custom theme.
             if (Themes.CursorialTheme.BuiltIn.Styles is { Count: > 0 } builtInStyles)
                 builtInStyles.GetOrBuildIndex(StyleLayer.Theme, 0).GatherCandidates(element, candidates, Themes.CursorialTheme.BuiltIn);
+
+            // Theme(2), contributed leg (design doc §11.3a/§11.8, amended): library-shipped selector styles from
+            // the ThemeContributions tier, gathered ABOVE the BuiltIn leg and BELOW the app.Theme leg and App, so
+            // a library refines the framework default while the app always wins. Each contribution gets its own
+            // registration-ordered slot (later wins a tie); a contribution that ships only Type-keyed themes (no
+            // Styles) is skipped, and the whole leg short-circuits when no library has contributed. The owner is
+            // each contribution dictionary itself (the SD21 frame-identity component), so a late registration's
+            // re-arm retracts the right frames.
+            if (Themes.ThemeContributions.HasContributions)
+            {
+                var contributions = Themes.ThemeContributions.Snapshot;
+                for (var i = 0; i < contributions.Length; i++)
+                {
+                    if (contributions[i].Styles is not { Count: > 0 } contributedStyles)
+                        continue;
+
+                    var orderBase = Math.Min(
+                        ContributionThemeOrderBase + i * ContributionThemeStride,
+                        AppThemeOrderBase - ContributionThemeStride);
+
+                    contributedStyles.GetOrBuildIndex(StyleLayer.Theme, 0, orderBase)
+                                     .GatherCandidates(element, candidates, contributions[i]);
+                }
+            }
 
             // Then the user-facing app.Theme leg (R2/B13): UIApplication.Theme's own Styles slot. It is gathered
             // with AppThemeOrderBase so its rules' DFS order sorts ABOVE every BuiltIn framework rule within the

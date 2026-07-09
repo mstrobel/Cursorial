@@ -152,8 +152,10 @@ public sealed class ResourceDictionary : IEnumerable<KeyValuePair<object, object
     internal bool HasThemeDictionaries => _themeDictionaries is { Count: > 0 };
 
     /// <summary>
-    /// The theme-styles channel (design doc §11.1/§11.8): selector styles a theme ships. Consumed
-    /// <b>only</b> from <c>UIApplication.Theme</c>; element/window slots are ignored in v1.
+    /// The theme-styles channel (design doc §11.1/§11.8): selector styles a theme ships. Consumed from
+    /// <c>UIApplication.Theme</c> (the app-theme leg) and from a dictionary registered into
+    /// <see cref="Themes.ThemeContributions"/> (the library-contributed leg); element/window slots are ignored
+    /// in v1.
     /// </summary>
     public Styles? Styles
     {

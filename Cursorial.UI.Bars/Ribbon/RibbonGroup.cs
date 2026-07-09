@@ -1,7 +1,11 @@
 using Cursorial.Rendering;
+using Cursorial.Rendering.Imaging;
 using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
+
+// ReSharper disable CheckNamespace
 
 namespace Cursorial.UI.Bars;
 
@@ -160,13 +164,24 @@ public class RibbonGroup : HeaderedItemsControl
         }
 
         var iconWidth = icon switch
-        {
-            UIElement { DesiredSize.Columns: > 0 } measured => measured.DesiredSize.Columns,
-            UIElement => 2, // an unmeasured Icon control: the typical 2-cell face
-            _ => Math.Max(1, GraphemeWidth.StringWidth(icon.ToString() ?? string.Empty)),
-        };
+                        {
+                            Icon i => IconWidth(i.GlyphWidth, i.Emoji, i.Text, i.Image),
+                            IconCarrier c => IconWidth(c.GlyphWidth, c.Emoji, c.Text),
+                            UIElement { DesiredSize.Columns: > 0 } measured => measured.DesiredSize.Columns,
+                            UIElement => 2, // an unmeasured Icon control: the typical 2-cell face
+                            _ => Math.Max(1, GraphemeWidth.StringWidth(icon.ToString() ?? string.Empty))
+                        };
 
         return iconWidth + 2; // border padding (1,0)
+    }
+
+    private static int IconWidth(int glyphWidth, string? emoji, string? text, ImageData? image = null)
+    {
+        return Math.Max(2,
+                        Math.Max(image is { RequestedSize.Columns: var c and >= 0 } ? c : 0,
+                                 Math.Max(glyphWidth,
+                                          Math.Max(emoji is {} e ? GraphemeWidth.StringWidth(e) : 0,
+                                                   text is {} t ? GraphemeWidth.StringWidth(t) : 0))));
     }
 
     // Called by RibbonBand's fold to assign the group's density tier. Guarded no-op on a stable value (SetIsLastInBand

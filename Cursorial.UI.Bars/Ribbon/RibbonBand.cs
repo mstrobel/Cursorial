@@ -74,7 +74,7 @@ public sealed class RibbonBand : Panel
         if (GetValue(Ribbon.BandContentRowsProperty) == rows)
             return false;
 
-        SetValue(Ribbon.BandContentRowsProperty, rows);
+        SetValue(Ribbon.BandContentRowsPropertyKey, rows);
         return true;
     }
 
@@ -150,14 +150,22 @@ public sealed class RibbonBand : Panel
     private readonly List<RibbonGroupDensity> _foldTiers = [];
 
     // The discrete density fold (the design guide's "three discrete tiers, not a fluid slide"). SINGLE PASS: it
-    // computes every group's target tier by a greedy largest-first demotion over each group's STABLE per-tier widths
-    // (RibbonGroup.TierWidth — a frozen Normal measure + an analytic Compact estimate + an analytic Collapsed
-    // constant), then assigns them. It deliberately does NOT read the live post-restyle DesiredSize: the
-    // :density-compact face-shrink is a DEFERRED restyle that only materializes next frame, so a live-width fold would
-    // never see the compacted width within one frame and would skip Compact straight to Collapsed. Because the tier
-    // widths are stable, the fold recomputes the SAME targets every pass (SetDensity is a no-op once assigned), so it
-    // converges immediately; a resize recomputes fresh from all-Normal, restoring groups on widen with no hysteresis
-    // dance (the discrete boundary is a clean 1-cell flip, not an oscillation, since the inputs don't move).
+    // computes every group's target tier over each group's STABLE per-tier widths (RibbonGroup.TierWidth — a frozen
+    // Normal measure + an analytic Compact estimate + an analytic Collapsed constant), then assigns them. It
+    // deliberately does NOT read the live post-restyle DesiredSize: the :density-compact face-shrink is a DEFERRED
+    // restyle that only materializes next frame, so a live-width fold would never see the compacted width within one
+    // frame and would skip Compact straight to Collapsed. Because the tier widths are stable, the fold recomputes the
+    // SAME targets every pass (SetDensity is a no-op once assigned), so it converges immediately; a resize recomputes
+    // fresh from all-Normal, restoring groups on widen with no hysteresis dance (the discrete boundary is a clean
+    // 1-cell flip, not an oscillation, since the inputs don't move).
+    //
+    // TWO PHASES, IMPROVING STEPS ONLY: phase 1 takes width-reducing Normal→Compact demotions across all groups
+    // (widest-first) before phase 2 considers any collapse — nobody hides behind a [name ▾] dropdown while another
+    // group could still shed width by compacting (Office parity). And a demotion is taken ONLY when the deeper tier
+    // is strictly NARROWER: the [Header ▾] face costs header + 5 cells, so a short group with a long header collapses
+    // WIDER than its compact row — the old unconditional fold took that step anyway, went further over budget, and
+    // cascaded every group to Collapsed chasing the width it had just given away (the gallery Home tab at width 30
+    // folded to 39 wide when all-Compact = 29 fit outright).
     private void ApplyDensityFold(int available)
     {
         var children = Children;
@@ -175,44 +183,63 @@ public sealed class RibbonBand : Panel
             }
         }
 
-        while (total > available)
-        {
-            // Demote the widest demotable group one tier (largest-first sheds the most cells per step; ties go to the
-            // RIGHTMOST so the primary left groups hold their full form longest — Office parity).
-            var victim = -1;
-            var widest = -1;
-            for (var i = 0; i < _foldGroups.Count; i++)
-            {
-                var cur = _foldTiers[i];
-                if (DeeperTier(_foldGroups[i], cur) == cur)
-                    continue; // at its MinDensity / FoldCap floor — not demotable
-                var w = _foldGroups[i].TierWidth(cur);
-                if (w >= widest)
-                {
-                    widest = w;
-                    victim = i;
-                }
-            }
-
-            if (victim < 0)
-                break; // nothing left to demote — the collapsed row clips at the zone edge
-
-            var oldTier = _foldTiers[victim];
-            var newTier = DeeperTier(_foldGroups[victim], oldTier);
-            _foldTiers[victim] = newTier;
-            total += _foldGroups[victim].TierWidth(newTier) - _foldGroups[victim].TierWidth(oldTier);
-        }
+        DemoteWhileOverBudget(available, ref total, RibbonGroupDensity.Compact); // phase 1: compact everyone first
+        DemoteWhileOverBudget(available, ref total, FoldCap);                    // phase 2: collapse only when that wasn't enough
 
         for (var i = 0; i < _foldGroups.Count; i++)
             _foldGroups[i].SetDensity(_foldTiers[i]); // guarded no-op when the tier is unchanged
     }
 
-    // The next tier DOWN from `current`: one step deeper (Normal→Compact→Collapsed), clamped to the band's FoldCap and
-    // the group's own Ribbon.MinDensity floor. Returns `current` when it is already as deep as allowed (not demotable).
-    private static RibbonGroupDensity DeeperTier(RibbonGroup group, RibbonGroupDensity current)
+    // One fold phase: demote the widest demotable group to its nearest IMPROVING tier at or above `cap`, until the
+    // band fits or nothing improving remains (largest-first sheds the most cells per step; ties go to the RIGHTMOST
+    // so the primary left groups hold their full form longest — Office parity).
+    private void DemoteWhileOverBudget(int available, ref int total, RibbonGroupDensity cap)
     {
-        var floor = (RibbonGroupDensity) Math.Min((int) Ribbon.GetMinDensity(group), (int) FoldCap);
-        var next = (RibbonGroupDensity) ((int) current + 1);
-        return (int) next <= (int) floor ? next : current;
+        while (total > available)
+        {
+            var victim = -1;
+            var widest = -1;
+            var victimTier = RibbonGroupDensity.Normal;
+            for (var i = 0; i < _foldGroups.Count; i++)
+            {
+                var cur = _foldTiers[i];
+                var next = ImprovingDeeperTier(_foldGroups[i], cur, cap);
+                if (next == cur)
+                    continue; // floored, capped for this phase, or no deeper tier is actually narrower
+                var w = _foldGroups[i].TierWidth(cur);
+                if (w >= widest)
+                {
+                    widest = w;
+                    victim = i;
+                    victimTier = next;
+                }
+            }
+
+            if (victim < 0)
+                return; // nothing improving left this phase — the row clips at the zone edge if phase 2 ends here too
+
+            total += _foldGroups[victim].TierWidth(victimTier) - _foldGroups[victim].TierWidth(_foldTiers[victim]);
+            _foldTiers[victim] = victimTier;
+        }
+    }
+
+    // The shallowest tier deeper than `current` — clamped to the band's FoldCap, the group's own Ribbon.MinDensity
+    // floor, and the phase `cap` — whose stable width is strictly LESS than the current tier's; `current` when none
+    // is. Skips THROUGH a non-improving tier (a split-button group whose Compact estimate saves nothing can still
+    // jump straight to a narrower Collapsed) and refuses counterproductive ones (a group whose [name ▾] is wider
+    // than its compact row floors at Compact rather than widening the band the fold is trying to shrink).
+    private static RibbonGroupDensity ImprovingDeeperTier(RibbonGroup group, RibbonGroupDensity current, RibbonGroupDensity cap)
+    {
+        var deepest = (RibbonGroupDensity) Math.Min(
+            Math.Min((int) Ribbon.GetMinDensity(group), (int) FoldCap), (int) cap);
+        var width = group.TierWidth(current);
+
+        for (var next = (RibbonGroupDensity) ((int) current + 1); next <= deepest; next++)
+        {
+            if (group.TierWidth(next) < width)
+                return next;
+        }
+
+        return current;
     }
 }

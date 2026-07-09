@@ -22,9 +22,12 @@ public class BarSeparator : Separator
     }
 
     /// <inheritdoc/>
-    // One cell on the rule axis; the cross axis fills via Stretch alignment (a horizontal rule fills the popup width,
-    // a vertical rule fills the row height) — Render spans the arranged extent with the axis glyph.
-    protected override Size MeasureOverride(Size availableSize) => new(1, 1);
+    // One cell on the rule axis. An upright rule fills the band's AUTHORED height (1 on a toolbar or a Simplified
+    // band, 2 beside a Large hero) — read from the band's stamp, never from ButtonSize: inside a RibbonControlGroup
+    // the children wear Medium faces in a 2-row band, and under :layout-simplified a Large ButtonSize wears a 1-row
+    // face. A horizontal rule stays 1×1 and fills the popup width via Stretch — Render spans the arranged extent.
+    protected override Size MeasureOverride(Size availableSize) =>
+        new(1, Orientation is Orientation.Vertical ? GetValue(Ribbon.BandContentRowsProperty) : 1);
 
     /// <inheritdoc/>
     protected override void Render(RenderContext context)

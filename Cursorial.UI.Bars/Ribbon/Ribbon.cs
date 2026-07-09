@@ -39,13 +39,17 @@ public class Ribbon : TabControl
         UIProperty.RegisterAttached<Ribbon, RibbonGroup, RibbonGroupDensity>(
             "MinDensity", defaultValue: RibbonGroupDensity.Collapsed);
 
+
+    /// <inheritdoc cref="BandContentRowsProperty"/>
+    protected internal static readonly UIPropertyKey<int> BandContentRowsPropertyKey =
+        UIProperty.RegisterAttachedReadOnly<Ribbon, UIElement, int>("BandContentRows", defaultValue: 1, inherits: true);
+
     /// <summary>The band's AUTHORED content height in rows (1 or 2), stamped by <see cref="RibbonBand"/> from authored
     /// facts only — a control authoring a <see cref="RibbonButtonSize.Large"/> face, a <see cref="RibbonControlGroup"/>
     /// pinning <see cref="RibbonControlGroupRowBehavior.TwoRow"/> — never from density-demoted faces, so the width
     /// fold re-inks faces without re-flowing rows. Inherited so an <c>Auto</c> control group reads it wherever it
     /// sits (inline or relocated into the collapsed flyout). Framework-set only.</summary>
-    internal static readonly AttachedProperty<int> BandContentRowsProperty =
-        UIProperty.RegisterAttached<Ribbon, UIElement, int>("BandContentRows", defaultValue: 1, inherits: true);
+    public static readonly StyledProperty<int> BandContentRowsProperty = BandContentRowsPropertyKey.Property;
 
     /// <summary>The ribbon's overall layout density — the USER-directED axis (bind to a command or an options key):
     /// <see cref="RibbonLayoutMode.Classic"/> full presentation, <see cref="RibbonLayoutMode.Simplified"/> one labeled
@@ -144,6 +148,9 @@ public class Ribbon : TabControl
         // count reads it in measure, so the change must re-measure them. Registered HERE (the property's declaring
         // type, before any instance can touch it) — the global effects lane freezes on first resolution, so a
         // consumer-type static ctor is too late when another test/app path touched the property first.
+        // Attached ⇒ this ALSO writes the property's GLOBAL effects lane (UIObject.AddEffects, ledger A1), so the
+        // stamp re-measures EVERY inheriting host — the control-group panels named here AND BarSeparator's
+        // band-height measure ride the same registration.
         AffectsMeasure<RibbonControlGroupPanel>(BandContentRowsProperty);
 
         // The size context can't be TemplateBound into a bar control's template (TemplateBinding resolves a CLR

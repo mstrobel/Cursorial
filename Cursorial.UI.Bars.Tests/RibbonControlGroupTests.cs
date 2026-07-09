@@ -453,7 +453,9 @@ public sealed class RibbonControlGroupTests
         using var host = NewHost(120);
         var cut = Btn("Cut", "✂");
         var copy = Btn("Copy", "⧉");
-        var group = new RibbonGroup { Header = "Clipboard" };
+        // A SHORT header: the fold's improvement guard only collapses a group whose [name ▾] face is narrower than
+        // its compact row — a "Clipboard"-length header (9 + 5 = 14 cells collapsed) would floor at Compact forever.
+        var group = new RibbonGroup { Header = "CB" };
         group.Items.Add(LargeIcon("Paste", "▣"));
         group.Items.Add(ControlGroup(cut, copy));
 
@@ -502,5 +504,62 @@ public sealed class RibbonControlGroupTests
 
         Assert.Equal(ScreenPos(cut).Row + 1, ScreenPos(copy).Row); // STILL stacked (rows never re-flow)
         Assert.True(cut.Bounds.Columns < wideCut, $"expected icon-only narrower than {wideCut}, got {cut.Bounds.Columns}");
+    }
+
+    // ───────────────────────────── BarSeparator band height ─────────────────────────────
+
+    [Fact] // an upright separator fills the band's authored height, not its own ButtonSize face
+    public void Separator_FillsATallBand()
+    {
+        using var host = NewHost();
+        var separator = new BarSeparator();
+        var ribbon = RibbonWith(LargeIcon("Paste", "▣"), separator, Btn("Cut", "✂"));
+
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.Equal(2, separator.Bounds.Rows);
+
+        var (col, row) = ScreenPos(separator);
+        Assert.Equal('│', host.GetRowText(row)[col]);     // the rule spans both band rows
+        Assert.Equal('│', host.GetRowText(row + 1)[col]);
+    }
+
+    [Fact] // no Large hero, no TwoRow pin: the band is 1 row and so is the rule
+    public void Separator_StaysOneRow_InAFlatBand()
+    {
+        using var host = NewHost();
+        var separator = new BarSeparator();
+        var ribbon = RibbonWith(Btn("Paste", "▣"), separator, Btn("Cut", "✂"));
+
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, separator.Bounds.Rows);
+    }
+
+    [Fact] // the band's re-stamp reaches the separator (BandContentRows' GLOBAL effects lane): Simplified flattens, Classic restores
+    public void Separator_ReflattensUnderSimplified_AndRestores()
+    {
+        using var host = NewHost(120);
+        var separator = new BarSeparator();
+        var ribbon = RibbonWith(LargeIcon("Paste", "▣"), separator, Btn("Cut", "✂"));
+
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        Assert.Equal(2, separator.Bounds.Rows);
+
+        ribbon.LayoutMode = RibbonLayoutMode.Simplified;
+        host.RunUntilIdle();
+        host.RunUntilIdle(); // the pseudo-class restyle is deferred a frame
+
+        Assert.Equal(1, separator.Bounds.Rows);
+
+        ribbon.LayoutMode = RibbonLayoutMode.Classic;
+        host.RunUntilIdle();
+        host.RunUntilIdle();
+
+        Assert.Equal(2, separator.Bounds.Rows);
     }
 }

@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
@@ -37,11 +36,12 @@ internal static class CursorialBarsTheme
 
         var icon = new ContentPresenter();
         icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
-        icon.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        // icon.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        icon.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
 
         var label = new ContentPresenter { RecognizesAccessKey = true };
         label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-
+        
         row.Children.Add(icon);
         row.Children.Add(label);
         ctx.RegisterName(PartIcon, icon);
@@ -52,9 +52,8 @@ internal static class CursorialBarsTheme
         // Hidden until :size-large; a collapsed face contributes nothing so Medium is unaffected.
         var largeGlyph = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
         largeGlyph.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
-        // TODO: Revisit large glyph color; currently it clashes horribly with the :focus-visible background.
-        // largeGlyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.Accent2Brush);
-        largeGlyph.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        // largeGlyph.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        largeGlyph.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
 
         var largeLabel = new ContentPresenter { RecognizesAccessKey = true, HorizontalAlignment = HorizontalAlignment.Center };
         largeLabel.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -63,6 +62,7 @@ internal static class CursorialBarsTheme
         largeCol.Children.Add(largeGlyph);
         largeCol.Children.Add(largeLabel);
         ctx.RegisterName(PartLargeFace, largeCol);
+        ctx.RegisterName(PartLargeIcon, largeGlyph);
 
         border.Child = new Grid { Children = { row, largeCol } };
 
@@ -108,6 +108,12 @@ internal static class CursorialBarsTheme
                 // Add a 1-cell left margin to the label for Medium buttons that have an icon.
                 new Style(Selectors.Nesting().PseudoClass(":has-icon").Template().Name(PartMediumLabel))
                     .Set(UIElement.MarginProperty, new Margins(1, 0, 0, 0)),
+                
+                new Style($"^:focus /template/ #{PartIcon},       ^:focus /template/ #{PartLargeIcon}, " +
+                          $"^:pointerover /template/ #{PartIcon}, ^:pointerover /template/ #{PartLargeIcon}, " +
+                          $"^:pressed /template/ #{PartIcon},     ^:pressed /template/ #{PartLargeIcon}, " +
+                          $"^:checked /template/ #{PartIcon},     ^:checked /template/ #{PartLargeIcon}")
+                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush)
             },
         });
         return border;
@@ -117,6 +123,7 @@ internal static class CursorialBarsTheme
     private const string PartMediumLabel = "PART_MediumLabel";
     private const string PartLargeFace = "PART_LargeFace";
     private const string PartIcon = "PART_Icon";
+    private const string PartLargeIcon = "PART_LargeIcon";
 
     // A bar button is flat on the toolbar at rest (no resting Background — the surface shows through); only the
     // interactive states fill, using the Button-specific brush keys (style-guide KEYS) so the bars re-skin in step
@@ -155,7 +162,9 @@ internal static class CursorialBarsTheme
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, BarItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover));
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
@@ -168,7 +177,9 @@ internal static class CursorialBarsTheme
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
             .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
             .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
+        theme.Children.Add(new Style("^:disabled")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
         return theme;
     }
 
@@ -906,7 +917,7 @@ internal static class CursorialBarsTheme
             collapsedButton.SetBinding(ContentControl.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
             ctx.RegisterName("PART_CollapsedButton", collapsedButton);
 
-            var separator = new TextBlock { Text = "│", VerticalAlignment = VerticalAlignment.Center };
+            var separator = new BarSeparator { Orientation = Orientation.Vertical };
             separator.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.FaintBrush);
             ctx.RegisterName("PART_GroupSeparator", separator);
 

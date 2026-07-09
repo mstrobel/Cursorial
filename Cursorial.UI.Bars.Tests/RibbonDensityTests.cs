@@ -223,4 +223,113 @@ public sealed class RibbonDensityTests
         host.RunUntilIdle();
         Assert.Equal(RibbonGroupDensity.Normal, pinned.DensityForTests); // pinned holds full size (others demote first)
     }
+
+    // ─────────────── the two-phase improving fold (the gallery Home-tab cascade regression) ───────────────
+
+    private static BarButton MediumIcon(string content, string icon) => new() { Content = content, Icon = icon };
+
+    private static BarToggleButton ToggleIcon(string content, string icon) => new() { Content = content, Icon = icon };
+
+    // The gallery Home-tab replica whose tier widths expose the cascade: Clipboard [N=18 C=9 X=14] and
+    // Editing [N=9 C=7 X=12] both collapse WIDER than they compact; Format [N=30 C=13 X=11] is floored at Compact.
+    private static (Ribbon Ribbon, RibbonGroup Clipboard, RibbonGroup Format, RibbonGroup Editing) HomeTabReplica()
+    {
+        var clipboard = Group("Clipboard", LargeIcon("Paste", "▣"));
+        clipboard.HasDialogLauncher = true;
+        var cutCopy = new RibbonControlGroup();
+        cutCopy.Items.Add(MediumIcon("Cut", "✂"));
+        cutCopy.Items.Add(MediumIcon("Copy", "⧉"));
+        clipboard.Items.Add(cutCopy);
+
+        var format = Group("Format");
+        Ribbon.SetMinDensity(format, RibbonGroupDensity.Compact);
+        var stack = new RibbonControlGroup();
+        stack.Items.Add(ToggleIcon("Bold", "𝐁"));
+        stack.Items.Add(ToggleIcon("Italic", "𝐼"));
+        stack.Items.Add(ToggleIcon("Code", "‹›"));
+        var left = ToggleIcon("Left", "⟸");
+        RibbonControlGroup.SetRowBreak(left, true);
+        stack.Items.Add(left);
+        stack.Items.Add(ToggleIcon("Center", "≡"));
+        stack.Items.Add(ToggleIcon("Right", "⟹"));
+        format.Items.Add(stack);
+
+        var editing = Group("Editing", LargeIcon("Find", "🔍"));
+
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", clipboard, format, editing));
+        return (ribbon, clipboard, format, editing);
+    }
+
+    [Fact] // the headline regression: the old width-blind fold collapsed Clipboard+Editing here (39 wide, clipping,
+           // both WIDER collapsed than compacted) when compacting everyone (29) fit outright
+    public void Fold_CompactsEveryone_InsteadOfCascadingToCollapsed()
+    {
+        var (ribbon, clipboard, format, editing) = HomeTabReplica();
+        using var host = NewHost(w: 120);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        host.SendResize(30, H); // all-Compact = 29 fits; any collapse is wider
+        host.RunUntilIdle();
+        host.RunUntilIdle();
+
+        Assert.Equal(RibbonGroupDensity.Compact, clipboard.DensityForTests);
+        Assert.Equal(RibbonGroupDensity.Compact, format.DensityForTests);
+        Assert.Equal(RibbonGroupDensity.Compact, editing.DensityForTests);
+    }
+
+    [Fact] // even when all-Compact still overflows, a collapse that WIDENS a group is never taken — clipping a
+           // little beats clipping more behind [name ▾] faces that cost more than the compact rows they replace
+    public void Fold_RefusesAWideningCollapse()
+    {
+        var (ribbon, clipboard, format, editing) = HomeTabReplica();
+        using var host = NewHost(w: 120);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        host.SendResize(22, H); // all-Compact = 29 > 22 — but every collapse on offer is wider than Compact
+        host.RunUntilIdle();
+        host.RunUntilIdle();
+
+        Assert.Equal(RibbonGroupDensity.Compact, clipboard.DensityForTests);
+        Assert.Equal(RibbonGroupDensity.Compact, format.DensityForTests);
+        Assert.Equal(RibbonGroupDensity.Compact, editing.DensityForTests);
+    }
+
+    [Fact] // phase ordering: a legitimately-collapsible group (short header, wide content) still collapses — but
+           // only after every other group has compacted, and a long-header group never collapses at all
+    public void Fold_CollapsesAShortHeaderGroup_OnlyAfterEveryoneCompacted()
+    {
+        // Formatting is NARROW (one button) with a long header ([Formatting ▾] = 15: never collapses); Go is WIDE
+        // (five buttons) whose compact row STILL exceeds Formatting's normal width — the regime where a width-blind
+        // single-phase fold would collapse Go while Formatting sits untouched at Normal.
+        var formatting = Group("Formatting", MediumIcon("Emphasis", "◆"));
+        var go = Group("Go", // [Go ▾] = 7 cells: narrower than its compact row — the collapse candidate
+            MediumIcon("Alpha", "α"), MediumIcon("Beta", "β"), MediumIcon("Gamma", "γ"),
+            MediumIcon("Delta", "δ"), MediumIcon("Epsilon", "ε"));
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(Tab("Home", formatting, go));
+
+        using var host = NewHost(w: 120);
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var goCollapsed = false;
+        for (var w = 60; w >= 5; w--)
+        {
+            host.SendResize(w, H);
+            host.RunUntilIdle();
+
+            if (go.DensityForTests == RibbonGroupDensity.Collapsed)
+            {
+                goCollapsed = true;
+                Assert.NotEqual(RibbonGroupDensity.Normal, formatting.DensityForTests); // everyone compacted FIRST
+            }
+
+            Assert.NotEqual(RibbonGroupDensity.Collapsed, formatting.DensityForTests); // the guard: never wider
+        }
+
+        Assert.True(goCollapsed, "expected the short-header group to collapse at the tightest widths");
+    }
 }

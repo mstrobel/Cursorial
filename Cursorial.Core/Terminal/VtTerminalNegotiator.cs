@@ -583,6 +583,26 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                   TerminalFamily.GenericWsl or
                   TerminalFamily.Tmux;
 
+    /// <summary>
+    /// OSC 52 clipboard read (the <c>?</c> query). A strictly smaller family set than
+    /// <see cref="TerminalSupportsClipboardWrite"/> — Konsole / Windows Terminal implement the set
+    /// side only. "Supports" here means the terminal IMPLEMENTS the query; most gate the actual
+    /// read behind a user prompt or a config allow-list (Kitty asks per read by default, Ghostty's
+    /// <c>clipboard-read</c> defaults to ask, xterm needs <c>allowWindowOps</c>), and a denied or
+    /// disabled read simply never replies. Consumers must pair the query with a timeout — the
+    /// capability claims "worth asking", not "will answer".
+    /// </summary>
+    private static bool TerminalSupportsClipboardRead(TerminalFamily family) =>
+        family is TerminalFamily.Kitty or
+                  TerminalFamily.Ghostty or
+                  TerminalFamily.Rio or
+                  TerminalFamily.WezTerm or
+                  TerminalFamily.Foot or
+                  TerminalFamily.ITerm2 or
+                  TerminalFamily.Alacritty or
+                  TerminalFamily.Xterm or
+                  TerminalFamily.Tmux;
+
     // ---- Probe orchestration ----
 
     private async Task<ProbeResponses> ProbeIdentificationAsync(
@@ -1407,12 +1427,13 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                applied.ExtendedMouseTracking,
             KittyKeyboardPush: applied.KittyKeyboard,
             Win32InputModeEnable: applied.Win32InputMode,
-            // OSC 52 clipboard write is family-gated rather than probed — no DECRQM-style
-            // verification exists for it, and the write sequence itself is fire-and-forget.
-            // Read involves a request / response round-trip and isn't implemented yet, so the
-            // Read cap stays false.
+            // OSC 52 clipboard is family-gated rather than probed — no DECRQM-style verification
+            // exists for it, the write sequence is fire-and-forget, and probing the READ side at
+            // startup would flash permission prompts on the very terminals that support it (Kitty
+            // asks per read). Read claims "the family implements the query"; a denied/disabled
+            // read never replies, so consumers pair it with a timeout.
             ClipboardWrite: TerminalSupportsClipboardWrite(identification.Family),
-            ClipboardRead: false,
+            ClipboardRead: TerminalSupportsClipboardRead(identification.Family),
             SynchronizedOutput: applied.SynchronizedOutput,
             MultiplexerPassthrough: multiplexerPassthrough,
             MouseCursorShape: TerminalSupportsMouseCursorShape(identification.Family));

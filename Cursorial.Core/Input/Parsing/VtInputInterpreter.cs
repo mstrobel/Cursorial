@@ -1206,6 +1206,18 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
     private void EmitDeviceResponse(DeviceResponseKind kind, ReadOnlySpan<byte> payload)
     {
+        // Never surface a device response while inside a bracketed paste. The classifier is a pure framing
+        // layer with no paste awareness (by design), so an ESC embedded in pasted content breaks Ground-state
+        // framing and reaches the OSC/CSI/DCS dispatchers even though the interpreter is mid-paste — pasted
+        // "clipboard poisoning" bytes (a hidden `ESC ] 52 ; c ; <base64> ST`) would otherwise forge a
+        // DeviceResponseKind.Clipboard reply that satisfies a pending OSC 52 read, bypassing the terminal's
+        // own permission gate. A genuine device response is a reply to an app-issued query and never legitimately
+        // interleaves a paste burst, so dropping every kind here (not just Clipboard) is safe and also closes the
+        // pre-existing OSC 4/10/11/12 color-forgery variant. The bytes are already absent from the paste text
+        // (framing consumed them), so this only prevents the spurious response, it doesn't lose paste content.
+        if (_inPaste)
+            return;
+
         _eventSink.OnInputEvent(new DeviceResponseEvent
                                 {
                                     Timestamp = Now,
@@ -1526,6 +1538,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                        VtInputSequences.OscCode.ForegroundColor => DeviceResponseKind.ForegroundColor,
                                        VtInputSequences.OscCode.BackgroundColor => DeviceResponseKind.BackgroundColor,
                                        VtInputSequences.OscCode.CursorColor     => DeviceResponseKind.CursorColor,
+                                       VtInputSequences.OscCode.Clipboard       => DeviceResponseKind.Clipboard,
                                        _                                        => null,
                                    };
 

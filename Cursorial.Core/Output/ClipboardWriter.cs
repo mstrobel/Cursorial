@@ -133,4 +133,36 @@ public static class ClipboardWriter
         ArgumentNullException.ThrowIfNull(writer);
         WriteSet(writer, ReadOnlySpan<char>.Empty, target);
     }
+
+    /// <summary>
+    /// Query the given <paramref name="target"/> selection — <c>ESC ] 52 ; &lt;target&gt; ; ? ST</c>.
+    /// A supporting terminal replies with the same envelope holding the selection's base64 payload
+    /// (surfaced by the interpreter as <c>DeviceResponseKind.Clipboard</c>); an unsupporting one
+    /// never replies, and many that do support it gate the read behind a user prompt — pair the
+    /// query with a timeout, never an open-ended wait. Capability gating
+    /// (<see cref="Output.Capabilities.OutputProtocolCapabilities.ClipboardRead"/>) is the
+    /// caller's responsibility.
+    /// </summary>
+    public static void WriteQuery(IBufferWriter<byte> writer,
+                                  ClipboardTarget target = ClipboardTarget.System)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        var prefix = VtOutputSequences.Clipboard.Prefix;
+        var terminator = VtOutputSequences.Clipboard.StringTerminator;
+        int total = prefix.Length + 3 /* target ; ? */ + terminator.Length;
+
+        var dest = writer.GetSpan(total);
+        prefix.CopyTo(dest);
+        int written = prefix.Length;
+
+        dest[written++] = target.Code;
+        dest[written++] = (byte) ';';
+        dest[written++] = (byte) '?';
+
+        terminator.CopyTo(dest[written..]);
+        written += terminator.Length;
+
+        writer.Advance(written);
+    }
 }

@@ -470,6 +470,66 @@ public sealed class Section24_TextBox
         Assert.True(ContainsSequence(emitted, "\u001b]52;"u8));
     }
 
+    [Fact] // C11.23a: Ctrl+V kicks the OSC 52 read; the terminal's reply inserts at the caret (FromPaste path)
+    public void C11_23a_PasteReadsOsc52()
+    {
+        var caps = TestCapabilities.KittyTruecolor;
+        var withRead = caps with
+        {
+            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardRead = true } }
+        };
+        var (host, box) = Shown("ab", capabilities: withRead);
+        using var _ = host;
+        Assert.True(host.Application.Clipboard.CanRead);
+
+        box.CaretIndex = 1;
+        host.SendKey(Key.Character, KeyModifiers.Control, "v");
+        Assert.True(ContainsSequence(CollectFrames(host), "]52;c;?"u8)); // the query went out
+
+        host.SendBytes("\x1b]52;c;aGVsbG8=\x1b\\"u8); // the terminal answers "hello"
+        host.DrainParsedInputAsync().GetAwaiter().GetResult(); // blocking — stays on the UI thread
+        host.RunUntilIdle();
+
+        Assert.Equal("ahellob", box.Text);
+        Assert.Equal(6, box.CaretIndex); // caret lands after the inserted run
+    }
+
+    [Fact] // C11.23c: a second Ctrl+V while the first read is still pending is a no-op — the reply inserts ONCE
+           // (OSC 52 has no request id, so a fan-out reply would otherwise duplicate the paste into the model)
+    public void C11_23c_PasteWhileInFlight_InsertsOnce()
+    {
+        var caps = TestCapabilities.KittyTruecolor;
+        var withRead = caps with
+        {
+            Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardRead = true } }
+        };
+        var (host, box) = Shown("ab", capabilities: withRead);
+        using var _ = host;
+
+        box.CaretIndex = 1;
+        host.SendKey(Key.Character, KeyModifiers.Control, "v"); // first read — in flight
+        host.SendKey(Key.Character, KeyModifiers.Control, "v"); // second while pending — must be dropped
+        host.RunUntilIdle();
+
+        host.SendBytes("\x1b]52;c;aGVsbG8=\x1b\\"u8); // the terminal answers "hello" once
+        host.DrainParsedInputAsync().GetAwaiter().GetResult();
+        host.RunUntilIdle();
+
+        Assert.Equal("ahellob", box.Text); // inserted once, not "ahellohellob"
+    }
+
+    [Fact] // C11.23b: without read support the chord stays a consumed no-op — no stray 'v', no query, no hang
+    public void C11_23b_PasteNoOpWithoutCapability()
+    {
+        var (host, box) = Shown("ab"); // stock preset: ClipboardRead == false
+        using var _ = host;
+        Assert.False(host.Application.Clipboard.CanRead);
+
+        host.SendKey(Key.Character, KeyModifiers.Control, "v");
+        Assert.False(ContainsSequence(CollectFrames(host), "]52;"u8));
+        Assert.Equal("ab", box.Text);
+    }
+
     [Fact] // C11.24: Ctrl+C with no selection is not consumed (bubbles — an app may bind quit)
     public void C11_24_CtrlCNoSelectionBubbles()
     {

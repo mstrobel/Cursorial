@@ -188,6 +188,9 @@ public static class VtInputSequences
 
         /// <summary>OSC 12 — cursor color get / set / response.</summary>
         public const int CursorColor = 12;
+
+        /// <summary>OSC 52 — clipboard set / query / response.</summary>
+        public const int Clipboard = 52;
     }
 
     /// <summary>

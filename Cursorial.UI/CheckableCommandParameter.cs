@@ -33,14 +33,20 @@ public interface ICheckableCommandParameter
     /// preference — which reappears automatically when this clears. Default <see langword="false"/> (the control's own
     /// state stands — the backward-compatible path, so existing checkable commands are unaffected).
     /// </summary>
-    bool Handled => false;
+    bool Handled { get; set; }
 
     /// <summary>
     /// The value the effective checked state is FORCED to while <see cref="Handled"/> — parameter-specified, so both
     /// greyed+unchecked (<see langword="false"/>) and greyed+checked / "on but locked" (<see langword="true"/>) are
     /// expressible. Ignored while <see cref="Handled"/> is <see langword="false"/>. Default <see langword="false"/>.
     /// </summary>
-    bool? IsCheckedOverride => false;
+    bool? IsCheckedOverride { get; set; }
+    
+    /// <summary>
+    /// The effective checked state based on whether the command has been <see cref="Handled"/>
+    /// (<see cref="IsCheckedOverride"/>) or not (<see cref="IsChecked"/>).
+    /// </summary>
+    bool? IsCheckedEffective => Handled ? IsCheckedOverride : IsChecked;
 }
 
 /// <summary>
@@ -60,6 +66,9 @@ public class CheckableCommandParameter(bool? isChecked = false) : ICheckableComm
 
     /// <inheritdoc cref="ICheckableCommandParameter.IsCheckedOverride"/>
     public bool? IsCheckedOverride { get; set => Set(ref field, value, IsCheckedOverrideChangedArgs); }
+    
+    /// <inheritdoc cref="ICheckableCommandParameter.IsCheckedEffective"/>
+    public bool? IsCheckedEffective => Handled ? IsCheckedOverride : IsChecked;
 
     /// <inheritdoc/>
     public event PropertyChangedEventHandler? PropertyChanged;

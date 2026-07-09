@@ -49,14 +49,6 @@ public class BarToggleButton : ToggleButton
     /// <inheritdoc/>
     protected override void OnCommandStateChanged()
     {
-        // Sync BEFORE base — the base-last inversion (FB-27 point 5; the ordering contract on
-        // ButtonBase.OnCommandStateChanged). SyncCheckedFromCommand reflects the command-SHARED
-        // ICheckableCommandParameter into the IsChecked BASE value, and because SetCurrentValue runs the coercer inline,
-        // it snaps a Handled override in immediately at bind time. Running it first makes IsChecked's source non-Default
-        // BEFORE the base reads its per-control-default gate, so the base skips that default, and the shared parameter
-        // stays the authoritative source; the base then re-coerces. Keep this order — do not "tidy" it to call base
-        // first (which would defer the snap to the base's re-coerce and let the base shadow-allocate its default).
-        SyncCheckedFromCommand();
         _commandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
         base.OnCommandStateChanged();
     }
@@ -66,16 +58,5 @@ public class BarToggleButton : ToggleButton
     {
         base.OnAttachedToTree(in e);
         _commandSync.AutoFill(this, Command, IconProperty, InputGestureTextProperty);
-        SyncCheckedFromCommand(); // initial reflect + snap (SetCurrentValue coerces inline; no CanExecuteChanged yet)
-    }
-
-    // Reflect the command-shared parameter's IsChecked into the IsChecked BASE value (SetCurrentValue preserves a
-    // two-way binding). This is the backward-compatible consumption path: for an unhandled parameter it drives the
-    // control's checked state exactly as before; for a Handled one it establishes the base (preference) that the
-    // coercer overrides — and that the control falls back to the instant Handled clears.
-    private void SyncCheckedFromCommand()
-    {
-        if (CommandParameter is ICheckableCommandParameter checkable)
-            SetCurrentValue(IsCheckedProperty, checkable.IsChecked);
     }
 }

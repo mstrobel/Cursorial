@@ -104,6 +104,8 @@ internal sealed class TerminalClipboardService(UIApplication application) : ICli
         UITimer? timer = null;
         EventHandler? onShutdown = null;
 
+        // ReSharper disable AccessToModifiedClosure
+        
         // Every completion path runs on the UI thread (response dispatch, timer tick, shutdown raise),
         // so TrySetResult's idempotence is the only guard needed; the first completer tears down all
         // three triggers so none dangles past the read.
@@ -117,6 +119,8 @@ internal sealed class TerminalClipboardService(UIApplication application) : ICli
             application.BeginShutdown -= onShutdown;
         }
 
+        // ReSharper restore AccessToModifiedClosure
+        
         onShutdown = (_, _) => Complete(null); // teardown kills the timers that would otherwise fire the timeout
         application.BeginShutdown += onShutdown;
 

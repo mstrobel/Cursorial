@@ -1081,10 +1081,23 @@ internal static class CursorialBarsTheme
                 title.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.TitleProperty));
                 title.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
 
-                var gesture = new TextBlock { Margin = new Margins(1, 0, 0, 0) };
+                var gesture = new TextBlock { Margin = new Margins(1, 0, 1, 0) };
                 gesture.SetBinding(TextBlock.TextProperty, 
                                    new TemplateBinding(SuperTip.InputGestureTextProperty) { StringFormat = "({0})" });
                 gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+                gesture.SetBinding(UIElement.VisibilityProperty,
+                                   new TemplateBinding(SuperTip.InputGestureTextProperty)
+                                   {
+                                       Converter = ValueConverter.Create(
+                                           convert: (value, _, _, _) => 
+                                                        value switch
+                                                        {
+                                                            "" or null => Visibility.Collapsed,
+                                                            _          => Visibility.Visible
+                                                           
+                                                        })
+                                   });
+
 
                 titlePanel.Children.Add(title);
                 titlePanel.Children.Add(gesture);

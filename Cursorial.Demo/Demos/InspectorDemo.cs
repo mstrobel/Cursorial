@@ -261,48 +261,57 @@ internal sealed class InspectorDemo : IDemo
                              </Border>
                            
                              <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
-                               <!--bars:Ribbon.QuickAccessCandidates>
-                                 <bars:BarCommand Text="Paste" Icon="{Icon Glyph='&#xf0ea;'}" />
-                                 <bars:BarCommand Text="Cut"   Icon="{Icon Glyph='&#xf0c4;'}" />
-                                 <bars:BarCommand Text="Copy"  Icon="{Icon Glyph='&#xf0c5;'}" />
-                                 <bars:BarCommand Text="Undo"  Icon="{Icon Glyph='&#xf054c;'}" />
-                                 <bars:BarCommand Text="Redo"  Icon="{Icon Glyph='&#xf044e;'}" />
-                               </bars:Ribbon.QuickAccessCandidates-->
-                               <bars:RibbonTab Header="_File" IsFileTab="True" />
+                              <bars:RibbonTab IsFileTab="True">
+                                 <bars:RibbonTab.Header>
+                                   <StackPanel Orientation="Horizontal">
+                                     <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0" />
+                                     <AccessTextPresenter Text="_File" />
+                                   </StackPanel>
+                                 </bars:RibbonTab.Header>
+                               </bars:RibbonTab>
                                <bars:RibbonTab Header="_Home">
                                  <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
-                                   <bars:BarButton Command="{Binding Paste}" Content="_Paste" ToolTipService.Tip="Paste" Icon="{Icon Glyph='&#xf0ea;'}" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Command="{Binding Cut}"   Content="Cu_t"   ToolTipService.Tip="Cut"   Icon="{Icon Glyph='&#xf0c4;'}" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Command="{Binding Copy}"  Content="Co_py"  ToolTipService.Tip="Copy"  Icon="{Icon Glyph='&#xf0c5;'}" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Content="Paste" bars:Ribbon.ButtonSize="Large" Icon="{Icon Glyph='&#x000F0192;', Emoji='📋', Text='▤'}" />
+                                   <bars:RibbonControlGroup >
+                                     <bars:BarButton Content="Cut"  Icon="{Icon Glyph='&#x000F0190;', Emoji='🗒', Text='✁'}"/>
+                                     <bars:BarButton Content="Copy" Icon="{Icon Glyph='&#x000F018F;', Emoji='📋', Text='⧉'}" />
+                                   </bars:RibbonControlGroup>
                                  </bars:RibbonGroup>
-                                 <bars:RibbonGroup Header="Fo_nt">
-                                   <bars:BarToggleButton Content="Bold" CommandParameter="{Binding BoldState}" />
-                                   <bars:BarToggleButton Content="Italic" CommandParameter="{Binding ItalicState}" />
+                                 <bars:RibbonGroup Header="Format">
+                                   <bars:RibbonControlGroup>
+                                     <bars:BarToggleButton Content="Bold"   Icon="{Icon Glyph='&#x000F0264;', Emoji='🅱', Text='✱'}"  />
+                                     <bars:BarToggleButton Content="Italic" Icon="{Icon Glyph='&#x000F0277;', Emoji='✍️', Text='⟋'}" />
+                                     <bars:BarToggleButton Content="Code"   Icon="{Icon Glyph='&#x000F0174;', Emoji='💻', Text='{'}" />
+                                     <bars:BarToggleButton Content="Left"   Icon="{Icon Glyph='&#x000F0262;', Emoji='⬅️', Text='⇤'}" bars:RibbonControlGroup.RowBreak="True" />
+                                     <bars:BarToggleButton Content="Center" Icon="{Icon Glyph='&#x000F0260;', Emoji='↔️', Text='↹'}" />
+                                     <bars:BarToggleButton Content="Right"  Icon="{Icon Glyph='&#x000F0263;', Emoji='➡️', Text='⇥'}" />
+                                   </bars:RibbonControlGroup>
                                  </bars:RibbonGroup>
                                  <bars:RibbonGroup Header="Editing">
-                                   <bars:BarButton Content="F_ind" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Content="Find" bars:Ribbon.ButtonSize="Large" />
                                  </bars:RibbonGroup>
                                </bars:RibbonTab>
-                               <bars:RibbonTab Header="_Insert">
+                               <bars:RibbonTab Header="Inse_rt">
                                  <bars:RibbonGroup Header="History">
-                                   <bars:BarButton Content="_Undo" />
-                                   <bars:BarButton Content="_Redo" />
-                                   <bars:BarButton Content="Settin_gs" />
+                                   <bars:BarButton Content="Undo" />
+                                   <bars:BarButton Content="Redo" />
+                                   <bars:BarButton Content="Settings" />
                                  </bars:RibbonGroup>
                                </bars:RibbonTab>
-                           
+                               
                                <!-- P3a: a CONTEXTUAL tab — purple-tinted, shown only when a "table" is selected. Its Visibility binds to
                                     the VM; when it's the active tab and hides, the Ribbon falls back to the first content tab (no blank band). -->
                                <bars:RibbonTab Header="Table" IsContextual="True"
                                                Visibility="{Binding TableToolsVisibility}">
                                  <bars:RibbonGroup Header="Cells">
-                                   <bars:BarButton Content="MergeCells" bars:Ribbon.ButtonSize="Large" />
-                                   <bars:BarButton Content="SplitCells" />
+                                   <bars:BarButton Content="Merge Cells" bars:Ribbon.ButtonSize="Large" />
+                                   <bars:BarButton Content="Split Cells" />
                                  </bars:RibbonGroup>
                                  <bars:RibbonGroup Header="Table">
-                                   <bars:BarButton Content="DeleteTable" />
+                                   <bars:BarButton Content="Delete Table" />
                                  </bars:RibbonGroup>
                                </bars:RibbonTab>
+                               
                              </bars:Ribbon>
                            
                              <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">

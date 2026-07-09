@@ -338,6 +338,11 @@
                 <bars:BarSeparator />
                 <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
                 <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+                <bars:BarToggleButton Command="{Binding InlineCode}" CommandParameter="{Binding InlineCodeState}" />
+                <bars:BarSeparator />
+                <bars:BarToggleButton Command="{Binding AlignLeft}" />
+                <bars:BarToggleButton Command="{Binding AlignCenter}" />
+                <bars:BarToggleButton Command="{Binding AlignRight}" />
               </bars:MiniToolbar>
             </bars:MiniToolbar.Bar>
             <TextBlock Text="{Binding Status}" VerticalAlignment="Center" HorizontalAlignment="Center"
@@ -361,7 +366,7 @@
 
           <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
                customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
-          <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1">
+          <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1" LayoutMode="{Binding LayoutMode}">
             <bars:RibbonTab IsFileTab="True">
               <bars:RibbonTab.Header>
                 <StackPanel Orientation="Horizontal">
@@ -373,14 +378,20 @@
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
                 <bars:BarButton Command="{Binding Paste}" bars:Ribbon.ButtonSize="Large" />
-                <bars:RibbonControlGroup>
+                <bars:RibbonControlGroup >
                   <bars:BarButton Command="{Binding Cut}" />
                   <bars:BarButton Command="{Binding Copy}" />
                 </bars:RibbonControlGroup>
               </bars:RibbonGroup>
-              <bars:RibbonGroup Header="Font">
-                <bars:BarToggleButton Command="{Binding Bold}" CommandParameter="{Binding BoldState}" />
-                <bars:BarToggleButton Command="{Binding Italic}" CommandParameter="{Binding ItalicState}" />
+              <bars:RibbonGroup Header="Format">
+                <bars:RibbonControlGroup>
+                  <bars:BarToggleButton Command="{Binding Bold}" />
+                  <bars:BarToggleButton Command="{Binding Italic}" />
+                  <bars:BarToggleButton Command="{Binding InlineCode}" />
+                  <bars:BarToggleButton Command="{Binding AlignLeft}" bars:RibbonControlGroup.RowBreak="True" />
+                  <bars:BarToggleButton Command="{Binding AlignCenter}" />
+                  <bars:BarToggleButton Command="{Binding AlignRight}" />
+                </bars:RibbonControlGroup>
               </bars:RibbonGroup>
               <bars:RibbonGroup Header="Editing">
                 <bars:BarButton Command="{Binding Find}" bars:Ribbon.ButtonSize="Large" />
@@ -410,6 +421,14 @@
 
           <Border Padding="2,1" Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}">
             <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Label Content="Layout _Mode:" Margin="0,0,1,0" Target="{x:Reference LayoutModeSelector}"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+                <ComboBox x:Name="LayoutModeSelector"
+                          ItemsSource="{Binding LayoutModes}"
+                          SelectedItem="{Binding LayoutMode, Mode=TwoWay}"
+                          MinWidth="24" />
+              </WrapPanel>
               <TextBlock Text="{Binding Status}" HorizontalAlignment="Center"
                          Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
               <!-- Toggle the contextual tab: check to select a "table" (the purple Table tab appears), uncheck to hide it. -->

@@ -111,9 +111,11 @@ internal static class CursorialBarsTheme
                 
                 new Style($"^:focus /template/ #{PartIcon},       ^:focus /template/ #{PartLargeIcon}, " +
                           $"^:pointerover /template/ #{PartIcon}, ^:pointerover /template/ #{PartLargeIcon}, " +
-                          $"^:pressed /template/ #{PartIcon},     ^:pressed /template/ #{PartLargeIcon}, " +
-                          $"^:checked /template/ #{PartIcon},     ^:checked /template/ #{PartLargeIcon}")
-                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush)
+                          $"^:pressed /template/ #{PartIcon},     ^:pressed /template/ #{PartLargeIcon}")
+                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush),
+                
+                new Style($"^:checked /template/ #{PartIcon},     ^:checked /template/ #{PartLargeIcon}")
+                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
             },
         });
         return border;
@@ -750,6 +752,8 @@ internal static class CursorialBarsTheme
                     // IsMinimized. The float re-collapses (Esc / focus leaving the ribbon) by clearing :floating.
                     new Style(Selectors.Nesting().PseudoClass(":minimized").PseudoClass(":floating").Template().Name("PART_Body"))
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                    new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name("PART_Body"))
+                        .Set(Border.PaddingProperty, Margins.Zero),
                 },
             });
             return panel;
@@ -950,6 +954,8 @@ internal static class CursorialBarsTheme
                         .Set(UIElement.VisibilityProperty, Visibility.Visible),
                     new Style(Selectors.Nesting().PseudoClass(":density-collapsed").Template().Name("PART_InlineColumn"))
                         .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                    new Style(Selectors.Nesting().PseudoClass(":density-compact").Template().Name("PART_InlineColumn"))
+                        .Set(UIElement.MarginProperty, Margins.Zero),
                 },
             });
             return outer;

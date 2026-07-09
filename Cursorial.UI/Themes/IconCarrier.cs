@@ -1,3 +1,7 @@
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+
 using Cursorial.UI.Controls;
 
 namespace Cursorial.UI.Themes;
@@ -5,6 +9,7 @@ namespace Cursorial.UI.Themes;
 /// <summary>
 /// An immutable carrier of an <see cref="Icon"/> descriptor that is safe to use as a theme resource.
 /// </summary>
+[TypeConverter(typeof(IconCarrierConverter))]
 public record IconCarrier
 {
     public IconCarrier() {}
@@ -46,5 +51,31 @@ public record IconCarrier
         imageUri = ImageUri;
         emoji = Emoji;
         text = Text;
+    }
+}
+
+public sealed class IconCarrierConverter : TypeConverter
+{
+    public override bool CanConvertTo(ITypeDescriptorContext? context, [NotNullWhen(true)] Type? destinationType)
+    {
+        return typeof(UIElement).IsAssignableFrom(destinationType) ||
+               base.CanConvertTo(context, destinationType);
+    }
+
+    public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType)
+    {
+        if (value is IconCarrier c && destinationType.IsAssignableFrom(typeof(Icon)))
+        {
+            return new Icon
+                   {
+                       Glyph = c.Glyph,
+                       GlyphWidth = c.GlyphWidth,
+                       ImageUri = c.ImageUri,
+                       Emoji = c.Emoji,
+                       Text = c.Text
+                   };
+        }
+
+        return base.ConvertTo(context, culture, value, destinationType);
     }
 }

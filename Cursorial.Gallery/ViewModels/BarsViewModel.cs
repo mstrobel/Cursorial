@@ -1,5 +1,6 @@
 using System.Windows.Input;
 
+using Cursorial.Gallery.Infrastructure;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 
@@ -18,19 +19,31 @@ public sealed class BarsViewModel : PageViewModel
 
     public BarsViewModel()
     {
-        Cut = new BarCommand(() => Report("Cut")) { Text = "Cu_t", InputGestureText = "Ctrl+X" };
-        Copy = new BarCommand(() => Report("Copy")) { Text = "_Copy", InputGestureText = "Ctrl+C" };
-        Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", InputGestureText = "Ctrl+V" };
-        Undo = new BarCommand(() => Report("Undo")) { Text = "_Undo", InputGestureText = "Ctrl+Z" };
-        Redo = new BarCommand(() => Report("Redo")) { Text = "_Redo", InputGestureText = "Ctrl+Y" };
-        Find = new BarCommand(() => Report("Find")) { Text = "_Find", InputGestureText = "Ctrl+F" };
+        Cut = new BarCommand(() => Report("Cut"))     { Text = "Cu_t",   Icon = Icons.IconCut(),   InputGestureText = "Ctrl+X" };
+        Copy = new BarCommand(() => Report("Copy"))   { Text = "_Copy",  Icon = Icons.IconCopy(),  InputGestureText = "Ctrl+C" };
+        Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", Icon = Icons.IconPaste(), InputGestureText = "Ctrl+V" };
+        Undo = new BarCommand(() => Report("Undo"))   { Text = "_Undo",  Icon = Icons.IconUndo(),  InputGestureText = "Ctrl+Z" };
+        Redo = new BarCommand(() => Report("Redo"))   { Text = "_Redo",  Icon = Icons.IconRedo(),  InputGestureText = "Ctrl+Y" };
+        Find = new BarCommand(() => Report("Find"))   { Text = "_Find",  Icon = Icons.IconFind(),  InputGestureText = "Ctrl+F" };
         Settings = new BarCommand(() => Report("Settings")) { Text = "_Settings" };
 
         BoldState = new CheckableCommandParameter();
-        Bold = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Bold")) { Text = "_Bold", IsCheckable = true };
+        Bold = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Bold")) { Text = "_Bold", Icon = Icons.IconBold(), IsCheckable = true };
 
         ItalicState = new CheckableCommandParameter();
-        Italic = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Italic")) { Text = "_Italic", IsCheckable = true };
+        Italic = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Italic")) { Text = "_Italic", Icon = Icons.IconItalic(), IsCheckable = true };
+
+        InlineCodeState = new CheckableCommandParameter();
+        InlineCode = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Code")) { Text = "C_ode", Icon = Icons.IconInlineCode(), IsCheckable = true };
+
+        var alignGroup = new ToggleGroup(
+            new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Align _Left")) { Text = "_Left", Icon = Icons.IconAlignLeft(), IsCheckable = true },
+            new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Align _Center")) { Text = "_Center", Icon = Icons.IconAlignCenter(), IsCheckable = true },
+            new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Align _Right")) { Text = "_Right", Icon = Icons.IconAlignRight(), IsCheckable = true });
+
+        AlignLeft = alignGroup.Commands[0];
+        AlignCenter = alignGroup.Commands[1];
+        AlignRight = alignGroup.Commands[2];
 
         // A split button (primary action + ▾ dropdown) and a popup button (whole control opens its menu); the dropdown
         // rows invoke Pick with a label. The combobox picks a font (SelectedFont).
@@ -53,11 +66,18 @@ public sealed class BarsViewModel : PageViewModel
     public ICommand Find { get; }
     public ICommand Settings { get; }
 
+    public ICommand AlignLeft { get; }
+    public ICommand AlignCenter { get; }
+    public ICommand AlignRight { get; }
+
     public ICommand Bold { get; }
     public CheckableCommandParameter BoldState { get; }
 
     public ICommand Italic { get; }
     public CheckableCommandParameter ItalicState { get; }
+
+    public ICommand InlineCode { get; }
+    public CheckableCommandParameter InlineCodeState { get; }
 
     /// <summary>The split button's primary action; the ▾ zone opens a dropdown of <see cref="Pick"/> choices.</summary>
     public ICommand Color { get; }
@@ -92,7 +112,7 @@ public sealed class BarsViewModel : PageViewModel
     private void Toggle(CheckableCommandParameter state, string label)
     {
         state.Toggle(); // the command owns the checked state; the toggle button re-syncs on the re-query
-        Report($"{label} {(state.IsChecked is true ? "on" : state.IsChecked is false ? "off" : "indeterminate")}");
+        Report($"{label} {(state.IsCheckedEffective is true ? "on" : state.IsCheckedEffective is false ? "off" : "indeterminate")}");
     }
 
     private void Report(string what) => Status = $"{what} invoked.";

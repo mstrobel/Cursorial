@@ -1,9 +1,11 @@
 using System.Windows.Input;
 
+using Cursorial.Gallery.Infrastructure;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 
 namespace Cursorial.Gallery.ViewModels;
+
 
 /// <summary>
 /// The Ribbon page (Surface B): the SAME kind of <see cref="BarCommand"/> set the Toolbar page binds, arranged into
@@ -21,22 +23,30 @@ public sealed class RibbonViewModel : PageViewModel
     {
         // Descriptions light up SuperTips (rich hover help) — hover a control to see the titled, multi-line tip the
         // command auto-provisions (title = the command name, the accelerator, and this body).
-        Cut = new BarCommand(() => Report("Cut")) { Text = "C_ut", InputGestureText = "Ctrl+X", Description = "Cut the selection to the clipboard." };
-        Copy = new BarCommand(() => Report("Copy")) { Text = "_Copy", InputGestureText = "Ctrl+C", Description = "Copy the selection to the clipboard." };
-        Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", InputGestureText = "Ctrl+V", Description = "Paste the clipboard contents at the cursor." };
-        Find = new BarCommand(() => Report("Find")) { Text = "Fi_nd", InputGestureText = "Ctrl+F", Description = "Find text in the document." };
-        Undo = new BarCommand(() => Report("Undo")) { Text = "Undo", InputGestureText = "Ctrl+Z", Description = "Undo the last action." };
-        Redo = new BarCommand(() => Report("Redo")) { Text = "Redo", InputGestureText = "Ctrl+Y", Description = "Redo the last undone action." };
-        Settings = new BarCommand(() => Report("Settings")) { Text = "_Settings", Description = "Open application settings." };
+        Cut = new BarCommand(() => Report("Cut"))     { Text = "C_ut",   Icon = Icons.IconCut(),   InputGestureText = "Ctrl+X", Description = "Cut the selection to the clipboard." };
+        Copy = new BarCommand(() => Report("Copy"))   { Text = "_Copy",  Icon = Icons.IconCopy(),  InputGestureText = "Ctrl+C", Description = "Copy the selection to the clipboard." };
+        Paste = new BarCommand(() => Report("Paste")) { Text = "_Paste", Icon = Icons.IconPaste(), InputGestureText = "Ctrl+V", Description = "Paste the clipboard contents at the cursor." };
+        Find = new BarCommand(() => Report("Find"))   { Text = "Fi_nd",  Icon = Icons.IconFind(),  InputGestureText = "Ctrl+F", Description = "Find text in the document." };
+        Undo = new BarCommand(() => Report("Undo"))   { Text = "Undo",   Icon = Icons.IconUndo(),  InputGestureText = "Ctrl+Z", Description = "Undo the last action." };
+        Redo = new BarCommand(() => Report("Redo"))   { Text = "Redo",   Icon = Icons.IconRedo(),  InputGestureText = "Ctrl+Y", Description = "Redo the last undone action." };
+        Settings = new BarCommand(() => Report("Settings")) { Text = "_Settings", Icon = Icons.IconSettings(), Description = "Open application settings." };
 
         // Quick Access Toolbar (caption row): Undo/Redo/Paste start ON; the customize ▾ checklist toggles the rest.
         QuickAccessDefaults = [(BarCommand) Undo, (BarCommand) Redo, (BarCommand) Paste];
         QuickAccessCandidates = [(BarCommand) Cut, (BarCommand) Copy, (BarCommand) Paste, (BarCommand) Find, (BarCommand) Undo, (BarCommand) Redo, (BarCommand) Settings];
 
-        BoldState = new CheckableCommandParameter();
-        Bold = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Bold")) { Text = "_Bold", IsCheckable = true };
-        ItalicState = new CheckableCommandParameter();
-        Italic = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Italic")) { Text = "_Italic", IsCheckable = true };
+        Bold = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Bold")) { Text = "_Bold", Icon = Icons.IconBold(), IsCheckable = true };
+        Italic = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Italic")) { Text = "_Italic", Icon = Icons.IconItalic(), IsCheckable = true };
+        InlineCode = new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Code")) { Text = "C_ode", Icon = Icons.IconInlineCode(), IsCheckable = true };
+
+        var alignGroup = new ToggleGroup(
+            new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Align _Left")) { Text = "_Left", Icon = Icons.IconAlignLeft(), IsCheckable = true },
+            new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Align _Center")) { Text = "_Center", Icon = Icons.IconAlignCenter(), IsCheckable = true },
+            new BarCommand(p => Toggle((CheckableCommandParameter) p!, "Align _Right")) { Text = "_Right", Icon = Icons.IconAlignRight(), IsCheckable = true });
+
+        AlignLeft = alignGroup.Commands[0];
+        AlignCenter = alignGroup.Commands[1];
+        AlignRight = alignGroup.Commands[2];
 
         Options = new BarCommand(() => Report("Clipboard options")); // the ⋰ dialog launcher target
 
@@ -53,6 +63,9 @@ public sealed class RibbonViewModel : PageViewModel
     /// <summary>Echoes the last command invocation (bound by the page body).</summary>
     public string Status { get => _status; private set => Set(ref _status, value); }
 
+    public RibbonLayoutMode LayoutMode { get; private set => Set(ref field, value); } = RibbonLayoutMode.Classic;
+    public IReadOnlyList<RibbonLayoutMode> LayoutModes { get; } = [RibbonLayoutMode.Classic, RibbonLayoutMode.Simplified, RibbonLayoutMode.Compact];
+
     public ICommand Cut { get; }
     public ICommand Copy { get; }
     public ICommand Paste { get; }
@@ -60,6 +73,10 @@ public sealed class RibbonViewModel : PageViewModel
     public ICommand Undo { get; }
     public ICommand Redo { get; }
     public ICommand Settings { get; }
+    
+    public ICommand AlignLeft { get; }
+    public ICommand AlignCenter { get; }
+    public ICommand AlignRight { get; }
 
     /// <summary>Commands that start ON the Quick Access Toolbar (GalleryRibbon populates the ribbon's QuickAccessCommands from this).</summary>
     public IReadOnlyList<BarCommand> QuickAccessDefaults { get; }
@@ -69,9 +86,8 @@ public sealed class RibbonViewModel : PageViewModel
     public ICommand Options { get; }
 
     public ICommand Bold { get; }
-    public CheckableCommandParameter BoldState { get; }
     public ICommand Italic { get; }
-    public CheckableCommandParameter ItalicState { get; }
+    public ICommand InlineCode { get; }
 
     public ICommand MergeCells { get; }
     public ICommand SplitCells { get; }

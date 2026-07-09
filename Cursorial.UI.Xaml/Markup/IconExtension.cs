@@ -31,12 +31,35 @@ public sealed class IconExtension : MarkupExtension
     /// <inheritdoc/>
     public override object ProvideValue(IServiceProvider serviceProvider)
     {
-        if (serviceProvider.GetService(typeof(IProvideValueTarget)) is IProvideValueTarget { TargetObject: {} o})
+        if (serviceProvider.GetService(typeof(IProvideValueTarget)) is IProvideValueTarget pvt)
         {
-            if (o is IXamlDeferredContentFactory)
-                return this;
+            if (pvt is { TargetObject: {} o })
+            {
+                if (o is IXamlDeferredContentFactory)
+                    return this;
 
-            if (o is IDeferredResourceEntry or ResourceDictionary)
+                if (o is IDeferredResourceEntry or ResourceDictionary)
+                {
+                    return new IconCarrier
+                           {
+                               Glyph = Glyph,
+                               GlyphWidth = GlyphWidth,
+                               ImageUri = ImageUri,
+                               Emoji = Emoji,
+                               Text = Text
+                           };
+                }
+            }
+
+            var type = pvt.TargetProperty switch
+                       {
+                           UIProperty { PropertyType: {} uiType }                     => uiType,
+                           XamlMember { ValueType.UnderlyingSystemType: {} xamlType } => xamlType,
+                           _                                                          => typeof(object)
+                       };
+
+            if (type.IsAssignableFrom(typeof(Icon)) is false && 
+                type.IsAssignableFrom(typeof(IconCarrier)) is true)
             {
                 return new IconCarrier
                        {

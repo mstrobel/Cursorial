@@ -209,6 +209,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 // viewport-resize re-probe), which must run even on an otherwise-clean surface.
                 if (surface.HostWindow is {} window && (surface.HasPendingLayout || window.FitToContentPending))
                     FitWindowToContent(window, surface);
+                else if (surface is { IsPopup: true, HasPendingLayout: true } && PopupForSurface(surface) is {} popup)
+                    RefitPopup(popup, surface); // the popup analog of the SizeToContent re-fit (frame-converged)
 
                 surface.RunLayoutPass();
             }
@@ -1126,6 +1128,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         popup.PopupSurface?.Detach();
         popup.PopupSurface = null;
+        popup.PointerPlacementOrigin = null; // a re-open re-captures the live pointer
 
         RebuildSurfaceStack();
         ResetCompositor();
@@ -1157,7 +1160,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 PlacementMode.Right   => (anchor.ColumnEnd, anchor.Row),
                 PlacementMode.Left    => (anchor.Column - size.Columns, anchor.Row),
                 PlacementMode.Center  => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
-                PlacementMode.Pointer => (_lastPointer.Column, _lastPointer.Row),
+                // Captured ONCE per open: a content-growth re-fit re-places against the open-time cell, so a strip
+                // whose faces realize a frame late (bound BarCommands) grows in place instead of following the mouse.
+                PlacementMode.Pointer => popup.PointerPlacementOrigin ??= _lastPointer,
                 _                     => (anchor.Column, anchor.RowEnd) // Bottom (default)
             };
 
@@ -1168,6 +1173,43 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.Left = Math.Clamp(left, 0, Math.Max(0, _viewport.Columns - size.Columns));
         surface.Top = Math.Clamp(top, 0, Math.Max(0, _viewport.Rows - size.Rows));
         surface.Opacity = popup.Opacity;
+    }
+
+    /// <summary>The popup owning <paramref name="surface"/>, or null (a chrome/window/root surface).</summary>
+    private Popup? PopupForSurface(TopLevelSurface surface)
+    {
+        foreach (var popup in _popups)
+        {
+            if (ReferenceEquals(popup.PopupSurface, surface))
+                return popup;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The popup analog of the <see cref="SizeToContentMode.Always"/> window re-fit: a popup surface is sized ONCE
+    /// at open from that instant's desired size, but a freshly opened strip's content can materialize a frame later
+    /// (bound <c>BarCommand</c> faces, data-templated icon carriers, the deferred restyle) — the frozen surface then
+    /// clips the grown content (or floats oversized around the shrunk one). A measure-only probe at the open
+    /// constraint re-derives the size; on change the popup re-places wholesale (the viewport clamp depends on the
+    /// size, and a Pointer placement re-anchors to its captured open-time origin). Gated on pending layout by the
+    /// caller — an idle popup pays nothing — and convergent: once the size matches, the probe is a cache hit.
+    /// </summary>
+    private void RefitPopup(Popup popup, TopLevelSurface surface)
+    {
+        var root = surface.Root;
+        root.Measure(_viewport); // measure-only probe (the FitWindowToContent pattern — nothing arranges at the probe)
+
+        var desired = root.DesiredSize;
+        var size = new Size(
+            Math.Clamp(desired.Columns, 0, _viewport.Columns),
+            Math.Clamp(desired.Rows, 0, _viewport.Rows));
+
+        if (size == surface.Size)
+            return;
+
+        PlacePopup(popup, surface);
     }
 
     /// <summary>The effective target's bounds in screen space (its surface offset + a live parent-chain walk), or

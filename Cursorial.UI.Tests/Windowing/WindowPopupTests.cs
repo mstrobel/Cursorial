@@ -606,4 +606,53 @@ public sealed class WindowPopupTests
         Assert.False(popup.IsOpen);
         Assert.Empty(host.Application.WindowManager!.Popups);
     }
+
+    [Fact] // the frame-converged popup re-fit: content that grows WHILE OPEN re-sizes the surface (a popup is sized
+           // at open from that instant's desired size — late-materializing content, e.g. bound bar-command faces,
+           // used to stay clipped behind the frozen surface forever)
+    public void ContentGrowth_WhileOpen_RefitsTheSurface()
+    {
+        var (host, _, popup, _, inner) = Setup();
+        using var _ = host;
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(8, popup.PopupSurface!.Size.Columns); // sized to the open-time desired
+
+        inner.Width = 20; // the content grows while open (the late-face analog)
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(20, popup.PopupSurface!.Size.Columns); // the surface re-fit — nothing clips
+        Assert.Equal(20, inner.Bounds.Columns);
+
+        inner.Width = 5; // …and a shrink re-fits down (no oversized ghost surface)
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(5, popup.PopupSurface!.Size.Columns);
+    }
+
+    [Fact] // the re-fit keeps the surface on-screen: growth near the right edge re-clamps left instead of clipping
+    public void ContentGrowth_WhileOpen_ReclampsIntoTheViewport()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var target = new UIControls.Button { Width = 10, Height = 1, Content = "t", Margin = new Margins(45, 0, 0, 0) };
+        var inner = new UIControls.Button { Width = 8, Height = 3, Content = "menu" };
+        var popup = new Popup { Child = inner, PlacementTarget = target };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(target);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+
+        inner.Width = 30; // grows past the 60-wide viewport's right edge from its anchor at 45
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(30, popup.PopupSurface!.Size.Columns);
+        Assert.Equal(30, popup.PopupSurface!.Left); // 60 − 30: shifted left to stay whole, not clipped
+    }
 }

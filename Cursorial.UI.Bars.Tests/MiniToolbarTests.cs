@@ -121,4 +121,49 @@ public sealed class MiniToolbarTests
         Assert.False(strip.IsOpen);                  // OpenCore bailed
         Assert.Null(strip.WatchedTargetForTests);    // …and the DetachedFromLogicalTree subscription was NOT stranded
     }
+
+    [Fact] // faces that materialize AFTER open (bound BarCommands / data-templated icon carriers) grow the strip —
+           // the popup surface re-fits instead of clipping the tail at its open-time width (the gallery regression:
+           // three groups of three, everything after the second separator invisible)
+    public void MiniToolbar_LateFaces_GrowTheOpenStrip()
+    {
+        var host = NewHost(w: 80, h: 12);
+        using var _h = host;
+
+        var strip = new MiniToolbar();
+        var buttons = new List<BarButton>();
+        for (var g = 0; g < 3; g++)
+        {
+            if (g > 0)
+                strip.Items.Add(new BarSeparator());
+            for (var i = 0; i < 3; i++)
+            {
+                var b = new BarButton(); // faceless until the "command binding" delivers below
+                buttons.Add(b);
+                strip.Items.Add(b);
+            }
+        }
+
+        var target = new Border { Width = 60, Height = 8, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        MiniToolbar.SetBar(target, strip);
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+        root.Children.Add(target);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        host.SendClick(40, 4, MouseButton.Right);
+        host.RunUntilIdle();
+        Assert.True(strip.IsOpen);
+
+        const string icons = "ABCDEFGHI";
+        for (var i = 0; i < buttons.Count; i++)
+            buttons[i].Icon = icons[i].ToString(); // the late arrival
+        host.RunUntilIdle();
+
+        Assert.Equal(strip.DesiredSize.Columns, strip.Bounds.Columns); // the surface grew with the strip
+
+        var screen = string.Join("\n", Enumerable.Range(0, 12).Select(host.GetRowText));
+        Assert.Contains("G", screen); // the third group is visible…
+        Assert.Contains("I", screen); // …to its last button
+    }
 }

@@ -529,13 +529,18 @@ internal sealed class FocusNavigator
         }
     }
 
+    // Gap 0 iff the cross-axis ranges OVERLAP — share at least one cell (ND17). Disjoint ranges score their
+    // separation + 1, so a TOUCHING range (the adjacent row of a two-row ribbon stack) is misaligned, never a tie
+    // with a same-row candidate: touching and overlapping used to both score 0 — indistinguishable while nothing
+    // focusable sat on adjacent rows — and the row-0 twin of a stack then tied the same-row candidate and won on
+    // document order, yanking Left/Right off the second row (N132a).
     private static int RangeGap(int aStart, int aLength, int bStart, int bLength)
     {
         if (bStart >= aStart + aLength)
-            return bStart - (aStart + aLength);
+            return bStart - (aStart + aLength) + 1;
 
         if (aStart >= bStart + bLength)
-            return aStart - (bStart + bLength);
+            return aStart - (bStart + bLength) + 1;
 
         return 0; // cross-axis ranges overlap
     }

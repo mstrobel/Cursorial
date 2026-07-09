@@ -1,10 +1,10 @@
 // xUnit1031 disabled: UITestHost is single-thread-affine (see FrameLoopTests).
 #pragma warning disable xUnit1031
 
+using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Controls;
 using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
@@ -561,5 +561,59 @@ public sealed class RibbonControlGroupTests
         host.RunUntilIdle();
 
         Assert.Equal(2, separator.Bounds.Rows);
+    }
+
+    // ───────────────────────────── directional navigation across stacks ─────────────────────────────
+
+    [Fact] // Left/Right on a stack's SECOND row stays on that row (N132a: a touching-row candidate never ties a
+           // same-row one — the row-0 twin used to win the tie on document order and yank focus up a row)
+    public void StackedSecondRow_LeftRightStaysOnTheRow()
+    {
+        using var host = NewHost();
+        var cut = Btn("Cut", "✂");
+        var copy = Btn("Copy", "⧉");
+        var bold = Btn("Bold", "𝐁");
+        var italic = Btn("Italic", "𝐼");
+        var left = Btn("Left", "⟸");
+        var center = Btn("Center", "≡");
+
+        var clipboard = new RibbonGroup { Header = "Clipboard" };
+        clipboard.Items.Add(LargeIcon("Paste", "▣"));
+        clipboard.Items.Add(ControlGroup(cut, copy));
+
+        var format = new RibbonGroup { Header = "Format" };
+        RibbonControlGroup.SetRowBreak(left, true);
+        format.Items.Add(ControlGroup(bold, italic, left, center));
+
+        var tab = new RibbonTab { Header = "Home" };
+        tab.Groups.Add(clipboard);
+        tab.Groups.Add(format);
+        var ribbon = new Ribbon();
+        ribbon.Items.Add(tab);
+
+        host.ShowRoot(ribbon);
+        host.RunUntilIdle();
+
+        var focus = host.Application.FocusManager;
+
+        focus.SetFocus(copy); // Clipboard stack, row 1
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.Same(left, focus.FocusedElement); // Format stack row 1 — NOT Bold on row 0
+
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.Same(center, focus.FocusedElement); // within the stack: stays on row 1 — NOT Italic
+
+        host.SendKey(Key.LeftArrow);
+        host.RunUntilIdle();
+        Assert.Same(left, focus.FocusedElement); // and back
+
+        focus.SetFocus(cut); // row 0 is unaffected
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);
+        host.RunUntilIdle();
+        Assert.Same(bold, focus.FocusedElement);
     }
 }

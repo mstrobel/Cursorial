@@ -358,7 +358,7 @@ public class Section09_TabNavigation
         KeyboardNavigation.SetDirectionalNavigation(container, DirectionalNavigationMode.Contained);
 
         var center = new Btn("C", log) { Natural = new Size(2, 1) };
-        var near = new Btn("Near", log) { Natural = new Size(2, 1) };     // facing 1, rows offset 2 → 1 + 2×2 = 5
+        var near = new Btn("Near", log) { Natural = new Size(2, 1) };     // facing 1, rows disjoint by 2 (gap 3) → 1 + 2×3 = 7
         var aligned = new Btn("Aligned", log) { Natural = new Size(2, 1) }; // facing 4, gap 0 → 4
         container.Place(center, 10, 5);
         container.Place(near, 13, 8);
@@ -371,6 +371,32 @@ public class Section09_TabNavigation
 
         // facing + 2 × orthogonal-gap: gap 0 beats nearer-but-offset when 2×gap exceeds the delta.
         Assert.Same(aligned, host.Application.FocusManager.FocusedElement);
+    }
+
+    [Fact] // N132a — touching ≠ overlapping: an ADJACENT-row candidate never ties a same-row one (the two-row
+           // ribbon-stack regression: both scored gap 0, and the row-0 twin won on document order)
+    public void N132a_Scoring_SameRowBeatsTouchingRow()
+    {
+        using var host = UITestHost.Create();
+        var log = new List<string>();
+        var root = new CanvasProbe("Root", log, 80, 24);
+        var container = new CanvasProbe("Grid", log, 40, 20);
+        root.Place(container, 0, 0);
+        KeyboardNavigation.SetDirectionalNavigation(container, DirectionalNavigationMode.Contained);
+
+        var center = new Btn("C", log) { Natural = new Size(2, 1) };
+        var above = new Btn("Above", log) { Natural = new Size(2, 1) };     // row 4: touching → gap 1 → 4 + 2 = 6
+        var sameRow = new Btn("SameRow", log) { Natural = new Size(2, 1) }; // row 5: overlap → gap 0 → 4
+        container.Place(center, 10, 5);
+        container.Place(above, 16, 4);   // document-earlier AND equal facing — the old tie it always won
+        container.Place(sameRow, 16, 5);
+        host.ShowRoot(root);
+        host.RunFrame();
+        Assert.True(center.Focus());
+
+        host.Application.InputDispatcher.ProcessEvent(Key(Cursorial.Input.Key.RightArrow));
+
+        Assert.Same(sameRow, host.Application.FocusManager.FocusedElement);
     }
 
     [Fact]

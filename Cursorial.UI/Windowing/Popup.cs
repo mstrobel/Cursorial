@@ -144,6 +144,11 @@ public class Popup : UIElement
     /// <summary>The surface hosting the open popup's child (WM-owned; null while closed).</summary>
     internal TopLevelSurface? PopupSurface { get; set; }
 
+    /// <summary>The pointer cell captured at the open-time placement of a <see cref="PlacementMode.Pointer"/> popup
+    /// (WM-owned; null while closed). A content-growth re-fit re-places against THIS origin, not the live pointer —
+    /// a mini toolbar whose icons realize a frame late must grow in place, not follow the mouse.</summary>
+    internal (int Column, int Row)? PointerPlacementOrigin { get; set; }
+
     /// <summary>The effective placement anchor — explicit <see cref="PlacementTarget"/> or the logical parent.</summary>
     internal UIElement? EffectiveTarget => PlacementTarget ?? LogicalParent;
 

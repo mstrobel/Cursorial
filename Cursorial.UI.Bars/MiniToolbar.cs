@@ -30,7 +30,7 @@ public sealed class MiniToolbar : ItemsControl
     {
         ItemsPanel = new ItemsPanelTemplate(static _ => new StackPanel { Orientation = Orientation.Horizontal });
         Focusable = false;
-        Ribbon.SetButtonSize(this, RibbonButtonSize.Small);
+        Ribbon.SetIsDensityCompact(this, true);
     }
 
     /// <summary>Reads <see cref="BarProperty"/> — the mini toolbar attached to <paramref name="element"/>.</summary>
@@ -126,9 +126,9 @@ public sealed class MiniToolbar : ItemsControl
             return;
 
         if (oldValue is not null)
-            target.RemoveHandler(UIElement.MouseUpEvent, OnTargetMouseUp);
+            target.RemoveHandler(MouseUpEvent, OnTargetMouseUp);
         if (newValue is not null)
-            target.AddHandler(UIElement.MouseUpEvent, OnTargetMouseUp);
+            target.AddHandler(MouseUpEvent, OnTargetMouseUp);
     }
 
     private static void OnTargetMouseUp(object? sender, MouseButtonEventArgs e)

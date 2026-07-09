@@ -417,6 +417,25 @@ public class VtInputInterpreterTests
         Assert.Equal("partial content", new string(p.Text.Span));
     }
 
+    [Fact] // security: an OSC embedded in pasted content must NOT surface as a device response (clipboard-poisoning
+           // forgery) — the classifier breaks framing on the embedded ESC, so EmitDeviceResponse drops it while _inPaste
+    public void BracketedPaste_EmbeddedOsc52_DoesNotForgeAClipboardResponse()
+    {
+        // A hidden OSC 52 clipboard "response" inside pasted text: it would otherwise satisfy a pending read.
+        Feed("\x1b[200~before\x1b]52;c;YXR0YWNrZXI=\x1b\\after\x1b[201~");
+
+        Assert.Empty(_sink.Events.OfType<DeviceResponseEvent>()); // no forged reply
+        var p = _sink.Single<PasteEvent>();
+        Assert.DoesNotContain("attacker", new string(p.Text.Span)); // the framed-out escape isn't in the paste either
+    }
+
+    [Fact] // the same OSC 52 sequence OUTSIDE a paste is a legitimate device response (the guard is paste-scoped)
+    public void Osc52_OutsidePaste_StillEmitsResponse()
+    {
+        Feed("\x1b]52;c;YXR0YWNrZXI=\x1b\\");
+        Assert.Single(_sink.Events.OfType<DeviceResponseEvent>());
+    }
+
     [Fact]
     public void BracketedPaste_PreservesEmbeddedTabAndNewline()
     {
@@ -1400,6 +1419,30 @@ public class VtInputInterpreterTests
 
         var r = _sink.Single<DeviceResponseEvent>();
         Assert.Equal(DeviceResponseKind.ForegroundColor, r.Kind);
+    }
+
+    // ---- Device responses: OSC 52 clipboard query ----
+
+    [Fact]
+    public void OscClipboardResponse_PreservesTargetsAndBase64InPayload()
+    {
+        // OSC 52 ; c ; aGVsbG8= — a clipboard read response carrying "hello" (still base64 on the event;
+        // decoding is the consumer's job, the PaletteColor index;value precedent).
+        Feed("\x1b]52;c;aGVsbG8=\x1b\\");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.Clipboard, r.Kind);
+        Assert.Equal("c;aGVsbG8=", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
+    public void OscClipboardResponse_BelTerminated_EmptySelection()
+    {
+        Feed("\x1b]52;c;\x07"); // an empty selection replies with an empty base64 field
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.Clipboard, r.Kind);
+        Assert.Equal("c;", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
     }
 
     [Fact]

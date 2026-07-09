@@ -51,6 +51,16 @@ public enum DeviceResponseKind
     PaletteColor,
 
     /// <summary>
+    /// Response to an OSC 52 clipboard query (<c>OSC 52 ; &lt;target&gt; ; ? ST</c>). The
+    /// <see cref="DeviceResponseEvent.Payload"/> carries the raw body after the OSC code —
+    /// "<c>&lt;targets&gt;;&lt;base64-data&gt;</c>" — with the payload still base64-encoded;
+    /// consumers decode (and treat a literal <c>?</c> data field, an echoed query, as no data).
+    /// Terminals that don't implement the read side simply never reply — pair the query with a
+    /// timeout, never an open-ended wait.
+    /// </summary>
+    Clipboard,
+
+    /// <summary>
     /// Response to <c>CSI 14 t</c> — terminal window size in pixels. Distinct from a SIGWINCH-driven
     /// <see cref="ResizeEvent"/>; this is delivered only when the application explicitly queried.
     /// </summary>

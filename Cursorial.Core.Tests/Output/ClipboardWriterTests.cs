@@ -69,4 +69,18 @@ public class ClipboardWriterTests
         int base64Len = s.Length - prefixLen - terminatorLen;
         Assert.Equal(1368, base64Len);
     }
+
+    [Fact]
+    public void WriteQuery_DefaultsToSystemTarget()
+    {
+        var s = Encode(w => ClipboardWriter.WriteQuery(w));
+        Assert.Equal("\x1b]52;c;?\x1b\\", s);
+    }
+
+    [Fact]
+    public void WriteQuery_PrimaryTarget_UsesPSelectionCode()
+    {
+        var s = Encode(w => ClipboardWriter.WriteQuery(w, ClipboardTarget.Primary));
+        Assert.Equal("\x1b]52;p;?\x1b\\", s);
+    }
 }

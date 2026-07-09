@@ -816,11 +816,49 @@ public class TextBox : Control
         return true;
     }
 
-    private static void Paste()
+    /// <summary>How long a paste chord waits for the terminal's OSC 52 reply — generous because supporting
+    /// terminals often interpose a user permission prompt (Kitty asks per read); a denied or unsupported
+    /// read completes null and the chord stays a quiet no-op.</summary>
+    private static readonly TimeSpan PasteReadTimeout = TimeSpan.FromSeconds(2);
+
+    // At most one OSC 52 read is in flight per box: OSC 52 carries no request id, so a device response completes
+    // EVERY pending read with the same text — a held Ctrl+V or an impatient double-tap during the (human-scale)
+    // permission-prompt window would otherwise fan one clipboard value into several duplicated insertions.
+    private bool _pasteReadInFlight;
+
+    private void Paste()
     {
-        // v1: OSC 52 reads are not negotiated, so Ctrl+V / Shift+Insert are a consumed no-op. The supported
-        // inbound path is the terminal's own paste (a PasteEvent ⇒ TextInput{FromPaste}) which OnTextInput
-        // absorbs. A future read implementation would round-trip here when IClipboardService.CanRead is true.
+        // The terminal's own paste (bracketed ⇒ TextInput{FromPaste}) is the PRIMARY inbound path and needs
+        // no chord — this is the OSC 52 read fallback for users who type Ctrl+V / Shift+Insert at the app
+        // (the chord is consumed either way, so an unsupported/coalesced read still isn't a stray 'v').
+        if (IsReadOnly || _pasteReadInFlight || UIApplication.Current is not { } app || !app.Clipboard.CanRead)
+            return;
+
+        _pasteReadInFlight = true;
+        _ = CompletePasteAsync(app.Clipboard.TryGetTextAsync(PasteReadTimeout));
+    }
+
+    private async Task CompletePasteAsync(ValueTask<string?> read)
+    {
+        // Fire-and-forget from Paste(): route any fault through the framework's exception funnel rather than
+        // letting it become an unobserved-task exception (the InsertText path is throw-free today, but a future
+        // two-way write-back it triggers might not be). The reply — or the timeout null — resumes on the UI
+        // thread via the dispatcher sync context; a stale completion (box went read-only, tree detached, text
+        // arrived empty) drops at the guards.
+        try
+        {
+            var text = await read;
+            if (!string.IsNullOrEmpty(text) && !IsReadOnly && IsAttachedToTree)
+                InsertText(text, fromPaste: true);
+        }
+        catch (Exception ex)
+        {
+            UIApplication.Current?.RaiseUnhandled(ex);
+        }
+        finally
+        {
+            _pasteReadInFlight = false;
+        }
     }
 
     // ───────────────────────────── pointer hit / word select ─────────────────────────────

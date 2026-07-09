@@ -234,4 +234,70 @@ public sealed class TeardownAndExceptionTests
             e => Assert.IsType<NotSupportedException>(e));
         host.Dispose();
     }
+
+    // ───────────────────────────── ReportUnhandledException (the app-facing funnel seam) ─────────────────────────────
+
+    [Fact] // On the dispatcher thread the seam funnels SYNCHRONOUSLY through the same core the frame loop uses —
+           // a handler that marks Handled swallows it and the loop is unaffected (the fire-and-forget happy path).
+    public void ReportUnhandledException_Handled_FunnelsImmediately_AndKeepsRunning()
+    {
+        using var host = UITestHost.Create();
+        Exception? funneled = null;
+        host.Application.DispatcherUnhandledException += (_, e) => { funneled = e.Exception; e.Handled = true; };
+
+        var fault = new InvalidOperationException("fire-and-forget fault");
+        host.Application.ReportUnhandledException(fault); // test thread owns the dispatcher ⇒ no pump needed
+
+        Assert.Same(fault, funneled);                     // the exact reported exception reached the funnel
+        Assert.False(host.Application.HasFatalException);  // handled ⇒ not fatal
+        Assert.True(host.RunUntilIdle());                 // the loop runs on untouched
+    }
+
+    [Fact] // An unhandled report takes the same fatal path as an in-loop fault: recorded fatal, shutdown begun.
+    public void ReportUnhandledException_Unhandled_RecordsFatal_AndBeginsShutdown()
+    {
+        var host = UITestHost.Create(); // NOT `using`: the fatal path is torn down explicitly, like the sibling fatal tests
+
+        // No DispatcherUnhandledException handler ⇒ the fault is left unhandled.
+        host.Application.ReportUnhandledException(new InvalidOperationException("fatal fire-and-forget"));
+
+        Assert.True(host.Application.HasFatalException);                                // recorded fatal by the funnel core
+        Assert.True(host.Application.Dispatcher.ShutdownToken.IsCancellationRequested); // …which began shutdown
+
+        host.Dispose(); // canonical teardown still runs on the fatal path
+        Assert.Contains("\x1b[?25h", Encoding.ASCII.GetString(host.TeardownBytes.Span));
+    }
+
+    [Fact] // Off the dispatcher thread the seam must MARSHAL onto it — never touch the funnel's UI-thread state
+           // concurrently — so nothing funnels until the loop pumps, and it then runs ON the dispatcher thread.
+    public void ReportUnhandledException_OffThread_IsMarshaledOntoTheDispatcher()
+    {
+        using var host = UITestHost.Create();
+        var uiThreadId = Environment.CurrentManagedThreadId; // the test thread owns the dispatcher
+        var seen = 0;
+        var handlerThreadId = 0;
+        host.Application.DispatcherUnhandledException += (_, e) =>
+        {
+            seen++;
+            handlerThreadId = Environment.CurrentManagedThreadId;
+            e.Handled = true;
+        };
+
+        // Report from a DEDICATED thread — not Task.Run, whose blocking wait can inline the body back onto the
+        // owner thread and defeat the off-thread intent. Join keeps the blocked work off the UI thread.
+        var reporterThreadId = 0;
+        var reporter = new Thread(() =>
+        {
+            reporterThreadId = Environment.CurrentManagedThreadId;
+            host.Application.ReportUnhandledException(new InvalidOperationException("off-thread fault"));
+        });
+        reporter.Start();
+        reporter.Join();
+
+        Assert.NotEqual(uiThreadId, reporterThreadId); // sanity: the report genuinely ran off the dispatcher thread
+        Assert.Equal(0, seen); // POSTED, not run inline off-thread — nothing funnels until the loop pumps
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(1, seen);
+        Assert.Equal(uiThreadId, handlerThreadId); // funneled ON the dispatcher thread, not the background one
+    }
 }

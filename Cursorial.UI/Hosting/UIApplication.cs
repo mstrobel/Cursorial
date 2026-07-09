@@ -621,6 +621,27 @@ public sealed partial class UIApplication : IAsyncDisposable
            key.Text.Span[0] is 'c' or 'C';
 
     /// <summary>
+    /// Routes <paramref name="exception"/> through the application's unhandled-exception funnel — the same one
+    /// the frame loop uses, which raises <see cref="DispatcherUnhandledException"/> and, when the fault is left
+    /// unhandled, records it fatal and begins shutdown. This is the app-facing seam for faults raised by
+    /// app-owned <b>fire-and-forget</b> async work — a <c>_ = SomethingAsync()</c> whose continuation would
+    /// otherwise surface only as an unobserved-task exception the framework never sees (the framework's own
+    /// fire-and-forget paths, e.g. the <c>TextBox</c> OSC 52 read-paste, funnel their catches through the same
+    /// core). Safe to call from any thread: a call off the dispatcher thread is marshaled onto it, so the
+    /// funnel's UI-thread-affine state is never touched concurrently.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="exception"/> is <see langword="null"/>.</exception>
+    public void ReportUnhandledException(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (Dispatcher.CheckAccess())
+            RaiseUnhandled(exception); // the fatal/continue decision is self-contained; the app owns no frame to unwind
+        else
+            Dispatcher.Post(() => RaiseUnhandled(exception));
+    }
+
+    /// <summary>
     /// The funnel core (design doc §10.8). Returns <see langword="true"/> when the frame may
     /// continue (handled, or cooperative shutdown cancellation); <see langword="false"/> records
     /// the exception as fatal — the caller unwinds to teardown and <c>RunAsync</c> rethrows.

@@ -102,6 +102,38 @@ public class Section15_CoercionValidation
 
         probe.AssertSilent();
         Assert.Equal(100, host.GetValue(Pc));
+        Assert.Equal(120, host.ReadLocalValue(Pc)); // the raw slot is last-writer-wins UNDER the gate (M231a)
+    }
+
+    [Fact] // M231a — the gated write's raw survives: unwiring the ceiling reverts to the LATEST write, not the first
+    public void M231a_GatedWrite_UpdatesTheRawSlot_ForTheCoerceValueDance()
+    {
+        var host = new RecordingHost();
+        host.SetValue(PcDyn, 250); // ceiling 100 ⇒ eff = 100, raw = 250
+        var probe = Probe<int>.Attach(host, PcDyn);
+
+        host.SetValue(PcDyn, 120); // gated: coerced 100 == base 100 ⇒ silent — but the raw slot must move
+        probe.AssertSilent();
+
+        host.SetValue(Pmax, 300); // raise the ceiling
+        host.CoerceValue(PcDyn);  // re-runs against the raw — the author's LAST write (120), never the first (250)
+
+        Assert.Equal(120, host.GetValue(PcDyn));
+        probe.AssertSingleNotify(100, 120, BindingPriority.LocalValue);
+    }
+
+    [Fact] // M231b — the gate re-derives the coercion provenance flags from the new raw
+    public void M231b_GatedWrite_RederivesIsCoerced()
+    {
+        var host = new RecordingHost();
+        host.SetValue(Pc, 250); // eff = 100, coerced
+        Assert.True(host.GetValueSource(Pc).IsCoerced);
+
+        host.SetValue(Pc, 100); // gated (coerced 100 == base 100) — but the raw now equals the stored base
+
+        Assert.Equal(100, host.GetValue(Pc));
+        Assert.False(host.GetValueSource(Pc).IsCoerced); // the local contribution is no longer coercer-modified
+        Assert.Equal(100, host.ReadLocalValue(Pc));
     }
 
     [Fact]

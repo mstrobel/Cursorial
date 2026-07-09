@@ -90,7 +90,19 @@ internal sealed class ValueStore
 
         var entry = (EffectiveValue<T>?)TryGetEntry(property.Id);
         if (entry is { HasLocal: true } && comparer.Equals(entry.BaseValue, coerced))
-            return; // same winning lane, comparer-equal ⇒ fully gated: first-stored value survives (PD20), +cur untouched (M135)
+        {
+            // Gated for notifications, the stored coerced representative (PD20), and +cur (M135) — but the RAW
+            // slot is last-writer-wins (M231/M231a): the desired value must track the author's LATEST write so a
+            // later CoerceValue re-runs against it (the M232 dance — a gated-then-unwired write must not revert
+            // to a stale raw), and the write-provenance flags track the new writer.
+            entry.RawLocalValue = rawValue;
+            entry.BaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(rawValue, coerced);
+            if (!entry.HasAnimatedValue)
+                entry.IsCoerced = entry.BaseIsCoerced; // un-animated local wins here by construction
+            entry.LocalValueFromEntry = writer is not null;
+            entry.LocalIsCurrentValueOnly = isCurrentValue && entry.LocalIsCurrentValueOnly; // a real SetValue clears the M118 graft marker
+            return;
+        }
 
         entry ??= CreateEntry(property);
 
@@ -215,7 +227,20 @@ internal sealed class ValueStore
             entry!.IsCurrentValue = false;
 
         if (!clobbering && entry is { HasTemplate: true } && comparer.Equals(entry.TemplateValue, coerced))
-            return; // same template value, no overwrite to clobber ⇒ fully gated (PD20 parity, M135 spirit)
+        {
+            // Gated (PD20 parity, M135 spirit) — but the raw template slot is last-writer-wins (M299b, the
+            // local-gate twin): CoerceValue re-runs against the LATEST template write, and the flags track it.
+            entry.RawTemplateValue = rawValue;
+            entry.TemplateIsCoerced = metadata.Coerce is not null && !comparer.Equals(rawValue, coerced);
+            entry.TemplateValueFromEntry = writer is not null;
+            if (entry is { BasePriority: BindingPriority.Template })
+            {
+                entry.BaseIsCoerced = entry.TemplateIsCoerced; // mirror what a re-arbitration would produce
+                if (!entry.HasAnimatedValue)
+                    entry.IsCoerced = entry.TemplateIsCoerced;
+            }
+            return;
+        }
 
         entry ??= CreateEntry(property);
 

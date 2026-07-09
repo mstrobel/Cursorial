@@ -579,6 +579,25 @@ public class Section20_TemplateLane
         Assert.Equal(250, entry.RawTemplateValue);
     }
 
+    [Fact] // M299b — the local M231a twin: a gated template re-emit still updates the raw template slot
+    public void M299b_GatedTemplateWrite_UpdatesTheRawSlot_ForTheCoerceValueDance()
+    {
+        var host = new RecordingHost();
+        T(host, Pcd, 250); // ceiling 100 ⇒ eff = 100, raw template = 250
+
+        T(host, Pcd, 120); // gated: coerced 100 == template 100 ⇒ silent — but the raw slot must move
+        Assert.Equal(100, host.GetValue(Pcd));
+
+        var entry = Assert.IsType<EffectiveValue<int>>(host.DebugValueStore!.TryGetEntry(Pcd.Id));
+        Assert.Equal(120, entry.RawTemplateValue);
+
+        host.SetValue(Pmax, 300); // raise the ceiling
+        host.CoerceValue(Pcd);    // re-runs against the LATEST template write (120), never the first (250)
+
+        Assert.Equal(120, host.GetValue(Pcd));
+        Assert.Equal(BindingPriority.Template, host.GetValueSource(Pcd).Priority);
+    }
+
     [Fact]
     public void M300_Template_CoerceValue_RerunsAgainstRawValue()
     {

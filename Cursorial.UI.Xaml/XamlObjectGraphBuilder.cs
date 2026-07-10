@@ -177,6 +177,11 @@ internal sealed class XamlObjectGraphBuilder
 
         object instance = existingInstance ?? ActivateSpecialOrDefault(objectIndex, in record, type, line, column);
 
+        // Designer/tooling opt-in: remember where this object came from. Template builds flow
+        // through here too, registering against the template's own defining document.
+        if (_options.TrackSourceInfo)
+            XamlSourceRegistry.Register(instance, _source ?? _doc.SourceUri, line, column);
+
         // A self-ResourceDictionary (the root <ResourceDictionary> or a <Foo.Resources> dictionary element)
         // loads via the dedicated keyed/merged/themed/deferred path (matrix §11/§12).
         if (instance is ResourceDictionary selfDict)

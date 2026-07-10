@@ -63,6 +63,14 @@ public sealed class XamlLoaderOptions
     /// <summary>The culture for context-sensitive converts. Default <see cref="CultureInfo.InvariantCulture"/>.</summary>
     public CultureInfo ConverterCulture { get; init; } = CultureInfo.InvariantCulture;
 
+    /// <summary>
+    /// When true, every instantiated object is registered in <see cref="XamlSourceRegistry"/>
+    /// with its document URI and 1-based element position — the designer/tooling opt-in behind
+    /// element→source navigation. Default false; production loads carry no tracking cost.
+    /// Instantiation-stage only (no <see cref="XamlParseOptions"/> counterpart).
+    /// </summary>
+    public bool TrackSourceInfo { get; init; }
+
     internal XamlParseOptions ToParseOptions() => new()
     {
         MetadataProvider = MetadataProvider,

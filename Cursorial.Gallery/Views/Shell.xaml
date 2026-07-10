@@ -1,11 +1,15 @@
 <DockPanel xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
+           xmlns:d="https://cursorial.dev/xaml/design"
+           xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
            xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
            Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
-           TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}">
+           TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
+           mc:Ignorable="d"
+           d:DataContext="vm:ShellViewModel">
     <DockPanel.InputBindings>
       <KeyBinding Gesture="Alt+T" Command="{Binding CycleColorTier}" />
       <KeyBinding Gesture="Alt+D" Command="{Binding CycleThemeVariant}" />

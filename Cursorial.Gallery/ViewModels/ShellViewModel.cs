@@ -13,13 +13,12 @@ namespace Cursorial.Gallery.ViewModels;
 /// <see cref="SelectedPage"/>, which an implicit <c>DataTemplate</c> resolves to the matching page view.</summary>
 public sealed class ShellViewModel : ViewModelBase
 {
-    private readonly UIApplication _app;
     private PageViewModel? _selectedPage;
 
-    public ShellViewModel(UIApplication app)
-    {
-        _app = app;
+    public ShellViewModel() : this(null) {}
 
+    public ShellViewModel(UIApplication? app)
+    {
         // The ScrollViewer page is first — scrolling is the framework's biggest bug surface (project memory).
         Pages =
         [
@@ -110,16 +109,19 @@ public sealed class ShellViewModel : ViewModelBase
 
     private async void ExecuteQuit(string? confirm)
     {
+        if (UIApplication.Current is not {} app)
+            return;
+
         try
         {
             const string confirmTitle = "Confirm Quit";
             const string confirmMessage = "Are you sure you want to quit?";
             const MessageBoxButton confirmButtons = MessageBoxButton.Yes | MessageBoxButton.No;
-
+            
             if (bool.TryParse(confirm, out var confirmValue) && confirmValue)
             {
 
-                MessageBoxResult? result = await MessageBox.ShowAsync(_app,
+                MessageBoxResult? result = await MessageBox.ShowAsync(app,
                                                                       message: confirmMessage,
                                                                       title: confirmTitle,
                                                                       buttons: confirmButtons,
@@ -133,8 +135,7 @@ public sealed class ShellViewModel : ViewModelBase
         }
         catch (OperationCanceledException) {}
 
-        if (UIApplication.Current is {} app)
-            app.Shutdown();
+        app.Shutdown();
     }
 
     public void AddDiagnostic(string message)

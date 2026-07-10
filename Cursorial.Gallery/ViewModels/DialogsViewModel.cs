@@ -17,14 +17,14 @@ public class DialogsViewModel : PageViewModel
 
     private bool _isDialogShowing;
 
-    public DialogsViewModel(UIApplication application)
+    public DialogsViewModel(UIApplication? application = null)
     {
         Application = application;
         ShowTaskDialogCommand = new RelayCommand(ShowTaskDialog, () => !_isDialogShowing);
         ShowMessageDialogCommand = new RelayCommand(ShowMessageDialog, () => !_isDialogShowing);
     }
 
-    private UIApplication Application { get; }
+    private UIApplication? Application { get; }
     
     public ICommand ShowTaskDialogCommand { get; }
 
@@ -47,13 +47,16 @@ public class DialogsViewModel : PageViewModel
     {
         try
         {
+            if (Application is not {} app)
+                return;
+
             if (_isDialogShowing) return;
 
             _isDialogShowing = true;
 
 
             var result = await MessageBox.ShowAsync(
-                             Application,
+                             app,
                              message: "Would you like to drink the purple vial?",
                              title: "Make a Choice",
                              buttons: MessageBoxButton.YesNo,
@@ -76,6 +79,9 @@ public class DialogsViewModel : PageViewModel
     {
         try
         {
+            if (Application is not {} app)
+                return;
+
             if (_isDialogShowing) return;
 
             _isDialogShowing = true;
@@ -137,19 +143,20 @@ public class DialogsViewModel : PageViewModel
 
                 var elapsed = Stopwatch.StartNew();
 
-                timer = Application.TimeProviderInternal.CreateTimer(_ =>
-                                                                     {
-                                                                         if (elapsed.Elapsed < TimeSpan.FromSeconds(3))
-                                                                             return;
-                                                                         if (progress < 100)
-                                                                             r.Progress.Report(++progress);
-                                                                     },
-                                                                     null,
-                                                                     TimeSpan.FromMilliseconds(30d),
-                                                                     TimeSpan.FromMilliseconds(30d));
+                timer = app.TimeProviderInternal.CreateTimer(_ =>
+                                                             {
+                                                                 if (elapsed.Elapsed < TimeSpan.FromSeconds(3))
+                                                                     return;
+
+                                                                 if (progress < 100)
+                                                                     r.Progress.Report(++progress);
+                                                             },
+                                                             null,
+                                                             TimeSpan.FromMilliseconds(30d),
+                                                             TimeSpan.FromMilliseconds(30d));
             }
 
-            var result = await TaskDialog.ShowAsync(Application, r);
+            var result = await TaskDialog.ShowAsync(app, r);
 
             if (timer is not null)
                 await timer.DisposeAsync();

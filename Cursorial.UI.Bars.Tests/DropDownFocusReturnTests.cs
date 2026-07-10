@@ -106,4 +106,50 @@ public sealed class DropDownFocusReturnTests
 
         Assert.Same(h.Editor, h.Focus.FocusedElement); // returned to the editor (primary auto-returns, unlike the dropdown)
     }
+
+    [Fact] // regression: a dropdown item invoked via POINTER, when the opener sits in the Toolbar's OVERFLOW popup,
+           // fires its command. The dropdown popup is nested inside the overflow popup; a press on the item used to
+           // light-dismiss the overflow (the dropdown's ancestor), which re-parented the opener and tore the dropdown
+           // down before the item's Click could complete — so the command never ran (keyboard, activating on key-down
+           // through no light-dismiss path, was unaffected). Fixed by sparing the hit popup's whole ancestor chain.
+    public void OverflowedDropDown_ItemPointerInvoke_FiresCommand()
+    {
+        using var host = UITestHost.Create(new UITestHostOptions
+        {
+            InitialSize = new Size(60, 12),
+            Capabilities = TestCapabilities.KittyTruecolor,
+        });
+
+        var invoked = 0;
+        var item = new BarButton { Content = "Paste Special", Command = new BarCommand(() => invoked++) };
+        var menu = new StackPanel { Orientation = Orientation.Vertical };
+        menu.Children.Add(item);
+
+        var split = new BarSplitButton { Content = "Paste", DropDownContent = menu };
+        Toolbar.SetOverflowMode(split, ToolbarOverflowMode.Always); // pin the opener into the overflow popup
+
+        var toolbar = new Toolbar { VerticalAlignment = VerticalAlignment.Top };
+        toolbar.Items.Add(new BarButton { Content = "Home" });
+        toolbar.Items.Add(split);
+
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+
+        // Open the overflow popup, then the split's dropdown (the nested popup anchored inside it). Only the
+        // final item invoke is a pointer press — the action under test.
+        toolbar.IsOverflowOpen = true;
+        host.RunUntilIdle();
+        split.IsDropDownOpen = true;
+        host.RunUntilIdle();
+        Assert.True(split.IsDropDownOpen);
+
+        // Press the item via POINTER (hover first, as a real pointer would — the press path rides the hover chain).
+        var itemPos = item.TranslateToScreen(1, 0);
+        host.SendMouseMove(itemPos.Column, itemPos.Row);
+        host.RunUntilIdle();
+        host.SendClick(itemPos.Column, itemPos.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, invoked); // the command fired (was 0 — the ancestor overflow popup dismissed on the press)
+    }
 }

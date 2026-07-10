@@ -74,6 +74,8 @@ internal static class CursorialBarsTheme
             {
                 new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartLabel))
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
+                new Style(Selectors.Nesting().PseudoClass(":size-small").Template().Name(PartIcon))
+                    .Set(UIElement.MarginProperty, Margins.Zero),
                 new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartIcon))
                     .Set(UIElement.MarginProperty, Margins.Zero)
                     .Set(DockPanel.DockProperty, Dock.Top),

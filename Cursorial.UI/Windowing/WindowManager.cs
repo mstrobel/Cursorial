@@ -90,7 +90,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// covers, the mechanism behind an overlay bleed. Reflects the surfaces' last-rendered scenes (it re-collects
     /// their layers) and does not run a fresh render pass, so call it after a settled frame.
     /// </summary>
-    internal IReadOnlyList<LayerCellSample> SampleCell(int column, int row)
+    public IReadOnlyList<LayerCellSample> SampleCell(int column, int row)
     {
         var scratch = new List<SceneLayer>();
         var samples = new List<LayerCellSample>();
@@ -1558,4 +1558,4 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 /// carrying the layer's z-order (bottom→top) and its composite <see cref="Parameters"/>. <see cref="Cell"/> is
 /// <see langword="null"/> when the sampled screen coordinate falls outside this layer's footprint.
 /// </summary>
-internal readonly record struct LayerCellSample(int SurfaceZ, CompositeParameters Parameters, Cell? Cell, string? ElementDescription = null);
+public readonly record struct LayerCellSample(int SurfaceZ, CompositeParameters Parameters, Cell? Cell, string? ElementDescription = null);

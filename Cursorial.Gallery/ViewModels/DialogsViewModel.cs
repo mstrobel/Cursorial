@@ -19,7 +19,7 @@ public class DialogsViewModel : PageViewModel
 
     public DialogsViewModel(UIApplication? application = null)
     {
-        Application = application;
+        Application = application ?? UIApplication.Current;
         ShowTaskDialogCommand = new RelayCommand(ShowTaskDialog, () => !_isDialogShowing);
         ShowMessageDialogCommand = new RelayCommand(ShowMessageDialog, () => !_isDialogShowing);
     }

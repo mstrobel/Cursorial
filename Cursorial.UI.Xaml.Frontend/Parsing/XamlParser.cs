@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Xml;
@@ -27,6 +28,15 @@ internal sealed class XamlParser
 
     private string? _rootClassName;
     private Type? _rootType;
+
+    // Markup compatibility (mc:) + design-time (d:) state. Ignorable namespaces are URIs (the
+    // root's mc:Ignorable prefixes, resolved at declaration scope); design values are captured
+    // from the ROOT element only and surface on XamlDocument.DesignInfo.
+    private HashSet<string>? _ignorableNamespaces;
+    private bool _hasDesignInfo;
+    private int? _designWidth;
+    private int? _designHeight;
+    private XamlType? _designDataContextType;
 
     // The lexical Style.TargetType stack: a Style pushes its resolved target type before its body is
     // walked so an enclosed Setter can resolve Property/Value against it (matrix X64/X66).
@@ -124,7 +134,101 @@ internal sealed class XamlParser
             _builder.Report(XamlDiagnostic.Error(code, message, _builder.Source, line, column));
         }
 
-        return _builder.Build(_rootType, _rootClassName);
+        return _builder.Build(
+            _rootType,
+            _rootClassName,
+            _hasDesignInfo ? new XamlDesignInfo(_designWidth, _designHeight, _designDataContextType) : null);
+    }
+
+    /// <summary>
+    /// Registers the root's <c>mc:Ignorable</c> prefixes (space-delimited) as ignorable namespace
+    /// URIs, resolved in the declaring scope. An entry with no xmlns declaration is a warning —
+    /// the document still parses.
+    /// </summary>
+    private void RegisterIgnorablePrefixes(string prefixList, int line, int column)
+    {
+        foreach (var prefix in prefixList.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var uri = _reader.LookupNamespace(prefix);
+            if (uri is null or { Length: 0 })
+            {
+                _builder.Warning(XamlDiagnosticCodes.IgnorablePrefixNotDeclared,
+                                 $"mc:Ignorable lists prefix '{prefix}', which has no xmlns declaration in scope.",
+                                 line, column);
+                continue;
+            }
+
+            (_ignorableNamespaces ??= new HashSet<string>(StringComparer.Ordinal)).Add(uri);
+        }
+    }
+
+    /// <summary>
+    /// Captures a ROOT-element design-time attribute into the document's
+    /// <see cref="XamlDesignInfo"/>. Unknown <c>d:*</c> names are skipped silently — the
+    /// namespace is ignorable by definition, so unrecognized entries are forward-compatible.
+    /// </summary>
+    private void CaptureDesignAttribute(string localName, string value, int line, int valueColumn)
+    {
+        switch (localName)
+        {
+            case "DesignWidth":
+            case "DesignHeight":
+                if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int cells) && cells > 0)
+                {
+                    _hasDesignInfo = true;
+                    if (localName == "DesignWidth")
+                        _designWidth = cells;
+                    else
+                        _designHeight = cells;
+                }
+                else
+                {
+                    _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                                     $"d:{localName} must be a positive integer cell count; found '{value}'. The attribute is ignored.",
+                                     line, valueColumn);
+                }
+
+                break;
+
+            case "DataContext":
+            {
+                // A plain (optionally prefix-qualified) type name, resolved in the live root
+                // scope. A miss is a soft warning: the document must still parse and load
+                // everywhere the design-time type does not exist.
+                var resolution = ResolveQualifiedType(value, appendExtensionSuffix: false, line, valueColumn, report: false);
+                if (resolution.IsResolved)
+                {
+                    _hasDesignInfo = true;
+                    _designDataContextType = resolution.Type;
+                }
+                else
+                {
+                    _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                                     $"d:DataContext type '{value}' did not resolve; the design-time data context is ignored.",
+                                     line, valueColumn);
+                }
+
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Drains the current element's subtree so the enclosing body walk advances exactly one
+    /// sibling. Do NOT use <see cref="XmlReader.Skip"/> — it advances PAST the subtree's
+    /// EndElement, so the caller's next <c>Read()</c> would over-advance and drop the following
+    /// sibling (the <c>ParseArrayElement</c> lesson).
+    /// </summary>
+    private void SkipCurrentSubtree()
+    {
+        if (_reader.IsEmptyElement)
+            return;
+
+        int subtreeDepth = _reader.Depth;
+        while (_reader.Read() &&
+               !(_reader.NodeType == XmlNodeType.EndElement && _reader.Depth == subtreeDepth))
+        {
+        }
     }
 
     private bool MoveToFirstElement()
@@ -437,6 +541,25 @@ internal sealed class XamlParser
         if (!_reader.MoveToFirstAttribute())
             return;
 
+        if (isRoot)
+        {
+            // Pre-scan the root tag for mc:Ignorable so ignorability is order-independent within
+            // the tag (a d:-style tool attribute may textually precede the mc:Ignorable that
+            // blesses it). Attribute iteration is restartable, so this costs one extra pass over
+            // the root's attributes only.
+            do
+            {
+                if (XmlnsNamespaces.IsMarkupCompatibility(_reader.NamespaceURI) &&
+                    string.Equals(_reader.LocalName, "Ignorable", StringComparison.Ordinal))
+                {
+                    RegisterIgnorablePrefixes(_reader.Value, _lineInfo.LineNumber, _lineInfo.LinePosition);
+                }
+            }
+            while (_reader.MoveToNextAttribute());
+
+            _reader.MoveToFirstAttribute();
+        }
+
         do
         {
             string attrNs = _reader.NamespaceURI;
@@ -475,6 +598,25 @@ internal sealed class XamlParser
 
             // xml:space etc. are handled in the body walk; skip the attribute here.
             if (string.Equals(attrPrefix, "xml", StringComparison.Ordinal))
+                continue;
+
+            // Markup-compatibility (mc:) attributes are protocol, not members. mc:Ignorable was
+            // pre-scanned on the root; anything else in the namespace is skipped.
+            if (XmlnsNamespaces.IsMarkupCompatibility(attrNs))
+                continue;
+
+            // Design-time (d:) attributes never reach the runtime member pipeline. The ROOT's
+            // DesignWidth / DesignHeight / DataContext are captured for designer hosts; unknown
+            // d:* names and non-root placements are skipped (ignorable by definition).
+            if (XmlnsNamespaces.IsDesignTime(attrNs))
+            {
+                if (isRoot)
+                    CaptureDesignAttribute(attrLocal, value, attrLine, valueColumn);
+                continue;
+            }
+
+            // Attributes in any other namespace the root marked mc:Ignorable are skipped wholesale.
+            if (_ignorableNamespaces is { } ignorable && ignorable.Contains(attrNs))
                 continue;
 
             // x: intrinsic directives.
@@ -993,6 +1135,15 @@ internal sealed class XamlParser
                     int elemLine = _lineInfo.LineNumber;
                     int elemColumn = CurrentElementColumn();
                     int elemLineInfo = LineInfo.Pack(elemLine, elemColumn);
+
+                    // Design-time or mc:Ignorable-marked child elements are designer data, not
+                    // content — skip the whole subtree without disturbing the sibling walk.
+                    if (XmlnsNamespaces.IsDesignTime(elemNs) ||
+                        (_ignorableNamespaces is { } ignorableNs && ignorableNs.Contains(elemNs)))
+                    {
+                        SkipCurrentSubtree();
+                        continue;
+                    }
 
                     // Property-element syntax: Owner.Member (a dotted element name on the owner type).
                     int dot = elemLocal.IndexOf('.');

@@ -55,6 +55,10 @@ public readonly record struct XamlDiagnostic(
     public static XamlDiagnostic Error(string code, string message, Uri? source, int line, int column)
         => new(code, message, XamlDiagnosticSeverity.Error, source, line, column);
 
+    /// <summary>Convenience: a <see cref="XamlDiagnosticSeverity.Warning"/> diagnostic.</summary>
+    public static XamlDiagnostic Warning(string code, string message, Uri? source, int line, int column)
+        => new(code, message, XamlDiagnosticSeverity.Warning, source, line, column);
+
     /// <inheritdoc/>
     public override string ToString()
     {

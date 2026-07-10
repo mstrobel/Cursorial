@@ -24,8 +24,34 @@ internal static class XmlnsNamespaces
     /// <summary>The <c>clr-namespace:</c> scheme prefix (WPF-style direct CLR-namespace mapping).</summary>
     public const string ClrNamespacePrefix = "clr-namespace:";
 
+    /// <summary>
+    /// The XML markup-compatibility namespace (<c>mc:</c>) — the cross-dialect standard URI, so
+    /// WPF/Avalonia-style document headers work verbatim. <c>mc:Ignorable</c> marks prefixes whose
+    /// attributes and elements the parser skips.
+    /// </summary>
+    public const string MarkupCompatibility = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+
+    /// <summary>
+    /// The design-time (<c>d:</c>) namespace — the conventional Blend URI, per Avalonia precedent.
+    /// Design-time attributes never affect runtime loading; the parser captures the root's
+    /// <c>d:DesignWidth</c> / <c>d:DesignHeight</c> / <c>d:DataContext</c> into
+    /// <see cref="XamlDocument.DesignInfo"/> for designer hosts.
+    /// </summary>
+    public const string DesignTime = "http://schemas.microsoft.com/expression/blend/2008";
+
+    /// <summary>The Cursorial-native alias for the design-time namespace.</summary>
+    public const string DesignTimeCursorial = "https://cursorial.dev/xaml/design";
+
     /// <summary>True when the namespace is the intrinsics namespace.</summary>
     public static bool IsIntrinsics(string ns) => string.Equals(ns, Intrinsics, StringComparison.Ordinal);
+
+    /// <summary>True when the namespace is the markup-compatibility (<c>mc:</c>) namespace.</summary>
+    public static bool IsMarkupCompatibility(string ns) => string.Equals(ns, MarkupCompatibility, StringComparison.Ordinal);
+
+    /// <summary>True when the namespace is a design-time (<c>d:</c>) namespace (Blend URI or the Cursorial alias).</summary>
+    public static bool IsDesignTime(string ns)
+        => string.Equals(ns, DesignTime, StringComparison.Ordinal)
+           || string.Equals(ns, DesignTimeCursorial, StringComparison.Ordinal);
 
     /// <summary>
     /// Decodes a <c>using:Ns</c> or <c>clr-namespace:Ns;assembly=Asm</c> URI into its CLR namespace

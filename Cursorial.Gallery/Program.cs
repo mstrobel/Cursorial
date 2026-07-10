@@ -11,9 +11,7 @@ using Cursorial.UI.Input;
 // screen), NOT a demo command. The shell + every page is loaded from embedded XAML (GalleryApp.BuildRoot) and
 // bound to view-models; implicit DataTemplates resolve each page. q / Esc / Ctrl+C exit.
 
-UIApplication app = UIApplication.CreateBuilder()
-                                 .WithFrameRate(60)
-                                 .UseAlternateScreen()
+UIApplication app = UIApplication.DefaultBuilder()
                                  .WithUserConfiguration(/*new UserConfigurationOptions { ShowFirstRunWizard = true }*/)
                                  .Build();
 

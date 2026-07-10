@@ -57,9 +57,7 @@ internal sealed class UIPanelsDemo : IDemo
                           "BOUND MVVM card (the P4 data-binding canary), Ctrl+R resets; " +
                           "q / Esc / Ctrl+C exits.");
 
-        var app = UIApplication.CreateBuilder()
-            .WithFrameRate(60)
-            .Build();
+        var app = UIApplication.DefaultBuilder().Build();
 
         var controller = new Controller(app);
         try

@@ -37,7 +37,7 @@ internal sealed class SaveDialogDemo : IDemo
                           "then Save (Enter / Alt+S) or Cancel (Esc). Saving over an existing name without Overwrite " +
                           "asks to replace. q / Esc exits.");
 
-        var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        var app = UIApplication.DefaultBuilder().Build();
         var controller = new Controller(app);
 
         try

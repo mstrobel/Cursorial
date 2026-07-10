@@ -45,9 +45,7 @@ internal sealed class UIXamlDemo : IDemo
         // No app-assembly type registration needed: the document names only built-in controls plus
         // SolidColorBrush, which lives in Cursorial.Drawing.Media — already in the default xmlns map.
 
-        var app = UIApplication.CreateBuilder()
-            .WithFrameRate(60)
-            .Build();
+        var app = UIApplication.DefaultBuilder().Build();
 
         var controller = new Controller(app);
         try

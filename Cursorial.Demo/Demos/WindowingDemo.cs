@@ -33,7 +33,7 @@ internal sealed class WindowingDemo : IDemo
                           "double-click to maximize / ✕ close), 'd' modal dialog, 'm' popup menu, 'f' fit-all, " +
                           "'c' close-all; shrink the terminal while a window overhangs for the fit badge; q / Esc exits.");
 
-        var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        var app = UIApplication.DefaultBuilder().Build();
         // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
         var controller = new Controller(app);
 

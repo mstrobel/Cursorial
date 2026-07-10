@@ -48,7 +48,7 @@ internal sealed class InspectorDemo : IDemo
                           "their provenance (value ← slot + selector). 't' cycles the color tier, 'd' flips dark/light; " +
                           "q / Esc exits.");
 
-        var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        var app = UIApplication.DefaultBuilder().Build();
         // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
         app.NerdFontAvailable = true;
         var controller = new Controller(app);

@@ -34,7 +34,7 @@ internal sealed class ControlGalleryDemo : IDemo
                           "tabs switch the form/list panes, right-click the list for a context menu, 't' cycles the " +
                           "color tier, 'd' flips dark/light; q / Esc / Ctrl+C exits.");
 
-        var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        var app = UIApplication.DefaultBuilder().Build();
         // app.Theme = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadTheme();
         var controller = new Controller(app);
         try

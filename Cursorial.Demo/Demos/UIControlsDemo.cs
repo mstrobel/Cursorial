@@ -39,11 +39,9 @@ internal sealed class UIControlsDemo : IDemo
                           "and arrows scroll the panel, 't' cycles the theme color tier live, 'd' flips " +
                           "the theme base (dark/light), Ctrl+R resets the toggles; q / Esc / Ctrl+C exits.");
 
-        var app = UIApplication.CreateBuilder()
-            .WithFrameRate(60)
-            .Build();
-
+        var app = UIApplication.DefaultBuilder().Build();
         var controller = new Controller(app);
+
         try
         {
             await app.RunAsync(controller.BuildTree);

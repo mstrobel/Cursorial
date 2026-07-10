@@ -39,7 +39,7 @@ internal sealed class MotionDemo : IDemo
                           "BounceOut); hover the fade card (an Opacity TRANSITION) and the pulse box (an " +
                           "edge-action perpetual storyboard). q / Esc / Ctrl+C exits.");
 
-        var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+        var app = UIApplication.DefaultBuilder().Build();
         var controller = new Controller(app);
         try
         {

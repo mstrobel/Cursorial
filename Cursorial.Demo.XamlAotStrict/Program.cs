@@ -13,9 +13,7 @@ using Cursorial.UI.Input;
 //     ? $"Strict AOT OK: loaded {view.Children.Count} children via full lowering (no runtime loader); Ok.Content='{view.Ok!.Content}'."
 //     : "Strict AOT FAILED: the view did not load as expected.");
 
-var app = UIApplication.CreateBuilder()
-                       .WithFrameRate(60)
-                       .Build();
+var app = UIApplication.DefaultBuilder().Build();
 
 var ok = true;
 

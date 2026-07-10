@@ -582,8 +582,7 @@ internal static class ControlThemes
 
     private static Style IconTheme()
         => new Style { Key = "Theme.Icon" }
-          .Set(Control.TemplateProperty, IconTemplate())
-          .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush);
+          .Set(Control.TemplateProperty, IconTemplate());
 
     // A Chart: its template hosts a PART_ChartPresenter with Source/placeholder one-way TemplateBound from the control.
     // The presenter draws the cell-rendered chart (or the placeholder when none is set).

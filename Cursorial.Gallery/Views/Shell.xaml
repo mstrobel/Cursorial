@@ -218,9 +218,9 @@
               <MenuItem Header="E_xit" InputGestureText="Alt+Q" Icon="❌" />
             </MenuItem>
             <MenuItem Header="_Edit">
-              <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" />
-              <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" />
-              <MenuItem Header="_Paste" InputGestureText="Ctrl+V" />
+              <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" Icon="{Icon Glyph='&#x000F0190;', Emoji='✂️', Text='✁'}" />
+              <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" Icon="{Icon Glyph='&#x000F018F;', Emoji='🗒', Text='⧉'}" />
+              <MenuItem Header="_Paste" InputGestureText="Ctrl+V" Icon="{Icon Glyph='&#x000F0192;', Emoji='📋', Text='▤'}" />
               <Separator/>
               <MenuItem Header="Fi_nd">
                 <MenuItem Header="Find _Next"     InputGestureText="F3" />

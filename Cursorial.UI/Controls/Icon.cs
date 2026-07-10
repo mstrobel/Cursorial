@@ -36,7 +36,7 @@ public class Icon : Control
 {
     /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
     public static readonly StyledProperty<IBrush?> IconBrushProperty =
-        UIProperty.RegisterAttached<Icon, UIElement, IBrush?>(nameof(IconBrush), inherits: true);
+        UIProperty.RegisterAttached<Icon, UIElement, IBrush?>("IconBrush", inherits: true);
 
     /// <summary>The Nerd Font codepoint(s) — the preferred tier when <see cref="UIApplication.NerdFontAvailable"/>.</summary>
     public static readonly StyledProperty<string?> GlyphProperty =
@@ -77,6 +77,11 @@ public class Icon : Control
     internal static readonly StyledProperty<object?> ResolvedContentProperty =
         UIProperty.Register<Icon, object?>(nameof(ResolvedContent));
 
+    internal static readonly DirectProperty<Icon, IBrush?> EffectiveIconBrushProperty =
+        UIProperty.RegisterDirect<Icon, IBrush?>(nameof(EffectiveIconBrush), 
+                                                 i => i.EffectiveIconBrush, 
+                                                 (i, v) => i.EffectiveIconBrush = v);
+
     /// Gets the value of the <see cref="IconBrushProperty"/> from the specified <paramref name="element"/>.
     public static IBrush? GetIconBrush(UIElement element) => element.GetValue(IconBrushProperty);
 
@@ -84,6 +89,7 @@ public class Icon : Control
     public static void SetIconBrush(UIElement element, IBrush? value) => element.SetValue(IconBrushProperty, value);
 
     private UIApplication? _subscribedApp; // the app whose capability/nerd-font events we're subscribed to
+    private IBrush? _cachedEffectiveBrush;
 
     /// <inheritdoc cref="GlyphProperty"/>
     public string? Glyph { get => GetValue(GlyphProperty); set => SetValue(GlyphProperty, value); }
@@ -109,13 +115,21 @@ public class Icon : Control
     /// <summary>The tier currently rendered (test observability).</summary>
     public IconTier Tier { get => GetValue(IconTierProperty); protected set => SetValue(IconTierPropertyKey, value); }
     
-    /// <inheritdoc cref="IconBrushProperty"/>
-    public IBrush? IconBrush { get => GetValue(IconBrushProperty); protected set => SetValue(IconBrushProperty, value); }
+    /// <summary>
+    /// The foreground brush with which to render the glyph/emoji/text tiers. Prefers <see cref="IconBrushProperty"/>,
+    /// but falls back to <see cref="Control.Foreground"/> when unset.
+    /// </summary>
+    public IBrush? EffectiveIconBrush
+    {
+        get => GetValue(IconBrushProperty) ?? GetValue(ForegroundProperty);
+        protected set => SetValue(IconBrushProperty, value);
+    }
 
     /// <inheritdoc/>
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
         base.OnAttachedToTree(in e);
+
         if (UIApplication.Current is { } app)
         {
             app.CapabilitiesChanged += OnCapabilitiesChanged; // graphics (image tier) renegotiation
@@ -125,6 +139,7 @@ public class Icon : Control
             _subscribedApp = app;
         }
 
+        UpdateEffectiveIconBrush();
         ResolveTier();
     }
 
@@ -141,6 +156,28 @@ public class Icon : Control
         }
 
         base.OnDetachedFromTree(in e);
+        
+        UpdateEffectiveIconBrush();
+    }
+
+    private void UpdateEffectiveIconBrush()
+    {
+        var oldValue = _cachedEffectiveBrush;
+        var newValue = EffectiveIconBrush;
+
+        if (oldValue != newValue)
+        {
+            _cachedEffectiveBrush = newValue;
+            DispatchPropertyChanged(EffectiveIconBrushProperty, null, oldValue, newValue, BindingPriority.LocalValue);
+        }
+    }
+
+    protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnPropertyChanged(in args);
+        
+        if (args.Property == IconBrushProperty || args.Property == ForegroundProperty)
+            UpdateEffectiveIconBrush();
     }
 
     private void OnCapabilitiesChanged(object? sender, CapabilitiesChangedEventArgs e) => ResolveTier();
@@ -192,7 +229,7 @@ public class Icon : Control
         if (tier is IconTier.Glyph)
         {
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = GlyphWidth };
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(IconBrush)) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(EffectiveIconBrush)) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
             text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
             ResolvedContent = text;
@@ -213,7 +250,7 @@ public class Icon : Control
         else if (tier is IconTier.Emoji)
         {
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = 2 };
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(IconBrush)) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(EffectiveIconBrush)) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this  });
             ResolvedContent = text;
         }
@@ -221,7 +258,7 @@ public class Icon : Control
         {
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
             var text = new TextBlock { TextAlignment = TextAlignment.Center };
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(IconBrush)) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(EffectiveIconBrush)) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this  });
             ResolvedContent = text;
         }

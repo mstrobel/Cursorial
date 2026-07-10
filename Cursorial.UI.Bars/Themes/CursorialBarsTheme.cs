@@ -39,7 +39,12 @@ internal static class CursorialBarsTheme
         // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
         // Toolbar button renders byte-for-byte as before.
         var row = new DockPanel { LastChildFill = true };
-        var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
+
+        var icon = new ContentPresenter
+                   {
+                       Margin = new Margins(0, 0, 1, 0),
+                       Visibility = Visibility.Collapsed
+                   };
         
         DockPanel.SetDock(icon, Dock.Left);
 
@@ -74,12 +79,15 @@ internal static class CursorialBarsTheme
                     .Set(DockPanel.DockProperty, Dock.Top),
                 new Style(Selectors.Nesting().PseudoClass(":size-large").Template().Name(PartLabel))
                     .Set(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Center),
+                new Style(Selectors.Nesting().PseudoClass(":has-icon").Template().Name(PartIcon))
+                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
 
                 // LayoutMode Simplified/Compact (the ribbon-wide inherited :layout-simplified signal): demote the
                 // Large face to the [icon][label] medium row, labels kept — the Office simplified-ribbon look. Same
                 // never-touch-ButtonSize contract as the density rules below; equal specificity, later declaration
                 // wins over :size-large.
-                new Style(Selectors.Nesting().PseudoClass(":size-large:layout-simplified").Template().Name(PartLabel))
+                new Style(Selectors.Nesting().PseudoClass(":size-large").PseudoClass(":layout-simplified").Template().Name(PartIcon))
+                    .Set(UIElement.MarginProperty, new Margins(0, 0, 1, 0))
                     .Set(DockPanel.DockProperty, Dock.Left),
 
                 // Density Compact (the band's inherited :density-compact signal): demote EVERY control to the compact
@@ -94,9 +102,6 @@ internal static class CursorialBarsTheme
                     .Set(UIElement.VisibilityProperty, Visibility.Collapsed),
                 new Style(Selectors.Nesting().PseudoClass(":density-compact").PseudoClass(":has-icon").Template().Name(PartIcon))
                    .Set(UIElement.MarginProperty, Margins.Zero),
-                // Add a 1-cell left margin to the label for Medium buttons that have an icon.
-                new Style(Selectors.Nesting().PseudoClass(":size-medium:has-icon").Template().Name(PartLabel))
-                    .Set(UIElement.MarginProperty, new Margins(1, 0, 0, 0))
             }
         });
         return border;

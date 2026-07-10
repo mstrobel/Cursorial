@@ -491,7 +491,6 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     private static bool TerminalSupportsKittyKeyboard(TerminalFamily family) =>
         family is TerminalFamily.Kitty or
                   TerminalFamily.Ghostty or
-                  TerminalFamily.WezTerm or
                   TerminalFamily.Konsole or  // UNVERIFIED — kept from the original list; no authoritative source either way.
                   TerminalFamily.Foot or
                   TerminalFamily.ITerm2 or   // Partial support since iTerm2 3.5.

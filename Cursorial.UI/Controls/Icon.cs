@@ -36,7 +36,7 @@ public class Icon : Control
 {
     /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
     public static readonly StyledProperty<IBrush?> IconBrushProperty =
-        UIProperty.Register<Icon, IBrush?>(nameof(IconBrush), inherits: true);
+        UIProperty.RegisterAttached<Icon, UIElement, IBrush?>(nameof(IconBrush), inherits: true);
 
     /// <summary>The Nerd Font codepoint(s) — the preferred tier when <see cref="UIApplication.NerdFontAvailable"/>.</summary>
     public static readonly StyledProperty<string?> GlyphProperty =
@@ -76,6 +76,12 @@ public class Icon : Control
     /// <see cref="ImagePresenter"/> (image tier). Internal: driven by <see cref="ResolveTier"/>, bound by the theme.</summary>
     internal static readonly StyledProperty<object?> ResolvedContentProperty =
         UIProperty.Register<Icon, object?>(nameof(ResolvedContent));
+
+    /// Gets the value of the <see cref="IconBrushProperty"/> from the specified <paramref name="element"/>.
+    public static IBrush? GetIconBrush(UIElement element) => element.GetValue(IconBrushProperty);
+
+    /// Sets the value of the <see cref="IconBrushProperty"/> on the specified <paramref name="element"/>.
+    public static void SetIconBrush(UIElement element, IBrush? value) => element.SetValue(IconBrushProperty, value);
 
     private UIApplication? _subscribedApp; // the app whose capability/nerd-font events we're subscribed to
 

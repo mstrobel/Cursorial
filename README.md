@@ -198,7 +198,7 @@ CSS-like styling, data binding, and a control catalog. &nbsp;→ Wiki:
 [Animation & Transitions](https://github.com/mstrobel/Cursorial/wiki/UI-Animation-and-Transitions)
 
 ```csharp
-var app = UIApplication.CreateBuilder().WithFrameRate(60).Build();
+var app = UIApplication.DefaultBuilder().Build();
 
 return await app.RunAsync(() =>
 {

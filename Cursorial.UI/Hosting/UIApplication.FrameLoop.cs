@@ -219,8 +219,11 @@ public sealed partial class UIApplication
         // outermost; the pull surface, never EventInputDevice (it swallows handler exceptions).
         var device = host.Input;
 
-        if (_options.KeyReleaseSynthesis is {} krs)
+        if (_options.KeyReleaseSynthesis is {} krs &&
+            _capabilities.Input.Keyboard.DistinguishesKeyUpDown is false)
+        {
             device = new KeyReleaseSynthesizer(device, krs.UpTimeout, krs.RepeatTimeout, _options.TimeProvider);
+        }
 
         device = device.WithClickSynthesis(_options.ClickOptions);
         _device = device;

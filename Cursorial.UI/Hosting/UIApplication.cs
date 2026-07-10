@@ -141,7 +141,20 @@ public sealed partial class UIApplication : IAsyncDisposable
     }
 
     /// <summary>Creates the application builder.</summary>
+    /// <remarks>It is highly recommended to use the <see cref="DefaultBuilder"/> method instead.</remarks>
     public static UIApplicationBuilder CreateBuilder() => new();
+
+    /// <summary>Creates the application builder with the recommended defaults.</summary>
+    /// <remarks>
+    /// Enables alt-screen rendering, key-up event synthesis for terminals that do not natively report them,
+    /// the user configuration system, and a 60fps frame rate (easily overridden by chaining a
+    /// <see cref="UIApplicationBuilder.WithFrameRate(int)">WithFrameRate</see> call).
+    /// </remarks>
+    public static UIApplicationBuilder DefaultBuilder()
+        => CreateBuilder().WithFrameRate(60)            // 60fps recommended
+                          .WithKeyReleaseSynthesis()    // synthesize key-up if not natively supported
+                          .UseAlternateScreen()         // use alternate screen for rendering
+                          .WithUserConfiguration();     // enable the user configuration system
 
     /// <summary>
     /// The thread-local current application: the Build thread pre-run, the UI thread after; null

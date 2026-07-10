@@ -172,6 +172,14 @@ public class Icon : Control
         }
     }
 
+    protected internal override void OnInheritedPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnInheritedPropertyChanged(in args);
+
+        if (args.Property == IconBrushProperty || args.Property == ForegroundProperty)
+            UpdateEffectiveIconBrush();
+    }
+
     protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
     {
         base.OnPropertyChanged(in args);
@@ -229,7 +237,7 @@ public class Icon : Control
         if (tier is IconTier.Glyph)
         {
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = GlyphWidth };
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(EffectiveIconBrush)) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
             text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
             ResolvedContent = text;
@@ -250,7 +258,7 @@ public class Icon : Control
         else if (tier is IconTier.Emoji)
         {
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = 2 };
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(EffectiveIconBrush)) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this  });
             ResolvedContent = text;
         }
@@ -258,7 +266,7 @@ public class Icon : Control
         {
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
             var text = new TextBlock { TextAlignment = TextAlignment.Center };
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(EffectiveIconBrush)) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this  });
             ResolvedContent = text;
         }

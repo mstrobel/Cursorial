@@ -50,6 +50,10 @@
       <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
     </Style>
 
+    <Style Selector=".caps-ansi16 Border, .caps-ansi16 :is(Panel), .caps-ansi16 :is(UIElement) /template/ Border">
+      <Setter Property="Border.Occludes" Value="True"/>
+    </Style>
+
     <Style Selector=".caps-nocolor Border, .caps-nocolor :is(UIElement) /template/ Border">
       <Setter Property="Border.Occludes" Value="True"/>
       <Setter Property="Panel.Background" Value="default"/>

@@ -117,6 +117,9 @@ public static class CursorialTheme
             CursorialThemeStyles.CapsNoColorSelectionInverse(),
             CursorialThemeStyles.CapsNoColorBorderStyle(),
             CursorialThemeStyles.CapsNoColorBorderPenStyle(),
+
+            // All blending should be disabled for Ansi16, so make sure all borders and panels occlude.
+            CursorialThemeStyles.CapsAnsi16BorderStyle(),
             
             CursorialThemeStyles.MenuSeparatorStyle(),
 
@@ -291,25 +294,16 @@ public static class CursorialTheme
         Alias(ThemeKeys.ToolTipBorderPen, ThemeKeys.BorderPen);
         Alias(ThemeKeys.TabUnderlinePen, ThemeKeys.BorderPen);
         
-        Alias(ThemeKeys.Success2Brush, ThemeKeys.GreenBrush);
-        Alias(ThemeKeys.SuccessDarkBrush, ThemeKeys.SuccessBrush);
-        Alias(ThemeKeys.SuccessInverseBrush, ThemeKeys.SuccessBrush);
-        Alias(ThemeKeys.DangerBrush, ThemeKeys.RedBrush);
-        Alias(ThemeKeys.Danger2Brush, ThemeKeys.RedBrush);
-        Alias(ThemeKeys.DangerDarkBrush, ThemeKeys.DangerBrush);
-        Alias(ThemeKeys.DangerInverseBrush, ThemeKeys.DangerBrush);
-        Alias(ThemeKeys.CoolBrush, ThemeKeys.AccentBrush);
-        Alias(ThemeKeys.Cool2Brush, ThemeKeys.Accent2Brush);
-        Alias(ThemeKeys.CoolDarkBrush, ThemeKeys.CoolBrush);
-        Alias(ThemeKeys.CoolInverseBrush, ThemeKeys.CoolBrush);
-        Alias(ThemeKeys.WarningBrush, ThemeKeys.AmberBrush);
-        Alias(ThemeKeys.Warning2Brush, ThemeKeys.AmberBrush);
-        Alias(ThemeKeys.WarningDarkBrush, ThemeKeys.WarningBrush);
-        Alias(ThemeKeys.WarningInverseBrush, ThemeKeys.WarningBrush);
-        Alias(ThemeKeys.InfoBrush, ThemeKeys.AccentBrush);
-        Alias(ThemeKeys.Info2Brush, ThemeKeys.AccentBrush);
-        Alias(ThemeKeys.InfoDarkBrush, ThemeKeys.InfoBrush);
-        Alias(ThemeKeys.InfoInverseBrush, ThemeKeys.InfoBrush);
+        Alias(ThemeKeys.Success2Brush, ThemeKeys.SuccessBrush);
+        Alias(ThemeKeys.SuccessDarkBrush, ThemeKeys.SuccessInverseBrush);
+        Alias(ThemeKeys.Danger2Brush, ThemeKeys.DangerBrush);
+        Alias(ThemeKeys.DangerDarkBrush, ThemeKeys.DangerInverseBrush);
+        Alias(ThemeKeys.Cool2Brush, ThemeKeys.CoolBrush);
+        Alias(ThemeKeys.CoolDarkBrush, ThemeKeys.CoolInverseBrush);
+        Alias(ThemeKeys.Warning2Brush, ThemeKeys.WarningBrush);
+        Alias(ThemeKeys.WarningDarkBrush, ThemeKeys.WarningInverseBrush);
+        Alias(ThemeKeys.Info2Brush, ThemeKeys.InfoBrush);
+        Alias(ThemeKeys.InfoDarkBrush, ThemeKeys.InfoInverseBrush);
     }
 
     private static void AddTierPalette(ResourceDictionary dict, ThemeBase @base)
@@ -443,9 +437,18 @@ public static class CursorialTheme
         ansi16[ThemeKeys.StatusBarAltForeground] = Palette(15);
 
         // on-accent dark = 15 (white): black-on-bright-blue is unreadable on pure-blue palettes (spec §1†).
-        ansi16[ThemeKeys.OnAccentBrush] = Palette(15);
-        ansi16[ThemeKeys.SuccessBrush] = Palette(2);
-        ansi16[ThemeKeys.WarningBrush] = Palette(3);
+        ansi16[ThemeKeys.OnAccentBrush] = Palette(0);
+        ansi16[ThemeKeys.AccentInverseBrush] = Palette(dark ? 4 : 12);
+        ansi16[ThemeKeys.InfoBrush] = Palette(dark ? 14 : 6);
+        ansi16[ThemeKeys.InfoInverseBrush] = Palette(dark ? 6 : 14);
+        ansi16[ThemeKeys.CoolBrush] = Palette(dark ? 13 : 5);
+        ansi16[ThemeKeys.CoolInverseBrush] = Palette(dark ? 5 : 13);
+        ansi16[ThemeKeys.DangerBrush] = Palette(dark ? 9 : 1);
+        ansi16[ThemeKeys.DangerInverseBrush] = Palette(dark ? 1 : 9);
+        ansi16[ThemeKeys.SuccessBrush] = Palette(dark ? 10 : 2);
+        ansi16[ThemeKeys.SuccessInverseBrush] = Palette(dark ? 2 : 10);
+        ansi16[ThemeKeys.WarningBrush] = Palette(dark ? 11 : 3);
+        ansi16[ThemeKeys.WarningInverseBrush] = Palette(dark ? 3 : 11);
         ansi16[ThemeKeys.GreenBrush] = Palette(2);
         ansi16[ThemeKeys.AmberBrush] = Palette(3);
         ansi16[ThemeKeys.RedBrush] = Palette(dark ? 9 : 1);
@@ -467,6 +470,9 @@ public static class CursorialTheme
         ansi16[ThemeKeys.KeyTipMatchedBrush] = Palette(8);              // dimmed matched → bright-black
         ansi16[ThemeKeys.RibbonContextualFillBrush] = Palette(dark ? 0 : 7);          // tinted well, tracks the recess
         ansi16[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)13 : (byte)5)); // purple
+
+        ansi16[ThemeKeys.InteractiveInverseAttributes] = TextAttributes.Faint;
+
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;
     }
 

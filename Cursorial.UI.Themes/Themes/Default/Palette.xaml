@@ -184,7 +184,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}" Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentBrush}"             Color="Palette(12)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.Accent2Brush}"            Color="Palette(14)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"           Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"           Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SuccessBrush}"            Color="Palette(2)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WarningBrush}"            Color="Palette(3)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.GreenBrush}"              Color="Palette(2)"/>
@@ -226,7 +226,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}" Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentBrush}"             Color="Palette(4)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.Accent2Brush}"            Color="Palette(6)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"           Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"           Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SuccessBrush}"            Color="Palette(2)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WarningBrush}"            Color="Palette(3)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.GreenBrush}"              Color="Palette(2)"/>
@@ -236,6 +236,15 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentInverseBrush}"      Color="Palette(4)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InfoBrush}"               Color="Palette(14)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InfoInverseBrush}"        Color="Palette(6)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolBrush}"               Color="Palette(13)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolInverseBrush}"        Color="Palette(5)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DangerBrush}"             Color="Palette(9)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DangerInverseBrush}"      Color="Palette(1)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SuccessInverseBrush}"     Color="Palette(2)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.WarningInverseBrush}"     Color="Palette(3)"/>
       <Pen             x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(8)" Weight="Light"/>
       <Pen             x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(8)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="Palette(8)" Weight="Light"/>
@@ -271,6 +280,15 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"     Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"  Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"  Color="Default"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentInverseBrush}"      Color="Palette(12)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InfoBrush}"               Color="Palette(6)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InfoInverseBrush}"        Color="Palette(14)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolBrush}"               Color="Palette(5)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.CoolInverseBrush}"        Color="Palette(13)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DangerBrush}"             Color="Palette(1)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DangerInverseBrush}"      Color="Palette(9)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SuccessInverseBrush}"     Color="Palette(10)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.WarningInverseBrush}"     Color="Palette(11)"/>
       <Pen             x:Key="{x:Static ThemeKeys.BorderPen}"               GlyphSet="Ascii"/>
       <Pen             x:Key="{x:Static ThemeKeys.SeparatorPen}"            GlyphSet="Ascii" Weight="Heavy"/>
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        GlyphSet="Ascii"/>

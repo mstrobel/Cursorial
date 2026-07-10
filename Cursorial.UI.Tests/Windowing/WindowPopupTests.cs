@@ -130,6 +130,48 @@ public sealed class WindowPopupTests
         Assert.True(popup.IsOpen);
     }
 
+    [Fact] // a press inside a NESTED popup must NOT light-dismiss its ancestor popup (the toolbar-overflow
+           // dropdown bug: a dropdown opened from a button inside the overflow popup collapsed the overflow —
+           // and with it the dropdown — on a pointer press, so the item's Click never fired; keyboard was fine).
+    public void NestedPopup_PressInsideInner_KeepsAncestorOpen()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var target = new UIControls.Button { Width = 10, Height = 1, Content = "open" };
+
+        // The outer popup's content hosts an anchor that opens an INNER popup (the dropdown-in-overflow shape).
+        var innerAnchor = new UIControls.Button { Width = 8, Height = 1, Content = "drop" };
+        var item = new UIControls.Button { Width = 8, Height = 1, Content = "item" };
+        var innerPopup = new Popup { Child = item, PlacementTarget = innerAnchor };
+
+        var outerContent = new UIControls.StackPanel();
+        outerContent.Children.Add(innerAnchor);
+        outerContent.Children.Add(innerPopup); // the inner popup lives logically in the outer content
+
+        var outerPopup = new Popup { Child = outerContent, PlacementTarget = target };
+
+        var root = new UIControls.StackPanel();
+        root.Children.Add(target);
+        root.Children.Add(outerPopup);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        outerPopup.Open();
+        Assert.True(host.RunUntilIdle());
+        innerPopup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(outerPopup.IsOpen);
+        Assert.True(innerPopup.IsOpen);
+
+        var innerSurface = innerPopup.PopupSurface!;
+        host.SendClick(innerSurface.Left + 1, innerSurface.Top); // press the item INSIDE the inner popup
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(innerPopup.IsOpen);  // the hit popup survives (as before)
+        Assert.True(outerPopup.IsOpen);  // and so must its ancestor — the fix
+    }
+
     [Fact] // Escape closes the popup through the cross-tree route (focus is inside the popup child)
     public void Escape_ClosesViaCrossTreeRoute()
     {

@@ -1252,9 +1252,28 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (_popups.Count == 0)
             return;
 
+        // A press inside a popup spares that popup AND every popup it descends from — its whole anchor chain.
+        // A dropdown opened from a control that lives inside another popup (a toolbar-overflow dropdown, a
+        // submenu) must not collapse the ancestor it was launched from; sparing only the exact hit surface
+        // light-dismissed the ancestor, which re-parented the dropdown's owner and tore the dropdown down
+        // before the pressed item's Click could fire (keyboard bypassed light dismiss, so only pointer broke).
+        // Walk hit → the popup that owns it → the surface hosting THAT popup's anchor → … collecting each
+        // surface, until the chain reaches a non-popup surface (a window or the root). A null hit (a press in
+        // dead space) leaves the set empty, so every non-StaysOpen popup dismisses — the §8.4 behavior.
+        HashSet<TopLevelSurface>? spared = null;
+        for (var surface = hit; surface is not null;)
+        {
+            (spared ??= []).Add(surface);
+            if (PopupForSurface(surface) is not {} owning)
+                break;
+            surface = owning.EffectiveTarget is {} target ? SurfaceForElement(target) : null;
+        }
+
         var toDismiss = new List<Popup>(_popups.Count);
         foreach (var popup in _popups)
-            if (!(popup.StaysOpen || ReferenceEquals(popup.PopupSurface, hit) || PressOnAnchor(popup, pressColumn, pressRow)))
+            if (!(popup.StaysOpen
+                  || (popup.PopupSurface is {} s && spared is not null && spared.Contains(s))
+                  || PressOnAnchor(popup, pressColumn, pressRow)))
                 toDismiss.Add(popup);
 
         foreach (var popup in toDismiss)

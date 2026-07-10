@@ -28,7 +28,8 @@ public sealed class XamlDocument
         XamlType?[] resolvedTypes,
         XamlMember?[] resolvedMembers,
         IReadOnlyList<XamlDiagnostic> diagnostics,
-        IReadOnlyDictionary<string, string> namespaces)
+        IReadOnlyDictionary<string, string> namespaces,
+        XamlDesignInfo? designInfo = null)
     {
         SourceUri = sourceUri;
         _rootType = rootType;
@@ -43,6 +44,7 @@ public sealed class XamlDocument
         ResolvedMembers = resolvedMembers;
         Diagnostics = diagnostics;
         Namespaces = namespaces;
+        DesignInfo = designInfo;
     }
 
     private readonly Type? _rootType;
@@ -66,6 +68,12 @@ public sealed class XamlDocument
 
     /// <summary>All diagnostics collected during the parse (empty on a clean parse).</summary>
     public IReadOnlyList<XamlDiagnostic> Diagnostics { get; }
+
+    /// <summary>
+    /// Design-time metadata from the root's <c>d:</c> attributes, or <c>null</c> when the document
+    /// declares none. Runtime loading never reads this; designer hosts do.
+    /// </summary>
+    public XamlDesignInfo? DesignInfo { get; }
 
     // ── Internal node-graph arrays (the contract surface for tests) ────────────────────────────
 

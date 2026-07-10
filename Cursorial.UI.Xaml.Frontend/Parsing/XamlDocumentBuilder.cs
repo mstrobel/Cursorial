@@ -137,6 +137,10 @@ internal sealed class XamlDocumentBuilder
     public void Error(string code, string message, int line, int column)
         => Report(XamlDiagnostic.Error(code, message, _source, line, column));
 
+    /// <summary>Records a warning diagnostic at a position (never throws; warnings always collect).</summary>
+    public void Warning(string code, string message, int line, int column)
+        => Report(XamlDiagnostic.Warning(code, message, _source, line, column));
+
     /// <summary>True when any error has been collected (CollectAll mode).</summary>
     public bool HasErrors
     {
@@ -151,7 +155,7 @@ internal sealed class XamlDocumentBuilder
 
     // ── Finalization ───────────────────────────────────────────────────────────────────────────
 
-    public XamlDocument Build(Type? rootType, string? rootClassName)
+    public XamlDocument Build(Type? rootType, string? rootClassName, XamlDesignInfo? designInfo = null)
         => new(
             _source,
             rootType,
@@ -165,5 +169,6 @@ internal sealed class XamlDocumentBuilder
             _resolvedTypes.ToArray(),
             _resolvedMembers.ToArray(),
             _diagnostics.ToArray(),
-            _namespaces);
+            _namespaces,
+            designInfo);
 }

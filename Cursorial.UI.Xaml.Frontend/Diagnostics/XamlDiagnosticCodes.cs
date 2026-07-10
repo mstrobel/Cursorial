@@ -57,6 +57,12 @@ public static class XamlDiagnosticCodes
     /// <summary>An xmlns declaration on a non-root element (the top-level-only policy — Avalonia parity).</summary>
     public const string NamespaceNotOnRoot = "CUR2004";
 
+    /// <summary>An <c>mc:Ignorable</c> entry names a prefix with no xmlns declaration (warning).</summary>
+    public const string IgnorablePrefixNotDeclared = "CUR2005";
+
+    /// <summary>A design-time (<c>d:</c>) attribute value could not be interpreted (warning; the attribute is ignored).</summary>
+    public const string DesignValueInvalid = "CUR2006";
+
     /// <summary>No member of the given name exists on the target type (carries the member list).</summary>
     public const string MemberNotFound = "CUR2102";
 

@@ -61,10 +61,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <CursorialXaml Include="StrictView.xaml" />
-    </ItemGroup>
-
-    <ItemGroup>
       <Compile Update="StrictView.xaml.cs">
         <DependentUpon>StrictView.xaml</DependentUpon>
       </Compile>

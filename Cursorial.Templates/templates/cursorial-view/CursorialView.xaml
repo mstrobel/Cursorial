@@ -1,0 +1,7 @@
+<StackPanel xmlns="https://cursorial.dev/ui"
+            xmlns:x="https://cursorial.dev/xaml"
+            x:Class="CursorialApp.Views.CursorialView">
+
+    <TextBlock Text="CursorialView"/>
+
+</StackPanel>

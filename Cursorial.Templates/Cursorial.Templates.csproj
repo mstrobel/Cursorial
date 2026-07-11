@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The `dotnet new` template package: `cursorial-app` (a runnable terminal UI app with a
+        XAML shell view) and `cursorial-view` (an x:Class view + code-behind pair). Content
+        only — no assembly. Template PackageReference versions pin the repo's current release
+        and move with it; the templates and the packages ship together.
+    -->
+
+    <PropertyGroup>
+        <PackageType>Template</PackageType>
+        <PackageId>Cursorial.Templates</PackageId>
+        <Version>0.3.2</Version>
+        <Title>Cursorial project templates</Title>
+        <Description>dotnet new templates for Cursorial terminal UI apps and XAML views.</Description>
+        <PackageTags>cursorial;tui;terminal;templates;dotnet-new</PackageTags>
+        <IsPackable>true</IsPackable>
+
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <IncludeContentInPack>true</IncludeContentInPack>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <ContentTargetFolders>content</ContentTargetFolders>
+        <!-- Template content is not this project's code, and .template.config must survive packing. -->
+        <EnableDefaultItems>false</EnableDefaultItems>
+        <NoDefaultExcludes>true</NoDefaultExcludes>
+        <NoWarn>$(NoWarn);NU5128</NoWarn>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <!-- No assembly → no symbols; the repo-default snupkg would be empty and fail NU5017. -->
+        <IncludeSymbols>false</IncludeSymbols>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Content Include="templates\**\*" />
+    </ItemGroup>
+
+</Project>

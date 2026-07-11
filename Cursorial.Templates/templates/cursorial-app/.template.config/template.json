@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Mike Strobel",
+  "classifications": ["Console", "TUI", "Cursorial"],
+  "identity": "Cursorial.App.CSharp",
+  "name": "Cursorial terminal UI app",
+  "description": "A terminal UI application using the Cursorial framework: a XAML shell view with generated code-behind, ready to run.",
+  "shortName": "cursorial-app",
+  "sourceName": "CursorialApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

@@ -1,0 +1,12 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           x:Class="CursorialApp.Views.MainView">
+
+    <TextBlock DockPanel.Dock="Bottom" Text=" Esc quits"/>
+
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Text="Hello from CursorialApp!"/>
+        <Button x:Name="CountButton" Content="Click me"/>
+    </StackPanel>
+
+</DockPanel>

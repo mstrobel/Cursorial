@@ -209,12 +209,20 @@ public sealed class XamlSchemaContext
     /// <summary>The known XAML-visible type names in an xmlns URI (Levenshtein did-you-mean source).</summary>
     public string[] GetKnownTypeNames(string xmlNamespace)
     {
-        var clrNamespaces = SnapshotNamespaces(xmlNamespace);
+        var clrNamespaces = (IReadOnlyList<string>)SnapshotNamespaces(xmlNamespace);
+        var assemblies = AllAssemblies();
         if (clrNamespaces.Count == 0)
-            return [];
+        {
+            // clr-namespace:/using: URIs are self-describing rather than registered, same as
+            // GetClrNamespaces; honor an assembly= qualifier so the sweep stays scoped.
+            if (!TryDecodeClrNamespace(xmlNamespace, out var clrNamespace, out var assemblyName))
+                return [];
+            clrNamespaces = [clrNamespace];
+            assemblies = AssembliesFor(assemblyName);
+        }
 
         var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var asm in AllAssemblies())
+        foreach (var asm in assemblies)
         {
             foreach (var type in SafeGetExportedTypes(asm))
             {

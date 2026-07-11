@@ -170,6 +170,16 @@ public sealed class PrefixedTypeRefEndToEndTests
         Assert.Equal(XamlDiagnosticCodes.UndeclaredPrefix, ex.Code);
         Assert.True(ex.Line > 0 && ex.Column > 0);
     }
+
+    [Fact] // GetKnownTypeNames decodes clr-namespace:/using: URIs like GetClrNamespaces — did-you-mean and
+    public void KnownTypeNames_EnumerateClrNamespaceUris() // tooling completion see custom-namespace types.
+    {
+        var names = XamlSchemaContext.Default.GetKnownTypeNames(
+            "clr-namespace:Cursorial.Tests.UI.Xaml.Integration;assembly=Cursorial.UI.Xaml.Tests");
+
+        Assert.Contains("XamlPrefixTarget", names);
+        Assert.DoesNotContain("Button", names); // scoped to the URI's namespace, not the default map
+    }
 }
 
 /// <summary>A test-only <see cref="UIElement"/> that lives OUTSIDE the Cursorial.UI namespaces — the probe for

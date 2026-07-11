@@ -9,14 +9,13 @@
   -->
 
   <!--
-    The None removal must be here (bottom import): the SDK's default None glob is evaluated
-    after the top-imported .props, so a props-side Remove would fire before the items exist.
-    Distinct() on both mappings tolerates a legacy explicit <CursorialXaml Include> that
-    duplicates the default glob.
+    The SDK's default None claim on .xaml files is deliberately NOT removed: IDE project trees
+    only display files claimed by item types they know, so None is what keeps the documents
+    visible in the explorer (Rider ignores import-declared unknown item types even with
+    Visible=true). A file being both None and CursorialXaml is build-inert — None has no build
+    role — and matches how explicit-item projects always evaluated. Distinct() on the mapping
+    below tolerates a legacy explicit <CursorialXaml Include> duplicating the default glob.
   -->
-  <ItemGroup Condition="'$(EnableDefaultCursorialXamlItems)' == 'true'">
-    <None Remove="@(CursorialXaml)" />
-  </ItemGroup>
 
   <ItemGroup>
     <AdditionalFiles Include="@(CursorialXaml->Distinct())" SourceItemType="CursorialXaml" />

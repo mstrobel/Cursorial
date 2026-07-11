@@ -1,6 +1,6 @@
-<StackPanelX xmlns="https://cursorial.dev/ui"
+<StackPanel xmlns="https://cursorial.dev/ui"
             xmlns:x="https://cursorial.dev/xaml"
             x:Class="Cursorial.Demo.XamlAotStrict.StrictView">
     <Button x:Name="Ok" Content="Strict AOT"/>
     <TextBlock x:Name="Label" Text="loaded via the generated provider"/>
-</StackPanelX>
+</StackPanel>

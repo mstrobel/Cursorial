@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Cursorial.UI.Hosting.Headless</RootNamespace>
+    </PropertyGroup>
+
+    <!-- NuGet packaging. Shared metadata lives in ../Directory.Build.props; this carries per-package fields only.
+         Published (unlike the old Cursorial.UI.Testing identity): the headless host is the sanctioned substrate
+         for out-of-process tooling — the Rider designer's preview host consumes it — not just for tests. -->
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>Cursorial.UI.Hosting.Headless</PackageId>
+        <Version>0.3.2</Version>
+        <Description>Headless hosting for Cursorial.UI — the full framework pipeline (layout, styling, animation, composition) driven frame-by-frame on a synthetic terminal with no TTY: deterministic virtual time, synthetic input, and direct CellBuffer access. The substrate for UI tests and out-of-process tooling such as designers and previewers.</Description>
+        <PackageTags>terminal;tui;ui;headless;testing;previewer;crossplatform</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The doc-pinned FakeTimeProvider (design doc §10.10); Cursorial.Core.Tests already uses it. -->
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />
+    </ItemGroup>
+
+</Project>

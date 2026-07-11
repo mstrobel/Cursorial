@@ -24,7 +24,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.UI.Tests" />
-        <InternalsVisibleTo Include="Cursorial.UI.Testing" />
+        <InternalsVisibleTo Include="Cursorial.UI.Hosting.Headless" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml" />
         <InternalsVisibleTo Include="Cursorial.UI.Xaml.Tests" />
         <!-- The first-party Bars library rides privileged engine seams (the KeyTip overlay's Alt-cue hooks +

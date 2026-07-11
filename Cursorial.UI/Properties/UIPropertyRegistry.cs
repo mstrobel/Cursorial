@@ -77,6 +77,44 @@ internal static class UIPropertyRegistry
         }
     }
 
+    /// <summary>A registration-ordered snapshot of every registered property (the <see cref="UIProperties.All"/> backing).</summary>
+    internal static IReadOnlyList<UIProperty> Snapshot()
+    {
+        lock (Gate)
+        {
+            return [.. ById];
+        }
+    }
+
+    /// <summary>
+    /// The non-attached properties applicable to <paramref name="type"/> — registered (declared
+    /// or via <c>AddOwner</c>) on the type or any base. Registration-ordered, deduplicated
+    /// (an <c>AddOwner</c> entry does not repeat its property).
+    /// </summary>
+    internal static IReadOnlyList<UIProperty> PropertiesForType(Type type)
+    {
+        lock (Gate)
+        {
+            var applicable = new HashSet<UIProperty>();
+            foreach (var ((owner, _), property) in ByOwnerAndName)
+            {
+                if (!property.IsAttached && owner.IsAssignableFrom(type))
+                    applicable.Add(property);
+            }
+
+            return [.. ById.Where(applicable.Contains)];
+        }
+    }
+
+    /// <summary>The attached properties declared by <paramref name="ownerType"/>, registration-ordered.</summary>
+    internal static IReadOnlyList<UIProperty> AttachedByOwner(Type ownerType)
+    {
+        lock (Gate)
+        {
+            return [.. ById.Where(p => p.IsAttached && p.OwnerType == ownerType)];
+        }
+    }
+
     /// <summary>The property with dense id <paramref name="id"/>, or <see langword="null"/> (the −1 sentinel included).</summary>
     internal static UIProperty? FindById(int id)
     {

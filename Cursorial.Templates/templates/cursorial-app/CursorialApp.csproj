@@ -16,4 +16,11 @@
         <PackageReference Include="Cursorial.UI.Xaml.Generator" Version="0.3.2" PrivateAssets="all" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- Redundant with the generator's default glob (harmless — the mappings deduplicate),
+             but IDE project models only display build actions for items declared in the project
+             file itself; this line makes .xaml files read as CursorialXaml instead of None. -->
+        <CursorialXaml Include="**/*.xaml" />
+    </ItemGroup>
+
 </Project>

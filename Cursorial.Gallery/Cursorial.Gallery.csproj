@@ -34,6 +34,10 @@
          loaded at runtime from embedded XAML (the runtime-loader path). -->
 
     <ItemGroup>
+      <CursorialXaml Include="**/*.xaml" />
+    </ItemGroup>
+
+    <ItemGroup>
         <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->
         <InternalsVisibleTo Include="Cursorial.UI.Tests" />
     </ItemGroup>

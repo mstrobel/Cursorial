@@ -30,10 +30,8 @@
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-        <!-- The shell + page views are loaded at runtime from embedded XAML (the runtime-loader path). -->
-        <CursorialXaml Include="Views\**\*.xaml" />
-    </ItemGroup>
+    <!-- The shell + page views are <CursorialXaml> via the generator's default glob and are
+         loaded at runtime from embedded XAML (the runtime-loader path). -->
 
     <ItemGroup>
         <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->

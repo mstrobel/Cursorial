@@ -8,8 +8,18 @@
     AdditionalFiles plumbing.
   -->
 
+  <!--
+    The None removal must be here (bottom import): the SDK's default None glob is evaluated
+    after the top-imported .props, so a props-side Remove would fire before the items exist.
+    Distinct() on both mappings tolerates a legacy explicit <CursorialXaml Include> that
+    duplicates the default glob.
+  -->
+  <ItemGroup Condition="'$(EnableDefaultCursorialXamlItems)' == 'true'">
+    <None Remove="@(CursorialXaml)" />
+  </ItemGroup>
+
   <ItemGroup>
-    <AdditionalFiles Include="@(CursorialXaml)" SourceItemType="CursorialXaml" />
+    <AdditionalFiles Include="@(CursorialXaml->Distinct())" SourceItemType="CursorialXaml" />
   </ItemGroup>
 
   <!--
@@ -19,7 +29,7 @@
     local file keeps its default RootNamespace.<path> manifest name. Authors write <CursorialXaml> once.
   -->
   <ItemGroup Condition="'$(CursorialXamlEmbedResources)' == 'true'">
-    <EmbeddedResource Include="@(CursorialXaml)" />
+    <EmbeddedResource Include="@(CursorialXaml->Distinct())" />
   </ItemGroup>
 
   <!--

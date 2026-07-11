@@ -16,6 +16,24 @@
   </ItemGroup>
 
   <!--
+    Default items: every .xaml under the project root is a <CursorialXaml> — new files start
+    life with the right build action, no csproj edit needed (mirrors the SDK's
+    EnableDefaultItems pattern). The glob lives HERE (top import) so a consumer's csproj body
+    can still <CursorialXaml Remove="..."/> or Update= specific files; the paired .targets
+    removes the same files from the SDK's default None items (which do not exist yet at props
+    time). Opt out entirely with <EnableDefaultCursorialXamlItems>false</...>; projects keeping
+    explicit <CursorialXaml Include> entries should drop them (the AdditionalFiles /
+    EmbeddedResource mappings deduplicate, so duplicates are harmless but pointless).
+  -->
+  <PropertyGroup>
+    <EnableDefaultCursorialXamlItems Condition="'$(EnableDefaultCursorialXamlItems)' == ''">true</EnableDefaultCursorialXamlItems>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EnableDefaultCursorialXamlItems)' == 'true'">
+    <CursorialXaml Include="**/*.xaml" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+  </ItemGroup>
+
+  <!--
     WS-X5.5 — the full-lowering opt-in. Set <CursorialXamlLowering>full</CursorialXamlLowering> to compile each
     x:Class document to straight-line, reflection-free C# (no runtime XAML loader) instead of the default
     loader-backed code-behind. A member the lowering can't yet emit is reported as a CURG3001 build warning.

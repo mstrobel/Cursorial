@@ -32,7 +32,6 @@
 
     <!-- The shell + page views are <CursorialXaml> via the generator's default glob and are
          loaded at runtime from embedded XAML (the runtime-loader path). -->
-
     <ItemGroup>
       <CursorialXaml Include="**/*.xaml" />
     </ItemGroup>

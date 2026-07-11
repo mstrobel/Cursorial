@@ -60,7 +60,11 @@
                           OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
-    <ItemGroup>
+  <ItemGroup>
+    <CursorialXaml Include="**/*.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
       <Compile Update="StrictView.xaml.cs">
         <DependentUpon>StrictView.xaml</DependentUpon>
       </Compile>

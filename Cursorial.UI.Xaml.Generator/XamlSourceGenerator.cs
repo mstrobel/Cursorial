@@ -34,8 +34,13 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // Each CursorialXaml file → an equatable (path, text) input (filtered to our item type so a stray
-        // .xaml added as a plain AdditionalFiles isn't picked up). Equatable strings drive incrementality.
+        // Each CursorialXaml file → an equatable (path, text) input. The SourceItemType metadata
+        // discriminates when PRESENT (a stray .xaml added under some other AdditionalFiles role
+        // isn't picked up) but its ABSENCE must fail OPEN: per-file CompilerVisibleItemMetadata
+        // does not reliably survive IDE design-time models (Rider/R# drops it where global
+        // build_property values flow), and failing closed there means the generator silently
+        // produces nothing in the IDE — unresolved InitializeComponent with no error anywhere.
+        // Equatable strings drive incrementality.
         var xamlFiles = context.AdditionalTextsProvider
                                .Combine(context.AnalyzerConfigOptionsProvider)
                                .Where(static pair =>
@@ -45,8 +50,9 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
                                           if (!file.Path.EndsWith(".xaml", System.StringComparison.OrdinalIgnoreCase))
                                               return false;
 
-                                          return options.GetOptions(file).TryGetValue(SourceItemTypeKey, out var itemType)
-                                                 && string.Equals(itemType, CursorialXamlItemType, System.StringComparison.OrdinalIgnoreCase);
+                                          return !options.GetOptions(file).TryGetValue(SourceItemTypeKey, out var itemType)
+                                                 || string.IsNullOrEmpty(itemType)
+                                                 || string.Equals(itemType, CursorialXamlItemType, System.StringComparison.OrdinalIgnoreCase);
                                       })
                                .Select(static (pair, ct) =>
                                        {

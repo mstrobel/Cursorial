@@ -142,8 +142,6 @@ public static class PseudoClassMapping
                             [mapping.PropertyId] = existing is null ? [mapping] : [.. existing, mapping]
                         };
 
-            Volatile.WriteBarrier();
-
             _byPropertyId = grown;
             _anyRegistered = true;
         }

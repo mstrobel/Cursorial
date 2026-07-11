@@ -1,4 +1,4 @@
-<Window xmlns="https://cursorial.dev/ui"
+<DockPanel xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
            xmlns:d="https://cursorial.dev/xaml/design"
            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -10,7 +10,7 @@
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
            d:DataContext="vm:ShellViewModel">
-    <UIElement.InputBindings>
+  <UIElement.InputBindings>
       <KeyBinding Gesture="Alt+T" Command="{Binding CycleColorTier}" />
       <KeyBinding Gesture="Alt+D" Command="{Binding CycleThemeVariant}" />
       <KeyBinding Gesture="Alt+Q" Command="{Binding Quit}" />
@@ -18,7 +18,7 @@
     </UIElement.InputBindings>
 
     <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
-    <Window.Resources>
+    <DockPanel.Resources>
 
         <DataTemplate DataType="vm:DialogsViewModel">
           <DockPanel>
@@ -46,7 +46,7 @@
                 </StackPanel>
               </Border>
               <Border Grid.Column="1" Padding="2,1" Title="Message Boxes">
-                <StackPanel Spacing="1" Orientation="Vertical">
+                <StackPanel Spacing="1" Orientation="Vertical" Children="{DynamicResource }">
                   <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
                 </StackPanel>
               </Border>
@@ -603,23 +603,29 @@
 
         </DockPanel>
       </DataTemplate>
-
-    </Window.Resources>
-
+    </DockPanel.Resources>
+  
     <!-- Title bar -->
-    <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}" Padding="1,0">
-        <TextBlock Text=" Cursorial — Control Gallery  —  ⌥ shortcuts · ⌥+t color tier · ⌥+d light/dark · q / esc to quit)"
-                   Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+    <Border DockPanel.Dock="Top"
+            Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"
+            Padding="1,0">
+      <TextBlock
+        Text=" Cursorial — Control Gallery  —  ⌥ shortcuts · ⌥+t color tier · ⌥+d light/dark · q / esc to quit)"
+        Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
     </Border>
-    
-    <Expander x:Name="DiagnosticsExpander" DockPanel.Dock="Bottom" Header="Dia_gnostics">
-      <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="8">
-        <ListBox ItemsSource="{Binding Diagnostics}" VirtualizingPanel.IsVirtualizing="True" />
+
+    <Expander x:Name="DiagnosticsExpander"
+              DockPanel.Dock="Bottom"
+              Header="Dia_gnostics">
+      <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    MaxHeight="8">
+        <ListBox ItemsSource="{Binding Diagnostics}"
+                 VirtualizingPanel.IsVirtualizing="True" />
       </ScrollViewer>
     </Expander>
 
     <!-- Nav: a real ListBox so arrow-key / click navigation is itself part of the showcase -->
-    <Border DockPanel.Dock="Left"> 
+    <Border DockPanel.Dock="Left">
       <DockPanel LastChildFill="True">
         <Label DockPanel.Dock="Top"
                Content="Select a _Page:"
@@ -632,21 +638,22 @@
                  SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
           <ListBox.ItemTemplate>
             <DataTemplate>
-              <TextBlock Text="{Binding Title}"/>
+              <TextBlock Text="{Binding Title}" />
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
       </DockPanel>
     </Border>
-    
+
     <StatusBar DockPanel.Dock="Bottom">
       <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
-      <StatusBarItem Classes="alternate" Content="{Binding ThemeDescription}" />
+      <StatusBarItem Classes="alternate"
+                     Content="{Binding ThemeDescription}" />
       <StatusBarItem Content="{Binding Path=SelectedPage.Status, TargetNullValue=''}" />
     </StatusBar>
 
     <!-- Content host: the selected page view-model, resolved to its view by the implicit DataTemplates above.
-         ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
-    <ContentControl Content="{Binding SelectedPage}" ClipToBounds="True"/>
-
-</Window>
+       ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
+    <ContentControl Content="{Binding SelectedPage}" 
+                    ClipToBounds="True" />
+</DockPanel>

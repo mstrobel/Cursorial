@@ -97,6 +97,9 @@
     <Project Path="Cursorial.UI.Xaml.Frontend/Cursorial.UI.Xaml.Frontend.csproj" />
     <Project Path="Cursorial.UI.Xaml.Generator/Cursorial.UI.Xaml.Generator.csproj" />
   </Folder>
+  <Folder Name="/Templates/">
+    <Project Path="Cursorial.Templates/Cursorial.Templates.csproj" />
+  </Folder>
   <Project Path="Cursorial.Animation/Cursorial.Animation.csproj" />
   <Project Path="Cursorial.Core/Cursorial.Core.csproj" />
   <Project Path="Cursorial.Drawing/Cursorial.Drawing.csproj" />

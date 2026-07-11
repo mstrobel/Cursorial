@@ -1522,18 +1522,18 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // The color-tier class follows the EFFECTIVE tier (inversion 6 — honors RequestedColorTier).
         replacement.Add(_app.ActualThemeVariant.Tier switch
                         {
-                            ColorDepth.Truecolor => "caps-truecolor",
-                            ColorDepth.Ansi256   => "caps-ansi256",
-                            ColorDepth.Ansi16    => "caps-ansi16",
-                            _                    => "caps-nocolor"
+                            ColorDepth.Truecolor => CapabilityClasses.Truecolor,
+                            ColorDepth.Ansi256   => CapabilityClasses.Ansi256,
+                            ColorDepth.Ansi16    => CapabilityClasses.Ansi16,
+                            _                    => CapabilityClasses.NoColor
                         });
 
         // Non-color classes stay sourced from the negotiated snapshot (CD14).
         if (capabilities.Input.Mouse.Motion)
-            replacement.Add("caps-motion");
+            replacement.Add(CapabilityClasses.Motion);
 
         if (capabilities.Input.Protocol.KittyKeyboardProtocol)
-            replacement.Add("caps-kitty-keyboard");
+            replacement.Add(CapabilityClasses.KittyKeyboard);
 
         // Graphics classes (CD-P2J-1): caps-images for ANY inline-image protocol; caps-image-occlusion only for
         // Kitty graphics (z-orderable placements the framework can clip/occlude — Sixel paints inline into the cell
@@ -1541,29 +1541,29 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         var graphics = capabilities.Output.Graphics;
 
         if (graphics.Sixel || graphics.KittyGraphics || graphics.ITerm2InlineImages)
-            replacement.Add("caps-images");
+            replacement.Add(CapabilityClasses.Images);
 
         if (graphics.Sixel || graphics.KittyGraphics)
-            replacement.Add("caps-image-clipping");
+            replacement.Add(CapabilityClasses.ImageClipping);
 
         if (graphics.KittyGraphics)
-            replacement.Add("caps-image-occlusion");
+            replacement.Add(CapabilityClasses.ImageOcclusion);
 
         // caps-nerdfont is a no-probe opt-in (no terminal advertises Nerd Font coverage), sourced from the app's
         // user-options flag (CD-P2J-1) — app state, so it survives renegotiation.
         if (_app.NerdFontAvailable)
-            replacement.Add("caps-nerdfont");
+            replacement.Add(CapabilityClasses.NerdFont);
 
         // caps-emoji is probe-less like caps-nerdfont but the OPPOSITE default (FB-15, maintainer decision
         // 2026-07-04): stamped unless the user disables it. Emoji coverage in modern terminals is near-universal
         // (unlike Nerd Font PUA coverage, where default-absent rightly stays), and grid safety is owned by the
         // Icon element's 2-cell emoji measurement, not by hiding the tier. App state — survives renegotiation.
         if (_app.EmojiAvailable)
-            replacement.Add("caps-emoji");
+            replacement.Add(CapabilityClasses.Emoji);
 
         // caps-unicode is unconditional; caps-ascii is RESERVED and never stamped at P5 — no
         // negotiated glyph-capability source exists (SD14 recorded deferral).
-        replacement.Add("caps-unicode");
+        replacement.Add(CapabilityClasses.Unicode);
 
         root.Classes.Replace(CollectionsMarshal.AsSpan(replacement)); // one restyle pass (doc §3.2)
     }

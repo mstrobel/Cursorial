@@ -659,7 +659,7 @@
   <DockPanel.Styles>
     <Style Selector=":is(ButtonBase)">
       <Style.Children>
-        <Style Selector="^:pointerover /template/ Border">
+        <Style Selector="^:pointerover /template/">
           
         </Style>
       </Style.Children>

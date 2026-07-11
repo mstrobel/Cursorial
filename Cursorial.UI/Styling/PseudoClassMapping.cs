@@ -28,7 +28,13 @@ public static class PseudoClassMapping
     public readonly record struct PseudoClassMappingInfo(Type OwnerType, UIProperty Property, IReadOnlyList<string> PseudoClasses);
 
     private static readonly Lock RegistryLock = new();
-    private static Dictionary<int, Mapping[]> _byPropertyId = [];
+
+    // volatile: lock-free readers (NotifyPropertyChanged, Snapshot) never take RegistryLock, so
+    // the copy-on-write publication must be a release/acquire in its own right. The documented
+    // .NET memory model already gives reference stores release semantics (and NotifyPropertyChanged
+    // additionally pairs through the volatile _anyRegistered), but Snapshot reads this field with
+    // no other fence — and ECMA-335-conservative correctness shouldn't require an archaeology dig.
+    private static volatile Dictionary<int, Mapping[]> _byPropertyId = [];
     private static volatile bool _anyRegistered;
 
     /// <summary>Maps a <see cref="bool"/> property to one pseudo-class: set ⇒ class on, cleared ⇒ class off.</summary>
@@ -135,6 +141,8 @@ public static class PseudoClassMapping
                         {
                             [mapping.PropertyId] = existing is null ? [mapping] : [.. existing, mapping]
                         };
+
+            Volatile.WriteBarrier();
 
             _byPropertyId = grown;
             _anyRegistered = true;

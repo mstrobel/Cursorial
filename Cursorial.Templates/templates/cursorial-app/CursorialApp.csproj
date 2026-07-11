@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>CursorialApp</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Cursorial.UI.Xaml" Version="0.3.2" />
+        <!-- The XAML source generator: InitializeComponent + typed x:Name fields for x:Class
+             views. Its build assets also make every .xaml a <CursorialXaml> item automatically,
+             so new views need no csproj edits. -->
+        <PackageReference Include="Cursorial.UI.Xaml.Generator" Version="0.3.2" PrivateAssets="all" />
+    </ItemGroup>
+
+</Project>
